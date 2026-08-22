@@ -8,16 +8,17 @@ directories:
   output: release
   buildResources: recursos
 
-# Publicación de versiones: "npm run publicar" sube el instalador y los archivos de actualización
-# (latest.yml, .blockmap) como GitHub Release del repositorio privado.
+# Esta sección sólo le dice a electron-builder QUÉ FORMA tienen los archivos de actualización
+# (latest.yml) que genera junto al instalador; no publica nada. La build siempre corre con
+# "--publish never" (ver scripts/publicar.mjs) y la publicación a GitHub Releases la hace ese
+# script aparte, con "gh release create": en pruebas, "electron-builder --publish" creaba dos
+# Releases para el mismo tag en una carrera interna y repartía los archivos entre las dos copias
+# al azar (a veces "latest.yml" quedaba en la copia sin el instalador).
 publish:
   provider: github
   owner: zeroframe404
   repo: dm-gestion
   private: true
-  # Sin esto, electron-builder deja el Release como borrador y hay que publicarlo a mano en GitHub;
-  # con "release" queda visible (y electron-updater lo puede leer) apenas termina "npm run publicar".
-  releaseType: release
 
 files:
   - dist/**/*
