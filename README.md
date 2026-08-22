@@ -8,7 +8,7 @@ Electron + React + TypeScript + Vite + Tailwind, con base de datos local SQLite.
 ```bash
 npm install       # instala dependencias (better-sqlite3 trae binarios listos, no compila nada)
 npm run dev       # desarrollo con recarga automática
-npm run prueba    # 268 pruebas propias, sin tocar ninguna hoja real
+npm run prueba    # 278 pruebas propias, sin tocar ninguna hoja real
 npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
 ```
 
@@ -150,9 +150,37 @@ Tres módulos nuevos en la barra lateral, más la subpestaña **Cartera → Regl
 ### Clientes
 
 - **Listado** con buscador (nombre, DNI/CUIT, patente, número de póliza o teléfono) y filtros de
-  sucursal, compañía y deuda. Se ve cuántos resultados hay sobre el total de la cartera.
+  sucursal y compañía. Se ve cuántos resultados hay sobre el total de la cartera.
+- **Cuatro vistas de la cartera**, arriba de todo, cada una con su número: **Todos**, **Activos sin
+  deuda**, **Activos con deuda** y **Bajas**. Se toca una y el listado queda en esa. Los números se
+  calculan con la búsqueda y los filtros puestos, así que dicen de antemano cuántos va a traer cada
+  una. («Sin pólizas» aparece sólo si hay alguno: son altas a las que todavía no se les cargó la
+  primera póliza.)
 - **«Con deuda»** es tener alguna cuota del mes abierto sin pagar que **no** se cobre sola: las de
   TARJETA o CBU nunca figuran con deuda, con la misma regla que usa el semáforo de la planilla.
+- **«Baja»** es haber tenido pólizas y no tener ninguna activa. El que nunca tuvo ninguna no es una
+  baja: figura como «Sin pólizas».
+
+#### Buscar deudores
+
+El botón **«Buscar deudores»** del listado abre la ventana que arma la lista de a quién hay que
+cobrarle. Se tilda lo que haga falta y la lista se rehace sola:
+
+- **Mes**: arranca en el mes abierto (el que se está cobrando) y se puede mirar cualquier mes anterior
+  o **todos los meses** juntos, que es donde aparecen las deudas viejas.
+- **Sucursal**, **compañía** y **forma de pago**: se tildan de a varias. Sin tildar ninguna entran
+  todas.
+- **Días de vencimiento**: los 31 días, para tildar **sueltos y en cualquier orden** —«los que vencen
+  el 1, el 3 y el 5»—, que es para lo que existe esta ventana. Cada día muestra cuántas deudas tiene,
+  así se tilda sabiendo dónde hay algo, y el contador no cambia al tildar otro día.
+- **Las que se cobran solas** (débito automático, CBU, tarjeta) quedan afuera por omisión, igual que
+  en el resto de la aplicación. Pero **si se tilda una forma de pago, manda lo tildado**: pedir
+  TARJETA es querer ver justamente las tarjetas que no entraron.
+- Cada fila es una **cuota impaga**, no una persona: quien tiene dos pólizas atrasadas debe dos veces
+  y hay que cobrarle las dos. Abajo se dice cuántas deudas son, cuántas personas distintas y el total.
+- **Exportar .xlsx** para trabajarlo en Excel y **Exportar .txt** para imprimirlo o mandarlo por
+  mensaje (sale en columnas de ancho fijo, con los filtros usados en el encabezado y el total al pie).
+  Los dos abren «Guardar como» y salen con los mismos filtros que se ven en pantalla.
 - **Ficha** con seis pestañas: Datos (editables), Vehículos, Pólizas, Pagos, Siniestros y Notas.
   Las pólizas van separadas en **Activas** e **Histórico**, y las del histórico muestran el motivo y la
   fecha de la baja.
@@ -229,6 +257,7 @@ como cualquier otro.
 ```bash
 npm run sembrar -- <carpeta>       # arma una carpeta de datos con la hoja simulada ya importada
 npm run humo:fase5 -- <carpeta>    # abre la app de verdad y recorre los cuatro criterios (24 pasos)
+npm run humo:deudores -- <carpeta> # los estados del listado y «Buscar deudores», con exportación (18 pasos)
 ```
 
 `sembrar` importa **dos veces** (primero hasta julio, después con agosto) porque es lo que pasa mes a

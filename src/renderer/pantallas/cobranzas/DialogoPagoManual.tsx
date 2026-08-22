@@ -310,4 +310,5 @@ const SIN_CLIENTE: FilaCliente = {
   vehiculos: 0,
   conDeuda: false,
   companias: [],
+  estado: 'SIN POLIZAS',
 }

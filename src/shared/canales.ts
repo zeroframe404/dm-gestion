@@ -47,8 +47,11 @@ import type {
   FichaCliente,
   FilaCliente,
   FiltrosClientes,
+  FiltrosDeudores,
   FiltrosPolizas,
+  FormatoDeDeudores,
   ListadoClientes,
+  ListadoDeudores,
   ListadoPolizas,
   MatrizDeCobertura,
   NotaDeCliente,
@@ -196,6 +199,17 @@ export interface Canales {
   'clientes:cambiarEstadoDeTarea': (tareaId: number, estado: EstadoTarea) => Resultado<TareaDeCliente[]>
   /** Las cuotas del mes abierto del cliente: lo que se puede pagar desde su ficha. */
   'clientes:cuotasDelMes': (clienteId: number) => Resultado<CuotasDelCliente>
+  /** Buscador de deudores: las cuotas impagas que pasan los filtros del diálogo. */
+  'clientes:deudores': (filtros: FiltrosDeudores) => Resultado<ListadoDeudores>
+  /**
+   * El mismo listado en .xlsx o .txt. Con `ruta` en null abre «Guardar como» y devuelve la ruta
+   * elegida (o null si se canceló); con una ruta escribe ahí, que es lo que hace la prueba de humo.
+   */
+  'clientes:exportarDeudores': (
+    filtros: FiltrosDeudores,
+    formato: FormatoDeDeudores,
+    ruta: string | null,
+  ) => Resultado<{ ruta: string | null }>
 
   // Siniestros: el listado mensual, la ficha con seguimiento y el alta rápida.
   /** Alta desde la ficha del cliente: devuelve los siniestros de ese cliente. */

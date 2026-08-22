@@ -598,6 +598,14 @@ export interface RespaldoGuardado {
 
 export type EstadoPoliza = 'ACTIVA' | 'BAJA' | 'VENCIDA'
 
+/**
+ * Cómo está el cliente hoy:
+ *  - ACTIVO: le queda al menos una póliza activa;
+ *  - BAJA: tuvo pólizas y no le queda ninguna activa (se fue de la agencia);
+ *  - SIN POLIZAS: nunca tuvo ninguna (recién dado de alta, todavía sin cargarle la primera).
+ */
+export type EstadoDeCliente = 'ACTIVO' | 'BAJA' | 'SIN POLIZAS'
+
 export interface FilaCliente {
   id: number
   nombre: string
@@ -612,14 +620,27 @@ export interface FilaCliente {
   conDeuda: boolean
   /** Compañías de sus pólizas activas, para el filtro. */
   companias: string[]
+  estado: EstadoDeCliente
 }
+
+/** Las tres vistas de la cartera que pide el mostrador, más la de los que todavía no tienen póliza. */
+export type FiltroEstadoCliente = '' | 'activos-sin-deuda' | 'activos-con-deuda' | 'bajas' | 'sin-polizas'
 
 export interface FiltrosClientes {
   busqueda: string
   sucursal: string
   compania: string
-  /** '' = todos, 'con' = sólo con deuda, 'sin' = sólo al día. */
-  deuda: '' | 'con' | 'sin'
+  /** '' = todos; el resto acota por cómo está el cliente y si debe. */
+  estado: FiltroEstadoCliente
+}
+
+/** Cuántos clientes hay en cada estado con la búsqueda y los filtros puestos, pero sin el de estado. */
+export interface ResumenDeClientes {
+  todos: number
+  activosSinDeuda: number
+  activosConDeuda: number
+  bajas: number
+  sinPolizas: number
 }
 
 export interface DatosDeCliente {
@@ -871,8 +892,88 @@ export interface ListadoClientes {
   filas: FilaCliente[]
   /** Cuántos clientes hay en total, antes de aplicar los filtros. */
   total: number
+  resumen: ResumenDeClientes
   sucursales: string[]
   companias: string[]
+}
+
+// --- Buscador de deudores (Clientes → «Buscar deudores») ---
+
+export const FORMATOS_DE_DEUDORES = ['xlsx', 'txt'] as const
+export type FormatoDeDeudores = (typeof FORMATOS_DE_DEUDORES)[number]
+
+export interface FiltrosDeudores {
+  /** 'AAAA-MM' para un mes; '' para mirar todos los meses que tenga la cartera. */
+  periodo: string
+  /** Vacío = todas. Se comparan normalizadas (sin tildes ni mayúsculas). */
+  sucursales: string[]
+  companias: string[]
+  formasDePago: string[]
+  /** Días del mes tildados (1 a 31), en cualquier orden. Vacío = todos los días. */
+  dias: number[]
+  /**
+   * Sólo pesa cuando NO se tildó ninguna forma de pago: sin esto quedan afuera las que se cobran
+   * solas (débito, CBU, tarjeta), que es lo que la agencia entiende por deudor. Si se tilda una forma
+   * de pago, manda lo tildado: pedir TARJETA es querer ver justamente las tarjetas que no entraron.
+   */
+  incluirDebito: boolean
+}
+
+export const DEUDORES_SIN_FILTROS: FiltrosDeudores = {
+  periodo: '',
+  sucursales: [],
+  companias: [],
+  formasDePago: [],
+  dias: [],
+  incluirDebito: false,
+}
+
+/** Una cuota impaga: la deuda, con todo lo que hace falta para llamar o exportar. */
+export interface FilaDeudor {
+  filaId: string
+  periodo: string
+  clienteId: number | null
+  nombre: string | null
+  documento: string | null
+  telefono: string | null
+  email: string | null
+  sucursal: string | null
+  compania: string | null
+  numeroPoliza: string | null
+  patente: string | null
+  cuota: string | null
+  cuotaMonto: number | null
+  formaPago: string | null
+  /** Día del mes en que vence (1 a 31); null si la fila no lo tiene cargado. */
+  diaVencimiento: number | null
+  /** La fecha completa del vencimiento, 'AAAA-MM-DD'; null si no hay día. */
+  vencimiento: string | null
+  /** Días de atraso: positivo si ya venció, negativo si todavía falta; null sin vencimiento. */
+  diasDeAtraso: number | null
+  vencida: boolean
+  /** true si esa forma de pago se cobra sola (débito, CBU, tarjeta). */
+  seCobraSola: boolean
+}
+
+export interface ListadoDeudores {
+  filas: FilaDeudor[]
+  /** Cuántas personas distintas hay en `filas`: una puede deber dos pólizas. */
+  clientes: number
+  /** Suma de las cuotas que tienen importe numérico. */
+  total: number
+  /** Cuántas filas no tienen importe numérico: no suman al total. */
+  sinImporte: number
+  /** Cuántas deudas quedan afuera por no tener día de vencimiento cargado. */
+  sinDia: number
+  /** Deudas por día del mes con todo lo demás filtrado: el índice es el día (la posición 0 no se usa). */
+  porDia: number[]
+  /** El período que se está mirando; '' cuando se miran todos los meses. */
+  periodo: string
+  periodos: PeriodoCartera[]
+  sucursales: string[]
+  companias: string[]
+  formasDePago: string[]
+  hoy: string
 }
 
 export interface CatalogosDePoliza {

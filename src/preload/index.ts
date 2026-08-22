@@ -90,6 +90,8 @@ const api: ApiDm = {
     crearTarea: (datos) => invocar('clientes:crearTarea', datos),
     cambiarEstadoDeTarea: (tareaId, estado) => invocar('clientes:cambiarEstadoDeTarea', tareaId, estado),
     cuotasDelMes: (clienteId) => invocar('clientes:cuotasDelMes', clienteId),
+    deudores: (filtros) => invocar('clientes:deudores', filtros),
+    exportarDeudores: (filtros, formato, ruta) => invocar('clientes:exportarDeudores', filtros, formato, ruta),
   },
   siniestros: {
     crear: (datos) => invocar('siniestros:crear', datos),

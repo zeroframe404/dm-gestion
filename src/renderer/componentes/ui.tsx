@@ -291,11 +291,11 @@ interface PropsDialogo {
   alCerrar: () => void
   /** Botones del pie. */
   pie?: ReactNode
-  ancho?: 'sm' | 'md' | 'lg'
+  ancho?: 'sm' | 'md' | 'lg' | 'xl'
   children: ReactNode
 }
 
-const ANCHOS_DIALOGO = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl' }
+const ANCHOS_DIALOGO = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-7xl' }
 
 export function Dialogo({ abierto, titulo, descripcion, alCerrar, pie, ancho = 'md', children }: PropsDialogo) {
   const idTitulo = useId()

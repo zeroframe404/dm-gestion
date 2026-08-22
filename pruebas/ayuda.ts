@@ -1,4 +1,5 @@
 // Utilidades comunes a las pruebas: base de datos en memoria y corrida del importador.
+import { inflateRawSync } from 'node:zlib'
 import Database from 'better-sqlite3'
 import type { BaseDeDatos } from '../src/main/db/base'
 import { ejecutarMigraciones } from '../src/main/db/migraciones'
@@ -64,6 +65,24 @@ export function contar(db: BaseDeDatos, tabla: string, condicion = '1=1'): numbe
 
 export function filas<T = Record<string, unknown>>(db: BaseDeDatos, sql: string, ...parametros: unknown[]): T[] {
   return db.prepare(sql).all(...(parametros as [])) as T[]
+}
+
+/** Lee un ZIP escrito por xlsx.ts: alcanza con recorrer las cabeceras locales de adelante hacia atrás. */
+export function leerZip(archivo: Buffer): Map<string, string> {
+  const entradas = new Map<string, string>()
+  let posicion = 0
+  while (posicion + 30 <= archivo.length && archivo.readUInt32LE(posicion) === 0x04034b50) {
+    const metodo = archivo.readUInt16LE(posicion + 8)
+    const comprimido = archivo.readUInt32LE(posicion + 18)
+    const largoNombre = archivo.readUInt16LE(posicion + 26)
+    const extra = archivo.readUInt16LE(posicion + 28)
+    const nombre = archivo.subarray(posicion + 30, posicion + 30 + largoNombre).toString('utf8')
+    const desde = posicion + 30 + largoNombre + extra
+    const cuerpo = archivo.subarray(desde, desde + comprimido)
+    entradas.set(nombre, (metodo === 8 ? inflateRawSync(cuerpo) : cuerpo).toString('utf8'))
+    posicion = desde + comprimido
+  }
+  return entradas
 }
 
 /** Todos los problemas del informe de un tipo dado. */

@@ -70,6 +70,8 @@ export interface ApiDm {
     crearTarea: Remota<'clientes:crearTarea'>
     cambiarEstadoDeTarea: Remota<'clientes:cambiarEstadoDeTarea'>
     cuotasDelMes: Remota<'clientes:cuotasDelMes'>
+    deudores: Remota<'clientes:deudores'>
+    exportarDeudores: Remota<'clientes:exportarDeudores'>
   }
   siniestros: {
     crear: Remota<'siniestros:crear'>

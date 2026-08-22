@@ -8,7 +8,7 @@
 //   4. un segmento guardado devuelve la misma cantidad de filas que el filtro equivalente en Cartera.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { inflateRawSync } from 'node:zlib'
+
 import Database from 'better-sqlite3'
 import { abrirBaseDeDatos, cerrarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
 import { ejecutarMigraciones, MIGRACIONES } from '../src/main/db/migraciones'
@@ -37,6 +37,7 @@ import { construirXlsx } from '../src/main/servicios/xlsx'
 import { PLANTILLA_AVISO_POR_DEFECTO, SEGMENTO_SIN_FILTROS, type FiltrosDeSegmento, type SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
+import { leerZip } from './ayuda'
 
 const DANIEL: SesionUsuario = {
   id: 1,
@@ -212,24 +213,6 @@ test('Estadísticas dice lo mismo que Métricas, en tabla', async () => {
 // ---------------------------------------------------------------------------
 // Criterio 2: la planilla clásica
 // ---------------------------------------------------------------------------
-
-/** Lee un ZIP escrito por xlsx.ts: alcanza con recorrer las cabeceras locales de adelante hacia atrás. */
-function leerZip(archivo: Buffer): Map<string, string> {
-  const entradas = new Map<string, string>()
-  let posicion = 0
-  while (posicion + 30 <= archivo.length && archivo.readUInt32LE(posicion) === 0x04034b50) {
-    const metodo = archivo.readUInt16LE(posicion + 8)
-    const comprimido = archivo.readUInt32LE(posicion + 18)
-    const largoNombre = archivo.readUInt16LE(posicion + 26)
-    const extra = archivo.readUInt16LE(posicion + 28)
-    const nombre = archivo.subarray(posicion + 30, posicion + 30 + largoNombre).toString('utf8')
-    const desde = posicion + 30 + largoNombre + extra
-    const cuerpo = archivo.subarray(desde, desde + comprimido)
-    entradas.set(nombre, (metodo === 8 ? inflateRawSync(cuerpo) : cuerpo).toString('utf8'))
-    posicion = desde + comprimido
-  }
-  return entradas
-}
 
 /** Los textos de una fila del XML de una hoja, en orden. Las celdas vacías no se escriben. */
 function celdasDeLaFila(xml: string, fila: number): string[] {

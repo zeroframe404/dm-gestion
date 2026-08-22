@@ -5,15 +5,46 @@
 // perdiera el filtro y la posición de la tabla tendría que buscar de nuevo cada vez. Son 2.100 filas
 // virtualizadas, así que dejarlas montadas no cuesta nada.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FilaCliente, FiltrosClientes, ListadoClientes } from '../../../shared/tipos'
+import type { FilaCliente, FiltroEstadoCliente, FiltrosClientes, ListadoClientes, ResumenDeClientes } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
+import { DialogoDeudores } from './DialogoDeudores'
 import { DialogoNuevoCliente } from './DialogoNuevoCliente'
 import { FichaDelCliente } from './FichaCliente'
 
-const FILTROS_VACIOS: FiltrosClientes = { busqueda: '', sucursal: '', compania: '', deuda: '' }
+const FILTROS_VACIOS: FiltrosClientes = { busqueda: '', sucursal: '', compania: '', estado: '' }
+
+/**
+ * Las vistas de la cartera, en el orden en que se miran: primero cuántos hay, después quiénes están
+ * al día, quiénes deben y quiénes se fueron. «Sin pólizas» sólo aparece si hay alguno: son altas a
+ * las que todavía no se les cargó la primera póliza, y en una cartera normal no hay ninguno.
+ */
+const ESTADOS: Array<{ id: FiltroEstadoCliente; etiqueta: string; ayuda: string; contar: (resumen: ResumenDeClientes) => number }> = [
+  { id: '', etiqueta: 'Todos', ayuda: 'Toda la cartera, con la búsqueda y los filtros puestos.', contar: (r) => r.todos },
+  {
+    id: 'activos-sin-deuda',
+    etiqueta: 'Activos sin deuda',
+    ayuda: 'Tienen alguna póliza activa y ninguna cuota del mes abierto sin pagar.',
+    contar: (r) => r.activosSinDeuda,
+  },
+  {
+    id: 'activos-con-deuda',
+    etiqueta: 'Activos con deuda',
+    ayuda: 'Tienen alguna cuota del mes abierto sin pagar que no se cobra sola (no cuentan débito, CBU ni tarjeta).',
+    contar: (r) => r.activosConDeuda,
+  },
+  { id: 'bajas', etiqueta: 'Bajas', ayuda: 'Tuvieron pólizas y no les queda ninguna activa.', contar: (r) => r.bajas },
+  {
+    id: 'sin-polizas',
+    etiqueta: 'Sin pólizas',
+    ayuda: 'Están dados de alta pero todavía no tienen ninguna póliza cargada.',
+    contar: (r) => r.sinPolizas,
+  },
+]
+
+const RESUMEN_VACIO: ResumenDeClientes = { todos: 0, activosSinDeuda: 0, activosConDeuda: 0, bajas: 0, sinPolizas: 0 }
 
 /** Cuánto se espera después de la última tecla antes de pedirle el listado al proceso principal. */
 const RETARDO_BUSQUEDA = 250
@@ -73,6 +104,7 @@ function ListadoDeClientes({
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [dialogoAbierto, setDialogoAbierto] = useState(false)
+  const [deudoresAbierto, setDeudoresAbierto] = useState(false)
 
   // Si otro módulo manda una búsqueda ya empezada, se refleja en el cuadro y dispara la consulta.
   useEffect(() => {
@@ -113,7 +145,7 @@ function ListadoDeClientes({
     void cargar(filtros)
   }, [cargar, filtros])
 
-  const hayFiltros = Boolean(filtros.busqueda || filtros.sucursal || filtros.compania || filtros.deuda)
+  const hayFiltros = Boolean(filtros.busqueda || filtros.sucursal || filtros.compania || filtros.estado)
 
   const columnas: Array<ColumnaTabla<FilaCliente>> = [
     {
@@ -156,30 +188,61 @@ function ListadoDeClientes({
     },
     {
       id: 'deuda',
-      titulo: 'Deuda',
+      titulo: 'Estado',
       ancho: 140,
       celda: (fila) =>
-        fila.conDeuda ? (
-          <Etiqueta tono="peligro">Con deuda</Etiqueta>
-        ) : fila.polizasActivas > 0 ? (
-          <Etiqueta tono="exito">Al día</Etiqueta>
-        ) : (
-          // Sin pólizas activas no hay cuota que deber: decir «al día» sería mentirle a quien mira.
+        // Sin pólizas activas no hay cuota que deber: decir «al día» sería mentirle a quien mira, y
+        // el que se fue no es lo mismo que el que todavía no tiene nada cargado.
+        fila.estado === 'BAJA' ? (
+          <Etiqueta tono="neutro">Baja</Etiqueta>
+        ) : fila.estado === 'SIN POLIZAS' ? (
           <Etiqueta tono="neutro">Sin pólizas</Etiqueta>
+        ) : fila.conDeuda ? (
+          <Etiqueta tono="peligro">Con deuda</Etiqueta>
+        ) : (
+          <Etiqueta tono="exito">Al día</Etiqueta>
         ),
     },
   ]
 
-  const conDeuda = datos?.filas.filter((fila) => fila.conDeuda).length ?? 0
+  const resumen = datos?.resumen ?? RESUMEN_VACIO
 
   return (
     <div className={cx('flex min-h-0 flex-1 flex-col gap-3 p-6', oculto && 'hidden')} aria-hidden={oculto || undefined}>
       <div className="flex flex-wrap items-center gap-2">
-        <Contador etiqueta="Clientes" valor={datos?.total ?? 0} />
-        <Contador etiqueta="Con deuda" valor={conDeuda} tono="rojo" titulo="De los que se están viendo: tienen alguna cuota del mes abierto sin pagar y sin débito automático." />
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Estado del cliente">
+          {ESTADOS.map((estado) => {
+            if (estado.id === 'sin-polizas' && resumen.sinPolizas === 0 && filtros.estado !== 'sin-polizas') return null
+            const elegido = filtros.estado === estado.id
+            const cuantos = estado.contar(resumen)
+            return (
+              <button
+                key={estado.id || 'todos'}
+                type="button"
+                aria-pressed={elegido}
+                // El nombre y el número van en dos renglones: el nombre accesible los junta.
+                aria-label={`${estado.etiqueta}: ${cuantos}`}
+                title={estado.ayuda}
+                onClick={() => setFiltros((previos) => ({ ...previos, estado: estado.id }))}
+                className={cx(
+                  'rounded-lg border px-3 py-1.5 text-left transition-colors',
+                  elegido ? 'border-marino-500 bg-marino-700 text-white shadow-marca' : 'border-slate-200 bg-white text-slate-700 hover:border-marino-300 hover:bg-marino-50',
+                )}
+              >
+                <span className={cx('text-[11px] font-bold uppercase tracking-[0.12em]', elegido ? 'text-cielo-100' : 'text-slate-500')}>
+                  {estado.etiqueta}
+                </span>
+                <span className="ml-2 font-display text-lg font-extrabold tabular-nums">{cuantos.toLocaleString('es-AR')}</span>
+              </button>
+            )
+          })}
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <Boton icono="cargando" onClick={() => void cargar(filtros)} disabled={cargando}>
             Actualizar
+          </Boton>
+          <Boton icono="lupa" onClick={() => setDeudoresAbierto(true)} title="Buscar deudores por sucursal, compañía, forma de pago y día de vencimiento">
+            Buscar deudores
           </Boton>
           <Boton variante="primario" icono="mas" onClick={() => setDialogoAbierto(true)}>
             Nuevo cliente
@@ -211,19 +274,6 @@ function ListadoDeClientes({
           opciones={datos?.companias ?? []}
           alCambiar={(valor) => setFiltros((previos) => ({ ...previos, compania: valor }))}
         />
-        <select
-          value={filtros.deuda}
-          onChange={(evento) => setFiltros((previos) => ({ ...previos, deuda: evento.target.value as FiltrosClientes['deuda'] }))}
-          aria-label="Deuda"
-          className={cx(
-            'h-9 rounded-lg border bg-white px-2 text-sm',
-            filtros.deuda ? 'border-marino-400 font-semibold text-marino-800' : 'border-slate-300 text-slate-700',
-          )}
-        >
-          <option value="">Deuda: todos</option>
-          <option value="con">Sólo con deuda</option>
-          <option value="sin">Sólo al día</option>
-        </select>
         {hayFiltros && (
           <Boton
             tamano="sm"
@@ -282,6 +332,8 @@ function ListadoDeClientes({
         />
       )}
 
+      <DialogoDeudores abierto={deudoresAbierto} alCerrar={() => setDeudoresAbierto(false)} />
+
       <DialogoNuevoCliente
         abierto={dialogoAbierto}
         alCerrar={() => setDialogoAbierto(false)}
@@ -303,16 +355,6 @@ function ListadoDeClientes({
 // ---------------------------------------------------------------------------
 // Piezas
 // ---------------------------------------------------------------------------
-
-function Contador({ etiqueta, valor, tono = 'neutro', titulo }: { etiqueta: string; valor: number; tono?: 'neutro' | 'rojo'; titulo?: string }) {
-  const clases = tono === 'rojo' ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-white text-slate-900'
-  return (
-    <div title={titulo} className={cx('rounded-lg border px-3 py-1.5', clases)}>
-      <span className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-70">{etiqueta}</span>
-      <span className="ml-2 font-display text-lg font-extrabold tabular-nums">{valor.toLocaleString('es-AR')}</span>
-    </div>
-  )
-}
 
 function FiltroDesplegable({
   etiqueta,

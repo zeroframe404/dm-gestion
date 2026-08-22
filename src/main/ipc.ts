@@ -84,6 +84,7 @@ import {
   fichaDeCliente,
   listarClientes,
 } from './servicios/clientes'
+import { archivoDeDeudores, buscarDeudores } from './servicios/deudores'
 import {
   catalogosDePoliza,
   crearPoliza,
@@ -414,6 +415,22 @@ export function registrarIpc(): void {
   manejar('clientes:cuotasDelMes', (clienteId) => {
     exigirSesion()
     return exito(cuotasDelClienteEnElMes(enteroPositivo(clienteId, 'El cliente')))
+  })
+  manejar('clientes:deudores', (filtros) => {
+    exigirSesion()
+    return exito(buscarDeudores(filtros))
+  })
+  // Como en Reportes: la pantalla manda `ruta` en null y el diálogo se abre acá; la prueba de humo
+  // manda la ruta, porque un diálogo del sistema no se puede manejar desde afuera.
+  manejar('clientes:exportarDeudores', async (filtros, formato, ruta) => {
+    exigirSesion()
+    const archivo = archivoDeDeudores(filtros, formato)
+    const destino = typeof ruta === 'string' && ruta.trim() ? ruta.trim() : null
+    if (destino) return exito(guardarEn(destino, archivo.contenido))
+    if (typeof archivo.contenido === 'string') {
+      return exito(await guardarComo({ ...archivo, contenido: archivo.contenido }, ventanaActual()))
+    }
+    return exito(await guardarBinarioComo({ ...archivo, contenido: archivo.contenido }, ventanaActual(), 'Guardar el listado de deudores'))
   })
 
   // Siniestros: los trabaja todo el equipo. Borrar un documento sí pide administrador: es definitivo.

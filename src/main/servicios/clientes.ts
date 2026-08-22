@@ -13,15 +13,18 @@ import {
   NOMBRE_ESTADO_TAREA,
   type DatosDeCliente,
   type DatosDeTarea,
+  type EstadoDeCliente,
   type EstadoTarea,
   type FichaCliente,
   type FilaCliente,
+  type FiltroEstadoCliente,
   type FiltrosClientes,
   type ListadoClientes,
   type NotaDeCliente,
   type PagoDeCliente,
   type PolizaDeCliente,
   type ResultadoAltaCliente,
+  type ResumenDeClientes,
   type SesionUsuario,
   type SiniestroDeCliente,
   type TareaDeCliente,
@@ -85,9 +88,13 @@ interface ClienteCrudo extends FilaClienteCruda {
 
 interface Agregados {
   polizasActivas: Map<number, number>
+  /** Todas sus pólizas, activas o no: es lo que separa a un cliente de baja de uno que nunca tuvo. */
+  polizasTotales: Map<number, number>
   companias: Map<number, string[]>
   vehiculos: Map<number, number>
   conDeuda: Set<number>
+  /** Quiénes tienen alguna baja registrada, para no confundirlos con un alta recién cargada. */
+  conBajas: Set<number>
 }
 
 /**
@@ -121,6 +128,28 @@ function agregados(clienteId?: number): Agregados {
     companias.set(fila.cliente_id, lista)
   }
 
+  const polizasTotales = new Map<number, number>()
+  for (const fila of base
+    .prepare(
+      `SELECT cliente_id, COUNT(*) AS total FROM polizas
+       WHERE cliente_id IS NOT NULL AND (@cliente IS NULL OR cliente_id = @cliente)
+       GROUP BY cliente_id`,
+    )
+    .all({ cliente }) as Array<{ cliente_id: number; total: number }>) {
+    polizasTotales.set(fila.cliente_id, fila.total)
+  }
+
+  const conBajas = new Set(
+    (
+      base
+        .prepare(
+          `SELECT DISTINCT cliente_id FROM bajas
+           WHERE cliente_id IS NOT NULL AND (@cliente IS NULL OR cliente_id = @cliente)`,
+        )
+        .all({ cliente }) as Array<{ cliente_id: number }>
+    ).map((f) => f.cliente_id),
+  )
+
   const vehiculos = new Map<number, number>()
   for (const fila of base
     .prepare(
@@ -132,7 +161,7 @@ function agregados(clienteId?: number): Agregados {
     vehiculos.set(fila.cliente_id, fila.total)
   }
 
-  return { polizasActivas, companias, vehiculos, conDeuda: clientesConDeuda(cliente) }
+  return { polizasActivas, polizasTotales, companias, vehiculos, conDeuda: clientesConDeuda(cliente), conBajas }
 }
 
 /**
@@ -182,6 +211,17 @@ function clientesConDeuda(clienteId: number | null): Set<number> {
   return conDeuda
 }
 
+/**
+ * Activo, de baja o sin pólizas. Un cliente está DE BAJA cuando tuvo pólizas y no le queda ninguna
+ * activa; el que nunca tuvo ninguna no es una baja, es un alta a la que todavía no se le cargó la
+ * primera póliza, y decirle baja sería mentir en la pantalla y en el filtro.
+ */
+function estadoDelCliente(id: number, datos: Agregados): EstadoDeCliente {
+  if ((datos.polizasActivas.get(id) ?? 0) > 0) return 'ACTIVO'
+  if ((datos.polizasTotales.get(id) ?? 0) > 0 || datos.conBajas.has(id)) return 'BAJA'
+  return 'SIN POLIZAS'
+}
+
 function armarFila(cruda: FilaClienteCruda, datos: Agregados): FilaCliente {
   return {
     id: cruda.id,
@@ -195,6 +235,7 @@ function armarFila(cruda: FilaClienteCruda, datos: Agregados): FilaCliente {
     vehiculos: datos.vehiculos.get(cruda.id) ?? 0,
     conDeuda: datos.conDeuda.has(cruda.id),
     companias: datos.companias.get(cruda.id) ?? [],
+    estado: estadoDelCliente(cruda.id, datos),
   }
 }
 
@@ -313,18 +354,27 @@ interface FiltrosLimpios {
   termino: Termino
   sucursal: string
   compania: string
-  deuda: '' | 'con' | 'sin'
+  estado: FiltroEstadoCliente
 }
+
+const ESTADOS_DEL_FILTRO: FiltroEstadoCliente[] = ['activos-sin-deuda', 'activos-con-deuda', 'bajas', 'sin-polizas']
 
 function limpiarFiltros(filtros: FiltrosClientes): FiltrosLimpios {
   const datos = objeto(filtros, 'Los filtros')
-  const deuda = datos.deuda === 'con' || datos.deuda === 'sin' ? datos.deuda : ''
+  const estado = ESTADOS_DEL_FILTRO.includes(datos.estado as FiltroEstadoCliente) ? (datos.estado as FiltroEstadoCliente) : ''
   return {
     termino: interpretarBusqueda(datos.busqueda),
     sucursal: normalizarTexto(datos.sucursal),
     compania: normalizarTexto(datos.compania),
-    deuda,
+    estado,
   }
+}
+
+/** En qué grupo del filtro cae la fila. Los cuatro grupos parten el listado sin superponerse. */
+function grupoDe(fila: FilaCliente): Exclude<FiltroEstadoCliente, ''> {
+  if (fila.estado === 'BAJA') return 'bajas'
+  if (fila.estado === 'SIN POLIZAS') return 'sin-polizas'
+  return fila.conDeuda ? 'activos-con-deuda' : 'activos-sin-deuda'
 }
 
 function filasFiltradas(filtros: FiltrosLimpios, datos: Agregados, limite: number | null): FilaCliente[] {
@@ -334,8 +384,6 @@ function filasFiltradas(filtros: FiltrosLimpios, datos: Agregados, limite: numbe
   const filas: FilaCliente[] = []
   for (const cruda of crudas) {
     if (filtros.sucursal && normalizarTexto(cruda.sucursal_texto) !== filtros.sucursal) continue
-    if (filtros.deuda === 'con' && !datos.conDeuda.has(cruda.id)) continue
-    if (filtros.deuda === 'sin' && datos.conDeuda.has(cruda.id)) continue
     if (filtros.compania) {
       const suyas = datos.companias.get(cruda.id) ?? []
       if (!suyas.some((compania) => normalizarTexto(compania) === filtros.compania)) continue
@@ -343,20 +391,42 @@ function filasFiltradas(filtros: FiltrosLimpios, datos: Agregados, limite: numbe
     if (indice && !coincide(cruda, filtros.termino, indice.patentes.get(cruda.id) ?? [], indice.polizas.get(cruda.id) ?? [])) {
       continue
     }
-    filas.push(armarFila(cruda, datos))
+    const fila = armarFila(cruda, datos)
+    if (filtros.estado && grupoDe(fila) !== filtros.estado) continue
+    filas.push(fila)
   }
 
   filas.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
   return limite === null ? filas : filas.slice(0, limite)
 }
 
+/**
+ * Cuántos hay en cada grupo con la búsqueda y los filtros puestos, pero SIN el de estado: es lo que
+ * muestran los botones de arriba del listado, y así cada número dice cuántos se van a ver al tocarlo.
+ */
+function resumirClientes(filas: FilaCliente[]): ResumenDeClientes {
+  const resumen: ResumenDeClientes = { todos: filas.length, activosSinDeuda: 0, activosConDeuda: 0, bajas: 0, sinPolizas: 0 }
+  for (const fila of filas) {
+    const grupo = grupoDe(fila)
+    if (grupo === 'activos-sin-deuda') resumen.activosSinDeuda++
+    else if (grupo === 'activos-con-deuda') resumen.activosConDeuda++
+    else if (grupo === 'bajas') resumen.bajas++
+    else resumen.sinPolizas++
+  }
+  return resumen
+}
+
 export function listarClientes(filtros: FiltrosClientes): ListadoClientes {
   const limpios = limpiarFiltros(filtros)
   const datos = agregados()
+  // Se filtra una sola vez sin el estado y se reparte después: el resumen y el listado salen del
+  // mismo recorrido, y recorrer 2.100 fichas dos veces por tecla no tendría sentido.
+  const sinEstado = filasFiltradas({ ...limpios, estado: '' }, datos, null)
   return {
-    filas: filasFiltradas(limpios, datos, null),
+    filas: limpios.estado ? sinEstado.filter((fila) => grupoDe(fila) === limpios.estado) : sinEstado,
     // El total es de la cartera entera, antes de filtrar: es lo que deja decir «120 de 2.100».
     total: (db().prepare('SELECT COUNT(*) AS total FROM clientes').get() as { total: number }).total,
+    resumen: resumirClientes(sinEstado),
     sucursales: sucursalesDelListado(),
     companias: valoresDistintos('SELECT DISTINCT compania AS valor FROM polizas WHERE activa = 1'),
   }
@@ -367,7 +437,7 @@ export function buscarClientes(busqueda: string, limite = 20): FilaCliente[] {
   const termino = interpretarBusqueda(busqueda)
   if (!termino.texto) return []
   const tope = Number.isInteger(limite) && limite > 0 ? Math.min(limite, 100) : 20
-  return filasFiltradas({ termino, sucursal: '', compania: '', deuda: '' }, agregados(), tope)
+  return filasFiltradas({ termino, sucursal: '', compania: '', estado: '' }, agregados(), tope)
 }
 
 // ---------------------------------------------------------------------------

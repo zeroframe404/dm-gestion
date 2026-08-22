@@ -32,7 +32,7 @@ const DANIEL: SesionUsuario = {
   debeCambiarClave: false,
 }
 
-const SIN_FILTROS: FiltrosClientes = { busqueda: '', sucursal: '', compania: '', deuda: '' }
+const SIN_FILTROS: FiltrosClientes = { busqueda: '', sucursal: '', compania: '', estado: '' }
 
 const VACIO: DatosDeCliente = {
   nombre: '',
@@ -122,13 +122,50 @@ test('los filtros de sucursal, compañía y deuda acotan el listado', async () =
   const deSancor = listarClientes({ ...SIN_FILTROS, compania: 'SANCOR' })
   assert.ok(deSancor.filas.every((f) => f.companias.includes('SANCOR')))
 
-  const conDeuda = listarClientes({ ...SIN_FILTROS, deuda: 'con' })
-  const alDia = listarClientes({ ...SIN_FILTROS, deuda: 'sin' })
-  assert.equal(conDeuda.filas.length + alDia.filas.length, todos.filas.length, 'con deuda y al día parten el listado en dos')
-  assert.ok(conDeuda.filas.every((f) => f.conDeuda))
-  assert.ok(alDia.filas.every((f) => !f.conDeuda))
+  const conDeuda = listarClientes({ ...SIN_FILTROS, estado: 'activos-con-deuda' })
+  const alDia = listarClientes({ ...SIN_FILTROS, estado: 'activos-sin-deuda' })
+  const bajas = listarClientes({ ...SIN_FILTROS, estado: 'bajas' })
+  const sinPolizas = listarClientes({ ...SIN_FILTROS, estado: 'sin-polizas' })
+  assert.equal(
+    conDeuda.filas.length + alDia.filas.length + bajas.filas.length + sinPolizas.filas.length,
+    todos.filas.length,
+    'los cuatro estados parten el listado sin superponerse ni dejar a nadie afuera',
+  )
+  assert.ok(conDeuda.filas.every((f) => f.conDeuda && f.estado === 'ACTIVO'))
+  assert.ok(alDia.filas.every((f) => !f.conDeuda && f.estado === 'ACTIVO'))
   // El total no se mueve con los filtros: es cuántos clientes hay en la base.
   assert.equal(conDeuda.total, todos.filas.length)
+
+  // Y el resumen dice de antemano cuántos va a traer cada uno: es lo que muestran los botones.
+  assert.equal(todos.resumen.todos, todos.filas.length)
+  assert.equal(todos.resumen.activosConDeuda, conDeuda.filas.length)
+  assert.equal(todos.resumen.activosSinDeuda, alDia.filas.length)
+  assert.equal(todos.resumen.bajas, bajas.filas.length)
+  assert.deepEqual(conDeuda.resumen, todos.resumen, 'el resumen no depende del estado elegido')
+})
+
+test('el que se fue queda como baja y el que nunca tuvo póliza no', async () => {
+  await carteraDePrueba()
+  // Fernández se dio de baja en julio: no le queda ninguna póliza activa.
+  const fernandez = listarClientes({ ...SIN_FILTROS, busqueda: CLIENTES.fernandez.nombre }).filas[0]
+  assert.ok(fernandez)
+  assert.equal(fernandez.estado, 'BAJA')
+  assert.equal(fernandez.polizasActivas, 0)
+
+  const bajas = listarClientes({ ...SIN_FILTROS, estado: 'bajas' })
+  assert.ok(
+    bajas.filas.some((f) => f.id === fernandez.id),
+    'y aparece al filtrar por bajas',
+  )
+
+  // Un alta a mano todavía no tiene pólizas: no es una baja, y decirle baja sería mentir.
+  const nuevo = crearCliente({ ...VACIO, nombre: 'TESTA MARIANO', documento: '11222333' }, DANIEL)
+  assert.equal(nuevo.creado, true)
+  const recienCreado = listarClientes({ ...SIN_FILTROS, busqueda: 'TESTA' }).filas[0]
+  assert.ok(recienCreado)
+  assert.equal(recienCreado.estado, 'SIN POLIZAS')
+  assert.equal(listarClientes({ ...SIN_FILTROS, estado: 'bajas' }).filas.length, bajas.filas.length, 'no se sumó a las bajas')
+  assert.ok(listarClientes({ ...SIN_FILTROS, estado: 'sin-polizas' }).filas.some((f) => f.id === recienCreado.id))
 })
 
 test('el débito automático no cuenta como deuda aunque la cuota no esté paga', async () => {
