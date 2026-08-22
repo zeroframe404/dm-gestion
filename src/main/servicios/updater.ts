@@ -13,7 +13,7 @@ import { ahoraIso } from '../importacion/normalizar'
  * NO sirve para hacer push. Lo genera el dueño del repositorio en
  * https://github.com/settings/tokens?type=beta y se reemplaza acá.
  */
-export const UPDATE_TOKEN = 'REEMPLAZAR_CON_TOKEN_DE_SOLO_LECTURA'
+export const UPDATE_TOKEN = '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'
 
 const CUATRO_HORAS_MS = 4 * 60 * 60 * 1000
 
