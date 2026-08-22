@@ -821,6 +821,19 @@ export const MIGRACIONES: Migracion[] = [
       );
     `,
   },
+  {
+    version: 11,
+    descripcion: 'Base de usuarios en GitHub: la tabla local pasa a ser un espejo sin contraseñas',
+    sql: `
+      -- Los usuarios viven en usuarios.json del repositorio privado de datos (ver src/main/usuarios/).
+      -- La tabla local sigue existiendo porque ~15 tablas la referencian por id (pagos, historial, tareas,
+      -- siniestros…), pero cuando la base remota está configurada guarda sólo el perfil: clave_hash queda
+      -- vacío. remoto_id es el id estable del usuario en GitHub; NULL en las filas anteriores a esta
+      -- versión hasta que la primera sincronización las enlaza por nombre de usuario.
+      ALTER TABLE usuarios ADD COLUMN remoto_id INTEGER;
+      CREATE UNIQUE INDEX idx_usuarios_remoto ON usuarios (remoto_id);
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

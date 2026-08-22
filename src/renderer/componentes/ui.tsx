@@ -13,6 +13,19 @@ import {
 import { Icono, type NombreIcono } from './Icono'
 
 /** Une clases ignorando valores falsos. */
+/** «recién», «hace 5 minutos», «hace 2 horas»: para los indicadores de la barra y de Administración. */
+export function haceCuanto(iso: string | null): string {
+  if (!iso) return 'todavía nunca'
+  const minutos = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
+  if (minutos < 1) return 'recién'
+  if (minutos === 1) return 'hace 1 minuto'
+  if (minutos < 60) return `hace ${minutos} minutos`
+  const horas = Math.floor(minutos / 60)
+  if (horas < 48) return horas === 1 ? 'hace 1 hora' : `hace ${horas} horas`
+  const dias = Math.floor(horas / 24)
+  return `hace ${dias} días`
+}
+
 export function cx(...clases: Array<string | false | null | undefined>): string {
   return clases.filter(Boolean).join(' ')
 }

@@ -2,10 +2,11 @@
 // Los errores esperables (ErrorDeNegocio) vuelven como `{ ok: false, error }`; el resto se registra
 // en consola y se devuelve un mensaje genérico para no filtrar detalles internos al renderer.
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import type { ArgumentosDe, NombreCanal, RespuestaDe } from '../shared/canales'
+import type { ArgumentosDe, DatosDeEvento, NombreCanal, NombreEvento, RespuestaDe } from '../shared/canales'
 import type { InfoApp, Resultado } from '../shared/tipos'
 import { carpetaDatos, rutaBaseDeDatos, rutaConfig } from './rutas'
 import { cambiarClave, ingresar, salir } from './servicios/auth'
+import { comprobarAcceso, conectarEmisor, estadoDeAcceso, estadoDeUsuarios, subirLocales } from './servicios/baseDeUsuarios'
 import {
   bajasDelMes,
   cerrarMes,
@@ -171,6 +172,12 @@ function exito<T>(datos: T): Resultado<T> {
   return { ok: true, datos }
 }
 
+function emitirATodas<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
+  for (const ventana of BrowserWindow.getAllWindows()) {
+    if (!ventana.isDestroyed()) ventana.webContents.send(evento, datos)
+  }
+}
+
 function ventanaActual(): BrowserWindow | null {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null
 }
@@ -214,6 +221,18 @@ export function registrarIpc(): void {
   })
   manejar('auth:sesion', () => exito(sesion()))
   manejar('auth:cambiarClave', async (datos) => exito(await cambiarClave(datos, exigirSesion())))
+  // Sin sesión a propósito: el Login lo usa para decir si hay internet y quién puede entrar sin ella.
+  manejar('auth:estadoDeAcceso', async (comprobar) => exito(comprobar === true ? await comprobarAcceso() : estadoDeAcceso()))
+
+  // El proceso principal avisa cuando cambia el acceso a la base compartida o cierra la sesión por su cuenta.
+  conectarEmisor({
+    estado: (estado) => emitirATodas('auth:estadoDeAcceso', estado),
+    sesionActualizada: (nueva) => emitirATodas('auth:sesionActualizada', nueva),
+    sesionCerrada: (motivo) => {
+      detenerSincronizacion()
+      emitirATodas('auth:sesionCerrada', { motivo })
+    },
+  })
 
   // Sucursales
   manejar('sucursales:listar', () => {
@@ -226,15 +245,17 @@ export function registrarIpc(): void {
     exigirRol('SUPER_ADMIN')
     return exito(listarUsuarios())
   })
-  manejar('usuarios:crear', async (datos) => {
-    exigirRol('SUPER_ADMIN')
-    return exito(await crearUsuario(datos))
-  })
-  manejar('usuarios:editar', (id, datos) => exito(editarUsuario(id, datos, exigirRol('SUPER_ADMIN'))))
-  manejar('usuarios:cambiarActivo', (id, activo) => exito(cambiarActivo(id, activo, exigirRol('SUPER_ADMIN'))))
+  manejar('usuarios:crear', async (datos) => exito(await crearUsuario(datos, exigirRol('SUPER_ADMIN'))))
+  manejar('usuarios:editar', async (id, datos) => exito(await editarUsuario(id, datos, exigirRol('SUPER_ADMIN'))))
+  manejar('usuarios:cambiarActivo', async (id, activo) => exito(await cambiarActivo(id, activo, exigirRol('SUPER_ADMIN'))))
   manejar('usuarios:resetearClave', async (id, claveTemporal) =>
     exito(await resetearClave(id, claveTemporal, exigirRol('SUPER_ADMIN'))),
   )
+  manejar('usuarios:estado', async (comprobar) => {
+    exigirRol('SUPER_ADMIN')
+    return exito(await estadoDeUsuarios(comprobar === true))
+  })
+  manejar('usuarios:subirLocales', async () => exito(await subirLocales(exigirRol('SUPER_ADMIN'))))
 
   // Conexión con Google: SUPER_ADMIN y ADMIN
   manejar('config:estadoGoogle', () => {

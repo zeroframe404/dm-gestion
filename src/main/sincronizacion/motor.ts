@@ -6,6 +6,7 @@
 // Total holgado por debajo de 50.
 import type { EstadoSincronizacion, SesionUsuario } from '../../shared/tipos'
 import type { FuenteHoja } from '../importacion/fuente'
+import { esFallaDeRed } from '../servicios/red'
 import { anotarEvento, cuantasFallidas, cuantasPendientes, guardarMarca, leerMarca, limpiarViejas, pestanasPendientes } from './cola'
 import { bajarCambios, type ResultadoBajada } from './bajada'
 import { leerContexto, type ContextoHoja } from './hoja'
@@ -18,16 +19,6 @@ export const INTERVALO_BAJADA_MS = 5 * 60_000
 const VIDA_DEL_CONTEXTO_MS = 5 * 60_000
 
 export type EstadoConexion = 'sincronizado' | 'pendiente' | 'sin-conexion' | 'apagado' | 'trabajando'
-
-/** Errores que son «no hay internet» y no «Google dijo que no». */
-function esFallaDeRed(error: unknown): boolean {
-  const mensaje = error instanceof Error ? error.message : String(error)
-  const codigo = (error as { code?: string } | null)?.code ?? ''
-  return (
-    /ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN|ETIMEDOUT|ENETUNREACH|network|socket hang up|No se pudo conectar/i.test(mensaje) ||
-    ['ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'EAI_AGAIN', 'ETIMEDOUT', 'ENETUNREACH'].includes(codigo)
-  )
-}
 
 export interface OpcionesMotor {
   /** Devuelve la fuente configurada, o null si todavía no hay conexión con Google configurada. */

@@ -1,5 +1,6 @@
 // Barra superior: título del módulo, indicador de sincronización, usuario y cierre de sesión.
 import { NOMBRE_ROL } from '../../shared/tipos'
+import { useAcceso } from '../contexto/Acceso'
 import { useSesion, useUsuarioActual } from '../contexto/Sesion'
 import { CampanaDeTareas } from './CampanaDeTareas'
 import { IndicadorSync } from './IndicadorSync'
@@ -8,6 +9,24 @@ import { Boton } from './ui'
 export function BarraSuperior({ titulo }: { titulo: string }) {
   const { salir } = useSesion()
   const usuario = useUsuarioActual()
+  const { acceso } = useAcceso(false)
+
+  // Una sola línea bajo el nombre: si esta sesión se abrió sin internet, o si la base de usuarios
+  // tiene un problema que sólo un superadministrador puede resolver.
+  let avisoDeAcceso: { texto: string; detalle: string; clase: string } | null = null
+  if (acceso?.sesionSinConfirmar) {
+    avisoDeAcceso = {
+      texto: 'Ingresaste sin internet',
+      detalle: 'Tu contraseña se comprobó con la copia guardada en esta computadora. Todo lo demás funciona igual; cuando vuelva internet se vuelve a comprobar sola.',
+      clase: 'text-amber-700',
+    }
+  } else if (acceso?.configurada && acceso.modo === 'error-remoto' && usuario.rol === 'SUPER_ADMIN') {
+    avisoDeAcceso = {
+      texto: 'Base de usuarios con error',
+      detalle: acceso.ultimoError ?? 'No se pudo acceder a la base de usuarios compartida. Mirá Administración → Usuarios.',
+      clase: 'text-red-700',
+    }
+  }
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-6">
@@ -31,6 +50,11 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
             <p className="text-xs text-slate-500">
               {NOMBRE_ROL[usuario.rol]} · Sucursal {usuario.sucursal.nombre}
             </p>
+            {avisoDeAcceso && (
+              <p className={`text-[11px] font-semibold ${avisoDeAcceso.clase}`} title={avisoDeAcceso.detalle}>
+                {avisoDeAcceso.texto}
+              </p>
+            )}
           </div>
         </div>
 

@@ -13,6 +13,10 @@ export interface ApiDm {
     salir: Remota<'auth:salir'>
     sesion: Remota<'auth:sesion'>
     cambiarClave: Remota<'auth:cambiarClave'>
+    estadoDeAcceso: Remota<'auth:estadoDeAcceso'>
+    alCambiarAcceso: Suscripcion<'auth:estadoDeAcceso'>
+    alCerrarSesion: Suscripcion<'auth:sesionCerrada'>
+    alActualizarSesion: Suscripcion<'auth:sesionActualizada'>
   }
   sucursales: {
     listar: Remota<'sucursales:listar'>
@@ -23,6 +27,8 @@ export interface ApiDm {
     editar: Remota<'usuarios:editar'>
     cambiarActivo: Remota<'usuarios:cambiarActivo'>
     resetearClave: Remota<'usuarios:resetearClave'>
+    estado: Remota<'usuarios:estado'>
+    subirLocales: Remota<'usuarios:subirLocales'>
   }
   config: {
     estadoGoogle: Remota<'config:estadoGoogle'>

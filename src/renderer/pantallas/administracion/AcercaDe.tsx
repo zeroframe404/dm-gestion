@@ -1,8 +1,11 @@
-// Acerca de: versión del programa y datos técnicos útiles para soporte.
+// Acerca de: versión del programa, estado de las actualizaciones y de la base de usuarios compartida,
+// y datos técnicos útiles para soporte.
 import { useEffect, useState, type ReactNode } from 'react'
-import type { EstadoActualizacion, InfoApp } from '../../../shared/tipos'
+import type { EstadoActualizacion, EstadoDeAcceso, InfoApp } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
-import { Boton, Cargando, Tarjeta } from '../../componentes/ui'
+import { Boton, Cargando, Tarjeta, haceCuanto } from '../../componentes/ui'
+import { avisoDeVencimiento, useAcceso } from '../../contexto/Acceso'
+import { useUsuarioActual } from '../../contexto/Sesion'
 
 function textoDeSituacion(estado: EstadoActualizacion): string {
   switch (estado.situacion) {
@@ -21,10 +24,34 @@ function textoDeSituacion(estado: EstadoActualizacion): string {
   }
 }
 
+/** Cómo está la base de usuarios, en una línea. El detalle técnico del error sólo lo ve un superadministrador. */
+function textoDeAcceso(acceso: EstadoDeAcceso, esSuperAdmin: boolean): string {
+  if (!acceso.configurada) {
+    return acceso.sinTokenEnProduccion
+      ? 'Sólo en esta computadora: esta versión del programa salió sin la base compartida configurada.'
+      : 'Sólo en esta computadora (desarrollo, sin base compartida).'
+  }
+  const donde = `Compartida · ${acceso.repo ?? 'GitHub'}`
+  switch (acceso.modo) {
+    case 'sin-inicializar':
+      return `${donde} — todavía no inicializada. Un superadministrador tiene que subir los usuarios desde la pestaña Usuarios.`
+    case 'en-linea':
+      return `${donde} — última comprobación ${haceCuanto(acceso.ultimaComprobacion)}${acceso.cantidad !== null ? `, ${acceso.cantidad} usuario${acceso.cantidad === 1 ? '' : 's'}` : ''}.`
+    case 'sin-internet':
+      return `${donde} — sin internet${acceso.ultimaLecturaBuena ? ` (la última comprobación buena fue ${haceCuanto(acceso.ultimaLecturaBuena)})` : ''}.`
+    case 'error-remoto':
+      return `${donde} — con error${esSuperAdmin && acceso.ultimoError ? `: ${acceso.ultimoError}` : '. Avisale al administrador.'}`
+    default:
+      return donde
+  }
+}
+
 export function AcercaDe() {
+  const usuario = useUsuarioActual()
   const [info, setInfo] = useState<InfoApp | null>(null)
   const [actualizacion, setActualizacion] = useState<EstadoActualizacion | null>(null)
   const [buscando, setBuscando] = useState(false)
+  const { acceso, comprobando, comprobar } = useAcceso(false)
 
   useEffect(() => {
     let vigente = true
@@ -49,6 +76,8 @@ export function AcercaDe() {
     if (resultado.ok) setActualizacion(resultado.datos)
     setBuscando(false)
   }
+
+  const vencimiento = avisoDeVencimiento(acceso)
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -101,6 +130,25 @@ export function AcercaDe() {
                   Buscar actualizaciones
                 </Boton>
               </dd>
+            </div>
+
+            <div className="mt-6 border-t border-slate-200 pt-6">
+              <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Base de usuarios</dt>
+              <dd className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm text-slate-800">{acceso ? textoDeAcceso(acceso, usuario.rol === 'SUPER_ADMIN') : 'Cargando…'}</span>
+                <Boton icono="nube" tamano="sm" cargando={comprobando} disabled={!acceso?.configurada} onClick={() => void comprobar()}>
+                  Probar conexión
+                </Boton>
+              </dd>
+              {acceso?.configurada && (
+                <dd className="mt-2 text-xs text-slate-500">
+                  {acceso.usuarioGuardado
+                    ? `Sin internet, en esta computadora puede ingresar «${acceso.usuarioGuardado}» (el último que ingresó con conexión).`
+                    : 'Todavía nadie puede ingresar sin internet en esta computadora: hace falta un ingreso con conexión.'}
+                  {!acceso.puedeGuardarCredencial && ' Esta computadora no puede guardar la copia cifrada para ingresar sin internet.'}
+                </dd>
+              )}
+              {vencimiento && <dd className="mt-2 text-xs font-semibold text-amber-700">{vencimiento}</dd>}
             </div>
 
             <p className="mt-8 text-xs text-slate-500">© {new Date().getFullYear()} Seguros Daniel Martínez. Software de uso interno.</p>

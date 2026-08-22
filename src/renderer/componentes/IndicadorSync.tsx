@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { EstadoSincronizacion } from '../../shared/tipos'
 import { Icono, type NombreIcono } from './Icono'
-import { cx } from './ui'
+import { cx, haceCuanto } from './ui'
 
 interface Aspecto {
   clases: string
@@ -11,16 +11,6 @@ interface Aspecto {
   icono: NombreIcono | null
   texto: string
   detalle: string
-}
-
-function haceCuanto(iso: string | null): string {
-  if (!iso) return 'todavía nunca'
-  const minutos = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
-  if (minutos < 1) return 'recién'
-  if (minutos === 1) return 'hace 1 minuto'
-  if (minutos < 60) return `hace ${minutos} minutos`
-  const horas = Math.floor(minutos / 60)
-  return horas === 1 ? 'hace 1 hora' : `hace ${horas} horas`
 }
 
 function aspectoDe(estado: EstadoSincronizacion): Aspecto {

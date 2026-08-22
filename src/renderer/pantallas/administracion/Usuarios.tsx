@@ -6,11 +6,13 @@ import {
   NOMBRE_ROL,
   ROLES,
   type DatosEdicionUsuario,
+  type EstadoDeUsuarios,
   type Rol,
   type Sucursal,
   type Usuario,
 } from '../../../shared/tipos'
-import { Alerta, Boton, Campo, CampoClave, Cargando, Dialogo, Etiqueta, Selector, Tarjeta, cx } from '../../componentes/ui'
+import { Alerta, Boton, Campo, CampoClave, Cargando, Dialogo, Etiqueta, Selector, Tarjeta, cx, haceCuanto } from '../../componentes/ui'
+import { avisoDeVencimiento } from '../../contexto/Acceso'
 import { useSesion, useUsuarioActual } from '../../contexto/Sesion'
 
 type EstadoDialogo =
@@ -31,10 +33,15 @@ export function Usuarios() {
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [dialogo, setDialogo] = useState<EstadoDialogo>(null)
+  const [estado, setEstado] = useState<EstadoDeUsuarios | null>(null)
+  const [subiendo, setSubiendo] = useState(false)
 
   const cargar = useCallback(async () => {
     setCargando(true)
     setError(null)
+    // Primero se sincroniza con la base compartida (si hay internet) y recién después se lista el espejo.
+    const resultadoEstado = await window.dm.usuarios.estado(true)
+    if (resultadoEstado.ok) setEstado(resultadoEstado.datos)
     const [resultadoUsuarios, resultadoSucursales] = await Promise.all([
       window.dm.usuarios.listar(),
       window.dm.sucursales.listar(),
@@ -48,7 +55,34 @@ export function Usuarios() {
 
   useEffect(() => {
     void cargar()
+    // Si la sesión se confirma (o se pierde) en segundo plano, el origen de la lista acompaña al acceso.
+    return window.dm.auth.alCambiarAcceso((acceso) =>
+      setEstado((previo) => {
+        if (!previo) return previo
+        const sigueCompartida = previo.origen === 'github' || previo.origen === 'copia-local'
+        return { ...previo, acceso, origen: sigueCompartida ? (acceso.modo === 'en-linea' ? 'github' : 'copia-local') : previo.origen }
+      }),
+    )
   }, [cargar])
+
+  const subir = async () => {
+    setSubiendo(true)
+    setError(null)
+    const resultado = await window.dm.usuarios.subirLocales()
+    if (resultado.ok) {
+      setEstado(resultado.datos)
+      setAviso('Listo: los usuarios de esta computadora ya están en la base compartida y valen para todas las demás.')
+      const lista = await window.dm.usuarios.listar()
+      if (lista.ok) setUsuarios(lista.datos)
+    } else {
+      setError(resultado.error)
+    }
+    setSubiendo(false)
+  }
+
+  // Por qué no se puede administrar ahora (null = se puede).
+  const bloqueado = motivoDeBloqueo(estado)
+  const vencimiento = avisoDeVencimiento(estado?.acceso ?? null)
 
   // El aviso de éxito desaparece solo.
   useEffect(() => {
@@ -76,16 +110,30 @@ export function Usuarios() {
     <div className="mx-auto max-w-6xl">
       <Tarjeta
         titulo="Usuarios"
-        descripcion="Creá, editá y desactivá usuarios; reseteá contraseñas y asigná rol y sucursal."
+        descripcion={
+          estado?.origen === 'github' || estado?.origen === 'copia-local'
+            ? 'Los usuarios se guardan en la base compartida (GitHub): lo que cambiás acá vale para todas las computadoras.'
+            : estado?.origen === 'sin-inicializar'
+              ? 'Hasta que subas los usuarios a la base compartida, lo que creés acá se guarda sólo en esta computadora.'
+              : 'Creá, editá y desactivá usuarios; reseteá contraseñas y asigná rol y sucursal.'
+        }
         acciones={
-          <Boton variante="primario" icono="mas" onClick={() => setDialogo({ tipo: 'crear' })}>
+          <Boton
+            variante="primario"
+            icono="mas"
+            onClick={() => setDialogo({ tipo: 'crear' })}
+            disabled={bloqueado !== null}
+            title={bloqueado ?? undefined}
+          >
             Nuevo usuario
           </Boton>
         }
         alRas
       >
-        {(aviso || error) && (
+        {(aviso || error || estado) && (
           <div className="flex flex-col gap-3 px-6 pb-4">
+            {estado && <BannerDeEstado estado={estado} subiendo={subiendo} alSubir={() => void subir()} alReintentar={() => void cargar()} />}
+            {vencimiento && <Alerta tono="aviso">{vencimiento}</Alerta>}
             {aviso && <Alerta tono="exito">{aviso}</Alerta>}
             {error && <Alerta tono="error">{error}</Alerta>}
           </div>
@@ -97,6 +145,7 @@ export function Usuarios() {
           <TablaUsuarios
             usuarios={usuarios}
             idActual={actual.id}
+            bloqueado={bloqueado}
             alEditar={(usuario) => setDialogo({ tipo: 'editar', usuario })}
             alResetear={(usuario) => setDialogo({ tipo: 'resetear', usuario })}
             alCambiarActivo={(usuario) => setDialogo({ tipo: 'activo', usuario })}
@@ -110,7 +159,11 @@ export function Usuarios() {
           alCerrar={cerrarDialogo}
           alGuardado={(usuario) => {
             setUsuarios((lista) => [...lista, usuario])
-            setAviso(`Se creó el usuario "${usuario.usuario}". Va a tener que cambiar la contraseña al ingresar.`)
+            setAviso(
+              estado?.origen === 'github'
+                ? `Se creó el usuario «${usuario.usuario}». Ya puede ingresar desde cualquier computadora con internet; la primera vez va a tener que cambiar la contraseña.`
+                : `Se creó el usuario "${usuario.usuario}". Va a tener que cambiar la contraseña al ingresar.`,
+            )
             cerrarDialogo()
           }}
         />
@@ -162,17 +215,92 @@ export function Usuarios() {
 }
 
 // ---------------------------------------------------------------------------
+// Estado de la base compartida
+// ---------------------------------------------------------------------------
+
+/** Con la base compartida configurada, administrar exige conexión: el motivo, o null si se puede. */
+function motivoDeBloqueo(estado: EstadoDeUsuarios | null): string | null {
+  if (!estado || !estado.acceso.configurada) return null
+  if (estado.origen === 'copia-local') {
+    return estado.acceso.modo === 'error-remoto'
+      ? 'Hasta que se resuelva el acceso a la base de usuarios no se pueden hacer cambios.'
+      : 'Hace falta internet para esto.'
+  }
+  if (estado.acceso.sesionSinConfirmar) return 'Ingresaste sin internet: cerrá sesión y volvé a ingresar con conexión para administrar usuarios.'
+  return null
+}
+
+interface PropsBanner {
+  estado: EstadoDeUsuarios
+  subiendo: boolean
+  alSubir: () => void
+  alReintentar: () => void
+}
+
+function BannerDeEstado({ estado, subiendo, alSubir, alReintentar }: PropsBanner) {
+  const { acceso } = estado
+  if (!acceso.configurada) {
+    if (!acceso.sinTokenEnProduccion) return null
+    return (
+      <Alerta tono="aviso">
+        Esta versión del programa no tiene configurada la base de usuarios compartida: los usuarios se guardan sólo en esta
+        computadora y no se comparten con otras. Avisale a quien arma el programa.
+      </Alerta>
+    )
+  }
+  if (estado.origen === 'sin-inicializar') {
+    const cuantos = estado.localesParaSubir.length
+    return (
+      <Alerta tono="aviso">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span>
+            La base de usuarios compartida todavía está vacía. Subí los usuarios de esta computadora ({cuantos}{' '}
+            {cuantos === 1 ? 'usuario' : 'usuarios'}: {estado.localesParaSubir.join(', ')}) para empezar a compartirlos con las demás
+            computadoras. Hacelo desde la computadora que tiene los usuarios de verdad, una sola vez.
+          </span>
+          <Boton variante="primario" tamano="sm" icono="nube" cargando={subiendo} onClick={alSubir}>
+            Subir usuarios
+          </Boton>
+        </div>
+      </Alerta>
+    )
+  }
+  if (estado.origen === 'copia-local') {
+    return (
+      <Alerta tono={acceso.modo === 'error-remoto' ? 'error' : 'aviso'}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span>
+            {acceso.modo === 'error-remoto'
+              ? `Hay internet, pero no se pudo acceder a la base de usuarios${acceso.ultimoError ? `: ${acceso.ultimoError}` : '.'} Hasta que se resuelva no se pueden hacer cambios.`
+              : `Sin internet. Esta es la lista guardada en esta computadora${acceso.ultimaLecturaBuena ? ` (actualizada ${haceCuanto(acceso.ultimaLecturaBuena)})` : ' en el último ingreso con internet'}. Para crear, editar o desactivar usuarios hace falta conexión.`}
+          </span>
+          <Boton tamano="sm" onClick={alReintentar}>
+            Reintentar
+          </Boton>
+        </div>
+      </Alerta>
+    )
+  }
+  if (acceso.sesionSinConfirmar) {
+    return <Alerta tono="aviso">Ingresaste sin internet. Para administrar usuarios cerrá sesión y volvé a ingresar con conexión.</Alerta>
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // Tabla
 // ---------------------------------------------------------------------------
 interface PropsTabla {
   usuarios: Usuario[]
   idActual: number
+  /** Motivo por el que las acciones están deshabilitadas, o null. */
+  bloqueado: string | null
   alEditar: (usuario: Usuario) => void
   alResetear: (usuario: Usuario) => void
   alCambiarActivo: (usuario: Usuario) => void
 }
 
-function TablaUsuarios({ usuarios, idActual, alEditar, alResetear, alCambiarActivo }: PropsTabla) {
+function TablaUsuarios({ usuarios, idActual, bloqueado, alEditar, alResetear, alCambiarActivo }: PropsTabla) {
   if (usuarios.length === 0) {
     return <p className="px-6 py-12 text-center text-sm text-slate-500">Todavía no hay usuarios cargados.</p>
   }
@@ -224,7 +352,8 @@ function TablaUsuarios({ usuarios, idActual, alEditar, alResetear, alCambiarActi
                       tamano="sm"
                       icono="lapiz"
                       onClick={() => alEditar(usuario)}
-                      title="Editar"
+                      disabled={bloqueado !== null}
+                      title={bloqueado ?? 'Editar'}
                       aria-label={`Editar a ${usuario.nombre}`}
                       className="w-8 px-0"
                     />
@@ -233,7 +362,8 @@ function TablaUsuarios({ usuarios, idActual, alEditar, alResetear, alCambiarActi
                       tamano="sm"
                       icono="llave"
                       onClick={() => alResetear(usuario)}
-                      title={esActual ? 'Cambiar mi contraseña' : 'Resetear contraseña'}
+                      disabled={bloqueado !== null}
+                      title={bloqueado ?? (esActual ? 'Cambiar mi contraseña' : 'Resetear contraseña')}
                       aria-label={esActual ? 'Cambiar mi contraseña' : `Resetear la contraseña de ${usuario.nombre}`}
                       className="w-8 px-0"
                     />
@@ -242,8 +372,8 @@ function TablaUsuarios({ usuarios, idActual, alEditar, alResetear, alCambiarActi
                       tamano="sm"
                       icono="apagar"
                       onClick={() => alCambiarActivo(usuario)}
-                      disabled={esActual}
-                      title={esActual ? 'No podés desactivar tu propio usuario.' : usuario.activo ? 'Desactivar' : 'Activar'}
+                      disabled={esActual || bloqueado !== null}
+                      title={bloqueado ?? (esActual ? 'No podés desactivar tu propio usuario.' : usuario.activo ? 'Desactivar' : 'Activar')}
                       aria-label={usuario.activo ? `Desactivar a ${usuario.nombre}` : `Activar a ${usuario.nombre}`}
                       className={cx(
                         'w-8 px-0',

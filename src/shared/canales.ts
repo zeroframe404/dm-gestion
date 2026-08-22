@@ -91,6 +91,9 @@ import type {
   DatosEdicionUsuario,
   DatosNuevoUsuario,
   EstadoConexionGoogle,
+  EstadoDeAcceso,
+  EstadoDeUsuarios,
+  SesionCerrada,
   EstadoImportador,
   InfoApp,
   InformeImportacion,
@@ -123,6 +126,8 @@ export interface Canales {
   'auth:salir': () => Resultado<null>
   'auth:sesion': () => Resultado<SesionUsuario | null>
   'auth:cambiarClave': (datos: CambioDeClave) => Resultado<SesionUsuario>
+  /** Estado de la base de usuarios compartida. Con `comprobar` sale a GitHub (hasta 8 s); si no, devuelve lo último que se sabe. */
+  'auth:estadoDeAcceso': (comprobar: boolean) => Resultado<EstadoDeAcceso>
 
   'sucursales:listar': () => Resultado<Sucursal[]>
 
@@ -131,6 +136,10 @@ export interface Canales {
   'usuarios:editar': (id: number, datos: DatosEdicionUsuario) => Resultado<Usuario>
   'usuarios:cambiarActivo': (id: number, activo: boolean) => Resultado<Usuario>
   'usuarios:resetearClave': (id: number, claveTemporal: string) => Resultado<Usuario>
+  /** Estado de la base compartida para la pantalla Usuarios. Con `comprobar` sincroniza primero. */
+  'usuarios:estado': (comprobar: boolean) => Resultado<EstadoDeUsuarios>
+  /** Inicializa la base compartida con los usuarios de esta computadora. Sólo si todavía no existe. */
+  'usuarios:subirLocales': () => Resultado<EstadoDeUsuarios>
 
   'config:estadoGoogle': () => Resultado<EstadoConexionGoogle>
   'config:guardarGoogle': (datos: DatosConexionGoogle) => Resultado<EstadoConexionGoogle>
@@ -369,6 +378,10 @@ export interface Eventos {
   'importacion:terminada': InformeImportacion
   'sincronizacion:estado': EstadoSincronizacion
   'actualizaciones:estado': EstadoActualizacion
+  'auth:estadoDeAcceso': EstadoDeAcceso
+  'auth:sesionCerrada': SesionCerrada
+  /** El proceso principal reescribió la sesión abierta con datos frescos de GitHub (rol, nombre, sucursal). */
+  'auth:sesionActualizada': SesionUsuario
 }
 
 export type NombreCanal = keyof Canales

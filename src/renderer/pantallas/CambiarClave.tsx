@@ -1,5 +1,5 @@
 // Cambio de contraseña obligatorio: se muestra cuando la sesión tiene `debeCambiarClave`.
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { LARGO_MINIMO_CLAVE } from '../../shared/tipos'
 import { Icono } from '../componentes/Icono'
 import { Alerta, Boton, CampoClave } from '../componentes/ui'
@@ -13,6 +13,14 @@ export function CambiarClave() {
   const [repetida, setRepetida] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
+  const vigente = useRef(true)
+
+  useEffect(() => {
+    vigente.current = true
+    return () => {
+      vigente.current = false
+    }
+  }, [])
 
   async function alEnviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
@@ -26,10 +34,17 @@ export function CambiarClave() {
     setEnviando(true)
     setError(null)
     const resultado = await window.dm.auth.cambiarClave({ claveActual, claveNueva })
+    // Si mientras se guardaba se cerró la sesión, esta pantalla ya no está: no hay que reabrirla.
+    if (!vigente.current) return
     if (resultado.ok) {
       actualizar(resultado.datos)
     } else {
-      setError(resultado.error)
+      // La contraseña vive en la base compartida: sin internet no hay forma de cambiarla ahora.
+      setError(
+        /conexión a internet/i.test(resultado.error)
+          ? 'No hay internet. La contraseña se guarda en la base compartida, así que ahora no se puede cambiar. Podés cerrar sesión y volver a intentar cuando haya conexión.'
+          : resultado.error,
+      )
       setEnviando(false)
     }
   }
@@ -74,7 +89,7 @@ export function CambiarClave() {
             <Boton type="submit" variante="primario" cargando={enviando} className="mt-2 w-full">
               Guardar y continuar
             </Boton>
-            <Boton variante="fantasma" icono="salir" onClick={() => void salir()} className="w-full">
+            <Boton variante="fantasma" icono="salir" onClick={() => void salir()} disabled={enviando} className="w-full">
               Cerrar sesión
             </Boton>
           </div>

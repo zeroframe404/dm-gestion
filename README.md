@@ -7,21 +7,36 @@ Electron + React + TypeScript + Vite + Tailwind, con base de datos local SQLite.
 
 ```bash
 npm install       # instala dependencias (better-sqlite3 trae binarios listos, no compila nada)
-npm run dev       # desarrollo con recarga automática
-npm run prueba    # 278 pruebas propias, sin tocar ninguna hoja real
+npm run dev       # desarrollo con recarga automática (usuarios locales: sin DM_GESTION_TOKEN_DATOS no toca GitHub)
+npm run prueba    # 302 pruebas propias, sin tocar ninguna hoja real ni GitHub
 npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
+npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador de GitHub
+npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
 ```
 
 ## Primer ingreso
 
-En el primer arranque se crea el usuario **daniel** con la contraseña **cambiar123**
-(rol SUPER_ADMIN). La aplicación obliga a cambiarla al entrar.
+**En la computadora que inicializa la base compartida** (la primera, una sola vez): al arrancar se crea
+el usuario **daniel** con la contraseña **cambiar123** (rol SUPER_ADMIN) y la aplicación obliga a
+cambiarla al entrar. Después, desde Administración → Usuarios, el botón **Subir usuarios** publica
+los usuarios de esa computadora en GitHub (ver «Base de usuarios compartida» más abajo).
+
+**En cualquier otra computadora**: la primera vez hace falta internet, porque el usuario y la
+contraseña se comprueban contra la base compartida. A partir de ahí, el último que ingresó con
+conexión puede volver a entrar sin internet durante 30 días.
 
 ## Datos locales
 
 Todo queda en la carpeta `%APPDATA%/dm-gestion/`:
 
-- `dm.db`: base de datos SQLite.
+- `dm.db`: base de datos SQLite. La tabla `usuarios` es un **espejo sin contraseñas** de la base
+  compartida (sólo nombre, rol, sucursal y estado; `clave_hash` queda vacío), porque pagos, tareas,
+  siniestros y el historial la referencian por id.
+- `credencial.bin`: la credencial del **último usuario que ingresó con internet** en esta computadora,
+  cifrada por Windows (`safeStorage`/DPAPI, atada a la cuenta de Windows). Guarda el hash bcrypt de su
+  contraseña (nunca la contraseña) y su perfil; permite entrar sin internet por 30 días. Se borra sola si
+  ese usuario fue desactivado o le cambiaron la contraseña. Borrar la carpeta `sesion/` la deja ilegible
+  (ahí vive la clave de cifrado): hará falta un ingreso con internet.
 - `config.json`: credenciales de Google (cuenta de servicio y URL de la hoja). Nunca va al repositorio.
 - `informes/`: una copia en texto de cada informe de importación.
 - `adjuntos/<siniestro>/`: los documentos de cada siniestro (la denuncia, el presupuesto del taller, las fotos).
@@ -723,3 +738,92 @@ npm run publicar:parche                           # publica 1.0.1
 # desde la app instalada, Acerca de → Buscar actualizaciones (para no esperar las 4 horas)
 # aparece la barra de aviso; Reiniciar ahora deja la app en 1.0.1
 ```
+
+## Base de usuarios compartida (Fase 11)
+
+Los usuarios ya no viven en cada computadora: viven en **`usuarios.json` del repositorio privado
+`zeroframe404/dm-gestion-datos`** (una «microbase» leída y escrita con la API Contents de GitHub).
+Un usuario creado en una PC entra en todas; desactivarlo o cambiarle la contraseña vale para todas.
+Código: `src/main/usuarios/` (documento, cliente de GitHub, credencial cifrada, espejo local) y
+`src/main/servicios/baseDeUsuarios.ts` (la orquestación).
+
+### Cómo funciona
+
+- **Con internet**, cada ingreso lee el archivo (con ETag: si no cambió, GitHub responde 304 y no gasta
+  cuota), refresca el espejo local y compara la contraseña contra el hash bcrypt del archivo.
+- **Sin internet** entra sólo el **último usuario que ingresó con conexión en esa PC**, con la credencial
+  cifrada (`credencial.bin`) y por 30 días. Los demás ven «Sin internet. En esta computadora sólo puede
+  ingresar «daniel»…». Con la sesión abierta, cada 2 minutos se intenta confirmar contra GitHub; al
+  confirmarse desaparece «Ingresaste sin internet» de la barra. Si en el medio lo desactivaron o le
+  cambiaron la contraseña desde otra PC, la sesión se cierra con un aviso.
+- **Administrar usuarios exige internet y una sesión confirmada**: crear, editar, desactivar y resetear
+  se escriben en GitHub con el candado optimista del `sha` (si otra PC escribió en el medio, se relee y
+  se vuelve a aplicar; si la escritura se cortó sin respuesta, se relee y se comprueba si quedó). Cada
+  escritura es un commit con quién, desde qué PC y con qué versión: el historial del repo es la auditoría.
+- **Un usuario nuevo** entra con la contraseña temporal que le puso el administrador y tiene que
+  cambiarla con internet; hasta entonces no se guarda credencial para entrar sin conexión.
+- Si el archivo está roto o no tiene ningún superadministrador activo, **no se refleja** (el espejo
+  anterior se conserva) y el ingreso cae a la credencial guardada con el error a la vista del SUPER_ADMIN.
+
+### Puesta en marcha (una sola vez, el dueño del repositorio)
+
+1. El repositorio ya existe: `zeroframe404/dm-gestion-datos` (privado, con README). Si hubiera que
+   recrearlo: `gh repo create zeroframe404/dm-gestion-datos --private --add-readme`. **Tiene que ser un
+   repositorio aparte** del código: el token de acá escribe, y si escribiera en `dm-gestion` cualquier PC
+   con el programa podría empujar código o publicar una versión que después instalarían todas.
+2. Generar el token en https://github.com/settings/tokens?type=beta → *Only select repositories* →
+   `dm-gestion-datos` → Repository permissions → **Contents: Read and write**, nada más. Elegir el
+   vencimiento más largo que permita la pantalla y **anotarlo**; que no coincida con el de
+   `UPDATE_TOKEN` (`src/main/servicios/updater.ts`), así nunca vencen los dos el mismo mes.
+3. Pegarlo en `TOKEN_DATOS` de `src/main/usuarios/github.ts` y publicar (`npm run publicar:parche`).
+   `publicar.mjs` se niega a publicar con el token vacío.
+4. En la computadora que tiene los usuarios de verdad (hoy, la única instalada), abrir la versión nueva,
+   ingresar y en **Administración → Usuarios → Subir usuarios**. Eso crea `usuarios.json`. No se hace
+   solo a propósito: una PC recién instalada subiría la semilla `daniel/cambiar123` y pisaría a los de
+   verdad. Si la única cuenta es `daniel` con la contraseña inicial, primero hay que cambiarla.
+5. Comprobar: Usuarios dice «Los usuarios se guardan en la base compartida…», y Acerca de → «Base de
+   usuarios» dice «Compartida · GitHub zeroframe404/dm-gestion-datos — última comprobación recién».
+   Las demás PCs, al actualizarse, ingresan directo contra GitHub (su `daniel` local queda enganchado al
+   de la base; los usuarios locales que no estén en la base quedan desactivados, sin contraseña).
+
+### Rotar el token (vence, o se filtró)
+
+El programa lee el vencimiento que informa GitHub y avisa en Usuarios y en Acerca de desde 30 días
+antes. Si vence sin rotarlo, todas las PCs pasan a «sin acceso a la base de usuarios»: sólo entra el
+último de cada PC, nadie administra y ninguna PC nueva puede ingresar.
+
+1. Generar el token nuevo (mismos permisos). En `github.ts`: el nuevo a `TOKEN_DATOS`, el viejo a
+   `TOKEN_DATOS_ANTERIOR`. Publicar.
+2. Esperar a que todas las PCs se actualicen (el historial de commits de `usuarios.json` muestra la
+   versión con la que escribe cada una).
+3. Revocar el viejo en GitHub y vaciar `TOKEN_DATOS_ANTERIOR` en la versión siguiente.
+
+### Recuperación de emergencia
+
+- **El único superadministrador olvidó la contraseña**: `npm run clave-hash -- "contraseña nueva"`
+  imprime el hash; editar `usuarios.json` en github.com, pegar el hash en `claveHash` de ese usuario y
+  poner `debeCambiarClave: true`. Nunca borrar `usuarios.json`: si no existe, las PCs lo tratan como
+  «la base no está inicializada».
+- **Una PC no puede entrar sin internet** («la copia guardada no se pudo leer», se borró `sesion/`, se
+  cambió la cuenta de Windows): hace falta un ingreso con internet, nada más.
+- **Probar la conexión** sin cerrar sesión: Acerca de → «Probar conexión».
+
+### Qué NO protege esto (decisión de arquitectura, leer antes de confiar en los roles)
+
+El token viaja dentro del instalador, igual que `UPDATE_TOKEN`, y cualquiera que tenga el programa
+puede extraerlo y reescribir `usuarios.json` desde afuera (agregarse como SUPER_ADMIN, cambiar
+contraseñas, bajar los hashes). **Los roles protegen contra errores, no contra un empleado
+malintencionado con el instalador.** Es el precio de una base sin servidor con una sola credencial
+compartida; la alternativa (una cuenta de GitHub por persona, o un servicio intermedio) cambia el
+alcance. Lo que sí se hace: el repositorio de datos está aparte del código, el token no tiene ningún
+otro permiso, cada escritura queda en el historial con quién/dónde/versión, las contraseñas sólo
+existen como bcrypt, y la sesión sin internet se arma desde la credencial cifrada y no desde la tabla
+local (que cualquiera podría editar con un cliente SQLite).
+
+### En desarrollo y en las pruebas
+
+`npm run dev`, `sembrar` y todos los `humo:*` arrancan en **modo local** (usuarios en la tabla, como
+antes) salvo que se defina `DM_GESTION_TOKEN_DATOS`; `DM_GESTION_GITHUB_API` apunta la API a un
+simulador local (o a un puerto cerrado, para «cortar internet») y `DM_GESTION_ARCHIVO_DATOS` usa otro
+archivo del repo (así `--real` no toca `usuarios.json`). Las tres variables sólo valen en desarrollo.
+El simulador de la API Contents está en `scripts/github-simulado.mjs` y lo usan las pruebas y el humo.

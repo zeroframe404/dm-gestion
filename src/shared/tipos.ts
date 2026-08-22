@@ -80,6 +80,60 @@ export interface EstadoConexionGoogle {
   actualizadoEn: string | null
 }
 
+// ---------------------------------------------------------------------------
+// Base de usuarios compartida (GitHub) e ingreso sin internet — Fase 11
+// ---------------------------------------------------------------------------
+
+/**
+ * Cómo está trabajando el ingreso en esta computadora:
+ * - `local`: sin base compartida (desarrollo sin token, o versión publicada sin token). Usuarios locales, como antes.
+ * - `sin-inicializar`: hay base compartida configurada pero todavía nadie subió los usuarios. Se ingresa con
+ *   los usuarios locales hasta que un superadministrador los suba desde Administración → Usuarios.
+ * - `en-linea`: el último ingreso o comprobación se validó contra GitHub.
+ * - `sin-internet`: no se pudo llegar a GitHub (falla de red o tiempo agotado).
+ * - `error-remoto`: hay internet pero GitHub respondió con error (token vencido, repositorio inaccesible, archivo dañado).
+ */
+export type ModoDeAcceso = 'local' | 'sin-inicializar' | 'en-linea' | 'sin-internet' | 'error-remoto'
+
+export interface EstadoDeAcceso {
+  /** false = el programa trabaja con usuarios locales. */
+  configurada: boolean
+  /** Dónde vive la base compartida, para mostrarlo («GitHub zeroframe404/dm-gestion-datos»). */
+  repo: string | null
+  modo: ModoDeAcceso
+  /** Si es una versión publicada sin token: se avisa, porque no es lo esperado. */
+  sinTokenEnProduccion: boolean
+  /** El único usuario que puede ingresar sin internet en esta computadora (el último que ingresó con conexión). */
+  usuarioGuardado: string | null
+  /** false si el sistema no puede cifrar: no se guarda credencial y no va a poder ingresarse sin internet. */
+  puedeGuardarCredencial: boolean
+  /** Cuántos usuarios tiene la base compartida según la última lectura. */
+  cantidad: number | null
+  ultimaComprobacion: string | null
+  /** Última lectura que terminó bien (sirve para decir «sin internet desde hace 2 horas»). */
+  ultimaLecturaBuena: string | null
+  /** Error ya traducido, listo para mostrar. */
+  ultimoError: string | null
+  /** Fecha (AAAA-MM-DD) en que vence el token embebido, si quien armó el programa la anotó. */
+  tokenVence: string | null
+  /** true cuando la sesión abierta se validó con la credencial guardada y todavía no se confirmó contra GitHub. */
+  sesionSinConfirmar: boolean
+}
+
+/** Lo que necesita Administración → Usuarios además de la lista. */
+export interface EstadoDeUsuarios {
+  acceso: EstadoDeAcceso
+  /** De dónde salió la lista que se muestra. */
+  origen: 'github' | 'copia-local' | 'local' | 'sin-inicializar'
+  /** Usuarios de esta computadora que se subirían al inicializar la base compartida. */
+  localesParaSubir: string[]
+}
+
+/** El proceso principal cerró la sesión por su cuenta (usuario desactivado o contraseña cambiada desde otra computadora). */
+export interface SesionCerrada {
+  motivo: string
+}
+
 export interface InfoApp {
   nombre: string
   version: string

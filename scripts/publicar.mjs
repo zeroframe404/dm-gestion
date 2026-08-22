@@ -13,6 +13,17 @@ const { version } = JSON.parse(readFileSync(path.join(raiz, 'package.json'), 'ut
 const tag = `v${version}`
 const REPO = 'zeroframe404/dm-gestion'
 
+// Una versión publicada sin el token de la base de usuarios compartida deja a las computadoras
+// trabajando con usuarios locales (y, si ya migraron, sin poder ingresar): no se publica así.
+// Para publicar igual, a propósito: `node scripts/publicar.mjs --sin-base-de-usuarios`.
+const fuenteGithub = readFileSync(path.join(raiz, 'src/main/usuarios/github.ts'), 'utf8')
+const tokenVacio = /export const TOKEN_DATOS = ''/.test(fuenteGithub)
+if (tokenVacio && !process.argv.includes('--sin-base-de-usuarios')) {
+  console.error('[publicar] TOKEN_DATOS está vacío en src/main/usuarios/github.ts: la base de usuarios compartida no funcionaría en las PCs.')
+  console.error('[publicar] Pegá el fine-grained PAT (ver README, «Base de usuarios compartida») o publicá con --sin-base-de-usuarios.')
+  process.exit(1)
+}
+
 const archivos = [
   `DM-Gestion-Setup-${version}.exe`,
   `DM-Gestion-Setup-${version}.exe.blockmap`,

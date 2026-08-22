@@ -1,61 +1,18 @@
 // Administración de usuarios. El control de rol (SUPER_ADMIN) lo hace ipc.ts antes de llamar acá.
+//
+// Con la base compartida activa (GitHub), cada operación se escribe allá y el espejo local se refresca;
+// sin ella (desarrollo, o antes de inicializarla), se trabaja sobre la tabla local como siempre.
 import type { DatosEdicionUsuario, DatosNuevoUsuario, Rol, SesionUsuario, Usuario } from '../../shared/tipos'
 import { db } from '../db/base'
+import { AHORA_SQL, aUsuario, buscarFilaPorId, buscarFilaPorUsuario, listarFilas, type FilaUsuario } from '../usuarios/filas'
+import * as compartida from './baseDeUsuarios'
 import { hashearClave, validarClave } from './claves'
 import { ErrorDeNegocio } from './errores'
 import { establecerSesion } from './sesion'
 import { obtenerSucursal } from './sucursales'
 import { booleano, enteroPositivo, nombreDeUsuario, objeto, rol as validarRol, texto } from './validacion'
 
-/** Fila cruda de la tabla usuarios, con el nombre de la sucursal ya unido. */
-export interface FilaUsuario {
-  id: number
-  nombre: string
-  usuario: string
-  clave_hash: string
-  rol: Rol
-  sucursal_id: number
-  sucursal_nombre: string
-  activo: number
-  debe_cambiar_clave: number
-  creado_en: string
-  actualizado_en: string
-}
-
-const CONSULTA_BASE = `
-  SELECT u.id, u.nombre, u.usuario, u.clave_hash, u.rol, u.sucursal_id, s.nombre AS sucursal_nombre,
-         u.activo, u.debe_cambiar_clave, u.creado_en, u.actualizado_en
-  FROM usuarios u
-  JOIN sucursales s ON s.id = u.sucursal_id`
-
-/** Expresión SQL para la fecha actual en ISO 8601 (UTC). */
-const AHORA = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
-
-export function aUsuario(fila: FilaUsuario): Usuario {
-  return {
-    id: fila.id,
-    nombre: fila.nombre,
-    usuario: fila.usuario,
-    rol: fila.rol,
-    sucursalId: fila.sucursal_id,
-    sucursalNombre: fila.sucursal_nombre,
-    activo: fila.activo === 1,
-    debeCambiarClave: fila.debe_cambiar_clave === 1,
-    creadoEn: fila.creado_en,
-    actualizadoEn: fila.actualizado_en,
-  }
-}
-
-export function buscarFilaPorId(id: number): FilaUsuario | null {
-  const fila = db().prepare(`${CONSULTA_BASE} WHERE u.id = ?`).get(id) as FilaUsuario | undefined
-  return fila ?? null
-}
-
-/** La columna `usuario` tiene COLLATE NOCASE, así que la comparación no distingue mayúsculas. */
-export function buscarFilaPorUsuario(usuario: string): FilaUsuario | null {
-  const fila = db().prepare(`${CONSULTA_BASE} WHERE u.usuario = ?`).get(usuario) as FilaUsuario | undefined
-  return fila ?? null
-}
+export { aUsuario, buscarFilaPorId, buscarFilaPorUsuario, type FilaUsuario }
 
 function exigirFila(id: number): FilaUsuario {
   const fila = buscarFilaPorId(id)
@@ -64,10 +21,7 @@ function exigirFila(id: number): FilaUsuario {
 }
 
 export function listarUsuarios(): Usuario[] {
-  const filas = db()
-    .prepare(`${CONSULTA_BASE} ORDER BY u.activo DESC, u.nombre COLLATE NOCASE, u.id`)
-    .all() as FilaUsuario[]
-  return filas.map(aUsuario)
+  return listarFilas().map(aUsuario)
 }
 
 interface DatosComunes {
@@ -102,11 +56,12 @@ function contarOtrosSuperAdminsActivos(exceptoId: number): number {
   return total
 }
 
-export async function crearUsuario(datos: unknown): Promise<Usuario> {
+export async function crearUsuario(datos: unknown, actor: SesionUsuario): Promise<Usuario> {
   const comunes = validarDatosComunes(datos)
   const clave = validarClave((datos as Partial<DatosNuevoUsuario>).clave, 'La contraseña inicial')
-  exigirUsuarioLibre(comunes.usuario)
+  if (compartida.usaBaseCompartida()) return compartida.crearUsuario(actor, comunes, clave)
 
+  exigirUsuarioLibre(comunes.usuario)
   const claveHash = await hashearClave(clave)
   // El usuario nuevo entra con una contraseña que eligió otra persona: tiene que cambiarla al ingresar.
   const resultado = db()
@@ -119,10 +74,15 @@ export async function crearUsuario(datos: unknown): Promise<Usuario> {
   return aUsuario(exigirFila(Number(resultado.lastInsertRowid)))
 }
 
-export function editarUsuario(id: unknown, datos: unknown, actor: SesionUsuario): Usuario {
+export async function editarUsuario(id: unknown, datos: unknown, actor: SesionUsuario): Promise<Usuario> {
   const idValido = enteroPositivo(id, 'El usuario')
-  const fila = exigirFila(idValido)
   const comunes: DatosEdicionUsuario = validarDatosComunes(datos)
+  if (compartida.usaBaseCompartida()) {
+    const actualizado = await compartida.editarUsuario(actor, idValido, comunes)
+    return actualizado
+  }
+
+  const fila = exigirFila(idValido)
   exigirUsuarioLibre(comunes.usuario, idValido)
 
   if (fila.id === actor.id && comunes.rol !== fila.rol) {
@@ -139,7 +99,7 @@ export function editarUsuario(id: unknown, datos: unknown, actor: SesionUsuario)
 
   db()
     .prepare(
-      `UPDATE usuarios SET nombre = ?, usuario = ?, rol = ?, sucursal_id = ?, actualizado_en = ${AHORA}
+      `UPDATE usuarios SET nombre = ?, usuario = ?, rol = ?, sucursal_id = ?, actualizado_en = ${AHORA_SQL}
        WHERE id = ?`,
     )
     .run(comunes.nombre, comunes.usuario, comunes.rol, comunes.sucursalId, idValido)
@@ -158,11 +118,12 @@ export function editarUsuario(id: unknown, datos: unknown, actor: SesionUsuario)
   return actualizado
 }
 
-export function cambiarActivo(id: unknown, activo: unknown, actor: SesionUsuario): Usuario {
+export async function cambiarActivo(id: unknown, activo: unknown, actor: SesionUsuario): Promise<Usuario> {
   const idValido = enteroPositivo(id, 'El usuario')
   const activoValido = booleano(activo, 'El estado')
-  const fila = exigirFila(idValido)
+  if (compartida.usaBaseCompartida()) return compartida.cambiarActivo(actor, idValido, activoValido)
 
+  const fila = exigirFila(idValido)
   if (!activoValido) {
     if (fila.id === actor.id) throw new ErrorDeNegocio('No podés desactivar tu propio usuario.')
     if (fila.rol === 'SUPER_ADMIN' && fila.activo === 1 && contarOtrosSuperAdminsActivos(fila.id) === 0) {
@@ -171,7 +132,7 @@ export function cambiarActivo(id: unknown, activo: unknown, actor: SesionUsuario
   }
 
   db()
-    .prepare(`UPDATE usuarios SET activo = ?, actualizado_en = ${AHORA} WHERE id = ?`)
+    .prepare(`UPDATE usuarios SET activo = ?, actualizado_en = ${AHORA_SQL} WHERE id = ?`)
     .run(activoValido ? 1 : 0, idValido)
 
   return aUsuario(exigirFila(idValido))
@@ -180,13 +141,15 @@ export function cambiarActivo(id: unknown, activo: unknown, actor: SesionUsuario
 export async function resetearClave(id: unknown, claveTemporal: unknown, actor: SesionUsuario): Promise<Usuario> {
   const idValido = enteroPositivo(id, 'El usuario')
   const clave = validarClave(claveTemporal, 'La contraseña temporal')
+  if (compartida.usaBaseCompartida()) return compartida.resetearClave(actor, idValido, clave)
+
   const fila = exigirFila(idValido)
   const claveHash = await hashearClave(clave)
 
   // Si el superadministrador resetea su propia contraseña, la eligió él: no hace falta forzar el cambio.
   const esPropia = fila.id === actor.id
   db()
-    .prepare(`UPDATE usuarios SET clave_hash = ?, debe_cambiar_clave = ?, actualizado_en = ${AHORA} WHERE id = ?`)
+    .prepare(`UPDATE usuarios SET clave_hash = ?, debe_cambiar_clave = ?, actualizado_en = ${AHORA_SQL} WHERE id = ?`)
     .run(claveHash, esPropia ? 0 : 1, idValido)
 
   if (esPropia) establecerSesion({ ...actor, debeCambiarClave: false })

@@ -23,6 +23,10 @@ const api: ApiDm = {
     salir: () => invocar('auth:salir'),
     sesion: () => invocar('auth:sesion'),
     cambiarClave: (datos) => invocar('auth:cambiarClave', datos),
+    estadoDeAcceso: (comprobar) => invocar('auth:estadoDeAcceso', comprobar),
+    alCambiarAcceso: (escuchar) => suscribir('auth:estadoDeAcceso', escuchar),
+    alCerrarSesion: (escuchar) => suscribir('auth:sesionCerrada', escuchar),
+    alActualizarSesion: (escuchar) => suscribir('auth:sesionActualizada', escuchar),
   },
   sucursales: {
     listar: () => invocar('sucursales:listar'),
@@ -33,6 +37,8 @@ const api: ApiDm = {
     editar: (id, datos) => invocar('usuarios:editar', id, datos),
     cambiarActivo: (id, activo) => invocar('usuarios:cambiarActivo', id, activo),
     resetearClave: (id, claveTemporal) => invocar('usuarios:resetearClave', id, claveTemporal),
+    estado: (comprobar) => invocar('usuarios:estado', comprobar),
+    subirLocales: () => invocar('usuarios:subirLocales'),
   },
   config: {
     estadoGoogle: () => invocar('config:estadoGoogle'),

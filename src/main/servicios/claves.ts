@@ -1,5 +1,5 @@
 // Reglas de contraseñas y hashing bcrypt.
-import { compare, hash } from 'bcryptjs'
+import { compare, hash, hashSync } from 'bcryptjs'
 import { LARGO_MINIMO_CLAVE } from '../../shared/tipos'
 import { ErrorDeNegocio } from './errores'
 
@@ -23,6 +23,16 @@ export function validarClave(clave: unknown, nombreCampo = 'La contraseña'): st
 
 export function hashearClave(clave: string): Promise<string> {
   return hash(clave, COSTO_BCRYPT)
+}
+
+/**
+ * Hash señuelo: cuando el usuario no existe igual comparamos contra algo, así el tiempo de
+ * respuesta no delata qué nombres de usuario son válidos. Se calcula una sola vez.
+ */
+let senuelo: string | null = null
+export function hashSenuelo(): string {
+  if (!senuelo) senuelo = hashSync('dm-gestion-senuelo', COSTO_BCRYPT)
+  return senuelo
 }
 
 export function verificarClave(clave: string, claveHash: string): Promise<boolean> {

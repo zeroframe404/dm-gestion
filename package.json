@@ -27,7 +27,9 @@
     "humo:fase7": "node scripts/humo-fase7.mjs",
     "humo:fase8": "node scripts/humo-fase8.mjs",
     "humo:fase9": "node scripts/humo-fase9.mjs",
-    "humo:deudores": "node scripts/humo-deudores.mjs"
+    "humo:deudores": "node scripts/humo-deudores.mjs",
+    "humo:usuarios": "node scripts/humo-usuarios.mjs",
+    "clave-hash": "node scripts/clave-hash.mjs"
   },
   "dependencies": {
     "@googleapis/sheets": "^14.0.0",
