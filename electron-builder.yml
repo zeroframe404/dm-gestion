@@ -15,6 +15,9 @@ publish:
   owner: zeroframe404
   repo: dm-gestion
   private: true
+  # Sin esto, electron-builder deja el Release como borrador y hay que publicarlo a mano en GitHub;
+  # con "release" queda visible (y electron-updater lo puede leer) apenas termina "npm run publicar".
+  releaseType: release
 
 files:
   - dist/**/*
