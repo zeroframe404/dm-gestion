@@ -1,0 +1,61 @@
+/* Estilos globales: Tailwind + paleta de marca de Seguros Daniel Martínez. */
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* Azul de marca. 700 es el azul de acción; 950 es la tinta del sidebar. */
+  --color-marino-50: #f0f6ff;
+  --color-marino-100: #dceafc;
+  --color-marino-200: #bfd8f8;
+  --color-marino-300: #93bcf0;
+  --color-marino-400: #5d98e4;
+  --color-marino-500: #3576ce;
+  --color-marino-600: #235ba8;
+  --color-marino-700: #183f75;
+  --color-marino-800: #143563;
+  --color-marino-900: #0e254a;
+  --color-marino-950: #0b1f3b;
+
+  /* Acento cielo: rótulos, enlaces, ítem activo del menú. */
+  --color-cielo-50: #f0f9ff;
+  --color-cielo-100: #e0f2fe;
+  --color-cielo-200: #bae6fd;
+  --color-cielo-500: #0ea5e9;
+  --color-cielo-600: #0284c7;
+  --color-cielo-700: #0369a1;
+
+  /* Sombras tintadas en azul, no en gris. */
+  --shadow-suave: 0 4px 12px rgba(11, 31, 59, 0.08), 0 2px 4px rgba(11, 31, 59, 0.04);
+  --shadow-media: 0 12px 28px rgba(11, 31, 59, 0.12), 0 4px 8px rgba(11, 31, 59, 0.05);
+  --shadow-marca: 0 8px 20px rgba(24, 63, 117, 0.28);
+}
+
+@layer base {
+  html,
+  body,
+  #raiz {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 font-sans text-slate-600 antialiased;
+    overflow: hidden;
+  }
+
+  /* Barra de scroll discreta, acorde a una app de escritorio. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 116, 139, 0.35);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(100, 116, 139, 0.55);
+  }
+}

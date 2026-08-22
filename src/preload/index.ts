@@ -1,0 +1,219 @@
+// Precarga: expone al renderer una API mínima y tipada (`window.dm`) a través de contextBridge.
+// El renderer nunca toca ipcRenderer directamente ni tiene acceso a Node.
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { ApiDm } from '../shared/api'
+import type { ArgumentosDe, DatosDeEvento, NombreCanal, NombreEvento, RespuestaDe } from '../shared/canales'
+
+function invocar<C extends NombreCanal>(canal: C, ...args: ArgumentosDe<C>): Promise<RespuestaDe<C>> {
+  return ipcRenderer.invoke(canal, ...args) as Promise<RespuestaDe<C>>
+}
+
+/** Suscribe a un evento del proceso principal y devuelve la función para desuscribirse. */
+function suscribir<E extends NombreEvento>(evento: E, escuchar: (datos: DatosDeEvento<E>) => void): () => void {
+  const oyente = (_evento: IpcRendererEvent, datos: DatosDeEvento<E>) => escuchar(datos)
+  ipcRenderer.on(evento, oyente)
+  return () => {
+    ipcRenderer.removeListener(evento, oyente)
+  }
+}
+
+const api: ApiDm = {
+  auth: {
+    ingresar: (datos) => invocar('auth:ingresar', datos),
+    salir: () => invocar('auth:salir'),
+    sesion: () => invocar('auth:sesion'),
+    cambiarClave: (datos) => invocar('auth:cambiarClave', datos),
+  },
+  sucursales: {
+    listar: () => invocar('sucursales:listar'),
+  },
+  usuarios: {
+    listar: () => invocar('usuarios:listar'),
+    crear: (datos) => invocar('usuarios:crear', datos),
+    editar: (id, datos) => invocar('usuarios:editar', id, datos),
+    cambiarActivo: (id, activo) => invocar('usuarios:cambiarActivo', id, activo),
+    resetearClave: (id, claveTemporal) => invocar('usuarios:resetearClave', id, claveTemporal),
+  },
+  config: {
+    estadoGoogle: () => invocar('config:estadoGoogle'),
+    guardarGoogle: (datos) => invocar('config:guardarGoogle', datos),
+    plantillaAviso: () => invocar('config:plantillaAviso'),
+    guardarPlantillaAviso: (texto) => invocar('config:guardarPlantillaAviso', texto),
+  },
+  importacion: {
+    vistaPrevia: () => invocar('importacion:vistaPrevia'),
+    iniciar: () => invocar('importacion:iniciar'),
+    cancelar: () => invocar('importacion:cancelar'),
+    estado: () => invocar('importacion:estado'),
+    guardarInforme: (importacionId) => invocar('importacion:guardarInforme', importacionId),
+    abrirCarpetaInformes: () => invocar('importacion:abrirCarpetaInformes'),
+    alProgresar: (escuchar) => suscribir('importacion:progreso', escuchar),
+    alTerminar: (escuchar) => suscribir('importacion:terminada', escuchar),
+  },
+  cartera: {
+    planilla: (periodo) => invocar('cartera:planilla', periodo),
+    editarCelda: (filaId, campo, valor) => invocar('cartera:editarCelda', filaId, campo, valor),
+    prepararAviso: (filaId) => invocar('cartera:prepararAviso', filaId),
+    registrarPago: (filaId, datos) => invocar('cartera:registrarPago', filaId, datos),
+    darDeBaja: (filaId, datos) => invocar('cartera:darDeBaja', filaId, datos),
+    deshacerBaja: (bajaId) => invocar('cartera:deshacerBaja', bajaId),
+    bajas: (periodo) => invocar('cartera:bajas', periodo),
+    cerrarMes: () => invocar('cartera:cerrarMes'),
+    historialDeFila: (filaId) => invocar('cartera:historialDeFila', filaId),
+  },
+  companias: {
+    listar: () => invocar('companias:listar'),
+    editar: (id, datos) => invocar('companias:editar', id, datos),
+  },
+  cobranzas: {
+    caja: (fecha, sucursal) => invocar('cobranzas:caja', fecha, sucursal),
+    registrarPagoManual: (datos) => invocar('cobranzas:registrarPagoManual', datos),
+    exportarCaja: (fecha, sucursal) => invocar('cobranzas:exportarCaja', fecha, sucursal),
+    mora: (filtros) => invocar('cobranzas:mora', filtros),
+    avisarMora: (filaId) => invocar('cobranzas:avisarMora', filaId),
+    imputados: (periodo, compania) => invocar('cobranzas:imputados', periodo, compania),
+    cambiarResultado: (pagoId, resultado, compania) => invocar('cobranzas:cambiarResultado', pagoId, resultado, compania),
+    comisiones: (periodo) => invocar('cobranzas:comisiones', periodo),
+  },
+  impresora: {
+    estado: () => invocar('impresora:estado'),
+    guardar: (datos) => invocar('impresora:guardar', datos),
+    prueba: () => invocar('impresora:prueba'),
+  },
+  clientes: {
+    listar: (filtros) => invocar('clientes:listar', filtros),
+    buscar: (busqueda) => invocar('clientes:buscar', busqueda),
+    ficha: (clienteId) => invocar('clientes:ficha', clienteId),
+    crear: (datos) => invocar('clientes:crear', datos),
+    editar: (clienteId, datos) => invocar('clientes:editar', clienteId, datos),
+    agregarNota: (clienteId, texto) => invocar('clientes:agregarNota', clienteId, texto),
+    crearTarea: (datos) => invocar('clientes:crearTarea', datos),
+    cambiarEstadoDeTarea: (tareaId, estado) => invocar('clientes:cambiarEstadoDeTarea', tareaId, estado),
+    cuotasDelMes: (clienteId) => invocar('clientes:cuotasDelMes', clienteId),
+  },
+  siniestros: {
+    crear: (datos) => invocar('siniestros:crear', datos),
+    listar: (filtros) => invocar('siniestros:listar', filtros),
+    ficha: (siniestroId) => invocar('siniestros:ficha', siniestroId),
+    buscar: (busqueda) => invocar('siniestros:buscar', busqueda),
+    alta: (datos) => invocar('siniestros:alta', datos),
+    cambiarEstado: (siniestroId, estado) => invocar('siniestros:cambiarEstado', siniestroId, estado),
+    editar: (siniestroId, campo, valor) => invocar('siniestros:editar', siniestroId, campo, valor),
+    agregarObservacion: (siniestroId, texto) => invocar('siniestros:agregarObservacion', siniestroId, texto),
+    adjuntar: (siniestroId, rutas) => invocar('siniestros:adjuntar', siniestroId, rutas),
+    abrirAdjunto: (adjuntoId) => invocar('siniestros:abrirAdjunto', adjuntoId),
+    borrarAdjunto: (adjuntoId) => invocar('siniestros:borrarAdjunto', adjuntoId),
+    crearTarea: (datos) => invocar('siniestros:crearTarea', datos),
+    cambiarEstadoDeTarea: (tareaId, estado) => invocar('siniestros:cambiarEstadoDeTarea', tareaId, estado),
+  },
+  riesgos: {
+    listar: () => invocar('riesgos:listar'),
+    editar: (riesgoId, campo, valor) => invocar('riesgos:editar', riesgoId, campo, valor),
+    crear: (datos) => invocar('riesgos:crear', datos),
+  },
+  amp: {
+    listar: (incluirResueltas) => invocar('amp:listar', incluirResueltas),
+    cambiarResuelto: (ampId, resuelto, incluirResueltas) => invocar('amp:cambiarResuelto', ampId, resuelto, incluirResueltas),
+  },
+  polizas: {
+    listar: (filtros) => invocar('polizas:listar', filtros),
+    ver: (polizaId) => invocar('polizas:ver', polizaId),
+    deCliente: (clienteId) => invocar('polizas:deCliente', clienteId),
+    vehiculosDeCliente: (clienteId) => invocar('polizas:vehiculosDeCliente', clienteId),
+    catalogos: () => invocar('polizas:catalogos'),
+    validarCobertura: (compania, cobertura, anioVehiculo) => invocar('polizas:validarCobertura', compania, cobertura, anioVehiculo),
+    crear: (datos) => invocar('polizas:crear', datos),
+    editar: (polizaId, datos) => invocar('polizas:editar', polizaId, datos),
+    darDeBaja: (polizaId, datos) => invocar('polizas:darDeBaja', polizaId, datos),
+  },
+  reglas: {
+    matriz: () => invocar('reglas:matriz'),
+    crear: (datos) => invocar('reglas:crear', datos),
+    editar: (id, datos) => invocar('reglas:editar', id, datos),
+    borrar: (id) => invocar('reglas:borrar', id),
+    vigentes: () => invocar('reglas:vigentes'),
+  },
+  renovaciones: {
+    bandeja: () => invocar('renovaciones:bandeja'),
+    sugerencia: (polizaId) => invocar('renovaciones:sugerencia', polizaId),
+    actualizar: (polizaId, venceEl, datos) => invocar('renovaciones:actualizar', polizaId, venceEl, datos),
+    renovar: (polizaId, datos) => invocar('renovaciones:renovar', polizaId, datos),
+    noRenueva: (polizaId, datos) => invocar('renovaciones:noRenueva', polizaId, datos),
+  },
+  sincronizacion: {
+    estado: () => invocar('sincronizacion:estado'),
+    panel: () => invocar('sincronizacion:panel'),
+    ahora: (completa) => invocar('sincronizacion:ahora', completa),
+    reintentar: () => invocar('sincronizacion:reintentar'),
+    respaldarAhora: () => invocar('sincronizacion:respaldarAhora'),
+    alCambiarEstado: (escuchar) => suscribir('sincronizacion:estado', escuchar),
+  },
+  leads: {
+    listar: (filtros) => invocar('leads:listar', filtros),
+    ficha: (leadId) => invocar('leads:ficha', leadId),
+    crear: (datos) => invocar('leads:crear', datos),
+    editar: (leadId, datos) => invocar('leads:editar', leadId, datos),
+    cambiarEstado: (leadId, estado) => invocar('leads:cambiarEstado', leadId, estado),
+    agregarNota: (leadId, texto) => invocar('leads:agregarNota', leadId, texto),
+    convertir: (leadId) => invocar('leads:convertir', leadId),
+  },
+  presupuestos: {
+    listar: (filtros) => invocar('presupuestos:listar', filtros),
+    ficha: (presupuestoId) => invocar('presupuestos:ficha', presupuestoId),
+    crear: (datos) => invocar('presupuestos:crear', datos),
+    guardar: (presupuestoId, datos) => invocar('presupuestos:guardar', presupuestoId, datos),
+    enviar: (presupuestoId) => invocar('presupuestos:enviar', presupuestoId),
+    aceptar: (presupuestoId, opcionId) => invocar('presupuestos:aceptar', presupuestoId, opcionId),
+    rechazar: (presupuestoId, motivo) => invocar('presupuestos:rechazar', presupuestoId, motivo),
+    guardarPdf: (presupuestoId) => invocar('presupuestos:guardarPdf', presupuestoId),
+    imprimir: (presupuestoId) => invocar('presupuestos:imprimir', presupuestoId),
+  },
+  tareas: {
+    listar: (filtros) => invocar('tareas:listar', filtros),
+    ficha: (tareaId) => invocar('tareas:ficha', tareaId),
+    crear: (datos) => invocar('tareas:crear', datos),
+    editar: (tareaId, datos) => invocar('tareas:editar', tareaId, datos),
+    cambiarEstado: (tareaId, estado) => invocar('tareas:cambiarEstado', tareaId, estado),
+    comentar: (tareaId, texto) => invocar('tareas:comentar', tareaId, texto),
+    adjuntar: (tareaId, rutas) => invocar('tareas:adjuntar', tareaId, rutas),
+    abrirAdjunto: (adjuntoId) => invocar('tareas:abrirAdjunto', adjuntoId),
+    borrarAdjunto: (adjuntoId) => invocar('tareas:borrarAdjunto', adjuntoId),
+    mias: () => invocar('tareas:mias'),
+    avisos: () => invocar('tareas:avisos'),
+    marcarVistos: () => invocar('tareas:marcarVistos'),
+  },
+  metricas: {
+    tablero: (filtros) => invocar('metricas:tablero', filtros),
+    estadisticas: (periodo, sucursal) => invocar('metricas:estadisticas', periodo, sucursal),
+  },
+  reportes: {
+    catalogo: () => invocar('reportes:catalogo'),
+    vistaPrevia: (pedido) => invocar('reportes:vistaPrevia', pedido),
+    exportar: (pedido, formato, ruta) => invocar('reportes:exportar', pedido, formato, ruta),
+    planillaClasica: (opciones, ruta) => invocar('reportes:planillaClasica', opciones, ruta),
+  },
+  marketing: {
+    plantillas: () => invocar('marketing:plantillas'),
+    crearPlantilla: (datos) => invocar('marketing:crearPlantilla', datos),
+    editarPlantilla: (clave, datos) => invocar('marketing:editarPlantilla', clave, datos),
+    borrarPlantilla: (clave) => invocar('marketing:borrarPlantilla', clave),
+    segmento: (segmentoId, filtros, plantillaClave) => invocar('marketing:segmento', segmentoId, filtros, plantillaClave),
+    guardarSegmento: (segmentoId, datos) => invocar('marketing:guardarSegmento', segmentoId, datos),
+    borrarSegmento: (segmentoId) => invocar('marketing:borrarSegmento', segmentoId),
+    avisar: (filaId, segmentoId, filtros, plantillaClave) => invocar('marketing:avisar', filaId, segmentoId, filtros, plantillaClave),
+  },
+  sistema: {
+    abrirEnlace: (url) => invocar('sistema:abrirEnlace', url),
+  },
+  app: {
+    info: () => invocar('app:info'),
+  },
+  actualizaciones: {
+    estado: () => invocar('actualizaciones:estado'),
+    buscarAhora: () => invocar('actualizaciones:buscarAhora'),
+    instalarAhora: () => invocar('actualizaciones:instalarAhora'),
+    alCambiarEstado: (escuchar) => suscribir('actualizaciones:estado', escuchar),
+  },
+}
+
+contextBridge.exposeInMainWorld('dm', api)

@@ -1,0 +1,126 @@
+// Módulos de la aplicación, en el orden en que aparecen en la barra lateral.
+import type { NombreIcono } from './componentes/Icono'
+
+export type IdModulo =
+  | 'inicio'
+  | 'cartera'
+  | 'clientes'
+  | 'leads'
+  | 'presupuestos'
+  | 'polizas'
+  | 'renovaciones'
+  | 'siniestros'
+  | 'cobranzas'
+  | 'metricas'
+  | 'reportes'
+  | 'marketing'
+  | 'tareas'
+  | 'administracion'
+
+export interface Modulo {
+  id: IdModulo
+  nombre: string
+  icono: NombreIcono
+  /** Qué hace el módulo, en una línea. Se muestra en Inicio y en la pantalla «Próximamente». */
+  descripcion: string
+  /** Si es false, el módulo muestra la pantalla «Próximamente». */
+  disponible: boolean
+}
+
+export const MODULOS: Modulo[] = [
+  { id: 'inicio', nombre: 'Inicio', icono: 'inicio', descripcion: 'Resumen general y accesos rápidos.', disponible: true },
+  {
+    id: 'cartera',
+    nombre: 'Cartera',
+    icono: 'cartera',
+    descripcion: 'La planilla mensual: semáforo de vencimientos, avisos y pagos.',
+    disponible: true,
+  },
+  { id: 'clientes', nombre: 'Clientes', icono: 'clientes', descripcion: 'La ficha de cada cliente: datos, vehículos, pólizas, pagos y siniestros.', disponible: true },
+  {
+    id: 'leads',
+    nombre: 'Leads',
+    icono: 'leads',
+    descripcion: 'Las consultas que todavía no son clientes: quién preguntó, por qué y cómo viene la charla.',
+    disponible: true,
+  },
+  {
+    id: 'presupuestos',
+    nombre: 'Presupuestos',
+    icono: 'presupuestos',
+    descripcion: 'Las compañías cotizadas para cada vehículo, el mensaje de WhatsApp y el PDF.',
+    disponible: true,
+  },
+  {
+    id: 'polizas',
+    nombre: 'Pólizas',
+    icono: 'polizas',
+    descripcion: 'El listado por póliza, con vigencias, estado y el alta en una sola pantalla.',
+    disponible: true,
+  },
+  {
+    id: 'renovaciones',
+    nombre: 'Renovaciones',
+    icono: 'renovaciones',
+    descripcion: 'Las pólizas que vencen en los próximos 60 días, por semana y con responsable.',
+    disponible: true,
+  },
+  {
+    id: 'siniestros',
+    nombre: 'Siniestros',
+    icono: 'siniestros',
+    descripcion: 'El listado del mes y la ficha de cada siniestro: estado, observaciones, documentos y tareas.',
+    disponible: true,
+  },
+  {
+    id: 'cobranzas',
+    nombre: 'Cobranzas',
+    icono: 'cobranzas',
+    descripcion: 'La caja del día por sucursal, la mora, la rendición mensual y las comisiones.',
+    disponible: true,
+  },
+  {
+    id: 'metricas',
+    nombre: 'Métricas',
+    icono: 'metricas',
+    descripcion: 'Los números de la agencia: activos, altas, bajas, cobranza y siniestros, mes a mes.',
+    disponible: true,
+  },
+  {
+    id: 'reportes',
+    nombre: 'Reportes',
+    icono: 'reportes',
+    descripcion: 'El centro de exportación: cualquier listado a Excel o PDF, y la planilla de siempre.',
+    disponible: true,
+  },
+  {
+    id: 'marketing',
+    nombre: 'Marketing',
+    icono: 'marketing',
+    descripcion: 'Las plantillas de WhatsApp y los segmentos de la cartera, para avisar de a uno.',
+    disponible: true,
+  },
+  {
+    id: 'tareas',
+    nombre: 'Tareas',
+    icono: 'tareas',
+    descripcion: 'Los pendientes del equipo: a quién le toca, para cuándo, con comentarios y documentos.',
+    disponible: true,
+  },
+]
+
+/** Va separado, al pie de la barra lateral. */
+export const MODULO_ADMINISTRACION: Modulo = {
+  id: 'administracion',
+  nombre: 'Administración',
+  icono: 'administracion',
+  descripcion: 'Usuarios, conexión con Google e información de la aplicación.',
+  disponible: true,
+}
+
+export function buscarModulo(id: IdModulo): Modulo {
+  if (id === MODULO_ADMINISTRACION.id) return MODULO_ADMINISTRACION
+  const modulo = MODULOS.find((candidato) => candidato.id === id)
+  if (!modulo) throw new Error(`Módulo desconocido: ${id}`)
+  return modulo
+}

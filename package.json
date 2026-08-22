@@ -1,0 +1,50 @@
+{
+  "name": "dm-gestion",
+  "productName": "DM Gestión",
+  "version": "1.0.0",
+  "description": "Sistema de gestión de Seguros Daniel Martínez",
+  "author": "Seguros Daniel Martínez",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "dist/main/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "build": "npm run typecheck && vite build -c vite.preload.config.mts && vite build -c vite.main.config.mts && vite build -c vite.config.mts",
+    "dist": "npm run build && electron-builder --win --config electron-builder.yml",
+    "publicar": "npm run build && electron-builder --win --config electron-builder.yml --publish always",
+    "publicar:parche": "npm version patch && npm run publicar",
+    "prueba": "vite build -c vite.pruebas.config.mts && node dist/pruebas/todas.js",
+    "prueba:copia": "vite build -c vite.pruebas.config.mts && node dist/pruebas/copia.js",
+    "sembrar": "vite build -c vite.pruebas.config.mts && node dist/pruebas/sembrar.js",
+    "humo": "node scripts/humo-cartera.mjs",
+    "humo:fase5": "node scripts/humo-fase5.mjs",
+    "humo:fase6": "node scripts/humo-fase6.mjs",
+    "humo:fase7": "node scripts/humo-fase7.mjs",
+    "humo:fase8": "node scripts/humo-fase8.mjs",
+    "humo:fase9": "node scripts/humo-fase9.mjs"
+  },
+  "dependencies": {
+    "@googleapis/sheets": "^14.0.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.9.3",
+    "vite": "^8.2.2"
+  }
+}

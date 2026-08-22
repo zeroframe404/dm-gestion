@@ -1,0 +1,45 @@
+# Configuración de electron-builder: instalador NSIS para Windows.
+appId: ar.com.dmartinezseguros.gestion
+productName: DM Gestión
+copyright: Copyright © 2026 Seguros Daniel Martínez
+artifactName: DM-Gestion-Setup-${version}.${ext}
+
+directories:
+  output: release
+  buildResources: recursos
+
+# Publicación de versiones: "npm run publicar" sube el instalador y los archivos de actualización
+# (latest.yml, .blockmap) como GitHub Release del repositorio privado.
+publish:
+  provider: github
+  owner: zeroframe404
+  repo: dm-gestion
+  private: true
+
+files:
+  - dist/**/*
+  - package.json
+
+# Los binarios nativos (better-sqlite3) no pueden cargarse desde dentro del asar.
+asarUnpack:
+  - "**/*.node"
+
+# better-sqlite3 13 trae binarios N-API precompilados (prebuilds/), válidos para Electron: no hace falta recompilar.
+npmRebuild: false
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DM Gestión
+  installerLanguages:
+    - es_ES
+  language: "3082"
