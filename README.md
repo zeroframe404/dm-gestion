@@ -9,7 +9,7 @@ Electron + React + TypeScript + Vite + Tailwind, con base de datos local SQLite.
 npm install       # instala dependencias (better-sqlite3 trae binarios listos, no compila nada)
 npm run dev       # desarrollo con recarga automática
 npm run prueba    # 268 pruebas propias, sin tocar ninguna hoja real
-npm run dist      # genera el instalador NSIS en release/
+npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
 ```
 
 ## Primer ingreso
