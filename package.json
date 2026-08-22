@@ -17,6 +17,7 @@
     "dist": "npm run build && electron-builder --win --config electron-builder.yml",
     "publicar": "npm run build && electron-builder --win --config electron-builder.yml --publish always",
     "publicar:parche": "npm version patch && npm run publicar",
+    "postversion": "git push && git push --tags",
     "prueba": "vite build -c vite.pruebas.config.mts && node dist/pruebas/todas.js",
     "prueba:copia": "vite build -c vite.pruebas.config.mts && node dist/pruebas/copia.js",
     "sembrar": "vite build -c vite.pruebas.config.mts && node dist/pruebas/sembrar.js",
