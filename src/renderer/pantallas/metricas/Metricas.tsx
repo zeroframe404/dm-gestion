@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import type { TableroMetricas } from '../../../shared/tipos'
 import { Alerta, Cargando, Tarjeta } from '../../componentes/ui'
+import { BotonAyuda } from '../../componentes/Ayuda'
 import { pesos, pesosRedondos } from '../cobranzas/formato'
 import { GraficoDeBarras, GraficoDeLinea, numero, Ranking, TarjetaGrande } from './graficos'
 
@@ -74,6 +75,7 @@ export function Metricas() {
           </select>
         </label>
         {cargando && <span className="text-xs text-slate-500">Actualizando…</span>}
+        <BotonAyuda clave="metricas" className="ml-auto" />
       </div>
 
       {error && <Alerta tono="error">{error}</Alerta>}

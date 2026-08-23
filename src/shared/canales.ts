@@ -370,6 +370,9 @@ export interface Canales {
   'actualizaciones:estado': () => Resultado<EstadoActualizacion>
   'actualizaciones:buscarAhora': () => Resultado<EstadoActualizacion>
   'actualizaciones:instalarAhora': () => Resultado<null>
+
+  /** El PDF (A4) de una pantalla de ayuda. Abre el diálogo «Guardar como»; null si se canceló. */
+  'ayuda:guardarPdf': (pedido: { html: string; nombreDeArchivo: string }) => Resultado<{ ruta: string | null }>
 }
 
 /** Avisos main → renderer (push, sin respuesta). */

@@ -13,6 +13,7 @@ import {
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
+import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { FichaPresupuesto } from './FichaPresupuesto'
 import { FormularioPresupuesto } from './FormularioPresupuesto'
@@ -131,9 +132,12 @@ export function Presupuestos() {
           Con versiones anteriores
         </label>
 
-        <Boton variante="primario" icono="mas" onClick={() => setAlta({ leadId: null, clienteId: null })} className="ml-auto">
-          Nuevo presupuesto
-        </Boton>
+        <div className="ml-auto flex items-center gap-2">
+          <Boton variante="primario" icono="mas" onClick={() => setAlta({ leadId: null, clienteId: null })}>
+            Nuevo presupuesto
+          </Boton>
+          <BotonAyuda clave="presupuestos" />
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

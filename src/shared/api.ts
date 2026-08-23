@@ -212,4 +212,7 @@ export interface ApiDm {
     instalarAhora: Remota<'actualizaciones:instalarAhora'>
     alCambiarEstado: Suscripcion<'actualizaciones:estado'>
   }
+  ayuda: {
+    guardarPdf: Remota<'ayuda:guardarPdf'>
+  }
 }

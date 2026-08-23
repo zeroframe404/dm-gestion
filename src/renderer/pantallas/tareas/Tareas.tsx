@@ -16,6 +16,7 @@ import {
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
+import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoNuevaTarea } from './DialogoNuevaTarea'
@@ -145,9 +146,12 @@ export function Tareas() {
           Sólo vencidas y de hoy
         </label>
 
-        <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)} className="ml-auto">
-          Nueva tarea
-        </Boton>
+        <div className="ml-auto flex items-center gap-2">
+          <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)}>
+            Nueva tarea
+          </Boton>
+          <BotonAyuda clave="tareas" />
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { NOMBRE_ROL, type FilaTarea } from '../../shared/tipos'
 import { Icono } from '../componentes/Icono'
 import { Etiqueta, cx } from '../componentes/ui'
+import { BotonAyuda } from '../componentes/Ayuda'
 import { useNavegacion } from '../contexto/Navegacion'
 import { useUsuarioActual } from '../contexto/Sesion'
 import { MODULOS, type IdModulo } from '../modulos'
@@ -19,8 +20,13 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
   return (
     <div className="p-8">
       <section className="rounded-2xl bg-[linear-gradient(135deg,#12315d_0%,#163b6e_45%,#17437f_100%)] px-8 py-8 text-white shadow-media">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-200">{saludoSegunHora()}</p>
-        <h2 className="mt-1 font-display text-3xl font-extrabold tracking-tight">Hola, {primerNombre(usuario.nombre)}</h2>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-200">{saludoSegunHora()}</p>
+            <h2 className="mt-1 font-display text-3xl font-extrabold tracking-tight">Hola, {primerNombre(usuario.nombre)}</h2>
+          </div>
+          <BotonAyuda clave="inicio" variante="oscuro" />
+        </div>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/75">
           Estás trabajando en la sucursal {usuario.sucursal.nombre} como {NOMBRE_ROL[usuario.rol].toLowerCase()}. Ya
           podés usar {disponibles} de los {modulosDeTrabajo.length} módulos; el resto se va habilitando en las próximas

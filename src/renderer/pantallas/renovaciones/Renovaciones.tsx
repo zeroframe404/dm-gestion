@@ -17,6 +17,7 @@ import {
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta as Aviso, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
+import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { DialogoNuevaTarea } from '../tareas/DialogoNuevaTarea'
 import { DialogoNoRenueva, DialogoRenovar } from './DialogoRenovar'
@@ -137,6 +138,7 @@ export function Renovaciones() {
           <Boton icono="cargando" onClick={() => void cargar()} disabled={cargando}>
             Actualizar
           </Boton>
+          <BotonAyuda clave="renovaciones" />
         </div>
       </div>
 

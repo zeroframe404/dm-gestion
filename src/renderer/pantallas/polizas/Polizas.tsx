@@ -7,6 +7,7 @@ import { DIAS_DE_RENOVACION, diasParaVencer, NOMBRE_ESTADO_POLIZA } from '../../
 import type { EstadoPoliza, FiltrosPolizas, ListadoPolizas, PolizaDeCliente } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
+import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { FormularioPoliza } from './FormularioPoliza'
@@ -243,6 +244,7 @@ export function Polizas() {
           >
             Nueva póliza
           </Boton>
+          <BotonAyuda clave="polizas" />
         </div>
       </div>
 

@@ -3,8 +3,7 @@
 // tiene que ser una sola) y Estadísticas es la versión tabular de Métricas, hecha para comparar
 // contra la hoja fila por fila.
 import { useEffect, useState } from 'react'
-import { Icono, type NombreIcono } from '../../componentes/Icono'
-import { cx } from '../../componentes/ui'
+import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { Imputados } from '../cobranzas/Imputados'
 import { Amp } from './Amp'
@@ -16,20 +15,14 @@ import { RiesgosVarios } from './RiesgosVarios'
 
 type IdSeccion = 'planilla' | 'bajas' | 'riesgos' | 'amp' | 'imputados' | 'reglas' | 'estadisticas'
 
-interface Seccion {
-  id: IdSeccion
-  nombre: string
-  icono: NombreIcono
-}
-
-const SECCIONES: Seccion[] = [
-  { id: 'planilla', nombre: 'Planilla del mes', icono: 'tabla' },
-  { id: 'bajas', nombre: 'Bajas', icono: 'cerrar' },
-  { id: 'riesgos', nombre: 'Riesgos varios', icono: 'escudo' },
-  { id: 'amp', nombre: 'AMP', icono: 'mas' },
-  { id: 'imputados', nombre: 'Imputados', icono: 'billete' },
-  { id: 'reglas', nombre: 'Reglas de cobertura', icono: 'polizas' },
-  { id: 'estadisticas', nombre: 'Estadísticas', icono: 'metricas' },
+const SECCIONES: ItemDePestana<IdSeccion>[] = [
+  { id: 'planilla', nombre: 'Planilla del mes', icono: 'tabla', ayuda: 'cartera.planilla' },
+  { id: 'bajas', nombre: 'Bajas', icono: 'cerrar', ayuda: 'cartera.bajas' },
+  { id: 'riesgos', nombre: 'Riesgos varios', icono: 'escudo', ayuda: 'cartera.riesgos' },
+  { id: 'amp', nombre: 'AMP', icono: 'mas', ayuda: 'cartera.amp' },
+  { id: 'imputados', nombre: 'Imputados', icono: 'billete', ayuda: 'imputados' },
+  { id: 'reglas', nombre: 'Reglas de cobertura', icono: 'polizas', ayuda: 'cartera.reglas' },
+  { id: 'estadisticas', nombre: 'Estadísticas', icono: 'metricas', ayuda: 'cartera.estadisticas' },
 ]
 
 export function Cartera() {
@@ -48,31 +41,13 @@ export function Cartera() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-slate-200 bg-white px-8">
-        <div role="tablist" aria-label="Secciones de la cartera" className="-mb-px flex gap-6">
-          {SECCIONES.map((candidata) => {
-            const activa = candidata.id === seccion.id
-            return (
-              <button
-                key={candidata.id}
-                type="button"
-                role="tab"
-                id={`tab-cartera-${candidata.id}`}
-                aria-selected={activa}
-                aria-controls={activa ? `panel-cartera-${candidata.id}` : undefined}
-                onClick={() => setSeccionActiva(candidata.id)}
-                className={cx(
-                  'inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition-colors',
-                  activa ? 'border-marino-700 text-marino-800' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800',
-                )}
-              >
-                <Icono nombre={candidata.icono} tamano={16} />
-                {candidata.nombre}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      <BarraDePestanas
+        etiqueta="Secciones de la cartera"
+        prefijo="cartera"
+        items={SECCIONES}
+        activa={seccion.id}
+        alElegir={setSeccionActiva}
+      />
 
       <div
         id={`panel-cartera-${seccion.id}`}

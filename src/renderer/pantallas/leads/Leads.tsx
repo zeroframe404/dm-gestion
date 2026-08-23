@@ -16,6 +16,7 @@ import {
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
+import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { DialogoLead } from './DialogoLead'
 import { FichaLead } from './FichaLead'
@@ -127,9 +128,12 @@ export function Leads() {
           Mostrar cerradas
         </label>
 
-        <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)} className="ml-auto">
-          Nueva consulta
-        </Boton>
+        <div className="ml-auto flex items-center gap-2">
+          <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)}>
+            Nueva consulta
+          </Boton>
+          <BotonAyuda clave="leads" />
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

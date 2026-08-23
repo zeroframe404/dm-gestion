@@ -761,4 +761,10 @@ export function registrarIpc(): void {
     instalarActualizacion()
     return exito(null)
   })
+
+  // Ayuda: el PDF de una pantalla de ayuda, por el mismo camino que ya usa el presupuesto.
+  manejar('ayuda:guardarPdf', async (pedido) => {
+    exigirSesion()
+    return exito(await guardarHtmlComoPdf(pedido.html, pedido.nombreDeArchivo, ventanaActual()))
+  })
 }

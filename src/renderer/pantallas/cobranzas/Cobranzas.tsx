@@ -1,8 +1,7 @@
 // Módulo Cobranzas: la caja del día por sucursal, la mora, la rendición mensual contra las compañías
 // y las comisiones estimadas. Imputados es la misma pantalla que la subpestaña de Cartera.
 import { useEffect, useMemo, useState } from 'react'
-import { Icono, type NombreIcono } from '../../componentes/Icono'
-import { cx } from '../../componentes/ui'
+import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { CajaDelDia } from './CajaDelDia'
@@ -12,25 +11,19 @@ import { Mora } from './Mora'
 
 type IdSeccion = 'caja' | 'mora' | 'imputados' | 'comisiones'
 
-interface Seccion {
-  id: IdSeccion
-  nombre: string
-  icono: NombreIcono
-}
-
 export function Cobranzas() {
   const usuario = useUsuarioActual()
   const { parametros, limpiarParametros } = useNavegacion()
 
   // Las comisiones son información de la agencia, no del mostrador: sólo las ven los administradores.
   // El proceso principal lo vuelve a controlar en cada llamado.
-  const secciones = useMemo<Seccion[]>(() => {
-    const lista: Seccion[] = [
-      { id: 'caja', nombre: 'Caja del día', icono: 'billete' },
-      { id: 'mora', nombre: 'Mora', icono: 'alerta' },
-      { id: 'imputados', nombre: 'Imputados', icono: 'tabla' },
+  const secciones = useMemo<ItemDePestana<IdSeccion>[]>(() => {
+    const lista: ItemDePestana<IdSeccion>[] = [
+      { id: 'caja', nombre: 'Caja del día', icono: 'billete', ayuda: 'cobranzas.caja' },
+      { id: 'mora', nombre: 'Mora', icono: 'alerta', ayuda: 'cobranzas.mora' },
+      { id: 'imputados', nombre: 'Imputados', icono: 'tabla', ayuda: 'imputados' },
     ]
-    if (usuario.rol !== 'EMPLEADO') lista.push({ id: 'comisiones', nombre: 'Comisiones', icono: 'porcentaje' })
+    if (usuario.rol !== 'EMPLEADO') lista.push({ id: 'comisiones', nombre: 'Comisiones', icono: 'porcentaje', ayuda: 'cobranzas.comisiones' })
     return lista
   }, [usuario.rol])
 
@@ -47,32 +40,13 @@ export function Cobranzas() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-slate-200 bg-white px-8">
-        <div role="tablist" aria-label="Secciones de cobranzas" className="-mb-px flex gap-6">
-          {secciones.map((candidata) => {
-            const activa = candidata.id === seccion
-            return (
-              <button
-                key={candidata.id}
-                type="button"
-                role="tab"
-                id={`tab-cobranzas-${candidata.id}`}
-                aria-selected={activa}
-                aria-controls={activa ? `panel-cobranzas-${candidata.id}` : undefined}
-                onClick={() => setSeccionActiva(candidata.id)}
-                className={cx(
-                  'inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40',
-                  activa ? 'border-marino-700 text-marino-800' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800',
-                )}
-              >
-                <Icono nombre={candidata.icono} tamano={16} />
-                {candidata.nombre}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      <BarraDePestanas
+        etiqueta="Secciones de cobranzas"
+        prefijo="cobranzas"
+        items={secciones}
+        activa={seccion}
+        alElegir={setSeccionActiva}
+      />
 
       <div
         id={`panel-cobranzas-${seccion}`}

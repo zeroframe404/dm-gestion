@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FilaCliente, FiltroEstadoCliente, FiltrosClientes, ListadoClientes, ResumenDeClientes } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
+import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { DialogoDeudores } from './DialogoDeudores'
@@ -247,6 +248,7 @@ function ListadoDeClientes({
           <Boton variante="primario" icono="mas" onClick={() => setDialogoAbierto(true)}>
             Nuevo cliente
           </Boton>
+          <BotonAyuda clave="clientes" />
         </div>
       </div>
 

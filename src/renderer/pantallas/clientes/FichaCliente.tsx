@@ -20,19 +20,20 @@ import {
 } from '../../../shared/tipos'
 import { Icono, type NombreIcono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
+import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { DialogoPagoDelCliente, DialogoSiniestro } from './DialogosDeFicha'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
 type IdPestana = 'datos' | 'vehiculos' | 'polizas' | 'pagos' | 'siniestros' | 'notas'
 
-const PESTANAS: Array<{ id: IdPestana; nombre: string; icono: NombreIcono }> = [
-  { id: 'datos', nombre: 'Datos', icono: 'usuario' },
-  { id: 'vehiculos', nombre: 'Vehículos', icono: 'auto' },
-  { id: 'polizas', nombre: 'Pólizas', icono: 'polizas' },
-  { id: 'pagos', nombre: 'Pagos', icono: 'billete' },
-  { id: 'siniestros', nombre: 'Siniestros', icono: 'siniestros' },
-  { id: 'notas', nombre: 'Notas y tareas', icono: 'mensaje' },
+const PESTANAS: Array<{ id: IdPestana; nombre: string; icono: NombreIcono; ayuda: string }> = [
+  { id: 'datos', nombre: 'Datos', icono: 'usuario', ayuda: 'clientes.datos' },
+  { id: 'vehiculos', nombre: 'Vehículos', icono: 'auto', ayuda: 'clientes.vehiculos' },
+  { id: 'polizas', nombre: 'Pólizas', icono: 'polizas', ayuda: 'clientes.polizas' },
+  { id: 'pagos', nombre: 'Pagos', icono: 'billete', ayuda: 'clientes.pagos' },
+  { id: 'siniestros', nombre: 'Siniestros', icono: 'siniestros', ayuda: 'clientes.siniestros' },
+  { id: 'notas', nombre: 'Notas y tareas', icono: 'mensaje', ayuda: 'clientes.notas' },
 ]
 
 const TH = 'px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 whitespace-nowrap'
@@ -155,32 +156,35 @@ export function FichaDelCliente({ clienteId, alVolver }: { clienteId: number; al
           </div>
         </div>
 
-        <div role="tablist" aria-label="Secciones de la ficha" className="-mb-4 mt-3 flex gap-6 overflow-x-auto">
-          {PESTANAS.map((candidata) => {
-            const activa = candidata.id === pestana
-            const cuenta = cuentas[candidata.id]
-            return (
-              <button
-                key={candidata.id}
-                type="button"
-                role="tab"
-                aria-selected={activa}
-                onClick={() => setPestana(candidata.id)}
-                className={cx(
-                  'inline-flex shrink-0 items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition-colors',
-                  activa ? 'border-marino-700 text-marino-800' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800',
-                )}
-              >
-                <Icono nombre={candidata.icono} tamano={16} />
-                {candidata.nombre}
-                {cuenta !== null && (
-                  <span className={cx('rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums', activa ? 'bg-marino-100 text-marino-800' : 'bg-slate-100 text-slate-500')}>
-                    {cuenta}
-                  </span>
-                )}
-              </button>
-            )
-          })}
+        <div className="mt-3 flex items-center gap-3">
+          <div role="tablist" aria-label="Secciones de la ficha" className="-mb-4 flex flex-1 gap-6 overflow-x-auto">
+            {PESTANAS.map((candidata) => {
+              const activa = candidata.id === pestana
+              const cuenta = cuentas[candidata.id]
+              return (
+                <button
+                  key={candidata.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activa}
+                  onClick={() => setPestana(candidata.id)}
+                  className={cx(
+                    'inline-flex shrink-0 items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition-colors',
+                    activa ? 'border-marino-700 text-marino-800' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800',
+                  )}
+                >
+                  <Icono nombre={candidata.icono} tamano={16} />
+                  {candidata.nombre}
+                  {cuenta !== null && (
+                    <span className={cx('rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums', activa ? 'bg-marino-100 text-marino-800' : 'bg-slate-100 text-slate-500')}>
+                      {cuenta}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          <BotonAyuda clave={PESTANAS.find((p) => p.id === pestana)?.ayuda ?? 'clientes.datos'} className="mb-3 shrink-0" />
         </div>
       </div>
 

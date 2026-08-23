@@ -15,16 +15,16 @@ import type {
   FormatoDeReporte,
   VistaPreviaDeReporte,
 } from '../../../shared/tipos'
-import { Icono, type NombreIcono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Tarjeta } from '../../componentes/ui'
+import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 
 const FILTROS_VACIOS: FiltrosDeReporte = { periodo: '', sucursal: '', compania: '', estado: '', busqueda: '', desde: '', hasta: '' }
 
 type IdSeccion = 'exportaciones' | 'clasica'
 
-const SECCIONES: Array<{ id: IdSeccion; nombre: string; icono: NombreIcono }> = [
-  { id: 'exportaciones', nombre: 'Exportaciones', icono: 'descargar' },
-  { id: 'clasica', nombre: 'Planilla clásica', icono: 'tabla' },
+const SECCIONES: ItemDePestana<IdSeccion>[] = [
+  { id: 'exportaciones', nombre: 'Exportaciones', icono: 'descargar', ayuda: 'reportes.exportaciones' },
+  { id: 'clasica', nombre: 'Planilla clásica', icono: 'tabla', ayuda: 'reportes.clasica' },
 ]
 
 export function Reportes() {
@@ -52,32 +52,7 @@ export function Reportes() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-slate-200 bg-white px-8">
-        <div role="tablist" aria-label="Secciones de reportes" className="-mb-px flex gap-6">
-          {SECCIONES.map((candidata) => {
-            const activa = candidata.id === seccion
-            return (
-              <button
-                key={candidata.id}
-                type="button"
-                role="tab"
-                id={`tab-reportes-${candidata.id}`}
-                aria-selected={activa}
-                aria-controls={activa ? `panel-reportes-${candidata.id}` : undefined}
-                onClick={() => setSeccion(candidata.id)}
-                className={cx(
-                  'inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-semibold transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40',
-                  activa ? 'border-marino-700 text-marino-800' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800',
-                )}
-              >
-                <Icono nombre={candidata.icono} tamano={16} />
-                {candidata.nombre}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      <BarraDePestanas etiqueta="Secciones de reportes" prefijo="reportes" items={SECCIONES} activa={seccion} alElegir={setSeccion} />
 
       <div
         id={`panel-reportes-${seccion}`}

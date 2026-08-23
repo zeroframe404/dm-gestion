@@ -222,6 +222,9 @@ const api: ApiDm = {
     instalarAhora: () => invocar('actualizaciones:instalarAhora'),
     alCambiarEstado: (escuchar) => suscribir('actualizaciones:estado', escuchar),
   },
+  ayuda: {
+    guardarPdf: (pedido) => invocar('ayuda:guardarPdf', pedido),
+  },
 }
 
 contextBridge.exposeInMainWorld('dm', api)
