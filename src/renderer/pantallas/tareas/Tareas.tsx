@@ -21,6 +21,7 @@ import { useNavegacion } from '../../contexto/Navegacion'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoNuevaTarea } from './DialogoNuevaTarea'
 import { FichaTarea } from './FichaTarea'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 /** La urgencia con su color: ALTA se tiene que ver desde la otra punta de la pantalla. */
 export const CLASES_PRIORIDAD: Record<PrioridadTarea, string> = {
@@ -30,6 +31,7 @@ export const CLASES_PRIORIDAD: Record<PrioridadTarea, string> = {
 }
 
 export function Tareas() {
+  const puedeEditar = usePuedeEditar('tareas')
   const { parametros, limpiarParametros, ir } = useNavegacion()
   const usuario = useUsuarioActual()
   // Arranca en lo mío: es la pregunta con la que uno abre el módulo.
@@ -147,9 +149,11 @@ export function Tareas() {
         </label>
 
         <div className="ml-auto flex items-center gap-2">
-          <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)}>
-            Nueva tarea
-          </Boton>
+          {puedeEditar && (
+            <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)}>
+              Nueva tarea
+            </Boton>
+          )}
           <BotonAyuda clave="tareas" />
         </div>
       </div>

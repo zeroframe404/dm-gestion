@@ -40,6 +40,12 @@ const api: ApiDm = {
     estado: (comprobar) => invocar('usuarios:estado', comprobar),
     subirLocales: () => invocar('usuarios:subirLocales'),
   },
+  permisos: {
+    mios: () => invocar('permisos:mios'),
+    matriz: () => invocar('permisos:matriz'),
+    guardar: (permisos) => invocar('permisos:guardar', permisos),
+    alCambiar: (escuchar) => suscribir('permisos:cambiaron', escuchar),
+  },
   config: {
     estadoGoogle: () => invocar('config:estadoGoogle'),
     guardarGoogle: (datos) => invocar('config:guardarGoogle', datos),

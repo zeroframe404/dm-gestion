@@ -22,6 +22,7 @@ import { Icono, type NombreIcono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
+import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
 import { DialogoPagoDelCliente, DialogoSiniestro } from './DialogosDeFicha'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
@@ -56,6 +57,7 @@ function datosDe(ficha: FichaCliente): DatosDeCliente {
 
 export function FichaDelCliente({ clienteId, alVolver }: { clienteId: number; alVolver: () => void }) {
   const { ir } = useNavegacion()
+  const { puedeEditar, puedeVer } = usePermisos()
   const [ficha, setFicha] = useState<FichaCliente | null>(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -137,22 +139,33 @@ export function FichaDelCliente({ clienteId, alVolver }: { clienteId: number; al
             </p>
           </div>
 
+          {/* Cada atajo lleva a otro módulo: se ofrece sólo si esta persona puede trabajar allá. */}
           <div className="flex flex-wrap items-center gap-2">
-            <Boton variante="primario" icono="mas" onClick={() => ir('polizas', { nuevaPolizaPara: ficha.id })}>
-              Nueva póliza
-            </Boton>
-            <Boton icono="billete" onClick={() => setPagoAbierto(true)}>
-              Registrar pago
-            </Boton>
-            <Boton icono="siniestros" onClick={() => setSiniestroAbierto(true)}>
-              Cargar siniestro
-            </Boton>
-            <Boton icono="presupuestos" onClick={() => ir('presupuestos', { nuevoPresupuestoParaCliente: ficha.id })}>
-              Presupuestar
-            </Boton>
-            <Boton icono="tareas" onClick={() => setTareaAbierta(true)}>
-              Nueva tarea
-            </Boton>
+            {puedeEditar('polizas') && (
+              <Boton variante="primario" icono="mas" onClick={() => ir('polizas', { nuevaPolizaPara: ficha.id })}>
+                Nueva póliza
+              </Boton>
+            )}
+            {(puedeEditar('cartera') || puedeEditar('cobranzas') || puedeEditar('clientes')) && (
+              <Boton icono="billete" onClick={() => setPagoAbierto(true)}>
+                Registrar pago
+              </Boton>
+            )}
+            {puedeEditar('siniestros') && (
+              <Boton icono="siniestros" onClick={() => setSiniestroAbierto(true)}>
+                Cargar siniestro
+              </Boton>
+            )}
+            {puedeVer('presupuestos') && (
+              <Boton icono="presupuestos" onClick={() => ir('presupuestos', { nuevoPresupuestoParaCliente: ficha.id })}>
+                Presupuestar
+              </Boton>
+            )}
+            {(puedeEditar('tareas') || puedeEditar('clientes')) && (
+              <Boton icono="tareas" onClick={() => setTareaAbierta(true)}>
+                Nueva tarea
+              </Boton>
+            )}
           </div>
         </div>
 
@@ -258,6 +271,7 @@ function PestanaDatos({
   alGuardar: (ficha: FichaCliente) => void
   alAvisar: (mensaje: string | null) => void
 }) {
+  const puedeEditar = usePuedeEditar('clientes')
   const [borrador, setBorrador] = useState<DatosDeCliente>(() => datosDe(ficha))
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -342,13 +356,15 @@ function PestanaDatos({
       )}
 
       <div className="mt-5 flex items-center gap-2 border-t border-slate-200 pt-4">
-        <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios}>
+        <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios || !puedeEditar}>
           Guardar cambios
         </Boton>
         <Boton variante="fantasma" onClick={() => setBorrador(datosDe(ficha))} disabled={!hayCambios || guardando}>
           Descartar
         </Boton>
-        <span className="text-xs text-slate-500">{hayCambios ? 'Hay cambios sin guardar.' : 'No hay cambios pendientes.'}</span>
+        <span className="text-xs text-slate-500">
+          {!puedeEditar ? 'Tenés Clientes en sólo lectura.' : hayCambios ? 'Hay cambios sin guardar.' : 'No hay cambios pendientes.'}
+        </span>
       </div>
     </section>
   )
@@ -646,6 +662,9 @@ function PestanaNotas({
   alCambiar: (actualizar: (previa: FichaCliente | null) => FichaCliente | null) => void
   alNuevaTarea: () => void
 }) {
+  const { puedeEditar } = usePermisos()
+  const puedeAnotar = puedeEditar('clientes')
+  const puedeTareas = puedeEditar('tareas') || puedeAnotar
   const [texto, setTexto] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -690,7 +709,7 @@ function PestanaNotas({
             ayuda="Queda con tu nombre y la fecha. Las notas no se borran."
           />
           <div className="mt-3 flex justify-end">
-            <Boton variante="primario" icono="mas" onClick={() => void agregar()} cargando={guardando} disabled={!texto.trim()}>
+            <Boton variante="primario" icono="mas" onClick={() => void agregar()} cargando={guardando} disabled={!texto.trim() || !puedeAnotar}>
               Agregar nota
             </Boton>
           </div>
@@ -718,9 +737,11 @@ function PestanaNotas({
       <section className="flex min-w-0 flex-1 flex-col gap-3">
         <div className="flex items-center gap-3">
           <Rotulo texto="Tareas" cantidad={ficha.tareas.length} />
-          <Boton tamano="sm" icono="mas" onClick={alNuevaTarea} className="ml-auto">
-            Nueva tarea
-          </Boton>
+          {puedeTareas && (
+            <Boton tamano="sm" icono="mas" onClick={alNuevaTarea} className="ml-auto">
+              Nueva tarea
+            </Boton>
+          )}
         </div>
 
         {ficha.tareas.length === 0 ? (

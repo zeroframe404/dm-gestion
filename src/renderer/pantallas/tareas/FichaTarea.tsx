@@ -15,6 +15,7 @@ import {
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Selector, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { CLASES_PRIORIDAD, EtiquetaDeVencimiento } from './Tareas'
 
@@ -33,7 +34,8 @@ function pesoDeArchivo(bytes: number): string {
 export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: () => void }) {
   const { ir } = useNavegacion()
   const usuario = useUsuarioActual()
-  const puedeBorrarDocumentos = usuario.rol !== 'EMPLEADO'
+  const puedeEditar = usePuedeEditar('tareas')
+  const puedeBorrarDocumentos = usuario.rol !== 'EMPLEADO' && puedeEditar
 
   const [ficha, setFicha] = useState<Ficha | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -120,7 +122,7 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
 
         <select
           value={t.estado}
-          disabled={trabajando}
+          disabled={trabajando || !puedeEditar}
           aria-label="Estado de la tarea"
           onChange={(e) => void hacer(async () => {
             const cambio = await window.dm.tareas.cambiarEstado(t.id, e.target.value as EstadoTarea)
@@ -173,27 +175,30 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
           }
         >
           <div className="flex flex-col gap-4">
-            <Campo etiqueta="Qué hay que hacer" value={actuales.titulo} onChange={(e) => cambiar({ titulo: e.target.value })} />
-            <AreaTexto etiqueta="Descripción" rows={4} value={actuales.detalle} onChange={(e) => cambiar({ detalle: e.target.value })} />
+            <Campo etiqueta="Qué hay que hacer" value={actuales.titulo} disabled={!puedeEditar} onChange={(e) => cambiar({ titulo: e.target.value })} />
+            <AreaTexto etiqueta="Descripción" rows={4} value={actuales.detalle} disabled={!puedeEditar} onChange={(e) => cambiar({ detalle: e.target.value })} />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Selector
                 etiqueta="Asignada a"
                 value={actuales.responsableId ?? ''}
+                disabled={!puedeEditar}
                 onChange={(e) => cambiar({ responsableId: e.target.value ? Number(e.target.value) : null })}
                 opciones={[{ valor: '', texto: 'Sin responsable' }, ...ficha.responsables.map((r) => ({ valor: r.id, texto: r.nombre }))]}
               />
               <Selector
                 etiqueta="Sucursal"
                 value={actuales.sucursal}
+                disabled={!puedeEditar}
                 onChange={(e) => cambiar({ sucursal: e.target.value })}
                 opciones={[{ valor: '', texto: 'Sin sucursal' }, ...opcionesDeSucursal.map((s) => ({ valor: s, texto: s }))]}
               />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Campo etiqueta="Vence" type="date" value={actuales.venceEl} onChange={(e) => cambiar({ venceEl: e.target.value })} />
+              <Campo etiqueta="Vence" type="date" value={actuales.venceEl} disabled={!puedeEditar} onChange={(e) => cambiar({ venceEl: e.target.value })} />
               <Selector
                 etiqueta="Prioridad"
                 value={actuales.prioridad}
+                disabled={!puedeEditar}
                 onChange={(e) => cambiar({ prioridad: e.target.value as PrioridadTarea })}
                 opciones={PRIORIDADES_DE_TAREA.map((p) => ({ valor: p, texto: p }))}
               />
@@ -205,7 +210,7 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
           titulo="Documentos"
           descripcion={`Se guardan en ${ficha.carpetaDeAdjuntos} y, si hay conexión con Google, se suben además a la carpeta «Adjuntos DM» del Drive.`}
           acciones={
-            <Boton icono="clip" cargando={trabajando} onClick={() => void hacer(() => window.dm.tareas.adjuntar(t.id, null))}>
+            <Boton icono="clip" cargando={trabajando} disabled={!puedeEditar} onClick={() => void hacer(() => window.dm.tareas.adjuntar(t.id, null))}>
               Adjuntar
             </Boton>
           }
@@ -267,7 +272,7 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
               variante="primario"
               icono="mas"
               className="ml-auto"
-              disabled={!comentario.trim()}
+              disabled={!comentario.trim() || !puedeEditar}
               cargando={trabajando}
               onClick={async () => {
                 const ok = await hacer(() => window.dm.tareas.comentar(t.id, comentario))

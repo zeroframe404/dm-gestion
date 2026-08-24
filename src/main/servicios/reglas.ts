@@ -14,6 +14,7 @@ import { db } from '../db/base'
 import { ahoraIso, generarId, limpiar, normalizarTexto } from '../importacion/normalizar'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio, type AccionHistorial } from './historial'
+import { puedeEditar } from './permisos'
 import { enteroPositivo, objeto, texto } from './validacion'
 
 /** Pestaña de las reglas que nacen en la aplicación: no existe en la hoja, y ése es el punto. */
@@ -163,7 +164,8 @@ export function matrizDeCobertura(actor: SesionUsuario): MatrizDeCobertura {
     reglas,
     faltantes: combinacionesSinRegla(reglas),
     referencia: filasDeReferencia(),
-    puedeEditar: actor.rol === 'SUPER_ADMIN',
+    // Sigue siendo cosa del superadministrador, y además hace falta poder editar Cartera.
+    puedeEditar: actor.rol === 'SUPER_ADMIN' && puedeEditar(actor, 'cartera'),
     anioActual: anioDeHoy(),
   }
 }

@@ -9,6 +9,7 @@ import { esDebitoAutomatico } from '../../../shared/semaforo'
 import type { CampoDeRiesgo, FilaRiesgoVario, ListadoRiesgos } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { DialogoNuevoRiesgo } from './DialogoNuevoRiesgo'
 
 function normalizar(valor: string | null | undefined): string {
@@ -45,6 +46,7 @@ const COLUMNAS: Columna[] = [
 ]
 
 export function RiesgosVarios() {
+  const puedeEditar = usePuedeEditar('cartera')
   const [datos, setDatos] = useState<ListadoRiesgos | null>(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -122,9 +124,11 @@ export function RiesgosVarios() {
         <span className="text-sm text-slate-500">
           {filtradas.length.toLocaleString('es-AR')} de {datos.total.toLocaleString('es-AR')} riesgos
         </span>
-        <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)} className="ml-auto">
-          Nuevo riesgo
-        </Boton>
+        {puedeEditar && (
+          <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)} className="ml-auto">
+            Nuevo riesgo
+          </Boton>
+        )}
       </div>
 
       {error && <Alerta tono="error">{error}</Alerta>}
@@ -171,6 +175,7 @@ export function RiesgosVarios() {
                       campo={columna.campo}
                       opciones={columna.opciones?.(datos)}
                       editando={editando?.id === fila.id && editando.campo === columna.campo}
+                      soloLectura={!puedeEditar}
                       alEditar={() => setEditando({ id: fila.id, campo: columna.campo })}
                       alCancelar={() => setEditando(null)}
                       alGuardar={(valor) => void guardar(fila.id, columna.campo, valor)}
@@ -204,6 +209,7 @@ function Celda({
   campo,
   opciones,
   editando,
+  soloLectura,
   alEditar,
   alCancelar,
   alGuardar,
@@ -212,6 +218,7 @@ function Celda({
   campo: CampoDeRiesgo
   opciones?: string[]
   editando: boolean
+  soloLectura: boolean
   alEditar: () => void
   alCancelar: () => void
   alGuardar: (valor: string) => void
@@ -221,7 +228,11 @@ function Celda({
 
   if (!editando) {
     return (
-      <span onDoubleClick={alEditar} title={valor || 'Doble clic para cargar'} className="block w-full cursor-text truncate">
+      <span
+        onDoubleClick={soloLectura ? undefined : alEditar}
+        title={valor || (soloLectura ? undefined : 'Doble clic para cargar')}
+        className={cx('block w-full truncate', !soloLectura && 'cursor-text')}
+      >
         {valor || <span className="text-slate-300">—</span>}
       </span>
     )

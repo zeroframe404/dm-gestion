@@ -1,12 +1,15 @@
 // Raíz de la interfaz: decide entre carga, login, cambio de contraseña obligatorio y el escritorio.
+import type { ReactNode } from 'react'
 import { AvisoActualizacion } from './componentes/AvisoActualizacion'
 import { BarraLateral } from './componentes/BarraLateral'
 import { BarraSuperior } from './componentes/BarraSuperior'
 import { Icono } from './componentes/Icono'
 import { Proximamente } from './componentes/Proximamente'
+import { Alerta } from './componentes/ui'
 import { ProveedorNavegacion, useNavegacion } from './contexto/Navegacion'
+import { ProveedorPermisos, usePermisos } from './contexto/Permisos'
 import { useSesion } from './contexto/Sesion'
-import { buscarModulo } from './modulos'
+import { buscarModulo, esAreaDePermisos, type IdModulo } from './modulos'
 import { Administracion } from './pantallas/administracion/Administracion'
 import { Cartera } from './pantallas/cartera/Cartera'
 import { Clientes } from './pantallas/clientes/Clientes'
@@ -31,10 +34,22 @@ export function App() {
   if (!usuario) return <Login />
   if (usuario.debeCambiarClave) return <CambiarClave />
   return (
-    <ProveedorNavegacion>
-      <Escritorio />
-    </ProveedorNavegacion>
+    <ProveedorPermisos>
+      <ProveedorNavegacion>
+        <ConPermisosCargados />
+      </ProveedorNavegacion>
+    </ProveedorPermisos>
   )
+}
+
+/**
+ * La barra lateral depende de los permisos: se esperan antes de dibujar el escritorio para no mostrar
+ * módulos que enseguida van a desaparecer.
+ */
+function ConPermisosCargados() {
+  const { cargando } = usePermisos()
+  if (cargando) return <PantallaDeCarga />
+  return <Escritorio />
 }
 
 function PantallaDeCarga() {
@@ -48,7 +63,23 @@ function PantallaDeCarga() {
 /** Ventana principal: barra lateral, barra superior y el módulo activo. */
 function Escritorio() {
   const { modulo: moduloActivo, ir } = useNavegacion()
+  const { puedeVer } = usePermisos()
   const modulo = buscarModulo(moduloActivo)
+
+  // Sin permiso no se abre el módulo, aunque se haya llegado por un atajo (Inicio, la campana de
+  // tareas o el módulo que quedó abierto cuando le sacaron el permiso mientras trabajaba).
+  //
+  // Administración es la excepción: se abre siempre porque «Acerca de» la ve todo el mundo (ahí está
+  // la versión y el estado del acceso, que es lo primero que se pregunta cuando algo falla). Adentro,
+  // la pantalla muestra sólo las secciones que correspondan.
+  const area = esAreaDePermisos(modulo.id) && modulo.id !== 'administracion' ? modulo.id : null
+  if (area && !puedeVer(area)) {
+    return (
+      <Marco moduloActivo={moduloActivo} titulo={modulo.nombre} alElegir={ir}>
+        <SinPermiso nombre={modulo.nombre} />
+      </Marco>
+    )
+  }
 
   let contenido
   if (modulo.id === 'inicio') {
@@ -84,13 +115,43 @@ function Escritorio() {
   }
 
   return (
+    <Marco moduloActivo={moduloActivo} titulo={modulo.nombre} alElegir={ir}>
+      {contenido}
+    </Marco>
+  )
+}
+
+/** El marco de siempre: barra lateral, barra superior y el contenido en el medio. */
+function Marco({
+  moduloActivo,
+  titulo,
+  alElegir,
+  children,
+}: {
+  moduloActivo: IdModulo
+  titulo: string
+  alElegir: (destino: IdModulo) => void
+  children: ReactNode
+}) {
+  return (
     <div className="flex h-full">
-      <BarraLateral moduloActivo={moduloActivo} alElegir={(destino) => ir(destino)} />
+      <BarraLateral moduloActivo={moduloActivo} alElegir={alElegir} />
       <div className="flex min-w-0 flex-1 flex-col">
         <AvisoActualizacion />
-        <BarraSuperior titulo={modulo.nombre} />
-        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">{contenido}</main>
+        <BarraSuperior titulo={titulo} />
+        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</main>
       </div>
+    </div>
+  )
+}
+
+function SinPermiso({ nombre }: { nombre: string }) {
+  return (
+    <div className="p-8">
+      <Alerta tono="aviso">
+        No tenés permiso para entrar a <strong className="font-semibold">{nombre}</strong>. Si lo necesitás para trabajar,
+        pedíselo a un administrador: se configura en Administración → Permisos.
+      </Alerta>
     </div>
   )
 }

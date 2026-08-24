@@ -29,6 +29,7 @@
     "humo:fase9": "node scripts/humo-fase9.mjs",
     "humo:deudores": "node scripts/humo-deudores.mjs",
     "humo:usuarios": "node scripts/humo-usuarios.mjs",
+    "humo:permisos": "node scripts/humo-permisos.mjs",
     "clave-hash": "node scripts/clave-hash.mjs"
   },
   "dependencies": {

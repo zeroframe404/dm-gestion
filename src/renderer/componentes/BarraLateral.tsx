@@ -1,5 +1,7 @@
-// Barra lateral azul marino con todos los módulos y, separada al pie, Administración.
-import { MODULO_ADMINISTRACION, MODULOS, type IdModulo, type Modulo } from '../modulos'
+// Barra lateral azul marino con los módulos que el usuario puede ver y, separada al pie, Administración.
+import { useMemo } from 'react'
+import { usePermisos } from '../contexto/Permisos'
+import { esAreaDePermisos, MODULO_ADMINISTRACION, MODULOS, type IdModulo, type Modulo } from '../modulos'
 import { Icono } from './Icono'
 import { cx } from './ui'
 
@@ -9,6 +11,14 @@ interface PropsBarraLateral {
 }
 
 export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
+  const { puedeVer } = usePermisos()
+  // Inicio siempre está; el resto, según los permisos del rol. Administración también, porque «Acerca
+  // de» la ve todo el mundo: adentro se muestran sólo las secciones que correspondan.
+  const visibles = useMemo(
+    () => MODULOS.filter((modulo) => !esAreaDePermisos(modulo.id) || puedeVer(modulo.id)),
+    [puedeVer],
+  )
+
   return (
     <aside className="flex w-68 shrink-0 flex-col bg-marino-950 text-white/75">
       <div className="flex items-center gap-3 border-b border-white/10 px-5 py-5">
@@ -25,7 +35,7 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Módulos">
         <p className="px-3 pb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-200">Principal</p>
         <ul className="flex flex-col gap-0.5">
-          {MODULOS.map((modulo) => (
+          {visibles.map((modulo) => (
             <li key={modulo.id}>
               <ItemMenu modulo={modulo} activo={modulo.id === moduloActivo} alElegir={alElegir} />
             </li>

@@ -18,6 +18,7 @@ import { NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Selector } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
 interface Props {
@@ -75,6 +76,7 @@ interface ClienteElegido {
 export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuardar, alDarDeBaja }: Props) {
   const usuario = useUsuarioActual()
   const { ir } = useNavegacion()
+  const puedeEditar = usePuedeEditar('polizas')
   const puedeConfirmarAvisos = usuario.rol !== 'EMPLEADO'
   const enEdicion = polizaId !== null
 
@@ -323,7 +325,7 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
         )}
         <div className="ml-auto flex items-center gap-2">
           {enEdicion && poliza?.estado !== 'BAJA' && (
-            <Boton variante="peligro" icono="cerrar" onClick={() => setBajaAbierta(true)} disabled={guardando}>
+            <Boton variante="peligro" icono="cerrar" onClick={() => setBajaAbierta(true)} disabled={guardando || !puedeEditar}>
               Dar de baja
             </Boton>
           )}
@@ -332,13 +334,15 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
             icono="ok"
             onClick={() => void guardar()}
             cargando={guardando}
-            disabled={bloqueadoPorAviso}
+            disabled={bloqueadoPorAviso || !puedeEditar}
             title={
-              bloqueadoPorAviso
-                ? puedeConfirmarAvisos
-                  ? 'Hay un aviso de antigüedad sin confirmar. Tildá «Continuar igual» o corregí la cobertura.'
-                  : 'Hay un aviso de antigüedad: lo tiene que confirmar un administrador.'
-                : undefined
+              !puedeEditar
+                ? 'Tenés Pólizas en sólo lectura.'
+                : bloqueadoPorAviso
+                  ? puedeConfirmarAvisos
+                    ? 'Hay un aviso de antigüedad sin confirmar. Tildá «Continuar igual» o corregí la cobertura.'
+                    : 'Hay un aviso de antigüedad: lo tiene que confirmar un administrador.'
+                  : undefined
             }
           >
             {enEdicion ? 'Guardar cambios' : 'Guardar póliza'}

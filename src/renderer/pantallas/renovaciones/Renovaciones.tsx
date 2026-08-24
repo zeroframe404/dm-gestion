@@ -19,6 +19,7 @@ import { Icono } from '../../componentes/Icono'
 import { Alerta as Aviso, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { DialogoNuevaTarea } from '../tareas/DialogoNuevaTarea'
 import { DialogoNoRenueva, DialogoRenovar } from './DialogoRenovar'
 
@@ -382,8 +383,11 @@ interface PropsFila {
 }
 
 function FilaDeRenovacion({ fila, guardando, responsables, alVerCliente, alActualizar, alRenovar, alNoRenovar, alCrearTarea }: PropsFila) {
+  const puedeEditar = usePuedeEditar('renovaciones')
   const porcentaje = porcentajeDeAumento(fila.observaciones)
   const resuelta = ESTADOS_RESUELTOS.includes(fila.estado)
+  // Sin permiso de edición la bandeja se mira, pero no se toca: es lo mismo que estar guardando.
+  const bloqueado = guardando || !puedeEditar
 
   return (
     <tr className={cx('border-b border-slate-100 last:border-b-0 align-top', resuelta && 'bg-slate-50/70', guardando && 'opacity-60')}>
@@ -430,7 +434,7 @@ function FilaDeRenovacion({ fila, guardando, responsables, alVerCliente, alActua
       <td className="px-2.5 py-2">
         <select
           value={fila.responsableId === null ? '' : String(fila.responsableId)}
-          disabled={guardando}
+          disabled={bloqueado}
           aria-label={`Responsable de la renovación de ${fila.clienteNombre ?? 'la póliza'}`}
           onChange={(evento) => alActualizar(fila, { responsableId: evento.target.value === '' ? null : Number(evento.target.value) })}
           className={cx(
@@ -449,7 +453,7 @@ function FilaDeRenovacion({ fila, guardando, responsables, alVerCliente, alActua
       <td className="px-2.5 py-2">
         <select
           value={fila.estado}
-          disabled={guardando}
+          disabled={bloqueado}
           aria-label={`Estado del trámite de ${fila.clienteNombre ?? 'la póliza'}`}
           onChange={(evento) => alActualizar(fila, { estado: evento.target.value as EstadoRenovacion })}
           className={cx('h-8 w-full min-w-[7.5rem] rounded-lg border px-1.5 text-xs', CLASES_ESTADO[fila.estado])}
@@ -464,21 +468,21 @@ function FilaDeRenovacion({ fila, guardando, responsables, alVerCliente, alActua
       <td className="px-2.5 py-2">
         <CampoNota
           valor={fila.nota}
-          disabled={guardando}
+          disabled={bloqueado}
           etiqueta={`Nota de la renovación de ${fila.clienteNombre ?? 'la póliza'}`}
           alGuardar={(nota) => alActualizar(fila, { nota })}
         />
       </td>
       <td className="px-2.5 py-2">
         <div className="flex items-center justify-end gap-1">
-          <Boton tamano="sm" icono="renovaciones" onClick={() => alRenovar(fila)} disabled={guardando}>
+          <Boton tamano="sm" icono="renovaciones" onClick={() => alRenovar(fila)} disabled={bloqueado}>
             Renovar
           </Boton>
           <button
             type="button"
             title="Anotar una tarea de esta renovación"
             aria-label={`Nueva tarea de la renovación de ${fila.clienteNombre ?? 'la póliza'}`}
-            disabled={guardando}
+            disabled={bloqueado}
             onClick={() => alCrearTarea(fila)}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-marino-300 hover:bg-marino-50 hover:text-marino-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -488,7 +492,7 @@ function FilaDeRenovacion({ fila, guardando, responsables, alVerCliente, alActua
             type="button"
             title="El cliente no renueva"
             aria-label={`Marcar que ${fila.clienteNombre ?? 'el cliente'} no renueva`}
-            disabled={guardando}
+            disabled={bloqueado}
             onClick={() => alNoRenovar(fila)}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
           >

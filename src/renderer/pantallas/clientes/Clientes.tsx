@@ -10,6 +10,7 @@ import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { DialogoDeudores } from './DialogoDeudores'
 import { DialogoNuevoCliente } from './DialogoNuevoCliente'
@@ -98,6 +99,7 @@ function ListadoDeClientes({
   busquedaInicial: string
   alAbrirCliente: (clienteId: number) => void
 }) {
+  const puedeEditar = usePuedeEditar('clientes')
   const [texto, setTexto] = useState(busquedaInicial)
   const [filtros, setFiltros] = useState<FiltrosClientes>({ ...FILTROS_VACIOS, busqueda: busquedaInicial })
   const [datos, setDatos] = useState<ListadoClientes | null>(null)
@@ -245,9 +247,11 @@ function ListadoDeClientes({
           <Boton icono="lupa" onClick={() => setDeudoresAbierto(true)} title="Buscar deudores por sucursal, compañía, forma de pago y día de vencimiento">
             Buscar deudores
           </Boton>
-          <Boton variante="primario" icono="mas" onClick={() => setDialogoAbierto(true)}>
-            Nuevo cliente
-          </Boton>
+          {puedeEditar && (
+            <Boton variante="primario" icono="mas" onClick={() => setDialogoAbierto(true)}>
+              Nuevo cliente
+            </Boton>
+          )}
           <BotonAyuda clave="clientes" />
         </div>
       </div>

@@ -19,6 +19,7 @@ import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { DialogoAltaSiniestro } from './DialogoAltaSiniestro'
 import { FichaSiniestro } from './FichaSiniestro'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 const FILTROS_VACIOS: FiltrosSiniestros = { periodo: '', busqueda: '', sucursal: '', compania: '', estado: '', soloRobos: false }
 
@@ -31,6 +32,7 @@ export const CLASES_ESTADO: Record<EstadoSiniestro, string> = {
 }
 
 export function Siniestros() {
+  const puedeEditar = usePuedeEditar('siniestros')
   const { parametros, limpiarParametros } = useNavegacion()
   const [datos, setDatos] = useState<ListadoSiniestros | null>(null)
   const [filtros, setFiltros] = useState<FiltrosSiniestros>(FILTROS_VACIOS)
@@ -129,9 +131,11 @@ export function Siniestros() {
         </label>
 
         <div className="ml-auto flex items-center gap-2">
-          <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)}>
-            Cargar siniestro
-          </Boton>
+          {puedeEditar && (
+            <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)}>
+              Cargar siniestro
+            </Boton>
+          )}
           <BotonAyuda clave="siniestros" />
         </div>
       </div>

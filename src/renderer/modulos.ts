@@ -1,4 +1,5 @@
 // Módulos de la aplicación, en el orden en que aparecen en la barra lateral.
+import { esArea, type Area } from '../shared/permisos'
 import type { NombreIcono } from './componentes/Icono'
 
 export type IdModulo =
@@ -116,6 +117,14 @@ export const MODULO_ADMINISTRACION: Modulo = {
   icono: 'administracion',
   descripcion: 'Usuarios, conexión con Google e información de la aplicación.',
   disponible: true,
+}
+
+/**
+ * Todos los módulos son un área de permisos menos Inicio, que es la pantalla que queda cuando no se
+ * tiene ninguna otra y por eso no se puede sacar.
+ */
+export function esAreaDePermisos(id: IdModulo): id is IdModulo & Area {
+  return esArea(id)
 }
 
 export function buscarModulo(id: IdModulo): Modulo {

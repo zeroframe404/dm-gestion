@@ -17,6 +17,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         titulo: 'Los tres roles',
         parrafos: [
           'EMPLEADO ve y usa el día a día de la agencia (cartera, clientes, cobranzas, siniestros, etcétera) pero no entra a Administración salvo «Acerca de». ADMIN ve además Compañías, Impresora, Conexión con Google, Importar desde Google y Sincronización. SUPER_ADMIN tiene todo lo anterior más esta pantalla, Usuarios, y es el único que puede resolver un problema serio con la lista compartida de usuarios si llegara a aparecer.',
+          'Eso es lo que trae cada rol de fábrica, y se puede recortar módulo por módulo en Administración → Permisos: por ejemplo, dejar a los empleados con Cobranzas en «sólo ver» o sin Marketing. Lo que ahí se configura vale para todas las computadoras de la agencia.',
         ],
       },
       {
@@ -43,6 +44,48 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Desactivar',
         explicacion: 'Le impide a una persona iniciar sesión, sin borrar nada de lo que cargó antes. Se puede reactivar en cualquier momento.',
+      },
+    ],
+  },
+  'administracion.permisos': {
+    clave: 'administracion.permisos',
+    titulo: 'Administración → Permisos',
+    resumen: 'Qué módulos ve y cuáles puede modificar cada rol. Sólo la ve y la cambia un superadministrador.',
+    secciones: [
+      {
+        titulo: 'Cómo se lee la tabla',
+        parrafos: [
+          'Hay una fila por cada módulo de la barra lateral y una columna por rol: Administrador y Empleado. En cada cruce se elige una de tres opciones. «Sin acceso» hace que ese módulo directamente no aparezca en la barra lateral de esa persona (y si intenta entrar igual, no se le abre). «Sólo ver» le deja abrir el módulo y mirar todo, pero los botones que cambian algo quedan apagados. «Ver y editar» es lo de siempre: trabaja el módulo como hasta ahora.',
+          'El superadministrador no tiene columna porque siempre tiene acceso completo a todo. Es a propósito: si pudiera sacarse permisos a sí mismo, la agencia se quedaría sin nadie que pueda devolvérselos.',
+        ],
+      },
+      {
+        titulo: 'Qué NO cambia con esto',
+        parrafos: [
+          'Los controles que ya existían por rol siguen valiendo igual, encima de lo que diga esta tabla. Cerrar el mes, deshacer una baja, ver las comisiones, borrar un documento de un siniestro o de una tarea, y administrar usuarios siguen pidiendo administrador o superadministrador aunque a un empleado se le dé «ver y editar» en ese módulo. En otras palabras: esta pantalla sirve para recortar, nunca para dar más de lo que el rol ya tenía.',
+          '«Acerca de» se ve siempre, aunque Administración quede en «sin acceso»: ahí está la versión del programa y el estado de la conexión, que es lo primero que se pregunta cuando algo falla. Inicio tampoco se puede sacar: es la pantalla que queda cuando alguien no tiene ningún otro módulo.',
+        ],
+      },
+      {
+        titulo: 'Dónde se guardan',
+        parrafos: [
+          'Los permisos viajan junto con la lista compartida de usuarios, así que valen igual en todas las computadoras de la agencia: se configuran una vez desde cualquier PC y el resto los toma la próxima vez que lee la lista (como mucho, unos minutos; en el momento, si la persona vuelve a entrar). Si todavía no se subió la lista compartida, valen sólo en esta computadora y suben con ella cuando se inicialice.',
+          'Cada cambio queda anotado en el historial con quién lo hizo y qué cambió, igual que cualquier otro cambio de la aplicación.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Sin acceso',
+        explicacion: 'El módulo no aparece en la barra lateral de ese rol y no se puede abrir.',
+      },
+      {
+        termino: 'Sólo ver',
+        explicacion: 'Puede abrir el módulo y consultarlo, pero no cargar, editar ni borrar nada ahí adentro.',
+      },
+      {
+        termino: 'Ver y editar',
+        explicacion: 'Trabaja el módulo con normalidad, siempre dentro de lo que ya permitía su rol.',
       },
     ],
   },

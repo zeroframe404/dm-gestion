@@ -1,5 +1,6 @@
 // Tipos compartidos entre el proceso principal, la precarga y el renderer.
 // Este archivo no puede importar nada de Electron ni de Node: lo usan los tres lados.
+import type { MatrizPermisos, PermisosDeUnRol } from './permisos'
 
 export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'EMPLEADO'] as const
 export type Rol = (typeof ROLES)[number]
@@ -118,6 +119,31 @@ export interface EstadoDeAcceso {
   tokenVence: string | null
   /** true cuando la sesión abierta se validó con la credencial guardada y todavía no se confirmó contra GitHub. */
   sesionSinConfirmar: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Permisos por rol (Administración → Permisos)
+// ---------------------------------------------------------------------------
+// Las áreas, los niveles y la matriz están en shared/permisos.ts, que es puro y lo usan los tres
+// lados. Acá viven nada más que las formas que viajan por IPC.
+
+/** Lo que ve la pantalla de permisos. */
+export interface MatrizDePermisos {
+  permisos: MatrizPermisos
+  /** Sólo el SUPER_ADMIN puede tocarla. */
+  puedeEditar: boolean
+  /**
+   * `compartida` = la matriz vive en usuarios.json y vale para todas las computadoras.
+   * `local` = todavía no hay base compartida (desarrollo, o antes de subir los usuarios) y sólo rige acá.
+   */
+  origen: 'compartida' | 'local'
+  actualizadoEn: string | null
+}
+
+/** Lo que le toca al usuario con la sesión abierta: es lo que consulta el renderer para mostrar u ocultar. */
+export interface MisPermisos {
+  rol: Rol
+  areas: PermisosDeUnRol
 }
 
 /** Lo que necesita Administración → Usuarios además de la lista. */

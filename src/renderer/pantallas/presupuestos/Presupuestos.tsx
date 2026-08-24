@@ -17,6 +17,7 @@ import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { FichaPresupuesto } from './FichaPresupuesto'
 import { FormularioPresupuesto } from './FormularioPresupuesto'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 const FILTROS_VACIOS: FiltrosPresupuestos = { busqueda: '', estado: '', sucursal: '', incluirVersiones: false }
 
@@ -28,6 +29,7 @@ export const CLASES_ESTADO_PRESUPUESTO: Record<EstadoPresupuesto, string> = {
 }
 
 export function Presupuestos() {
+  const puedeEditar = usePuedeEditar('presupuestos')
   const { parametros, limpiarParametros } = useNavegacion()
   const [datos, setDatos] = useState<ListadoPresupuestos | null>(null)
   const [filtros, setFiltros] = useState<FiltrosPresupuestos>(FILTROS_VACIOS)
@@ -133,9 +135,11 @@ export function Presupuestos() {
         </label>
 
         <div className="ml-auto flex items-center gap-2">
-          <Boton variante="primario" icono="mas" onClick={() => setAlta({ leadId: null, clienteId: null })}>
-            Nuevo presupuesto
-          </Boton>
+          {puedeEditar && (
+            <Boton variante="primario" icono="mas" onClick={() => setAlta({ leadId: null, clienteId: null })}>
+              Nuevo presupuesto
+            </Boton>
+          )}
           <BotonAyuda clave="presupuestos" />
         </div>
       </div>

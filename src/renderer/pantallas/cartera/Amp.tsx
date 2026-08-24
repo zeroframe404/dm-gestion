@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ListadoAmp } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 function normalizar(valor: string | null | undefined): string {
   return (valor ?? '')
@@ -17,6 +18,7 @@ function normalizar(valor: string | null | undefined): string {
 }
 
 export function Amp() {
+  const puedeEditar = usePuedeEditar('cartera')
   const [datos, setDatos] = useState<ListadoAmp | null>(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -134,7 +136,7 @@ export function Amp() {
                   <input
                     type="checkbox"
                     checked={fila.resuelto}
-                    disabled={guardando === fila.id}
+                    disabled={guardando === fila.id || !puedeEditar}
                     onChange={(evento) => void cambiar(fila.id, evento.target.checked)}
                     aria-label={`Marcar como resuelta la ampliación de ${fila.clienteNombre ?? 'este cliente'}`}
                     title={fila.resuelto ? `Resuelta por ${fila.resueltoPor ?? 'alguien'}` : 'Marcar como resuelta'}

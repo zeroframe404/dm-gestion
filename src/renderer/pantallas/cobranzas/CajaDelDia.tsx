@@ -7,8 +7,10 @@ import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoPagoManual } from './DialogoPagoManual'
 import { numero, pesos } from './formato'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 export function CajaDelDia() {
+  const puedeEditar = usePuedeEditar('cobranzas')
   const usuario = useUsuarioActual()
   const [datos, setDatos] = useState<DatosDeCaja | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -92,9 +94,11 @@ export function CajaDelDia() {
           <Boton icono="descargar" onClick={() => void exportar()} cargando={exportando} disabled={datos.pagos.length === 0}>
             Exportar el día
           </Boton>
-          <Boton variante="primario" icono="mas" onClick={() => setAbrirPago(true)}>
-            Registrar pago
-          </Boton>
+          {puedeEditar && (
+            <Boton variante="primario" icono="mas" onClick={() => setAbrirPago(true)}>
+              Registrar pago
+            </Boton>
+          )}
         </div>
       </div>
 
