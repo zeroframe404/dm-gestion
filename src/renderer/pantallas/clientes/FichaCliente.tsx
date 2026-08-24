@@ -775,10 +775,11 @@ function PestanaNotas({
                   </div>
                   <select
                     value={tarea.estado}
+                    disabled={!puedeTareas}
                     onChange={(evento) => void cambiarEstado(tarea.id, evento.target.value as EstadoTarea)}
                     aria-label={`Estado de la tarea «${tarea.titulo}»`}
                     className={cx(
-                      'h-8 shrink-0 rounded-lg border px-2 text-xs font-semibold',
+                      'h-8 shrink-0 rounded-lg border px-2 text-xs font-semibold disabled:opacity-60',
                       tarea.estado === 'hecha'
                         ? 'border-green-200 bg-green-50 text-green-700'
                         : tarea.estado === 'en gestion'

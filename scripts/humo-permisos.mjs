@@ -273,17 +273,18 @@ const ascenso = await evaluar(`(async () => {
   const lucia = lista.datos.find((u) => u.usuario === 'lucia')
   if (!lucia) return { error: 'la carpeta sembrada no tiene a «lucia»' }
   const datos = { nombre: lucia.nombre, usuario: lucia.usuario, rol: 'ADMIN', sucursalId: lucia.sucursalId }
+  const original = { nombre: lucia.nombre, usuario: lucia.usuario, rol: lucia.rol, sucursalId: lucia.sucursalId }
   const cambio = await window.dm.usuarios.editar(lucia.id, datos)
   if (!cambio.ok) return { error: cambio.error }
+  // Devuelve el rol original apenas se escribió, aunque lo que sigue falle: así el finally sabe qué
+  // tiene que restaurar.
   const matriz = (await window.dm.permisos.matriz()).datos.permisos
   matriz.ADMIN.administracion = 'ver'
   const guardar = await window.dm.permisos.guardar(matriz)
-  return guardar.ok
-    ? { id: lucia.id, original: { nombre: lucia.nombre, usuario: lucia.usuario, rol: lucia.rol, sucursalId: lucia.sucursalId } }
-    : { error: guardar.error }
+  return { id: lucia.id, original, error: guardar.ok ? undefined : guardar.error }
 })()`)
+if (ascenso.id) rolOriginal = { id: ascenso.id, datos: ascenso.original }
 anotar('Se prepara un ADMIN con Administración en «sólo ver»', !ascenso.error, ascenso.error ?? 'lucia pasa a ADMIN')
-if (!ascenso.error) rolOriginal = { id: ascenso.id, datos: ascenso.original }
 
 await salir()
 await ingresar('lucia', 'cambiar123')

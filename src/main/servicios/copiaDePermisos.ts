@@ -42,6 +42,15 @@ export function leerCopiaLocal(): MatrizPermisos {
 export function guardarCopiaLocal(permisos: MatrizPermisos, marca: string): void {
   const texto = JSON.stringify(permisos)
   if (texto === ultimaEnDisco) return
+  // Al arrancar el programa no hay nada en memoria y la primera lectura del archivo compartido pasa
+  // por acá, aunque la matriz sea la misma de siempre. Si se escribiera igual, `actualizado_en`
+  // pasaría a decir «cuándo abrí el programa» en vez de «cuándo cambió la matriz», que es lo que
+  // muestra la pantalla de Permisos.
+  const enLaBase = db().prepare('SELECT valor FROM configuracion WHERE clave = ?').get(CLAVE) as { valor: string } | undefined
+  if (enLaBase?.valor === texto) {
+    ultimaEnDisco = texto
+    return
+  }
   const guardar = db().prepare(
     `INSERT INTO configuracion (clave, valor, actualizado_en) VALUES (?, ?, ?)
      ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, actualizado_en = excluded.actualizado_en`,

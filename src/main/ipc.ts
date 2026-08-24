@@ -467,8 +467,10 @@ export function registrarIpc(): void {
     exigirVista('clientes')
     return exito(listarClientes(filtros))
   })
+  // Siniestros no está en la lista aunque también busque gente: tiene su propio buscador acotado
+  // (`siniestros:buscar`, que trae sólo a los que tienen póliza y sin datos de deuda).
   manejar('clientes:buscar', (busqueda) => {
-    exigirVista('clientes', 'polizas', 'presupuestos', 'siniestros', 'cobranzas')
+    exigirVista('clientes', 'polizas', 'presupuestos', 'cobranzas')
     return exito(buscarClientes(busqueda))
   })
   manejar('clientes:ficha', (clienteId) => {

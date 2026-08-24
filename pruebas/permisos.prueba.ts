@@ -274,18 +274,48 @@ test('con base compartida la matriz viaja en usuarios.json y llega a las demás 
 })
 
 test('la copia local deja trabajar con los permisos correctos aunque todavía no se haya podido leer GitHub', async () => {
-  await computadoraPrincipal()
+  const almacen = await computadoraPrincipal()
   const recortada = permisosPorDefecto()
   recortada.EMPLEADO.reportes = 'ninguno'
   await guardarPermisos(recortada, actor())
 
-  // La computadora arranca de nuevo sin haber leído el archivo (sin internet): la base local sigue
-  // siendo la misma, y la copia guardada en la última sincronización es la que rige.
   const copia = db().prepare(`SELECT valor FROM configuracion WHERE clave = 'permisos_roles'`).get() as { valor: string }
   assert.equal((JSON.parse(copia.valor) as MatrizPermisos).EMPLEADO.reportes, 'ninguno')
-  base.configurarBaseDeUsuarios({ almacen: null, credenciales: null, registrar: () => undefined })
+
+  // El programa arranca de nuevo en esta misma computadora: sigue trabajando contra la base
+  // compartida (`usaBaseCompartida()` es true porque la base local recuerda el modo), pero todavía no
+  // pudo leer el archivo. Es el caso del ingreso sin internet, y ahí manda la copia local.
+  base.configurarBaseDeUsuarios({
+    almacen,
+    credenciales: new AlmacenDeCredencial(path.join(carpetaTemporal(), 'credencial.bin'), cifradorDePrueba()),
+    memoriaSinInternetMs: 0,
+    registrar: () => undefined,
+  })
   olvidarLoConocido()
+  assert.equal(base.usaBaseCompartida(), true, 'la computadora sigue en modo compartido')
+  assert.equal(base.ultimoDocumentoLeido(), null, 'todavía no se leyó el archivo')
   assert.equal(puedeVer(MARIA, 'reportes'), false, 'la copia local manda mientras no se pueda leer GitHub')
+})
+
+test('la fecha de «última actualización» no se mueve por abrir el programa', async () => {
+  const almacen = await computadoraPrincipal()
+  const recortada = permisosPorDefecto()
+  recortada.EMPLEADO.metricas = 'ver'
+  await guardarPermisos(recortada, actor())
+  const cuandoCambio = matrizDePermisos(actor()).actualizadoEn
+  assert.ok(cuandoCambio)
+
+  // Arranca de nuevo y vuelve a leer el archivo: la matriz es la misma, así que la fecha no se toca.
+  base.configurarBaseDeUsuarios({
+    almacen,
+    credenciales: new AlmacenDeCredencial(path.join(carpetaTemporal(), 'credencial.bin'), cifradorDePrueba()),
+    memoriaSinInternetMs: 0,
+    registrar: () => undefined,
+  })
+  olvidarLoConocido()
+  await base.comprobarAcceso()
+  matrizVigente()
+  assert.equal(matrizDePermisos(DANIEL).actualizadoEn, cuandoCambio, 'abrir el programa no es cambiar la matriz')
 })
 
 test('cuando otra computadora cambia la matriz, la pantalla se entera al bajar el archivo', async () => {

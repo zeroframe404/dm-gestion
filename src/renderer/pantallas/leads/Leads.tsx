@@ -173,6 +173,7 @@ export function Leads() {
               <TarjetaDeLead
                 key={lead.id}
                 lead={lead}
+                puedeEditar={puedeEditar}
                 alAbrir={() => setAbierto(lead.id)}
                 alCambiarEstado={async (estado) => {
                   const resultado = await window.dm.leads.cambiarEstado(lead.id, estado)
@@ -202,10 +203,12 @@ export function Leads() {
 
 function TarjetaDeLead({
   lead,
+  puedeEditar,
   alAbrir,
   alCambiarEstado,
 }: {
   lead: FilaLead
+  puedeEditar: boolean
   alAbrir: () => void
   alCambiarEstado: (estado: EstadoLead) => void | Promise<void>
 }) {
@@ -239,9 +242,10 @@ function TarjetaDeLead({
       <div className="mt-auto flex items-center gap-2">
         <select
           value={lead.estado}
+          disabled={!puedeEditar}
           aria-label={`Estado de ${lead.nombre}`}
           onChange={(e) => void alCambiarEstado(e.target.value as EstadoLead)}
-          className={cx('h-8 rounded-lg border px-2 text-xs font-semibold', CLASES_ESTADO_LEAD[lead.estado])}
+          className={cx('h-8 rounded-lg border px-2 text-xs font-semibold disabled:opacity-60', CLASES_ESTADO_LEAD[lead.estado])}
         >
           {ESTADOS_DE_LEAD.map((estado) => (
             <option key={estado} value={estado}>

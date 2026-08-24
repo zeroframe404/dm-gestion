@@ -218,6 +218,7 @@ export function Tareas() {
               <FilaDeTarea
                 key={tarea.id}
                 tarea={tarea}
+                puedeEditar={puedeEditar}
                 alAbrir={() => setAbierta(tarea.id)}
                 alIrAlVinculo={() => {
                   if (tarea.siniestroId !== null) return ir('siniestros', { siniestroId: tarea.siniestroId })
@@ -254,11 +255,13 @@ export function Tareas() {
 
 function FilaDeTarea({
   tarea,
+  puedeEditar,
   alAbrir,
   alIrAlVinculo,
   alCambiarEstado,
 }: {
   tarea: FilaTarea
+  puedeEditar: boolean
   alAbrir: () => void
   alIrAlVinculo: () => void
   alCambiarEstado: (estado: EstadoTarea) => void | Promise<void>
@@ -296,9 +299,10 @@ function FilaDeTarea({
       <td className="px-3 py-2">
         <select
           value={tarea.estado}
+          disabled={!puedeEditar}
           aria-label={`Estado de ${tarea.titulo}`}
           onChange={(e) => void alCambiarEstado(e.target.value as EstadoTarea)}
-          className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
+          className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 disabled:opacity-60"
         >
           {ESTADOS_DE_TAREA.map((estado) => (
             <option key={estado} value={estado}>
