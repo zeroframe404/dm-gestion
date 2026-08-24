@@ -8,6 +8,9 @@ const externos = [
   'better-sqlite3',
   'bcryptjs',
   '@googleapis/sheets',
+  // `node:test` no está en `builtinModules` (Node sólo lo expone con el prefijo `node:`), así que hay que
+  // nombrarlo aparte: si no, Vite lo reemplaza por el stub de navegador y el banco de pruebas no arranca.
+  'node:test',
   ...builtinModules,
   ...builtinModules.map((modulo) => 'node:' + modulo),
 ]
