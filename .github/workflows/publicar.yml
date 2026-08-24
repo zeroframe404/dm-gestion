@@ -1,0 +1,83 @@
+# Arma el instalador de Windows y lo publica como GitHub Release, sin depender de ninguna PC.
+#
+# Cómo se usa: se empuja un tag `vX.Y.Z` que apunte a un commit cuyo package.json tenga esa misma
+# versión, y este workflow hace el resto. La versión del tag y la del package.json TIENEN que coincidir:
+# el instalador se llama `DM-Gestion-Setup-<version del package.json>.exe` y `scripts/publicar.mjs`
+# busca exactamente ese archivo, así que si no coinciden el paso de publicar falla y no sube nada a medias.
+#
+#   git tag v1.0.4 && git push origin v1.0.4
+#
+# También se puede correr a mano desde la pestaña Actions (Run workflow), eligiendo el tag.
+name: Publicar
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# `scripts/publicar.mjs` crea el Release con `gh`: necesita permiso de escritura sobre el contenido.
+permissions:
+  contents: write
+
+# Dos publicaciones a la vez del mismo tag se pisarían los archivos del Release.
+concurrency:
+  group: publicar-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    # Tiene que ser Windows: el instalador es NSIS y el binario nativo de better-sqlite3 es el de Windows.
+    runs-on: windows-latest
+
+    steps:
+      - name: Traer el código
+        uses: actions/checkout@v4
+        with:
+          # Con el historial y los tags completos, `scripts/publicar.mjs` encuentra el tag ya existente
+          # en vez de intentar crearlo de nuevo.
+          fetch-depth: 0
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Verificar que el tag y el package.json digan la misma versión
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') { $env:GITHUB_REF -replace '^refs/tags/', '' } else { "v$version" }
+          if ($tag -ne "v$version") {
+            Write-Error "El tag es $tag pero el package.json dice $version. Subí la versión en el commit que apunta el tag."
+            exit 1
+          }
+          Write-Host "Publicando $tag"
+
+      # El banco de pruebas antes que nada: una versión que se instala sola en las PCs de la agencia no
+      # puede salir sin pasar por acá. `npm run dist` corre después el typecheck y la compilación.
+      - name: Correr el banco de pruebas
+        run: npm run prueba
+
+      - name: Armar el instalador
+        run: npm run dist
+
+      - name: Publicar el Release
+        run: node scripts/publicar.mjs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Queda a mano para descargar desde la corrida aunque el Release se haya borrado.
+      - name: Guardar el instalador como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: instalador
+          path: |
+            release/DM-Gestion-Setup-*.exe
+            release/DM-Gestion-Setup-*.exe.blockmap
+            release/latest.yml
+          if-no-files-found: error

@@ -708,15 +708,38 @@ sin que nadie tenga que reinstalar a mano.
 
 ### Publicar
 
+Hay dos caminos. **El recomendado es el primero**: no necesita ninguna PC en particular ni tener el
+proyecto instalado, y siempre publica lo mismo que hay en `master`.
+
+**a) Desde GitHub (`.github/workflows/publicar.yml`).** Subís la versión en `package.json` y empujás el
+tag; el resto lo hace una máquina Windows de GitHub Actions: corre el banco de pruebas, arma el
+instalador y crea el Release.
+
+```bash
+npm version patch --no-git-tag-version   # 1.0.3 → 1.0.4 (también toca el package-lock.json)
+git commit -am "1.0.4"
+git push
+git tag v1.0.4 && git push origin v1.0.4  # esto dispara la publicación
+```
+
+El tag y el `package.json` tienen que decir la misma versión: el workflow lo verifica antes de compilar
+y corta si no coinciden. También se puede lanzar a mano desde la pestaña **Actions → Publicar → Run
+workflow**. No hace falta configurar ningún secreto: usa el `GITHUB_TOKEN` de la propia corrida.
+
+**b) Desde una PC con Windows**, si preferís tener el instalador a mano:
+
 ```powershell
 $env:GH_TOKEN = (gh auth token)   # o pegá acá un token personal con permiso "repo"
 npm run publicar                  # build + sube la versión del package.json como Release
 npm run publicar:parche           # npm version patch (1.0.0 → 1.0.1) + build + publicación, todo junto
 ```
 
-`npm run publicar` corre `electron-builder --publish always`: genera el instalador NSIS
-(`DM-Gestion-Setup-X.Y.Z.exe`) y lo sube, junto con `latest.yml` y el `.blockmap`, como GitHub
-Release del repositorio privado `zeroframe404/dm-gestion`. `GH_TOKEN` necesita permiso de
+Los dos caminos terminan en el mismo lugar: `npm run dist` genera el instalador NSIS
+(`DM-Gestion-Setup-X.Y.Z.exe`) con `electron-builder --publish never`, y `scripts/publicar.mjs` lo sube,
+junto con `latest.yml` y el `.blockmap`, como GitHub Release del repositorio privado
+`zeroframe404/dm-gestion` usando `gh release create` (en un solo llamado, que es atómico: con
+`electron-builder --publish` se creaban dos Releases para el mismo tag y los archivos se repartían al
+azar entre las dos copias). Publicando desde una PC, `GH_TOKEN` necesita permiso de
 **escritura** sobre ese repo — como ya hay una sesión de `gh` logueada con scope `repo`, lo más
 simple es `$env:GH_TOKEN = (gh auth token)`; también sirve un token personal propio con ese scope.
 
