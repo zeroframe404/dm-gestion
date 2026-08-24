@@ -942,7 +942,10 @@ npm run humo:permisos -- "C:\dm-humo"
 ```
 
 El humo de permisos hace el recorrido completo: el superadministrador deja al empleado con Cartera en
-«sólo ver» y Marketing en «sin acceso», entra la empleada y se comprueba que Marketing desapareció de la
-barra, que la planilla abre en sólo lectura con las acciones apagadas y sin «Cerrar mes», y que el
-proceso principal rechaza igual la edición y el acceso aunque se llame al canal a mano. Al final deja los
-permisos como estaban.
+«sólo ver» y Marketing y Clientes en «sin acceso», entra la empleada y se comprueba que esos módulos
+desaparecieron de la barra, que la planilla abre en sólo lectura con las acciones apagadas y sin «Cerrar
+mes», que Administración sigue abriendo con «Acerca de», y que el proceso principal rechaza igual la
+edición y el acceso aunque se llame al canal a mano (incluida el alta de clientes, que no se cuela por el
+permiso de Leads). Después asciende a esa usuaria a ADMIN con Administración en «sólo ver» y comprueba
+que las secciones del módulo se ven con los campos apagados. Al final deja los permisos y el rol como
+estaban, aunque algún paso haya fallado.

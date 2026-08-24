@@ -19,7 +19,7 @@ import { Icono } from '../../componentes/Icono'
 import { Alerta as Aviso, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
-import { usePuedeEditar } from '../../contexto/Permisos'
+import { usePermisos } from '../../contexto/Permisos'
 import { DialogoNuevaTarea } from '../tareas/DialogoNuevaTarea'
 import { DialogoNoRenueva, DialogoRenovar } from './DialogoRenovar'
 
@@ -383,11 +383,13 @@ interface PropsFila {
 }
 
 function FilaDeRenovacion({ fila, guardando, responsables, alVerCliente, alActualizar, alRenovar, alNoRenovar, alCrearTarea }: PropsFila) {
-  const puedeEditar = usePuedeEditar('renovaciones')
+  const { puedeEditar } = usePermisos()
   const porcentaje = porcentajeDeAumento(fila.observaciones)
   const resuelta = ESTADOS_RESUELTOS.includes(fila.estado)
   // Sin permiso de edición la bandeja se mira, pero no se toca: es lo mismo que estar guardando.
-  const bloqueado = guardando || !puedeEditar
+  const bloqueado = guardando || !puedeEditar('renovaciones')
+  // La tarea de seguimiento se guarda en Tareas, así que necesita el permiso de ese módulo.
+  const sinTareas = bloqueado || !puedeEditar('tareas')
 
   return (
     <tr className={cx('border-b border-slate-100 last:border-b-0 align-top', resuelta && 'bg-slate-50/70', guardando && 'opacity-60')}>
@@ -482,7 +484,7 @@ function FilaDeRenovacion({ fila, guardando, responsables, alVerCliente, alActua
             type="button"
             title="Anotar una tarea de esta renovación"
             aria-label={`Nueva tarea de la renovación de ${fila.clienteNombre ?? 'la póliza'}`}
-            disabled={bloqueado}
+            disabled={sinTareas}
             onClick={() => alCrearTarea(fila)}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-marino-300 hover:bg-marino-50 hover:text-marino-700 disabled:cursor-not-allowed disabled:opacity-40"
           >

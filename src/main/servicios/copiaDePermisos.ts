@@ -17,6 +17,17 @@ const CLAVE_FECHA = 'permisos_roles_actualizado'
 /** Lo último que se escribió, para no volver a escribir la misma matriz en cada llamado. */
 let ultimaEnDisco: string | null = null
 
+/**
+ * A quién avisarle que la copia cambió. Lo usa permisos.ts para enterarse de las matrices que bajan
+ * de GitHub en la revalidación de la sesión, que no pasan por ningún control de permisos y por eso no
+ * se notarían hasta el llamado siguiente.
+ */
+let alGuardar: ((permisos: MatrizPermisos) => void) | null = null
+
+export function conectarAvisoDeCopia(nuevo: ((permisos: MatrizPermisos) => void) | null): void {
+  alGuardar = nuevo
+}
+
 export function leerCopiaLocal(): MatrizPermisos {
   const fila = db().prepare('SELECT valor FROM configuracion WHERE clave = ?').get(CLAVE) as { valor: string } | undefined
   if (!fila) return permisosPorDefecto()
@@ -40,6 +51,7 @@ export function guardarCopiaLocal(permisos: MatrizPermisos, marca: string): void
     guardar.run(CLAVE_FECHA, marca, marca)
   })()
   ultimaEnDisco = texto
+  alGuardar?.(permisos)
 }
 
 /** Cuándo se guardó por última vez: la pantalla lo muestra al pie de la matriz. */

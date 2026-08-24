@@ -21,7 +21,7 @@ function fechaYHora(iso: string): string {
 
 export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () => void }) {
   const { ir } = useNavegacion()
-  const { puedeEditar, puedeVer } = usePermisos()
+  const { puedeEditar } = usePermisos()
   const puedeEditarLeads = puedeEditar('leads')
   const [ficha, setFicha] = useState<Ficha | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -206,7 +206,7 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
           titulo="Presupuestos"
           descripcion="Lo que se le cotizó a esta consulta."
           acciones={
-            <Boton icono="mas" disabled={!puedeVer('presupuestos')} onClick={() => ir('presupuestos', { nuevoPresupuestoParaLead: lead.id })}>
+            <Boton icono="mas" disabled={!puedeEditar('presupuestos')} onClick={() => ir('presupuestos', { nuevoPresupuestoParaLead: lead.id })}>
               Nuevo presupuesto
             </Boton>
           }

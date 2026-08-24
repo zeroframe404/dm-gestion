@@ -25,7 +25,7 @@ import {
 import type { MatrizDePermisos, MisPermisos, SesionUsuario } from '../../shared/tipos'
 import { ahoraIso } from '../importacion/normalizar'
 import * as compartida from './baseDeUsuarios'
-import { fechaDeLaCopia, guardarCopiaLocal, leerCopiaLocal } from './copiaDePermisos'
+import { conectarAvisoDeCopia, fechaDeLaCopia, guardarCopiaLocal, leerCopiaLocal } from './copiaDePermisos'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
 import { exigirSesion } from './sesion'
@@ -38,6 +38,11 @@ let avisar: ((permisos: MatrizPermisos) => void) | null = null
 
 export function conectarAvisoDePermisos(nuevo: ((permisos: MatrizPermisos) => void) | null): void {
   avisar = nuevo
+  // La matriz también cambia sin que nadie haya pedido un permiso: cuando la revalidación de la
+  // sesión (cada 15 minutos) baja de GitHub una que tocaron en otra computadora. Eso reescribe la
+  // copia local y nos enteramos por acá; si no, la pantalla se quedaría con la matriz vieja hasta el
+  // llamado siguiente.
+  conectarAvisoDeCopia(nuevo ? avisarSiCambio : null)
 }
 
 /**

@@ -475,7 +475,10 @@ export function registrarIpc(): void {
     exigirVista('clientes', 'polizas', 'presupuestos')
     return exito(fichaDeCliente(enteroPositivo(clienteId, 'El cliente')))
   })
-  manejar('clientes:crear', (datos) => exito(crearCliente(datos, exigirEdicion('clientes', 'polizas', 'presupuestos', 'leads'))))
+  // El alta de un cliente sale de un solo lado (Clientes → «Nuevo cliente»), así que pide el permiso
+  // de Clientes y nada más. Convertir un lead también da de alta un cliente, y por eso el canal
+  // `leads:convertir` exige las dos puntas: si acá se aceptara `leads`, ese control no serviría.
+  manejar('clientes:crear', (datos) => exito(crearCliente(datos, exigirEdicion('clientes'))))
   manejar('clientes:editar', (clienteId, datos) =>
     exito(editarCliente(enteroPositivo(clienteId, 'El cliente'), datos, exigirEdicion('clientes'))),
   )

@@ -11,6 +11,7 @@ import * as base from '../src/main/servicios/baseDeUsuarios'
 import { cambiarClave } from '../src/main/servicios/auth'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
 import {
+  conectarAvisoDePermisos,
   exigirEdicion,
   exigirVista,
   guardarPermisos,
@@ -285,6 +286,51 @@ test('la copia local deja trabajar con los permisos correctos aunque todavía no
   base.configurarBaseDeUsuarios({ almacen: null, credenciales: null, registrar: () => undefined })
   olvidarLoConocido()
   assert.equal(puedeVer(MARIA, 'reportes'), false, 'la copia local manda mientras no se pueda leer GitHub')
+})
+
+test('cuando otra computadora cambia la matriz, la pantalla se entera al bajar el archivo', async () => {
+  const almacen = await computadoraPrincipal()
+  const avisos: MatrizPermisos[] = []
+  conectarAvisoDePermisos((permisos) => avisos.push(permisos))
+  try {
+    // La primera lectura fija la línea de base: es la que la pantalla ya pidió al montarse.
+    matrizVigente()
+    assert.equal(avisos.length, 0)
+
+    // Otra computadora guarda una matriz nueva: acá sólo aparece el archivo cambiado en GitHub.
+    const documento = leerDocumento(almacen.texto ?? '')
+    documento.permisos.EMPLEADO.metricas = 'ninguno'
+    almacen.escribirDirecto(escribirDocumento(documento))
+
+    // Es lo que hace la revalidación de la sesión cada 15 minutos.
+    await base.comprobarAcceso()
+    assert.equal(avisos.length, 1, 'la revalidación tiene que avisar aunque nadie haya pedido un permiso')
+    assert.equal(avisos[0]!.EMPLEADO.metricas, 'ninguno')
+    assert.equal(puedeVer(MARIA, 'metricas'), false)
+
+    // Y no se avisa de gusto: releer lo mismo no vuelve a disparar.
+    await base.comprobarAcceso()
+    matrizVigente()
+    assert.equal(avisos.length, 1)
+  } finally {
+    conectarAvisoDePermisos(null)
+  }
+})
+
+test('guardar la matriz avisa una sola vez, no una por cada camino', async () => {
+  baseLocal()
+  const avisos: MatrizPermisos[] = []
+  conectarAvisoDePermisos((permisos) => avisos.push(permisos))
+  try {
+    matrizVigente()
+    const recortada = permisosPorDefecto()
+    recortada.EMPLEADO.tareas = 'ver'
+    await guardarPermisos(recortada, DANIEL)
+    assert.equal(avisos.length, 1)
+    assert.equal(avisos[0]!.EMPLEADO.tareas, 'ver')
+  } finally {
+    conectarAvisoDePermisos(null)
+  }
 })
 
 test('un usuarios.json de una versión anterior (sin permisos) se lee con los valores por defecto', () => {

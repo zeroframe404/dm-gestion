@@ -57,7 +57,7 @@ function datosDe(ficha: FichaCliente): DatosDeCliente {
 
 export function FichaDelCliente({ clienteId, alVolver }: { clienteId: number; alVolver: () => void }) {
   const { ir } = useNavegacion()
-  const { puedeEditar, puedeVer } = usePermisos()
+  const { puedeEditar } = usePermisos()
   const [ficha, setFicha] = useState<FichaCliente | null>(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -156,7 +156,7 @@ export function FichaDelCliente({ clienteId, alVolver }: { clienteId: number; al
                 Cargar siniestro
               </Boton>
             )}
-            {puedeVer('presupuestos') && (
+            {puedeEditar('presupuestos') && (
               <Boton icono="presupuestos" onClick={() => ir('presupuestos', { nuevoPresupuestoParaCliente: ficha.id })}>
                 Presupuestar
               </Boton>

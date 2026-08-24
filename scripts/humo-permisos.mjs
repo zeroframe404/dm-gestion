@@ -128,18 +128,51 @@ anotar(
   pantalla.error ?? `${pantalla.selects} celdas (13 módulos × 2 roles)`,
 )
 
-// 3) Se recorta al empleado: Cartera en sólo lectura y Marketing sin acceso.
+// Todo lo que sigue toca la configuración de la agencia: va adentro de un try/finally para que la
+// carpeta quede como estaba aunque un paso se caiga a la mitad.
+let rolOriginal = null
+
+async function restaurar() {
+  if (await evaluar(`!!document.querySelector('input[type="password"]')`)) {
+    await ingresar('daniel', 'cambiar123')
+  } else {
+    const quien = await evaluar(`(async () => (await window.dm.auth.sesion()).datos?.usuario ?? null)()`)
+    if (quien !== 'daniel') {
+      await salir()
+      await ingresar('daniel', 'cambiar123')
+    }
+  }
+  const vuelta = await evaluar(`(async () => {
+    const permisos = await window.dm.permisos.guardar(${JSON.stringify('__MATRIZ__')})
+    return { permisos: permisos.ok, error: permisos.error ?? '' }
+  })()`.replace('"__MATRIZ__"', JSON.stringify(originales)))
+  let rol = true
+  if (rolOriginal) {
+    rol = await evaluar(`(async () => {
+      const r = await window.dm.usuarios.editar(${JSON.stringify('__ID__')}, ${JSON.stringify('__DATOS__')})
+      return r.ok
+    })()`.replace('"__ID__"', String(rolOriginal.id)).replace('"__DATOS__"', JSON.stringify(rolOriginal.datos)))
+  }
+  return { permisos: vuelta.permisos, rol, error: vuelta.error }
+}
+
+try {
+
+// 3) Se recorta al empleado: Cartera en sólo lectura, Marketing y Clientes sin acceso. Clientes se
+// saca a propósito dejando Leads en «ver y editar»: es la combinación con la que se comprueba que el
+// alta de clientes no se cuela por el permiso de otro módulo.
 const guardado = await evaluar(`(async () => {
   const matriz = (await window.dm.permisos.matriz()).datos.permisos
   matriz.EMPLEADO.cartera = 'ver'
   matriz.EMPLEADO.marketing = 'ninguno'
+  matriz.EMPLEADO.clientes = 'ninguno'
   const r = await window.dm.permisos.guardar(matriz)
   return r.ok ? r.datos.permisos.EMPLEADO : { error: r.error }
 })()`)
 anotar(
   'Guardar la matriz recortada',
-  guardado?.cartera === 'ver' && guardado?.marketing === 'ninguno',
-  guardado?.error ?? `cartera: ${guardado?.cartera} · marketing: ${guardado?.marketing}`,
+  guardado?.cartera === 'ver' && guardado?.marketing === 'ninguno' && guardado?.clientes === 'ninguno' && guardado?.leads === 'editar',
+  guardado?.error ?? `cartera: ${guardado?.cartera} · marketing: ${guardado?.marketing} · clientes: ${guardado?.clientes}`,
 )
 
 // 4) Entra la empleada y mira su barra lateral
@@ -151,7 +184,11 @@ const barra = await evaluar(`(() => {
   return { modulos: [...nav.querySelectorAll('button')].map((b) => b.textContent.trim()) }
 })()`)
 anotar('Entra la empleada', !barra.error, barra.error ?? `${barra.modulos.length} módulos en la barra`)
-anotar('Marketing desapareció de la barra lateral', !barra.error && !barra.modulos.includes('Marketing'), (barra.modulos ?? []).join(' · '))
+anotar(
+  'Marketing y Clientes desaparecieron de la barra lateral',
+  !barra.error && !barra.modulos.includes('Marketing') && !barra.modulos.includes('Clientes'),
+  (barra.modulos ?? []).join(' · '),
+)
 anotar('Cartera sigue estando (queda en sólo lectura)', !barra.error && barra.modulos.includes('Cartera'))
 
 // 5) Cartera se abre pero no se puede tocar
@@ -201,11 +238,23 @@ const rechazos = await evaluar(`(async () => {
   const primera = planilla.ok ? planilla.datos.filas[0] : null
   const edicion = primera ? await window.dm.cartera.editarCelda(primera.filaId, 'observaciones', 'no debería entrar') : { ok: true }
   const marketing = await window.dm.marketing.plantillas()
-  return { verCartera: planilla.ok, edicion: edicion.ok, errorEdicion: edicion.error ?? '', marketing: marketing.ok, errorMarketing: marketing.error ?? '' }
+  // Con Clientes en «sin acceso» pero Leads en «ver y editar»: el alta de un cliente pide Clientes y
+  // no se cuela por el permiso del otro módulo.
+  const alta = await window.dm.clientes.crear({ nombre: 'NO DEBERÍA ENTRAR', documento: '', telefono: '', email: '', direccion: '', localidad: '', sucursal: '', fechaNacimiento: '' })
+  return {
+    verCartera: planilla.ok,
+    edicion: edicion.ok,
+    errorEdicion: edicion.error ?? '',
+    marketing: marketing.ok,
+    errorMarketing: marketing.error ?? '',
+    alta: alta.ok,
+    errorAlta: alta.error ?? '',
+  }
 })()`)
 anotar('Con «ver» la planilla se consulta igual', rechazos.verCartera)
 anotar('Editar una celda lo frena el proceso principal', rechazos.edicion === false, rechazos.errorEdicion)
 anotar('Marketing sin acceso también se rechaza por IPC', rechazos.marketing === false, rechazos.errorMarketing)
+anotar('El alta de un cliente no se cuela por el permiso de Leads', rechazos.alta === false, rechazos.errorAlta)
 
 // 8) La empleada no puede tocar la matriz
 const intento = await evaluar(`(async () => {
@@ -215,18 +264,59 @@ const intento = await evaluar(`(async () => {
 })()`)
 anotar('Un empleado no puede leer ni cambiar la matriz', intento.leer === false && intento.guardar === false, intento.error)
 
-// 9) Se deja todo como estaba
+// 9) Un ADMIN con Administración en «sólo ver»: las pantallas del módulo se miran, pero no se tocan.
 await salir()
 await ingresar('daniel', 'cambiar123')
-const restaurado = await evaluar(`(async () => {
-  const r = await window.dm.permisos.guardar(${JSON.stringify(originales)})
-  return r.ok ? r.datos.permisos.EMPLEADO : { error: r.error }
+const ascenso = await evaluar(`(async () => {
+  const lista = await window.dm.usuarios.listar()
+  if (!lista.ok) return { error: lista.error }
+  const lucia = lista.datos.find((u) => u.usuario === 'lucia')
+  if (!lucia) return { error: 'la carpeta sembrada no tiene a «lucia»' }
+  const datos = { nombre: lucia.nombre, usuario: lucia.usuario, rol: 'ADMIN', sucursalId: lucia.sucursalId }
+  const cambio = await window.dm.usuarios.editar(lucia.id, datos)
+  if (!cambio.ok) return { error: cambio.error }
+  const matriz = (await window.dm.permisos.matriz()).datos.permisos
+  matriz.ADMIN.administracion = 'ver'
+  const guardar = await window.dm.permisos.guardar(matriz)
+  return guardar.ok
+    ? { id: lucia.id, original: { nombre: lucia.nombre, usuario: lucia.usuario, rol: lucia.rol, sucursalId: lucia.sucursalId } }
+    : { error: guardar.error }
 })()`)
-anotar(
-  'Los permisos vuelven a como estaban',
-  restaurado?.cartera === originales?.EMPLEADO.cartera && restaurado?.marketing === originales?.EMPLEADO.marketing,
-  restaurado?.error ?? '',
-)
+anotar('Se prepara un ADMIN con Administración en «sólo ver»', !ascenso.error, ascenso.error ?? 'lucia pasa a ADMIN')
+if (!ascenso.error) rolOriginal = { id: ascenso.id, datos: ascenso.original }
+
+await salir()
+await ingresar('lucia', 'cambiar123')
+const soloVer = await evaluar(`(async () => {
+  const boton = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Administración')
+  if (!boton) return { error: 'no está Administración' }
+  boton.click()
+  await new Promise((r) => setTimeout(r, 800))
+  const solapas = [...document.querySelectorAll('[role="tab"]')].map((b) => b.textContent.trim())
+  const companias = [...document.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === 'Compañías')
+  if (!companias) return { error: 'no está la solapa Compañías', solapas }
+  companias.click()
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 100))
+    const numeros = [...document.querySelectorAll('table input[type="number"]')]
+    if (numeros.length > 0) {
+      const guardarPlantilla = [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Guardar')
+      const rechazo = await window.dm.config.guardarPlantillaAviso('no debería entrar')
+      return { solapas, campos: numeros.length, apagados: numeros.every((i) => i.disabled), guardarPlantilla, ipc: rechazo.ok, errorIpc: rechazo.error ?? '' }
+    }
+  }
+  return { error: 'no cargó Compañías', texto: document.body.innerText.slice(0, 300) }
+})()`)
+anotar('Con «sólo ver», Administración muestra sus secciones', !soloVer.error, soloVer.error ?? (soloVer.solapas ?? []).join(' · '))
+anotar('Los campos de Compañías quedan apagados', !soloVer.error && soloVer.apagados, soloVer.error ? '' : `${soloVer.campos} campos`)
+anotar('No se ofrece guardar la plantilla del aviso', !soloVer.error && soloVer.guardarPlantilla === false)
+anotar('Y el proceso principal también lo rechaza', !soloVer.error && soloVer.ipc === false, soloVer.errorIpc ?? '')
+
+} finally {
+  // 10) Se deja todo como estaba, haya salido bien o mal.
+  const restaurado = await restaurar()
+  anotar('Los permisos y el rol vuelven a como estaban', restaurado.permisos === true && restaurado.rol === true, restaurado.error ?? '')
+}
 console.log('\n' + resultados.filter((r) => r.ok).length + '/' + resultados.length + ' pasos bien')
 ws.close()
 electron.kill()

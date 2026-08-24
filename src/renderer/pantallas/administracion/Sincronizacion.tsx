@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { PanelSincronizacion } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, Etiqueta, Tarjeta, cx } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 function fecha(iso: string | null): string {
   if (!iso) return '—'
@@ -33,6 +34,9 @@ const NOMBRE_OPERACION: Record<string, string> = {
 }
 
 export function Sincronizacion() {
+  // Sincronizar y forzar la bajada los usa todo el equipo desde la barra superior; reintentar la cola
+  // y respaldar a mano sí piden «ver y editar» en Administración.
+  const puedeEditar = usePuedeEditar('administracion')
   const [panel, setPanel] = useState<PanelSincronizacion | null>(null)
   const [cargando, setCargando] = useState(true)
   const [ocupado, setOcupado] = useState<string | null>(null)
@@ -126,6 +130,7 @@ export function Sincronizacion() {
             <Boton
               tamano="sm"
               cargando={ocupado === 'reintentar'}
+              disabled={!puedeEditar}
               onClick={() =>
                 void correr('reintentar', async () => {
                   const r = await window.dm.sincronizacion.reintentar()
@@ -217,7 +222,7 @@ export function Sincronizacion() {
           <Boton
             icono="descargar"
             cargando={ocupado === 'respaldo'}
-            disabled={!estado.configurada}
+            disabled={!estado.configurada || !puedeEditar}
             onClick={() =>
               void correr('respaldo', async () => {
                 const r = await window.dm.sincronizacion.respaldarAhora()

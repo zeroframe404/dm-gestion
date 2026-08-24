@@ -64,7 +64,9 @@ export function Presupuestos() {
     void traer()
   }, [datos, catalogos.companias.length])
 
-  // Se puede llegar acá desde la ficha de una consulta o de un cliente, con el alta ya apuntada.
+  // Se puede llegar acá desde la ficha de una consulta o de un cliente, con el alta ya apuntada. Sin
+  // permiso de edición el atajo no se ofrece, pero el parámetro puede quedar de antes: no se abre el
+  // formulario para que nadie cargue un presupuesto que después no va a poder guardar.
   useEffect(() => {
     if (parametros.presupuestoId !== undefined) {
       setAbierto(parametros.presupuestoId)
@@ -72,15 +74,15 @@ export function Presupuestos() {
       return
     }
     if (parametros.nuevoPresupuestoParaLead !== undefined) {
-      setAlta({ leadId: parametros.nuevoPresupuestoParaLead, clienteId: null })
+      if (puedeEditar) setAlta({ leadId: parametros.nuevoPresupuestoParaLead, clienteId: null })
       limpiarParametros()
       return
     }
     if (parametros.nuevoPresupuestoParaCliente !== undefined) {
-      setAlta({ leadId: null, clienteId: parametros.nuevoPresupuestoParaCliente })
+      if (puedeEditar) setAlta({ leadId: null, clienteId: parametros.nuevoPresupuestoParaCliente })
       limpiarParametros()
     }
-  }, [parametros.presupuestoId, parametros.nuevoPresupuestoParaLead, parametros.nuevoPresupuestoParaCliente, limpiarParametros])
+  }, [parametros.presupuestoId, parametros.nuevoPresupuestoParaLead, parametros.nuevoPresupuestoParaCliente, limpiarParametros, puedeEditar])
 
   const cambiar = (cambios: Partial<FiltrosPresupuestos>) => setFiltros((previos) => ({ ...previos, ...cambios }))
 
