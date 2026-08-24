@@ -6,6 +6,7 @@ import { NOMBRE_RANGO_MORA, type FilaMora, type FiltrosMora, type ListadoMora, t
 import { Icono } from '../../componentes/Icono'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { numero, pesos } from './formato'
 
 const FILTROS_VACIOS: FiltrosMora = { busqueda: '', sucursal: '', compania: '', rango: '', incluirDebito: false }
@@ -17,6 +18,7 @@ const CLASES_RANGO: Record<Exclude<RangoDeMora, ''>, string> = {
 }
 
 export function Mora() {
+  const puedeAvisar = usePuedeEditar('cobranzas')
   const [datos, setDatos] = useState<ListadoMora | null>(null)
   const [filtros, setFiltros] = useState<FiltrosMora>(FILTROS_VACIOS)
   const [cargando, setCargando] = useState(true)
@@ -91,7 +93,7 @@ export function Mora() {
             type="button"
             title={fila.telefono ? `Avisar por WhatsApp a ${fila.telefono}` : 'Sin teléfono cargado'}
             aria-label="Avisar por WhatsApp"
-            disabled={avisando !== null}
+            disabled={avisando !== null || !puedeAvisar}
             onClick={(evento) => {
               evento.stopPropagation()
               void avisar(fila)

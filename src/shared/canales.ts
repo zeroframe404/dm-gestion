@@ -1,5 +1,6 @@
 // Contrato tipado de los canales IPC: cada canal declara sus argumentos y su respuesta.
 // El proceso principal implementa exactamente estas firmas y la precarga las expone.
+import type { MatrizPermisos } from './permisos'
 import type {
   AceptacionDePresupuesto,
   AvisosDeTareas,
@@ -93,6 +94,8 @@ import type {
   EstadoConexionGoogle,
   EstadoDeAcceso,
   EstadoDeUsuarios,
+  MatrizDePermisos,
+  MisPermisos,
   SesionCerrada,
   EstadoImportador,
   InfoApp,
@@ -140,6 +143,13 @@ export interface Canales {
   'usuarios:estado': (comprobar: boolean) => Resultado<EstadoDeUsuarios>
   /** Inicializa la base compartida con los usuarios de esta computadora. Sólo si todavía no existe. */
   'usuarios:subirLocales': () => Resultado<EstadoDeUsuarios>
+
+  // Permisos por rol (Administración → Permisos). La matriz la mira cualquiera con sesión abierta
+  // —para saber qué puede hacer— y la edita sólo el SUPER_ADMIN.
+  /** Lo que puede el usuario con la sesión abierta, área por área. */
+  'permisos:mios': () => Resultado<MisPermisos>
+  'permisos:matriz': () => Resultado<MatrizDePermisos>
+  'permisos:guardar': (permisos: MatrizPermisos) => Resultado<MatrizDePermisos>
 
   'config:estadoGoogle': () => Resultado<EstadoConexionGoogle>
   'config:guardarGoogle': (datos: DatosConexionGoogle) => Resultado<EstadoConexionGoogle>
@@ -385,6 +395,8 @@ export interface Eventos {
   'auth:sesionCerrada': SesionCerrada
   /** El proceso principal reescribió la sesión abierta con datos frescos de GitHub (rol, nombre, sucursal). */
   'auth:sesionActualizada': SesionUsuario
+  /** Cambió la matriz de permisos (acá o en otra computadora): la pantalla tiene que reacomodarse. */
+  'permisos:cambiaron': MisPermisos
 }
 
 export type NombreCanal = keyof Canales

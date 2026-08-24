@@ -14,6 +14,7 @@ import {
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, Dialogo, Etiqueta, Tarjeta, cx } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 const NOMBRE_ESTADO: Record<EstadoImportacion, string> = {
   EN_CURSO: 'En curso',
@@ -73,6 +74,8 @@ function formatearFecha(iso: string | null): string {
 }
 
 export function ImportarGoogle() {
+  // Analizar la hoja es sólo mirar; importar la reescribe entera, así que pide «ver y editar».
+  const puedeEditar = usePuedeEditar('administracion')
   const [estado, setEstado] = useState<EstadoImportador | null>(null)
   const [cargando, setCargando] = useState(true)
   const [vista, setVista] = useState<VistaPreviaHoja | null>(null)
@@ -175,7 +178,13 @@ export function ImportarGoogle() {
             <Boton icono="lupa" onClick={() => void analizar()} cargando={analizando} disabled={enCurso || sinConexion}>
               Analizar hoja
             </Boton>
-            <Boton variante="primario" icono="nubeBajada" onClick={() => setConfirmando(true)} disabled={enCurso || cargando || sinConexion}>
+            <Boton
+              variante="primario"
+              icono="nubeBajada"
+              onClick={() => setConfirmando(true)}
+              disabled={enCurso || cargando || sinConexion || !puedeEditar}
+              title={puedeEditar ? undefined : 'Tenés Administración en sólo lectura.'}
+            >
               Importar
             </Boton>
           </>
@@ -219,7 +228,7 @@ export function ImportarGoogle() {
             titulo="Importación en curso"
             descripcion="No cierres la aplicación hasta que termine. Podés cancelar: lo ya guardado queda en la base."
             acciones={
-              <Boton variante="peligro" icono="detener" onClick={() => void cancelar()} cargando={cancelando} disabled={cancelando}>
+              <Boton variante="peligro" icono="detener" onClick={() => void cancelar()} cargando={cancelando} disabled={cancelando || !puedeEditar}>
                 {cancelando ? 'Cancelando al terminar la pestaña actual…' : 'Cancelar'}
               </Boton>
             }
@@ -248,7 +257,7 @@ export function ImportarGoogle() {
             <Boton onClick={() => setConfirmando(false)} disabled={iniciando}>
               Cancelar
             </Boton>
-            <Boton variante="primario" icono="nubeBajada" onClick={() => void iniciar()} cargando={iniciando}>
+            <Boton variante="primario" icono="nubeBajada" onClick={() => void iniciar()} cargando={iniciando} disabled={!puedeEditar}>
               Importar ahora
             </Boton>
           </>

@@ -9,12 +9,18 @@ import { Icono } from '../componentes/Icono'
 import { Etiqueta, cx } from '../componentes/ui'
 import { BotonAyuda } from '../componentes/Ayuda'
 import { useNavegacion } from '../contexto/Navegacion'
+import { usePermisos } from '../contexto/Permisos'
 import { useUsuarioActual } from '../contexto/Sesion'
-import { MODULOS, type IdModulo } from '../modulos'
+import { esAreaDePermisos, MODULOS, type IdModulo } from '../modulos'
 
 export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
   const usuario = useUsuarioActual()
-  const modulosDeTrabajo = MODULOS.filter((modulo) => modulo.id !== 'inicio')
+  const { puedeVer } = usePermisos()
+  // El mapa de módulos muestra sólo los que esta persona puede abrir: ofrecer un atajo a una pantalla
+  // que después dice «no tenés permiso» no le sirve a nadie.
+  const modulosDeTrabajo = MODULOS.filter(
+    (modulo) => modulo.id !== 'inicio' && (!esAreaDePermisos(modulo.id) || puedeVer(modulo.id)),
+  )
   const disponibles = modulosDeTrabajo.filter((modulo) => modulo.disponible).length
 
   return (
@@ -69,16 +75,19 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
 /** Las tareas abiertas de quien está usando la aplicación, lo más urgente primero. */
 function MisTareas() {
   const { ir } = useNavegacion()
+  const { puedeVer } = usePermisos()
+  const verTareas = puedeVer('tareas')
   const [tareas, setTareas] = useState<FilaTarea[] | null>(null)
 
   useEffect(() => {
+    if (!verTareas) return
     const traer = async () => {
       const resultado = await window.dm.tareas.mias()
       if (resultado.ok) setTareas(resultado.datos)
       else setTareas([])
     }
     void traer()
-  }, [])
+  }, [verTareas])
 
   // Mientras carga no se reserva lugar: si no hay nada pendiente, esta sección no existe y el mapa de
   // módulos sube. Un recuadro vacío que dice «no tenés tareas» no le sirve a nadie todos los días.

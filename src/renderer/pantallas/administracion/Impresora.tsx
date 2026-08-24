@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ConfigImpresora } from '../../../shared/tipos'
 import { Alerta, Boton, Campo, Cargando, Selector, Tarjeta } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 export function Impresora() {
+  // Con Administración en «sólo ver» se mira cómo está configurada, pero no se cambia.
+  const puedeEditar = usePuedeEditar('administracion')
   const [estado, setEstado] = useState<ConfigImpresora | null>(null)
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -91,12 +94,12 @@ export function Impresora() {
               icono="impresora"
               onClick={() => void probar()}
               cargando={probando}
-              disabled={!estado.habilitada || !estado.impresora || hayCambios}
+              disabled={!estado.habilitada || !estado.impresora || hayCambios || !puedeEditar}
               title={hayCambios ? 'Guardá los cambios antes de probar: la prueba usa la configuración guardada.' : undefined}
             >
               Imprimir una prueba
             </Boton>
-            <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios}>
+            <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios || !puedeEditar}>
               Guardar
             </Boton>
           </>
@@ -107,6 +110,7 @@ export function Impresora() {
             <input
               type="checkbox"
               checked={habilitada}
+              disabled={!puedeEditar}
               onChange={(evento) => setHabilitada(evento.target.checked)}
               className="mt-0.5 h-4 w-4 rounded border-slate-300"
             />
@@ -123,6 +127,7 @@ export function Impresora() {
             <Campo
               etiqueta="Impresora"
               value={impresora}
+              disabled={!puedeEditar}
               onChange={(evento) => setImpresora(evento.target.value)}
               placeholder="POS-80"
               ayuda="Windows no devolvió ninguna impresora instalada. Escribí el nombre exacto tal como figura en «Dispositivos e impresoras»."
@@ -131,6 +136,7 @@ export function Impresora() {
             <Selector
               etiqueta="Impresora"
               value={impresora}
+              disabled={!puedeEditar}
               onChange={(evento) => setImpresora(evento.target.value)}
               opciones={[{ valor: '', texto: '(elegí una)' }, ...estado.disponibles.map((nombre) => ({ valor: nombre, texto: nombre }))]}
               ayuda={estado.predeterminada ? `La predeterminada de esta PC es «${estado.predeterminada}».` : 'Las que ve esta PC.'}
@@ -143,6 +149,7 @@ export function Impresora() {
             min={40}
             max={120}
             value={anchoMm}
+            disabled={!puedeEditar}
             onChange={(evento) => setAnchoMm(evento.target.value)}
             ayuda="Una POS-80 usa 80 mm. Si el ticket sale cortado o muy angosto, ajustá este número."
             className="max-w-40"

@@ -30,6 +30,12 @@ export interface ApiDm {
     estado: Remota<'usuarios:estado'>
     subirLocales: Remota<'usuarios:subirLocales'>
   }
+  permisos: {
+    mios: Remota<'permisos:mios'>
+    matriz: Remota<'permisos:matriz'>
+    guardar: Remota<'permisos:guardar'>
+    alCambiar: Suscripcion<'permisos:cambiaron'>
+  }
   config: {
     estadoGoogle: Remota<'config:estadoGoogle'>
     guardarGoogle: Remota<'config:guardarGoogle'>

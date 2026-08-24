@@ -34,7 +34,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         titulo: 'Buscar y filtrar',
         parrafos: [
           'El buscador de arriba encuentra por nombre, patente, número de póliza o DNI. Al lado hay desplegables para filtrar por sucursal, forma de pago, compañía y color de alerta, y una casilla «Sólo con AVISAR VTO» para ver nada más que las filas marcadas para avisar antes del vencimiento.',
-          'Las tarjetas de arriba (Total, Vencen hoy, Vencidos, Avisados hoy, Pagados hoy) son contadores del día: se actualizan solos con lo que va pasando.',
+          'Las tarjetas de arriba (Total, Vencen hoy, Vencidos, Avisados hoy, Pagados hoy) son contadores del día: se actualizan solos con lo que va pasando. Además funcionan como filtro: tocá una y la tabla queda sólo con esas filas; tocala de nuevo (o tocá Total) para volver a ver el mes entero. Los números siguen contando sobre todo el mes aunque haya un filtro puesto.',
         ],
       },
       {

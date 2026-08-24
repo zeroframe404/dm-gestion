@@ -16,12 +16,14 @@ import {
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Tarjeta } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { pesos } from '../cobranzas/formato'
 
 export function Segmentos() {
   const usuario = useUsuarioActual()
-  const puedeBorrar = usuario.rol !== 'EMPLEADO'
+  const puedeEditar = usePuedeEditar('marketing')
+  const puedeBorrar = usuario.rol !== 'EMPLEADO' && puedeEditar
 
   const [datos, setDatos] = useState<ResultadoDeSegmento | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -160,9 +162,11 @@ export function Segmentos() {
                   Borrar
                 </Boton>
               )}
-              <Boton tamano="sm" variante="primario" icono="ok" onClick={() => setGuardando(true)}>
-                {segmentoActual ? 'Guardar cambios' : 'Guardar como segmento'}
-              </Boton>
+              {puedeEditar && (
+                <Boton tamano="sm" variante="primario" icono="ok" onClick={() => setGuardando(true)}>
+                  {segmentoActual ? 'Guardar cambios' : 'Guardar como segmento'}
+                </Boton>
+              )}
             </>
           }
         >
@@ -322,7 +326,7 @@ export function Segmentos() {
                         icono="mensaje"
                         onClick={() => void avisar(fila)}
                         cargando={avisando === fila.filaId}
-                        disabled={!fila.tieneTelefono || avisando !== null}
+                        disabled={!fila.tieneTelefono || avisando !== null || !puedeEditar}
                         title={fila.tieneTelefono ? fila.mensaje : 'No tiene teléfono cargado: completalo en la ficha del cliente.'}
                       >
                         Avisar

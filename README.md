@@ -131,6 +131,11 @@ calculado solo y las acciones de un clic.
 - **Acciones por fila**: «Avisar» abre WhatsApp con la plantilla configurable (`{nombre}`, `{cuota}`,
   `{vencimiento}`) y deja la fila en `ENVIADO` con la fecha; «Registrar pago» llena `CUANDO PAGO` y crea
   el pago; «Dar de baja» pide motivo y nota y mueve la póliza a **Bajas** del mes.
+- **Los contadores de arriba filtran**, como en Siniestros, Tareas, Leads y Presupuestos: se toca
+  VENCEN HOY, VENCIDOS, AVISADOS HOY o PAGADOS HOY y la tabla queda con esas filas (volver a tocarlo, o
+  TOTAL, muestra el mes entero). El número lo calcula la misma condición con la que después se filtra,
+  así el cartel y la tabla no pueden discrepar, y los contadores siempre cuentan sobre el mes completo
+  aunque haya un filtro puesto: son el tablero del día, no un resumen de lo que se está mirando.
 - **Meses anteriores**: se ven completos pero de sólo lectura. **Cerrar mes** (ADMIN/SUPER_ADMIN) crea el
   mes siguiente copiando las pólizas activas, igual que duplicar la hoja: conserva cuota, vencimiento,
   forma de pago y observaciones, y vacía el pago y el aviso.
@@ -870,3 +875,77 @@ antes) salvo que se defina `DM_GESTION_TOKEN_DATOS`; `DM_GESTION_GITHUB_API` apu
 simulador local (o a un puerto cerrado, para «cortar internet») y `DM_GESTION_ARCHIVO_DATOS` usa otro
 archivo del repo (así `--real` no toca `usuarios.json`). Las tres variables sólo valen en desarrollo.
 El simulador de la API Contents está en `scripts/github-simulado.mjs` y lo usan las pruebas y el humo.
+
+## Permisos por rol (Administración → Permisos)
+
+Los tres roles siguen siendo los mismos (EMPLEADO, ADMIN, SUPER_ADMIN), pero ahora **qué ve y qué toca
+cada uno se configura**, módulo por módulo, desde **Administración → Permisos** (sólo SUPER_ADMIN).
+
+- Una fila por módulo (13: Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros,
+  Cobranzas, Métricas, Reportes, Marketing, Tareas y Administración) y una columna por rol configurable
+  (ADMIN y EMPLEADO). Cada cruce vale **`ninguno`** (el módulo no aparece en la barra lateral y sus
+  llamados se rechazan), **`ver`** (se abre y se consulta, pero los botones que cambian algo quedan
+  apagados) o **`editar`** (como siempre).
+- **El SUPER_ADMIN no está en la matriz**: siempre tiene todo. Si pudiera sacarse permisos a sí mismo,
+  la agencia se quedaría sin nadie que pueda devolvérselos.
+- **Inicio y «Acerca de» no se configuran**: Inicio es la pantalla que queda cuando alguien no tiene
+  ningún módulo, y «Acerca de» tiene la versión y el estado del acceso, que es lo primero que se
+  pregunta cuando algo falla.
+- **La matriz sólo restringe.** Todo lo que ya pedía rol lo sigue pidiendo: cerrar el mes, deshacer una
+  baja, ver las comisiones, borrar un documento de un siniestro o de una tarea, cargar la matriz de
+  coberturas, tocar las plantillas de Marketing y administrar usuarios siguen siendo de ADMIN o
+  SUPER_ADMIN aunque a un empleado se le dé «ver y editar» en ese módulo.
+- **Los valores por defecto son exactamente lo que hacía el programa antes**: ADMIN en `editar` en todo
+  y EMPLEADO en `editar` en todo menos Administración, que arranca en `ninguno`. Una agencia que no
+  entre nunca a esta pantalla no nota ninguna diferencia.
+
+### Dónde vive la matriz
+
+Va en el mismo **`usuarios.json` de GitHub** que los usuarios (campo `permisos`), porque tiene que valer
+igual en todas las computadoras: se configura una vez y el resto la toma la próxima vez que lee el
+archivo (la revalidación de la sesión, cada 15 minutos, o el ingreso siguiente). Se escribe por el mismo
+camino que cualquier otro cambio de usuarios —lectura, aplicación y escritura con el candado del `sha`—
+y cada cambio queda además en el `historial` local con quién lo hizo y qué cambió.
+
+Cada lectura del archivo deja una copia en la tabla `configuracion` (`permisos_roles`). Esa copia es la
+que rige cuando todavía no se pudo leer GitHub: al arrancar sin internet o al ingresar con la credencial
+guardada, valen los permisos del último ingreso con conexión. Sin base compartida (desarrollo, o antes
+de subir los usuarios) la copia local es la fuente de verdad, y sube con los usuarios al inicializar la
+base compartida.
+
+Código: `src/shared/permisos.ts` (áreas, niveles y valores por defecto; puro y compartido),
+`src/main/servicios/permisos.ts` (qué rige ahora, `exigirVista`/`exigirEdicion` y el guardado),
+`src/main/servicios/copiaDePermisos.ts` (la copia en `configuracion`) y
+`src/renderer/contexto/Permisos.tsx` (lo que usa la interfaz para mostrar u ocultar).
+
+> **Al actualizar las PCs:** el formato del archivo sigue siendo el 1 a propósito, así una versión
+> anterior del programa lo sigue leyendo. Lo que una versión anterior **no** puede es conservar el campo
+> `permisos` cuando escribe: si una PC sin actualizar da de alta o edita un usuario, la matriz vuelve a
+> los valores por defecto y hay que volver a guardarla desde una PC al día. Con la actualización
+> automática de la Fase 10 esto dura horas, pero conviene tenerlo presente el día que se publica.
+
+### Quién controla qué
+
+El renderer **no decide permisos**: sólo evita ofrecer botones que van a fallar. Cada canal IPC vuelve a
+pedirlos en `src/main/ipc.ts` (`exigirVista('cartera')`, `exigirEdicion('siniestros')`…). Los canales que
+alimentan a más de un módulo admiten el permiso de cualquiera de ellos, porque las pantallas se cruzan:
+el formulario de póliza busca clientes, la ficha del cliente cobra una cuota de la planilla y la
+rendición de Imputados se mira desde Cartera y desde Cobranzas.
+
+### Probarlo
+
+```bash
+npm run prueba                      # pruebas/permisos.prueba.ts: valores por defecto, recortes,
+                                    # copia local, matriz compartida y compatibilidad hacia atrás
+npm run sembrar -- "C:\dm-humo"     # carpeta con datos y una empleada («lucia», misma clave inicial)
+npm run humo:permisos -- "C:\dm-humo"
+```
+
+El humo de permisos hace el recorrido completo: el superadministrador deja al empleado con Cartera en
+«sólo ver» y Marketing y Clientes en «sin acceso», entra la empleada y se comprueba que esos módulos
+desaparecieron de la barra, que la planilla abre en sólo lectura con las acciones apagadas y sin «Cerrar
+mes», que Administración sigue abriendo con «Acerca de», y que el proceso principal rechaza igual la
+edición y el acceso aunque se llame al canal a mano (incluida el alta de clientes, que no se cuela por el
+permiso de Leads). Después asciende a esa usuaria a ADMIN con Administración en «sólo ver» y comprueba
+que las secciones del módulo se ven con los campos apagados. Al final deja los permisos y el rol como
+estaban, aunque algún paso haya fallado.

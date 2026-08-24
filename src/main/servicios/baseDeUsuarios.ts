@@ -11,6 +11,7 @@
 //                                        subiría la semilla daniel/cambiar123 y pisaría a los de verdad).
 //   - con almacén y archivo            → se valida contra GitHub; si no se llega, con la credencial guardada.
 import os from 'node:os'
+import type { MatrizPermisos } from '../../shared/permisos'
 import type { EstadoDeAcceso, EstadoDeUsuarios, ModoDeAcceso, Rol, SesionUsuario, Usuario } from '../../shared/tipos'
 import { db } from '../db/base'
 import { ErrorDeConflicto, ErrorDelAlmacen, type AlmacenRemoto } from '../usuarios/almacen'
@@ -25,6 +26,7 @@ import {
   documentoVacio,
   editarUsuario as editarUsuarioEnDocumento,
   escribirDocumento,
+  guardarPermisos as guardarPermisosEnDocumento,
   leerDocumento,
   tieneSuperAdminActivo,
   type DocumentoUsuarios,
@@ -33,6 +35,7 @@ import {
 import { asegurarFilaDesdeCredencial, idDeSucursal, idLocalPorRemotoId, reflejarDocumento, remotoIdDeLocal, usuariosLocalesConClave } from '../usuarios/espejo'
 import { aUsuario, buscarFilaPorId, buscarFilaPorRemotoId, type FilaUsuario } from '../usuarios/filas'
 import { hashearClave, hashSenuelo, verificarClave } from './claves'
+import { guardarCopiaLocal, leerCopiaLocal, olvidarCopiaEnMemoria } from './copiaDePermisos'
 import { ErrorDeNegocio } from './errores'
 import { esFallaDeRed } from './red'
 import { establecerSesion, sesion } from './sesion'
@@ -138,6 +141,9 @@ export function configurarBaseDeUsuarios(config: ConfiguracionBaseDeUsuarios): v
   ultimoDocumento = null
   lecturaEnCurso = null
   sinInternetHasta = 0
+  // Se está configurando el acceso de cero (arranque del programa, o una prueba con otra base):
+  // lo que se recuerde de la copia local de permisos era de la base anterior.
+  olvidarCopiaEnMemoria()
   detenerRevalidacion()
   estado = {
     ...estadoInicial(),
@@ -269,6 +275,9 @@ async function leerRemoto(): Promise<Lectura> {
  */
 function reflejar(documento: DocumentoUsuarios): boolean {
   try {
+    // La matriz de permisos viaja en el mismo archivo y se copia acá para que valga también cuando se
+    // ingresa sin internet, antes de haber podido leer GitHub.
+    guardarCopiaLocal(documento.permisos, ahoraIso())
     const resultado = reflejarDocumento(db(), documento, ahoraIso())
     if (modoPersistido() !== 'github') persistirModo()
     if (resultado.enlazados.length > 0) registrar(`[usuarios] Enlazados con GitHub por nombre de usuario: ${resultado.enlazados.join(', ')}`)
@@ -785,6 +794,22 @@ export async function resetearClave(actor: SesionUsuario, idLocal: number, clave
   return usuarioDelEspejo(remotoId)
 }
 
+/**
+ * Guarda la matriz de permisos por rol en `usuarios.json`. Va en el mismo archivo que los usuarios
+ * porque tiene que valer para toda la agencia, y por el mismo camino que las demás mutaciones: se
+ * relee, se aplica y se escribe con el sha, así dos computadoras no se pisan.
+ */
+export async function guardarPermisos(actor: SesionUsuario, permisos: MatrizPermisos): Promise<MatrizPermisos> {
+  exigirEnLinea()
+  const documento = await mutarRemoto({
+    accion: 'cambio de permisos por rol',
+    actor,
+    exigir: 'super-admin',
+    aplicar: (doc) => guardarPermisosEnDocumento(doc, permisos),
+  })
+  return documento.permisos
+}
+
 // ---------------------------------------------------------------------------
 // Pantalla Usuarios: estado y bootstrap
 // ---------------------------------------------------------------------------
@@ -832,7 +857,9 @@ export async function subirLocales(actor: SesionUsuario): Promise<EstadoDeUsuari
   }
 
   const marca = ahoraIso()
-  const documento = agregarExistentes(documentoVacio(), locales, marca)
+  // Si en esta computadora ya se configuraron permisos (todavía en modo local), suben con los usuarios:
+  // sería raro inicializar la base compartida y que la matriz volviera sola a los valores por defecto.
+  const documento = agregarExistentes({ ...documentoVacio(), permisos: leerCopiaLocal() }, locales, marca)
   const texto = escribirDocumento(documento)
   const mensaje = `Usuarios: inicialización con ${locales.length} usuario(s) · ${actor.usuario} en ${nombreDeEquipo} · DM Gestión ${version}`.trim()
   try {

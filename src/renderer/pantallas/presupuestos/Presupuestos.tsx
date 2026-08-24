@@ -17,6 +17,7 @@ import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { FichaPresupuesto } from './FichaPresupuesto'
 import { FormularioPresupuesto } from './FormularioPresupuesto'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 const FILTROS_VACIOS: FiltrosPresupuestos = { busqueda: '', estado: '', sucursal: '', incluirVersiones: false }
 
@@ -28,6 +29,7 @@ export const CLASES_ESTADO_PRESUPUESTO: Record<EstadoPresupuesto, string> = {
 }
 
 export function Presupuestos() {
+  const puedeEditar = usePuedeEditar('presupuestos')
   const { parametros, limpiarParametros } = useNavegacion()
   const [datos, setDatos] = useState<ListadoPresupuestos | null>(null)
   const [filtros, setFiltros] = useState<FiltrosPresupuestos>(FILTROS_VACIOS)
@@ -62,7 +64,9 @@ export function Presupuestos() {
     void traer()
   }, [datos, catalogos.companias.length])
 
-  // Se puede llegar acá desde la ficha de una consulta o de un cliente, con el alta ya apuntada.
+  // Se puede llegar acá desde la ficha de una consulta o de un cliente, con el alta ya apuntada. Sin
+  // permiso de edición el atajo no se ofrece, pero el parámetro puede quedar de antes: no se abre el
+  // formulario para que nadie cargue un presupuesto que después no va a poder guardar.
   useEffect(() => {
     if (parametros.presupuestoId !== undefined) {
       setAbierto(parametros.presupuestoId)
@@ -70,15 +74,15 @@ export function Presupuestos() {
       return
     }
     if (parametros.nuevoPresupuestoParaLead !== undefined) {
-      setAlta({ leadId: parametros.nuevoPresupuestoParaLead, clienteId: null })
+      if (puedeEditar) setAlta({ leadId: parametros.nuevoPresupuestoParaLead, clienteId: null })
       limpiarParametros()
       return
     }
     if (parametros.nuevoPresupuestoParaCliente !== undefined) {
-      setAlta({ leadId: null, clienteId: parametros.nuevoPresupuestoParaCliente })
+      if (puedeEditar) setAlta({ leadId: null, clienteId: parametros.nuevoPresupuestoParaCliente })
       limpiarParametros()
     }
-  }, [parametros.presupuestoId, parametros.nuevoPresupuestoParaLead, parametros.nuevoPresupuestoParaCliente, limpiarParametros])
+  }, [parametros.presupuestoId, parametros.nuevoPresupuestoParaLead, parametros.nuevoPresupuestoParaCliente, limpiarParametros, puedeEditar])
 
   const cambiar = (cambios: Partial<FiltrosPresupuestos>) => setFiltros((previos) => ({ ...previos, ...cambios }))
 
@@ -133,9 +137,11 @@ export function Presupuestos() {
         </label>
 
         <div className="ml-auto flex items-center gap-2">
-          <Boton variante="primario" icono="mas" onClick={() => setAlta({ leadId: null, clienteId: null })}>
-            Nuevo presupuesto
-          </Boton>
+          {puedeEditar && (
+            <Boton variante="primario" icono="mas" onClick={() => setAlta({ leadId: null, clienteId: null })}>
+              Nuevo presupuesto
+            </Boton>
+          )}
           <BotonAyuda clave="presupuestos" />
         </div>
       </div>

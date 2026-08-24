@@ -12,6 +12,7 @@ import {
   type ResultadoImputacion,
 } from '../../../shared/tipos'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
+import { usePermisos } from '../../contexto/Permisos'
 import { numero, pesos } from './formato'
 
 const CLASES_RESULTADO: Record<ResultadoImputacion, string> = {
@@ -23,6 +24,9 @@ const CLASES_RESULTADO: Record<ResultadoImputacion, string> = {
 }
 
 export function Imputados() {
+  // La rendición se mira desde Cartera y desde Cobranzas: alcanza con poder editar cualquiera.
+  const { puedeEditar } = usePermisos()
+  const puedeImputar = puedeEditar('cartera') || puedeEditar('cobranzas')
   const [datos, setDatos] = useState<RendicionImputados | null>(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -161,7 +165,7 @@ export function Imputados() {
                 <td className="px-3 py-2">
                   <select
                     value={pago.resultado}
-                    disabled={guardando === pago.id}
+                    disabled={guardando === pago.id || !puedeImputar}
                     aria-label={`Resultado de ${pago.clienteNombre ?? 'el pago'}`}
                     onChange={(evento) => void cambiar(pago, evento.target.value as ResultadoImputacion)}
                     className={cx('h-8 rounded-lg border px-2 text-xs disabled:opacity-50', CLASES_RESULTADO[pago.resultado])}

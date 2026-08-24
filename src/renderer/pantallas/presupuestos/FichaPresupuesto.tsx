@@ -8,6 +8,7 @@ import type { FichaPresupuesto as Ficha, OpcionDePresupuesto } from '../../../sh
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
+import { usePermisos } from '../../contexto/Permisos'
 import { FormularioPresupuesto } from './FormularioPresupuesto'
 import { CLASES_ESTADO_PRESUPUESTO } from './Presupuestos'
 
@@ -19,6 +20,8 @@ function fechaYHora(iso: string): string {
 
 export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: number; alVolver: () => void }) {
   const { ir } = useNavegacion()
+  const { puedeEditar } = usePermisos()
+  const puedeTrabajar = puedeEditar('presupuestos')
   const [ficha, setFicha] = useState<Ficha | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -112,7 +115,7 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
       {aviso && <Alerta tono="exito">{aviso}</Alerta>}
 
       <div className="flex flex-wrap gap-2">
-        <Boton variante="primario" icono="mensaje" cargando={trabajando} disabled={!p.vigente} onClick={() => void enviar()}>
+        <Boton variante="primario" icono="mensaje" cargando={trabajando} disabled={!p.vigente || !puedeTrabajar} onClick={() => void enviar()}>
           Enviar por WhatsApp
         </Boton>
         <Boton icono="descargar" cargando={trabajando} onClick={() => void guardarPdf()}>
@@ -121,11 +124,11 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
         <Boton icono="impresora" cargando={trabajando} onClick={() => void window.dm.presupuestos.imprimir(presupuestoId)}>
           Imprimir
         </Boton>
-        <Boton icono="lapiz" disabled={!p.vigente} onClick={() => setEditarAbierto(true)}>
+        <Boton icono="lapiz" disabled={!p.vigente || !puedeTrabajar} onClick={() => setEditarAbierto(true)}>
           Editar
         </Boton>
         {p.estado !== 'RECHAZADO' && p.vigente && (
-          <Boton variante="peligro" icono="cerrar" onClick={() => setRechazoAbierto(true)} className="ml-auto">
+          <Boton variante="peligro" icono="cerrar" disabled={!puedeTrabajar} onClick={() => setRechazoAbierto(true)} className="ml-auto">
             No lo tomó
           </Boton>
         )}
@@ -165,7 +168,7 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
                         </span>
                       ) : (
                         p.vigente && (
-                          <Boton tamano="sm" cargando={trabajando} onClick={() => void aceptar(opcion)}>
+                          <Boton tamano="sm" cargando={trabajando} disabled={!puedeTrabajar} onClick={() => void aceptar(opcion)}>
                             Aceptar
                           </Boton>
                         )
@@ -298,7 +301,7 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
             <>
               <Boton onClick={() => setAceptada(null)}>Después</Boton>
               {aceptada.clienteId !== null ? (
-                <Boton variante="primario" icono="polizas" onClick={() => ir('polizas', { nuevaPolizaPara: aceptada.clienteId! })}>
+                <Boton variante="primario" icono="polizas" disabled={!puedeEditar('polizas')} onClick={() => ir('polizas', { nuevaPolizaPara: aceptada.clienteId! })}>
                   Cargar la póliza
                 </Boton>
               ) : (

@@ -12,6 +12,7 @@ import {
 import type { CampoEditable, FilaCartera, PlanillaDelMes as DatosPlanilla } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta as Aviso, Boton, Cargando, cx } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoBaja } from './DialogoBaja'
 import { DialogoPago } from './DialogoPago'
@@ -50,6 +51,33 @@ function normalizar(valor: string | null | undefined): string {
     .replace(/[^A-Z0-9]+/g, '')
 }
 
+/**
+ * Los contadores de arriba también filtran: `''` es «Total», que no filtra nada. Cada uno usa
+ * exactamente la misma condición con la que se contó, así el número del cartel y las filas que
+ * quedan en la tabla no pueden discrepar.
+ */
+type Contador = '' | 'vencenHoy' | 'vencidos' | 'avisadosHoy' | 'pagadosHoy'
+
+function estaPagada(fila: FilaCartera): boolean {
+  return Boolean(fila.pagoFecha) || fila.pagoRegistrado
+}
+
+function entraEnElContador(entrada: FilaConAlerta, contador: Contador, hoy: string): boolean {
+  const { fila, alerta } = entrada
+  switch (contador) {
+    case 'vencenHoy':
+      return !estaPagada(fila) && alerta.diasParaVencer === 0
+    case 'vencidos':
+      return !estaPagada(fila) && alerta.diasParaVencer !== null && alerta.diasParaVencer < 0
+    case 'avisadosHoy':
+      return (fila.fechaEnvio ?? '').startsWith(hoy)
+    case 'pagadosHoy':
+      return fila.pagoFecha === hoy
+    default:
+      return true
+  }
+}
+
 interface Filtros {
   busqueda: string
   sucursal: string
@@ -57,13 +85,15 @@ interface Filtros {
   compania: string
   color: string
   soloAvisarVto: boolean
+  contador: Contador
 }
 
-const FILTROS_VACIOS: Filtros = { busqueda: '', sucursal: '', formaPago: '', compania: '', color: '', soloAvisarVto: false }
+const FILTROS_VACIOS: Filtros = { busqueda: '', sucursal: '', formaPago: '', compania: '', color: '', soloAvisarVto: false, contador: '' }
 
 export function PlanillaDelMes() {
   const usuario = useUsuarioActual()
-  const puedeCerrarMes = usuario.rol !== 'EMPLEADO'
+  const puedeEditarCartera = usePuedeEditar('cartera')
+  const puedeCerrarMes = usuario.rol !== 'EMPLEADO' && puedeEditarCartera
 
   const [datos, setDatos] = useState<DatosPlanilla | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -117,7 +147,10 @@ export function PlanillaDelMes() {
 
   const filtradas = useMemo(() => {
     const busqueda = normalizar(filtros.busqueda)
-    return conAlerta.filter(({ fila, alerta }) => {
+    const hoy = datos?.hoy ?? ''
+    return conAlerta.filter((entrada) => {
+      const { fila, alerta } = entrada
+      if (!entraEnElContador(entrada, filtros.contador, hoy)) return false
       if (busqueda) {
         const enTexto =
           normalizar(fila.nombre).includes(busqueda) ||
@@ -133,20 +166,21 @@ export function PlanillaDelMes() {
       if (filtros.soloAvisarVto && normalizar(fila.avisarVto) !== 'AVISAR') return false
       return true
     })
-  }, [conAlerta, filtros])
+  }, [conAlerta, datos, filtros])
 
+  // Los contadores se calculan sobre el mes entero, no sobre lo filtrado: son el tablero del día y
+  // tienen que seguir diciendo lo mismo cuando se toca uno para filtrar.
   const contadores = useMemo(() => {
     const hoy = datos?.hoy ?? ''
     let vencenHoy = 0
     let vencidos = 0
     let avisadosHoy = 0
     let pagadosHoy = 0
-    for (const { fila, alerta } of conAlerta) {
-      const pagada = Boolean(fila.pagoFecha) || fila.pagoRegistrado
-      if (!pagada && alerta.diasParaVencer === 0) vencenHoy++
-      if (!pagada && alerta.diasParaVencer !== null && alerta.diasParaVencer < 0) vencidos++
-      if ((fila.fechaEnvio ?? '').startsWith(hoy)) avisadosHoy++
-      if (fila.pagoFecha === hoy) pagadosHoy++
+    for (const entrada of conAlerta) {
+      if (entraEnElContador(entrada, 'vencenHoy', hoy)) vencenHoy++
+      if (entraEnElContador(entrada, 'vencidos', hoy)) vencidos++
+      if (entraEnElContador(entrada, 'avisadosHoy', hoy)) avisadosHoy++
+      if (entraEnElContador(entrada, 'pagadosHoy', hoy)) pagadosHoy++
     }
     return { total: conAlerta.length, vencenHoy, vencidos, avisadosHoy, pagadosHoy }
   }, [conAlerta, datos])
@@ -156,7 +190,13 @@ export function PlanillaDelMes() {
     [datos, seleccionada],
   )
 
-  const soloLectura = datos?.soloLectura ?? false
+  // Un mes cerrado y un permiso de sólo lectura se ven igual desde la planilla: no se toca nada.
+  const soloLectura = (datos?.soloLectura ?? false) || !puedeEditarCartera
+
+  /** Tocar el contador que ya está aplicado lo apaga: se vuelve a ver el mes entero. */
+  const alternarContador = useCallback((contador: Contador) => {
+    setFiltros((f) => ({ ...f, contador: f.contador === contador ? '' : contador }))
+  }, [])
 
   // --- Acciones -------------------------------------------------------------
 
@@ -301,7 +341,7 @@ export function PlanillaDelMes() {
         {soloLectura && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
             <Icono nombre="candado" tamano={13} />
-            Mes cerrado · sólo lectura
+            {puedeEditarCartera ? 'Mes cerrado · sólo lectura' : 'Tenés Cartera en sólo lectura'}
           </span>
         )}
 
@@ -318,11 +358,45 @@ export function PlanillaDelMes() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Contador etiqueta="Total" valor={contadores.total} />
-        <Contador etiqueta="Vencen hoy" valor={contadores.vencenHoy} tono="rojo" />
-        <Contador etiqueta="Vencidos" valor={contadores.vencidos} tono="rojo" titulo="Ya pasó el día de vencimiento y no figuran pagos. Los que todavía están dentro de la cobertura financiera de su compañía se ven en amarillo o naranja." />
-        <Contador etiqueta="Avisados hoy" valor={contadores.avisadosHoy} tono="azul" />
-        <Contador etiqueta="Pagados hoy" valor={contadores.pagadosHoy} tono="verde" />
+        <Contador
+          etiqueta="Total"
+          valor={contadores.total}
+          activo={filtros.contador === ''}
+          titulo="Todas las filas del mes."
+          alTocar={() => setFiltros((f) => ({ ...f, contador: '' }))}
+        />
+        <Contador
+          etiqueta="Vencen hoy"
+          valor={contadores.vencenHoy}
+          tono="rojo"
+          activo={filtros.contador === 'vencenHoy'}
+          titulo="Vencen hoy y todavía no figuran pagos."
+          alTocar={() => alternarContador('vencenHoy')}
+        />
+        <Contador
+          etiqueta="Vencidos"
+          valor={contadores.vencidos}
+          tono="rojo"
+          activo={filtros.contador === 'vencidos'}
+          titulo="Ya pasó el día de vencimiento y no figuran pagos. Los que todavía están dentro de la cobertura financiera de su compañía se ven en amarillo o naranja."
+          alTocar={() => alternarContador('vencidos')}
+        />
+        <Contador
+          etiqueta="Avisados hoy"
+          valor={contadores.avisadosHoy}
+          tono="azul"
+          activo={filtros.contador === 'avisadosHoy'}
+          titulo="Se les mandó el WhatsApp de aviso hoy."
+          alTocar={() => alternarContador('avisadosHoy')}
+        />
+        <Contador
+          etiqueta="Pagados hoy"
+          valor={contadores.pagadosHoy}
+          tono="verde"
+          activo={filtros.contador === 'pagadosHoy'}
+          titulo="Pagaron hoy."
+          alTocar={() => alternarContador('pagadosHoy')}
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -354,7 +428,7 @@ export function PlanillaDelMes() {
           />
           Sólo con AVISAR VTO
         </label>
-        {(filtros.busqueda || filtros.sucursal || filtros.formaPago || filtros.compania || filtros.color || filtros.soloAvisarVto) && (
+        {(filtros.busqueda || filtros.sucursal || filtros.formaPago || filtros.compania || filtros.color || filtros.soloAvisarVto || filtros.contador) && (
           <Boton tamano="sm" variante="fantasma" icono="cerrar" onClick={() => setFiltros(FILTROS_VACIOS)}>
             Limpiar
           </Boton>
@@ -417,18 +491,43 @@ export function PlanillaDelMes() {
 // Piezas
 // ---------------------------------------------------------------------------
 
-function Contador({ etiqueta, valor, tono = 'neutro', titulo }: { etiqueta: string; valor: number; tono?: 'neutro' | 'rojo' | 'azul' | 'verde'; titulo?: string }) {
+/** Cartel de arriba: además de contar, filtra la tabla al tocarlo (como las pestañas de Siniestros). */
+function Contador({
+  etiqueta,
+  valor,
+  tono = 'neutro',
+  titulo,
+  activo,
+  alTocar,
+}: {
+  etiqueta: string
+  valor: number
+  tono?: 'neutro' | 'rojo' | 'azul' | 'verde'
+  titulo?: string
+  activo: boolean
+  alTocar: () => void
+}) {
   const clases = {
-    neutro: 'border-slate-200 bg-white text-slate-900',
-    rojo: 'border-red-200 bg-red-50 text-red-800',
-    azul: 'border-sky-200 bg-sky-50 text-sky-800',
-    verde: 'border-green-200 bg-green-50 text-green-800',
+    neutro: activo ? 'border-marino-500 bg-marino-50 text-marino-900' : 'border-slate-200 bg-white text-slate-900 hover:border-slate-300',
+    rojo: activo ? 'border-red-500 bg-red-100 text-red-900' : 'border-red-200 bg-red-50 text-red-800 hover:border-red-300',
+    azul: activo ? 'border-sky-500 bg-sky-100 text-sky-900' : 'border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300',
+    verde: activo ? 'border-green-500 bg-green-100 text-green-900' : 'border-green-200 bg-green-50 text-green-800 hover:border-green-300',
   }[tono]
   return (
-    <div title={titulo} className={cx('rounded-lg border px-3 py-1.5', clases)}>
+    <button
+      type="button"
+      onClick={alTocar}
+      aria-pressed={activo}
+      title={titulo}
+      className={cx(
+        'rounded-lg border px-3 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40',
+        activo && 'ring-2 ring-marino-500/25',
+        clases,
+      )}
+    >
       <span className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-70">{etiqueta}</span>
       <span className="ml-2 font-display text-lg font-extrabold tabular-nums">{valor.toLocaleString('es-AR')}</span>
-    </div>
+    </button>
   )
 }
 

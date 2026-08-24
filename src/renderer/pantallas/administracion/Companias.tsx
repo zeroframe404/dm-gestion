@@ -3,8 +3,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { PLANTILLA_AVISO_POR_DEFECTO, type Compania } from '../../../shared/tipos'
 import { Alerta, AreaTexto, Boton, Cargando, Tarjeta, cx } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 export function Companias() {
+  // Con Administración en «sólo ver» la pantalla se consulta pero no se toca: el proceso principal
+  // rechaza igual estos guardados, así que no tiene sentido dejar los campos habilitados.
+  const puedeEditar = usePuedeEditar('administracion')
   const [companias, setCompanias] = useState<Compania[]>([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -93,6 +97,7 @@ export function Companias() {
                       min={0}
                       max={365}
                       aria-label={`Días de cobertura de ${compania.nombre}`}
+                      disabled={!puedeEditar}
                       defaultValue={compania.diasCoberturaFinanciera}
                       onBlur={(evento) => {
                         // Dejar el campo vacío no es «cero»: es no haber escrito nada, y se devuelve
@@ -107,7 +112,7 @@ export function Companias() {
                           void guardar(compania, { diasCoberturaFinanciera: dias }, `${compania.nombre}: ${dias} días de cobertura financiera.`)
                         }
                       }}
-                      className="h-8 w-20 rounded border border-slate-300 px-2 text-right text-sm tabular-nums"
+                      className="h-8 w-20 rounded border border-slate-300 px-2 text-right text-sm tabular-nums disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                     />
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -117,6 +122,7 @@ export function Companias() {
                       max={100}
                       step={0.5}
                       aria-label={`Comisión de ${compania.nombre}`}
+                      disabled={!puedeEditar}
                       defaultValue={compania.comisionPorcentaje}
                       onBlur={(evento) => {
                         const escrito = evento.currentTarget.value.trim()
@@ -129,7 +135,7 @@ export function Companias() {
                           void guardar(compania, { comisionPorcentaje: comision }, `${compania.nombre}: ${comision} % de comisión.`)
                         }
                       }}
-                      className="h-8 w-20 rounded border border-slate-300 px-2 text-right text-sm tabular-nums"
+                      className="h-8 w-20 rounded border border-slate-300 px-2 text-right text-sm tabular-nums disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                     />
                   </td>
                 </tr>
@@ -143,15 +149,17 @@ export function Companias() {
         titulo="Mensaje de aviso por WhatsApp"
         descripcion="Lo que se manda al tocar «Avisar» en la planilla. Se pueden usar {nombre}, {cuota} y {vencimiento}."
         acciones={
-          <>
-            <Boton onClick={() => setPlantilla(PLANTILLA_AVISO_POR_DEFECTO)}>Restaurar el original</Boton>
-            <Boton variante="primario" icono="ok" onClick={() => void guardarPlantilla()} cargando={guardandoPlantilla}>
-              Guardar
-            </Boton>
-          </>
+          puedeEditar && (
+            <>
+              <Boton onClick={() => setPlantilla(PLANTILLA_AVISO_POR_DEFECTO)}>Restaurar el original</Boton>
+              <Boton variante="primario" icono="ok" onClick={() => void guardarPlantilla()} cargando={guardandoPlantilla}>
+                Guardar
+              </Boton>
+            </>
+          )
         }
       >
-        <AreaTexto etiqueta="Plantilla" rows={4} value={plantilla} onChange={(evento) => setPlantilla(evento.target.value)} />
+        <AreaTexto etiqueta="Plantilla" rows={4} value={plantilla} disabled={!puedeEditar} onChange={(evento) => setPlantilla(evento.target.value)} />
         <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
           <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Así se ve</span>
           {plantilla.replace('{nombre}', 'María').replace('{cuota}', '44.800').replace('{vencimiento}', '11')}

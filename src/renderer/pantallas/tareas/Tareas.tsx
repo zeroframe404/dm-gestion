@@ -21,6 +21,7 @@ import { useNavegacion } from '../../contexto/Navegacion'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoNuevaTarea } from './DialogoNuevaTarea'
 import { FichaTarea } from './FichaTarea'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 /** La urgencia con su color: ALTA se tiene que ver desde la otra punta de la pantalla. */
 export const CLASES_PRIORIDAD: Record<PrioridadTarea, string> = {
@@ -30,6 +31,7 @@ export const CLASES_PRIORIDAD: Record<PrioridadTarea, string> = {
 }
 
 export function Tareas() {
+  const puedeEditar = usePuedeEditar('tareas')
   const { parametros, limpiarParametros, ir } = useNavegacion()
   const usuario = useUsuarioActual()
   // Arranca en lo mío: es la pregunta con la que uno abre el módulo.
@@ -147,9 +149,11 @@ export function Tareas() {
         </label>
 
         <div className="ml-auto flex items-center gap-2">
-          <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)}>
-            Nueva tarea
-          </Boton>
+          {puedeEditar && (
+            <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)}>
+              Nueva tarea
+            </Boton>
+          )}
           <BotonAyuda clave="tareas" />
         </div>
       </div>
@@ -214,6 +218,7 @@ export function Tareas() {
               <FilaDeTarea
                 key={tarea.id}
                 tarea={tarea}
+                puedeEditar={puedeEditar}
                 alAbrir={() => setAbierta(tarea.id)}
                 alIrAlVinculo={() => {
                   if (tarea.siniestroId !== null) return ir('siniestros', { siniestroId: tarea.siniestroId })
@@ -250,11 +255,13 @@ export function Tareas() {
 
 function FilaDeTarea({
   tarea,
+  puedeEditar,
   alAbrir,
   alIrAlVinculo,
   alCambiarEstado,
 }: {
   tarea: FilaTarea
+  puedeEditar: boolean
   alAbrir: () => void
   alIrAlVinculo: () => void
   alCambiarEstado: (estado: EstadoTarea) => void | Promise<void>
@@ -292,9 +299,10 @@ function FilaDeTarea({
       <td className="px-3 py-2">
         <select
           value={tarea.estado}
+          disabled={!puedeEditar}
           aria-label={`Estado de ${tarea.titulo}`}
           onChange={(e) => void alCambiarEstado(e.target.value as EstadoTarea)}
-          className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700"
+          className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 disabled:opacity-60"
         >
           {ESTADOS_DE_TAREA.map((estado) => (
             <option key={estado} value={estado}>

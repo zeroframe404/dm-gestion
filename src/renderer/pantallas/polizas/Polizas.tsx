@@ -11,6 +11,7 @@ import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { FormularioPoliza } from './FormularioPoliza'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 /** Color de la etiqueta de estado. Vencida va en ámbar y no en rojo: sigue siendo cartera, hay que renovarla. */
 export const TONO_DE_ESTADO: Record<EstadoPoliza, 'exito' | 'aviso' | 'neutro'> = {
@@ -25,6 +26,7 @@ const FILTROS_VACIOS: FiltrosPolizas = { busqueda: '', estado: '', compania: '',
 type Vista = { pantalla: 'listado' } | { pantalla: 'formulario'; polizaId: number | null; clienteIdInicial: number | null }
 
 export function Polizas() {
+  const puedeEditar = usePuedeEditar('polizas')
   const { parametros, limpiarParametros } = useNavegacion()
 
   const [vista, setVista] = useState<Vista>({ pantalla: 'listado' })
@@ -237,13 +239,15 @@ export function Polizas() {
           <Boton icono="cargando" onClick={() => void cargar(filtros)} disabled={cargando}>
             Actualizar
           </Boton>
-          <Boton
-            variante="primario"
-            icono="mas"
-            onClick={() => setVista({ pantalla: 'formulario', polizaId: null, clienteIdInicial: null })}
-          >
-            Nueva póliza
-          </Boton>
+          {puedeEditar && (
+            <Boton
+              variante="primario"
+              icono="mas"
+              onClick={() => setVista({ pantalla: 'formulario', polizaId: null, clienteIdInicial: null })}
+            >
+              Nueva póliza
+            </Boton>
+          )}
           <BotonAyuda clave="polizas" />
         </div>
       </div>

@@ -9,6 +9,7 @@ import { ESTADOS_DE_LEAD, NOMBRE_ORIGEN_LEAD, type EstadoLead, type FichaLead as
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
+import { usePermisos } from '../../contexto/Permisos'
 import { DialogoLead } from './DialogoLead'
 import { CLASES_ESTADO_LEAD } from './Leads'
 
@@ -20,6 +21,8 @@ function fechaYHora(iso: string): string {
 
 export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () => void }) {
   const { ir } = useNavegacion()
+  const { puedeEditar } = usePermisos()
+  const puedeEditarLeads = puedeEditar('leads')
   const [ficha, setFicha] = useState<Ficha | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [trabajando, setTrabajando] = useState(false)
@@ -93,7 +96,7 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
 
         <select
           value={lead.estado}
-          disabled={trabajando}
+          disabled={trabajando || !puedeEditarLeads}
           aria-label="Estado de la consulta"
           onChange={(e) => void hacer(() => window.dm.leads.cambiarEstado(lead.id, e.target.value as EstadoLead))}
           className={cx('h-9 rounded-lg border px-2 text-sm font-semibold disabled:opacity-60', CLASES_ESTADO_LEAD[lead.estado])}
@@ -110,10 +113,17 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
             WhatsApp
           </Boton>
         )}
-        <Boton icono="lapiz" onClick={() => setEditarAbierto(true)}>
+        <Boton icono="lapiz" disabled={!puedeEditarLeads} onClick={() => setEditarAbierto(true)}>
           Editar
         </Boton>
-        <Boton variante="primario" icono="clientes" cargando={trabajando} onClick={() => void convertir()}>
+        <Boton
+          variante="primario"
+          icono="clientes"
+          cargando={trabajando}
+          disabled={!puedeEditarLeads || !puedeEditar('clientes')}
+          title={puedeEditar('clientes') ? undefined : 'Convertir da de alta un cliente y para eso hace falta permiso en Clientes.'}
+          onClick={() => void convertir()}
+        >
           Convertir en cliente
         </Boton>
       </div>
@@ -162,7 +172,7 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
               <Boton
                 variante="primario"
                 icono="mas"
-                disabled={!nota.trim()}
+                disabled={!nota.trim() || !puedeEditarLeads}
                 cargando={trabajando}
                 onClick={async () => {
                   const ok = await hacer(() => window.dm.leads.agregarNota(lead.id, nota))
@@ -196,7 +206,7 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
           titulo="Presupuestos"
           descripcion="Lo que se le cotizó a esta consulta."
           acciones={
-            <Boton icono="mas" onClick={() => ir('presupuestos', { nuevoPresupuestoParaLead: lead.id })}>
+            <Boton icono="mas" disabled={!puedeEditar('presupuestos')} onClick={() => ir('presupuestos', { nuevoPresupuestoParaLead: lead.id })}>
               Nuevo presupuesto
             </Boton>
           }
@@ -280,7 +290,7 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
           pie={
             <>
               <Boton onClick={() => setConversion(null)}>Después</Boton>
-              <Boton variante="primario" icono="polizas" onClick={() => ir('polizas', { nuevaPolizaPara: conversion.clienteId })}>
+              <Boton variante="primario" icono="polizas" disabled={!puedeEditar('polizas')} onClick={() => ir('polizas', { nuevaPolizaPara: conversion.clienteId })}>
                 Cargar la póliza
               </Boton>
             </>

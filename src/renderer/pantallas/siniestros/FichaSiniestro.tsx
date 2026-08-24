@@ -8,6 +8,7 @@ import { ESTADOS_DE_SINIESTRO, type EstadoSiniestro, type FichaSiniestro as Fich
 import { NOMBRE_ESTADO_TAREA } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Dialogo, Selector, Tarjeta, cx } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { CLASES_ESTADO } from './Siniestros'
 
@@ -30,13 +31,17 @@ function pesoDeArchivo(bytes: number): string {
 
 export function FichaSiniestro({ siniestroId, alVolver }: Props) {
   const usuario = useUsuarioActual()
-  const puedeBorrarDocumentos = usuario.rol !== 'EMPLEADO'
+  const puedeEditar = usePuedeEditar('siniestros')
+  const puedeBorrarDocumentos = usuario.rol !== 'EMPLEADO' && puedeEditar
 
   const [ficha, setFicha] = useState<Ficha | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [trabajando, setTrabajando] = useState(false)
   const [observacion, setObservacion] = useState('')
   const [tareaAbierta, setTareaAbierta] = useState(false)
+
+  // Sin permiso de edición la ficha se lee entera, pero no se toca nada: como estar guardando.
+  const bloqueado = trabajando || !puedeEditar
 
   const cargar = useCallback(async () => {
     const resultado = await window.dm.siniestros.ficha(siniestroId)
@@ -95,7 +100,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
           Estado del trámite
           <select
             value={s.estado}
-            disabled={trabajando}
+            disabled={bloqueado}
             onChange={(evento) => void hacer(() => window.dm.siniestros.cambiarEstado(s.id, evento.target.value as EstadoSiniestro))}
             className={cx('ml-2 h-9 rounded-lg border px-2 text-sm font-semibold disabled:opacity-60', CLASES_ESTADO[s.estado])}
           >
@@ -120,14 +125,14 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
         {/* --- Columna izquierda: los datos de la hoja, editables --- */}
         <Tarjeta titulo="Datos del siniestro" className="lg:col-span-1">
           <dl className="flex flex-col gap-2.5 text-sm">
-            <Dato etiqueta="Sucursal" valor={s.sucursal} campo="sucursal" siniestroId={s.id} alGuardar={hacer} />
-            <Dato etiqueta="Fecha de carga" valor={s.fechaCarga} campo="fechaCarga" siniestroId={s.id} alGuardar={hacer} />
-            <Dato etiqueta="Fecha del siniestro" valor={s.fecha} campo="fecha" siniestroId={s.id} alGuardar={hacer} />
-            <Dato etiqueta="N.º de siniestro" valor={s.numeroSiniestro} campo="numeroSiniestro" siniestroId={s.id} alGuardar={hacer} />
-            <Dato etiqueta="Cobertura" valor={s.cobertura} campo="cobertura" siniestroId={s.id} alGuardar={hacer} />
-            <Dato etiqueta="Patente" valor={s.patente} campo="patente" siniestroId={s.id} alGuardar={hacer} />
-            <Dato etiqueta="Importe" valor={s.importe} campo="importe" siniestroId={s.id} alGuardar={hacer} />
-            <Dato etiqueta="Qué pasó" valor={s.descripcion} campo="descripcion" siniestroId={s.id} alGuardar={hacer} />
+            <Dato etiqueta="Sucursal" valor={s.sucursal} campo="sucursal" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+            <Dato etiqueta="Fecha de carga" valor={s.fechaCarga} campo="fechaCarga" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+            <Dato etiqueta="Fecha del siniestro" valor={s.fecha} campo="fecha" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+            <Dato etiqueta="N.º de siniestro" valor={s.numeroSiniestro} campo="numeroSiniestro" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+            <Dato etiqueta="Cobertura" valor={s.cobertura} campo="cobertura" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+            <Dato etiqueta="Patente" valor={s.patente} campo="patente" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+            <Dato etiqueta="Importe" valor={s.importe} campo="importe" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+            <Dato etiqueta="Qué pasó" valor={s.descripcion} campo="descripcion" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
             <div>
               <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Teléfono</dt>
               <dd className="text-slate-800">{s.telefono ?? '—'}</dd>
@@ -154,7 +159,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
                 <Boton
                   variante="primario"
                   icono="mas"
-                  disabled={!observacion.trim()}
+                  disabled={!observacion.trim() || !puedeEditar}
                   cargando={trabajando}
                   onClick={async () => {
                     const ok = await hacer(() => window.dm.siniestros.agregarObservacion(s.id, observacion))
@@ -190,7 +195,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
           titulo="Documentos"
           descripcion={`Se guardan en ${ficha.carpetaDeAdjuntos} y, si hay conexión con Google, se suben además a la carpeta «Adjuntos DM» del Drive.`}
           acciones={
-            <Boton icono="clip" cargando={trabajando} onClick={() => void hacer(() => window.dm.siniestros.adjuntar(s.id, null))}>
+            <Boton icono="clip" cargando={trabajando} disabled={!puedeEditar} onClick={() => void hacer(() => window.dm.siniestros.adjuntar(s.id, null))}>
               Adjuntar
             </Boton>
           }
@@ -239,7 +244,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
           titulo="Tareas"
           descripcion="Lo que hay que hacer para que el trámite avance."
           acciones={
-            <Boton icono="mas" onClick={() => setTareaAbierta(true)}>
+            <Boton icono="mas" disabled={!puedeEditar} onClick={() => setTareaAbierta(true)}>
               Nueva tarea
             </Boton>
           }
@@ -261,7 +266,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
                   </div>
                   <select
                     value={tarea.estado}
-                    disabled={trabajando}
+                    disabled={bloqueado}
                     aria-label={`Estado de ${tarea.titulo}`}
                     onChange={(evento) =>
                       void hacer(() => window.dm.siniestros.cambiarEstadoDeTarea(tarea.id, evento.target.value as EstadoTarea))
@@ -302,12 +307,14 @@ function Dato({
   valor,
   campo,
   siniestroId,
+  soloLectura,
   alGuardar,
 }: {
   etiqueta: string
   valor: string | null
   campo: string
   siniestroId: number
+  soloLectura: boolean
   alGuardar: (accion: () => Promise<{ ok: true; datos: Ficha } | { ok: false; error: string }>) => Promise<boolean>
 }) {
   const [editando, setEditando] = useState(false)
@@ -332,9 +339,9 @@ function Dato({
           />
         ) : (
           <span
-            onDoubleClick={() => setEditando(true)}
-            title="Doble clic para corregir"
-            className="block cursor-text rounded px-1 py-0.5 text-slate-800 hover:bg-slate-50"
+            onDoubleClick={soloLectura ? undefined : () => setEditando(true)}
+            title={soloLectura ? undefined : 'Doble clic para corregir'}
+            className={cx('block rounded px-1 py-0.5 text-slate-800', !soloLectura && 'cursor-text hover:bg-slate-50')}
           >
             {valor || <span className="text-slate-400">—</span>}
           </span>

@@ -3,11 +3,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { NOMBRE_MOTIVO_BAJA, type FilaBaja, type MotivoDeBaja, type PeriodoCartera } from '../../../shared/tipos'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
 export function Bajas() {
   const usuario = useUsuarioActual()
-  const puedeDeshacer = usuario.rol !== 'EMPLEADO'
+  const puedeEditarCartera = usePuedeEditar('cartera')
+  const puedeDeshacer = usuario.rol !== 'EMPLEADO' && puedeEditarCartera
 
   const [periodos, setPeriodos] = useState<PeriodoCartera[]>([])
   const [periodo, setPeriodo] = useState<string | null>(null)

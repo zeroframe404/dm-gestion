@@ -17,6 +17,7 @@ import { cambiarActivo, crearUsuario, editarUsuario, listarUsuarios, resetearCla
 import { AlmacenDeCredencial, cifradorDePrueba } from '../src/main/usuarios/credencial'
 import { AlmacenEnMemoria, ErrorDelAlmacen } from '../src/main/usuarios/almacen'
 import { escribirDocumento, leerDocumento } from '../src/main/usuarios/documento'
+import { permisosPorDefecto } from '../src/shared/permisos'
 import type { EstadoDeAcceso, SesionUsuario } from '../src/shared/tipos'
 import { unico } from './ayuda'
 
@@ -455,7 +456,7 @@ test('leer y escribir el documento: validación estricta y salida estable', asyn
   assert.equal(leido.usuarios[0]!.usuario, 'ana')
   assert.equal(leido.usuarios[0]!.sucursal, 'Lanús')
   assert.equal(leido.usuarios[0]!.activo, true)
-  const texto = escribirDocumento({ formato: 1, siguienteId: 9, usuarios: [leido.usuarios[0]!, { ...leido.usuarios[0]!, id: 3, usuario: 'b' }] })
+  const texto = escribirDocumento({ formato: 1, siguienteId: 9, usuarios: [leido.usuarios[0]!, { ...leido.usuarios[0]!, id: 3, usuario: 'b' }], permisos: permisosPorDefecto() })
   assert.ok(texto.endsWith('\n'))
   assert.ok(texto.indexOf('"usuario": "b"') < texto.indexOf('"usuario": "ana"'), 'ordenado por id')
 })
@@ -506,6 +507,7 @@ test('una sesión abierta con la tabla local se cierra cuando otra computadora i
       formato: 1,
       siguienteId: 2,
       usuarios: [{ id: 1, nombre: 'Daniel Martínez', usuario: 'daniel', claveHash: hashSync('Clave-Otra-PC', 4), rol: 'SUPER_ADMIN', sucursal: 'Daniel', activo: true, debeCambiarClave: false, creadoEn: '', actualizadoEn: '' }],
+      permisos: permisosPorDefecto(),
     })
     almacen.escribirDirecto(texto)
     return almacen

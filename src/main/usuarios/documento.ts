@@ -3,6 +3,7 @@
 // Todo acá es puro: ni base de datos, ni red, ni Electron. Cada mutación recibe un documento y
 // devuelve otro nuevo, así el servicio puede releer el archivo y volver a aplicar el mismo cambio
 // cuando otra computadora escribió en el medio (el candado optimista del `sha` de GitHub).
+import { normalizarMatriz, permisosPorDefecto, type MatrizPermisos } from '../../shared/permisos'
 import { ROLES, type Rol } from '../../shared/tipos'
 import { ErrorDeNegocio } from '../servicios/errores'
 
@@ -28,10 +29,22 @@ export interface DocumentoUsuarios {
   formato: typeof FORMATO_ACTUAL
   siguienteId: number
   usuarios: UsuarioRemoto[]
+  /**
+   * Qué puede ver y tocar cada rol (Administración → Permisos). Va acá y no en la base de cada
+   * computadora porque tiene que valer para toda la agencia: si viviera en el `dm.db` de cada PC, el
+   * superadministrador configuraría permisos que sólo se aplicarían en la suya.
+   *
+   * Un archivo que viene sin `permisos` (los que escribió una versión anterior del programa) se lee
+   * con los valores por defecto, que son los de siempre: por eso el formato sigue siendo 1 y las
+   * versiones viejas pueden seguir leyendo el archivo. Lo que no pueden es conservar el campo al
+   * escribir: si una PC sin actualizar da de alta un usuario, la matriz vuelve a los valores por
+   * defecto y hay que volver a guardarla desde una PC al día (ver README).
+   */
+  permisos: MatrizPermisos
 }
 
 export function documentoVacio(): DocumentoUsuarios {
-  return { formato: FORMATO_ACTUAL, siguienteId: 1, usuarios: [] }
+  return { formato: FORMATO_ACTUAL, siguienteId: 1, usuarios: [], permisos: permisosPorDefecto() }
 }
 
 function igualSinMayusculas(a: string, b: string): boolean {
@@ -121,7 +134,9 @@ export function leerDocumento(texto: string): DocumentoUsuarios {
 
   const mayorId = usuarios.reduce((mayor, u) => Math.max(mayor, u.id), 0)
   const siguienteId = typeof d.siguienteId === 'number' && d.siguienteId > mayorId ? d.siguienteId : mayorId + 1
-  return { formato: FORMATO_ACTUAL, siguienteId, usuarios }
+  // Los permisos no invalidan el archivo: lo que falte o no se entienda queda en el valor por defecto.
+  // Un archivo escrito por una versión anterior (sin el campo) tiene que poder abrirse igual.
+  return { formato: FORMATO_ACTUAL, siguienteId, usuarios, permisos: normalizarMatriz(d.permisos) }
 }
 
 /** Texto estable (ordenado por id, indentado) para que los diffs del repositorio se lean. */
@@ -130,6 +145,7 @@ export function escribirDocumento(documento: DocumentoUsuarios): string {
     formato: FORMATO_ACTUAL,
     siguienteId: documento.siguienteId,
     usuarios: [...documento.usuarios].sort((a, b) => a.id - b.id),
+    permisos: normalizarMatriz(documento.permisos),
   }
   return JSON.stringify(ordenado, null, 2) + '\n'
 }
@@ -256,6 +272,14 @@ export function cambiarActivo(documento: DocumentoUsuarios, id: number, activo: 
     }
   }
   return reemplazar(documento, { ...actual, activo, actualizadoEn: ahora })
+}
+
+/**
+ * Reemplaza la matriz de permisos. No toca a los usuarios: quién es quién y qué puede hacer cada rol
+ * son cosas distintas y se editan en pantallas distintas.
+ */
+export function guardarPermisos(documento: DocumentoUsuarios, permisos: MatrizPermisos): DocumentoUsuarios {
+  return { ...documento, permisos: normalizarMatriz(permisos) }
 }
 
 export function cambiarClaveHash(

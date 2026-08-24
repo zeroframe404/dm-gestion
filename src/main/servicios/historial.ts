@@ -26,6 +26,8 @@ export type AccionHistorial =
   // Fase 8: lo comercial.
   | 'lead'
   | 'presupuesto'
+  // Permisos por rol (Administración → Permisos).
+  | 'permisos'
 
 export interface CambioARegistrar {
   accion: AccionHistorial

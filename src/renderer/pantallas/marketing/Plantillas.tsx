@@ -7,11 +7,15 @@ import { useCallback, useEffect, useState } from 'react'
 import { VARIABLES_DE_PLANTILLA, type PlantillaDeMensaje } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Dialogo, Etiqueta, Tarjeta } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
 export function Plantillas() {
   const usuario = useUsuarioActual()
-  const puedeEditar = usuario.rol !== 'EMPLEADO'
+  const puedeEditarMarketing = usePuedeEditar('marketing')
+  // Las plantillas son lo que la agencia le dice al cliente: siguen siendo cosa de administradores,
+  // y ahora además hace falta tener Marketing en «ver y editar».
+  const puedeEditar = usuario.rol !== 'EMPLEADO' && puedeEditarMarketing
 
   const [plantillas, setPlantillas] = useState<PlantillaDeMensaje[] | null>(null)
   const [error, setError] = useState<string | null>(null)

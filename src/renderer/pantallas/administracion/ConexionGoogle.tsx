@@ -3,8 +3,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { EstadoConexionGoogle } from '../../../shared/tipos'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Tarjeta } from '../../componentes/ui'
+import { usePuedeEditar } from '../../contexto/Permisos'
 
 export function ConexionGoogle() {
+  // Con Administración en «sólo ver» se ve con qué cuenta está conectado, pero no se cambia.
+  const puedeEditar = usePuedeEditar('administracion')
   const [estado, setEstado] = useState<EstadoConexionGoogle | null>(null)
   const [rutaConfig, setRutaConfig] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -72,6 +75,7 @@ export function ConexionGoogle() {
               etiqueta="JSON de la cuenta de servicio"
               name="cuentaServicioJson"
               value={json}
+              disabled={!puedeEditar}
               onChange={(evento) => setJson(evento.target.value)}
               rows={10}
               spellCheck={false}
@@ -89,6 +93,7 @@ export function ConexionGoogle() {
               name="urlHoja"
               type="url"
               value={urlHoja}
+              disabled={!puedeEditar}
               onChange={(evento) => setUrlHoja(evento.target.value)}
               placeholder="https://docs.google.com/spreadsheets/d/..."
               spellCheck={false}
@@ -109,7 +114,7 @@ export function ConexionGoogle() {
             {aviso && <Alerta tono="exito">{aviso}</Alerta>}
 
             <div className="flex justify-end">
-              <Boton type="submit" variante="primario" cargando={guardando}>
+              <Boton type="submit" variante="primario" cargando={guardando} disabled={!puedeEditar}>
                 Guardar conexión
               </Boton>
             </div>
