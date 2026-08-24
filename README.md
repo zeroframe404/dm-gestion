@@ -42,6 +42,26 @@ Todo queda en la carpeta `%APPDATA%/dm-gestion/`:
 - `adjuntos/<siniestro>/`: los documentos de cada siniestro (la denuncia, el presupuesto del taller, las fotos).
 - `respaldos/`: los últimos 30 respaldos diarios de la hoja en `.xlsx`.
 
+### Migraciones: una versión publicada NO se edita
+
+El esquema vive en `src/main/db/migraciones.ts`. El runner corre sólo las versiones mayores a
+`PRAGMA user_version`, así que **una migración que ya salió en un instalador nunca se vuelve a mirar**. Si
+se le agrega una sentencia adentro en vez de escribir una versión nueva, las PCs que ya pasaron por esa
+versión se quedan sin ese cambio para siempre, mientras que una instalación desde cero lo tiene. Es lo que
+pasó con `filas_crudas.huella`: la base quedó en `user_version = 11` sin la columna, la aplicación abría
+normal y la importación fallaba con «table filas_crudas has no column named huella».
+
+Para cambiar el esquema, **agregá una versión nueva al final de `MIGRACIONES`**. Hay dos redes de seguridad:
+
+- `reconciliarEsquema` (`src/main/db/esquema.ts`) corre en cada arranque después de las migraciones: arma
+  el esquema esperado en una base en memoria, lo compara con el real y agrega las tablas, columnas e
+  índices que falten (y repite las sentencias de datos de esa migración, así una tabla repuesta no vuelve
+  vacía). En una base sana no toca nada y tarda menos de 20 ms. Si tuvo que reparar algo lo anota en
+  **Administración → Sincronización**.
+- `pruebas/esquema.prueba.ts` guarda la huella del esquema que deja cada versión (en
+  `pruebas/esquema-congelado.ts`). Si alguien edita una migración vieja, `npm run prueba` falla y explica
+  qué hacer. Los comentarios y el formato no cuentan: sólo cambia la huella si cambia el esquema.
+
 ## Importar desde Google
 
 **Administración → Importar desde Google** lee completa la hoja configurada en «Conexión con Google».

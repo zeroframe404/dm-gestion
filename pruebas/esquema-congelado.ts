@@ -1,0 +1,20 @@
+// Huella de la FORMA del esquema (tablas, columnas, tipos, valores por defecto e índices) que deja cada
+// migración. Es el guardián de esquema.prueba.ts: una migración ya publicada no se puede editar, porque
+// las bases que ya pasaron por esa versión nunca la vuelven a correr y se quedan sin el cambio. Así
+// apareció el error «table filas_crudas has no column named huella» en la PC de Daniel.
+//
+// Si necesitás cambiar el esquema, agregá una versión NUEVA al final de MIGRACIONES y sumá su huella acá.
+// Los comentarios y el formato del SQL no cuentan: la huella sólo cambia si cambia el esquema resultante.
+export const HUELLAS_POR_VERSION: Record<number, string> = {
+  1: 'd67f87442154e647',
+  2: 'f2e1fde5bd4d005e',
+  3: '813b3ceb7a4b4c85',
+  4: 'f203a202ec76729e',
+  5: '48cc0600e3ea0f69',
+  6: 'b6486eea6e87fd4d',
+  7: '8ca91c4c064ceaab',
+  8: '5948f403e73cbc98',
+  9: '48caf0f86c2c9cbc',
+  10: '28bdb6b7642249f6',
+  11: '3119b4f1eb136525',
+}

@@ -1,5 +1,6 @@
 // Punto de entrada del banco de pruebas: Vite lo empaqueta a dist/pruebas y Node lo corre con node:test.
 // Ver `npm run prueba`.
+import './esquema.prueba'
 import './normalizar.prueba'
 import './importador.prueba'
 import './bordes.prueba'
