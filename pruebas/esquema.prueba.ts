@@ -13,7 +13,9 @@
 // y la huella por versión avisa en el banco de pruebas si alguien vuelve a editar una migración vieja.
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 import Database from 'better-sqlite3'
 import { abrirBaseDeDatos, cerrarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
@@ -317,10 +319,11 @@ test('un índice UNIQUE que no se puede crear por datos repetidos se avisa y no 
 
 test('abrirBaseDeDatos repara al arrancar y deja constancia en la bitácora', (t) => {
   // La base se arma rota en un archivo temporal y se abre con la ruta real de la aplicación.
-  const ruta = `/tmp/dm-esquema-${process.pid}-${Date.now()}.db`
+  const carpeta = mkdtempSync(path.join(tmpdir(), 'dm-esquema-'))
+  const ruta = path.join(carpeta, 'dm.db')
   t.after(() => {
     cerrarBaseDeDatos()
-    for (const sufijo of ['', '-wal', '-shm']) rmSync(ruta + sufijo, { force: true })
+    rmSync(carpeta, { recursive: true, force: true })
   })
 
   const rota = new Database(ruta)
