@@ -1,10 +1,20 @@
 // Bajas del mes elegido, igual que la hoja BAJAS: quién se fue, por qué y cuándo.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { NOMBRE_MOTIVO_BAJA, type FilaBaja, type MotivoDeBaja, type PeriodoCartera } from '../../../shared/tipos'
+import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
+
+/** Se compara sin tildes, sin mayúsculas y sin puntuación: «ABC 123» encuentra a «abc-123». */
+function normalizar(valor: string | null | undefined): string {
+  return (valor ?? '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Z0-9]+/g, '')
+}
 
 export function Bajas() {
   const usuario = useUsuarioActual()
@@ -14,6 +24,7 @@ export function Bajas() {
   const [periodos, setPeriodos] = useState<PeriodoCartera[]>([])
   const [periodo, setPeriodo] = useState<string | null>(null)
   const [filas, setFilas] = useState<FilaBaja[]>([])
+  const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,6 +55,17 @@ export function Bajas() {
       vigente = false
     }
   }, [cargar])
+
+  // El buscador es de memoria: las bajas de un mes son pocas y ya están todas acá.
+  const visibles = useMemo(() => {
+    const texto = normalizar(busqueda)
+    if (!texto) return filas
+    return filas.filter((baja) =>
+      [baja.clienteNombre, baja.documento, baja.numeroPoliza, baja.patente, baja.compania, baja.sucursal].some((valor) =>
+        normalizar(valor).includes(texto),
+      ),
+    )
+  }, [busqueda, filas])
 
   const deshacer = async (baja: FilaBaja) => {
     const resultado = await window.dm.cartera.deshacerBaja(baja.id)
@@ -77,6 +99,26 @@ export function Bajas() {
           <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Bajas del mes</span>
           <span className="ml-2 font-display text-lg font-extrabold tabular-nums text-slate-900">{filas.length.toLocaleString('es-AR')}</span>
         </div>
+
+        <div className="relative">
+          <Icono nombre="lupa" tamano={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={busqueda}
+            onChange={(evento) => setBusqueda(evento.target.value)}
+            placeholder="Buscar por nombre, patente, póliza o DNI…"
+            className="h-9 w-80 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400"
+          />
+        </div>
+        {busqueda && (
+          <>
+            <Boton tamano="sm" variante="fantasma" icono="cerrar" onClick={() => setBusqueda('')}>
+              Limpiar
+            </Boton>
+            <span className="text-sm text-slate-500">
+              {visibles.length.toLocaleString('es-AR')} de {filas.length.toLocaleString('es-AR')} bajas
+            </span>
+          </>
+        )}
       </div>
 
       {error && <Alerta tono="error">{error}</Alerta>}
@@ -99,14 +141,16 @@ export function Bajas() {
               </tr>
             </thead>
             <tbody>
-              {filas.length === 0 && (
+              {visibles.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-3 py-10 text-center text-slate-500">
-                    No hay bajas cargadas en {periodo ? nombreDePeriodo(periodo) : 'este mes'}.
+                    {filas.length === 0
+                      ? `No hay bajas cargadas en ${periodo ? nombreDePeriodo(periodo) : 'este mes'}.`
+                      : `Ninguna baja de ${periodo ? nombreDePeriodo(periodo) : 'este mes'} coincide con «${busqueda}».`}
                   </td>
                 </tr>
               )}
-              {filas.map((baja) => (
+              {visibles.map((baja) => (
                 <tr key={baja.id} className="border-b border-slate-100 last:border-b-0">
                   <td className="px-3 py-2 font-medium text-slate-900">{baja.clienteNombre ?? '—'}</td>
                   <td className="px-3 py-2 text-slate-600">{baja.documento ?? '—'}</td>

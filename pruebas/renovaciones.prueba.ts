@@ -6,6 +6,7 @@ import test from 'node:test'
 import { abrirBaseDeDatos, cerrarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
 import { ejecutarImportacion } from '../src/main/importacion/importador'
 import { ahoraIso } from '../src/main/importacion/normalizar'
+import { editarCompania, listarCompanias } from '../src/main/servicios/companias'
 import { editarPoliza, listarPolizas, verPoliza } from '../src/main/servicios/polizas'
 import {
   actualizarSeguimiento,
@@ -15,7 +16,7 @@ import {
   renovar,
 } from '../src/main/servicios/renovaciones'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
-import { aDia, comoTextoDeFecha, desdeDia, DIAS_DE_RENOVACION, unAnioDespues } from '../src/shared/polizas'
+import { aDia, comoTextoDeFecha, desdeDia, DIAS_DE_RENOVACION, mesesDespues, unAnioDespues } from '../src/shared/polizas'
 import { hoyLocal } from '../src/shared/semaforo'
 import type { DatosDePoliza, FiltrosPolizas, PolizaDeCliente, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
@@ -204,6 +205,87 @@ test('el responsable, el estado del trámite y la nota se guardan', async () => 
 // ---------------------------------------------------------------------------
 // Renovar: el criterio de aceptación N°4 del pliego
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Qué se renueva a mano: Agrosalta cada 4 meses, Río Uruguay cada 6, Metropol cada 12
+// ---------------------------------------------------------------------------
+
+test('sólo las compañías que se renuevan a mano quedan marcadas, y con su plazo', async () => {
+  await escenario()
+  cambiar(polizaDe(CLIENTES.gonzalez.poliza), { vigenciaHasta: enDias(10).texto })
+  cambiar(polizaDe(CLIENTES.lopez.poliza), { vigenciaHasta: enDias(10).texto, compania: 'AGROSALTA' })
+  cambiar(polizaDe(CLIENTES.martinez.poliza), { vigenciaHasta: enDias(10).texto, compania: 'RIO URUGUAY' })
+
+  const filas = filasDeLaBandeja()
+  const sancor = filas.find((f) => f.numero === CLIENTES.gonzalez.poliza)
+  const agrosalta = filas.find((f) => f.numero === CLIENTES.lopez.poliza)
+  const rus = filas.find((f) => f.numero === CLIENTES.martinez.poliza)
+
+  assert.equal(sancor?.renovacionManual, false, 'SANCOR renueva sola')
+  assert.equal(sancor?.mesesDeRenovacion, null)
+  assert.equal(agrosalta?.renovacionManual, true)
+  assert.equal(agrosalta?.mesesDeRenovacion, 4, 'Agrosalta se renueva cada cuatro meses')
+  assert.equal(rus?.renovacionManual, true)
+  assert.equal(rus?.mesesDeRenovacion, 6, 'Río Uruguay, cada seis')
+})
+
+test('la vigencia nueva dura lo que renueva la compañía, no siempre un año', async () => {
+  await escenario()
+  const vence = enDias(15)
+  const poliza = cambiar(polizaDe(CLIENTES.lopez.poliza), { vigenciaHasta: vence.texto, compania: 'AGROSALTA' })
+
+  const sugerido = datosSugeridosDeRenovacion(poliza.id)
+  assert.equal(sugerido.vigenciaDesde, vence.iso)
+  assert.equal(sugerido.vigenciaHasta, mesesDespues(vence.iso, 4), 'Agrosalta renueva cada cuatro meses')
+
+  renovar(poliza.id, { ...sugerido, numero: `${CLIENTES.lopez.poliza}-R` }, DANIEL)
+  const renovada = polizaDe(`${CLIENTES.lopez.poliza}-R`)
+  assert.equal(renovada.vigenciaHasta, comoTextoDeFecha(mesesDespues(vence.iso, 4)), 'la vigencia guardada también')
+})
+
+test('sin plazo cargado en la compañía, el plazo lo dice la vigencia que está terminando', async () => {
+  await escenario()
+  // SANCOR no tiene plazo cargado (renueva sola), pero esta póliza va de seis en seis meses: se
+  // propone lo mismo que duraba, que es lo que dice la fin de vigencia.
+  const vence = enDias(15)
+  const poliza = cambiar(polizaDe(CLIENTES.gonzalez.poliza), {
+    vigenciaDesde: comoTextoDeFecha(mesesDespues(vence.iso, -6)),
+    vigenciaHasta: vence.texto,
+  })
+
+  assert.equal(datosSugeridosDeRenovacion(poliza.id).vigenciaHasta, mesesDespues(vence.iso, 6))
+})
+
+test('una compañía se puede pasar a renovación manual (o sacar) desde Compañías', async () => {
+  await escenario()
+  cambiar(polizaDe(CLIENTES.gonzalez.poliza), { vigenciaHasta: enDias(10).texto })
+  const sancor = listarCompanias().find((c) => c.nombre === CLIENTES.gonzalez.cia)
+  assert.ok(sancor)
+  assert.equal(sancor.mesesRenovacion, null, 'arranca renovando sola')
+
+  editarCompania(sancor.id, {
+    nombre: sancor.nombre,
+    diasCoberturaFinanciera: sancor.diasCoberturaFinanciera,
+    comisionPorcentaje: sancor.comisionPorcentaje,
+    mesesRenovacion: 6,
+    activa: true,
+  })
+  const fila = filasDeLaBandeja().find((f) => f.numero === CLIENTES.gonzalez.poliza)
+  assert.equal(fila?.renovacionManual, true)
+  assert.equal(fila?.mesesDeRenovacion, 6)
+
+  assert.throws(
+    () =>
+      editarCompania(sancor.id, {
+        nombre: sancor.nombre,
+        diasCoberturaFinanciera: sancor.diasCoberturaFinanciera,
+        comisionPorcentaje: sancor.comisionPorcentaje,
+        mesesRenovacion: 0,
+        activa: true,
+      }),
+    /entre 1 y 60/,
+  )
+})
 
 test('la renovación propone un año más y la cuota anterior, y se puede editar', async () => {
   await escenario()

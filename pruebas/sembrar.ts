@@ -42,11 +42,23 @@ async function importarDosVeces(db: BaseDeDatos): Promise<void> {
   await correr()
 }
 
+/**
+ * Compañías que se renuevan a mano, para las primeras pólizas de la bandeja. En la hoja simulada todas
+ * las compañías renuevan solas, y con eso la bandeja de renovaciones —que muestra sólo las manuales—
+ * abriría vacía. Las que quedan con su compañía original sirven para ver el otro lado: cuántas se
+ * ocultan por renovar solas.
+ */
+const COMPANIAS_MANUALES = ['AGROSALTA', 'RIO URUGUAY']
+
 /** Acerca vencimientos y deja una observación de aumento, para que la bandeja muestre los dos casos. */
 function prepararRenovaciones(db: BaseDeDatos): number {
   const activas = db.prepare('SELECT id FROM polizas WHERE activa = 1 ORDER BY id LIMIT ?').all(VENCIMIENTOS.length) as Array<{ id: number }>
   const hoy = aDia(hoyLocal()) ?? 0
   const actualizar = db.prepare('UPDATE polizas SET vigencia_hasta = ?, vigencia_hasta_iso = ?, observaciones = ? WHERE id = ?')
+  const cambiarCompania = db.prepare('UPDATE polizas SET compania = ? WHERE id = ?')
+  // La fila del mes guarda su propia copia de la compañía: si no se cambia también, la planilla y la
+  // bandeja dirían cosas distintas.
+  const cambiarEnLaCuota = db.prepare('UPDATE cuotas_mes SET compania = ? WHERE poliza_id = ?')
 
   db.transaction(() => {
     activas.forEach((poliza, i) => {
@@ -54,6 +66,11 @@ function prepararRenovaciones(db: BaseDeDatos): number {
       // A la primera se le deja escrita la nota que la agencia usa: tiene que salir destacada.
       const observaciones = i === 0 ? '20% aumentar cuando se renueva' : null
       actualizar.run(comoTexto(iso), iso, observaciones, poliza.id)
+      const manual = COMPANIAS_MANUALES[i]
+      if (manual) {
+        cambiarCompania.run(manual, poliza.id)
+        cambiarEnLaCuota.run(manual, poliza.id)
+      }
     })
   })()
   return activas.length
@@ -127,7 +144,7 @@ async function principal(): Promise<void> {
   console.log(`  siniestros .............. ${cuenta('siniestros')}`)
   console.log(`  riesgos varios .......... ${cuenta('riesgos_varios')}`)
   console.log(`  ampliaciones (AMP) ...... ${cuenta('amp')} (${cuenta('amp', 'resuelto = 0')} pendientes)`)
-  console.log(`  con vencimiento cercano . ${conVencimiento}`)
+  console.log(`  con vencimiento cercano . ${conVencimiento} (${COMPANIAS_MANUALES.length} de renovación manual: ${COMPANIAS_MANUALES.join(', ')})`)
   console.log(`  regla con antigüedad .... ${conLimite ?? 'ninguna'} (hasta 15 años)`)
   console.log(`  segundo usuario ......... ${segundoUsuario ?? 'ninguno'}`)
   console.log(`\nAbrila con:  npm run humo -- "${destino}"\n`)

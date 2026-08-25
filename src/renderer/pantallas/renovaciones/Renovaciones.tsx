@@ -31,9 +31,15 @@ interface Filtros {
   responsable: string
   estado: '' | EstadoRenovacion
   ocultarResueltas: boolean
+  /**
+   * 'manual' (lo normal) deja sólo las compañías que la agencia renueva a mano —Agrosalta cada 4
+   * meses, Río Uruguay cada 6, Metropol cada 12—; el resto renueva solo y no hay nada que hacer con
+   * ellas. 'todas' muestra igual la cartera entera, por si hay que mirar una en particular.
+   */
+  renovacion: 'manual' | 'todas'
 }
 
-const FILTROS_VACIOS: Filtros = { responsable: '', estado: '', ocultarResueltas: false }
+const FILTROS_VACIOS: Filtros = { responsable: '', estado: '', ocultarResueltas: false, renovacion: 'manual' }
 
 /** Una póliza puede entrar más de una vez si tiene vigencias distintas: la clave es la póliza y su vencimiento. */
 function claveDeFila(fila: FilaRenovacion): string {
@@ -91,23 +97,34 @@ export function Renovaciones() {
 
   const todas = useMemo(() => bandeja?.semanas.flatMap((semana) => semana.filas) ?? [], [bandeja])
 
+  /** Las que entran en el alcance elegido: las de renovación manual, o la cartera entera. */
+  const delAlcance = useMemo(
+    () => (filtros.renovacion === 'todas' ? todas : todas.filter((fila) => fila.renovacionManual)),
+    [filtros.renovacion, todas],
+  )
+  const automaticas = todas.length - todas.filter((fila) => fila.renovacionManual).length
+
+  // Los contadores de arriba cuentan lo que hay que trabajar, así que respetan el alcance (no tiene
+  // sentido decir «40 urgentes» si 35 son de compañías que renuevan solas). Los otros filtros, no:
+  // son el tablero, y tienen que seguir diciendo lo mismo mientras se filtra.
   const contadores = useMemo(() => {
     let urgentes = 0
     let pendientes = 0
     let resueltas = 0
-    for (const fila of todas) {
+    for (const fila of delAlcance) {
       if (fila.diasParaVencer <= 7) urgentes++
       if (fila.estado === 'pendiente') pendientes++
       if (ESTADOS_RESUELTOS.includes(fila.estado)) resueltas++
     }
     return { urgentes, pendientes, resueltas }
-  }, [todas])
+  }, [delAlcance])
 
   // Los filtros son de memoria: la bandeja entera ya está en el renderer y son 60 días de pólizas,
   // no vale la pena volver al proceso principal para esconder filas.
   const semanasVisibles = useMemo<SemanaDeRenovaciones[]>(() => {
     if (!bandeja) return []
     const pasa = (fila: FilaRenovacion) => {
+      if (filtros.renovacion === 'manual' && !fila.renovacionManual) return false
       if (filtros.ocultarResueltas && ESTADOS_RESUELTOS.includes(fila.estado)) return false
       if (filtros.estado && fila.estado !== filtros.estado) return false
       if (filtros.responsable === 'sin' && fila.responsableId !== null) return false
@@ -120,14 +137,22 @@ export function Renovaciones() {
   }, [bandeja, filtros])
 
   const visibles = useMemo(() => semanasVisibles.reduce((suma, semana) => suma + semana.filas.length, 0), [semanasVisibles])
-  const hayFiltros = filtros.responsable !== '' || filtros.estado !== '' || filtros.ocultarResueltas
+  const hayFiltros = filtros.responsable !== '' || filtros.estado !== '' || filtros.ocultarResueltas || filtros.renovacion !== 'manual'
 
   if (cargando && !bandeja) return <Cargando texto="Buscando lo que vence…" />
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
       <div className="flex flex-wrap items-center gap-2">
-        <Contador etiqueta="Vencen en 60 días" valor={bandeja?.total ?? 0} />
+        <Contador
+          etiqueta="Vencen en 60 días"
+          valor={delAlcance.length}
+          titulo={
+            filtros.renovacion === 'manual'
+              ? 'Sólo las compañías que se renuevan a mano. Las que renuevan solas no se cuentan.'
+              : 'Todas las pólizas que vencen en los próximos 60 días.'
+          }
+        />
         <Contador
           etiqueta="Vencidas o en 7 días"
           valor={contadores.urgentes}
@@ -144,6 +169,18 @@ export function Renovaciones() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={filtros.renovacion}
+          onChange={(evento) => setFiltros((f) => ({ ...f, renovacion: evento.target.value as Filtros['renovacion'] }))}
+          aria-label="Qué pólizas mostrar"
+          className={cx(
+            'h-9 rounded-lg border bg-white px-2 text-sm',
+            filtros.renovacion === 'manual' ? 'border-slate-300 text-slate-700' : 'border-marino-400 font-semibold text-marino-800',
+          )}
+        >
+          <option value="manual">Sólo las que se renuevan a mano</option>
+          <option value="todas">Todas las compañías</option>
+        </select>
         <FiltroDesplegable
           etiqueta="Responsable"
           valor={filtros.responsable}
@@ -175,7 +212,15 @@ export function Renovaciones() {
           </Boton>
         )}
         <span className="ml-auto text-sm text-slate-500">
-          {visibles.toLocaleString('es-AR')} de {(bandeja?.total ?? 0).toLocaleString('es-AR')} pólizas
+          {visibles.toLocaleString('es-AR')} de {delAlcance.length.toLocaleString('es-AR')} pólizas
+          {filtros.renovacion === 'manual' && automaticas > 0 && (
+            <span
+              className="ml-1 text-slate-400"
+              title="Esas compañías renuevan solas: la agencia no tiene que hacer nada. Cada cuánto renueva cada compañía se carga en Administración → Compañías."
+            >
+              (+{automaticas.toLocaleString('es-AR')} de renovación automática)
+            </span>
+          )}
         </span>
       </div>
 
@@ -186,14 +231,18 @@ export function Renovaciones() {
         {semanasVisibles.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
             <p className="font-display text-base font-bold text-slate-800">
-              {hayFiltros && (bandeja?.total ?? 0) > 0
-                ? 'Ninguna renovación coincide con los filtros.'
-                : `No hay pólizas que venzan en los próximos ${DIAS_DE_RENOVACION} días.`}
+              {delAlcance.length === 0 && automaticas > 0 && filtros.renovacion === 'manual'
+                ? 'Nada que renovar a mano en los próximos 60 días.'
+                : hayFiltros && delAlcance.length > 0
+                  ? 'Ninguna renovación coincide con los filtros.'
+                  : `No hay pólizas que venzan en los próximos ${DIAS_DE_RENOVACION} días.`}
             </p>
             <p className="mt-1 text-sm text-slate-500">
-              {hayFiltros && (bandeja?.total ?? 0) > 0
-                ? 'Probá con otro responsable o estado, o limpiá los filtros.'
-                : 'Cuando una póliza entre en los últimos dos meses de vigencia va a aparecer acá, agrupada por semana.'}
+              {delAlcance.length === 0 && automaticas > 0 && filtros.renovacion === 'manual'
+                ? `Las ${automaticas.toLocaleString('es-AR')} pólizas que vencen renuevan solas. Elegí «Todas las compañías» si igual querés verlas.`
+                : hayFiltros && delAlcance.length > 0
+                  ? 'Probá con otro responsable o estado, o limpiá los filtros.'
+                  : 'Cuando una póliza entre en los últimos dos meses de vigencia va a aparecer acá, agrupada por semana.'}
             </p>
           </div>
         ) : (
@@ -409,6 +458,15 @@ function FilaDeRenovacion({ fila, guardando, responsables, alVerCliente, alActua
       <td className="px-2.5 py-2 whitespace-nowrap text-slate-700">
         {fila.compania ?? '—'}
         {fila.cobertura && <p className="truncate text-xs text-slate-500">{fila.cobertura}</p>}
+        <p className="text-xs text-slate-500">
+          {fila.mesesDeRenovacion === null ? (
+            <span title="Esta compañía renueva sola: no hace falta hacer nada.">Renueva sola</span>
+          ) : (
+            <span title="Cada cuánto renueva esta compañía. Se cambia en Administración → Compañías.">
+              Cada {fila.mesesDeRenovacion} {fila.mesesDeRenovacion === 1 ? 'mes' : 'meses'}
+            </span>
+          )}
+        </p>
       </td>
       <td className="px-2.5 py-2 whitespace-nowrap font-mono text-xs text-slate-600">{fila.numero ?? '—'}</td>
       <td className="px-2.5 py-2">

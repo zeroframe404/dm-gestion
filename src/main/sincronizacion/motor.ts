@@ -9,6 +9,7 @@ import type { FuenteHoja } from '../importacion/fuente'
 import { esFallaDeRed } from '../servicios/red'
 import {
   anotarEvento,
+  apurarAgrupadas,
   cuantasFallidas,
   cuantasListasParaSubir,
   cuantasPendientes,
@@ -256,6 +257,8 @@ export class MotorDeSincronizacion {
     // Si el ciclo automático justo estaba corriendo, el botón no hacía nada: mostraba «Sincronizando…»
     // por un instante y volvía a lo mismo. Ahora espera a que termine y recién ahí trabaja.
     await this.esperarTurno()
+    // Las bajas que estaban esperando para viajar juntas salen ahora: acá hay alguien mirando el botón.
+    apurarAgrupadas()
     await this.ciclarSubida()
     return this.ciclarBajada(completa)
   }

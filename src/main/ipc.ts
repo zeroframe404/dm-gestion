@@ -15,6 +15,7 @@ import {
   deshacerBaja,
   editarCelda,
   idDelPagoDeLaCuota,
+  marcarAvisado,
   planillaDelMes,
   prepararAviso,
   registrarPago,
@@ -329,6 +330,7 @@ export function registrarIpc(): void {
   })
   manejar('cartera:editarCelda', (filaId, campo, valor) => exito(editarCelda(filaId, campo, valor, exigirEdicion('cartera'))))
   manejar('cartera:prepararAviso', (filaId) => exito(prepararAviso(filaId, exigirEdicion('cartera'))))
+  manejar('cartera:marcarAvisado', (filaId) => exito(marcarAvisado(filaId, exigirEdicion('cartera'))))
   // Se cobra desde la planilla, desde la ficha del cliente y desde la caja del día: alcanza con poder
   // editar cualquiera de esos tres módulos.
   manejar('cartera:registrarPago', (filaId, datos) => {

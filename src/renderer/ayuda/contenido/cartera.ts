@@ -23,18 +23,26 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
-        titulo: 'Las tres acciones por fila',
+        titulo: 'Las cuatro acciones por fila',
         parrafos: [
-          'En la columna «Acciones» hay tres botones chiquitos para cada fila: avisar por WhatsApp, registrar un pago y dar de baja.',
-          '«Avisar» abre WhatsApp con un mensaje ya armado para ese cliente y deja la fila marcada como avisada. «Registrar pago» abre un formulario para cargar cómo y cuándo se pagó esa cuota, sin salir de la planilla. «Dar de baja» saca la póliza de la cartera activa y la manda a Cartera → Bajas, pidiendo el motivo.',
-          'Estas tres acciones quedan deshabilitadas en un mes cerrado (sólo lectura).',
+          'En la columna «Acciones» hay cuatro botones chiquitos para cada fila: avisar por WhatsApp, marcar como avisado, registrar un pago y dar de baja.',
+          '«Avisar» (el globito) abre WhatsApp con un mensaje ya armado para ese cliente y deja la fila marcada como avisada. «Avisado» (el tilde) hace lo mismo con la planilla —deja la fila en ENVIADO con la fecha de hoy y la suma a «Avisados hoy»— pero sin abrir WhatsApp: es para cuando ya se le avisó por otro lado, por teléfono, en el mostrador o desde el celular. No hace falta que el cliente tenga teléfono cargado.',
+          '«Registrar pago» abre un formulario para cargar cómo y cuándo se pagó esa cuota, sin salir de la planilla. «Dar de baja» saca la póliza de la cartera activa y la manda a Cartera → Bajas, pidiendo el motivo.',
+          'Las cuatro acciones quedan deshabilitadas en un mes cerrado (sólo lectura).',
         ],
       },
       {
         titulo: 'Buscar y filtrar',
         parrafos: [
-          'El buscador de arriba encuentra por nombre, patente, número de póliza o DNI. Al lado hay desplegables para filtrar por sucursal, forma de pago, compañía y color de alerta, y una casilla «Sólo con AVISAR VTO» para ver nada más que las filas marcadas para avisar antes del vencimiento.',
+          'El buscador de arriba encuentra por nombre, patente, número de póliza o DNI. Al lado hay desplegables para filtrar por sucursal, forma de pago, compañía, tipo de vehículo (auto, moto, pick up…) y color de alerta, y una casilla «Sólo con AVISAR VTO» para ver nada más que las filas marcadas para avisar antes del vencimiento.',
           'Las tarjetas de arriba (Total, Vencen hoy, Vencidos, Avisados hoy, Pagados hoy) son contadores del día: se actualizan solos con lo que va pasando. Además funcionan como filtro: tocá una y la tabla queda sólo con esas filas; tocala de nuevo (o tocá Total) para volver a ver el mes entero. Los números siguen contando sobre todo el mes aunque haya un filtro puesto.',
+        ],
+      },
+      {
+        titulo: 'La columna «Propuesta»',
+        parrafos: [
+          'Al lado de «Póliza» está la columna «Propuesta», para el número que dan algunas compañías mientras la póliza todavía no está emitida. Se carga con doble clic, igual que el resto.',
+          'La propuesta se guarda en la póliza —se ve también en Pólizas y en la ficha del cliente, y sigue estando el mes que viene— pero no viaja a la hoja de Google: es un dato interno de la agencia y la hoja no tiene esa columna.',
         ],
       },
       {
@@ -79,6 +87,19 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         parrafos: [
           'Es el listado de las pólizas que se dieron de baja en un mes, con el nombre, DNI, compañía, número de póliza, patente, sucursal, motivo y fecha de la baja. Se elige el mes con el selector de arriba, igual que en la Planilla.',
           'Una baja se puede originar de dos maneras: apretando «Dar de baja» en una fila de la Planilla del mes (con motivo y nota opcional), o porque ya venía así cargada en la hoja de la agencia al importar. Las etiquetas «En la app» y «De la hoja», a la derecha de cada fila, dicen de cuál de las dos vino.',
+        ],
+      },
+      {
+        titulo: 'Buscar una baja',
+        parrafos: [
+          'El buscador de arriba (la lupa) filtra la lista del mes por nombre, patente, número de póliza, DNI, compañía o sucursal, igual que en Siniestros. Sirve para encontrar rápido a alguien puntual sin recorrer toda la lista.',
+        ],
+      },
+      {
+        titulo: 'Qué pasa con los datos de una baja',
+        parrafos: [
+          'Dar de baja no borra nada: el cliente, el vehículo (patente, marca, modelo, motor, chasis) y la póliza siguen guardados. Lo que cambia es que la póliza deja de estar activa, sale de la planilla del mes y aparece acá con su motivo.',
+          'Si esa persona vuelve dentro de un mes o de un año, se abre su ficha en Clientes y está todo: se le carga una póliza nueva eligiendo el vehículo que ya tiene cargado, sin volver a tipear nada. Y si la baja fue un error, se deshace con el botón «Deshacer» de esta misma pantalla.',
         ],
       },
       {

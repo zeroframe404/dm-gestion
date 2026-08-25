@@ -66,6 +66,7 @@ const api: ApiDm = {
     planilla: (periodo) => invocar('cartera:planilla', periodo),
     editarCelda: (filaId, campo, valor) => invocar('cartera:editarCelda', filaId, campo, valor),
     prepararAviso: (filaId) => invocar('cartera:prepararAviso', filaId),
+    marcarAvisado: (filaId) => invocar('cartera:marcarAvisado', filaId),
     registrarPago: (filaId, datos) => invocar('cartera:registrarPago', filaId, datos),
     darDeBaja: (filaId, datos) => invocar('cartera:darDeBaja', filaId, datos),
     deshacerBaja: (bajaId) => invocar('cartera:deshacerBaja', bajaId),

@@ -17,4 +17,5 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   9: '48caf0f86c2c9cbc',
   10: '28bdb6b7642249f6',
   11: '3119b4f1eb136525',
+  12: '5015fee4d15cffd6',
 }

@@ -99,6 +99,25 @@ function esperar(ms: number): Promise<void> {
   return new Promise((resolver) => setTimeout(resolver, ms))
 }
 
+/**
+ * Agrupa números de fila en tramos seguidos, de abajo hacia arriba: [7, 5, 6, 2] → [{6,7}, {5,5}, {2,2}].
+ *
+ * Sirve para borrar. Cada pedido de borrado hace que Google recalcule la planilla entera, así que
+ * conviene que sean los menos posibles; y el orden de abajo hacia arriba importa porque borrar una fila
+ * corre para arriba a todas las de abajo (si se empezara por arriba, los números siguientes ya no
+ * apuntarían a las filas que se querían borrar).
+ */
+export function tramosDeFilas(filas: number[]): Array<{ desde: number; hasta: number }> {
+  const ordenadas = [...new Set(filas)].sort((a, b) => b - a)
+  const tramos: Array<{ desde: number; hasta: number }> = []
+  for (const fila of ordenadas) {
+    const ultimo = tramos[tramos.length - 1]
+    if (ultimo && ultimo.desde === fila + 1) ultimo.desde = fila
+    else tramos.push({ desde: fila, hasta: fila })
+  }
+  return tramos
+}
+
 interface ErrorHttp {
   status?: number
   code?: number | string
@@ -360,16 +379,15 @@ export class FuenteGoogleSheets implements FuenteHoja {
 
   async borrarFilas(sheetId: number, filas: number[]): Promise<void> {
     if (filas.length === 0) return
-    // De abajo hacia arriba: borrar una fila corre las de abajo.
-    const ordenadas = [...new Set(filas)].sort((a, b) => b - a)
+    const tramos = tramosDeFilas(filas)
     await this.conReintentos(
-      `borrar ${ordenadas.length} filas`,
+      `borrar ${filas.length} filas`,
       () =>
         this.api.spreadsheets.batchUpdate({
           spreadsheetId: this.hojaId,
           requestBody: {
-            requests: ordenadas.map((fila) => ({
-              deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: fila - 1, endIndex: fila } },
+            requests: tramos.map(({ desde, hasta }) => ({
+              deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: desde - 1, endIndex: hasta } },
             })),
           },
         }),

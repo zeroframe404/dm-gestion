@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { AddressInfo } from 'node:net'
 import test from 'node:test'
-import { extraerIdDeHoja, FuenteGoogleSheets } from '../src/main/importacion/fuente'
+import { extraerIdDeHoja, FuenteGoogleSheets, tramosDeFilas } from '../src/main/importacion/fuente'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
 
 interface PestanaFalsa {
@@ -227,6 +227,37 @@ test('agranda la grilla, escribe la columna _ID y la oculta', async () => {
     assert.ok(ocultar, 'no se pidió ocultar la columna')
     assert.equal(ocultar.updateDimensionProperties.range.startIndex, 29)
     assert.equal(ocultar.updateDimensionProperties.properties.hiddenByUser, true)
+  })
+})
+
+test('las filas a borrar se agrupan en tramos, de abajo hacia arriba', () => {
+  // Cada pedido de borrado hace que Google recalcule la hoja entera: cuantos menos, mejor. Y el orden
+  // importa: borrar una fila corre para arriba a las de abajo.
+  assert.deepEqual(tramosDeFilas([5, 6, 7]), [{ desde: 5, hasta: 7 }], 'tres seguidas son un solo tramo')
+  assert.deepEqual(tramosDeFilas([7, 5, 6, 2]), [
+    { desde: 5, hasta: 7 },
+    { desde: 2, hasta: 2 },
+  ])
+  assert.deepEqual(tramosDeFilas([4, 4, 9]), [
+    { desde: 9, hasta: 9 },
+    { desde: 4, hasta: 4 },
+  ], 'la repetida no se borra dos veces')
+  assert.deepEqual(tramosDeFilas([]), [])
+})
+
+test('borrar filas seguidas es un solo pedido a Google', async () => {
+  await conApi({}, async (fuente, api) => {
+    await fuente.borrarFilas(1, [12, 10, 11, 4])
+    const borrados = api.batchUpdates.filter((s) => (s as Record<string, unknown>).deleteDimension) as any[]
+    assert.equal(borrados.length, 2, 'las tres seguidas van juntas y la suelta aparte')
+    assert.deepEqual(
+      borrados.map((b) => [b.deleteDimension.range.startIndex, b.deleteDimension.range.endIndex]),
+      [
+        [9, 12],
+        [3, 4],
+      ],
+      'de abajo hacia arriba, con los índices en base 0 que espera Google',
+    )
   })
 })
 

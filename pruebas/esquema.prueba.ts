@@ -61,6 +61,9 @@ function baseDesactualizada(omitir: string[] = []): BaseDeDatos {
   return db
 }
 
+/** La última migración escrita: lo que tiene `user_version` en una PC al día. */
+const ULTIMA_VERSION = Math.max(...MIGRACIONES.map((m) => m.version))
+
 function columnas(db: BaseDeDatos, tabla: string): string[] {
   return (db.pragma(`table_info(${tabla})`) as Array<{ name: string }>).map((c) => c.name)
 }
@@ -88,7 +91,7 @@ test('el error de Daniel: falta huella y el importador no puede ni preparar el I
 
   assert.ok(columnas(db, 'filas_crudas').includes('sheet_id'), 'sheet_id sí estaba en su base')
   assert.ok(!columnas(db, 'filas_crudas').includes('huella'))
-  assert.equal(db.pragma('user_version', { simple: true }), 11, 'la base se ve al día')
+  assert.equal(db.pragma('user_version', { simple: true }), ULTIMA_VERSION, 'la base se ve al día')
 
   assert.throws(
     () => db.prepare(INSERT_DEL_IMPORTADOR),

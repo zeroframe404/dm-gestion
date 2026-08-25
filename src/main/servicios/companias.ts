@@ -38,6 +38,31 @@ export function diasPorDefectoDe(nombre: string): number {
 }
 
 /**
+ * Las únicas compañías que la agencia renueva a mano, y cada cuántos meses. El resto renueva solo, así
+ * que sus pólizas no tienen por qué aparecer en la bandeja de renovaciones. Se usa al dar de alta la
+ * compañía; después se cambia desde Administración → Compañías.
+ *
+ * «RUS» es Río Uruguay Seguros: en la hoja está escrita de las dos maneras.
+ */
+const MESES_DE_RENOVACION_CONOCIDOS: Record<string, number> = {
+  AGROSALTA: 4,
+  METROPOL: 12,
+  'RIO URUGUAY': 6,
+  RUS: 6,
+}
+
+export function mesesDeRenovacionPorDefectoDe(nombre: string): number | null {
+  const normalizado = normalizarTexto(nombre)
+  if (normalizado in MESES_DE_RENOVACION_CONOCIDOS) return MESES_DE_RENOVACION_CONOCIDOS[normalizado]!
+  // «AGROSALTA SEGUROS» es AGROSALTA; «RIO URUGUAY SEGUROS», RIO URUGUAY (dos palabras, por eso las dos).
+  const primera = normalizado.split(' ')[0] ?? ''
+  const dosPrimeras = normalizado.split(' ').slice(0, 2).join(' ')
+  if (dosPrimeras in MESES_DE_RENOVACION_CONOCIDOS) return MESES_DE_RENOVACION_CONOCIDOS[dosPrimeras]!
+  if (primera in MESES_DE_RENOVACION_CONOCIDOS) return MESES_DE_RENOVACION_CONOCIDOS[primera]!
+  return null
+}
+
+/**
  * Da de alta las compañías que aparecen en la cartera y todavía no están en el catálogo. Se llama
  * después de cada importación y al abrir la pantalla: así el catálogo siempre refleja lo que hay.
  */
@@ -51,8 +76,8 @@ export function sincronizarCompanias(): number {
     .all() as Array<{ compania: string; total: number }>
 
   const insertar = base.prepare(`
-    INSERT INTO companias (nombre, nombre_normalizado, dias_cobertura_financiera, activa, creado_en, actualizado_en)
-    VALUES (@nombre, @nombre_normalizado, @dias, 1, @ahora, @ahora)
+    INSERT INTO companias (nombre, nombre_normalizado, dias_cobertura_financiera, meses_renovacion, activa, creado_en, actualizado_en)
+    VALUES (@nombre, @nombre_normalizado, @dias, @meses, 1, @ahora, @ahora)
     ON CONFLICT(nombre_normalizado) DO NOTHING`)
 
   const ahora = ahoraIso()
@@ -62,7 +87,13 @@ export function sincronizarCompanias(): number {
       const normalizado = normalizarTexto(fila.compania)
       if (!normalizado || existentes.has(normalizado)) continue
       existentes.add(normalizado)
-      insertar.run({ nombre: fila.compania.trim(), nombre_normalizado: normalizado, dias: diasPorDefectoDe(fila.compania), ahora })
+      insertar.run({
+        nombre: fila.compania.trim(),
+        nombre_normalizado: normalizado,
+        dias: diasPorDefectoDe(fila.compania),
+        meses: mesesDeRenovacionPorDefectoDe(fila.compania),
+        ahora,
+      })
       nuevas++
     }
   })()
@@ -73,20 +104,33 @@ export function listarCompanias(): Compania[] {
   sincronizarCompanias()
   const filas = db()
     .prepare(
-      `SELECT c.id, c.nombre, c.dias_cobertura_financiera AS dias, c.comision_porcentaje AS comision, c.activa,
+      `SELECT c.id, c.nombre, c.dias_cobertura_financiera AS dias, c.comision_porcentaje AS comision,
+              c.meses_renovacion AS meses, c.activa,
               (SELECT COUNT(*) FROM polizas p WHERE p.activa = 1 AND UPPER(TRIM(p.compania)) = UPPER(TRIM(c.nombre))) AS polizas
        FROM companias c
        ORDER BY polizas DESC, c.nombre`,
     )
-    .all() as Array<{ id: number; nombre: string; dias: number; comision: number; activa: number; polizas: number }>
+    .all() as Array<{ id: number; nombre: string; dias: number; comision: number; meses: number | null; activa: number; polizas: number }>
   return filas.map((f) => ({
     id: f.id,
     nombre: f.nombre,
     diasCoberturaFinanciera: f.dias,
     comisionPorcentaje: f.comision,
+    mesesRenovacion: f.meses,
     activa: f.activa === 1,
     polizas: f.polizas,
   }))
+}
+
+/**
+ * Cada cuántos meses renueva cada compañía, por nombre normalizado. Sólo están las que se renuevan a
+ * mano: una compañía que no figura acá renueva sola y no va a la bandeja de renovaciones.
+ */
+export function mesesDeRenovacionPorCompania(): Record<string, number> {
+  const filas = db()
+    .prepare('SELECT nombre_normalizado, meses_renovacion AS meses FROM companias WHERE meses_renovacion IS NOT NULL')
+    .all() as Array<{ nombre_normalizado: string; meses: number }>
+  return Object.fromEntries(filas.map((f) => [f.nombre_normalizado, f.meses]))
 }
 
 /** Porcentaje de comisión por nombre normalizado, para calcular la rendición sin ir por fila. */
@@ -118,6 +162,11 @@ export function editarCompania(id: number, datos: DatosDeCompania): Compania {
   if (!Number.isFinite(comision) || comision < 0 || comision > 100) {
     throw new ErrorDeNegocio('El porcentaje de comisión tiene que ser un número entre 0 y 100.')
   }
+  // Vacío (null) es «renueva sola»: no es lo mismo que cero, que no querría decir nada.
+  const meses = datos.mesesRenovacion === null || datos.mesesRenovacion === undefined ? null : Number(datos.mesesRenovacion)
+  if (meses !== null && (!Number.isInteger(meses) || meses < 1 || meses > 60)) {
+    throw new ErrorDeNegocio('Los meses entre renovaciones tienen que ser un número entero entre 1 y 60, o quedar vacíos si la compañía renueva sola.')
+  }
   const normalizado = normalizarTexto(nombre)
   const otra = db().prepare('SELECT id FROM companias WHERE nombre_normalizado = ? AND id <> ?').get(normalizado, identificador) as
     | { id: number }
@@ -126,9 +175,10 @@ export function editarCompania(id: number, datos: DatosDeCompania): Compania {
 
   const cambios = db()
     .prepare(
-      `UPDATE companias SET nombre = ?, nombre_normalizado = ?, dias_cobertura_financiera = ?, comision_porcentaje = ?, activa = ?, actualizado_en = ? WHERE id = ?`,
+      `UPDATE companias SET nombre = ?, nombre_normalizado = ?, dias_cobertura_financiera = ?, comision_porcentaje = ?,
+                           meses_renovacion = ?, activa = ?, actualizado_en = ? WHERE id = ?`,
     )
-    .run(nombre, normalizado, dias, Math.round(comision * 100) / 100, datos.activa ? 1 : 0, ahoraIso(), identificador).changes
+    .run(nombre, normalizado, dias, Math.round(comision * 100) / 100, meses, datos.activa ? 1 : 0, ahoraIso(), identificador).changes
   if (cambios === 0) throw new ErrorDeNegocio('No se encontró esa compañía.')
 
   const actualizada = listarCompanias().find((c) => c.id === identificador)

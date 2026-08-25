@@ -29,13 +29,15 @@ export function Companias() {
     void cargar()
   }, [cargar])
 
-  /** Los dos números de la fila se guardan por el mismo camino: se manda la compañía entera. */
+  /** Los números de la fila se guardan por el mismo camino: se manda la compañía entera. */
   const guardar = async (compania: Compania, cambios: Partial<Compania>, resumen: string) => {
     setError(null)
     const resultado = await window.dm.companias.editar(compania.id, {
       nombre: compania.nombre,
       diasCoberturaFinanciera: cambios.diasCoberturaFinanciera ?? compania.diasCoberturaFinanciera,
       comisionPorcentaje: cambios.comisionPorcentaje ?? compania.comisionPorcentaje,
+      // Con ?? no alcanza: acá null es un valor («renueva sola»), no un campo que no vino.
+      mesesRenovacion: 'mesesRenovacion' in cambios ? (cambios.mesesRenovacion ?? null) : compania.mesesRenovacion,
       activa: compania.activa,
     })
     if (resultado.ok) {
@@ -66,7 +68,7 @@ export function Companias() {
 
       <Tarjeta
         titulo="Compañías"
-        descripcion="Los días de cobertura financiera son los que cada compañía sigue cubriendo al cliente después del vencimiento: mientras corren, la fila de la planilla queda amarilla; el último día, naranja; después, roja. El porcentaje de comisión es el que usa Cobranzas → Comisiones para estimar lo que deja cada mes."
+        descripcion="Los días de cobertura financiera son los que cada compañía sigue cubriendo al cliente después del vencimiento: mientras corren, la fila de la planilla queda amarilla; el último día, naranja; después, roja. El porcentaje de comisión es el que usa Cobranzas → Comisiones para estimar lo que deja cada mes. Los meses de renovación son cada cuánto hay que renovar a mano en esa compañía (Agrosalta 4, Río Uruguay 6, Metropol 12): las que quedan vacías renuevan solas y no aparecen en la bandeja de Renovaciones."
         alRas
       >
         <div className="overflow-x-auto">
@@ -77,12 +79,13 @@ export function Companias() {
                 <th className={cx(encabezado, 'text-right')}>Pólizas activas</th>
                 <th className={cx(encabezado, 'text-right')}>Días de cobertura</th>
                 <th className={cx(encabezado, 'text-right')}>Comisión (%)</th>
+                <th className={cx(encabezado, 'text-right')}>Renovación (meses)</th>
               </tr>
             </thead>
             <tbody>
               {companias.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={5} className="px-3 py-8 text-center text-slate-500">
                     Todavía no hay compañías: se dan de alta solas al importar la hoja.
                   </td>
                 </tr>
@@ -136,6 +139,36 @@ export function Companias() {
                         }
                       }}
                       className="h-8 w-20 rounded border border-slate-300 px-2 text-right text-sm tabular-nums disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      placeholder="renueva sola"
+                      aria-label={`Meses entre renovaciones de ${compania.nombre}`}
+                      disabled={!puedeEditar}
+                      defaultValue={compania.mesesRenovacion ?? ''}
+                      onBlur={(evento) => {
+                        // Acá el campo vacío SÍ quiere decir algo: «esta compañía renueva sola».
+                        const escrito = evento.currentTarget.value.trim()
+                        const meses = escrito === '' ? null : Number(escrito)
+                        if (meses !== null && !Number.isInteger(meses)) {
+                          evento.currentTarget.value = compania.mesesRenovacion === null ? '' : String(compania.mesesRenovacion)
+                          return
+                        }
+                        if (meses !== compania.mesesRenovacion) {
+                          void guardar(
+                            compania,
+                            { mesesRenovacion: meses },
+                            meses === null
+                              ? `${compania.nombre}: renueva sola, sale de la bandeja de renovaciones.`
+                              : `${compania.nombre}: se renueva a mano cada ${meses} ${meses === 1 ? 'mes' : 'meses'}.`,
+                          )
+                        }
+                      }}
+                      className="h-8 w-28 rounded border border-slate-300 px-2 text-right text-sm tabular-nums placeholder:text-[11px] placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                     />
                   </td>
                 </tr>
