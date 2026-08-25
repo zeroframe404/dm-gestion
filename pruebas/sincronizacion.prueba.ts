@@ -12,7 +12,7 @@ import {
   planillaDelMes,
   registrarPago,
 } from '../src/main/servicios/cartera'
-import { cuantasFallidas, cuantasPendientes, encolar, esperaDeReintento } from '../src/main/sincronizacion/cola'
+import { apurarAgrupadas, cuantasFallidas, cuantasPendientes, encolar, esperaDeReintento } from '../src/main/sincronizacion/cola'
 import { leerContexto } from '../src/main/sincronizacion/hoja'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { hacerRespaldo, listarRespaldos, rotar, tocaRespaldar, type ServicioDeRespaldo } from '../src/main/sincronizacion/respaldo'
@@ -150,6 +150,12 @@ test('dar de baja saca la fila de la planilla y la agrega a BAJAS, como el corta
   darDeBaja(martinez.filaId, { motivo: 'VENDIO', nota: 'Vendió la camioneta' }, DANIEL)
   assert.equal(cuantasPendientes(), 2, 'una entrada para agregar a BAJAS y otra para sacar de la planilla')
 
+  // El borrado espera su ventana de agrupado (ver ESPERA_DE_AGRUPADO_MS): el ciclo automático de recién
+  // sube la fila a BAJAS pero todavía no toca la planilla.
+  await motor.ciclarSubida()
+  assert.equal(hoja.filasDe('AGOSTO').length, filasAntes, 'el borrado espera para juntarse con otros')
+
+  apurarAgrupadas()
   await motor.ciclarSubida()
   assert.equal(hoja.filasDe('AGOSTO').length, filasAntes - 1, 'la fila tiene que desaparecer de la planilla del mes')
   assert.equal(hoja.filasDe('BAJAS AGOSTO').length, bajasAntes + 1, 'y aparecer en BAJAS')
@@ -158,6 +164,28 @@ test('dar de baja saca la fila de la planilla y la agrega a BAJAS, como el corta
   const enBajas = hoja.filasDe('BAJAS AGOSTO').find((f) => f.some((c) => (c ?? '').includes(CLIENTES.martinez.nombre)))
   assert.ok(enBajas, 'la baja tiene que estar en la pestaña de bajas con el nombre del cliente')
   assert.ok(enBajas.some((c) => (c ?? '').includes('VENDIO')), 'y con su motivo')
+  cerrarBaseDeDatos()
+})
+
+test('varias bajas seguidas borran las filas en una sola pasada por la hoja', async () => {
+  const { hoja, motor } = await escenario()
+  const filasAntes = hoja.filasDe('AGOSTO').length
+  const borradosAntes = hoja.llamadas.borrarFilas
+
+  // Tres bajas una atrás de otra, como cuando se limpian las pólizas anuladas del sistema.
+  for (const nombre of [CLIENTES.martinez.nombre, CLIENTES.gonzalez.nombre, CLIENTES.lopez.nombre]) {
+    darDeBaja(fila(nombre).filaId, { motivo: 'ANULA POR FALTA DE PAGO', nota: '' }, DANIEL)
+  }
+
+  // Mientras corre la ventana de agrupado sólo viajan los agregados a BAJAS: la planilla no se toca.
+  await motor.ciclarSubida()
+  assert.equal(hoja.llamadas.borrarFilas, borradosAntes, 'ningún borrado todavía')
+
+  apurarAgrupadas()
+  await motor.ciclarSubida()
+  assert.equal(hoja.filasDe('AGOSTO').length, filasAntes - 3, 'las tres filas salieron de la planilla')
+  assert.equal(hoja.llamadas.borrarFilas, borradosAntes + 1, 'y salieron en un solo borrado, no en tres')
+  assert.equal(cuantasPendientes(), 0)
   cerrarBaseDeDatos()
 })
 

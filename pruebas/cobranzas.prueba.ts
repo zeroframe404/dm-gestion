@@ -458,7 +458,7 @@ test('la comisión estimada sale de lo cobrado en el mes y del porcentaje de cad
   const porNombre = new Map(listarCompanias().map((c) => [c.nombre, c]))
   const sancor = porNombre.get('SANCOR')!
   const rivadavia = porNombre.get('RIVADAVIA')!
-  editarCompania(sancor.id, { nombre: sancor.nombre, diasCoberturaFinanciera: sancor.diasCoberturaFinanciera, comisionPorcentaje: 20, activa: true })
+  editarCompania(sancor.id, { nombre: sancor.nombre, diasCoberturaFinanciera: sancor.diasCoberturaFinanciera, comisionPorcentaje: 20, mesesRenovacion: sancor.mesesRenovacion, activa: true })
 
   // Lo importado de IMPUTADOS: SANCOR 24.420 (el otro pago de SANCOR no tiene importe numérico) y
   // RIVADAVIA 16.236. Se suma un cobro más del mostrador.
@@ -479,7 +479,7 @@ test('la comisión estimada sale de lo cobrado en el mes y del porcentaje de cad
   assert.equal(resumen.comision, 4884)
 
   // Cargado el porcentaje, la estimación aparece.
-  editarCompania(rivadavia.id, { nombre: rivadavia.nombre, diasCoberturaFinanciera: rivadavia.diasCoberturaFinanciera, comisionPorcentaje: 10, activa: true })
+  editarCompania(rivadavia.id, { nombre: rivadavia.nombre, diasCoberturaFinanciera: rivadavia.diasCoberturaFinanciera, comisionPorcentaje: 10, mesesRenovacion: rivadavia.mesesRenovacion, activa: true })
   const conPorcentaje = comisiones('2026-08')
   assert.equal(conPorcentaje.filas.find((f) => f.compania === 'RIVADAVIA')?.comision, 1623.6)
   assert.equal(conPorcentaje.sinPorcentaje.includes('RIVADAVIA'), false)

@@ -2,7 +2,7 @@
 // cliente no renueva (se da de baja la póliza). Los dos diálogos viven juntos porque son el mismo
 // momento de la gestión, trabajan sobre la misma FilaRenovacion y se abren desde la misma fila.
 import { useEffect, useState } from 'react'
-import { porcentajeDeAumento } from '../../../shared/polizas'
+import { mesesDeVigencia, porcentajeDeAumento } from '../../../shared/polizas'
 import {
   MOTIVOS_DE_BAJA,
   NOMBRE_MOTIVO_BAJA,
@@ -30,7 +30,29 @@ const FORMULARIO_VACIO: DatosDeRenovacion = {
   vigenciaHasta: '',
   cuota: '',
   numero: '',
+  propuesta: '',
   observaciones: '',
+}
+
+/** «un año», «4 meses»: cuánto dura el plazo, escrito como se dice. */
+function enMeses(meses: number): string {
+  if (meses === 12) return 'un año'
+  if (meses === 1) return 'un mes'
+  return `${meses} meses`
+}
+
+/**
+ * De dónde salió el plazo que se está proponiendo: de la compañía cuando lo tiene cargado (Agrosalta
+ * cada 4 meses, Río Uruguay cada 6, Metropol cada 12), o de lo que duraba la vigencia que termina.
+ */
+function ayudaDeVigencia(fila: FilaRenovacion, datos: DatosDeRenovacion): string {
+  if (fila.mesesDeRenovacion !== null) {
+    return `Propuesta: ${enMeses(fila.mesesDeRenovacion)} después del inicio, que es cada cuánto renueva ${fila.compania ?? 'esta compañía'}.`
+  }
+  const propuesto = mesesDeVigencia(datos.vigenciaDesde, datos.vigenciaHasta)
+  return propuesto === null
+    ? 'Propuesta a partir del final de la vigencia anterior.'
+    : `Propuesta: ${enMeses(propuesto)} después del inicio. Si esta compañía renueva con otro plazo, cargalo en Administración → Compañías.`
 }
 
 export function DialogoRenovar({ fila, alCerrar, alRenovar, alFallar }: PropsRenovar) {
@@ -122,7 +144,7 @@ export function DialogoRenovar({ fila, alCerrar, alRenovar, alFallar }: PropsRen
       ) : (
         <div className="flex flex-col gap-3">
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-            Se crea la vigencia nueva y la anterior queda como histórica. Está todo propuesto (un año más y la
+            Se crea la vigencia nueva y la anterior queda como histórica. Está todo propuesto (las fechas nuevas y la
             {yaAumentada ? ' cuota ya aumentada' : ' misma cuota'}): cambiá lo que haga falta antes de guardar.
           </p>
 
@@ -159,7 +181,7 @@ export function DialogoRenovar({ fila, alCerrar, alRenovar, alFallar }: PropsRen
               type={tipoFecha}
               value={datos.vigenciaHasta}
               onChange={(evento) => cambiar('vigenciaHasta', evento.target.value)}
-              ayuda="Propuesta: un año después del inicio."
+              ayuda={ayudaDeVigencia(fila, datos)}
               placeholder={usarCalendario ? undefined : 'AAAA-MM-DD'}
             />
             <Campo
@@ -174,6 +196,12 @@ export function DialogoRenovar({ fila, alCerrar, alRenovar, alFallar }: PropsRen
               value={datos.numero}
               onChange={(evento) => cambiar('numero', evento.target.value)}
               ayuda={fila.numero ? `Anterior: ${fila.numero}` : 'Dejalo vacío si todavía no lo emitieron.'}
+            />
+            <Campo
+              etiqueta="N° de propuesta"
+              value={datos.propuesta}
+              onChange={(evento) => cambiar('propuesta', evento.target.value)}
+              ayuda="Sólo algunas compañías la usan. Dejalo vacío si esta no da propuesta."
             />
           </div>
 

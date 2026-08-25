@@ -8,14 +8,16 @@
 import { hoyLocal } from '../../shared/semaforo'
 import {
   DIAS_DE_RENOVACION,
+  MESES_DE_RENOVACION_POR_DEFECTO,
   aDia,
   desdeDia,
   diasParaVencer,
   lunesDe,
+  mesesDeVigencia,
+  mesesDespues,
   pideAumentoAlRenovar,
   porcentajeDeAumento,
   tituloDeSemana,
-  unAnioDespues,
 } from '../../shared/polizas'
 import {
   ESTADOS_DE_RENOVACION,
@@ -45,6 +47,7 @@ import {
 } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { darDeBaja, nombreDePestanaMensual, periodosDisponibles, pestanaDeBajas } from './cartera'
+import { mesesDeRenovacionPorCompania, sincronizarCompanias } from './companias'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio, type AccionHistorial } from './historial'
@@ -72,7 +75,7 @@ const ACCION_RENOVACION: AccionHistorial = 'renovacion'
 const SELECT_BANDEJA = `
   SELECT
     p.id AS poliza_id, p.fila_id, p.cliente_id, p.compania, p.cobertura, p.numero,
-    p.forma_pago, p.vigencia_desde, p.vigencia_hasta, p.vigencia_hasta_iso,
+    p.forma_pago, p.vigencia_desde, p.vigencia_hasta, p.vigencia_desde_iso, p.vigencia_hasta_iso,
     p.observaciones AS observaciones_poliza,
     cl.nombre AS cliente_nombre, cl.telefono,
     COALESCE(c.sucursal_texto, cl.sucursal_texto) AS sucursal,
@@ -106,6 +109,7 @@ interface FilaCrudaBandeja {
   forma_pago: string | null
   vigencia_desde: string | null
   vigencia_hasta: string | null
+  vigencia_desde_iso: string | null
   vigencia_hasta_iso: string
   observaciones_poliza: string | null
   cliente_nombre: string | null
@@ -153,8 +157,33 @@ function nombreDeVehiculo(marca: string | null, modelo: string | null, tipo: str
   return armado || limpiar(tipo) || null
 }
 
-function aFilaRenovacion(cruda: FilaCrudaBandeja, hoy: string): FilaRenovacion {
+/**
+ * Los plazos con los que trabajan las compañías. La vigencia de la hoja sólo se usa para deducir el
+ * plazo si cae justo en uno de estos: ahí hay vigencias a medio cargar (un «desde» que quedó del año
+ * pasado, un «hasta» escrito a mano) y de un plazo raro no se puede concluir nada.
+ */
+const PLAZOS_HABITUALES = [3, 4, 6, 12]
+
+/**
+ * Cada cuántos meses se renueva esta póliza. Manda lo cargado en la compañía (Agrosalta 4, Río Uruguay
+ * 6, Metropol 12); si no está cargado se lee de la propia vigencia —«igual eso lo dice la fin de
+ * vigencia»— y recién en último caso se supone un año.
+ */
+function mesesDeRenovacionDe(
+  compania: string | null,
+  desdeIso: string | null,
+  hastaIso: string | null,
+  porCompania: Record<string, number>,
+): number {
+  const deLaCompania = porCompania[normalizarTexto(compania)]
+  if (deLaCompania !== undefined) return deLaCompania
+  const deLaVigencia = mesesDeVigencia(desdeIso, hastaIso)
+  return deLaVigencia !== null && PLAZOS_HABITUALES.includes(deLaVigencia) ? deLaVigencia : MESES_DE_RENOVACION_POR_DEFECTO
+}
+
+function aFilaRenovacion(cruda: FilaCrudaBandeja, hoy: string, porCompania: Record<string, number>): FilaRenovacion {
   const observaciones = observacionesDe(cruda.observaciones_poliza, cruda.observaciones_cuota)
+  const mesesDeLaCompania = porCompania[normalizarTexto(cruda.compania)] ?? null
   return {
     renovacionId: cruda.renovacion_id,
     polizaId: cruda.poliza_id,
@@ -176,6 +205,10 @@ function aFilaRenovacion(cruda: FilaCrudaBandeja, hoy: string): FilaRenovacion {
     diasParaVencer: diasParaVencer(cruda.vigencia_hasta_iso, hoy) ?? 0,
     observaciones,
     aumentaAlRenovar: pideAumentoAlRenovar(observaciones),
+    // Sólo las compañías con meses cargados se renuevan a mano; las demás renuevan solas y la bandeja
+    // las esconde salvo que se las pida con el filtro.
+    renovacionManual: mesesDeLaCompania !== null,
+    mesesDeRenovacion: mesesDeLaCompania,
     // Sin fila de seguimiento la póliza está pendiente. No se crea acá: abrir la bandeja no tiene por
     // qué escribir en la base ni ensuciar el historial de nadie.
     estado: cruda.estado ?? 'pendiente',
@@ -195,6 +228,10 @@ function usuariosActivos(): Array<{ id: number; nombre: string }> {
 export function bandejaDeRenovaciones(): BandejaRenovaciones {
   const hoy = hoyLocal()
   const enDias = aDia(hoy) ?? 0
+  // Una compañía que apareció recién en la cartera todavía puede no estar en el catálogo, y de ahí sale
+  // cada cuánto se renueva: se la da de alta antes de mirar, como hace la planilla del mes.
+  sincronizarCompanias()
+  const porCompania = mesesDeRenovacionPorCompania()
   const crudas = db()
     .prepare(SELECT_BANDEJA)
     .all({
@@ -209,7 +246,7 @@ export function bandejaDeRenovaciones(): BandejaRenovaciones {
   for (const cruda of crudas) {
     const lunes = lunesDe(cruda.vigencia_hasta_iso)
     const filas = porSemana.get(lunes) ?? []
-    filas.push(aFilaRenovacion(cruda, hoy))
+    filas.push(aFilaRenovacion(cruda, hoy, porCompania))
     porSemana.set(lunes, filas)
   }
 
@@ -237,6 +274,7 @@ interface PolizaCruda {
   vehiculo_id: number | null
   compania: string | null
   numero: string | null
+  propuesta: string | null
   cobertura: string | null
   prima: string | null
   prima_monto: number | null
@@ -337,6 +375,9 @@ function cuotaSugerida(cuotaActual: string | null, observaciones: string | null)
 }
 
 export function datosSugeridosDeRenovacion(polizaId: number): DatosDeRenovacion {
+  // Igual que la bandeja: si la compañía es nueva en la cartera, primero entra al catálogo, que es de
+  // donde sale cada cuánto renueva.
+  sincronizarCompanias()
   const poliza = buscarPoliza(enteroPositivo(polizaId, 'La póliza'))
   const cuota = cuotaDelMesAbierto(poliza.id, periodoAbierto())
   const observaciones = observacionesDe(poliza.observaciones, cuota?.observaciones ?? null)
@@ -345,12 +386,16 @@ export function datosSugeridosDeRenovacion(polizaId: number): DatosDeRenovacion 
   // hoja hay vigencias que son «A/D» o están vacías) se propone desde hoy: es un supuesto razonable y
   // el diálogo lo deja cambiar, que es mejor que abrirlo en blanco.
   const desde = poliza.vigencia_hasta_iso ?? hoyLocal()
+  // Cuánto dura la vigencia nueva: los meses de la compañía (Agrosalta 4, Río Uruguay 6, Metropol 12),
+  // o los que duraba la vigencia que está terminando.
+  const meses = mesesDeRenovacionDe(poliza.compania, poliza.vigencia_desde_iso, poliza.vigencia_hasta_iso, mesesDeRenovacionPorCompania())
 
   return {
     vigenciaDesde: desde,
-    vigenciaHasta: unAnioDespues(desde),
+    vigenciaHasta: mesesDespues(desde, meses),
     cuota: cuotaSugerida(cuota?.cuota ?? null, observaciones),
     numero: limpiar(poliza.numero),
+    propuesta: limpiar(poliza.propuesta),
     observaciones: limpiar(observaciones),
   }
 }
@@ -576,6 +621,7 @@ export function renovar(polizaId: number, datos: DatosDeRenovacion, actor: Sesio
   const hastaIso = vigenciaIso(entrada.vigenciaHasta, 'la vigencia hasta')
   if (hastaIso <= desdeIso) throw new ErrorDeNegocio('La vigencia nueva tiene que terminar después de empezar.')
   const numero = texto(entrada.numero ?? '', 'El número de póliza', 0, 60)
+  const propuesta = texto(entrada.propuesta ?? '', 'El número de propuesta', 0, 60)
   const cuota = texto(entrada.cuota ?? '', 'La cuota', 0, 60)
   const observaciones = texto(entrada.observaciones ?? '', 'Las observaciones', 0, 1000)
 
@@ -614,11 +660,11 @@ export function renovar(polizaId: number, datos: DatosDeRenovacion, actor: Sesio
     // una renovación son las vigencias, el número y la cuota.
     const nueva = db()
       .prepare(
-        `INSERT INTO polizas (clave, fila_id, cliente_id, vehiculo_id, compania, numero, numero_normalizado, cobertura,
+        `INSERT INTO polizas (clave, fila_id, cliente_id, vehiculo_id, compania, numero, numero_normalizado, propuesta, cobertura,
                               prima, prima_monto, forma_pago, productor, estado_texto, vigencia_desde, vigencia_hasta,
                               vigencia_desde_iso, vigencia_hasta_iso, alta, avisar_vto, observaciones, periodo_origen,
                               pestana_origen, poliza_anterior_id, creada_en_la_app, activa, creado_en, actualizado_en)
-         VALUES (@clave, @fila_id, @cliente_id, @vehiculo_id, @compania, @numero, @numero_normalizado, @cobertura,
+         VALUES (@clave, @fila_id, @cliente_id, @vehiculo_id, @compania, @numero, @numero_normalizado, @propuesta, @cobertura,
                  @prima, @prima_monto, @forma_pago, @productor, @estado_texto, @vigencia_desde, @vigencia_hasta,
                  @vigencia_desde_iso, @vigencia_hasta_iso, @alta, @avisar_vto, @observaciones, @periodo_origen,
                  @pestana_origen, @poliza_anterior_id, 1, 1, @ahora, @ahora)
@@ -632,6 +678,7 @@ export function renovar(polizaId: number, datos: DatosDeRenovacion, actor: Sesio
         compania: anterior.compania,
         numero: numero || null,
         numero_normalizado: normalizarNumeroPoliza(numero) || null,
+        propuesta: propuesta || null,
         cobertura: anterior.cobertura,
         prima: anterior.prima,
         prima_monto: anterior.prima_monto,

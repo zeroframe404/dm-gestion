@@ -83,12 +83,13 @@ interface Filtros {
   sucursal: string
   formaPago: string
   compania: string
+  vehiculo: string
   color: string
   soloAvisarVto: boolean
   contador: Contador
 }
 
-const FILTROS_VACIOS: Filtros = { busqueda: '', sucursal: '', formaPago: '', compania: '', color: '', soloAvisarVto: false, contador: '' }
+const FILTROS_VACIOS: Filtros = { busqueda: '', sucursal: '', formaPago: '', compania: '', vehiculo: '', color: '', soloAvisarVto: false, contador: '' }
 
 export function PlanillaDelMes() {
   const usuario = useUsuarioActual()
@@ -162,6 +163,7 @@ export function PlanillaDelMes() {
       if (filtros.sucursal && normalizar(fila.sucursal) !== normalizar(filtros.sucursal)) return false
       if (filtros.formaPago && normalizar(fila.formaPago) !== normalizar(filtros.formaPago)) return false
       if (filtros.compania && normalizar(fila.compania) !== normalizar(filtros.compania)) return false
+      if (filtros.vehiculo && normalizar(fila.vehiculo) !== normalizar(filtros.vehiculo)) return false
       if (filtros.color && alerta.color !== filtros.color) return false
       if (filtros.soloAvisarVto && normalizar(fila.avisarVto) !== 'AVISAR') return false
       return true
@@ -227,6 +229,25 @@ export function PlanillaDelMes() {
     [reemplazar],
   )
 
+  /**
+   * «Avisado» sin abrir WhatsApp: para cuando ya se le avisó por otro lado (por teléfono, en el
+   * mostrador, o el mensaje se mandó desde el celular) y lo único que falta es que la planilla lo diga.
+   */
+  const marcarAvisado = useCallback(
+    async (fila: FilaCartera) => {
+      setError(null)
+      setAviso(null)
+      const resultado = await window.dm.cartera.marcarAvisado(fila.filaId)
+      if (!resultado.ok) {
+        setError(resultado.error)
+        return
+      }
+      reemplazar(resultado.datos)
+      setAviso(`${resultado.datos.nombre ?? 'La fila'} quedó como ENVIADO y suma en «Avisados hoy».`)
+    },
+    [reemplazar],
+  )
+
   const cerrarMes = useCallback(async () => {
     setCerrando(true)
     setError(null)
@@ -276,11 +297,17 @@ export function PlanillaDelMes() {
       {
         id: 'acciones',
         titulo: 'Acciones',
-        ancho: 108,
+        ancho: 140,
         fija: true,
         celda: ({ fila }) => (
           <div className="flex items-center gap-0.5">
             <BotonAccion titulo="Avisar por WhatsApp" icono="mensaje" disabled={soloLectura} onClick={() => void avisar(fila)} />
+            <BotonAccion
+              titulo="Marcar como avisado (sin abrir WhatsApp)"
+              icono="ok"
+              disabled={soloLectura}
+              onClick={() => void marcarAvisado(fila)}
+            />
             <BotonAccion titulo="Registrar pago" icono="billete" disabled={soloLectura} onClick={() => setPagoDe(fila)} />
             <BotonAccion titulo="Dar de baja" icono="cerrar" disabled={soloLectura} peligro onClick={() => setBajaDe(fila)} />
           </div>
@@ -302,11 +329,12 @@ export function PlanillaDelMes() {
       { id: 'cobertura', titulo: 'Cobertura', ancho: 160, celda: celdaEditable('cobertura', catalogos?.coberturas) },
       { id: 'compania', titulo: 'Compañía', ancho: 140, celda: celdaEditable('compania', catalogos?.companias) },
       { id: 'poliza', titulo: 'Póliza', ancho: 120, celda: celdaEditable('numeroPoliza') },
+      { id: 'propuesta', titulo: 'Propuesta', ancho: 120, celda: celdaEditable('propuesta') },
       { id: 'desde', titulo: 'Desde', ancho: 100, celda: celdaEditable('vigenciaDesde') },
       { id: 'hasta', titulo: 'Hasta', ancho: 100, celda: celdaEditable('vigenciaHasta') },
       { id: 'observaciones', titulo: 'Observaciones', ancho: 240, celda: celdaEditable('observaciones') },
     ]
-  }, [avisar, datos, editando, guardarCelda, soloLectura])
+  }, [avisar, datos, editando, guardarCelda, marcarAvisado, soloLectura])
 
   if (cargando && !datos) return <Cargando texto="Abriendo la planilla…" />
 
@@ -412,6 +440,7 @@ export function PlanillaDelMes() {
         <FiltroDesplegable etiqueta="Sucursal" valor={filtros.sucursal} opciones={datos.catalogos.sucursales} alCambiar={(v) => setFiltros((f) => ({ ...f, sucursal: v }))} />
         <FiltroDesplegable etiqueta="Forma de pago" valor={filtros.formaPago} opciones={datos.catalogos.formasDePago} alCambiar={(v) => setFiltros((f) => ({ ...f, formaPago: v }))} />
         <FiltroDesplegable etiqueta="Compañía" valor={filtros.compania} opciones={datos.catalogos.companias} alCambiar={(v) => setFiltros((f) => ({ ...f, compania: v }))} />
+        <FiltroDesplegable etiqueta="Vehículo" valor={filtros.vehiculo} opciones={datos.catalogos.tiposDeVehiculo} alCambiar={(v) => setFiltros((f) => ({ ...f, vehiculo: v }))} />
         <FiltroDesplegable
           etiqueta="Alerta"
           valor={filtros.color}
@@ -428,7 +457,14 @@ export function PlanillaDelMes() {
           />
           Sólo con AVISAR VTO
         </label>
-        {(filtros.busqueda || filtros.sucursal || filtros.formaPago || filtros.compania || filtros.color || filtros.soloAvisarVto || filtros.contador) && (
+        {(filtros.busqueda ||
+          filtros.sucursal ||
+          filtros.formaPago ||
+          filtros.compania ||
+          filtros.vehiculo ||
+          filtros.color ||
+          filtros.soloAvisarVto ||
+          filtros.contador) && (
           <Boton tamano="sm" variante="fantasma" icono="cerrar" onClick={() => setFiltros(FILTROS_VACIOS)}>
             Limpiar
           </Boton>
@@ -572,7 +608,7 @@ function BotonAccion({
   peligro,
 }: {
   titulo: string
-  icono: 'mensaje' | 'billete' | 'cerrar'
+  icono: 'mensaje' | 'ok' | 'billete' | 'cerrar'
   onClick: () => void
   disabled?: boolean
   peligro?: boolean

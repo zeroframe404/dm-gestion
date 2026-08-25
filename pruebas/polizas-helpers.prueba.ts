@@ -12,6 +12,8 @@ import {
   estadoDePoliza,
   fechaCorta,
   lunesDe,
+  mesesDespues,
+  mesesDeVigencia,
   pideAumentoAlRenovar,
   porcentajeDeAumento,
   tituloDeSemana,
@@ -60,6 +62,24 @@ test('un año después es la misma fecha del año que viene, y el 29 de febrero 
   assert.equal(unAnioDespues('2026-12-31'), '2027-12-31')
   // 2028 es bisiesto y 2029 no: el 29 no existe y se toma el último día del mes, como las compañías.
   assert.equal(unAnioDespues('2028-02-29'), '2029-02-28')
+})
+
+test('los plazos que no son de un año se corren por meses, respetando el fin de mes', () => {
+  // Agrosalta renueva cada 4 meses, Río Uruguay cada 6.
+  assert.equal(mesesDespues('2026-09-09', 4), '2027-01-09', 'el plazo puede cruzar el año')
+  assert.equal(mesesDespues('2026-09-30', 6), '2027-03-30')
+  assert.equal(mesesDespues('2026-08-31', 6), '2027-02-28', 'el 31 de febrero no existe: se toma el último día')
+  assert.equal(mesesDespues('2026-12-15', 1), '2027-01-15')
+  assert.equal(mesesDespues('2027-01-15', -6), '2026-07-15', 'y para atrás también')
+})
+
+test('cuánto duró una vigencia sale de sus propias fechas', () => {
+  assert.equal(mesesDeVigencia('2026-01-09', '2027-01-09'), 12)
+  assert.equal(mesesDeVigencia('2026-09-09', '2027-03-09'), 6)
+  assert.equal(mesesDeVigencia('2026-09-09', '2027-01-09'), 4)
+  assert.equal(mesesDeVigencia('2026-09-09', '2026-09-20'), null, 'once días no es un plazo de póliza')
+  assert.equal(mesesDeVigencia('2027-01-09', '2026-01-09'), null, 'al revés tampoco')
+  assert.equal(mesesDeVigencia(null, '2027-01-09'), null, 'sin las dos fechas no se puede afirmar nada')
 })
 
 test('la semana arranca el lunes', () => {

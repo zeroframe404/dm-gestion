@@ -166,6 +166,8 @@ export interface Canales {
   'cartera:editarCelda': (filaId: string, campo: CampoEditable, valor: string) => Resultado<FilaCartera>
   /** Marca la fila como avisada y devuelve la dirección de WhatsApp lista para abrir. */
   'cartera:prepararAviso': (filaId: string) => Resultado<AvisoPreparado>
+  /** Deja la fila como ENVIADO (y en «Avisados hoy») sin abrir WhatsApp. */
+  'cartera:marcarAvisado': (filaId: string) => Resultado<FilaCartera>
   'cartera:registrarPago': (filaId: string, datos: DatosDePago) => Resultado<FilaCartera>
   'cartera:darDeBaja': (filaId: string, datos: DatosDeBaja) => Resultado<null>
   'cartera:deshacerBaja': (bajaId: number) => Resultado<FilaBaja[]>

@@ -92,7 +92,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.companias': {
     clave: 'administracion.companias',
     titulo: 'Administración → Compañías',
-    resumen: 'Los días de cobertura financiera de cada aseguradora, el porcentaje de comisión y el mensaje del aviso de vencimiento.',
+    resumen: 'Los días de cobertura financiera de cada aseguradora, el porcentaje de comisión, cada cuánto se renueva y el mensaje del aviso de vencimiento.',
     secciones: [
       {
         titulo: 'Días de cobertura financiera',
@@ -104,6 +104,13 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         titulo: 'Porcentaje de comisión',
         parrafos: [
           'Es lo que la aseguradora le reconoce a la agencia por cada póliza. Se usa en Cobranzas → Comisiones para estimar cuánto deja cada mes según lo que se cobró. Se edita igual que los días de cobertura: clic en el número de la fila de esa compañía, escribir el nuevo porcentaje y listo.',
+        ],
+      },
+      {
+        titulo: 'Renovación (meses)',
+        parrafos: [
+          'La mayoría de las compañías renueva sola y la agencia no tiene que hacer nada: esas pólizas no aparecen en la bandeja de Renovaciones y esta columna queda vacía. Las que sí hay que renovar a mano llevan acá cada cuántos meses: Agrosalta 4, Río Uruguay 6 y Metropol 12, que vienen cargadas de fábrica.',
+          'Ese número hace dos cosas: decide qué pólizas se ven en Renovaciones y cuánto dura la vigencia que el sistema propone al renovar (por ejemplo, en Agrosalta propone cuatro meses después, no un año). Para sacar una compañía de la bandeja alcanza con borrar el número y dejar la celda vacía.',
         ],
       },
       {
@@ -121,6 +128,11 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Comisión',
         explicacion: 'El porcentaje que la aseguradora le paga a la agencia por cada póliza, usado para estimar lo que deja el mes en Cobranzas → Comisiones.',
+      },
+      {
+        termino: 'Renovación (meses)',
+        explicacion:
+          'Cada cuántos meses hay que renovar a mano en esa compañía (Agrosalta 4, Río Uruguay 6, Metropol 12). Vacío quiere decir que la compañía renueva sola y sus pólizas no van a la bandeja de Renovaciones.',
       },
     ],
   },

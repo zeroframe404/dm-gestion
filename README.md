@@ -129,13 +129,28 @@ calculado solo y las acciones de un clic.
   Vienen cargados con los que usa la agencia (ATM 7, RIVADAVIA 7, EQUIDAD 5, METROPOL 3, AGROSALTA 0…);
   una compañía nueva arranca en 30.
 - **Acciones por fila**: «Avisar» abre WhatsApp con la plantilla configurable (`{nombre}`, `{cuota}`,
-  `{vencimiento}`) y deja la fila en `ENVIADO` con la fecha; «Registrar pago» llena `CUANDO PAGO` y crea
-  el pago; «Dar de baja» pide motivo y nota y mueve la póliza a **Bajas** del mes.
+  `{vencimiento}`) y deja la fila en `ENVIADO` con la fecha; «Avisado» (el tilde) deja exactamente lo
+  mismo en la planilla —`ENVIADO`, la fecha de hoy y la fila en AVISADOS HOY— **sin** abrir WhatsApp,
+  para cuando ya se avisó por teléfono, en el mostrador o desde el celular (no necesita teléfono
+  cargado); «Registrar pago» llena `CUANDO PAGO` y crea el pago; «Dar de baja» pide motivo y nota y
+  mueve la póliza a **Bajas** del mes.
+- **Propuesta**: la columna `PROPUESTA`, al lado de `POLIZA`, guarda el número que dan algunas compañías
+  antes de emitir. Vive en `polizas.propuesta` (la misma que edita **Pólizas**), así que se ve en la
+  ficha del cliente y sigue estando el mes que viene, pero **no se encola**: la hoja no tiene esa
+  columna y una entrada sin destino quedaría para siempre en «no se pudo».
+- **Filtros**: buscador por nombre, patente, póliza o DNI, y desplegables por sucursal, forma de pago,
+  compañía, **tipo de vehículo** (auto, moto, pick up… salen del catálogo `tiposDeVehiculo`) y color de
+  alerta, más la casilla «Sólo con AVISAR VTO».
 - **Los contadores de arriba filtran**, como en Siniestros, Tareas, Leads y Presupuestos: se toca
   VENCEN HOY, VENCIDOS, AVISADOS HOY o PAGADOS HOY y la tabla queda con esas filas (volver a tocarlo, o
   TOTAL, muestra el mes entero). El número lo calcula la misma condición con la que después se filtra,
   así el cartel y la tabla no pueden discrepar, y los contadores siempre cuentan sobre el mes completo
   aunque haya un filtro puesto: son el tablero del día, no un resumen de lo que se está mirando.
+- **Bajas** (`Cartera → Bajas`): la lista del mes con su propio buscador (nombre, patente, póliza, DNI,
+  compañía o sucursal). Dar de baja **no borra nada**: el cliente, el vehículo y la póliza siguen en la
+  base (la póliza pasa a `activa = 0` y la fila del mes a `dada_de_baja = 1`), así que si la persona
+  vuelve más adelante se le carga una póliza nueva desde su ficha reusando el vehículo que ya está
+  cargado. Las bajas hechas en la app se pueden deshacer (ADMIN/SUPER_ADMIN).
 - **Meses anteriores**: se ven completos pero de sólo lectura. **Cerrar mes** (ADMIN/SUPER_ADMIN) crea el
   mes siguiente copiando las pólizas activas, igual que duplicar la hoja: conserva cuota, vencimiento,
   forma de pago y observaciones, y vacía el pago y el aviso.
@@ -165,7 +180,13 @@ La aplicación y la hoja se mantienen iguales solas, usando la columna `_ID` com
   revisa en ~400 ms con **3 llamadas**. Las filas que alguien cargó a mano en Google se incorporan con
   la importación completa, que es la que les escribe el `_ID` en la hoja.
 - **Bajas**: la fila se agrega a la pestaña «BAJAS …» y se elimina de la planilla del mes, igual que el
-  cortar y pegar de siempre.
+  cortar y pegar de siempre. **Los borrados esperan un minuto antes de subir** (`ESPERA_DE_AGRUPADO_MS`)
+  y, cuando sale uno, viajan con él todos los que estén esperando: borrar una fila en Google corre las
+  de abajo y obliga a recalcular la planilla entera, así que dando de baja pólizas una atrás de otra la
+  hoja se reestructuraba una vez por baja y se le trababa a quien tuviera «el general» abierto. Ahora
+  las bajas de una misma seguidilla se aplican juntas, y las filas contiguas van en un solo
+  `deleteDimension` (`tramosDeFilas`). «Sincronizar ahora» no espera: `apurarAgrupadas()` las larga en
+  el momento.
 - **Sin internet**: todo sigue funcionando, la cola espera y se vacía sola al volver la conexión. El
   indicador de la barra superior muestra verde «Sincronizado hace X», amarillo «N cambios por subir» o
   rojo «Sin conexión — trabajando local».
@@ -280,15 +301,25 @@ datos crudos. Intentar interpretarla sería frágil y se rompería en silencio. 
 - **Bandeja** con las pólizas cuya vigencia HASTA cae en los próximos **60 días**, agrupadas por semana
   («Esta semana», «La semana que viene», «Semana del 8 de sep al 14 de sep»). También entran las que
   vencieron hace poco y siguen activas: son las que más urge atender y si no aparecen se pierden.
+- **Sólo lo que se renueva a mano.** La mayoría de las compañías renueva sola; las que no, tienen
+  cargado cada cuántos meses en `companias.meses_renovacion` (**Administración → Compañías**, columna
+  «Renovación (meses)»): AGROSALTA 4, RIO URUGUAY / RUS 6, METROPOL 12, que vienen de fábrica y se
+  cambian desde ahí. Vacío = renueva sola. La bandeja arranca mostrando sólo ésas —el desplegable
+  «Todas las compañías» muestra el resto— y los contadores de arriba cuentan sobre lo que hay que
+  trabajar, no sobre la cartera entera.
 - Por fila: **responsable** (un usuario), **estado del trámite** (pendiente / en gestión / renovada / no
   renueva) y **nota**. El seguimiento no se crea hasta que alguien toca la fila: abrir la bandeja no
   escribe en la base.
 - **Etiqueta destacada** cuando las observaciones piden aumentar al renovar. Se reconoce la idea, no el
   texto exacto: «20% aumentar cuando se renueva», «aumentar 20 % al renovar» y «SUBE 15% EN LA
   RENOVACION» valen igual.
-- **Renovar** crea la vigencia nueva (propone un año más y la cuota anterior —ya aumentada si las
-  observaciones lo piden—, todo editable) y deja la anterior como histórica, enganchada por
-  `poliza_anterior_id`. No se le inventa una baja con motivo: no se dio de baja, se renovó.
+- **Renovar** crea la vigencia nueva y deja la anterior como histórica, enganchada por
+  `poliza_anterior_id`. No se le inventa una baja con motivo: no se dio de baja, se renovó. Propone
+  todo editable: la vigencia corrida por los meses de la compañía (cuatro en Agrosalta, seis en Río
+  Uruguay, doce en Metropol) y la cuota anterior —ya aumentada si las observaciones lo piden—, más el
+  número de póliza y el de propuesta. Cuando la compañía no tiene plazo cargado, el plazo se deduce de
+  la vigencia que está terminando —«igual eso lo dice la fin de vigencia»— siempre que dé uno de los
+  habituales (3, 4, 6 o 12 meses); si no, un año.
 - **No renueva** da de baja la póliza con el motivo elegido y cierra el trámite.
 
 Todo respeta los roles y escribe en `historial` y en `cola_sync`, así que los cambios suben a la hoja

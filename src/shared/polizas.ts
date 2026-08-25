@@ -37,15 +37,41 @@ export function diasParaVencer(vigenciaHastaIso: string | null | undefined, hoy:
 }
 
 /**
- * La misma fecha un año después: es lo que la bandeja propone al renovar. El 29 de febrero de un año
- * bisiesto pasa al 28, que es lo que hacen las compañías.
+ * La misma fecha unos meses después. No todas las pólizas se renuevan por un año: Agrosalta va cada
+ * cuatro meses y Río Uruguay cada seis, así que la vigencia nueva se corre por la cantidad de meses que
+ * usa la compañía. Un día que no existe en el mes de llegada (el 31, el 29 de febrero) se corre al
+ * último del mes, que es lo que hacen las compañías.
  */
-export function unAnioDespues(iso: string): string {
+export function mesesDespues(iso: string, meses: number): string {
   const anio = Number(iso.slice(0, 4))
   const mes = Number(iso.slice(5, 7))
   const dia = Number(iso.slice(8, 10))
-  const ultimoDelMes = new Date(Date.UTC(anio + 1, mes, 0)).getUTCDate()
-  return `${anio + 1}-${String(mes).padStart(2, '0')}-${String(Math.min(dia, ultimoDelMes)).padStart(2, '0')}`
+  const total = anio * 12 + (mes - 1) + Math.round(meses)
+  const anioNuevo = Math.floor(total / 12)
+  const mesNuevo = (total % 12) + 1
+  const ultimoDelMes = new Date(Date.UTC(anioNuevo, mesNuevo, 0)).getUTCDate()
+  return `${anioNuevo}-${String(mesNuevo).padStart(2, '0')}-${String(Math.min(dia, ultimoDelMes)).padStart(2, '0')}`
+}
+
+/** La misma fecha un año después: lo que se propone cuando la compañía renueva por doce meses. */
+export function unAnioDespues(iso: string): string {
+  return mesesDespues(iso, 12)
+}
+
+/** Cuando no se sabe cada cuánto renueva la compañía, se supone el año de siempre. */
+export const MESES_DE_RENOVACION_POR_DEFECTO = 12
+
+/**
+ * Cuántos meses dura una vigencia, leídos de las propias fechas de la póliza («igual eso lo dice la fin
+ * de vigencia»). Es el respaldo cuando la compañía todavía no tiene cargado cada cuánto renueva.
+ * Devuelve null si las fechas no alcanzan para afirmarlo (faltan, están al revés o dan un plazo raro).
+ */
+export function mesesDeVigencia(desdeIso: string | null | undefined, hastaIso: string | null | undefined): number | null {
+  const dias = diasEntre(desdeIso, hastaIso)
+  if (dias === null || dias < 25) return null
+  // 30,44 es el mes promedio: con eso, 120 días caen en 4 meses y 365 en 12 sin casos de borde.
+  const meses = Math.round(dias / 30.44)
+  return meses >= 1 && meses <= 60 ? meses : null
 }
 
 /** El lunes de la semana en la que cae esa fecha. Acá la semana arranca el lunes. */

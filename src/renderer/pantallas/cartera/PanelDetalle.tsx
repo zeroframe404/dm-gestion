@@ -43,6 +43,7 @@ const GRUPOS: Array<{ titulo: string; campos: Array<{ campo: CampoEditable; etiq
     campos: [
       { campo: 'compania', etiqueta: 'Compañía' },
       { campo: 'numeroPoliza', etiqueta: 'Póliza' },
+      { campo: 'propuesta', etiqueta: 'Propuesta' },
       { campo: 'cobertura', etiqueta: 'Cobertura' },
       { campo: 'prima', etiqueta: 'Prima' },
       { campo: 'productor', etiqueta: 'Productor' },

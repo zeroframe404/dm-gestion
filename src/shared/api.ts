@@ -46,6 +46,7 @@ export interface ApiDm {
     planilla: Remota<'cartera:planilla'>
     editarCelda: Remota<'cartera:editarCelda'>
     prepararAviso: Remota<'cartera:prepararAviso'>
+    marcarAvisado: Remota<'cartera:marcarAvisado'>
     registrarPago: Remota<'cartera:registrarPago'>
     darDeBaja: Remota<'cartera:darDeBaja'>
     deshacerBaja: Remota<'cartera:deshacerBaja'>

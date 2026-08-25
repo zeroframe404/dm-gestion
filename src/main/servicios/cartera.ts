@@ -66,7 +66,7 @@ export const SELECT_PLANILLA = `
     v.tipo AS vehiculo, v.marca, v.modelo, COALESCE(c.patente, v.patente) AS patente,
     v.anio, v.motor, v.chasis, v.uso, v.color,
     p.cobertura, COALESCE(c.compania, p.compania) AS compania,
-    COALESCE(c.numero_poliza, p.numero) AS numero_poliza,
+    COALESCE(c.numero_poliza, p.numero) AS numero_poliza, p.propuesta,
     p.vigencia_desde, p.vigencia_hasta, p.prima, p.productor, p.alta,
     COALESCE(p.activa, 1) AS poliza_activa,
     EXISTS (SELECT 1 FROM pagos pg WHERE pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo) AS pago_registrado
@@ -114,6 +114,7 @@ export interface FilaCruda {
   cobertura: string | null
   compania: string | null
   numero_poliza: string | null
+  propuesta: string | null
   vigencia_desde: string | null
   vigencia_hasta: string | null
   prima: string | null
@@ -152,6 +153,7 @@ export function aFila(cruda: FilaCruda, dias: Record<string, number>): FilaCarte
     cobertura: cruda.cobertura,
     compania: cruda.compania,
     numeroPoliza: cruda.numero_poliza,
+    propuesta: cruda.propuesta,
     vigenciaDesde: cruda.vigencia_desde,
     vigenciaHasta: cruda.vigencia_hasta,
     observaciones: cruda.observaciones,
@@ -263,6 +265,11 @@ interface DestinoDeCampo {
   derivadas?: (valor: string, fila: FilaCruda) => Record<string, unknown>
   /** Si la fila no tiene el registro destino, se guarda en esta columna de cuotas_mes. */
   respaldoEnLaCuota?: string
+  /**
+   * El dato no existe como columna de la hoja: se guarda sólo en la base y no se encola. Es el caso de
+   * la propuesta, que es un número interno de la agencia mientras la póliza todavía no está emitida.
+   */
+  soloLocal?: boolean
 }
 
 const DESTINOS: Record<CampoEditable, DestinoDeCampo> = {
@@ -309,6 +316,7 @@ const DESTINOS: Record<CampoEditable, DestinoDeCampo> = {
   cobertura: { tabla: 'polizas', columna: 'cobertura' },
   compania: { tabla: 'polizas', columna: 'compania', respaldoEnLaCuota: 'compania', columnaEnLaCuota: 'compania' },
   numeroPoliza: { tabla: 'polizas', columna: 'numero', respaldoEnLaCuota: 'numero_poliza', columnaEnLaCuota: 'numero_poliza' },
+  propuesta: { tabla: 'polizas', columna: 'propuesta', soloLocal: true },
   vigenciaDesde: { tabla: 'polizas', columna: 'vigencia_desde' },
   vigenciaHasta: { tabla: 'polizas', columna: 'vigencia_hasta' },
   prima: { tabla: 'polizas', columna: 'prima', derivadas: (valor) => ({ prima_monto: interpretarNumero(valor) }) },
@@ -321,6 +329,7 @@ const NOMBRE_DE_CAMPO: Partial<Record<CampoEditable, string>> = {
   aviso: 'OB. AVISOS',
   avisarVto: 'AVISAR VTO',
   numeroPoliza: 'POLIZA',
+  propuesta: 'PROPUESTA',
   vigenciaDesde: 'DESDE',
   vigenciaHasta: 'HASTA',
   pago: 'CUANDO PAGO',
@@ -371,7 +380,11 @@ export function editarCelda(filaId: string, campo: CampoEditable, valor: string,
       .run(nuevo === '' ? null : nuevo, ahoraIso(), fila.cuota_id)
   }
 
-  encolar({ operacion: 'actualizar', pestana: fila.pestana, filaId: fila.fila_id, campos: { [campoDeLaHoja(campo)]: nuevo } }, actor)
+  // La propuesta no tiene columna en la hoja: encolarla dejaría una entrada que la subida no sabe
+  // dónde escribir y que quedaría para siempre en «no se pudo».
+  if (!destino.soloLocal) {
+    encolar({ operacion: 'actualizar', pestana: fila.pestana, filaId: fila.fila_id, campos: { [campoDeLaHoja(campo)]: nuevo } }, actor)
+  }
 
   registrarCambio(actor, {
     accion: 'edicion',
@@ -423,6 +436,34 @@ export function armarMensaje(plantilla: string, fila: FilaCartera): string {
 
 export function prepararAviso(filaId: string, actor: SesionUsuario): AvisoPreparado {
   return prepararAvisoDeCuota(filaId, actor, true)
+}
+
+/**
+ * Marca la fila como ENVIADO sin abrir WhatsApp. Es para cuando ya se avisó por otro lado —se lo dijeron
+ * por teléfono, en el mostrador, o el WhatsApp se mandó desde el celular— y lo único que falta es que la
+ * planilla lo diga. Deja exactamente lo mismo que el botón de WhatsApp: ENVIADO, la fecha de hoy, la
+ * fila en «Avisados hoy» y el mismo renglón en el historial (con la aclaración de que fue a mano).
+ */
+export function marcarAvisado(filaId: string, actor: SesionUsuario): FilaCartera {
+  const cruda = buscarFila(texto(filaId, 'La fila', 1, 64))
+  exigirMesAbierto(cruda.periodo)
+  const hoy = hoyLocal()
+
+  db()
+    .prepare(`UPDATE cuotas_mes SET aviso = 'ENVIADO', aviso_enviado = 1, fecha_envio = ?, actualizado_en = ? WHERE id = ?`)
+    .run(hoy, ahoraIso(), cruda.cuota_id)
+  encolar({ operacion: 'actualizar', pestana: cruda.pestana, filaId: cruda.fila_id, campos: { aviso: 'ENVIADO', fecha_envio: hoy } }, actor)
+
+  registrarCambio(actor, {
+    accion: 'aviso',
+    tabla: 'cuotas_mes',
+    registroId: cruda.cuota_id,
+    filaId: cruda.fila_id,
+    campo: 'OB. AVISOS',
+    valorAnterior: cruda.aviso,
+    valorNuevo: `ENVIADO (${hoy}, marcado a mano)`,
+  })
+  return devolverFila(cruda.fila_id)
 }
 
 /**

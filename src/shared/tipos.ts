@@ -375,6 +375,11 @@ export interface Compania {
   diasCoberturaFinanciera: number
   /** Porcentaje de comisión que deja la compañía. 0 = todavía no se cargó. */
   comisionPorcentaje: number
+  /**
+   * Cada cuántos meses hay que renovar a mano en esta compañía (Agrosalta 4, Río Uruguay 6, Metropol
+   * 12). `null` = la compañía renueva sola: sus pólizas no entran en la bandeja de renovaciones.
+   */
+  mesesRenovacion: number | null
   activa: boolean
   /** Cuántas pólizas activas tiene hoy. */
   polizas: number
@@ -384,6 +389,8 @@ export interface DatosDeCompania {
   nombre: string
   diasCoberturaFinanciera: number
   comisionPorcentaje: number
+  /** Meses entre renovaciones, o null si la compañía renueva sola. */
+  mesesRenovacion: number | null
   activa: boolean
 }
 
@@ -424,6 +431,8 @@ export interface FilaCartera {
   cobertura: string | null
   compania: string | null
   numeroPoliza: string | null
+  /** Número de propuesta: algunas compañías lo dan antes de emitir la póliza. */
+  propuesta: string | null
   vigenciaDesde: string | null
   vigenciaHasta: string | null
   observaciones: string | null
@@ -468,6 +477,7 @@ export type CampoEditable =
   | 'cobertura'
   | 'compania'
   | 'numeroPoliza'
+  | 'propuesta'
   | 'vigenciaDesde'
   | 'vigenciaHasta'
   | 'observaciones'
@@ -935,6 +945,13 @@ export interface FilaRenovacion {
   observaciones: string | null
   /** true si las observaciones piden aumentar la cuota al renovar. */
   aumentaAlRenovar: boolean
+  /**
+   * true si esta compañía se renueva a mano (tiene meses de renovación cargados en Administración →
+   * Compañías). Las demás renuevan solas y la bandeja las esconde salvo que se pidan.
+   */
+  renovacionManual: boolean
+  /** Cada cuántos meses renueva la compañía, si está cargado. */
+  mesesDeRenovacion: number | null
   estado: EstadoRenovacion
   responsableId: number | null
   responsableNombre: string | null
@@ -961,6 +978,8 @@ export interface DatosDeRenovacion {
   vigenciaHasta: string
   cuota: string
   numero: string
+  /** Número de propuesta de la póliza nueva; vacío si la compañía no la usa o todavía no la dio. */
+  propuesta: string
   observaciones: string
 }
 

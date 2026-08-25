@@ -49,6 +49,17 @@ function aEntrada(fila: FilaCola): EntradaCola {
 }
 
 /**
+ * Cuánto espera un borrado antes de subir, para que varios se junten en una sola llamada.
+ *
+ * Borrar una fila en Google no es como escribir una celda: corre todas las filas de abajo y obliga a
+ * la planilla entera a recalcularse. Dando de baja pólizas una atrás de otra, cada baja salía sola en
+ * su ciclo de diez segundos y la hoja se recalculaba una vez por baja: a quien tenía «el general»
+ * abierto se le trababa. Con esta espera, las bajas de un mismo minuto viajan juntas y la hoja se
+ * reacomoda una sola vez. El botón «Sincronizar ahora» no espera nada (ver `apurarAgrupadas`).
+ */
+export const ESPERA_DE_AGRUPADO_MS = 60_000
+
+/**
  * Anota un cambio para subir. Si ya hay una entrada pendiente de «crear» o «actualizar» para la misma
  * fila, los campos se juntan en esa: subir dos veces la misma celda no sirve de nada y gasta cuota.
  *
@@ -81,26 +92,51 @@ export function encolar(
       return
     }
   }
+  // Los borrados esperan su ventana de agrupado; el resto sale en el ciclo siguiente, como siempre.
+  const espera = entrada.operacion === 'borrar' ? new Date(Date.now() + ESPERA_DE_AGRUPADO_MS).toISOString() : null
   base
     .prepare(
-      `INSERT INTO cola_sync (creado_en, operacion, pestana, fila_id, campos_json, usuario_nombre)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO cola_sync (creado_en, operacion, pestana, fila_id, campos_json, proximo_intento, usuario_nombre)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(ahoraIso(), entrada.operacion, entrada.pestana, entrada.filaId, JSON.stringify(entrada.campos), actor?.nombre ?? null)
+    .run(ahoraIso(), entrada.operacion, entrada.pestana, entrada.filaId, JSON.stringify(entrada.campos), espera, actor?.nombre ?? null)
 }
 
 /** Entradas listas para intentar ahora (las que fallaron esperan su turno). */
 export function pendientes(limite = 200): EntradaCola[] {
   const ahora = ahoraIso()
-  return (
-    db()
-      .prepare(
-        `SELECT * FROM cola_sync
-         WHERE estado = 'pendiente' AND (proximo_intento IS NULL OR proximo_intento <= ?)
-         ORDER BY id LIMIT ?`,
-      )
-      .all(ahora, limite) as FilaCola[]
-  ).map(aEntrada)
+  const listas = db()
+    .prepare(
+      `SELECT * FROM cola_sync
+       WHERE estado = 'pendiente' AND (proximo_intento IS NULL OR proximo_intento <= ?)
+       ORDER BY id LIMIT ?`,
+    )
+    .all(ahora, limite) as FilaCola[]
+
+  // Si en esta tanda ya va un borrado, se suman los otros borrados que sólo están esperando su ventana
+  // de agrupado (intentos = 0: no son reintentos de algo que falló). Así todas las bajas de la seguidilla
+  // se aplican en una sola pasada y la hoja se reacomoda una vez, en vez de una por baja.
+  if (!listas.some((f) => f.operacion === 'borrar') || listas.length >= limite) return listas.map(aEntrada)
+  const yaEstan = new Set(listas.map((f) => f.id))
+  const esperando = db()
+    .prepare(
+      `SELECT * FROM cola_sync
+       WHERE estado = 'pendiente' AND operacion = 'borrar' AND intentos = 0 AND proximo_intento > ?
+       ORDER BY id LIMIT ?`,
+    )
+    .all(ahora, limite - listas.length) as FilaCola[]
+  return [...listas, ...esperando.filter((f) => !yaEstan.has(f.id))].sort((a, b) => a.id - b.id).map(aEntrada)
+}
+
+/**
+ * Saca la espera de agrupado de lo que está esperando nada más por eso: lo usa «Sincronizar ahora»,
+ * donde alguien está mirando el botón y no tiene por qué esperar el minuto. No toca los reintentos de
+ * entradas que fallaron (intentos > 0), que esperan por otro motivo.
+ */
+export function apurarAgrupadas(): number {
+  return db()
+    .prepare(`UPDATE cola_sync SET proximo_intento = NULL WHERE estado = 'pendiente' AND intentos = 0 AND proximo_intento IS NOT NULL`)
+    .run().changes
 }
 
 /** A qué pestañas apunta lo que está esperando en la cola. */

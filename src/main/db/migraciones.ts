@@ -834,6 +834,24 @@ export const MIGRACIONES: Migracion[] = [
       CREATE UNIQUE INDEX idx_usuarios_remoto ON usuarios (remoto_id);
     `,
   },
+  {
+    version: 12,
+    descripcion: 'Cada cuánto renueva cada compañía',
+    sql: `
+      -- La mayoría de las compañías renueva sola: la agencia no tiene que hacer nada y esas pólizas no
+      -- van a la bandeja de renovaciones. Las que sí se renuevan a mano tienen acá cada cuántos meses:
+      -- Agrosalta cada 4, Río Uruguay cada 6 y Metropol cada 12. NULL = renueva sola.
+      ALTER TABLE companias ADD COLUMN meses_renovacion INTEGER;
+
+      UPDATE companias SET meses_renovacion = 4
+        WHERE meses_renovacion IS NULL AND nombre_normalizado LIKE 'AGROSALTA%';
+      UPDATE companias SET meses_renovacion = 12
+        WHERE meses_renovacion IS NULL AND nombre_normalizado LIKE 'METROPOL%';
+      -- «RUS» es Río Uruguay Seguros: en la hoja aparece de las dos maneras.
+      UPDATE companias SET meses_renovacion = 6
+        WHERE meses_renovacion IS NULL AND (nombre_normalizado LIKE 'RIO URUGUAY%' OR nombre_normalizado = 'RUS' OR nombre_normalizado LIKE 'RUS %');
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

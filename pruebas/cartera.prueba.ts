@@ -9,6 +9,7 @@ import {
   darDeBaja,
   deshacerBaja,
   editarCelda,
+  marcarAvisado,
   planillaDelMes,
   prepararAviso,
   registrarPago,
@@ -130,6 +131,44 @@ test('avisar arma el WhatsApp y deja la fila como ENVIADO con la fecha', async (
   const historial = historialDeFila(fila.filaId)
   assert.equal(historial[0]!.campo, 'OB. AVISOS')
   assert.match(historial[0]!.valorNuevo ?? '', /ENVIADO/)
+  cerrarBaseDeDatos()
+})
+
+test('«Avisado» deja la fila igual que el WhatsApp, pero sin abrirlo', async () => {
+  await carteraDePrueba()
+  const planilla = planillaDelMes(null)
+  const fila = buscar(planilla.filas, CLIENTES.lopez.nombre)
+  assert.notEqual(fila.aviso, 'ENVIADO', 'arranca sin avisar')
+
+  const marcada = marcarAvisado(fila.filaId, DANIEL)
+  assert.equal(marcada.aviso, 'ENVIADO')
+  assert.equal(marcada.fechaEnvio, planilla.hoy, 'con la fecha de hoy, que es lo que cuenta «Avisados hoy»')
+
+  const historial = historialDeFila(fila.filaId)
+  assert.equal(historial[0]!.campo, 'OB. AVISOS')
+  assert.match(historial[0]!.valorNuevo ?? '', /ENVIADO.*a mano/)
+  cerrarBaseDeDatos()
+})
+
+test('«Avisado» no necesita teléfono: es para cuando ya se avisó por otro lado', async () => {
+  await carteraDePrueba()
+  const fila = buscar(planillaDelMes(null).filas, CLIENTES.suarez.nombre)
+  editarCelda(fila.filaId, 'telefono', '', DANIEL)
+  assert.equal(marcarAvisado(fila.filaId, DANIEL).aviso, 'ENVIADO')
+  cerrarBaseDeDatos()
+})
+
+test('la propuesta se carga desde la planilla y queda en la póliza, sin ir a la hoja', async () => {
+  await carteraDePrueba()
+  const fila = buscar(planillaDelMes(null).filas, CLIENTES.gonzalez.nombre)
+  assert.equal(fila.propuesta, null, 'la hoja no trae propuestas: arranca vacía')
+
+  const conPropuesta = editarCelda(fila.filaId, 'propuesta', 'PR-99887', DANIEL)
+  assert.equal(conPropuesta.propuesta, 'PR-99887')
+  assert.equal(buscar(planillaDelMes(null).filas, CLIENTES.gonzalez.nombre).propuesta, 'PR-99887', 'y se sigue viendo')
+
+  const historial = historialDeFila(fila.filaId)
+  assert.equal(historial[0]!.campo, 'PROPUESTA')
   cerrarBaseDeDatos()
 })
 
@@ -261,7 +300,7 @@ test('los días de cobertura financiera se cargan solos y se pueden cambiar', as
   assert.ok(sancor)
   assert.equal(sancor.polizas > 0, true)
 
-  const editada = editarCompania(sancor.id, { nombre: 'SANCOR', diasCoberturaFinanciera: 7, comisionPorcentaje: 15, activa: true })
+  const editada = editarCompania(sancor.id, { nombre: 'SANCOR', diasCoberturaFinanciera: 7, comisionPorcentaje: 15, mesesRenovacion: null, activa: true })
   assert.equal(editada.diasCoberturaFinanciera, 7)
   assert.equal(editada.comisionPorcentaje, 15)
 
@@ -271,7 +310,7 @@ test('los días de cobertura financiera se cargan solos y se pueden cambiar', as
   assert.ok(fila)
   assert.equal(fila.diasCobertura, 7)
 
-  assert.throws(() => editarCompania(sancor.id, { nombre: 'SANCOR', diasCoberturaFinanciera: -1, comisionPorcentaje: 0, activa: true }), /entre 0 y 365/)
+  assert.throws(() => editarCompania(sancor.id, { nombre: 'SANCOR', diasCoberturaFinanciera: -1, comisionPorcentaje: 0, mesesRenovacion: null, activa: true }), /entre 0 y 365/)
   cerrarBaseDeDatos()
 })
 
