@@ -7,7 +7,18 @@
 import type { EstadoSincronizacion, SesionUsuario } from '../../shared/tipos'
 import type { FuenteHoja } from '../importacion/fuente'
 import { esFallaDeRed } from '../servicios/red'
-import { anotarEvento, cuantasFallidas, cuantasPendientes, guardarMarca, leerMarca, limpiarViejas, pestanasPendientes } from './cola'
+import {
+  anotarEvento,
+  cuantasFallidas,
+  cuantasListasParaSubir,
+  cuantasPendientes,
+  filasConPendientes,
+  guardarMarca,
+  leerMarca,
+  limpiarImposibles,
+  limpiarViejas,
+  pestanasPendientes,
+} from './cola'
 import { bajarCambios, type ResultadoBajada } from './bajada'
 import { leerContexto, type ContextoHoja } from './hoja'
 import { asegurarPestanasDeLaApp } from './pestanasApp'
@@ -55,6 +66,8 @@ export class MotorDeSincronizacion {
   private contexto: ContextoHoja | null = null
   private contextoLeidoEn = 0
   private trabajando = false
+  /** Lo que está corriendo ahora, para que «Sincronizar ahora» espere su turno en vez de no hacer nada. */
+  private enCurso: Promise<unknown> | null = null
   private ultimoError: string | null = null
   private sinConexion = false
   private encendido = false
@@ -66,6 +79,10 @@ export class MotorDeSincronizacion {
   encender(): void {
     if (this.encendido) return
     this.encendido = true
+    // Las versiones anteriores dejaban entradas que no se podían subir nunca (ver `limpiarImposibles`):
+    // se barren al encender, si no la cola queda con «no se pudo» para siempre.
+    const barridas = limpiarImposibles()
+    if (barridas > 0) anotarEvento('motor', `Se limpiaron ${barridas} entradas de la cola que no se podían subir nunca.`)
     this.temporizadorSubida = setInterval(() => void this.ciclarSubida(), INTERVALO_SUBIDA_MS)
     this.temporizadorBajada = setInterval(() => void this.ciclarBajada(), INTERVALO_BAJADA_MS)
     // Los temporizadores no tienen que impedir que el proceso termine: la aplicación se cierra cuando
@@ -121,13 +138,36 @@ export class MotorDeSincronizacion {
     return this.contexto
   }
 
+  /** Deja anotado el trabajo en curso (para `esperarTurno`) y lo devuelve tal cual. */
+  private seguir<T>(trabajo: Promise<T>): Promise<T> {
+    const espera = trabajo.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.enCurso = espera
+    void espera.then(() => {
+      if (this.enCurso === espera) this.enCurso = null
+    })
+    return trabajo
+  }
+
+  /** Espera a que termine lo que esté corriendo. Con tope, para que el botón no quede colgado. */
+  private async esperarTurno(): Promise<void> {
+    for (let vueltas = 0; this.enCurso && vueltas < 5; vueltas++) await this.enCurso
+  }
+
   /** Vacía la cola. Devuelve cuántas entradas se subieron. */
   async ciclarSubida(): Promise<number> {
     if (this.trabajando || !this.encendido) return 0
-    if (cuantasPendientes() === 0) return 0
+    // Lo que se puede intentar AHORA: las que están esperando un reintento no cuentan, si no cada ciclo
+    // leía la hoja para no escribir nada.
+    if (cuantasListasParaSubir() === 0) return 0
     const fuente = this.opciones.crearFuente()
     if (!fuente) return 0
+    return this.seguir(this.correrSubida(fuente))
+  }
 
+  private async correrSubida(fuente: FuenteHoja): Promise<number> {
     this.trabajando = true
     this.avisar()
     const arranque = Date.now()
@@ -166,18 +206,24 @@ export class MotorDeSincronizacion {
     if (!fuente) return null
 
     // Primero se sube lo que falta: bajar con cambios locales sin subir sería pisarlos.
-    if (cuantasPendientes() > 0) {
-      const subidas = await this.ciclarSubida()
-      if (subidas === 0 && cuantasPendientes() > 0) return null
-    }
+    if (cuantasListasParaSubir() > 0) await this.ciclarSubida()
+    if (this.trabajando) return null
+    // Lo que aun así no llegó a subir ya no frena la bajada entera: se saltean nada más esas filas. Antes
+    // se cortaba acá, y una sola entrada trabada dejaba a toda la aplicación sin actualizarse —la hoja
+    // cambiaba, la pantalla no— hasta que alguien la destrabara a mano.
+    const bloqueadas = filasConPendientes()
 
+    return this.seguir(this.correrBajada(fuente, completa, bloqueadas))
+  }
+
+  private async correrBajada(fuente: FuenteHoja, completa: boolean, bloqueadas: Set<string>): Promise<ResultadoBajada | null> {
     this.trabajando = true
     this.avisar()
     const arranque = Date.now()
     try {
       const contexto = await this.conContexto(fuente, completa)
       const titulos = completa ? contexto.pestanas.map((p) => p.titulo) : (this.opciones.pestanasDelCiclo ?? pestanasDeTodosLosDias)(contexto)
-      const resultado = await bajarCambios(fuente, contexto, titulos)
+      const resultado = await bajarCambios(fuente, contexto, titulos, bloqueadas)
       this.sinConexion = false
       this.ultimoError = null
       guardarMarca('ultima_bajada', new Date().toISOString())
@@ -207,6 +253,9 @@ export class MotorDeSincronizacion {
 
   /** El botón «Sincronizar ahora»: sube lo pendiente y baja lo que haya. */
   async sincronizarAhora(completa = false): Promise<ResultadoBajada | null> {
+    // Si el ciclo automático justo estaba corriendo, el botón no hacía nada: mostraba «Sincronizando…»
+    // por un instante y volvía a lo mismo. Ahora espera a que termine y recién ahí trabaja.
+    await this.esperarTurno()
     await this.ciclarSubida()
     return this.ciclarBajada(completa)
   }

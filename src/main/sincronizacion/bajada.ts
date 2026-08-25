@@ -2,18 +2,19 @@
 // como clave. Sólo se toca lo que cambió.
 //
 // Cómo se resuelven los cruces:
-//  - La bajada NO corre si hay cambios locales sin subir: primero se vacía la cola. Así el cambio más
-//    reciente (el local, que todavía no había llegado a la hoja) nunca se pisa por accidente.
+//  - Antes de bajar se vacía la cola de subida. Lo que igual no llegó a subir deja su fila afuera de la
+//    bajada (`filasBloqueadas`), así el cambio más reciente —el local, que todavía no viajó— nunca se
+//    pisa por accidente, y el resto de la hoja se actualiza igual.
 //  - Si un campo cambió en la hoja y en la aplicación desde la última bajada, gana el de la hoja (es el
 //    que no se subió porque el local ya había viajado) y el valor local queda en el historial marcado
 //    como «pisado por sincronización».
-//  - Si aparecen filas nuevas (a mano en la hoja, sin _ID) se les asigna uno y se corre la importación
-//    completa, que es la que sabe crear clientes, vehículos y pólizas.
+//  - Si aparecen filas nuevas (a mano en la hoja, sin _ID) se corre la importación completa, que es la
+//    que les escribe el _ID en la hoja y sabe crear clientes, vehículos y pólizas.
 import type { Campo } from '../importacion/encabezados'
 import type { FuenteHoja } from '../importacion/fuente'
-import { ahoraIso, generarId, interpretarNumero, limpiar } from '../importacion/normalizar'
+import { ahoraIso, interpretarNumero, limpiar } from '../importacion/normalizar'
 import { db } from '../db/base'
-import { anotarEvento, encolar } from './cola'
+import { anotarEvento } from './cola'
 import { repiteEncabezados } from '../importacion/encabezados'
 import { columnaDelId, huellaDeFila, type ContextoHoja, type PestanaSincronizable } from './hoja'
 
@@ -121,8 +122,17 @@ interface FilaConocida {
 /**
  * Aplica a la base local lo que cambió en la hoja. `titulos` acota qué pestañas se miran: el ciclo
  * automático mira las que se usan todos los días y «Forzar bajada completa» las mira todas.
+ *
+ * `filasBloqueadas` son las filas que todavía tienen cambios sin subir: se saltean para no pisarlos. Es
+ * más fino que frenar la bajada entera, que era lo que hacía que una sola entrada trabada dejara a toda
+ * la aplicación sin actualizarse.
  */
-export async function bajarCambios(fuente: FuenteHoja, contexto: ContextoHoja, titulos: string[]): Promise<ResultadoBajada> {
+export async function bajarCambios(
+  fuente: FuenteHoja,
+  contexto: ContextoHoja,
+  titulos: string[],
+  filasBloqueadas: Set<string> = new Set(),
+): Promise<ResultadoBajada> {
   const resultado: ResultadoBajada = {
     pestanasLeidas: 0,
     filasCambiadas: 0,
@@ -143,13 +153,24 @@ export async function bajarCambios(fuente: FuenteHoja, contexto: ContextoHoja, t
   for (const lectura of lecturas) {
     const pestana = contexto.porTitulo.get(lectura.titulo)
     if (!pestana) continue
-    aplicarPestana(pestana, lectura.valores, resultado)
+    aplicarPestana(pestana, lectura.valores, resultado, filasBloqueadas)
   }
   return resultado
 }
 
-function aplicarPestana(pestana: PestanaSincronizable, valores: string[][], resultado: ResultadoBajada): void {
+function aplicarPestana(
+  pestana: PestanaSincronizable,
+  valores: string[][],
+  resultado: ResultadoBajada,
+  filasBloqueadas: Set<string>,
+): void {
   const columnaId = columnaDelId(pestana, valores)
+  // Todas las columnas tituladas _ID, no sólo la que manda: si una pestaña arrastra una segunda columna
+  // _ID de cuando la duplicaron, sus valores no son datos de la fila. El importador usa el mismo criterio,
+  // y si acá fuera más laxo la bajada vería filas «con datos y sin _ID» que la importación descarta, y
+  // pediría una importación completa en cada ciclo sin que la hoja cambiara nunca.
+  const columnasId = new Set<number>(pestana.layout?.mapeo.columnasId ?? [])
+  if (columnaId !== null) columnasId.add(columnaId)
   const primeraFila = (pestana.layout?.filaEncabezados ?? 0) + 2
   const conocidas = new Map(
     (db().prepare('SELECT fila_id, pestana, numero_fila, datos_json, huella, en_la_hoja FROM filas_crudas WHERE pestana = ?').all(pestana.titulo) as FilaConocida[]).map(
@@ -166,22 +187,25 @@ function aplicarPestana(pestana: PestanaSincronizable, valores: string[][], resu
   db().transaction(() => {
     for (let r = primeraFila - 1; r < valores.length; r++) {
       const celdas = valores[r] ?? []
-      const tieneDatos = celdas.some((valor, i) => i !== columnaId && limpiar(valor) !== '')
+      const tieneDatos = celdas.some((valor, i) => !columnasId.has(i) && limpiar(valor) !== '')
       if (!tieneDatos) continue
       // Los títulos repetidos a mitad de la planilla no son filas de datos.
       if (repiteEncabezados(celdas, pestana.layout?.mapeo.encabezados ?? [])) continue
 
       const id = columnaId === null ? '' : limpiar(celdas[columnaId])
       if (!id) {
-        // Fila cargada a mano en la hoja: se le asigna un _ID y se manda a escribirlo. La importación
-        // completa es la que después la incorpora al modelo (crea cliente, vehículo y póliza).
-        const nuevo = generarId()
-        encolar({ operacion: 'actualizar', pestana: pestana.titulo, filaId: nuevo, campos: { _id: nuevo } })
+        // Fila cargada a mano en la hoja. El _ID lo escribe la importación completa, que corre a
+        // continuación por `necesitaImportacion`: es la única que sabe en qué fila va y, de paso, crea
+        // el cliente, el vehículo y la póliza. Acá no se encola nada: el _ID que inventáramos ahora no
+        // estaría en ninguna fila de la hoja y la subida no tendría dónde escribirlo.
         resultado.filasNuevas++
         resultado.necesitaImportacion = true
         continue
       }
       vistas.add(id)
+      // Con cambios locales sin subir, esta fila no se toca: bajarla ahora los pisaría. Queda para el
+      // ciclo siguiente, cuando su entrada de la cola ya haya viajado.
+      if (filasBloqueadas.has(id)) continue
 
       const conocida = conocidas.get(id)
       const huella = huellaDeFila(celdas, columnaId)

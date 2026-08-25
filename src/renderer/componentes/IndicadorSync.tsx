@@ -41,14 +41,27 @@ function aspectoDe(estado: EstadoSincronizacion): Aspecto {
       detalle: 'Subiendo y bajando cambios de la hoja.',
     }
   }
-  if (estado.pendientes > 0 || estado.fallidas > 0) {
-    const total = estado.pendientes + estado.fallidas
+  if (estado.pendientes > 0) {
     return {
       clases: 'border-amber-200 bg-amber-50 text-amber-800',
       punto: 'bg-amber-400',
       icono: null,
-      texto: `${total} ${total === 1 ? 'cambio' : 'cambios'} por subir`,
-      detalle: estado.fallidas > 0 ? `${estado.fallidas} no se pudieron subir. Mirá Administración → Sincronización.` : 'Se suben en unos segundos.',
+      texto: `${estado.pendientes} ${estado.pendientes === 1 ? 'cambio' : 'cambios'} por subir`,
+      detalle:
+        estado.fallidas > 0
+          ? `Se suben en unos segundos. Aparte hay ${estado.fallidas} que no se pudieron subir: mirá Administración → Sincronización.`
+          : 'Se suben en unos segundos.',
+    }
+  }
+  // Los que fallaron no están «por subir»: nadie los va a reintentar solo. Decirlo así evita que el
+  // cartel quede clavado en un número que no baja nunca por más que uno toque «Sincronizar».
+  if (estado.fallidas > 0) {
+    return {
+      clases: 'border-amber-200 bg-amber-50 text-amber-800',
+      punto: 'bg-amber-400',
+      icono: 'alerta',
+      texto: `${estado.fallidas} ${estado.fallidas === 1 ? 'cambio' : 'cambios'} sin subir`,
+      detalle: 'No se pudieron subir y no se reintentan solos. Entrá a Administración → Sincronización y tocá «Volver a intentar los que fallaron».',
     }
   }
   return {

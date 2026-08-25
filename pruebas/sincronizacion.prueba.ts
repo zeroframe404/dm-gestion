@@ -77,6 +77,26 @@ function enLaHoja(hoja: HojaSimulada, pestana: string, filaId: string, encabezad
   return encontrada ? ((encontrada[columna] ?? '').trim() ?? '') : null
 }
 
+/** Una fila cargada a mano en AGOSTO desde Google: con datos y con la columna del _ID vacía. */
+function agregarFilaAMano(hoja: HojaSimulada, nombre: string, dni: string): void {
+  const encabezados = hoja.encabezadosDe('AGOSTO')
+  const nueva = new Array<string>(encabezados.length).fill('')
+  const poner = (titulo: string, valor: string) => {
+    const i = encabezados.findIndex((e) => e.trim() === titulo)
+    if (i >= 0) nueva[i] = valor
+  }
+  poner('APELLIDO Y NOMBRE', nombre)
+  poner('DNI', dni)
+  poner('SUCURSAL', 'LANUS')
+  poner('COMPAÑIA', 'SANCOR')
+  poner('NRO DE POLIZA', '909090')
+  poner('DOMINIO', 'AK909PO')
+  poner('CUOTA', '$ 21.000')
+  poner('DIA DE VTO', '10')
+  nueva[hoja.columnaIdDe('AGOSTO')] = ''
+  hoja.agregarFila('AGOSTO', nueva)
+}
+
 // ---------------------------------------------------------------------------
 // Subida
 // ---------------------------------------------------------------------------
@@ -180,24 +200,8 @@ test('una fila creada a mano en la hoja recibe su _ID y se incorpora', async () 
   const clientesAntes = (db.prepare('SELECT COUNT(*) AS n FROM clientes').get() as { n: number }).n
 
   // Fila cargada a mano en AGOSTO, sin _ID (como la carga cualquiera desde Google).
-  const encabezados = hoja.encabezadosDe('AGOSTO')
-  const nueva = new Array(encabezados.length).fill('')
-  const poner = (titulo: string, valor: string) => {
-    const i = encabezados.findIndex((e) => e.trim() === titulo)
-    if (i >= 0) nueva[i] = valor
-  }
-  poner('APELLIDO Y NOMBRE', 'NUÑEZ TAMARA')
-  poner('DNI', '32.555.111')
-  poner('SUCURSAL', 'LANUS')
-  poner('COMPAÑIA', 'SANCOR')
-  poner('NRO DE POLIZA', '909090')
-  poner('DOMINIO', 'AK909PO')
-  poner('CUOTA', '$ 21.000')
-  poner('DIA DE VTO', '10')
-  // La columna del _ID queda vacía a propósito.
   const columnaId = hoja.columnaIdDe('AGOSTO')
-  nueva[columnaId] = ''
-  hoja.agregarFila('AGOSTO', nueva)
+  agregarFilaAMano(hoja, 'NUÑEZ TAMARA', '32.555.111')
 
   const resultado = await motor.ciclarBajada()
   assert.ok(resultado)
@@ -211,6 +215,44 @@ test('una fila creada a mano en la hoja recibe su _ID y se incorpora', async () 
   // Y ahora la fila tiene su _ID escrito en la hoja.
   const conId = hoja.filasDe('AGOSTO').find((f) => (f[3] ?? '') === '32.555.111' || f.includes('NUÑEZ TAMARA'))
   assert.ok(conId && (conId[columnaId] ?? '').length === 12, 'la fila nueva quedó con su _ID')
+  cerrarBaseDeDatos()
+})
+
+test('una fila cargada a mano no deja entradas muertas en la cola', async () => {
+  const { hoja, motor } = await escenario()
+  agregarFilaAMano(hoja, 'PAEZ LUCIA', '31.444.222')
+
+  // Antes, la bajada inventaba un _ID y lo encolaba para escribirlo. Ese _ID no estaba en ninguna fila
+  // de la hoja, así que la subida no encontraba dónde ponerlo y la entrada quedaba en «no se pudo» para
+  // siempre: una más en cada ciclo, y el indicador de arriba nunca volvía al verde.
+  await motor.ciclarBajada()
+  assert.equal(cuantasPendientes(), 0, 'la bajada no encola nada por una fila cargada a mano')
+
+  await motor.ciclarSubida()
+  assert.equal(cuantasFallidas(), 0, 'y no queda nada en «no se pudo»')
+  assert.equal(motor.estado().situacion, 'sincronizado')
+
+  // El ciclo siguiente ya no la ve como nueva: el _ID quedó escrito.
+  const segunda = await motor.ciclarBajada()
+  assert.ok(segunda)
+  assert.equal(segunda.filasNuevas, 0, 'la fila ya tiene su _ID, no se vuelve a pedir la importación')
+  assert.equal(cuantasFallidas(), 0)
+  cerrarBaseDeDatos()
+})
+
+test('una segunda columna _ID no hace pedir la importación completa en cada ciclo', async () => {
+  const { hoja, motor } = await escenario()
+  // Duplicar la pestaña del mes deja a veces una segunda columna titulada _ID con identificadores viejos.
+  // Eso no es una fila de datos: el importador la descarta, y si la bajada la contara como fila nueva
+  // pediría una importación completa en cada ciclo aunque en la hoja no cambiara nada.
+  const columnaDeMas = hoja.encabezadosDe('AGOSTO').length
+  hoja.editarCelda('AGOSTO', 1, columnaDeMas, '_ID')
+  hoja.editarCelda('AGOSTO', hoja.filasDe('AGOSTO').length + 1, columnaDeMas, 'VIEJO1234567')
+
+  const resultado = await motor.ciclarBajada()
+  assert.ok(resultado)
+  assert.equal(resultado.filasNuevas, 0)
+  assert.equal(resultado.necesitaImportacion, false, 'una fila cuyo único contenido es un _ID viejo no es una fila nueva')
   cerrarBaseDeDatos()
 })
 
@@ -296,6 +338,80 @@ test('la espera entre reintentos crece pero tiene techo', () => {
   assert.equal(esperaDeReintento(2), 20_000)
   assert.equal(esperaDeReintento(3), 40_000)
   assert.equal(esperaDeReintento(20), 10 * 60_000)
+})
+
+test('un cambio esperando su reintento no frena la bajada de las demás filas', async () => {
+  const { hoja, motor, db } = await escenario()
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  const rodriguez = fila(CLIENTES.rodriguez.nombre)
+
+  // Falló el intento de escribir en la hoja y la entrada quedó esperando su reintento: sigue pendiente,
+  // pero ahora mismo no hay nada para intentar.
+  editarCelda(gonzalez.filaId, 'observaciones', 'Pasa mañana', DANIEL)
+  db.prepare(`UPDATE cola_sync SET intentos = 1, proximo_intento = ?, ultimo_error = 'no se pudo escribir' WHERE estado = 'pendiente'`).run(
+    new Date(Date.now() + 60_000).toISOString(),
+  )
+  assert.equal(cuantasPendientes(), 1, 'el cambio sigue en la cola')
+
+  // Mientras tanto, en la hoja cambian otra fila y también la que tiene el cambio sin subir.
+  const columnaId = hoja.columnaIdDe('AGOSTO')
+  const filaDe = (filaId: string) => hoja.filasDe('AGOSTO').findIndex((f) => (f[columnaId] ?? '').trim() === filaId) + 1
+  const columnaDe = (titulo: string) => hoja.encabezadosDe('AGOSTO').findIndex((e) => e.trim() === titulo)
+  hoja.editarCelda('AGOSTO', filaDe(rodriguez.filaId), columnaDe('CUOTA'), '$ 77.777')
+  hoja.editarCelda('AGOSTO', filaDe(gonzalez.filaId), columnaDe('OBS'), 'Lo escribió otro')
+
+  // Antes la bajada se cortaba entera acá: la hoja cambiaba y la aplicación nunca se enteraba.
+  const resultado = await motor.ciclarBajada()
+  assert.ok(resultado, 'la bajada tiene que correr igual')
+  assert.equal(fila(CLIENTES.rodriguez.nombre).cuota, '$ 77.777', 'lo de la hoja llega a la aplicación')
+  assert.equal(fila(CLIENTES.gonzalez.nombre).observaciones, 'Pasa mañana', 'y la fila con el cambio sin subir no se pisa')
+
+  // Y cuando la entrada por fin sube, la fila deja de estar bloqueada.
+  db.prepare(`UPDATE cola_sync SET proximo_intento = NULL WHERE estado = 'pendiente'`).run()
+  await motor.ciclarSubida()
+  assert.equal(cuantasPendientes(), 0)
+  assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'OBS'), 'Pasa mañana')
+  cerrarBaseDeDatos()
+})
+
+test('las entradas que no se pueden subir nunca se barren al encender', async () => {
+  const { motor, db } = await escenario()
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  const rodriguez = fila(CLIENTES.rodriguez.nombre)
+
+  // Así quedaba la cola en las versiones anteriores: un _ID inventado para una fila que la hoja no tiene.
+  encolar({ operacion: 'actualizar', pestana: 'AGOSTO', filaId: 'MUERTA123456', campos: { _id: 'MUERTA123456' } })
+  // Un cambio de verdad y un _id de una fila que sí existe: ninguno de los dos se toca.
+  editarCelda(gonzalez.filaId, 'observaciones', 'Esto sí tiene que subir', DANIEL)
+  encolar({ operacion: 'actualizar', pestana: 'AGOSTO', filaId: rodriguez.filaId, campos: { _id: rodriguez.filaId } })
+  assert.equal(cuantasPendientes(), 3)
+
+  motor.apagar()
+  motor.encender()
+  assert.equal(cuantasPendientes(), 2, 'sólo se va la entrada que no se podía subir nunca')
+  assert.equal(
+    (db.prepare(`SELECT COUNT(*) AS n FROM cola_sync WHERE fila_id = 'MUERTA123456'`).get() as { n: number }).n,
+    0,
+    'la entrada muerta se borró',
+  )
+  cerrarBaseDeDatos()
+})
+
+test('«Sincronizar ahora» espera al ciclo en curso en vez de no hacer nada', async () => {
+  const { motor } = await escenario()
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  editarCelda(gonzalez.filaId, 'telefono', '11-1234-1234', DANIEL)
+  assert.equal(motor.estado().ultimaBajada, null)
+
+  // Arranca el ciclo automático y, sin esperarlo, alguien toca el botón de la barra superior. Antes el
+  // botón se encontraba con «ya estoy trabajando», se iba sin hacer nada y todo quedaba igual.
+  const automatico = motor.ciclarSubida()
+  await motor.sincronizarAhora()
+  await automatico
+
+  assert.equal(cuantasPendientes(), 0)
+  assert.ok(motor.estado().ultimaBajada, 'la bajada del botón tiene que haber corrido')
+  cerrarBaseDeDatos()
 })
 
 test('el estado que ve la barra superior cuenta lo que falta subir', async () => {
