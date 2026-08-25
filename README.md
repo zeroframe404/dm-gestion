@@ -162,16 +162,18 @@ La aplicación y la hoja se mantienen iguales solas, usando la columna `_ID` com
   («esa pestaña no existe») quedan marcados para que alguien los mire.
 - **Bajada**: al abrir sesión, cada 5 minutos y con «Sincronizar ahora». Compara cada fila contra la
   huella de la última vez y sólo toca lo que cambió: la hoja entera (25 pestañas, 28.000 filas) se
-  revisa en ~400 ms con **3 llamadas**. Las filas que alguien cargó a mano en Google reciben su `_ID` y
-  se incorporan con la importación completa.
+  revisa en ~400 ms con **3 llamadas**. Las filas que alguien cargó a mano en Google se incorporan con
+  la importación completa, que es la que les escribe el `_ID` en la hoja.
 - **Bajas**: la fila se agrega a la pestaña «BAJAS …» y se elimina de la planilla del mes, igual que el
   cortar y pegar de siempre.
 - **Sin internet**: todo sigue funcionando, la cola espera y se vacía sola al volver la conexión. El
   indicador de la barra superior muestra verde «Sincronizado hace X», amarillo «N cambios por subir» o
   rojo «Sin conexión — trabajando local».
-- **Conflictos**: nunca se baja con cambios locales sin subir, así que lo más reciente no se pisa. Si
-  igual un mismo campo cambió de los dos lados, el que pierde queda en `historial` marcado como
-  «pisado por sincronización» y aparece en los movimientos de la pantalla de Sincronización.
+- **Conflictos**: antes de bajar se vacía la cola, y la fila que igual no llegó a subir queda afuera de
+  esa bajada, así lo más reciente no se pisa. El resto de la hoja se actualiza igual: un cambio trabado
+  no deja a toda la aplicación sin novedades. Si un mismo campo cambió de los dos lados, el que pierde
+  queda en `historial` marcado como «pisado por sincronización» y aparece en los movimientos de la
+  pantalla de Sincronización.
 - **Respaldo**: la primera vez que la aplicación está abierta después de las 20:00 exporta la hoja a
   `.xlsx` en `%APPDATA%/dm-gestion/respaldos/` (conserva 30) y sube una copia a la carpeta
   «Respaldos DM» del Drive. Si Drive falla, la copia local igual queda guardada.

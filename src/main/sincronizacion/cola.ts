@@ -114,6 +114,28 @@ export function cuantasPendientes(): number {
   return (db().prepare(`SELECT COUNT(*) AS n FROM cola_sync WHERE estado = 'pendiente'`).get() as { n: number }).n
 }
 
+/**
+ * Cuántas se pueden intentar AHORA. No es lo mismo que `cuantasPendientes()`: una entrada que falló está
+ * pendiente pero esperando su turno, y contarla como si se pudiera subir dejaba la bajada trabada (nadie
+ * la subía y nadie bajaba nada hasta que se destrabara).
+ */
+export function cuantasListasParaSubir(): number {
+  return (
+    db()
+      .prepare(`SELECT COUNT(*) AS n FROM cola_sync WHERE estado = 'pendiente' AND (proximo_intento IS NULL OR proximo_intento <= ?)`)
+      .get(ahoraIso()) as { n: number }
+  ).n
+}
+
+/** Filas con cambios locales sin subir: la bajada no las toca para no pisarlos. */
+export function filasConPendientes(): Set<string> {
+  return new Set(
+    (db().prepare(`SELECT DISTINCT fila_id FROM cola_sync WHERE estado = 'pendiente'`).all() as Array<{ fila_id: string }>).map(
+      (fila) => fila.fila_id,
+    ),
+  )
+}
+
 export function cuantasFallidas(): number {
   return (db().prepare(`SELECT COUNT(*) AS n FROM cola_sync WHERE estado = 'fallido'`).get() as { n: number }).n
 }
@@ -165,6 +187,30 @@ export function marcarFallidas(ids: number[], error: string): void {
 export function reintentarFallidas(): number {
   return db()
     .prepare(`UPDATE cola_sync SET estado = 'pendiente', intentos = 0, proximo_intento = NULL WHERE estado = 'fallido'`)
+    .run().changes
+}
+
+/**
+ * Barre las entradas que nacieron rotas y no se pueden subir nunca.
+ *
+ * Hasta la 1.0.5, cuando la bajada encontraba una fila cargada a mano en la hoja (sin _ID) inventaba un
+ * _ID y encolaba un «actualizar» para escribirlo. Ese identificador todavía no estaba en ninguna fila de
+ * la hoja, así que la subida no encontraba dónde escribirlo y la entrada quedaba en «no se pudo» para
+ * siempre; el _ID de verdad lo escribía la importación completa, que corre a continuación. Cada ciclo
+ * dejaba una entrada muerta más, y el indicador de arriba nunca volvía a ponerse en verde.
+ *
+ * Se borran sólo las de esa forma exacta —un «actualizar» cuyo único campo es un _id igual al fila_id, y
+ * cuya fila no existe en la base— así que ningún cambio real se pierde acá.
+ */
+export function limpiarImposibles(): number {
+  return db()
+    .prepare(
+      `DELETE FROM cola_sync
+       WHERE estado IN ('pendiente', 'fallido')
+         AND operacion = 'actualizar'
+         AND campos_json = '{"_id":"' || fila_id || '"}'
+         AND fila_id NOT IN (SELECT fila_id FROM filas_crudas)`,
+    )
     .run().changes
 }
 
