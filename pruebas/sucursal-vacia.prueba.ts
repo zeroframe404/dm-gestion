@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { abrirBaseDeDatos, cerrarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
 import { catalogos, planillaDelMes } from '../src/main/servicios/cartera'
+import { cajaDelDia } from '../src/main/servicios/cobranzas'
 import { listarLeads } from '../src/main/servicios/leads'
 import { idDeSucursalPorNombre } from '../src/main/servicios/sucursales'
 import { construirHojaDePrueba } from './hoja-de-prueba'
@@ -154,5 +155,58 @@ test('«LANUS» de la planilla engancha con la sucursal «Lanús» del catálogo
   assert.equal(idDeSucursalPorNombre('DOCKSUD'), dockSud.id)
   assert.equal(idDeSucursalPorNombre('QUILMES'), null, 'una sucursal que no existe sigue sin enganchar')
   assert.equal(idDeSucursalPorNombre(''), null)
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// La caja del día de una computadora recién instalada.
+// ---------------------------------------------------------------------------
+
+/**
+ * Un cobro como los que quedan después de instalar la aplicación en una sucursal nueva: entró por la
+ * importación, así que no tiene `sucursal_cobro` —esa columna la escribe sólo la computadora que
+ * cobró— ni `sucursal_texto` —la pestaña IMPUTADOS no tiene columna LOCAL—. Lo único que dice de qué
+ * sucursal es, es el cliente.
+ */
+function baseConUnCobroImportado(): BaseDeDatos {
+  cerrarBaseDeDatos()
+  const registrar = console.log
+  console.log = () => undefined
+  const db = abrirBaseDeDatos(':memory:')
+  console.log = registrar
+  const { id } = db
+    .prepare(
+      `INSERT INTO clientes (clave, nombre, documento, sucursal_texto, creado_en, actualizado_en)
+       VALUES ('C-1', 'PEREZ JUAN', '30111222', 'LANUS', '2026-08-01T09:00:00', '2026-08-01T09:00:00') RETURNING id`,
+    )
+    .get() as { id: number }
+  db.prepare(
+    `INSERT INTO pagos (fila_id, pestana, cliente_id, fecha, fecha_iso, cliente_nombre, importe, importe_monto,
+                        medio, periodo, sucursal_texto, sucursal_cobro, creado_en, actualizado_en)
+     VALUES ('P-1', 'IMPUTADOS', ?, '12/08/2026', '2026-08-12', 'PEREZ JUAN', '$ 15.000', 15000,
+             'EFECTIVO', '2026-08', NULL, NULL, '2026-08-12T10:00:00', '2026-08-12T10:00:00')`,
+  ).run(id)
+  return db
+}
+
+test('un cobro importado cae en la sucursal de su cliente, no en «ninguna»', () => {
+  baseConUnCobroImportado()
+
+  const sinFiltro = cajaDelDia('2026-08-12', '')
+  assert.equal(sinFiltro.pagos.length, 1, 'sin filtrar, el cobro está')
+  assert.equal(sinFiltro.pagos[0]!.sucursal, 'LANUS', 'la sucursal sale del cliente cuando el cobro no la trae')
+  cerrarBaseDeDatos()
+})
+
+test('la caja del día filtrada por Lanús encuentra ese cobro', () => {
+  baseConUnCobroImportado()
+
+  // Es lo que ve quien entra en la sucursal: la caja abre ya filtrada por la sucursal del usuario.
+  const enLanus = cajaDelDia('2026-08-12', 'Lanús')
+  assert.equal(enLanus.pagos.length, 1, 'elegir «Lanús» del desplegable tiene que encontrar el cobro de LANUS')
+  assert.equal(enLanus.total, 15000, 'y el total de la caja lo incluye')
+
+  const enDockSud = cajaDelDia('2026-08-12', 'Dock Sud')
+  assert.equal(enDockSud.pagos.length, 0, 'y no se cuela en la caja de otra sucursal')
   cerrarBaseDeDatos()
 })

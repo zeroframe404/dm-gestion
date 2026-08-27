@@ -352,14 +352,31 @@ export interface PagoCrudo {
   creado_en: string
 }
 
+/**
+ * La sucursal de un pago es la del mostrador donde entró la plata: un cliente de Lanús que paga en
+ * Dock Sud suma a la caja de Dock Sud, y por eso `sucursal_cobro` manda sobre todo lo demás.
+ *
+ * Los dos respaldos son para los pagos que NO se cargaron desde la aplicación. `sucursal_cobro` la
+ * escribe sólo la computadora que cobró (ver `guardarPago`): ni el importador ni la bajada la traen,
+ * así que en una computadora recién instalada TODO el historial de cobranza entra por la importación
+ * con esa columna vacía. Y `sucursal_texto` sale de la pestaña IMPUTADOS, que no tiene columna LOCAL.
+ * Sin el último respaldo, esa cobranza no cae en ninguna sucursal y la caja filtrada sale vacía en esa
+ * computadora mientras en la que cobró se ve entera.
+ *
+ * Es la misma expresión que usan las métricas, importada de acá para que no puedan volver a separarse:
+ * cuando diferían, el mismo pago sumaba en Métricas/Lanús y era invisible en Caja del día/Lanús.
+ */
+export const SUCURSAL_DEL_PAGO = `COALESCE(NULLIF(TRIM(p.sucursal_cobro), ''), NULLIF(TRIM(p.sucursal_texto), ''), cl.sucursal_texto)`
+
 /** Columnas comunes a la caja y a la rendición. `sucursal` es la del cobro, con la del cliente de respaldo. */
 export const SELECT_PAGOS = `
   SELECT p.id, p.fila_id, p.pestana, p.cliente_id, p.poliza_id, p.fecha, p.fecha_iso, p.cliente_nombre,
          p.documento, p.compania, p.numero_poliza, p.patente,
-         COALESCE(p.sucursal_cobro, p.sucursal_texto) AS sucursal,
+         ${SUCURSAL_DEL_PAGO} AS sucursal,
          p.importe, p.importe_monto, p.medio, COALESCE(p.periodo, substr(p.fecha_iso, 1, 7)) AS periodo,
          p.resultado, p.observaciones, p.usuario_nombre, p.hecho_en_la_app, p.creado_en
   FROM pagos p
+  LEFT JOIN clientes cl ON cl.id = p.cliente_id
 `
 
 /** La hora del cobro sale de cuándo se registró; los pagos importados de la hoja no la tienen. */
