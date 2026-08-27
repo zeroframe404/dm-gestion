@@ -24,7 +24,7 @@ import {
 } from '../../shared/tipos'
 import { hoyLocal } from '../../shared/semaforo'
 import { db } from '../db/base'
-import { ahoraIso, generarId, interpretarNumero, limpiar, normalizarPatente, normalizarTexto } from '../importacion/normalizar'
+import { ahoraIso, generarId, interpretarNumero, limpiar, mismoTexto, normalizarPatente, normalizarTexto, sinRepetirTexto } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANAS_DE_LA_APP } from '../sincronizacion/pestanasApp'
 import { telefonoParaWhatsapp } from './cartera'
@@ -178,7 +178,7 @@ function normalizarFiltros(filtros: unknown): FiltrosPresupuestos {
 export function listarPresupuestos(filtros: unknown): ListadoPresupuestos {
   const f = normalizarFiltros(filtros)
   const todos = (db().prepare(`${SELECT_PRESUPUESTO} ORDER BY p.id DESC`).all() as FilaCruda[]).map(aFila)
-  const sucursales = [...new Set(todos.map((p) => limpiar(p.sucursal)).filter(Boolean))].sort()
+  const sucursales = sinRepetirTexto(todos.map((p) => p.sucursal))
 
   const busqueda = normalizarTexto(f.busqueda)
   const patente = normalizarPatente(f.busqueda)
@@ -189,7 +189,7 @@ export function listarPresupuestos(filtros: unknown): ListadoPresupuestos {
   }
 
   const visibles = todos.filter(
-    (p) => (f.incluirVersiones || p.vigente) && (!f.sucursal || limpiar(p.sucursal) === f.sucursal) && coincide(p),
+    (p) => (f.incluirVersiones || p.vigente) && (!f.sucursal || mismoTexto(p.sucursal, f.sucursal)) && coincide(p),
   )
 
   const porEstado = { BORRADOR: 0, ENVIADO: 0, ACEPTADO: 0, RECHAZADO: 0 } as Record<EstadoPresupuesto, number>

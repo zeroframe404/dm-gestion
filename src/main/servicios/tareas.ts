@@ -29,7 +29,7 @@ import {
   type VinculoDeTarea,
 } from '../../shared/tipos'
 import { db } from '../db/base'
-import { ahoraIso, generarId, limpiar, normalizarTexto } from '../importacion/normalizar'
+import { ahoraIso, generarId, limpiar, mismoTexto, normalizarTexto, sinRepetirTexto } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANAS_DE_LA_APP } from '../sincronizacion/pestanasApp'
 import {
@@ -245,7 +245,7 @@ export function listarTareas(filtros: unknown): ListadoTareas {
   const f = normalizarFiltros(filtros)
   const hoy = hoyLocal()
   const todas = (db().prepare(`${SELECT_TAREA} ${ORDEN}`).all() as FilaCruda[]).map((cruda) => aFila(cruda, hoy))
-  const sucursales = [...new Set(todas.map((t) => limpiar(t.sucursal)).filter(Boolean))].sort()
+  const sucursales = sinRepetirTexto(todas.map((t) => t.sucursal))
 
   const busqueda = normalizarTexto(f.busqueda)
   const coincide = (t: FilaTarea): boolean =>
@@ -257,7 +257,7 @@ export function listarTareas(filtros: unknown): ListadoTareas {
     (t) =>
       (!f.prioridad || t.prioridad === f.prioridad) &&
       (f.responsableId === 0 || (f.responsableId === -1 ? t.responsableId === null : t.responsableId === f.responsableId)) &&
-      (!f.sucursal || limpiar(t.sucursal) === f.sucursal) &&
+      (!f.sucursal || mismoTexto(t.sucursal, f.sucursal)) &&
       (!f.soloVencidas || t.vencida || t.venceHoy) &&
       coincide(t),
   )

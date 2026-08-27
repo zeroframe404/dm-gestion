@@ -31,9 +31,11 @@ import {
   generarId,
   interpretarFecha,
   limpiar,
+  mismoTexto,
   normalizarDocumento,
   normalizarPatente,
   normalizarTexto,
+  sinRepetirTexto,
 } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { borrarArchivoDeAdjunto, carpetaDeAdjuntos, copiarAdjunto, rutaDeAdjunto, subirAdjuntoADrive } from './adjuntos'
@@ -178,8 +180,8 @@ export function listarSiniestros(filtros: unknown): ListadoSiniestros {
   )
 
   const periodos = [...new Set(todas.map((s) => s.cruda.periodo).filter((p): p is string => !!p))].sort().reverse()
-  const sucursales = [...new Set(todas.map((s) => limpiar(s.fila.sucursal)).filter(Boolean))].sort()
-  const companias = [...new Set(todas.map((s) => limpiar(s.fila.compania)).filter(Boolean))].sort()
+  const sucursales = sinRepetirTexto(todas.map((s) => s.fila.sucursal))
+  const companias = sinRepetirTexto(todas.map((s) => s.fila.compania))
 
   const busqueda = normalizarTexto(f.busqueda)
   const documento = normalizarDocumento(f.busqueda)
@@ -197,8 +199,8 @@ export function listarSiniestros(filtros: unknown): ListadoSiniestros {
   const sinEstado = todas.filter(
     ({ fila, cruda }) =>
       (!f.periodo || cruda.periodo === f.periodo) &&
-      (!f.sucursal || limpiar(fila.sucursal) === f.sucursal) &&
-      (!f.compania || limpiar(fila.compania) === f.compania) &&
+      (!f.sucursal || mismoTexto(fila.sucursal, f.sucursal)) &&
+      (!f.compania || mismoTexto(fila.compania, f.compania)) &&
       (!f.soloRobos || fila.esRobo) &&
       coincide(fila),
   )

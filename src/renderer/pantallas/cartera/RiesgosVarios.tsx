@@ -72,7 +72,9 @@ export function RiesgosVarios() {
     if (!datos) return []
     const texto = normalizar(busqueda)
     return datos.filas.filter((f) => {
-      if (sucursal && (f.sucursal ?? '') !== sucursal) return false
+      // Normalizado como en el resto de la aplicación: la hoja escribe «LANUS» y el desplegable puede
+      // ofrecer «Lanús». Comparando el texto crudo, elegir una de las dos formas vaciaba el listado.
+      if (sucursal && normalizar(f.sucursal) !== normalizar(sucursal)) return false
       if (!texto) return true
       return [f.clienteNombre, f.documento, f.numeroPoliza, f.tipoRiesgo, f.compania, f.telefono].some((valor) =>
         normalizar(valor).includes(texto),

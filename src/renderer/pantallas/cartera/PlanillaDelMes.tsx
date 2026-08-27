@@ -54,6 +54,24 @@ function normalizar(valor: string | null | undefined): string {
 }
 
 /**
+ * Qué dice la tabla cuando no queda ninguna fila. Filtrar por sucursal sobre un mes que no tiene la
+ * sucursal cargada devuelve cero SIEMPRE, y como el desplegable se arma con el catálogo —que está en
+ * todas las computadoras— parece que el filtro tendría que andar. Acá se dice de dónde sale el vacío.
+ */
+function mensajeDeVacio(sucursal: string, sinSucursal: number, total: number): string {
+  const base = 'Ninguna fila coincide con los filtros.'
+  if (!sucursal || total === 0 || sinSucursal === 0) return base
+  if (sinSucursal === total) {
+    return (
+      `Ninguna fila de este mes tiene la sucursal cargada, así que filtrar por «${sucursal}» no puede traer nada. ` +
+      'Suele pasar cuando la planilla de Google que importó esta computadora no trae la columna LOCAL: miralo en ' +
+      'Administración → Importar de Google, en «Columnas reconocidas por pestaña».'
+    )
+  }
+  return `${base} Ojo: ${sinSucursal.toLocaleString('es-AR')} de las ${total.toLocaleString('es-AR')} filas del mes no tienen sucursal cargada.`
+}
+
+/**
  * Los contadores de arriba también filtran: `''` es «Total», que no filtra nada. Cada uno usa
  * exactamente la misma condición con la que se contó, así el número del cartel y las filas que
  * quedan en la tabla no pueden discrepar.
@@ -194,6 +212,14 @@ export function PlanillaDelMes() {
       return true
     })
   }, [conAlerta, datos, filtros])
+
+  /**
+   * Cuántas filas del mes no tienen sucursal cargada. El desplegable de sucursal se arma con el
+   * catálogo (Dock Sud, Lanús, Daniel), que existe en toda computadora aunque los datos no lo tengan:
+   * si la planilla de Google que importó ESA computadora no traía la columna LOCAL, el filtro ofrece
+   * las tres y las tres devuelven cero. Sin este número, el vacío no se explica solo.
+   */
+  const sinSucursal = useMemo(() => conAlerta.filter(({ fila }) => !normalizar(fila.sucursal)).length, [conAlerta])
 
   // Los contadores se calculan sobre el mes entero, no sobre lo filtrado: son el tablero del día y
   // tienen que seguir diciendo lo mismo cuando se toca uno para filtrar.
@@ -530,7 +556,7 @@ export function PlanillaDelMes() {
           claveDe={({ fila }) => fila.filaId}
           filaSeleccionada={seleccionada}
           alHacerClic={({ fila }) => setSeleccionada((previa) => (previa === fila.filaId ? null : fila.filaId))}
-          vacio="Ninguna fila coincide con los filtros."
+          vacio={mensajeDeVacio(filtros.sucursal, sinSucursal, contadores.total)}
         />
         {filaSeleccionada && (
           <PanelDetalle
