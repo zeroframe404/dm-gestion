@@ -27,6 +27,21 @@ import { subirTanda } from './subida'
 
 export const INTERVALO_SUBIDA_MS = 10_000
 export const INTERVALO_BAJADA_MS = 5 * 60_000
+
+/**
+ * Arranca un ciclo del temporizador sin dejar la promesa suelta. Antes acá había un `void`: si el
+ * ciclo fallaba —sin internet, la hoja movida de lugar, la base cerrada— la promesa quedaba rechazada
+ * sin nadie que la atendiera, y eso en el proceso principal de Electron es un `unhandledRejection`.
+ * Un ciclo que sale mal tiene que quedar anotado y esperar al siguiente, no tumbar nada.
+ *
+ * Se anota por consola y NO en la base: si justo lo que falló fue la base, anotar ahí volvería a
+ * explotar, esta vez adentro del `catch`.
+ */
+function enSegundoPlano(ciclo: Promise<unknown>, cual: string): void {
+  void ciclo.catch((error: unknown) => {
+    console.error(`[motor] El ciclo de ${cual} falló; se reintenta en el próximo:`, error)
+  })
+}
 /** La estructura de la hoja casi nunca cambia: se relee cada tanto, no en cada ciclo. */
 const VIDA_DEL_CONTEXTO_MS = 5 * 60_000
 
@@ -90,8 +105,8 @@ export class MotorDeSincronizacion {
     // se barren al encender, si no la cola queda con «no se pudo» para siempre.
     const barridas = limpiarImposibles()
     if (barridas > 0) anotarEvento('motor', `Se limpiaron ${barridas} entradas de la cola que no se podían subir nunca.`)
-    this.temporizadorSubida = setInterval(() => void this.ciclarSubida(), INTERVALO_SUBIDA_MS)
-    this.temporizadorBajada = setInterval(() => void this.ciclarBajada(), INTERVALO_BAJADA_MS)
+    this.temporizadorSubida = setInterval(() => enSegundoPlano(this.ciclarSubida(), 'subida'), INTERVALO_SUBIDA_MS)
+    this.temporizadorBajada = setInterval(() => enSegundoPlano(this.ciclarBajada(), 'bajada'), INTERVALO_BAJADA_MS)
     // Los temporizadores no tienen que impedir que el proceso termine: la aplicación se cierra cuando
     // el usuario cierra la ventana, no cuando la sincronización lo permite.
     this.temporizadorSubida.unref?.()
