@@ -1535,6 +1535,11 @@ export interface ResumenComisiones {
 
 export interface ConfigImpresora {
   habilitada: boolean
+  /**
+   * Con esto activado, cada pago pregunta antes de imprimir en vez de sacar el ticket solo: hay
+   * compañías que no piden comprobante y el rollo se gasta igual.
+   */
+  preguntar: boolean
   /** Nombre de la impresora en Windows; null si todavía no se eligió ninguna. */
   impresora: string | null
   /** Ancho del papel en milímetros (80 en las POS-80). */
@@ -1548,8 +1553,32 @@ export interface ConfigImpresora {
 
 export interface DatosDeImpresora {
   habilitada: boolean
+  preguntar: boolean
   impresora: string
   anchoMm: number
+}
+
+/**
+ * La dirección que encabeza el ticket, una por sucursal: el comprobante lo firma la sucursal donde se
+ * cobró. Se cargan en Administración → Impresora y admiten sucursales nuevas.
+ */
+export interface DireccionDeSucursal {
+  sucursal: string
+  direccion: string
+  /** false cuando la dirección quedó guardada para un nombre que ya no está en la lista de sucursales. */
+  enLaLista: boolean
+}
+
+/**
+ * El aviso de «¿imprimo el comprobante?» que llega al mostrador después de registrar un pago. Trae lo
+ * justo para reconocer el pago en el cartel; el ticket completo lo arma el proceso principal.
+ */
+export interface PedidoDeTicket {
+  pagoId: number
+  cliente: string
+  compania: string
+  poliza: string
+  importe: string
 }
 
 // ---------------------------------------------------------------------------

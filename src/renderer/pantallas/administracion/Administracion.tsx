@@ -1,5 +1,5 @@
 // Módulo Administración: Usuarios y Permisos (sólo SUPER_ADMIN), Conexión con Google (SUPER_ADMIN y
-// ADMIN, y con permiso sobre el módulo) y Acerca de, que la ve todo el mundo.
+// ADMIN, y con permiso sobre el módulo), e Impresora y Acerca de, que las ve todo el mundo.
 import { useMemo, useState } from 'react'
 import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 import { usePermisos } from '../../contexto/Permisos'
@@ -30,7 +30,12 @@ export function Administracion() {
     }
     if (usuario.rol !== 'EMPLEADO' && puedeVer('administracion')) {
       lista.push({ id: 'companias', nombre: 'Compañías', icono: 'escudo', ayuda: 'administracion.companias' })
-      lista.push({ id: 'impresora', nombre: 'Impresora', icono: 'impresora', ayuda: 'administracion.impresora' })
+    }
+    // La impresora la ve y la configura cualquiera, con el rol que sea: es la ticketeadora que tiene
+    // la PC del mostrador delante, y quien cobra es quien necesita apagarla, cambiarla o dejar de
+    // gastar papel sin esperar a un administrador.
+    lista.push({ id: 'impresora', nombre: 'Impresora', icono: 'impresora', ayuda: 'administracion.impresora' })
+    if (usuario.rol !== 'EMPLEADO' && puedeVer('administracion')) {
       lista.push({ id: 'google', nombre: 'Conexión con Google', icono: 'nube', ayuda: 'administracion.google' })
       lista.push({ id: 'importar', nombre: 'Importar desde Google', icono: 'nubeBajada', ayuda: 'administracion.importar' })
       lista.push({ id: 'sincronizacion', nombre: 'Sincronización', icono: 'nube', ayuda: 'administracion.sincronizacion' })

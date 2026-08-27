@@ -67,8 +67,10 @@ import type {
   DatosDeCompania,
   DatosDeImpresora,
   DatosDePagoManual,
+  DireccionDeSucursal,
   FiltrosMora,
   ListadoMora,
+  PedidoDeTicket,
   RendicionImputados,
   ResultadoImputacion,
   ResumenComisiones,
@@ -219,10 +221,20 @@ export interface Canales {
   /** Sólo ADMIN y SUPER_ADMIN. */
   'cobranzas:comisiones': (periodo: string | null) => Resultado<ResumenComisiones>
 
-  // Ticketeadora térmica (opcional): sólo ADMIN y SUPER_ADMIN la configuran.
+  // Ticketeadora térmica (opcional). La configura cualquiera que tenga sesión: es la impresora del
+  // mostrador, y quien cobra es quien se da cuenta de que hay que cambiarla o desactivarla.
   'impresora:estado': () => Resultado<ConfigImpresora>
   'impresora:guardar': (datos: DatosDeImpresora) => Resultado<ConfigImpresora>
   'impresora:prueba': () => Resultado<null>
+  /** Las direcciones que encabezan el ticket, una por sucursal. */
+  'impresora:direcciones': () => Resultado<DireccionDeSucursal[]>
+  'impresora:guardarDirecciones': (direcciones: DireccionDeSucursal[]) => Resultado<DireccionDeSucursal[]>
+  /**
+   * El «sí» del cartel que pregunta si imprimir. Lo usa quien cobra, no un administrador. Devuelve
+   * false si no había nada que imprimir (impresora apagada o el ticket falló: el motivo queda en
+   * Administración → Impresora).
+   */
+  'impresora:imprimirPago': (pagoId: number) => Resultado<boolean>
 
   'config:plantillaAviso': () => Resultado<PlantillaAviso>
   'config:guardarPlantillaAviso': (texto: string) => Resultado<PlantillaAviso>
@@ -426,6 +438,8 @@ export interface Eventos {
   'auth:sesionActualizada': SesionUsuario
   /** Cambió la matriz de permisos (acá o en otra computadora): la pantalla tiene que reacomodarse. */
   'permisos:cambiaron': MisPermisos
+  /** Se registró un pago y la impresora está en «preguntar»: hay que confirmar el comprobante. */
+  'impresora:preguntar': PedidoDeTicket
 }
 
 export type NombreCanal = keyof Canales

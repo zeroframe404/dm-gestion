@@ -84,7 +84,15 @@ import {
   misTareas,
   rutaDelAdjuntoDeTarea,
 } from './servicios/tareas'
-import { configuracionDeImpresora, guardarConfiguracionDeImpresora, imprimirTicketDePago, imprimirTicketDePrueba } from './servicios/ticket'
+import {
+  configuracionDeImpresora,
+  direccionesDeTicket,
+  guardarConfiguracionDeImpresora,
+  guardarDireccionesDeTicket,
+  imprimirTicketDePago,
+  imprimirTicketDePrueba,
+  pedidoDeTicket,
+} from './servicios/ticket'
 import {
   agregarNota,
   buscarClientes,
@@ -201,11 +209,20 @@ function ventanaActual(): BrowserWindow | null {
 }
 
 /**
- * El ticket se manda a imprimir sin esperarlo: el pago ya está guardado y quien cobra no tiene que
- * quedarse mirando la impresora. Si falla, el motivo queda en Administración → Impresora.
+ * El comprobante de un pago recién registrado. Con la impresora en «preguntar» no sale nada todavía:
+ * se le manda el cartel a la ventana que cobró y el ticket espera al «sí» (hay compañías que no piden
+ * comprobante y el rollo se gasta igual). Si no, se manda a imprimir sin esperarlo: el pago ya está
+ * guardado y quien cobra no tiene que quedarse mirando la impresora. Si falla, el motivo queda en
+ * Administración → Impresora.
  */
-function imprimirTicketEnSegundoPlano(pagoId: number | null): void {
+function resolverTicketDelPago(pagoId: number | null): void {
   if (pagoId === null) return
+  const ventana = ventanaActual()
+  const pedido = ventana ? pedidoDeTicket(pagoId) : null
+  if (ventana && pedido) {
+    ventana.webContents.send('impresora:preguntar', pedido)
+    return
+  }
   void imprimirTicketDePago(pagoId).catch((error) => console.error('[ticket] No se pudo imprimir:', error))
 }
 
@@ -344,7 +361,7 @@ export function registrarIpc(): void {
   // editar cualquiera de esos tres módulos.
   manejar('cartera:registrarPago', (filaId, datos) => {
     const fila = registrarPago(filaId, datos, exigirEdicion('cartera', 'clientes', 'cobranzas'))
-    imprimirTicketEnSegundoPlano(idDelPagoDeLaCuota(filaId))
+    resolverTicketDelPago(idDelPagoDeLaCuota(filaId))
     return exito(fila)
   })
   manejar('cartera:darDeBaja', (filaId, datos) => exito(darDeBaja(filaId, datos, exigirEdicion('cartera'))))
@@ -416,7 +433,7 @@ export function registrarIpc(): void {
   })
   manejar('cobranzas:registrarPagoManual', (datos) => {
     const resultado = registrarPagoManual(datos, exigirEdicion('cobranzas'))
-    imprimirTicketEnSegundoPlano(resultado.pagoId)
+    resolverTicketDelPago(resultado.pagoId)
     return exito(resultado.caja)
   })
   manejar('cobranzas:exportarCaja', async (fecha, sucursal) => {
@@ -443,22 +460,36 @@ export function registrarIpc(): void {
     return exito(comisiones(periodo))
   })
 
-  // Ticketeadora térmica: la configura un administrador, la usa todo el mostrador.
+  // Ticketeadora térmica: la usa y la configura todo el mostrador. No pide rol ni permiso sobre
+  // Administración a propósito: es la impresora que tiene la PC delante, y quien cobra es quien se da
+  // cuenta de que hay que cambiarla, apagarla o dejar de gastar papel.
   manejar('impresora:estado', async () => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
-    exigirVista('administracion')
+    exigirSesion()
     return exito(await configuracionDeImpresora())
   })
   manejar('impresora:guardar', async (datos) => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
-    exigirEdicion('administracion')
+    exigirSesion()
     return exito(await guardarConfiguracionDeImpresora(datos))
   })
   manejar('impresora:prueba', async () => {
-    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
-    exigirEdicion('administracion')
-    await imprimirTicketDePrueba(actor.sucursal.nombre, actor.nombre)
+    const actor = exigirSesion()
+    await imprimirTicketDePrueba(actor.sucursal.nombre)
     return exito(null)
+  })
+  // Las direcciones del encabezado del ticket, una por sucursal.
+  manejar('impresora:direcciones', () => {
+    exigirSesion()
+    return exito(direccionesDeTicket())
+  })
+  manejar('impresora:guardarDirecciones', (direcciones) => {
+    exigirSesion()
+    return exito(guardarDireccionesDeTicket(direcciones))
+  })
+  // El «sí» del cartel que pregunta si imprimir: lo toca quien cobró, con los mismos permisos con los
+  // que registró el pago. No lanza si la impresora falla: el motivo queda anotado y el pago ya está.
+  manejar('impresora:imprimirPago', async (pagoId) => {
+    exigirEdicion('cartera', 'clientes', 'cobranzas')
+    return exito(await imprimirTicketDePago(enteroPositivo(pagoId, 'El pago')))
   })
 
   // Plantilla del aviso por WhatsApp: la lee cualquiera (sale en cada aviso), la edita Administración.

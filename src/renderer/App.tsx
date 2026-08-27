@@ -4,6 +4,7 @@ import { AvisoActualizacion } from './componentes/AvisoActualizacion'
 import { BarraLateral } from './componentes/BarraLateral'
 import { BarraSuperior } from './componentes/BarraSuperior'
 import { Icono } from './componentes/Icono'
+import { PreguntaDeTicket } from './componentes/PreguntaDeTicket'
 import { Proximamente } from './componentes/Proximamente'
 import { Alerta } from './componentes/ui'
 import { ProveedorNavegacion, useNavegacion } from './contexto/Navegacion'
@@ -141,6 +142,8 @@ function Marco({
         <BarraSuperior titulo={titulo} />
         <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</main>
       </div>
+      {/* Fuera del módulo activo: se cobra desde Cartera, desde la ficha del cliente y desde la caja. */}
+      <PreguntaDeTicket />
     </div>
   )
 }
