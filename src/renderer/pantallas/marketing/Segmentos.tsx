@@ -20,6 +20,21 @@ import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { pesos } from '../cobranzas/formato'
 
+/**
+ * Las opciones del desplegable más el valor que ya tenía puesto el segmento, si no está entre ellas.
+ *
+ * Un segmento guarda su filtro tal cual se eligió el día que se creó, y la lista de opciones se
+ * recalcula sobre el mes abierto de ESTA computadora: si la sucursal guardada no aparece más (la
+ * planilla la escribe distinto, o esa base no la tiene), el `<select>` se quedaba en blanco —como si
+ * no hubiera filtro— pero el filtro seguía puesto y la lista salía corta o vacía. Mostrándola se ve
+ * qué está filtrando y se puede sacar.
+ */
+function conElValorGuardado(opciones: string[], valor: string): string[] {
+  const clave = (texto: string) => texto.trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  if (!valor || opciones.some((opcion) => clave(opcion) === clave(valor))) return opciones
+  return [...opciones, valor]
+}
+
 export function Segmentos() {
   const usuario = useUsuarioActual()
   const puedeEditar = usePuedeEditar('marketing')
@@ -175,7 +190,7 @@ export function Segmentos() {
               Sucursal
               <select value={datos.filtros.sucursal} onChange={(e) => cambiarFiltros({ sucursal: e.target.value })} className={`mt-1 ${control}`}>
                 <option value="">Todas</option>
-                {datos.sucursales.map((sucursal) => (
+                {conElValorGuardado(datos.sucursales, datos.filtros.sucursal).map((sucursal) => (
                   <option key={sucursal} value={sucursal}>
                     {sucursal}
                   </option>
@@ -186,7 +201,7 @@ export function Segmentos() {
               Compañía
               <select value={datos.filtros.compania} onChange={(e) => cambiarFiltros({ compania: e.target.value })} className={`mt-1 ${control}`}>
                 <option value="">Todas</option>
-                {datos.companias.map((compania) => (
+                {conElValorGuardado(datos.companias, datos.filtros.compania).map((compania) => (
                   <option key={compania} value={compania}>
                     {compania}
                   </option>
@@ -197,7 +212,7 @@ export function Segmentos() {
               Forma de pago
               <select value={datos.filtros.formaPago} onChange={(e) => cambiarFiltros({ formaPago: e.target.value })} className={`mt-1 ${control}`}>
                 <option value="">Todas</option>
-                {datos.formasDePago.map((forma) => (
+                {conElValorGuardado(datos.formasDePago, datos.filtros.formaPago).map((forma) => (
                   <option key={forma} value={forma}>
                     {forma}
                   </option>
