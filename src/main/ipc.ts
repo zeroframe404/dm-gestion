@@ -18,8 +18,17 @@ import {
   marcarAvisado,
   planillaDelMes,
   prepararAviso,
+  reactivarBaja,
   registrarPago,
 } from './servicios/cartera'
+import {
+  avisarRechazo,
+  avisosDeRechazos,
+  cambiarEstadoDeRechazo,
+  listarRechazos,
+  marcarRechazosVistos,
+  resolverRechazoDesdeLaCampana,
+} from './servicios/rechazos'
 import {
   avisarMora,
   cajaDelDia,
@@ -343,6 +352,12 @@ export function registrarIpc(): void {
     exigirEdicion('cartera')
     return exito(deshacerBaja(enteroPositivo(bajaId, 'La baja'), exigirRol('SUPER_ADMIN', 'ADMIN')))
   })
+  // «Poner vigente» devuelve una póliza a la cartera. Como el cierre de mes y como deshacer una baja,
+  // mueve la planilla de todos: pide administrador además del permiso de edición.
+  manejar('cartera:reactivarBaja', (bajaId) => {
+    exigirEdicion('cartera')
+    return exito(reactivarBaja(enteroPositivo(bajaId, 'La baja'), exigirRol('SUPER_ADMIN', 'ADMIN')))
+  })
   manejar('cartera:bajas', (periodo) => {
     exigirVista('cartera')
     return exito(bajasDelMes(periodo))
@@ -355,6 +370,29 @@ export function registrarIpc(): void {
     exigirVista('cartera')
     return exito(historialDeFila(filaId))
   })
+
+  // Avisos de rechazo del débito. Avisar sale de la póliza, así que pide poder editar Pólizas o
+  // Cartera; mirarlos y darlos por resueltos lo hace la sucursal, que es la que atiende al cliente:
+  // le alcanza con tener a la vista cualquiera de los dos módulos.
+  manejar('rechazos:avisar', (polizaId, datos) =>
+    exito(avisarRechazo(enteroPositivo(polizaId, 'La póliza'), datos, exigirEdicion('polizas', 'cartera'))),
+  )
+  manejar('rechazos:listar', (filtros) => {
+    exigirVista('cartera', 'polizas')
+    return exito(listarRechazos(filtros))
+  })
+  manejar('rechazos:cambiarEstado', (rechazoId, estado, filtros) =>
+    exito(cambiarEstadoDeRechazo(rechazoId, estado, filtros, exigirEdicion('cartera', 'polizas'))),
+  )
+  manejar('rechazos:avisos', () => {
+    exigirVista('cartera', 'polizas')
+    return exito(avisosDeRechazos(exigirSesion()))
+  })
+  manejar('rechazos:marcarVistos', () => {
+    exigirVista('cartera', 'polizas')
+    return exito(marcarRechazosVistos(exigirSesion()))
+  })
+  manejar('rechazos:resolver', (rechazoId) => exito(resolverRechazoDesdeLaCampana(rechazoId, exigirEdicion('cartera', 'polizas'))))
 
   // Compañías y sus días de cobertura financiera: SUPER_ADMIN y ADMIN
   // El listado incluye el porcentaje de comisión, que es información de la agencia: no sale de acá

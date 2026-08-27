@@ -221,9 +221,9 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
     PLAN: 'cobertura',
     NOMBRE: 'cobertura',
   },
-  // Las tres pestañas que escribe la aplicación. Sus encabezados los pone DM Gestión al crearlas, así
-  // que acá se los ata uno por uno: no se deja nada librado al índice general, donde «NUMERO» es el de
-  // la póliza y «VENCE» es el día de vencimiento de una cuota.
+  // Las pestañas que escribe la aplicación. Sus encabezados los pone DM Gestión al crearlas, así que
+  // acá se los ata uno por uno: no se deja nada librado al índice general, donde «NUMERO» es el de la
+  // póliza y «VENCE» es el día de vencimiento de una cuota.
   APP_LEADS: {
     FECHA: 'fecha',
     TIPO: 'tipo_vehiculo',
@@ -249,6 +249,16 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
     DETALLE: 'descripcion',
     ESTADO: 'estado',
   },
+  // En los rechazos, FECHA es el día del aviso y MES el de la cuota que rebotó. ESTADO es en qué anda
+  // el aviso (PENDIENTE / VISTO / RESUELTO), no el estado de la póliza.
+  APP_RECHAZOS: {
+    FECHA: 'fecha',
+    MES: 'mes',
+    ESTADO: 'estado',
+    MOTIVO: 'motivo',
+    OBSERVACIONES: 'observaciones',
+    'FORMA DE PAGO': 'forma_pago',
+  },
 }
 
 /** Campos que tienen sentido en cada tipo de pestaña. Los demás quedan sólo en los datos crudos. */
@@ -265,6 +275,7 @@ const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
   APP_LEADS: ['fecha', 'sucursal', 'nombre', 'telefono', 'documento', 'email', 'origen', 'interes', 'tipo_vehiculo', 'estado', 'observaciones', 'usuario'],
   APP_PRESUPUESTOS: ['fecha', 'numero_presupuesto', 'version', 'sucursal', 'nombre', 'telefono', 'documento', 'patente', 'marca', 'modelo', 'anio', 'tipo_vehiculo', 'opciones', 'precio', 'estado', 'observaciones', 'usuario'],
   APP_TAREAS: ['fecha', 'titulo', 'descripcion', 'responsable', 'sucursal', 'vence', 'prioridad', 'estado', 'vinculo', 'usuario'],
+  APP_RECHAZOS: ['fecha', 'sucursal', 'nombre', 'documento', 'telefono', 'compania', 'numero_poliza', 'patente', 'forma_pago', 'cuota', 'mes', 'motivo', 'observaciones', 'estado', 'usuario'],
   OTRA: 'todos',
 }
 

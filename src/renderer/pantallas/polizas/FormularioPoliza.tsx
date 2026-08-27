@@ -15,10 +15,11 @@ import {
   type VehiculoDeCliente,
 } from '../../../shared/tipos'
 import { NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
+import { DialogoRechazo } from '../../componentes/DialogoRechazo'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Selector } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
-import { usePuedeEditar } from '../../contexto/Permisos'
+import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
 interface Props {
@@ -76,7 +77,10 @@ interface ClienteElegido {
 export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuardar, alDarDeBaja }: Props) {
   const usuario = useUsuarioActual()
   const { ir } = useNavegacion()
+  const permisos = usePermisos()
   const puedeEditar = usePuedeEditar('polizas')
+  // Avisar un rechazo es tocar la cobranza, no la póliza: alcanza con poder editar Pólizas o Cartera.
+  const puedeAvisarRechazo = puedeEditar || permisos.puedeEditar('cartera')
   const puedeConfirmarAvisos = usuario.rol !== 'EMPLEADO'
   const enEdicion = polizaId !== null
 
@@ -99,7 +103,9 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
   const [bajaAbierta, setBajaAbierta] = useState(false)
+  const [rechazoAbierto, setRechazoAbierto] = useState(false)
 
   const idCompanias = useId()
   const idCoberturas = useId()
@@ -324,6 +330,13 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
           </Etiqueta>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {/* Avisar un rechazo también sirve en una póliza dada de baja: al que anularon por falta de
+              pago igual hay que llamarlo, y muchas veces la baja es justamente la consecuencia. */}
+          {enEdicion && (
+            <Boton icono="alerta" onClick={() => setRechazoAbierto(true)} disabled={guardando || !puedeAvisarRechazo}>
+              Avisar rechazo del débito
+            </Boton>
+          )}
           {enEdicion && poliza?.estado !== 'BAJA' && (
             <Boton variante="peligro" icono="cerrar" onClick={() => setBajaAbierta(true)} disabled={guardando || !puedeEditar}>
               Dar de baja
@@ -351,6 +364,7 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
       </div>
 
       {error && <Alerta tono="error">{error}</Alerta>}
+      {aviso && <Alerta tono="exito">{aviso}</Alerta>}
       {poliza?.estado === 'BAJA' && (
         <Alerta tono="info">
           Esta póliza está dada de baja
@@ -665,6 +679,32 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
           }}
         />
       )}
+
+      <DialogoRechazo
+        poliza={
+          poliza && rechazoAbierto
+            ? {
+                polizaId: poliza.id,
+                clienteNombre: poliza.clienteNombre,
+                compania: poliza.compania,
+                numeroPoliza: poliza.numero,
+                patente: poliza.patente,
+                formaPago: poliza.formaPago,
+                sucursal: poliza.sucursal,
+              }
+            : null
+        }
+        alCerrar={() => setRechazoAbierto(false)}
+        alAvisar={(rechazo) => {
+          setRechazoAbierto(false)
+          setError(null)
+          setAviso(`Se le avisó a ${rechazo.sucursal ?? 'la sucursal'} que a ${rechazo.clienteNombre ?? 'este cliente'} se le rechazó el débito.`)
+        }}
+        alFallar={(mensaje) => {
+          setRechazoAbierto(false)
+          setError(mensaje)
+        }}
+      />
     </div>
   )
 }

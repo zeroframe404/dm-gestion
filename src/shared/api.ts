@@ -50,9 +50,18 @@ export interface ApiDm {
     registrarPago: Remota<'cartera:registrarPago'>
     darDeBaja: Remota<'cartera:darDeBaja'>
     deshacerBaja: Remota<'cartera:deshacerBaja'>
+    reactivarBaja: Remota<'cartera:reactivarBaja'>
     bajas: Remota<'cartera:bajas'>
     cerrarMes: Remota<'cartera:cerrarMes'>
     historialDeFila: Remota<'cartera:historialDeFila'>
+  }
+  rechazos: {
+    avisar: Remota<'rechazos:avisar'>
+    listar: Remota<'rechazos:listar'>
+    cambiarEstado: Remota<'rechazos:cambiarEstado'>
+    avisos: Remota<'rechazos:avisos'>
+    marcarVistos: Remota<'rechazos:marcarVistos'>
+    resolver: Remota<'rechazos:resolver'>
   }
   companias: {
     listar: Remota<'companias:listar'>

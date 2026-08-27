@@ -79,6 +79,7 @@ export function clasificarPestana(titulo: string): ClasificacionPestana {
   if (t === 'APP LEADS') return { tipo: 'APP_LEADS', mes: null, anio: null }
   if (t === 'APP PRESUPUESTOS') return { tipo: 'APP_PRESUPUESTOS', mes: null, anio: null }
   if (t === 'APP TAREAS') return { tipo: 'APP_TAREAS', mes: null, anio: null }
+  if (t === 'APP RECHAZOS') return { tipo: 'APP_RECHAZOS', mes: null, anio: null }
 
   if (/\bBAJAS?\b/.test(t)) return { tipo: 'BAJAS', mes, anio }
   if (t.includes('RIESGO')) return { tipo: 'RIESGOS_VARIOS', mes: null, anio: null }

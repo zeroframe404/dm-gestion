@@ -38,7 +38,16 @@ export const AYUDA_POLIZAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Dar de baja una póliza',
         parrafos: [
-          'Desde una póliza ya cargada, el botón «Dar de baja» pide un motivo (por ejemplo, vendió el auto, se cambió de compañía, anuló) y una nota, y saca la póliza de la cartera activa: pasa a verse en Cartera → Bajas y su estado queda en Baja. Una vez dada de baja se puede seguir corrigiendo algún dato mal cargado, pero no hay forma de «reactivarla» desde acá: si vuelve, se carga como póliza nueva.',
+          'Desde una póliza ya cargada, el botón «Dar de baja» pide un motivo (por ejemplo, vendió el auto, se cambió de compañía, anuló) y una nota, y saca la póliza de la cartera activa: pasa a verse en Cartera → Bajas y su estado queda en Baja. La baja se lleva una foto completa de la póliza, así que en Bajas se sigue viendo todo lo que tenía y no sólo el nombre y el motivo.',
+          'Si esa persona vuelve no hace falta cargarla de nuevo: en Cartera → Bajas, el botón «Poner vigente» la devuelve a la planilla del mes con los últimos datos que tenía, y desde ahí se corrige lo que haya cambiado.',
+        ],
+      },
+      {
+        titulo: 'Avisar un rechazo del débito',
+        parrafos: [
+          'El botón «Avisar rechazo del débito», arriba de la póliza, es para cuando la compañía rebota el CBU o la tarjeta de ese cliente. Le manda un aviso a la sucursal que lo atiende —viene elegida la de la póliza, se puede cambiar— para que lo llamen y lo cobren a mano.',
+          'A esa sucursal le aparece en la campana del triángulo, arriba a la derecha, apenas entran al programa, aunque trabajen en otra computadora. El seguimiento de todos los avisos se hace en Cartera → Rechazos.',
+          'Funciona también con una póliza dada de baja: al que anularon por falta de pago igual hay que llamarlo, y muchas veces la baja es justamente la consecuencia del rechazo.',
         ],
       },
     ],

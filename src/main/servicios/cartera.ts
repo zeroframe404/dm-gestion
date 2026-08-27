@@ -15,6 +15,7 @@ import {
   type MotivoDeBaja,
   type PeriodoCartera,
   type PlanillaDelMes,
+  type ResultadoDeReactivacion,
   type ResumenCierreDeMes,
   type SesionUsuario,
 } from '../../shared/tipos'
@@ -595,6 +596,43 @@ export function registrarPago(filaId: string, datos: DatosDePago, actor: SesionU
 // Dar de baja
 // ---------------------------------------------------------------------------
 
+/**
+ * El alta de una baja hecha en la aplicación, con la foto completa de la fila.
+ *
+ * Antes se guardaban nada más que nombre, documento, compañía, póliza, patente, sucursal y motivo, y
+ * una póliza anulada perdía todo el resto de lo que decía la cartera. Ahora se guarda todo: la póliza
+ * puede cambiar (o renovarse con otro vehículo) después de la baja, y lo que hay que poder mirar es
+ * cómo estaba el día que se fue.
+ *
+ * Lo comparten `darDeBaja` (la baja desde la planilla del mes) y `darDeBajaPoliza` (la baja de una
+ * póliza que no está en el mes abierto), para que las dos guarden exactamente lo mismo.
+ */
+export const INSERT_BAJA = `
+  INSERT INTO bajas (fila_id, pestana, periodo, mes_texto, poliza_id, cliente_id, cliente_nombre, documento, compania,
+                     numero_poliza, patente, sucursal_texto, motivo, fecha_baja, fecha_baja_iso, observaciones,
+                     nota, hecha_en_la_app, cuota_fila_id,
+                     telefono, email, direccion, localidad, cobertura, propuesta, cuota, dia_vencimiento, forma_pago,
+                     prima, productor, vigencia_desde, vigencia_hasta, alta, vehiculo_id, tipo_vehiculo, marca, modelo,
+                     anio, motor, chasis, uso, color,
+                     creado_en, actualizado_en)
+  VALUES (@fila_id, @pestana, @periodo, @mes_texto, @poliza_id, @cliente_id, @cliente_nombre, @documento, @compania,
+          @numero_poliza, @patente, @sucursal_texto, @motivo, @fecha_baja, @fecha_baja_iso, @observaciones,
+          @nota, 1, @cuota_fila_id,
+          @telefono, @email, @direccion, @localidad, @cobertura, @propuesta, @cuota, @dia_vencimiento, @forma_pago,
+          @prima, @productor, @vigencia_desde, @vigencia_hasta, @alta, @vehiculo_id, @tipo_vehiculo, @marca, @modelo,
+          @anio, @motor, @chasis, @uso, @color,
+          @ahora, @ahora)
+  ON CONFLICT(fila_id) DO UPDATE SET
+    motivo = excluded.motivo, nota = excluded.nota, fecha_baja = excluded.fecha_baja,
+    fecha_baja_iso = excluded.fecha_baja_iso, actualizado_en = excluded.actualizado_en,
+    telefono = excluded.telefono, email = excluded.email, direccion = excluded.direccion,
+    localidad = excluded.localidad, cobertura = excluded.cobertura, propuesta = excluded.propuesta,
+    cuota = excluded.cuota, dia_vencimiento = excluded.dia_vencimiento, forma_pago = excluded.forma_pago,
+    prima = excluded.prima, productor = excluded.productor, vigencia_desde = excluded.vigencia_desde,
+    vigencia_hasta = excluded.vigencia_hasta, alta = excluded.alta, vehiculo_id = excluded.vehiculo_id,
+    tipo_vehiculo = excluded.tipo_vehiculo, marca = excluded.marca, modelo = excluded.modelo,
+    anio = excluded.anio, motor = excluded.motor, chasis = excluded.chasis, uso = excluded.uso, color = excluded.color`
+
 export function darDeBaja(filaId: string, datos: DatosDeBaja, actor: SesionUsuario): null {
   const fila = buscarFila(texto(filaId, 'La fila', 1, 64))
   exigirMesAbierto(fila.periodo)
@@ -606,17 +644,7 @@ export function darDeBaja(filaId: string, datos: DatosDeBaja, actor: SesionUsuar
 
   db().transaction(() => {
     db()
-      .prepare(
-        `INSERT INTO bajas (fila_id, pestana, periodo, mes_texto, poliza_id, cliente_id, cliente_nombre, documento, compania,
-                            numero_poliza, patente, sucursal_texto, motivo, fecha_baja, fecha_baja_iso, observaciones,
-                            nota, hecha_en_la_app, cuota_fila_id, creado_en, actualizado_en)
-         VALUES (@fila_id, @pestana, @periodo, @mes_texto, @poliza_id, @cliente_id, @cliente_nombre, @documento, @compania,
-                 @numero_poliza, @patente, @sucursal_texto, @motivo, @fecha_baja, @fecha_baja_iso, @observaciones,
-                 @nota, 1, @cuota_fila_id, @ahora, @ahora)
-         ON CONFLICT(fila_id) DO UPDATE SET
-           motivo = excluded.motivo, nota = excluded.nota, fecha_baja = excluded.fecha_baja,
-           fecha_baja_iso = excluded.fecha_baja_iso, actualizado_en = excluded.actualizado_en`,
-      )
+      .prepare(INSERT_BAJA)
       .run({
         fila_id: `BAJA:${fila.fila_id}`,
         pestana: PESTANA_APP,
@@ -636,6 +664,30 @@ export function darDeBaja(filaId: string, datos: DatosDeBaja, actor: SesionUsuar
         observaciones: fila.observaciones,
         nota: nota || null,
         cuota_fila_id: fila.fila_id,
+        // La foto de la fila en el momento de la baja: todo lo demás que decía la cartera.
+        telefono: fila.telefono,
+        email: fila.email,
+        direccion: fila.direccion,
+        localidad: fila.localidad,
+        cobertura: fila.cobertura,
+        propuesta: fila.propuesta,
+        cuota: fila.cuota,
+        dia_vencimiento: fila.dia_vencimiento,
+        forma_pago: fila.forma_pago,
+        prima: fila.prima,
+        productor: fila.productor,
+        vigencia_desde: fila.vigencia_desde,
+        vigencia_hasta: fila.vigencia_hasta,
+        alta: fila.alta,
+        vehiculo_id: fila.vehiculo_id,
+        tipo_vehiculo: fila.vehiculo,
+        marca: fila.marca,
+        modelo: fila.modelo,
+        anio: fila.anio,
+        motor: fila.motor,
+        chasis: fila.chasis,
+        uso: fila.uso,
+        color: fila.color,
         ahora,
       })
     db().prepare('UPDATE cuotas_mes SET dada_de_baja = 1, actualizado_en = ? WHERE id = ?').run(ahora, fila.cuota_id)
@@ -707,46 +759,285 @@ export function deshacerBaja(bajaId: number, actor: SesionUsuario): FilaBaja[] {
   return bajasDelMes(baja.periodo)
 }
 
-export function bajasDelMes(periodo: string | null): FilaBaja[] {
-  const filas = db()
-    .prepare(
-      `SELECT id, fila_id, periodo, cliente_nombre, documento, compania, numero_poliza, patente, sucursal_texto,
-              motivo, nota, COALESCE(fecha_baja_iso, fecha_baja) AS fecha_baja, poliza_id, hecha_en_la_app
-       FROM bajas WHERE periodo IS ? OR (? IS NULL AND periodo IS NULL)
-       ORDER BY hecha_en_la_app DESC, cliente_nombre`,
+/**
+ * «Poner vigente»: la póliza vuelve a la cartera sin cargarla de nuevo.
+ *
+ * Es distinto de «Deshacer», que es el «me equivoqué» del mismo mes y sólo sirve para las bajas que hizo
+ * la aplicación. Acá el caso es el otro: al cliente lo dieron de baja en julio y en septiembre vuelve.
+ * La póliza, el cliente y el vehículo nunca se borraron, así que alcanza con volver a activarla y
+ * ponerle una fila en el mes abierto; los datos que hayan cambiado se corrigen después en la planilla.
+ *
+ * Sirve también para las bajas importadas de la hoja —que son la mayoría de las viejas— y por eso lo
+ * único que se exige es saber de qué póliza es la baja.
+ */
+export function reactivarBaja(bajaId: number, actor: SesionUsuario): ResultadoDeReactivacion {
+  const baja = db().prepare(`${SELECT_BAJAS} WHERE b.id = ?`).get(bajaId) as BajaCruda | undefined
+  if (!baja) throw new ErrorDeNegocio('No se encontró esa baja.')
+  if (baja.poliza_id === null) {
+    throw new ErrorDeNegocio(
+      'Esa baja no está enlazada a ninguna póliza, así que no hay nada que reactivar. Cargá la póliza desde Pólizas → Nueva póliza.',
     )
-    .all(periodo, periodo) as Array<{
-    id: number
-    fila_id: string
-    periodo: string | null
-    cliente_nombre: string | null
-    documento: string | null
-    compania: string | null
-    numero_poliza: string | null
-    patente: string | null
-    sucursal_texto: string | null
-    motivo: string | null
-    nota: string | null
-    fecha_baja: string | null
-    poliza_id: number | null
-    hecha_en_la_app: number
-  }>
-  return filas.map((f) => ({
+  }
+  const periodoAbierto = periodosDisponibles()[0]?.periodo
+  if (!periodoAbierto) throw new ErrorDeNegocio('Todavía no hay ninguna planilla cargada: importá la hoja de Google primero.')
+
+  // Tres caminos, en este orden:
+  //  1. la póliza YA tiene una fila viva en el mes abierto (alguien la volvió a cargar a mano): no se
+  //     toca ninguna cuota, sólo se reactiva la póliza y se saca la baja. Crear otra fila la duplicaría;
+  //  2. la fila que quedó marcada al dar de baja es de este mes: se reusa, que es lo más común;
+  //  3. la baja es de un mes anterior: se le arma la fila del mes abierto con lo último que tenía.
+  const yaEstaEnElMes = db()
+    .prepare(`SELECT fila_id FROM cuotas_mes WHERE poliza_id = ? AND periodo = ? AND dada_de_baja = 0 LIMIT 1`)
+    .get(baja.poliza_id, periodoAbierto) as { fila_id: string } | undefined
+
+  const cuotaDelMes =
+    !yaEstaEnElMes && baja.cuota_fila_id
+      ? (db().prepare(`SELECT fila_id, pestana FROM cuotas_mes WHERE fila_id = ? AND periodo = ?`).get(baja.cuota_fila_id, periodoAbierto) as
+          | { fila_id: string; pestana: string }
+          | undefined)
+      : undefined
+
+  const ahora = ahoraIso()
+  const pestanaDelMes = cuotaDelMes?.pestana ?? pestanaDelMesAbierto(periodoAbierto)
+  const filaNuevaId = yaEstaEnElMes || cuotaDelMes ? null : generarId()
+  // Dónde vive el renglón de BAJAS en la hoja: hay que leerlo ANTES de borrar la fila de la tabla.
+  const pestanaDeLaBaja = bajaEnLaHoja(bajaId, baja.fila_id)
+
+  db().transaction(() => {
+    db().prepare('UPDATE polizas SET activa = 1, actualizado_en = ? WHERE id = ?').run(ahora, baja.poliza_id)
+    if (cuotaDelMes) {
+      db().prepare('UPDATE cuotas_mes SET dada_de_baja = 0, actualizado_en = ? WHERE fila_id = ?').run(ahora, cuotaDelMes.fila_id)
+    } else if (filaNuevaId) {
+      db()
+        .prepare(
+          `INSERT INTO cuotas_mes (fila_id, periodo, pestana, poliza_id, cliente_id, cliente_nombre, documento, compania,
+                                   numero_poliza, patente, sucursal_texto, cuota, cuota_monto, dia_vencimiento,
+                                   dia_vencimiento_numero, forma_pago, observaciones, creada_en_la_app, dada_de_baja,
+                                   creado_en, actualizado_en)
+           VALUES (@fila_id, @periodo, @pestana, @poliza_id, @cliente_id, @cliente_nombre, @documento, @compania,
+                   @numero_poliza, @patente, @sucursal_texto, @cuota, @cuota_monto, @dia_vencimiento,
+                   @dia_vencimiento_numero, @forma_pago, @observaciones, 1, 0, @ahora, @ahora)`,
+        )
+        .run({
+          fila_id: filaNuevaId,
+          periodo: periodoAbierto,
+          pestana: pestanaDelMes,
+          poliza_id: baja.poliza_id,
+          cliente_id: baja.cliente_id,
+          cliente_nombre: baja.cliente_nombre,
+          documento: baja.documento,
+          compania: baja.compania,
+          numero_poliza: baja.numero_poliza,
+          patente: baja.patente,
+          sucursal_texto: baja.sucursal_texto,
+          cuota: baja.cuota,
+          cuota_monto: interpretarNumero(baja.cuota),
+          dia_vencimiento: baja.dia_vencimiento,
+          dia_vencimiento_numero: interpretarDiaDeVencimiento(baja.dia_vencimiento),
+          forma_pago: baja.forma_pago,
+          observaciones: baja.observaciones,
+          ahora,
+        })
+    }
+    db().prepare('DELETE FROM bajas WHERE id = ?').run(bajaId)
+  })()
+
+  // En la hoja: primero entra la fila en la planilla del mes y después se saca el renglón de BAJAS. Ese
+  // orden importa por lo mismo de siempre: si algo falla en el medio, la póliza queda en los dos lados
+  // y no perdida.
+  if (cuotaDelMes) {
+    // La fila ya existía en `filas_crudas` (la baja la sacó de la hoja pero no la olvidó), así que va
+    // directo a la cola: es exactamente lo que hace `deshacerBaja`.
+    const deVuelta = db().prepare(`${SELECT_PLANILLA} WHERE c.fila_id = ?`).get(cuotaDelMes.fila_id) as FilaCruda | undefined
+    if (deVuelta) {
+      encolar({ operacion: 'crear', pestana: deVuelta.pestana, filaId: deVuelta.fila_id, campos: camposDeLaFila(deVuelta) }, actor)
+    }
+  } else if (filaNuevaId) {
+    const nueva = db().prepare(`${SELECT_PLANILLA} WHERE c.fila_id = ?`).get(filaNuevaId) as FilaCruda | undefined
+    registrarFilaDeLaApp({ filaId: filaNuevaId, pestana: pestanaDelMes, tipoPestana: 'MENSUAL', periodo: periodoAbierto })
+    if (nueva) encolar({ operacion: 'crear', pestana: pestanaDelMes, filaId: filaNuevaId, campos: camposDeLaFila(nueva) }, actor)
+  }
+  encolar({ operacion: 'borrar', pestana: pestanaDeLaBaja, filaId: baja.fila_id, campos: {} }, actor)
+
+  registrarCambio(actor, {
+    accion: 'reactivacion',
+    tabla: 'polizas',
+    registroId: baja.poliza_id,
+    filaId: baja.cuota_fila_id ?? baja.fila_id,
+    campo: 'PUESTA VIGENTE',
+    valorAnterior: baja.motivo,
+    valorNuevo: `vuelve a ${periodoAbierto}`,
+  })
+
+  return {
+    bajas: bajasDelMes(baja.periodo),
+    clienteNombre: baja.cliente_nombre ?? 'La póliza',
+    periodo: periodoAbierto,
+    filaNueva: filaNuevaId !== null,
+  }
+}
+
+/** La pestaña de la hoja donde vive el renglón de esta baja, para poder sacarlo al reactivarla. */
+function bajaEnLaHoja(bajaId: number, filaId: string): string {
+  const fila = db().prepare('SELECT pestana FROM bajas WHERE id = ?').get(bajaId) as { pestana: string } | undefined
+  if (fila?.pestana) return fila.pestana
+  const cruda = db().prepare('SELECT pestana FROM filas_crudas WHERE fila_id = ?').get(filaId) as { pestana: string } | undefined
+  return cruda?.pestana ?? 'BAJAS'
+}
+
+/** Cómo se llama en la hoja la pestaña del mes abierto (la que ya existe, o la que le corresponde). */
+function pestanaDelMesAbierto(periodo: string): string {
+  const existente = db().prepare(`SELECT pestana FROM cuotas_mes WHERE periodo = ? LIMIT 1`).get(periodo) as { pestana: string } | undefined
+  return existente?.pestana ?? nombreDePestanaMensual(periodo)
+}
+
+/**
+ * Las bajas del mes con TODO lo que la fila tenía en la cartera.
+ *
+ * Cada campo se resuelve en tres pasos: primero la foto guardada en la baja (que es cómo estaba el día
+ * que se fue y es lo que hay que mostrar), después la póliza / el cliente / el vehículo, que siguen
+ * existiendo, y por último la fila de la planilla de ese mes. Los dos últimos son para las bajas que
+ * vinieron de la hoja de Google y para las que se cargaron antes de que existiera la foto: sin ellos
+ * esas filas seguirían mostrando siete columnas y el resto vacío.
+ */
+const SELECT_BAJAS = `
+  SELECT b.id, b.fila_id, b.periodo, b.motivo, b.nota, b.hecha_en_la_app, b.cuota_fila_id,
+         COALESCE(b.fecha_baja_iso, b.fecha_baja) AS fecha_baja,
+         COALESCE(b.poliza_id, q.poliza_id) AS poliza_id,
+         COALESCE(b.cliente_id, q.cliente_id, p.cliente_id) AS cliente_id,
+         COALESCE(b.cliente_nombre, q.cliente_nombre, cl.nombre) AS cliente_nombre,
+         COALESCE(b.documento, q.documento, cl.documento) AS documento,
+         COALESCE(b.telefono, cl.telefono) AS telefono,
+         COALESCE(b.email, cl.email) AS email,
+         COALESCE(b.direccion, cl.direccion) AS direccion,
+         COALESCE(b.localidad, cl.localidad) AS localidad,
+         COALESCE(b.sucursal_texto, q.sucursal_texto, cl.sucursal_texto) AS sucursal_texto,
+         COALESCE(b.compania, q.compania, p.compania) AS compania,
+         COALESCE(b.numero_poliza, q.numero_poliza, p.numero) AS numero_poliza,
+         COALESCE(b.propuesta, p.propuesta) AS propuesta,
+         COALESCE(b.cobertura, p.cobertura) AS cobertura,
+         COALESCE(b.patente, q.patente, v.patente) AS patente,
+         COALESCE(b.tipo_vehiculo, v.tipo) AS tipo_vehiculo,
+         COALESCE(b.marca, v.marca) AS marca,
+         COALESCE(b.modelo, v.modelo) AS modelo,
+         COALESCE(b.anio, v.anio) AS anio,
+         COALESCE(b.motor, v.motor) AS motor,
+         COALESCE(b.chasis, v.chasis) AS chasis,
+         COALESCE(b.uso, v.uso) AS uso,
+         COALESCE(b.color, v.color) AS color,
+         COALESCE(b.cuota, q.cuota) AS cuota,
+         COALESCE(b.dia_vencimiento, q.dia_vencimiento) AS dia_vencimiento,
+         COALESCE(b.forma_pago, q.forma_pago, p.forma_pago) AS forma_pago,
+         COALESCE(b.prima, p.prima) AS prima,
+         COALESCE(b.productor, p.productor) AS productor,
+         COALESCE(b.vigencia_desde, p.vigencia_desde) AS vigencia_desde,
+         COALESCE(b.vigencia_hasta, p.vigencia_hasta) AS vigencia_hasta,
+         COALESCE(b.alta, p.alta) AS alta,
+         COALESCE(b.observaciones, q.observaciones, p.observaciones) AS observaciones
+  FROM bajas b
+  LEFT JOIN cuotas_mes q ON q.fila_id = b.cuota_fila_id
+  LEFT JOIN polizas p ON p.id = COALESCE(b.poliza_id, q.poliza_id)
+  LEFT JOIN clientes cl ON cl.id = COALESCE(b.cliente_id, q.cliente_id, p.cliente_id)
+  LEFT JOIN vehiculos v ON v.id = COALESCE(b.vehiculo_id, p.vehiculo_id)
+`
+
+interface BajaCruda {
+  id: number
+  fila_id: string
+  periodo: string | null
+  motivo: string | null
+  nota: string | null
+  hecha_en_la_app: number
+  cuota_fila_id: string | null
+  fecha_baja: string | null
+  poliza_id: number | null
+  cliente_id: number | null
+  cliente_nombre: string | null
+  documento: string | null
+  telefono: string | null
+  email: string | null
+  direccion: string | null
+  localidad: string | null
+  sucursal_texto: string | null
+  compania: string | null
+  numero_poliza: string | null
+  propuesta: string | null
+  cobertura: string | null
+  patente: string | null
+  tipo_vehiculo: string | null
+  marca: string | null
+  modelo: string | null
+  anio: string | null
+  motor: string | null
+  chasis: string | null
+  uso: string | null
+  color: string | null
+  cuota: string | null
+  dia_vencimiento: string | null
+  forma_pago: string | null
+  prima: string | null
+  productor: string | null
+  vigencia_desde: string | null
+  vigencia_hasta: string | null
+  alta: string | null
+  observaciones: string | null
+}
+
+function aBaja(f: BajaCruda): FilaBaja {
+  return {
     id: f.id,
     filaId: f.fila_id,
     periodo: f.periodo,
+    clienteId: f.cliente_id,
     clienteNombre: f.cliente_nombre,
     documento: f.documento,
+    telefono: f.telefono,
+    email: f.email,
+    direccion: f.direccion,
+    localidad: f.localidad,
     compania: f.compania,
     numeroPoliza: f.numero_poliza,
+    propuesta: f.propuesta,
+    cobertura: f.cobertura,
     patente: f.patente,
+    vehiculo: f.tipo_vehiculo,
+    marca: f.marca,
+    modelo: f.modelo,
+    anio: f.anio,
+    motor: f.motor,
+    chasis: f.chasis,
+    uso: f.uso,
+    color: f.color,
+    cuota: f.cuota,
+    diaVencimiento: f.dia_vencimiento,
+    formaPago: f.forma_pago,
+    prima: f.prima,
+    productor: f.productor,
+    vigenciaDesde: f.vigencia_desde,
+    vigenciaHasta: f.vigencia_hasta,
+    alta: f.alta,
+    observaciones: f.observaciones,
     sucursal: f.sucursal_texto,
     motivo: f.motivo,
     nota: f.nota,
     fechaBaja: f.fecha_baja,
     polizaId: f.poliza_id,
     hechaEnLaApp: f.hecha_en_la_app === 1,
-  }))
+    // Volver a ponerla vigente sólo necesita saber de qué póliza es: una baja importada de la hoja
+    // también se puede reactivar, que es justamente el caso del cliente que vuelve en septiembre.
+    puedeReactivarse: f.poliza_id !== null,
+  }
+}
+
+export function bajasDelMes(periodo: string | null): FilaBaja[] {
+  const filas = db()
+    .prepare(
+      `${SELECT_BAJAS}
+       WHERE b.periodo IS ? OR (? IS NULL AND b.periodo IS NULL)
+       ORDER BY b.hecha_en_la_app DESC, cliente_nombre`,
+    )
+    .all(periodo, periodo) as BajaCruda[]
+  return filas.map(aBaja)
 }
 
 // ---------------------------------------------------------------------------

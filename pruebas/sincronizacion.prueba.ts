@@ -12,11 +12,13 @@ import {
   planillaDelMes,
   registrarPago,
 } from '../src/main/servicios/cartera'
+import { avisarRechazo, avisosDeRechazos, listarRechazos } from '../src/main/servicios/rechazos'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes, encolar, esperaDeReintento } from '../src/main/sincronizacion/cola'
 import { leerContexto } from '../src/main/sincronizacion/hoja'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { hacerRespaldo, listarRespaldos, rotar, tocaRespaldar, type ServicioDeRespaldo } from '../src/main/sincronizacion/respaldo'
 import type { FilaCartera, SesionUsuario } from '../src/shared/tipos'
+import { unico } from './ayuda'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
 
@@ -651,5 +653,89 @@ test('el RESULTADO que escribe la contadora en la hoja baja a la rendición', as
 
   await motor.ciclarBajada()
   assert.equal((db.prepare('SELECT resultado FROM pagos WHERE fila_id = ?').get(pago.fila_id) as { resultado: string }).resultado, 'OK')
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// El aviso de rechazo del débito: el viaje de ida y vuelta entre dos sucursales
+// ---------------------------------------------------------------------------
+
+test('un aviso de rechazo sube a APP RECHAZOS y lo que la otra sucursal resuelve vuelve por la bajada', async () => {
+  const { db, hoja, motor } = await escenario()
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  assert.ok(gonzalez.polizaId)
+
+  // La administración avisa: a González se le rechazó el CBU y lo tiene que llamar Dock Sud.
+  const aviso = avisarRechazo(gonzalez.polizaId, { sucursal: 'Dock Sud', motivo: 'SIN FONDOS', nota: 'Rebotó el de agosto' }, DANIEL)
+  assert.equal(cuantasPendientes(), 1)
+
+  await motor.ciclarSubida()
+  assert.ok(hoja.titulos().includes('APP RECHAZOS'), 'la pestaña se crea sola la primera vez que hay algo que subir')
+  assert.ok(aviso.filaId)
+  assert.equal(enLaHoja(hoja, 'APP RECHAZOS', aviso.filaId, 'NOMBRE'), CLIENTES.gonzalez.nombre)
+  assert.equal(enLaHoja(hoja, 'APP RECHAZOS', aviso.filaId, 'LOCAL'), 'Dock Sud')
+  assert.equal(enLaHoja(hoja, 'APP RECHAZOS', aviso.filaId, 'POLIZA'), CLIENTES.gonzalez.poliza)
+  assert.equal(enLaHoja(hoja, 'APP RECHAZOS', aviso.filaId, 'MOTIVO'), 'SIN FONDOS')
+  assert.equal(enLaHoja(hoja, 'APP RECHAZOS', aviso.filaId, 'ESTADO'), 'PENDIENTE')
+  assert.equal(enLaHoja(hoja, 'APP RECHAZOS', aviso.filaId, 'CARGADO POR'), DANIEL.nombre)
+  assert.equal(cuantasPendientes(), 0)
+
+  // En Dock Sud lo cobran y lo dan por resuelto: para esta computadora, eso pasa en la hoja.
+  const columnaEstado = hoja.encabezadosDe('APP RECHAZOS').findIndex((e) => e.trim() === 'ESTADO')
+  const columnaId = hoja.columnaIdDe('APP RECHAZOS')
+  const numeroDeFila = hoja.filasDe('APP RECHAZOS').findIndex((f) => (f[columnaId] ?? '').trim() === aviso.filaId) + 1
+  hoja.editarCelda('APP RECHAZOS', numeroDeFila, columnaEstado, 'RESUELTO')
+
+  await motor.ciclarBajada(true)
+  assert.equal(
+    unico<string>(db, 'SELECT estado FROM rechazos_debito WHERE id = ?', aviso.id),
+    'RESUELTO',
+    'lo que resolvió la otra sucursal baja acá',
+  )
+  assert.equal(listarRechazos({ busqueda: '', sucursal: '', estado: '' }).porEstado.RESUELTO, 1)
+  cerrarBaseDeDatos()
+})
+
+test('un aviso cargado en otra computadora llega por la importación, no queda sólo en la hoja', async () => {
+  const { hoja, motor, importar } = await escenario()
+  // La hoja ya tiene la pestaña porque la creó una sucursal que avisó desde su computadora.
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  assert.ok(gonzalez.polizaId)
+  avisarRechazo(gonzalez.polizaId, { sucursal: 'Dock Sud', motivo: 'CBU RECHAZADO', nota: '' }, DANIEL)
+  await motor.ciclarSubida()
+
+  // Ahora aparece un renglón que esta computadora nunca escribió: es el que cargó la otra sucursal.
+  const encabezados = hoja.encabezadosDe('APP RECHAZOS')
+  const nueva = new Array<string>(encabezados.length).fill('')
+  const poner = (titulo: string, valor: string) => {
+    const i = encabezados.findIndex((e) => e.trim() === titulo)
+    if (i >= 0) nueva[i] = valor
+  }
+  poner('FECHA', '2026-08-20')
+  poner('LOCAL', 'Lanús')
+  poner('NOMBRE', CLIENTES.perezAuto.nombre)
+  poner('DNI/CUIT', CLIENTES.perezAuto.dni)
+  poner('COMPAÑIA', CLIENTES.perezAuto.cia)
+  poner('POLIZA', CLIENTES.perezAuto.poliza)
+  poner('PATENTE', CLIENTES.perezAuto.patente)
+  poner('MOTIVO', 'CUENTA CERRADA')
+  poner('ESTADO', 'PENDIENTE')
+  poner('CARGADO POR', 'Oli')
+  hoja.agregarFila('APP RECHAZOS', nueva)
+
+  await importar()
+
+  const enLanus = listarRechazos({ busqueda: '', sucursal: 'Lanús', estado: '' })
+  assert.equal(enLanus.filas.length, 1, 'el aviso de la otra computadora llegó a esta base')
+  const traido = enLanus.filas[0]!
+  assert.equal(traido.clienteNombre, CLIENTES.perezAuto.nombre)
+  assert.equal(traido.motivo, 'CUENTA CERRADA')
+  assert.equal(traido.estado, 'PENDIENTE')
+  assert.equal(traido.avisadoPor, 'Oli')
+  assert.equal(traido.polizaId, fila(CLIENTES.perezAuto.nombre).polizaId, 'y quedó enganchado a su póliza')
+
+  // Y le enciende la campana a quien trabaja en Lanús, que es de quien es el cliente.
+  const enLanusSesion: SesionUsuario = { ...DANIEL, nombre: 'Oli', sucursal: { id: 3, nombre: 'Lanús' } }
+  assert.equal(avisosDeRechazos(enLanusSesion).nuevos, 1)
   cerrarBaseDeDatos()
 })

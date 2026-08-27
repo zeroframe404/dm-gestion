@@ -852,6 +852,82 @@ export const MIGRACIONES: Migracion[] = [
         WHERE meses_renovacion IS NULL AND (nombre_normalizado LIKE 'RIO URUGUAY%' OR nombre_normalizado = 'RUS' OR nombre_normalizado LIKE 'RUS %');
     `,
   },
+  {
+    version: 13,
+    descripcion: 'Avisos de rechazo del débito automático y bajas con todos los datos de la cartera',
+    sql: `
+      -- Un aviso de rechazo: le rebotó el débito a alguien y la sucursal que lo atiende tiene que
+      -- enterarse para llamarlo. Viaja a la hoja por la pestaña «APP RECHAZOS», igual que los leads y
+      -- las tareas, así llega a la computadora de la otra sucursal.
+      CREATE TABLE rechazos_debito (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        -- El _ID en la hoja. NULL mientras la fila todavía no se anotó para subir.
+        fila_id TEXT UNIQUE,
+        pestana TEXT,
+        poliza_id INTEGER REFERENCES polizas(id),
+        cliente_id INTEGER REFERENCES clientes(id),
+        -- La fila de la planilla del mes cuya cuota rebotó, si el aviso salió de una.
+        cuota_fila_id TEXT,
+        cliente_nombre TEXT,
+        documento TEXT,
+        telefono TEXT,
+        compania TEXT,
+        numero_poliza TEXT,
+        patente TEXT,
+        forma_pago TEXT,
+        cuota TEXT,
+        periodo TEXT,
+        -- A qué sucursal le llega el aviso. Es lo que decide quién lo ve en la campana.
+        sucursal_texto TEXT,
+        motivo TEXT,
+        nota TEXT,
+        -- Sin CHECK ni NOT NULL a propósito, igual que \`pagos.resultado\`: esta columna también viaja a
+        -- la hoja, donde cualquiera puede escribir «resuelto» en minúscula o vaciar la celda. Se guarda
+        -- lo que venga y lo normaliza el servicio; una restricción acá rompería la bajada.
+        estado TEXT DEFAULT 'PENDIENTE',
+        fecha TEXT NOT NULL,
+        avisado_por TEXT,
+        avisado_por_id INTEGER REFERENCES usuarios(id),
+        visto_en TEXT,
+        visto_por TEXT,
+        resuelto_en TEXT,
+        resuelto_por TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE INDEX idx_rechazos_sucursal ON rechazos_debito (sucursal_texto);
+      CREATE INDEX idx_rechazos_estado ON rechazos_debito (estado);
+      CREATE INDEX idx_rechazos_poliza ON rechazos_debito (poliza_id);
+
+      -- La baja guardaba nada más que nombre, documento, compañía, póliza, patente, sucursal y motivo.
+      -- Con eso, una póliza anulada perdía todo el resto de lo que decía la cartera. Ahora se guarda la
+      -- foto completa de la fila en el momento de la baja: la póliza puede cambiar después, y lo que hay
+      -- que poder mirar es cómo estaba cuando se fue.
+      ALTER TABLE bajas ADD COLUMN telefono TEXT;
+      ALTER TABLE bajas ADD COLUMN email TEXT;
+      ALTER TABLE bajas ADD COLUMN direccion TEXT;
+      ALTER TABLE bajas ADD COLUMN localidad TEXT;
+      ALTER TABLE bajas ADD COLUMN cobertura TEXT;
+      ALTER TABLE bajas ADD COLUMN propuesta TEXT;
+      ALTER TABLE bajas ADD COLUMN cuota TEXT;
+      ALTER TABLE bajas ADD COLUMN dia_vencimiento TEXT;
+      ALTER TABLE bajas ADD COLUMN forma_pago TEXT;
+      ALTER TABLE bajas ADD COLUMN prima TEXT;
+      ALTER TABLE bajas ADD COLUMN productor TEXT;
+      ALTER TABLE bajas ADD COLUMN vigencia_desde TEXT;
+      ALTER TABLE bajas ADD COLUMN vigencia_hasta TEXT;
+      ALTER TABLE bajas ADD COLUMN alta TEXT;
+      ALTER TABLE bajas ADD COLUMN vehiculo_id INTEGER REFERENCES vehiculos(id);
+      ALTER TABLE bajas ADD COLUMN tipo_vehiculo TEXT;
+      ALTER TABLE bajas ADD COLUMN marca TEXT;
+      ALTER TABLE bajas ADD COLUMN modelo TEXT;
+      ALTER TABLE bajas ADD COLUMN anio TEXT;
+      ALTER TABLE bajas ADD COLUMN motor TEXT;
+      ALTER TABLE bajas ADD COLUMN chasis TEXT;
+      ALTER TABLE bajas ADD COLUMN uso TEXT;
+      ALTER TABLE bajas ADD COLUMN color TEXT;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {
