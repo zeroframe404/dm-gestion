@@ -81,6 +81,11 @@ export interface ApiDm {
     estado: Remota<'impresora:estado'>
     guardar: Remota<'impresora:guardar'>
     prueba: Remota<'impresora:prueba'>
+    imprimirPago: Remota<'impresora:imprimirPago'>
+    direcciones: Remota<'impresora:direcciones'>
+    guardarDirecciones: Remota<'impresora:guardarDirecciones'>
+    /** El cartel de «¿imprimo el comprobante?» después de registrar un pago. */
+    alPedirTicket: Suscripcion<'impresora:preguntar'>
   }
   clientes: {
     listar: Remota<'clientes:listar'>

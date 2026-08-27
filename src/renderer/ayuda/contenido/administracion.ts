@@ -16,7 +16,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Los tres roles',
         parrafos: [
-          'EMPLEADO ve y usa el día a día de la agencia (cartera, clientes, cobranzas, siniestros, etcétera) pero no entra a Administración salvo «Acerca de». ADMIN ve además Compañías, Impresora, Conexión con Google, Importar desde Google y Sincronización. SUPER_ADMIN tiene todo lo anterior más esta pantalla, Usuarios, y es el único que puede resolver un problema serio con la lista compartida de usuarios si llegara a aparecer.',
+          'EMPLEADO ve y usa el día a día de la agencia (cartera, clientes, cobranzas, siniestros, etcétera) pero no entra a Administración salvo «Impresora» y «Acerca de», que las ve todo el mundo. ADMIN ve además Compañías, Conexión con Google, Importar desde Google y Sincronización. SUPER_ADMIN tiene todo lo anterior más esta pantalla, Usuarios, y es el único que puede resolver un problema serio con la lista compartida de usuarios si llegara a aparecer.',
           'Eso es lo que trae cada rol de fábrica, y se puede recortar módulo por módulo en Administración → Permisos: por ejemplo, dejar a los empleados con Cobranzas en «sólo ver» o sin Marketing. Lo que ahí se configura vale para todas las computadoras de la agencia.',
         ],
       },
@@ -139,18 +139,33 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.impresora': {
     clave: 'administracion.impresora',
     titulo: 'Administración → Impresora',
-    resumen: 'La configuración de la ticketeadora térmica del mostrador, para que cada pago cobrado imprima su comprobante solo.',
+    resumen: 'La configuración de la ticketeadora térmica del mostrador y las direcciones que encabezan el comprobante. La abre cualquiera, con el rol que sea.',
     secciones: [
       {
         titulo: 'Para qué sirve',
         parrafos: [
-          'Si el mostrador de una sucursal tiene una impresora térmica de las que usan rollo angosto (80 mm, las típicas de los comercios), esta pantalla la configura para que, al registrar un pago en Cobranzas, salga el comprobante solo, sin ningún cartel ni diálogo que interrumpa. Es completamente opcional: sin configurar nada, cobrar y registrar pagos funciona exactamente igual, simplemente no sale ningún papel.',
+          'Si el mostrador de una sucursal tiene una impresora térmica de las que usan rollo angosto (80 mm, las típicas de los comercios), esta pantalla la configura para que, al registrar un pago en Cobranzas, salga el comprobante. Es completamente opcional: sin configurar nada, cobrar y registrar pagos funciona exactamente igual, simplemente no sale ningún papel.',
+          'La pantalla la ve y la usa cualquier persona con sesión abierta, sea EMPLEADO, ADMIN o SUPER_ADMIN: la impresora es la que tiene esa computadora delante, y quien cobra es quien se da cuenta de que hay que cambiarla, apagarla o dejar de gastar papel, sin tener que esperar a un administrador.',
         ],
       },
       {
         titulo: 'Cómo se configura',
         parrafos: [
           'Se tilda «Imprimir un comprobante al registrar un pago», se elige la impresora de la lista que detecta esta computadora (o se escribe el nombre a mano si Windows no encuentra ninguna) y se confirma el ancho del papel, que en una POS-80 es 80 milímetros. «Guardar» aplica los cambios, y «Imprimir una prueba» manda un comprobante de prueba para confirmar que todo funciona antes de usarla con un cliente delante; ese botón sólo se habilita una vez guardados los cambios.',
+        ],
+      },
+      {
+        titulo: 'Preguntar antes de imprimir',
+        parrafos: [
+          'El segundo tilde, «Preguntar antes de imprimir cada comprobante», hace que después de guardar el pago aparezca un cartel con el cliente, la compañía y el importe, y dos botones: «Imprimir» y «No imprimir». Sirve para las compañías que no piden ticket: se cierra el cartel y no se gasta papel. Viene activado, y funciona igual se cobre desde la planilla de Cartera, desde la ficha del cliente o desde la caja del día.',
+          'Destildarlo vuelve al comportamiento anterior: el comprobante sale solo, sin ningún cartel que interrumpa. Cerrar el cartel con la cruz o con Escape cuenta como «No imprimir»: no sale papel, y el pago queda registrado igual en los dos casos.',
+        ],
+      },
+      {
+        titulo: 'Las direcciones del ticket',
+        parrafos: [
+          'El comprobante encabeza con la dirección de la sucursal donde se cobró; el resto del encabezado (provincia y teléfono, CUIT e inicio de actividades) es el mismo para toda la agencia. Las direcciones se cargan en la tarjeta «Direcciones del ticket», una por sucursal, y vienen puestas las tres de siempre: Avellaneda, Sarandí y Lanús.',
+          'Si mañana abre una sucursal nueva, se escribe su nombre en «Agregar una sucursal», se le carga la dirección y se guarda: desde el próximo ticket sale con la suya, sin tocar el programa.',
         ],
       },
       {

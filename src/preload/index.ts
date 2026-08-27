@@ -101,6 +101,10 @@ const api: ApiDm = {
     estado: () => invocar('impresora:estado'),
     guardar: (datos) => invocar('impresora:guardar', datos),
     prueba: () => invocar('impresora:prueba'),
+    imprimirPago: (pagoId) => invocar('impresora:imprimirPago', pagoId),
+    direcciones: () => invocar('impresora:direcciones'),
+    guardarDirecciones: (direcciones) => invocar('impresora:guardarDirecciones', direcciones),
+    alPedirTicket: (escuchar) => suscribir('impresora:preguntar', escuchar),
   },
   clientes: {
     listar: (filtros) => invocar('clientes:listar', filtros),
