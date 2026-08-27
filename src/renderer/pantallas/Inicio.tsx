@@ -21,7 +21,6 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
   const modulosDeTrabajo = MODULOS.filter(
     (modulo) => modulo.id !== 'inicio' && (!esAreaDePermisos(modulo.id) || puedeVer(modulo.id)),
   )
-  const disponibles = modulosDeTrabajo.filter((modulo) => modulo.disponible).length
 
   return (
     <div className="p-8">
@@ -34,9 +33,7 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
           <BotonAyuda clave="inicio" variante="oscuro" />
         </div>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/75">
-          Estás trabajando en la sucursal {usuario.sucursal.nombre} como {NOMBRE_ROL[usuario.rol].toLowerCase()}. Ya
-          podés usar {disponibles} de los {modulosDeTrabajo.length} módulos; el resto se va habilitando en las próximas
-          versiones.
+          Estás trabajando en la sucursal {usuario.sucursal.nombre} como {NOMBRE_ROL[usuario.rol].toLowerCase()}.
         </p>
       </section>
 
@@ -44,7 +41,7 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
 
       <div className="mt-8">
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Módulos</p>
-        <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-slate-900">Todo lo que va a tener DM Gestión</h3>
+        <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-slate-900">Todos los módulos</h3>
       </div>
 
       <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
