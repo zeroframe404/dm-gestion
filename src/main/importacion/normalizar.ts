@@ -22,6 +22,32 @@ export function normalizarTexto(valor: unknown): string {
     .trim()
 }
 
+/**
+ * Dos textos que la agencia lee como el mismo valor: «LANUS», «Lanús» y «lanus » son un solo local.
+ * Es la comparación que tiene que usar TODO filtro de sucursal o compañía; con `===` sobre el texto
+ * crudo, elegir del desplegable la forma que no escribió la hoja deja el listado vacío sin explicar
+ * por qué (ver el comentario de servicios/polizas.ts).
+ */
+export function mismoTexto(a: unknown, b: unknown): boolean {
+  return normalizarTexto(a) === normalizarTexto(b)
+}
+
+/**
+ * Los valores distintos de una lista, sin repetir por mayúsculas ni tildes y ordenados como se leen.
+ * Es lo que alimenta los desplegables: si «LANUS» y «Lanús» quedaran como dos opciones, elegir una
+ * escondería las filas de la otra.
+ */
+export function sinRepetirTexto(valores: Array<string | null | undefined>): string[] {
+  const vistos = new Map<string, string>()
+  for (const valor of valores) {
+    const limpio = limpiar(valor)
+    if (!limpio) continue
+    const clave = normalizarTexto(limpio)
+    if (!vistos.has(clave)) vistos.set(clave, limpio)
+  }
+  return [...vistos.values()].sort((a, b) => a.localeCompare(b, 'es'))
+}
+
 export function soloDigitos(valor: unknown): string {
   return limpiar(valor).replace(/\D+/g, '')
 }

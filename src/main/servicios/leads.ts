@@ -24,7 +24,7 @@ import {
   type SesionUsuario,
 } from '../../shared/tipos'
 import { db } from '../db/base'
-import { ahoraIso, generarId, limpiar, normalizarDocumento, normalizarTexto } from '../importacion/normalizar'
+import { ahoraIso, generarId, limpiar, mismoTexto, normalizarDocumento, normalizarTexto, sinRepetirTexto } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANAS_DE_LA_APP } from '../sincronizacion/pestanasApp'
 import { telefonoParaWhatsapp } from './cartera'
@@ -34,6 +34,7 @@ import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
 import { nombreDePestana } from './hojas'
 import { presupuestosDeLead } from './presupuestos'
+import { idDeSucursalPorNombre } from './sucursales'
 import { tareasDeVinculo } from './tareas'
 import { enteroPositivo, objeto, texto } from './validacion'
 
@@ -142,7 +143,7 @@ const CERRADOS: EstadoLead[] = ['GANADO', 'PERDIDO']
 export function listarLeads(filtros: unknown): ListadoLeads {
   const f = normalizarFiltros(filtros)
   const todos = (db().prepare(`${SELECT_LEAD} ORDER BY l.id DESC`).all() as FilaCruda[]).map(aFila)
-  const sucursales = [...new Set(todos.map((l) => limpiar(l.sucursal)).filter(Boolean))].sort()
+  const sucursales = sinRepetirTexto(todos.map((l) => l.sucursal))
 
   const busqueda = normalizarTexto(f.busqueda)
   const documento = normalizarDocumento(f.busqueda)
@@ -161,7 +162,7 @@ export function listarLeads(filtros: unknown): ListadoLeads {
   const sinEstado = todos.filter(
     (lead) =>
       (!f.origen || lead.origen === f.origen) &&
-      (!f.sucursal || limpiar(lead.sucursal) === f.sucursal) &&
+      (!f.sucursal || mismoTexto(lead.sucursal, f.sucursal)) &&
       (f.incluirCerrados || !CERRADOS.includes(lead.estado) || lead.estado === f.estado) &&
       coincide(lead),
   )
@@ -169,7 +170,7 @@ export function listarLeads(filtros: unknown): ListadoLeads {
   const porEstado = { NUEVO: 0, 'EN CHARLA': 0, COTIZADO: 0, GANADO: 0, PERDIDO: 0 } as Record<EstadoLead, number>
   for (const lead of todos) {
     if (f.origen && lead.origen !== f.origen) continue
-    if (f.sucursal && limpiar(lead.sucursal) !== f.sucursal) continue
+    if (f.sucursal && !mismoTexto(lead.sucursal, f.sucursal)) continue
     if (!coincide(lead)) continue
     porEstado[lead.estado]++
   }
@@ -301,7 +302,7 @@ export function crearLead(datos: DatosDeLead, actor: SesionUsuario): FichaLead {
         documento: campos.documento || null,
         documento_normalizado: normalizarDocumento(campos.documento) || null,
         email: campos.email || null,
-        sucursal_id: sucursalPorNombre(campos.sucursal),
+        sucursal_id: idDeSucursalPorNombre(campos.sucursal),
         sucursal_texto: campos.sucursal || null,
         interes: campos.interes || null,
         tipo_vehiculo: campos.tipoVehiculo || null,
@@ -335,12 +336,6 @@ export function crearLead(datos: DatosDeLead, actor: SesionUsuario): FichaLead {
     valorNuevo: `${campos.nombre}${campos.interes ? ` · ${campos.interes}` : ''} · ${campos.origen}`,
   })
   return fichaDeLead(id)
-}
-
-function sucursalPorNombre(nombre: string): number | null {
-  if (!nombre) return null
-  const fila = db().prepare('SELECT id FROM sucursales WHERE nombre = ? COLLATE NOCASE').get(nombre) as { id: number } | undefined
-  return fila?.id ?? null
 }
 
 /** Qué campos del lead se editan y cómo se llaman en el historial y en la hoja. */
@@ -401,7 +396,7 @@ export function editarLead(leadId: number, datos: DatosDeLead, actor: SesionUsua
       documento: campos.documento || null,
       documento_normalizado: normalizarDocumento(campos.documento) || null,
       email: campos.email || null,
-      sucursal_id: sucursalPorNombre(campos.sucursal),
+      sucursal_id: idDeSucursalPorNombre(campos.sucursal),
       sucursal_texto: campos.sucursal || null,
       interes: campos.interes || null,
       tipo_vehiculo: campos.tipoVehiculo || null,

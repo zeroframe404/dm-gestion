@@ -44,6 +44,7 @@ import {
 import { encolar } from '../sincronizacion/cola'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
+import { idDeSucursalPorNombre } from './sucursales'
 import { registrarTareaNueva } from './tareas'
 import { enteroPositivo, objeto, texto as validarTexto } from './validacion'
 
@@ -793,21 +794,6 @@ function describirDocumento(valor: string): string {
   return `el documento ${limpiar(valor) || digitos}`
 }
 
-/** La sucursal del catálogo que corresponde a ese texto. La hoja escribe «DOCK SUD» y «DOCKSUD». */
-function resolverSucursal(valor: string): number | null {
-  if (!valor) return null
-  const normalizado = normalizarTexto(valor)
-  const sinEspacios = normalizado.replace(/ /g, '')
-  const fila = db()
-    .prepare(
-      `SELECT id FROM sucursales
-       WHERE REPLACE(UPPER(nombre), ' ', '') = @sinEspacios OR UPPER(nombre) = @normalizado
-       LIMIT 1`,
-    )
-    .get({ normalizado, sinEspacios }) as { id: number } | undefined
-  return fila?.id ?? null
-}
-
 function existeClave(clave: string): boolean {
   return db().prepare('SELECT 1 FROM clientes WHERE clave = ?').get(clave) !== undefined
 }
@@ -875,7 +861,7 @@ export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): Resul
       email: campos.email || null,
       direccion: campos.direccion || null,
       localidad: campos.localidad || null,
-      sucursal_id: resolverSucursal(campos.sucursal),
+      sucursal_id: idDeSucursalPorNombre(campos.sucursal),
       sucursal_texto: campos.sucursal || null,
       fecha_nacimiento: campos.fechaNacimiento || null,
       ahora,
@@ -979,7 +965,7 @@ export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: S
         email: campos.email || null,
         direccion: campos.direccion || null,
         localidad: campos.localidad || null,
-        sucursal_id: resolverSucursal(campos.sucursal),
+        sucursal_id: idDeSucursalPorNombre(campos.sucursal),
         sucursal_texto: campos.sucursal || null,
         fecha_nacimiento: campos.fechaNacimiento || null,
         ahora,
