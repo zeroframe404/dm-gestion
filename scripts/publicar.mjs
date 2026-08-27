@@ -42,12 +42,28 @@ function gh(args) {
 }
 
 // Empuja el tag si todavía no está en GitHub: "gh release create" lo necesita para anclar el Release.
-try {
-  execFileSync('git', ['rev-parse', tag], { cwd: raiz, stdio: 'ignore' })
-} catch {
-  execFileSync('git', ['tag', tag], { cwd: raiz, stdio: 'inherit' })
+//
+// Cuando la publicación la dispara el propio tag (`npm version patch` empuja el tag y eso arranca el
+// workflow), el tag YA está en GitHub y no hay nada que empujar. Y empujarlo igual no era inofensivo:
+// `npm version` crea un tag ANOTADO, mientras que el `git tag` de acá abajo crea uno liviano y
+// `actions/checkout` deja en el runner el commit pelado. Los dos objetos no son el mismo, así que git
+// rechazaba el push con «tag already exists» y se caía la publicación con el instalador ya compilado.
+// Por eso se pregunta por el tag REMOTO, no por el local.
+function estaEnGitHub() {
+  const salida = execFileSync('git', ['ls-remote', '--tags', 'origin', tag], { cwd: raiz, encoding: 'utf8' })
+  return salida.trim() !== ''
 }
-execFileSync('git', ['push', 'origin', tag], { cwd: raiz, stdio: 'inherit' })
+
+if (estaEnGitHub()) {
+  console.log(`[publicar] El tag ${tag} ya está en GitHub.`)
+} else {
+  try {
+    execFileSync('git', ['rev-parse', '--verify', `refs/tags/${tag}`], { cwd: raiz, stdio: 'ignore' })
+  } catch {
+    execFileSync('git', ['tag', tag], { cwd: raiz, stdio: 'inherit' })
+  }
+  execFileSync('git', ['push', 'origin', tag], { cwd: raiz, stdio: 'inherit' })
+}
 
 let yaExiste = true
 try {
