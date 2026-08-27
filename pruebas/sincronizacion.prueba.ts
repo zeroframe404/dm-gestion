@@ -739,3 +739,16 @@ test('un aviso cargado en otra computadora llega por la importación, no queda s
   assert.equal(avisosDeRechazos(enLanusSesion).nuevos, 1)
   cerrarBaseDeDatos()
 })
+
+/**
+ * El motor de la última prueba quedaba encendido. `escenario()` apaga el ANTERIOR al armar el
+ * siguiente, y después del último no hay siguiente: sus temporizadores —el de subida cada diez
+ * segundos— seguían corriendo durante las pruebas de los demás módulos. En cuanto una de esas cierra
+ * la base (`cerrarBaseDeDatos()`, que es lo que hacen casi todas al terminar), el ciclo toca una base
+ * cerrada, la promesa queda rechazada sin dueño y node:test termina el proceso con error AUNQUE no
+ * haya fallado ninguna prueba. Así se cayó la publicación de 1.0.13: «374 pass, 0 fail» y exit 1.
+ */
+test('el motor queda apagado cuando terminan las pruebas de sincronización', () => {
+  motorAnterior?.apagar()
+  assert.equal(motorAnterior?.estaEncendido() ?? false, false, 'un motor encendido sigue tocando la base de las pruebas que vienen después')
+})
