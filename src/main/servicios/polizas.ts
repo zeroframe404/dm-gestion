@@ -44,7 +44,7 @@ import {
   normalizarTexto,
 } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
-import { darDeBaja, nombreDePestanaMensual, periodosDisponibles, pestanaDeBajas } from './cartera'
+import { darDeBaja, INSERT_BAJA, nombreDePestanaMensual, periodosDisponibles, pestanaDeBajas } from './cartera'
 import { sincronizarCompanias } from './companias'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
@@ -1054,19 +1054,24 @@ export function darDeBajaPoliza(polizaId: number, datos: DatosDeBaja, actor: Ses
   const hoy = hoyLocal()
   const ahora = ahoraIso()
 
+  // Los datos del cliente y del vehículo no están en `leerCruda` (el listado no los necesita) pero sí
+  // en la foto de la baja: se leen acá, una vez, para que la baja guarde lo mismo que la de la planilla.
+  const cliente = db().prepare('SELECT telefono, email, direccion, localidad FROM clientes WHERE id = ?').get(fila.cliente_id) as
+    | { telefono: string | null; email: string | null; direccion: string | null; localidad: string | null }
+    | undefined
+  const vehiculo =
+    fila.vehiculo_id === null
+      ? undefined
+      : (db().prepare('SELECT tipo, marca, modelo, anio, motor, chasis, uso, color FROM vehiculos WHERE id = ?').get(fila.vehiculo_id) as
+          | { tipo: string | null; marca: string | null; modelo: string | null; anio: string | null; motor: string | null; chasis: string | null; uso: string | null; color: string | null }
+          | undefined)
+  const datosDePoliza = db().prepare('SELECT prima, productor, alta FROM polizas WHERE id = ?').get(fila.id) as
+    | { prima: string | null; productor: string | null; alta: string | null }
+    | undefined
+
   db().transaction(() => {
     db()
-      .prepare(
-        `INSERT INTO bajas (fila_id, pestana, periodo, mes_texto, poliza_id, cliente_id, cliente_nombre, documento, compania,
-                            numero_poliza, patente, sucursal_texto, motivo, fecha_baja, fecha_baja_iso, observaciones,
-                            nota, hecha_en_la_app, cuota_fila_id, creado_en, actualizado_en)
-         VALUES (@fila_id, @pestana, @periodo, @mes_texto, @poliza_id, @cliente_id, @cliente_nombre, @documento, @compania,
-                 @numero_poliza, @patente, @sucursal_texto, @motivo, @fecha_baja, @fecha_baja_iso, @observaciones,
-                 @nota, 1, NULL, @ahora, @ahora)
-         ON CONFLICT(fila_id) DO UPDATE SET
-           motivo = excluded.motivo, nota = excluded.nota, fecha_baja = excluded.fecha_baja,
-           fecha_baja_iso = excluded.fecha_baja_iso, actualizado_en = excluded.actualizado_en`,
-      )
+      .prepare(INSERT_BAJA)
       .run({
         fila_id: bajaFilaId,
         pestana: PESTANA_APP,
@@ -1085,6 +1090,30 @@ export function darDeBajaPoliza(polizaId: number, datos: DatosDeBaja, actor: Ses
         fecha_baja_iso: hoy,
         observaciones: fila.observaciones,
         nota: nota || null,
+        cuota_fila_id: null,
+        telefono: cliente?.telefono ?? null,
+        email: cliente?.email ?? null,
+        direccion: cliente?.direccion ?? null,
+        localidad: cliente?.localidad ?? null,
+        cobertura: fila.cobertura,
+        propuesta: fila.propuesta,
+        cuota: fila.cuota,
+        dia_vencimiento: fila.dia_vencimiento,
+        forma_pago: fila.forma_pago,
+        prima: datosDePoliza?.prima ?? null,
+        productor: datosDePoliza?.productor ?? null,
+        vigencia_desde: fila.vigencia_desde,
+        vigencia_hasta: fila.vigencia_hasta,
+        alta: datosDePoliza?.alta ?? null,
+        vehiculo_id: fila.vehiculo_id,
+        tipo_vehiculo: vehiculo?.tipo ?? fila.tipo_vehiculo,
+        marca: vehiculo?.marca ?? fila.marca,
+        modelo: vehiculo?.modelo ?? fila.modelo,
+        anio: vehiculo?.anio ?? fila.anio,
+        motor: vehiculo?.motor ?? null,
+        chasis: vehiculo?.chasis ?? null,
+        uso: vehiculo?.uso ?? null,
+        color: vehiculo?.color ?? null,
         ahora,
       })
     db().prepare('UPDATE polizas SET activa = 0, actualizado_en = ? WHERE id = ?').run(ahora, fila.id)

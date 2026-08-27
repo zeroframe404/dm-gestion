@@ -86,7 +86,15 @@ import type {
   FilaRiesgoVario,
   PlanillaDelMes,
   PlantillaAviso,
+  ResultadoDeReactivacion,
   ResumenCierreDeMes,
+  // Avisos de rechazo del débito automático.
+  AvisosDeRechazos,
+  DatosDeRechazo,
+  EstadoDeRechazo,
+  FilaRechazo,
+  FiltrosRechazos,
+  ListadoRechazos,
   CredencialesIngreso,
   DatosConexionGoogle,
   DatosEdicionUsuario,
@@ -170,10 +178,29 @@ export interface Canales {
   'cartera:marcarAvisado': (filaId: string) => Resultado<FilaCartera>
   'cartera:registrarPago': (filaId: string, datos: DatosDePago) => Resultado<FilaCartera>
   'cartera:darDeBaja': (filaId: string, datos: DatosDeBaja) => Resultado<null>
+  /** Deshace una baja recién hecha en la aplicación: la fila vuelve al mes del que salió. */
   'cartera:deshacerBaja': (bajaId: number) => Resultado<FilaBaja[]>
+  /**
+   * «Poner vigente»: la póliza vuelve a la cartera en el mes abierto, sin cargarla de nuevo. Sirve
+   * también para las bajas importadas de la hoja (el cliente que se fue en julio y vuelve en septiembre).
+   */
+  'cartera:reactivarBaja': (bajaId: number) => Resultado<ResultadoDeReactivacion>
   'cartera:bajas': (periodo: string | null) => Resultado<FilaBaja[]>
   'cartera:cerrarMes': () => Resultado<ResumenCierreDeMes>
   'cartera:historialDeFila': (filaId: string) => Resultado<EntradaHistorial[]>
+
+  // Avisos de rechazo del débito automático: le rebotó el CBU a alguien y la sucursal que lo atiende
+  // tiene que enterarse para llamarlo.
+  /** Avisa a la sucursal de que a esta póliza le rebotó el débito. */
+  'rechazos:avisar': (polizaId: number, datos: DatosDeRechazo) => Resultado<FilaRechazo>
+  'rechazos:listar': (filtros: FiltrosRechazos) => Resultado<ListadoRechazos>
+  'rechazos:cambiarEstado': (rechazoId: number, estado: EstadoDeRechazo, filtros: FiltrosRechazos) => Resultado<ListadoRechazos>
+  /** Lo que mira la campana de rechazos: lo sin resolver de la sucursal de quien entró. */
+  'rechazos:avisos': () => Resultado<AvisosDeRechazos>
+  /** Abrir la campana cuenta como enterarse: lo pendiente de la sucursal pasa a «visto». */
+  'rechazos:marcarVistos': () => Resultado<AvisosDeRechazos>
+  /** Dar por resuelto un aviso desde la propia campana, sin ir a la pantalla. */
+  'rechazos:resolver': (rechazoId: number) => Resultado<AvisosDeRechazos>
 
   'companias:listar': () => Resultado<Compania[]>
   'companias:editar': (id: number, datos: DatosDeCompania) => Resultado<Compania>

@@ -28,6 +28,8 @@ export type AccionHistorial =
   | 'presupuesto'
   // Permisos por rol (Administración → Permisos).
   | 'permisos'
+  // Avisos de rechazo del débito automático.
+  | 'rechazo_debito'
 
 export interface CambioARegistrar {
   accion: AccionHistorial

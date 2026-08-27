@@ -3,6 +3,7 @@ import { NOMBRE_ROL } from '../../shared/tipos'
 import { useAcceso } from '../contexto/Acceso'
 import { usePermisos } from '../contexto/Permisos'
 import { useSesion, useUsuarioActual } from '../contexto/Sesion'
+import { CampanaDeRechazos } from './CampanaDeRechazos'
 import { CampanaDeTareas } from './CampanaDeTareas'
 import { IndicadorSync } from './IndicadorSync'
 import { Boton } from './ui'
@@ -11,8 +12,13 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
   const { salir } = useSesion()
   const usuario = useUsuarioActual()
   const { acceso } = useAcceso(false)
+  const permisos = usePermisos()
   // Sin acceso a Tareas la campana no tiene nada que avisar: no se muestra.
-  const verTareas = usePermisos().puedeVer('tareas')
+  const verTareas = permisos.puedeVer('tareas')
+  // La de rechazos es de la cartera del mostrador: la ve quien tenga Cartera o Pólizas a la vista, y
+  // sólo puede darlos por resueltos quien además pueda editar alguno de los dos.
+  const verRechazos = permisos.puedeVer('cartera') || permisos.puedeVer('polizas')
+  const resolverRechazos = permisos.puedeEditar('cartera') || permisos.puedeEditar('polizas')
 
   // Una sola línea bajo el nombre: si esta sesión se abrió sin internet, o si la base de usuarios
   // tiene un problema que sólo un superadministrador puede resolver.
@@ -37,6 +43,12 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
 
       <div className="ml-auto flex items-center gap-4">
         <IndicadorSync />
+        {verRechazos && (
+          <>
+            <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
+            <CampanaDeRechazos puedeResolver={resolverRechazos} puedeVerLaPantalla={permisos.puedeVer('cartera')} />
+          </>
+        )}
         {verTareas && (
           <>
             <span className="h-6 w-px bg-slate-200" aria-hidden="true" />

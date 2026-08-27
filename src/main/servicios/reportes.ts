@@ -191,15 +191,26 @@ const REPORTES: Reporte[] = [
   {
     id: 'bajas',
     nombre: 'Bajas',
-    descripcion: 'Quién se dio de baja, en qué mes y por qué motivo.',
+    descripcion: 'Quién se dio de baja, en qué mes y por qué motivo, con todos los datos que tenía en la cartera.',
     filtros: ['periodo', 'sucursal', 'compania', 'busqueda'],
+    // Las mismas columnas que muestra el panel de Cartera → Bajas: una baja tiene que poder mirarse
+    // entera también en el Excel, no sólo en pantalla.
     columnas: [
       col('periodo', 'Mes', 10),
       col('nombre', 'Apellido y nombre', 30),
       col('documento', 'DNI / CUIT', 15),
+      col('telefono', 'Teléfono', 16),
       col('compania', 'Compañía', 20),
       col('numeroPoliza', 'N° de póliza', 16),
+      col('cobertura', 'Cobertura', 18),
       col('patente', 'Patente', 11),
+      col('marca', 'Marca', 14),
+      col('modelo', 'Modelo', 18),
+      col('anio', 'Año', 7),
+      col('cuota', 'Cuota', 12),
+      col('formaPago', 'Forma de pago', 15),
+      col('vigenciaDesde', 'Vigencia desde', 14),
+      col('vigenciaHasta', 'Vigencia hasta', 14),
       col('sucursal', 'Sucursal', 14),
       col('motivo', 'Motivo', 20),
       col('fechaBaja', 'Fecha de baja', 13),
@@ -214,12 +225,27 @@ const REPORTES: Reporte[] = [
       const consulta: Consulta = { donde: [], parametros: [] }
       const periodo = limpiar(filtros.periodo)
       if (periodo && FORMATO_PERIODO.test(periodo)) condicion(consulta, 'b.periodo = ?', periodo)
+      // Igual que en la pantalla: primero la foto guardada en la baja y, para las que vinieron de la
+      // hoja y no la tienen, lo que se pueda completar desde la póliza, el cliente y el vehículo.
       return consultar(
-        `SELECT b.periodo, b.cliente_nombre AS nombre, b.documento, b.compania, b.numero_poliza AS numeroPoliza,
-                b.patente, COALESCE(NULLIF(TRIM(b.sucursal_texto), ''), cl.sucursal_texto) AS sucursal, b.motivo,
+        `SELECT b.periodo, b.cliente_nombre AS nombre, b.documento,
+                COALESCE(b.telefono, cl.telefono) AS telefono,
+                b.compania, b.numero_poliza AS numeroPoliza,
+                COALESCE(b.cobertura, p.cobertura) AS cobertura,
+                b.patente,
+                COALESCE(b.marca, v.marca) AS marca,
+                COALESCE(b.modelo, v.modelo) AS modelo,
+                COALESCE(b.anio, v.anio) AS anio,
+                b.cuota, b.forma_pago AS formaPago,
+                COALESCE(b.vigencia_desde, p.vigencia_desde) AS vigenciaDesde,
+                COALESCE(b.vigencia_hasta, p.vigencia_hasta) AS vigenciaHasta,
+                COALESCE(NULLIF(TRIM(b.sucursal_texto), ''), cl.sucursal_texto) AS sucursal, b.motivo,
                 COALESCE(b.fecha_baja_iso, b.fecha_baja) AS fechaBaja,
                 COALESCE(NULLIF(TRIM(b.nota), ''), b.observaciones) AS observaciones
-           FROM bajas b LEFT JOIN clientes cl ON cl.id = b.cliente_id`,
+           FROM bajas b
+           LEFT JOIN clientes cl ON cl.id = b.cliente_id
+           LEFT JOIN polizas p ON p.id = b.poliza_id
+           LEFT JOIN vehiculos v ON v.id = COALESCE(b.vehiculo_id, p.vehiculo_id)`,
         consulta,
         'b.periodo DESC, nombre',
       )

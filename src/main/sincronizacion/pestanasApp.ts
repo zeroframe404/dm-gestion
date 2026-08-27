@@ -1,8 +1,11 @@
-// Las tres pestañas que DM Gestión agrega a la hoja: APP LEADS, APP PRESUPUESTOS y APP TAREAS.
+// Las pestañas que DM Gestión agrega a la hoja: APP LEADS, APP PRESUPUESTOS, APP TAREAS y APP RECHAZOS.
 //
-// Leads, presupuestos y tareas no existen en el Excel de la agencia: son de la Fase 8. Para que igual
-// se puedan mirar desde Google —que es donde la agencia mira todo— la aplicación crea las pestañas al
-// final del archivo, con sus encabezados, la primera vez que hay algo que subir a alguna de ellas.
+// Leads, presupuestos, tareas y los avisos de rechazo del débito no existen en el Excel de la agencia.
+// Para que igual se puedan mirar desde Google —que es donde la agencia mira todo— la aplicación crea las
+// pestañas al final del archivo, con sus encabezados, la primera vez que hay algo que subir a alguna.
+//
+// APP RECHAZOS además es el camino por el que el aviso llega a la otra sucursal: la escribe la
+// computadora que avisa y la lee la de la sucursal avisada (ver importador.ts, `guardarRechazo`).
 //
 // Se crean tarde a propósito: una hoja de una agencia que todavía no cargó ni un lead no tiene por qué
 // llenarse de pestañas vacías. Y se crean AL FINAL, nunca en el medio: el orden de las pestañas es lo
@@ -80,6 +83,28 @@ export const PESTANAS_DE_LA_APP: PestanaDeLaApp[] = [
       'ESTADO',
       'VINCULO',
       'CREADO POR',
+      ENCABEZADO_ID,
+    ],
+  },
+  {
+    titulo: 'APP RECHAZOS',
+    tipo: 'APP_RECHAZOS',
+    encabezados: [
+      'FECHA',
+      'LOCAL',
+      'NOMBRE',
+      'DNI/CUIT',
+      'TELEFONO',
+      'COMPAÑIA',
+      'POLIZA',
+      'PATENTE',
+      'FORMA DE PAGO',
+      'CUOTA',
+      'MES',
+      'MOTIVO',
+      'OBSERVACIONES',
+      'ESTADO',
+      'CARGADO POR',
       ENCABEZADO_ID,
     ],
   },

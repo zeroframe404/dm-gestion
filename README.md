@@ -132,8 +132,9 @@ calculado solo y las acciones de un clic.
   `{vencimiento}`) y deja la fila en `ENVIADO` con la fecha; «Avisado» (el tilde) deja exactamente lo
   mismo en la planilla —`ENVIADO`, la fecha de hoy y la fila en AVISADOS HOY— **sin** abrir WhatsApp,
   para cuando ya se avisó por teléfono, en el mostrador o desde el celular (no necesita teléfono
-  cargado); «Registrar pago» llena `CUANDO PAGO` y crea el pago; «Dar de baja» pide motivo y nota y
-  mueve la póliza a **Bajas** del mes.
+  cargado); «Registrar pago» llena `CUANDO PAGO` y crea el pago; «Avisar rechazo del débito» (el
+  triángulo) le manda el aviso a la sucursal del cliente (ver **Rechazos**, más abajo); «Dar de baja»
+  pide motivo y nota y mueve la póliza a **Bajas** del mes.
 - **Propuesta**: la columna `PROPUESTA`, al lado de `POLIZA`, guarda el número que dan algunas compañías
   antes de emitir. Vive en `polizas.propuesta` (la misma que edita **Pólizas**), así que se ve en la
   ficha del cliente y sigue estando el mes que viene, pero **no se encola**: la hoja no tiene esa
@@ -142,18 +143,77 @@ calculado solo y las acciones de un clic.
   compañía, **tipo de vehículo** (auto, moto, pick up… salen del catálogo `tiposDeVehiculo`) y color de
   alerta, más la casilla «Sólo con AVISAR VTO».
 - **Los contadores de arriba filtran**, como en Siniestros, Tareas, Leads y Presupuestos: se toca
-  VENCEN HOY, VENCIDOS, AVISADOS HOY o PAGADOS HOY y la tabla queda con esas filas (volver a tocarlo, o
-  TOTAL, muestra el mes entero). El número lo calcula la misma condición con la que después se filtra,
-  así el cartel y la tabla no pueden discrepar, y los contadores siempre cuentan sobre el mes completo
-  aunque haya un filtro puesto: son el tablero del día, no un resumen de lo que se está mirando.
+  VENCEN HOY, VENCIDOS, AVISADOS HOY, SE LES TERMINA LA COBERTURA o PAGADOS HOY y la tabla queda con
+  esas filas (volver a tocarlo, o TOTAL, muestra el mes entero). El número lo calcula la misma
+  condición con la que después se filtra, así el cartel y la tabla no pueden discrepar, y los
+  contadores siempre cuentan sobre el mes completo aunque haya un filtro puesto: son el tablero del
+  día, no un resumen de lo que se está mirando.
+- **«Se les termina la cobertura»**, al lado de AVISADOS HOY: las cuotas ya vencidas y sin pago que la
+  compañía **todavía** cubre. Son exactamente las que el semáforo pinta 🟡 «Cubierto N d» y 🟠 «Último
+  día cob.», o sea `diasParaVencer < 0` y `finCobertura >= hoy`. Es la lista de a quién hay que llamar
+  hoy, porque cuando se termina esa ventana el cliente queda sin seguro. Los días los pone cada
+  compañía y salen de la misma configuración que el semáforo (ATM 7, RIVADAVIA 7, RÍO URUGUAY 7,
+  EUROAMÉRICA 7, GALENO 7, EQUIDAD 5, METROPOL 3), contados desde la fecha de vencimiento. Las pagas y
+  las de débito automático no entran: el semáforo no les calcula fin de cobertura.
 - **Bajas** (`Cartera → Bajas`): la lista del mes con su propio buscador (nombre, patente, póliza, DNI,
-  compañía o sucursal). Dar de baja **no borra nada**: el cliente, el vehículo y la póliza siguen en la
-  base (la póliza pasa a `activa = 0` y la fila del mes a `dada_de_baja = 1`), así que si la persona
-  vuelve más adelante se le carga una póliza nueva desde su ficha reusando el vehículo que ya está
-  cargado. Las bajas hechas en la app se pueden deshacer (ADMIN/SUPER_ADMIN).
+  compañía, sucursal o teléfono). Dar de baja **no borra nada**: el cliente, el vehículo y la póliza
+  siguen en la base (la póliza pasa a `activa = 0` y la fila del mes a `dada_de_baja = 1`).
+  - **La baja guarda la foto completa de la fila**, no sólo nombre, DNI, compañía, póliza, patente,
+    sucursal y motivo: también teléfono, email, dirección, localidad, vehículo entero (marca, modelo,
+    año, motor, chasis, uso, color), cobertura, propuesta, prima, productor, vigencias, alta, cuota,
+    día de vencimiento, forma de pago y observaciones. Se guarda en el momento de la baja porque es
+    cómo estaba el día que se fue: si la póliza cambia después, la baja tiene que seguir diciendo lo
+    de entonces. Haciendo clic en una fila se abre a la derecha ese panel completo.
+  - Las bajas **importadas de la hoja** no tienen esa foto, así que lo que falta se completa con
+    `COALESCE` desde la póliza, el cliente y el vehículo (`SELECT_BAJAS` en `servicios/cartera.ts`).
+    Lo que ni la hoja ni la base tienen, no aparece: no se inventa.
+  - **«Poner vigente»** (ADMIN/SUPER_ADMIN) devuelve la póliza a la cartera sin cargarla de nuevo: es
+    el cliente que se fue en julio y vuelve en septiembre. Reactiva la póliza, reusa su fila del mes
+    abierto si la tiene o le crea una con los últimos datos que tenía, y saca el renglón de la pestaña
+    BAJAS de la hoja. Sirve también para las bajas de la hoja, siempre que la baja esté enlazada a una
+    póliza (`bajas.poliza_id`); si no lo está —alguien que se fue antes de la planilla más nueva, de
+    quien no quedó ninguna póliza cargada— el botón no aparece y el servicio lo explica.
+  - **«Deshacer»** es otra cosa y sigue igual: el «me equivoqué» del momento, sólo para las bajas
+    hechas en la app, que devuelve la fila al mes del que salió.
 - **Meses anteriores**: se ven completos pero de sólo lectura. **Cerrar mes** (ADMIN/SUPER_ADMIN) crea el
   mes siguiente copiando las pólizas activas, igual que duplicar la hoja: conserva cuota, vencimiento,
   forma de pago y observaciones, y vacía el pago y el aviso.
+
+### Rechazos del débito automático (Cartera → Rechazos)
+
+El problema: cuando la compañía rebota un débito, quien se entera **no** es quien atiende al cliente. El
+archivo lo mira la administración y al cliente lo conoce su sucursal, así que el aviso viajaba por
+WhatsApp suelto y se perdía.
+
+- **Se avisa desde la póliza**: botón «Avisar rechazo del débito» arriba de una póliza (`Pólizas` →
+  abrir una) y el mismo botón en la columna «Acciones» de la planilla del mes. Pide a qué sucursal
+  avisarle (viene puesta la de la póliza), qué pasó (CBU rechazado, sin fondos, cuenta cerrada, CBU mal
+  cargado, tarjeta rechazada, otro) y una nota. El aviso se lleva la foto del cliente y la cuota:
+  teléfono, compañía, póliza, patente, forma de pago, cuota y mes.
+- **Le llega a la sucursal**, no a una persona: un rechazo lo atiende cualquiera del mostrador. Aparece
+  en la **campana del triángulo** de la barra de arriba a todos los que trabajan en esa sucursal, con
+  el punto rojo mientras nadie lo abrió. Va aparte de la campana de tareas a propósito: una tarea es de
+  una persona.
+- **Tres estados**: `PENDIENTE` (nadie lo abrió; es el que enciende el punto), `VISTO` (lo abrieron,
+  pero el cobro sigue sin resolverse: abrir la campana no es haber cobrado) y `RESUELTO` (se cobró o se
+  corrigió el CBU). Se resuelve desde la campana o desde la pantalla, y «Volver a abrir» lo devuelve a
+  pendiente.
+- **Apretar el botón dos veces no manda dos avisos**: si esa póliza ya tiene uno sin resolver del mismo
+  mes, se actualiza el que hay y vuelve a quedar pendiente.
+- **Cómo cruza de una computadora a otra.** Cada sucursal tiene su propia base local, así que el aviso
+  viaja por la hoja de Google en la pestaña **APP RECHAZOS**. Es la única de las pestañas que escribe la
+  aplicación que además **se lee de vuelta a su tabla** (`guardarRechazo` en `importacion/importador.ts`):
+  las otras tres (APP LEADS, APP PRESUPUESTOS, APP TAREAS) son de ida nada más, para poder mirarlas
+  desde Google. Además es la única pestaña de la app que entra en el **ciclo de bajada de todos los
+  días** (`pestanasDeTodosLosDias` en `sincronizacion/motor.ts`): un aviso que tardara hasta la próxima
+  bajada completa en aparecer no serviría para llamar a nadie. Lo que la sucursal avisada cambia
+  después —el estado y la nota— vuelve por la bajada normal (`DESTINOS.APP_RECHAZOS` en `bajada.ts`).
+- **`rechazos_debito.estado` no tiene `CHECK` ni `NOT NULL`**, igual que `pagos.resultado`: esa columna
+  viaja a la hoja, donde cualquiera puede escribir «resuelto» en minúscula o vaciar la celda. Se guarda
+  lo que venga y lo normaliza el servicio; una restricción ahí rompería la bajada.
+- **Quién puede qué**: avisar pide edición en Pólizas o en Cartera; mirar los avisos y darlos por
+  resueltos, cualquiera de los dos módulos a la vista (es la sucursal la que atiende, no un
+  administrador).
 
 ### Probar la pantalla
 
@@ -278,6 +338,12 @@ cobrarle. Se tilda lo que haga falta y la lista se rehace sola:
   la confirmación de un ADMIN o SUPER_ADMIN, y queda anotado en el historial.
 - La validación **degrada bien a propósito**: sin regla cargada para esa combinación, sin límite en la
   regla, o con el año del vehículo ilegible, no se advierte nada y la póliza se guarda normal.
+- **«Avisar rechazo del débito»**, arriba de una póliza ya cargada: le manda el aviso a la sucursal que
+  atiende al cliente para que lo llame y lo cobre a mano. Aparece también en las pólizas dadas de baja
+  (al que anularon por falta de pago igual hay que llamarlo, y la baja suele ser la consecuencia del
+  rechazo). Ver **Rechazos del débito automático**, más arriba.
+- **«Dar de baja»** guarda la foto completa de la póliza en `bajas` y la manda a `Cartera → Bajas`. Si
+  el cliente vuelve, «Poner vigente» la devuelve a la cartera sin cargarla de nuevo.
 
 ### Reglas de cobertura (Cartera → Reglas de cobertura)
 
@@ -588,19 +654,23 @@ siniestro); acá está el módulo propio.
   asignarla otra persona desde otra computadora y llega por la sincronización.
 - La que uno se pone a sí mismo **no** enciende su propia campana.
 
-### Las tres pestañas nuevas de la hoja
+### Las pestañas nuevas de la hoja
 
-Leads, presupuestos y tareas no existen en el Excel de la agencia. Para que igual se puedan mirar desde
-Google, DM Gestión crea **«APP LEADS»**, **«APP PRESUPUESTOS»** y **«APP TAREAS»** al final del archivo,
-con sus encabezados, **la primera vez que hay algo que subir a alguna de ellas**.
+Leads, presupuestos, tareas y los avisos de rechazo del débito no existen en el Excel de la agencia.
+Para que igual se puedan mirar desde Google, DM Gestión crea **«APP LEADS»**, **«APP PRESUPUESTOS»**,
+**«APP TAREAS»** y **«APP RECHAZOS»** al final del archivo, con sus encabezados, **la primera vez que
+hay algo que subir a alguna de ellas**.
 
 - Se crean tarde a propósito: una hoja de una agencia que todavía no cargó ni un lead no tiene por qué
   llenarse de pestañas vacías.
 - Se crean **al final**, nunca en el medio: el orden de las pestañas es lo que usa el importador para
   deducir el año de las planillas mensuales que no lo dicen en el título.
-- Van en un solo sentido (la aplicación escribe, la hoja mira). Sus filas quedan anotadas como conocidas
-  igual que las de cualquier otro módulo, así que volver a importar no las duplica ni dispara una
-  importación completa.
+- Las tres primeras van en un solo sentido (la aplicación escribe, la hoja mira). Sus filas quedan
+  anotadas como conocidas igual que las de cualquier otro módulo, así que volver a importar no las
+  duplica ni dispara una importación completa.
+- **«APP RECHAZOS» es la excepción y va en los dos sentidos**: se lee de vuelta a `rechazos_debito` y
+  entra en el ciclo de bajada de todos los días, porque es el camino por el que un aviso cargado en una
+  sucursal llega a la computadora de la otra. Ver **Rechazos del débito automático**, más arriba.
 - Las tareas de la Fase 5 —creadas antes de que la pestaña existiera— se quedan sin subir: no se inventa
   historia en la hoja.
 

@@ -43,7 +43,13 @@ export interface OpcionesMotor {
   pestanasDelCiclo?: (contexto: ContextoHoja) => string[]
 }
 
-/** Por defecto el ciclo mira lo que se usa todos los días: el mes abierto, sus bajas y los riesgos. */
+/**
+ * Por defecto el ciclo mira lo que se usa todos los días: el mes abierto, sus bajas y los riesgos.
+ *
+ * «APP RECHAZOS» también entra, y es la única pestaña de la aplicación que lo hace: es por donde le
+ * llega a una sucursal el aviso de que a un cliente suyo le rebotó el débito, y un aviso que tarda
+ * hasta la próxima bajada completa en aparecer no sirve para llamarlo.
+ */
 function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
   const mensuales = contexto.pestanas.filter((p) => p.tipo === 'MENSUAL' && p.periodo).sort((a, b) => (b.periodo ?? '').localeCompare(a.periodo ?? ''))
   const masNueva = mensuales[0]
@@ -55,7 +61,7 @@ function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
     }
   }
   for (const p of contexto.pestanas) {
-    if (p.tipo === 'RIESGOS_VARIOS' || p.tipo === 'PAGOS' || p.tipo === 'SINIESTROS') titulos.add(p.titulo)
+    if (p.tipo === 'RIESGOS_VARIOS' || p.tipo === 'PAGOS' || p.tipo === 'SINIESTROS' || p.tipo === 'APP_RECHAZOS') titulos.add(p.titulo)
   }
   return [...titulos]
 }

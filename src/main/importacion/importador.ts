@@ -335,6 +335,28 @@ function prepararSentencias(db: BaseDeDatos) {
         fecha_baja = excluded.fecha_baja, fecha_baja_iso = excluded.fecha_baja_iso, observaciones = excluded.observaciones,
         actualizado_en = excluded.actualizado_en`),
 
+    // Los avisos de rechazo del débito. Es la única pestaña APP que se lee de vuelta a su tabla, y es
+    // lo que hace que el aviso cargado en una sucursal llegue a la computadora de la otra. Lo que ya se
+    // sabe acá manda sobre lo que trae la hoja salvo en el estado, que es justamente lo que la otra
+    // sucursal cambia (COALESCE al revés dejaría un aviso resuelto como pendiente para siempre).
+    rechazo: db.prepare(`
+      INSERT INTO rechazos_debito (fila_id, pestana, poliza_id, cliente_id, cliente_nombre, documento, telefono, compania,
+                                   numero_poliza, patente, forma_pago, cuota, periodo, sucursal_texto, motivo, nota,
+                                   estado, fecha, avisado_por, creado_en, actualizado_en)
+      VALUES (@fila_id, @pestana, @poliza_id, @cliente_id, @cliente_nombre, @documento, @telefono, @compania,
+              @numero_poliza, @patente, @forma_pago, @cuota, @periodo, @sucursal_texto, @motivo, @nota,
+              @estado, @fecha, @avisado_por, @ahora, @ahora)
+      ON CONFLICT(fila_id) DO UPDATE SET
+        pestana = excluded.pestana,
+        poliza_id = COALESCE(excluded.poliza_id, rechazos_debito.poliza_id),
+        cliente_id = COALESCE(excluded.cliente_id, rechazos_debito.cliente_id),
+        cliente_nombre = excluded.cliente_nombre, documento = excluded.documento, telefono = excluded.telefono,
+        compania = excluded.compania, numero_poliza = excluded.numero_poliza, patente = excluded.patente,
+        forma_pago = excluded.forma_pago, cuota = excluded.cuota, periodo = excluded.periodo,
+        sucursal_texto = excluded.sucursal_texto, motivo = excluded.motivo, nota = excluded.nota,
+        estado = excluded.estado, fecha = excluded.fecha, avisado_por = excluded.avisado_por,
+        actualizado_en = excluded.actualizado_en`),
+
     riesgo: db.prepare(`
       INSERT INTO riesgos_varios (fila_id, pestana, cliente_id, cliente_nombre, documento, telefono, sucursal_texto, emision, emision_iso,
                                   tipo_riesgo, descripcion,
@@ -716,6 +738,7 @@ class TrabajoDeImportacion {
       'APP_LEADS',
       'APP_PRESUPUESTOS',
       'APP_TAREAS',
+      'APP_RECHAZOS',
       'OTRA',
     ]
     for (const tipo of prioridad) {
@@ -984,6 +1007,9 @@ class TrabajoDeImportacion {
               break
             case 'COBERTURA':
               this.guardarReglaCobertura(p, fila, resumen)
+              break
+            case 'APP_RECHAZOS':
+              this.guardarRechazo(p, fila, resumen)
               break
             default:
               break
@@ -1730,6 +1756,53 @@ class TrabajoDeImportacion {
       ahora: this.ahora,
     })
     this.contar(resumen, 'pagos')
+  }
+
+  /**
+   * Un aviso de rechazo del débito, tal como lo escribió la computadora que avisó. Es la vuelta del
+   * viaje: el aviso se carga en una sucursal, sube a «APP RECHAZOS» y desde ahí baja acá, que es cómo
+   * llega a la computadora de la sucursal avisada.
+   *
+   * El ESTADO se guarda normalizado a los tres que la aplicación entiende. Uno escrito a mano en la
+   * hoja que no sea ninguno de ellos se toma como PENDIENTE: es lo prudente, porque de los tres es el
+   * único que sigue a la vista.
+   */
+  private guardarRechazo(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
+    if (this.sinDatosUtiles(p, fila)) return
+    const ident = this.identificar(p, fila)
+    const fechaTexto = fila.valor('fecha')
+    const fecha = interpretarFecha(fechaTexto, null, this.anioActual)
+    if (fecha.problema) this.problema(p.titulo, fila.numero, fila.id, 'fecha de aviso inválida', fecha.problema)
+    const mesTexto = fila.valor('mes')
+    const periodo =
+      periodoDesdeTextoDeMes(mesTexto, this.periodoPorMes, this.anioDelPeriodo(this.masNueva?.periodo ?? null)) ??
+      (/^\d{4}-\d{2}$/.test(mesTexto) ? mesTexto : null)
+    const sucursalTexto = fila.valor('sucursal')
+    this.resolverSucursal(p, fila, sucursalTexto)
+    const estado = normalizarTexto(fila.valor('estado'))
+    this.sentencias.rechazo.run({
+      fila_id: fila.id,
+      pestana: p.titulo,
+      poliza_id: this.buscarPoliza(ident),
+      cliente_id: this.buscarCliente(ident),
+      cliente_nombre: oNulo(ident.nombre),
+      documento: oNulo(ident.documento),
+      telefono: oNulo(fila.valor('telefono')),
+      compania: oNulo(ident.compania),
+      numero_poliza: oNulo(ident.numero),
+      patente: oNulo(ident.patente),
+      forma_pago: oNulo(fila.valor('forma_pago')),
+      cuota: oNulo(fila.valor('cuota')),
+      periodo,
+      sucursal_texto: oNulo(sucursalTexto),
+      motivo: oNulo(fila.valor('motivo')),
+      nota: oNulo(fila.valor('observaciones')),
+      estado: estado === 'RESUELTO' ? 'RESUELTO' : estado === 'VISTO' ? 'VISTO' : 'PENDIENTE',
+      fecha: fecha.iso ?? (limpiar(fechaTexto) || this.ahora.slice(0, 10)),
+      avisado_por: oNulo(fila.valor('usuario')),
+      ahora: this.ahora,
+    })
+    this.contar(resumen, 'rechazos_debito')
   }
 
   private guardarReglaCobertura(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {

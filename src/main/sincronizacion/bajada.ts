@@ -92,6 +92,13 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
     // El RESULTADO de la rendición: lo tocan tanto la aplicación como la contadora en la hoja.
     resultado: { tabla: 'pagos', columna: 'resultado' },
   },
+  // Los avisos de rechazo del débito. Lo único que cambia después de creado el aviso es en qué anda
+  // (PENDIENTE → VISTO → RESUELTO) y la nota: eso lo toca la sucursal avisada, desde su computadora.
+  APP_RECHAZOS: {
+    estado: { tabla: 'rechazos_debito', columna: 'estado' },
+    observaciones: { tabla: 'rechazos_debito', columna: 'nota' },
+    motivo: { tabla: 'rechazos_debito', columna: 'motivo' },
+  },
   COBERTURA: {
     cobertura: { tabla: 'reglas_cobertura', columna: 'cobertura' },
     incluye: { tabla: 'reglas_cobertura', columna: 'incluye' },

@@ -23,19 +23,27 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
-        titulo: 'Las cuatro acciones por fila',
+        titulo: 'Las cinco acciones por fila',
         parrafos: [
-          'En la columna «Acciones» hay cuatro botones chiquitos para cada fila: avisar por WhatsApp, marcar como avisado, registrar un pago y dar de baja.',
+          'En la columna «Acciones» hay cinco botones chiquitos para cada fila: avisar por WhatsApp, marcar como avisado, registrar un pago, avisar un rechazo del débito y dar de baja.',
           '«Avisar» (el globito) abre WhatsApp con un mensaje ya armado para ese cliente y deja la fila marcada como avisada. «Avisado» (el tilde) hace lo mismo con la planilla —deja la fila en ENVIADO con la fecha de hoy y la suma a «Avisados hoy»— pero sin abrir WhatsApp: es para cuando ya se le avisó por otro lado, por teléfono, en el mostrador o desde el celular. No hace falta que el cliente tenga teléfono cargado.',
-          '«Registrar pago» abre un formulario para cargar cómo y cuándo se pagó esa cuota, sin salir de la planilla. «Dar de baja» saca la póliza de la cartera activa y la manda a Cartera → Bajas, pidiendo el motivo.',
-          'Las cuatro acciones quedan deshabilitadas en un mes cerrado (sólo lectura).',
+          '«Registrar pago» abre un formulario para cargar cómo y cuándo se pagó esa cuota, sin salir de la planilla. «Avisar rechazo del débito» (el triángulo) le manda un aviso a la sucursal que atiende al cliente para que lo llame y lo cobre a mano: es para cuando la compañía rebota el CBU o la tarjeta. «Dar de baja» saca la póliza de la cartera activa y la manda a Cartera → Bajas, pidiendo el motivo.',
+          'Las cinco acciones quedan deshabilitadas en un mes cerrado (sólo lectura).',
         ],
       },
       {
         titulo: 'Buscar y filtrar',
         parrafos: [
           'El buscador de arriba encuentra por nombre, patente, número de póliza o DNI. Al lado hay desplegables para filtrar por sucursal, forma de pago, compañía, tipo de vehículo (auto, moto, pick up…) y color de alerta, y una casilla «Sólo con AVISAR VTO» para ver nada más que las filas marcadas para avisar antes del vencimiento.',
-          'Las tarjetas de arriba (Total, Vencen hoy, Vencidos, Avisados hoy, Pagados hoy) son contadores del día: se actualizan solos con lo que va pasando. Además funcionan como filtro: tocá una y la tabla queda sólo con esas filas; tocala de nuevo (o tocá Total) para volver a ver el mes entero. Los números siguen contando sobre todo el mes aunque haya un filtro puesto.',
+          'Las tarjetas de arriba (Total, Vencen hoy, Vencidos, Avisados hoy, Se les termina la cobertura, Pagados hoy) son contadores del día: se actualizan solos con lo que va pasando. Además funcionan como filtro: tocá una y la tabla queda sólo con esas filas; tocala de nuevo (o tocá Total) para volver a ver el mes entero. Los números siguen contando sobre todo el mes aunque haya un filtro puesto.',
+        ],
+      },
+      {
+        titulo: '«Se les termina la cobertura»',
+        parrafos: [
+          'Es la tarjeta que está al lado de «Avisados hoy». Cuenta las cuotas que ya vencieron sin pago pero que la compañía todavía sigue cubriendo por unos días: son las que hay que llamar ahora, porque cuando esos días se terminan el cliente queda sin seguro.',
+          'Cuántos días cubre cada compañía después del vencimiento lo pone la compañía: ATM 7, Rivadavia 7, Río Uruguay 7, Euroamérica 7, Galeno 7, Equidad 5 y Metropol 3. Se cuentan desde la fecha de vencimiento de la cuota y se cambian en Administración → Compañías, así que si una compañía modifica su plazo se corrige en un solo lugar y la tarjeta lo toma enseguida.',
+          'Tocándola quedan en la tabla nada más que esas filas. En la columna «Alerta» cada una dice cuántos días le quedan («Cubierto 3 d», «Último día cob.»). Los que se cobran solos (débito, CBU, tarjeta) y los que ya pagaron no entran acá: no hay nada que perseguir.',
         ],
       },
       {
@@ -80,45 +88,104 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
   'cartera.bajas': {
     clave: 'cartera.bajas',
     titulo: 'Cartera → Bajas',
-    resumen: 'Quién dejó de ser cliente en el mes elegido, con el motivo y la fecha.',
+    resumen: 'Quién dejó de ser cliente en el mes elegido, con todos sus datos, y el botón para volver a ponerlo vigente.',
     secciones: [
       {
         titulo: 'Qué es esta pantalla',
         parrafos: [
-          'Es el listado de las pólizas que se dieron de baja en un mes, con el nombre, DNI, compañía, número de póliza, patente, sucursal, motivo y fecha de la baja. Se elige el mes con el selector de arriba, igual que en la Planilla.',
-          'Una baja se puede originar de dos maneras: apretando «Dar de baja» en una fila de la Planilla del mes (con motivo y nota opcional), o porque ya venía así cargada en la hoja de la agencia al importar. Las etiquetas «En la app» y «De la hoja», a la derecha de cada fila, dicen de cuál de las dos vino.',
+          'Es el listado de las pólizas que se dieron de baja en un mes. La tabla muestra lo que se lee de un vistazo —nombre, DNI, compañía, número de póliza, patente, vehículo, cuota, sucursal, motivo y fecha— y se elige el mes con el selector de arriba, igual que en la Planilla.',
+          'Una baja se puede originar de dos maneras: apretando «Dar de baja» en una fila de la Planilla del mes (con motivo y nota opcional), o porque ya venía así cargada en la hoja de la agencia al importar.',
+        ],
+      },
+      {
+        titulo: 'Ver todos los datos de una baja',
+        parrafos: [
+          'Haciendo clic en cualquier fila se abre a la derecha el panel con TODO lo que esa póliza tenía en la cartera el día que se fue: teléfono, email, dirección y localidad; el vehículo completo (marca, modelo, año, motor, chasis, uso, color); la póliza (cobertura, propuesta, prima, productor, vigencias, alta); cómo estaba el mes (cuota, día de vencimiento, forma de pago, observaciones) y la baja en sí (motivo, nota y fecha).',
+          'Es una foto del momento de la baja, no lo que diga la póliza hoy: si después se corrige algo, la baja sigue mostrando cómo estaba cuando el cliente se fue. En las bajas viejas que vinieron de la hoja puede haber datos que la hoja nunca tuvo; lo que falta se completa desde la ficha del cliente y del vehículo, y lo que no se sepa simplemente no aparece.',
+          'Desde el pie del panel se salta a la ficha del cliente con «Ver el cliente».',
         ],
       },
       {
         titulo: 'Buscar una baja',
         parrafos: [
-          'El buscador de arriba (la lupa) filtra la lista del mes por nombre, patente, número de póliza, DNI, compañía o sucursal, igual que en Siniestros. Sirve para encontrar rápido a alguien puntual sin recorrer toda la lista.',
+          'El buscador de arriba (la lupa) filtra la lista del mes por nombre, patente, número de póliza, DNI, compañía, sucursal o teléfono, igual que en Siniestros. Sirve para encontrar rápido a alguien puntual sin recorrer toda la lista.',
         ],
       },
       {
-        titulo: 'Qué pasa con los datos de una baja',
+        titulo: 'Poner vigente una póliza',
         parrafos: [
-          'Dar de baja no borra nada: el cliente, el vehículo (patente, marca, modelo, motor, chasis) y la póliza siguen guardados. Lo que cambia es que la póliza deja de estar activa, sale de la planilla del mes y aparece acá con su motivo.',
-          'Si esa persona vuelve dentro de un mes o de un año, se abre su ficha en Clientes y está todo: se le carga una póliza nueva eligiendo el vehículo que ya tiene cargado, sin volver a tipear nada. Y si la baja fue un error, se deshace con el botón «Deshacer» de esta misma pantalla.',
+          'Es el caso del cliente que se dio de baja en julio y en septiembre vuelve: no hay que cargarlo de nuevo. Con el botón «Poner vigente» la póliza vuelve a estar activa y se le arma su fila en la planilla del mes abierto con los últimos datos que tenía; la baja sale de esta lista y también de la pestaña BAJAS de la hoja de Google.',
+          'Lo que haya cambiado —la cuota, la compañía, el vehículo— se corrige después en la planilla o en la póliza, con doble clic, como cualquier otro dato.',
+          'Funciona también con las bajas que venían de la hoja, siempre que la baja esté enlazada a una póliza conocida. Si el cliente se fue hace tanto que ya no queda ninguna póliza suya cargada, el botón no aparece: en ese caso hay que darla de alta desde Pólizas → Nueva póliza.',
+          'Sólo lo pueden hacer los roles con más permisos (no el Empleado), porque mueve la planilla que están mirando todos.',
         ],
       },
       {
         titulo: 'Deshacer una baja',
         parrafos: [
-          'Las bajas hechas desde la aplicación (etiqueta «En la app») se pueden deshacer con el botón «Deshacer»: la póliza vuelve a la cartera activa como si nunca se hubiera dado de baja. Sólo lo pueden hacer los roles con más permisos (no el Empleado).',
-          'Las bajas que ya venían de la hoja («De la hoja») no tienen botón de deshacer acá: si hay que revertirlas hay que corregirlo en el origen.',
+          '«Deshacer», en el panel de la derecha, es otra cosa: es el «me equivoqué» del momento. Deja la fila exactamente como estaba, en el mes del que salió, y sólo sirve para las bajas hechas desde la aplicación.',
+          'Cuando la baja es de un mes anterior o vino de la hoja, lo que corresponde es «Poner vigente», que la trae al mes que se está trabajando.',
         ],
       },
     ],
     conceptos: [
       {
-        termino: 'En la app / De la hoja',
+        termino: 'Deshacer / Poner vigente',
         explicacion:
-          'Marca de origen de la baja: «En la app» es una baja hecha con el botón «Dar de baja» desde DM Gestión (se puede deshacer); «De la hoja» ya venía cargada así en la planilla de la agencia (no se deshace desde acá).',
+          '«Deshacer» revierte una baja recién hecha en la aplicación y devuelve la fila al mes del que salió. «Poner vigente» trae la póliza al mes abierto: es para el cliente que se fue y volvió.',
       },
       {
         termino: 'Motivo',
         explicacion: 'La razón de la baja (por ejemplo, cambio de compañía o vehículo vendido), si se cargó al darla de baja. Puede venir vacío si la hoja original no tenía esa columna.',
+      },
+    ],
+  },
+  'cartera.rechazos': {
+    clave: 'cartera.rechazos',
+    titulo: 'Cartera → Rechazos',
+    resumen: 'Los débitos que rebotaron y la sucursal que tiene que llamar al cliente para cobrarlos a mano.',
+    secciones: [
+      {
+        titulo: 'Para qué sirve',
+        parrafos: [
+          'Cuando la compañía rebota un débito —el CBU no tiene fondos, la cuenta se cerró, la tarjeta no pasó— esa cuota deja de cobrarse sola y hay que llamar al cliente. El problema de siempre es que quien se entera del rechazo no es quien lo atiende: el archivo lo mira la administración y al cliente lo conoce su sucursal.',
+          'Esta pantalla es el puente. Quien ve el rechazo aprieta un botón en la póliza, elige a qué sucursal avisarle y escribe qué pasó; en esa sucursal aparece un aviso en la campana de la barra de arriba, apenas entran al programa. El aviso viaja por la hoja de Google, así que llega aunque la sucursal trabaje en otra computadora.',
+        ],
+      },
+      {
+        titulo: 'Cómo se avisa un rechazo',
+        parrafos: [
+          'Hay dos lugares, y los dos hacen exactamente lo mismo: el botón «Avisar rechazo del débito» arriba de una póliza (Pólizas → abrir la póliza) y el botón del triángulo en la columna «Acciones» de la Planilla del mes.',
+          'Se abre un cuadro con tres cosas: a qué sucursal avisarle (viene puesta la del cliente), qué pasó (se rechazó el CBU, sin fondos, cuenta cerrada, CBU mal cargado, la tarjeta no pasó, u otro) y una nota libre para lo que la sucursal necesite saber.',
+          'Si se aprieta el botón dos veces no se manda el aviso dos veces: se actualiza el que ya estaba y vuelve a quedar pendiente.',
+        ],
+      },
+      {
+        titulo: 'Los tres estados',
+        parrafos: [
+          'Pendiente es un aviso que en la sucursal todavía no abrió nadie: es el que enciende el punto rojo de la campana. Visto quiere decir que lo abrieron, pero que el cobro sigue sin resolverse: abrir la campana no es haber cobrado. Resuelto es cuando ya se cobró o se corrigió el CBU, y deja de aparecer en lo pendiente.',
+          'Se marca como resuelto desde la propia campana o desde esta pantalla. Si se marcó de más, «Volver a abrir» lo devuelve a pendiente.',
+        ],
+      },
+      {
+        titulo: 'Qué se ve acá',
+        parrafos: [
+          'La pantalla abre filtrada por la sucursal de quien entró, que es lo que esa persona tiene que cobrar; sacando el filtro se ven los de todas, que es como la administración controla que se hayan resuelto.',
+          'De cada aviso se ve el estado, el cliente con su teléfono para llamarlo, la compañía y la póliza, la patente, la cuota y el mes que rebotó, qué pasó con la nota, la sucursal avisada, quién avisó y cuándo, y quién lo resolvió.',
+          'Las tarjetas de arriba cuentan cuántos hay en cada estado y además filtran: tocá una y quedan sólo esos.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Débito rechazado',
+        explicacion:
+          'Una cuota que se cobraba sola (CBU, débito o tarjeta) y que la compañía no pudo cobrar. Deja de estar «al día» y hay que perseguirla como cualquier otra deuda.',
+      },
+      {
+        termino: 'La campana del triángulo',
+        explicacion:
+          'La de la izquierda en la barra de arriba: muestra los rechazos sin resolver de tu sucursal. La otra campana es la de tus tareas, que son tuyas y no de la sucursal.',
       },
     ],
   },

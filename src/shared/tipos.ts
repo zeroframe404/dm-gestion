@@ -217,6 +217,7 @@ export type TipoPestana =
   | 'APP_LEADS'
   | 'APP_PRESUPUESTOS'
   | 'APP_TAREAS'
+  | 'APP_RECHAZOS'
   | 'OTRA'
 
 export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
@@ -232,6 +233,7 @@ export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
   APP_LEADS: 'Leads (la escribe DM Gestión)',
   APP_PRESUPUESTOS: 'Presupuestos (la escribe DM Gestión)',
   APP_TAREAS: 'Tareas (la escribe DM Gestión)',
+  APP_RECHAZOS: 'Rechazos de débito (la escribe DM Gestión)',
   OTRA: 'Sin clasificar (sólo crudo)',
 }
 
@@ -555,15 +557,47 @@ export interface AvisoPreparado {
   fila: FilaCartera
 }
 
+/**
+ * Una baja con todo lo que la fila tenía en la cartera, no sólo el nombre y el motivo.
+ *
+ * Los datos se guardan como una foto en el momento de la baja (la póliza puede cambiar después, y lo
+ * que hay que poder mirar es cómo estaba cuando se fue). Las bajas que vinieron de la hoja o que se
+ * cargaron antes de que existiera la foto completan lo que puedan desde el cliente, el vehículo y la
+ * póliza, que siguen estando: por eso ningún campo es obligatorio.
+ */
 export interface FilaBaja {
   id: number
   filaId: string
   periodo: string | null
+  clienteId: number | null
   clienteNombre: string | null
   documento: string | null
+  telefono: string | null
+  email: string | null
+  direccion: string | null
+  localidad: string | null
   compania: string | null
   numeroPoliza: string | null
+  propuesta: string | null
+  cobertura: string | null
   patente: string | null
+  vehiculo: string | null
+  marca: string | null
+  modelo: string | null
+  anio: string | null
+  motor: string | null
+  chasis: string | null
+  uso: string | null
+  color: string | null
+  cuota: string | null
+  diaVencimiento: string | null
+  formaPago: string | null
+  prima: string | null
+  productor: string | null
+  vigenciaDesde: string | null
+  vigenciaHasta: string | null
+  alta: string | null
+  observaciones: string | null
   sucursal: string | null
   motivo: string | null
   nota: string | null
@@ -571,6 +605,127 @@ export interface FilaBaja {
   polizaId: number | null
   /** true si la baja la cargó la aplicación (se puede deshacer); las importadas de la hoja, no. */
   hechaEnLaApp: boolean
+  /**
+   * true si la baja se puede volver a poner vigente: hace falta que se sepa de qué póliza es. Deshacer
+   * (que es el «me equivoqué», del mismo mes) sigue pidiendo además que la baja la haya hecho la app.
+   */
+  puedeReactivarse: boolean
+}
+
+/** Lo que devuelve «Poner vigente»: la baja volvió a la cartera y en qué mes quedó su fila. */
+export interface ResultadoDeReactivacion {
+  bajas: FilaBaja[]
+  clienteNombre: string
+  /** Mes en el que quedó la fila de la planilla, 'AAAA-MM'. */
+  periodo: string
+  /** true si hubo que crear la fila del mes abierto (la vieja era de un mes ya cerrado). */
+  filaNueva: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Avisos de rechazo del débito automático
+// ---------------------------------------------------------------------------
+// Cuando a la agencia le rebota un débito (el CBU no tiene fondos, la cuenta se cerró, la tarjeta no
+// pasó), quien lo ve tiene que poder avisarle a la sucursal del cliente para que lo llame y lo cobre.
+// El aviso viaja a la hoja igual que los leads y las tareas, así llega a la computadora de la sucursal.
+
+export const MOTIVOS_DE_RECHAZO = [
+  'CBU RECHAZADO',
+  'SIN FONDOS',
+  'CUENTA CERRADA',
+  'CBU MAL CARGADO',
+  'TARJETA RECHAZADA',
+  'OTRO',
+] as const
+export type MotivoDeRechazo = (typeof MOTIVOS_DE_RECHAZO)[number]
+
+export const NOMBRE_MOTIVO_RECHAZO: Record<MotivoDeRechazo, string> = {
+  'CBU RECHAZADO': 'Se rechazó el CBU',
+  'SIN FONDOS': 'Sin fondos en la cuenta',
+  'CUENTA CERRADA': 'La cuenta está cerrada',
+  'CBU MAL CARGADO': 'El CBU está mal cargado',
+  'TARJETA RECHAZADA': 'La tarjeta no pasó',
+  OTRO: 'Otro',
+}
+
+/**
+ * En qué anda el aviso:
+ *  - PENDIENTE: nadie de la sucursal lo abrió todavía (es lo que enciende la campana);
+ *  - VISTO: la sucursal lo abrió, pero el cobro sigue sin resolverse;
+ *  - RESUELTO: se cobró o se corrigió el CBU. Deja de aparecer en lo pendiente.
+ */
+export const ESTADOS_DE_RECHAZO = ['PENDIENTE', 'VISTO', 'RESUELTO'] as const
+export type EstadoDeRechazo = (typeof ESTADOS_DE_RECHAZO)[number]
+
+export const NOMBRE_ESTADO_RECHAZO: Record<EstadoDeRechazo, string> = {
+  PENDIENTE: 'Pendiente',
+  VISTO: 'Visto',
+  RESUELTO: 'Resuelto',
+}
+
+export interface FilaRechazo {
+  id: number
+  filaId: string | null
+  polizaId: number | null
+  clienteId: number | null
+  clienteNombre: string | null
+  documento: string | null
+  telefono: string | null
+  compania: string | null
+  numeroPoliza: string | null
+  patente: string | null
+  formaPago: string | null
+  cuota: string | null
+  /** Mes de la cuota que rebotó, 'AAAA-MM'; null si el aviso no es de un mes puntual. */
+  periodo: string | null
+  /** La sucursal a la que va el aviso: la que tiene que llamar al cliente. */
+  sucursal: string | null
+  motivo: string | null
+  nota: string | null
+  estado: EstadoDeRechazo
+  /** Día en que se avisó, 'AAAA-MM-DD'. */
+  fecha: string
+  avisadoPor: string | null
+  vistoEn: string | null
+  vistoPor: string | null
+  resueltoEn: string | null
+  resueltoPor: string | null
+  creadoEn: string
+}
+
+export interface DatosDeRechazo {
+  /** Sucursal a la que le llega el aviso. Vacío = la de la póliza, y si no la de quien avisa. */
+  sucursal: string
+  motivo: MotivoDeRechazo
+  nota: string
+}
+
+export interface FiltrosRechazos {
+  busqueda: string
+  sucursal: string
+  /** '' = todos los estados. */
+  estado: '' | EstadoDeRechazo
+}
+
+export interface ListadoRechazos {
+  filas: FilaRechazo[]
+  /** Cuántos hay en cada estado, con la búsqueda y el filtro de sucursal puestos pero no el de estado. */
+  porEstado: Record<EstadoDeRechazo, number>
+  total: number
+  sucursales: string[]
+  hoy: string
+}
+
+/** Lo que mira la campana de rechazos de la barra superior: lo de la sucursal de quien entró. */
+export interface AvisosDeRechazos {
+  /** Avisos de la sucursal que todavía nadie abrió: son los que encienden el punto. */
+  nuevos: number
+  /** Todo lo que la sucursal tiene sin resolver (pendiente o visto). */
+  sinResolver: number
+  filas: FilaRechazo[]
+  /** La sucursal cuyos avisos se están mirando. */
+  sucursal: string
+  hoy: string
 }
 
 export interface EntradaHistorial {

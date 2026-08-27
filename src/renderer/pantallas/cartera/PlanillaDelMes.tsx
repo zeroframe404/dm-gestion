@@ -1,6 +1,7 @@
 // La planilla del mes: la pantalla donde se trabaja todos los días. Es la hoja de Excel de siempre,
 // con el semáforo calculado solo y las tres acciones de un clic (avisar, registrar pago, dar de baja).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { diasEntre } from '../../../shared/polizas'
 import {
   calcularAlerta,
   nombreDePeriodo,
@@ -10,6 +11,7 @@ import {
   type ColorAlerta,
 } from '../../../shared/semaforo'
 import type { CampoEditable, FilaCartera, PlanillaDelMes as DatosPlanilla } from '../../../shared/tipos'
+import { DialogoRechazo } from '../../componentes/DialogoRechazo'
 import { Icono } from '../../componentes/Icono'
 import { Alerta as Aviso, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -56,10 +58,26 @@ function normalizar(valor: string | null | undefined): string {
  * exactamente la misma condición con la que se contó, así el número del cartel y las filas que
  * quedan en la tabla no pueden discrepar.
  */
-type Contador = '' | 'vencenHoy' | 'vencidos' | 'avisadosHoy' | 'pagadosHoy'
+type Contador = '' | 'vencenHoy' | 'vencidos' | 'avisadosHoy' | 'coberturaPorTerminar' | 'pagadosHoy'
 
 function estaPagada(fila: FilaCartera): boolean {
   return Boolean(fila.pagoFecha) || fila.pagoRegistrado
+}
+
+/**
+ * Días que le quedan de cobertura financiera a una fila ya vencida, o null si no corresponde.
+ *
+ * La cobertura financiera son los días que la compañía sigue cubriendo al cliente después del
+ * vencimiento y los pone cada una (ATM 7, Equidad 5, Metropol 3…, se configuran en Administración →
+ * Compañías). El semáforo ya calcula hasta qué día llega; acá sólo se mira cuántos días faltan.
+ *
+ * Las pagas y las de débito automático quedan afuera solas: el semáforo no les calcula fin de
+ * cobertura, porque no hay nada que perseguir.
+ */
+function diasDeCoberturaQueQuedan(entrada: FilaConAlerta, hoy: string): number | null {
+  const { alerta } = entrada
+  if (alerta.diasParaVencer === null || alerta.diasParaVencer >= 0 || !alerta.finCobertura) return null
+  return diasEntre(hoy, alerta.finCobertura)
 }
 
 function entraEnElContador(entrada: FilaConAlerta, contador: Contador, hoy: string): boolean {
@@ -71,6 +89,12 @@ function entraEnElContador(entrada: FilaConAlerta, contador: Contador, hoy: stri
       return !estaPagada(fila) && alerta.diasParaVencer !== null && alerta.diasParaVencer < 0
     case 'avisadosHoy':
       return (fila.fechaEnvio ?? '').startsWith(hoy)
+    // Ya venció y la compañía todavía lo cubre, pero por poco: son los que hay que llamar hoy, porque
+    // cuando se termina la cobertura el cliente queda sin seguro.
+    case 'coberturaPorTerminar': {
+      const quedan = diasDeCoberturaQueQuedan(entrada, hoy)
+      return !estaPagada(fila) && quedan !== null && quedan >= 0
+    }
     case 'pagadosHoy':
       return fila.pagoFecha === hoy
     default:
@@ -105,6 +129,7 @@ export function PlanillaDelMes() {
   const [editando, setEditando] = useState<{ filaId: string; campo: CampoEditable } | null>(null)
   const [pagoDe, setPagoDe] = useState<FilaCartera | null>(null)
   const [bajaDe, setBajaDe] = useState<FilaCartera | null>(null)
+  const [rechazoDe, setRechazoDe] = useState<FilaCartera | null>(null)
   const [cerrando, setCerrando] = useState(false)
 
   const cargar = useCallback(async (periodo: string | null) => {
@@ -177,14 +202,16 @@ export function PlanillaDelMes() {
     let vencenHoy = 0
     let vencidos = 0
     let avisadosHoy = 0
+    let coberturaPorTerminar = 0
     let pagadosHoy = 0
     for (const entrada of conAlerta) {
       if (entraEnElContador(entrada, 'vencenHoy', hoy)) vencenHoy++
       if (entraEnElContador(entrada, 'vencidos', hoy)) vencidos++
       if (entraEnElContador(entrada, 'avisadosHoy', hoy)) avisadosHoy++
+      if (entraEnElContador(entrada, 'coberturaPorTerminar', hoy)) coberturaPorTerminar++
       if (entraEnElContador(entrada, 'pagadosHoy', hoy)) pagadosHoy++
     }
-    return { total: conAlerta.length, vencenHoy, vencidos, avisadosHoy, pagadosHoy }
+    return { total: conAlerta.length, vencenHoy, vencidos, avisadosHoy, coberturaPorTerminar, pagadosHoy }
   }, [conAlerta, datos])
 
   const filaSeleccionada = useMemo(
@@ -297,7 +324,7 @@ export function PlanillaDelMes() {
       {
         id: 'acciones',
         titulo: 'Acciones',
-        ancho: 140,
+        ancho: 172,
         fija: true,
         celda: ({ fila }) => (
           <div className="flex items-center gap-0.5">
@@ -309,6 +336,17 @@ export function PlanillaDelMes() {
               onClick={() => void marcarAvisado(fila)}
             />
             <BotonAccion titulo="Registrar pago" icono="billete" disabled={soloLectura} onClick={() => setPagoDe(fila)} />
+            {/* Sin póliza enlazada no hay a qué colgarle el aviso: la fila es de la hoja y nada más. */}
+            <BotonAccion
+              titulo={
+                fila.polizaId === null
+                  ? 'Esta fila no está enlazada a ninguna póliza: no se le puede avisar el rechazo.'
+                  : 'Avisar a la sucursal que se le rechazó el débito'
+              }
+              icono="alerta"
+              disabled={soloLectura || fila.polizaId === null}
+              onClick={() => setRechazoDe(fila)}
+            />
             <BotonAccion titulo="Dar de baja" icono="cerrar" disabled={soloLectura} peligro onClick={() => setBajaDe(fila)} />
           </div>
         ),
@@ -418,6 +456,14 @@ export function PlanillaDelMes() {
           alTocar={() => alternarContador('avisadosHoy')}
         />
         <Contador
+          etiqueta="Se les termina la cobertura"
+          valor={contadores.coberturaPorTerminar}
+          tono="naranja"
+          activo={filtros.contador === 'coberturaPorTerminar'}
+          titulo="Ya venció la cuota y no figura paga, pero la compañía todavía los cubre por unos días más (ATM 7, Rivadavia 7, Río Uruguay 7, Euroamérica 7, Galeno 7, Equidad 5, Metropol 3, contados desde el vencimiento). Cuando se termina esa cobertura el cliente queda sin seguro: son los que hay que llamar ahora. Los días de cada compañía se cambian en Administración → Compañías."
+          alTocar={() => alternarContador('coberturaPorTerminar')}
+        />
+        <Contador
           etiqueta="Pagados hoy"
           valor={contadores.pagadosHoy}
           tono="verde"
@@ -519,6 +565,31 @@ export function PlanillaDelMes() {
         }}
         alFallar={setError}
       />
+      <DialogoRechazo
+        poliza={
+          rechazoDe && rechazoDe.polizaId !== null
+            ? {
+                polizaId: rechazoDe.polizaId,
+                clienteNombre: rechazoDe.nombre,
+                compania: rechazoDe.compania,
+                numeroPoliza: rechazoDe.numeroPoliza,
+                patente: rechazoDe.patente,
+                formaPago: rechazoDe.formaPago,
+                sucursal: rechazoDe.sucursal,
+              }
+            : null
+        }
+        alCerrar={() => setRechazoDe(null)}
+        alAvisar={(rechazo) => {
+          setRechazoDe(null)
+          setError(null)
+          setAviso(`Se le avisó a ${rechazo.sucursal ?? 'la sucursal'} que a ${rechazo.clienteNombre ?? 'este cliente'} se le rechazó el débito.`)
+        }}
+        alFallar={(mensaje) => {
+          setRechazoDe(null)
+          setError(mensaje)
+        }}
+      />
     </div>
   )
 }
@@ -538,14 +609,17 @@ function Contador({
 }: {
   etiqueta: string
   valor: number
-  tono?: 'neutro' | 'rojo' | 'azul' | 'verde'
+  tono?: 'neutro' | 'rojo' | 'naranja' | 'azul' | 'verde'
   titulo?: string
   activo: boolean
   alTocar: () => void
 }) {
+  // El naranja es el mismo del semáforo: lo que ya venció pero la compañía todavía cubre. Que el
+  // contador y la columna «Alerta» usen el mismo color es lo que hace que se lean como una sola cosa.
   const clases = {
     neutro: activo ? 'border-marino-500 bg-marino-50 text-marino-900' : 'border-slate-200 bg-white text-slate-900 hover:border-slate-300',
     rojo: activo ? 'border-red-500 bg-red-100 text-red-900' : 'border-red-200 bg-red-50 text-red-800 hover:border-red-300',
+    naranja: activo ? 'border-orange-500 bg-orange-100 text-orange-900' : 'border-orange-200 bg-orange-50 text-orange-800 hover:border-orange-300',
     azul: activo ? 'border-sky-500 bg-sky-100 text-sky-900' : 'border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300',
     verde: activo ? 'border-green-500 bg-green-100 text-green-900' : 'border-green-200 bg-green-50 text-green-800 hover:border-green-300',
   }[tono]
@@ -608,7 +682,7 @@ function BotonAccion({
   peligro,
 }: {
   titulo: string
-  icono: 'mensaje' | 'ok' | 'billete' | 'cerrar'
+  icono: 'mensaje' | 'ok' | 'billete' | 'cerrar' | 'alerta'
   onClick: () => void
   disabled?: boolean
   peligro?: boolean
