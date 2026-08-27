@@ -31,6 +31,7 @@ import type {
 import { db } from '../db/base'
 import { limpiar, normalizarTexto } from '../importacion/normalizar'
 import { catalogos, periodosDisponibles } from './cartera'
+import { SUCURSAL_DEL_PAGO } from './pagos'
 
 /** Cuántos meses mira la evolución. */
 const MESES_DE_EVOLUCION = 12
@@ -46,12 +47,8 @@ const SUCURSAL_DE_LA_CUOTA = `COALESCE(NULLIF(TRIM(c.sucursal_texto), ''), cl.su
 /** El mes que rinde un pago: el de la columna MES o, si no se pudo leer, el de su fecha. */
 const PERIODO_DEL_PAGO = `COALESCE(p.periodo, substr(p.fecha_iso, 1, 7))`
 
-/**
- * La sucursal de un pago es la del mostrador donde entró la plata. Los pagos importados de la pestaña
- * IMPUTADOS no la tienen —esa pestaña no tiene columna LOCAL—, así que se cae a la del cliente: si no,
- * toda la cobranza vieja aparecería junta en un «(sin sucursal)» que no le dice nada a nadie.
- */
-const SUCURSAL_DEL_PAGO = `COALESCE(NULLIF(TRIM(p.sucursal_cobro), ''), NULLIF(TRIM(p.sucursal_texto), ''), cl.sucursal_texto)`
+// La sucursal de un pago se resuelve en servicios/pagos.ts, que es de donde sale la caja: si cada
+// pantalla se armara la suya, el mismo pago volvería a contar en una y a faltar en la otra.
 
 /**
  * Identidad de una fila entre un mes y el siguiente. La póliza es lo que manda; para las filas que el
