@@ -155,7 +155,7 @@ export function RiesgosVarios() {
               <tr>
                 <td colSpan={COLUMNAS.length + 1} className="px-3 py-10 text-center text-slate-500">
                   {datos.total === 0
-                    ? 'Todavía no hay riesgos varios. Se cargan con «Nuevo riesgo» y también entran al importar la pestaña RIESGOS VARIOS de la hoja.'
+                    ? 'Todavía no hay riesgos varios. Se cargan con «Nuevo riesgo» y también entran con la pestaña RIESGOS VARIOS de la base.'
                     : 'Ningún riesgo coincide con la búsqueda.'}
                 </td>
               </tr>
@@ -192,7 +192,7 @@ export function RiesgosVarios() {
         </table>
       </div>
 
-      <p className="text-xs text-slate-500">Doble clic en una celda para corregirla. Cada cambio queda en el historial y sube a la hoja.</p>
+      <p className="text-xs text-slate-500">Doble clic en una celda para corregirla. Cada cambio queda en el historial y sube a la base.</p>
 
       {altaAbierta && (
         <DialogoNuevoRiesgo

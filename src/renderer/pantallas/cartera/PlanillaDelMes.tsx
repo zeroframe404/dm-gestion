@@ -65,8 +65,8 @@ function mensajeDeVacio(sucursal: string, sinSucursal: number, total: number): s
   if (sinSucursal === total) {
     return (
       `Ninguna fila de este mes tiene la sucursal cargada, así que filtrar por «${sucursal}» no puede traer nada. ` +
-      'Suele pasar cuando la planilla de Google que importó esta computadora no trae la columna LOCAL: miralo en ' +
-      'Administración → Importar de Google, en «Columnas reconocidas por pestaña».'
+      'Suele pasar cuando la planilla que importó esta computadora no trae la columna LOCAL: miralo en ' +
+      'Administración → Reimportar la base, en «Columnas reconocidas por pestaña».'
     )
   }
   return `${base} Ojo: ${sinSucursal.toLocaleString('es-AR')} de las ${total.toLocaleString('es-AR')} filas del mes no tienen sucursal cargada.`
@@ -410,7 +410,7 @@ export function PlanillaDelMes() {
     return (
       <div className="p-8">
         <Aviso tono="info">
-          Todavía no hay ninguna planilla cargada. Andá a <strong className="font-semibold">Administración → Importar desde Google</strong> para traer la hoja.
+          Todavía no hay ninguna planilla cargada. Andá a <strong className="font-semibold">Administración → Reimportar la base</strong> para traerla del VPS.
         </Aviso>
       </div>
     )

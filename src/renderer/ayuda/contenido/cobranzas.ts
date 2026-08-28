@@ -127,7 +127,7 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
         titulo: 'El campo Resultado',
         parrafos: [
           'Cada pago arranca sin resultado cargado (pendiente). Desde el desplegable de esa fila se elige uno: Imputado (la compañía ya lo tiene reconocido), OK (está todo en orden), Revisar (hay algo dudoso que hay que chequear) o Mal (no coincide, hay un problema). El cambio se guarda solo, sin botón aparte, y las tarjetas de arriba (Pendientes, Imputado, OK, Revisar, Mal) van contando cuántos pagos hay de cada resultado.',
-          'Si ese pago ya traía un resultado escrito en la planilla de la agencia antes de tener el desplegable, se ve abajo del selector como «en la hoja dice…», de referencia.',
+          'Si ese pago ya traía un resultado escrito en la planilla de la agencia antes de tener el desplegable, se ve abajo del selector como «en la planilla dice…», de referencia.',
         ],
       },
       {
@@ -147,8 +147,8 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
         explicacion: 'El proceso mensual de cruzar lo que la agencia cobró contra lo que cada compañía reconoce como cobrado, para detectar diferencias.',
       },
       {
-        termino: 'De la hoja / de la app',
-        explicacion: 'Marca de origen del pago: si se cargó desde la planilla de la agencia («de la hoja») o se registró desde DM Gestión («de la app», con el nombre de quien lo cobró).',
+        termino: 'De la planilla / de la app',
+        explicacion: 'Marca de origen del pago: si vino cargado en la planilla de la agencia («de la planilla») o se registró desde DM Gestión («de la app», con el nombre de quien lo cobró).',
       },
     ],
   },

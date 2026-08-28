@@ -290,7 +290,7 @@ export function Bajas() {
                           Poner vigente
                         </Boton>
                       ) : (
-                        <Etiqueta tono="neutro">{baja.hechaEnLaApp ? 'En la app' : 'De la hoja'}</Etiqueta>
+                        <Etiqueta tono="neutro">{baja.hechaEnLaApp ? 'En la app' : 'De la planilla'}</Etiqueta>
                       )}
                     </td>
                   </tr>
@@ -443,7 +443,7 @@ function DialogoPonerVigente({
       <div className="flex flex-col gap-3 text-sm text-slate-700">
         <p>
           La póliza vuelve a estar activa y se le pone su fila en la planilla del mes abierto, con los últimos datos que tenía. La baja
-          sale de esta lista y también de la pestaña BAJAS de la hoja.
+          sale de esta lista y también de la pestaña BAJAS de la base.
         </p>
         <p className="text-slate-500">
           Es para el cliente que se fue y volvió: no hace falta cargarlo de nuevo. Lo que haya cambiado —la cuota, la compañía, el

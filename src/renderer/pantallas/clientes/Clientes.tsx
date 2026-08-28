@@ -329,7 +329,7 @@ function ListadoDeClientes({
               <>
                 <p className="font-medium text-slate-700">Todavía no hay clientes cargados.</p>
                 <p className="mt-1">
-                  Se cargan solos al traer la hoja desde <strong className="font-semibold">Administración → Importar desde Google</strong>, o de a uno con
+                  Se cargan solos con la sincronización (o desde <strong className="font-semibold">Administración → Reimportar la base</strong>), o de a uno con
                   «Nuevo cliente».
                 </p>
               </>

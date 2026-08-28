@@ -322,7 +322,7 @@ export function Polizas() {
             </>
           ) : (
             <>
-              Todavía no hay pólizas cargadas. Traelas desde <strong className="font-semibold">Administración → Importar desde Google</strong>{' '}
+              Todavía no hay pólizas cargadas. Traelas desde <strong className="font-semibold">Administración → Reimportar la base</strong>{' '}
               o cargá la primera con <strong className="font-semibold">Nueva póliza</strong>.
             </>
           )

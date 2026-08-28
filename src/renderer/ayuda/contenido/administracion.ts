@@ -227,7 +227,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Los dos datos que se cargan',
         parrafos: [
-          'El primer campo es el contenido del archivo de credenciales que entrega Google al crear el acceso técnico; se pega tal cual, completo. El segundo es la dirección (URL) de la hoja de cálculo de la agencia. Un detalle importante: además de pegar estos datos, la hoja de Google tiene que compartirse como editor con el correo que figura en la credencial, o la aplicación no va a poder escribir en ella.',
+          'El primer campo es el contenido del archivo de credenciales que entrega Google al crear el acceso técnico; se pega tal cual, completo. El segundo es la dirección (URL) de la hoja de cálculo de la agencia (sólo se usó para la migración inicial). Para los respaldos hace falta que la carpeta «Respaldos DM» del Drive esté compartida como editor con el correo de la credencial; para los adjuntos, lo mismo con la carpeta «Adjuntos DM».',
         ],
       },
       {

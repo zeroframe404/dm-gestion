@@ -63,7 +63,7 @@ export function Imputados() {
       <div className="p-8">
         <Alerta tono="info">
           Todavía no hay pagos cargados. Se van sumando solos al registrar cobros desde la Cartera o desde la caja del día, y también
-          al importar la pestaña IMPUTADOS de la hoja.
+          al importar la pestaña IMPUTADOS de la base.
         </Alerta>
       </div>
     )
@@ -119,8 +119,8 @@ export function Imputados() {
       {datos.sinMes > 0 && (
         <Alerta tono="aviso">
           {datos.sinMes === 1
-            ? 'Hay 1 pago de la hoja sin fecha ni MES que se puedan leer: no entra en ninguna rendición.'
-            : `Hay ${numero(datos.sinMes)} pagos de la hoja sin fecha ni MES que se puedan leer: no entran en ninguna rendición.`}{' '}
+            ? 'Hay 1 pago de la planilla sin fecha ni MES que se puedan leer: no entra en ninguna rendición.'
+            : `Hay ${numero(datos.sinMes)} pagos de la planilla sin fecha ni MES que se puedan leer: no entran en ninguna rendición.`}{' '}
           Corregí la columna FECHA o la columna MES de esas filas en la pestaña IMPUTADOS y volvé a importar.
         </Alerta>
       )}
@@ -161,7 +161,7 @@ export function Imputados() {
                   {pago.importeMonto === null ? (pago.importe ?? '—') : pesos(pago.importeMonto)}
                 </td>
                 <td className="px-3 py-2 text-slate-700">{pago.medio ?? <span className="text-slate-400">—</span>}</td>
-                <td className="px-3 py-2 text-xs text-slate-500">{pago.hechoEnLaApp ? (pago.usuarioNombre ?? 'DM Gestión') : 'de la hoja'}</td>
+                <td className="px-3 py-2 text-xs text-slate-500">{pago.hechoEnLaApp ? (pago.usuarioNombre ?? 'DM Gestión') : 'de la planilla'}</td>
                 <td className="px-3 py-2">
                   <select
                     value={pago.resultado}
@@ -177,7 +177,7 @@ export function Imputados() {
                     ))}
                   </select>
                   {pago.resultado === '' && pago.resultadoTexto && (
-                    <p className="mt-0.5 text-[11px] text-slate-500">en la hoja dice «{pago.resultadoTexto}»</p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">en la planilla dice «{pago.resultadoTexto}»</p>
                   )}
                 </td>
               </tr>

@@ -50,7 +50,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         titulo: 'La columna «Propuesta»',
         parrafos: [
           'Al lado de «Póliza» está la columna «Propuesta», para el número que dan algunas compañías mientras la póliza todavía no está emitida. Se carga con doble clic, igual que el resto.',
-          'La propuesta se guarda en la póliza —se ve también en Pólizas y en la ficha del cliente, y sigue estando el mes que viene— pero no viaja a la hoja de Google: es un dato interno de la agencia y la hoja no tiene esa columna.',
+          'La propuesta se guarda en la póliza —se ve también en Pólizas y en la ficha del cliente, y sigue estando el mes que viene— pero no viaja a la base compartida: es un dato interno de la agencia.',
         ],
       },
       {
@@ -114,7 +114,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Poner vigente una póliza',
         parrafos: [
-          'Es el caso del cliente que se dio de baja en julio y en septiembre vuelve: no hay que cargarlo de nuevo. Con el botón «Poner vigente» la póliza vuelve a estar activa y se le arma su fila en la planilla del mes abierto con los últimos datos que tenía; la baja sale de esta lista y también de la pestaña BAJAS de la hoja de Google.',
+          'Es el caso del cliente que se dio de baja en julio y en septiembre vuelve: no hay que cargarlo de nuevo. Con el botón «Poner vigente» la póliza vuelve a estar activa y se le arma su fila en la planilla del mes abierto con los últimos datos que tenía; la baja sale de esta lista y también de la pestaña BAJAS de la base.',
           'Lo que haya cambiado —la cuota, la compañía, el vehículo— se corrige después en la planilla o en la póliza, con doble clic, como cualquier otro dato.',
           'Funciona también con las bajas que venían de la hoja, siempre que la baja esté enlazada a una póliza conocida. Si el cliente se fue hace tanto que ya no queda ninguna póliza suya cargada, el botón no aparece: en ese caso hay que darla de alta desde Pólizas → Nueva póliza.',
           'Sólo lo pueden hacer los roles con más permisos (no el Empleado), porque mueve la planilla que están mirando todos.',
@@ -149,7 +149,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         titulo: 'Para qué sirve',
         parrafos: [
           'Cuando la compañía rebota un débito —el CBU no tiene fondos, la cuenta se cerró, la tarjeta no pasó— esa cuota deja de cobrarse sola y hay que llamar al cliente. El problema de siempre es que quien se entera del rechazo no es quien lo atiende: el archivo lo mira la administración y al cliente lo conoce su sucursal.',
-          'Esta pantalla es el puente. Quien ve el rechazo aprieta un botón en la póliza, elige a qué sucursal avisarle y escribe qué pasó; en esa sucursal aparece un aviso en la campana de la barra de arriba, apenas entran al programa. El aviso viaja por la hoja de Google, así que llega aunque la sucursal trabaje en otra computadora.',
+          'Esta pantalla es el puente. Quien ve el rechazo aprieta un botón en la póliza, elige a qué sucursal avisarle y escribe qué pasó; en esa sucursal aparece un aviso en la campana de la barra de arriba, apenas entran al programa. El aviso viaja por la base del VPS, así que llega aunque la sucursal trabaje en otra computadora.',
         ],
       },
       {
@@ -206,7 +206,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         parrafos: [
           'Igual que en la Planilla: doble clic en cualquier celda para escribir el valor nuevo, Enter para guardar y Escape para cancelar. En columnas como sucursal, compañía o forma de pago aparecen sugerencias con lo que ya se usó antes, aunque siempre se puede escribir algo distinto.',
           'El puntito azul a la izquierda de una fila significa que esa forma de pago es débito automático (tarjeta o CBU): se cobra sola, igual que en el semáforo de la Planilla.',
-          'Cada cambio que se hace acá también sube a la hoja de la agencia, así que queda sincronizado para quien la mire desde Google.',
+          'Cada cambio que se hace acá también sube a la base del VPS, y de ahí el servidor lo refleja en la hoja de Google para quien la siga mirando desde allá.',
         ],
       },
       {

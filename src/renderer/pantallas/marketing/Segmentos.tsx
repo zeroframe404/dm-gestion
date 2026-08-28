@@ -168,7 +168,7 @@ export function Segmentos() {
           descripcion={
             datos.periodo
               ? `Sobre la planilla de ${nombreDePeriodo(datos.periodo)}, que es el mes abierto.`
-              : 'Todavía no hay ninguna planilla cargada: importá la hoja de Google desde Administración.'
+              : 'Todavía no hay ninguna planilla cargada: esperá la sincronización o reimportá la base desde Administración.'
           }
           acciones={
             <>

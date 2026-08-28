@@ -160,7 +160,7 @@ export function CajaDelDia() {
                 <td className="px-3 py-2 text-slate-700">{pago.medio ?? <span className="text-slate-400">sin especificar</span>}</td>
                 <td className="px-3 py-2 text-slate-600">{pago.sucursal ?? '—'}</td>
                 <td className="px-3 py-2 text-slate-600">
-                  {pago.usuarioNombre ?? <span className="text-slate-400">de la hoja</span>}
+                  {pago.usuarioNombre ?? <span className="text-slate-400">de la planilla</span>}
                 </td>
               </tr>
             ))}

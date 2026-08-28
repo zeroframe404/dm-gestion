@@ -393,9 +393,15 @@ export function registrarIpc(): void {
     exigirVista('cartera')
     return exito(bajasDelMes(periodo))
   })
-  manejar('cartera:cerrarMes', () => {
+  manejar('cartera:cerrarMes', async () => {
     exigirEdicion('cartera')
-    return exito(cerrarMes(exigirRol('SUPER_ADMIN', 'ADMIN')))
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    // Antes de cerrar se fuerza una sincronización completa: si otra computadora ya cerró el mes
+    // hace un rato, la bajada trae sus filas y el «ya existe» corta acá, en vez de generar una
+    // planilla entera duplicada. Sin conexión se sigue igual que siempre (se cierra local y sube
+    // después): el freno es el de siempre, los períodos que esta computadora conoce.
+    await sincronizarAhora(true).catch(() => undefined)
+    return exito(cerrarMes(actor))
   })
   manejar('cartera:historialDeFila', (filaId) => {
     exigirVista('cartera')

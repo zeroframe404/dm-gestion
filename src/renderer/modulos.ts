@@ -115,7 +115,7 @@ export const MODULO_ADMINISTRACION: Modulo = {
   id: 'administracion',
   nombre: 'Administración',
   icono: 'administracion',
-  descripcion: 'Usuarios, conexión con Google e información de la aplicación.',
+  descripcion: 'Usuarios, la base del GENERAL DE CLIENTES e información de la aplicación.',
   disponible: true,
 }
 
