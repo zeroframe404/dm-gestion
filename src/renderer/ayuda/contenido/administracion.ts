@@ -16,7 +16,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Los tres roles',
         parrafos: [
-          'EMPLEADO ve y usa el día a día de la agencia (cartera, clientes, cobranzas, siniestros, etcétera) pero no entra a Administración salvo «Impresora» y «Acerca de», que las ve todo el mundo. ADMIN ve además Compañías, Conexión con Google, Importar desde Google y Sincronización. SUPER_ADMIN tiene todo lo anterior más esta pantalla, Usuarios, y es el único que puede resolver un problema serio con la lista compartida de usuarios si llegara a aparecer.',
+          'EMPLEADO ve y usa el día a día de la agencia (cartera, clientes, cobranzas, siniestros, etcétera) pero no entra a Administración salvo «Impresora» y «Acerca de», que las ve todo el mundo. ADMIN ve además Compañías, Base de datos, Sincronización, Reimportar la base y Google Drive. SUPER_ADMIN tiene todo lo anterior más esta pantalla, Usuarios, y es el único que puede resolver un problema serio con la lista compartida de usuarios si llegara a aparecer.',
           'Eso es lo que trae cada rol de fábrica, y se puede recortar módulo por módulo en Administración → Permisos: por ejemplo, dejar a los empleados con Cobranzas en «sólo ver» o sin Marketing. Lo que ahí se configura vale para todas las computadoras de la agencia.',
         ],
       },
@@ -215,13 +215,13 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   },
   'administracion.google': {
     clave: 'administracion.google',
-    titulo: 'Administración → Conexión con Google',
-    resumen: 'La configuración técnica, una sola vez, para que DM Gestión pueda leer y escribir en la planilla de Google de toda la vida.',
+    titulo: 'Administración → Google Drive',
+    resumen: 'La credencial de Google que queda sólo para Drive: los respaldos diarios y los adjuntos de siniestros. La base vive en el VPS.',
     secciones: [
       {
         titulo: 'Qué es esta pantalla',
         parrafos: [
-          'DM Gestión trabaja con la misma planilla de Google que la agencia usó siempre. Para que la aplicación pueda leerla y escribir en ella, hace falta una credencial técnica que arma quien pone en marcha el sistema (no es algo que tenga que tocar el equipo día a día): un archivo con datos de acceso y la dirección de la hoja de cálculo. Esto se configura una sola vez por agencia, no por computadora ni por persona.',
+          'Desde la versión 12 el GENERAL DE CLIENTES vive en la base del VPS y el programa no sincroniza más con la planilla de Google (el servidor la mantiene actualizado como copia de lectura). Esta credencial de Google queda para lo único que sigue usando Google: subir los respaldos diarios a Drive y guardar los adjuntos de los siniestros. Si no se configura, la aplicación funciona igual; sólo se pierden esas copias en Drive.',
         ],
       },
       {
@@ -233,7 +233,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Dónde queda guardado',
         parrafos: [
-          'Estos datos se guardan únicamente en esta computadora, nunca viajan a ningún otro lado ni se comparten con las demás sucursales: cada computadora que necesite importar o sincronizar tiene que configurarse acá una vez. Una vez guardada la conexión, se usa desde Importar desde Google y desde Sincronización.',
+          'Estos datos se guardan únicamente en esta computadora, nunca viajan a ningún otro lado ni se comparten con las demás sucursales. Alcanza con tenerla configurada en las computadoras que hacen los respaldos o cargan adjuntos de siniestros.',
         ],
       },
     ],
@@ -246,19 +246,19 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   },
   'administracion.importar': {
     clave: 'administracion.importar',
-    titulo: 'Administración → Importar desde Google',
-    resumen: 'Trae los datos de la planilla de Google hacia DM Gestión: clientes, vehículos, pólizas, cuotas, bajas, siniestros y más.',
+    titulo: 'Administración → Reimportar la base',
+    resumen: 'Vuelve a leer completa la base del VPS y recarga la copia local: clientes, vehículos, pólizas, cuotas, bajas, siniestros y más.',
     secciones: [
       {
         titulo: 'Para qué sirve',
         parrafos: [
-          'Esta pantalla lee completa la hoja configurada en Conexión con Google y carga (o actualiza) con eso la información de DM Gestión: clientes, vehículos, pólizas, cuotas de cada mes, bajas, riesgos varios, siniestros, reglas de cobertura y pagos. Se puede correr todas las veces que haga falta: la aplicación reconoce cada fila de la hoja y no la duplica, aunque se vuelva a importar la misma planilla.',
+          'Esta pantalla lee completa la base del GENERAL DE CLIENTES en el VPS y carga (o actualiza) con eso la copia local de esta computadora: clientes, vehículos, pólizas, cuotas de cada mes, bajas, riesgos varios, siniestros, reglas de cobertura y pagos. Se puede correr todas las veces que haga falta: la aplicación reconoce cada fila por su _ID y no la duplica. Normalmente no hace falta, porque la sincronización mantiene todo al día sola; sirve si una computadora quedó mucho tiempo apagada o algo no cuadra.',
         ],
       },
       {
         titulo: 'Analizar antes de importar',
         parrafos: [
-          '«Analizar hoja» revisa la planilla sin cambiar nada todavía, y muestra qué pestañas encontró, de qué tipo es cada una (planilla mensual, bajas, siniestros, etcétera) y cuál parece ser la más nueva. Conviene analizar primero para confirmar que la hoja está como se espera antes de tocar «Importar», que sí trae los datos de verdad y actualiza la aplicación.',
+          '«Analizar la base» revisa la base sin cambiar nada todavía, y muestra qué pestañas encontró, de qué tipo es cada una (planilla mensual, bajas, siniestros, etcétera) y cuál parece ser la más nueva. Conviene analizar primero para confirmar que está todo como se espera antes de tocar «Reimportar», que sí trae los datos de verdad y actualiza la aplicación.',
         ],
       },
       {
@@ -271,51 +271,51 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
     conceptos: [
       {
         termino: 'Importar',
-        explicacion: 'Traer los datos de la hoja de Google hacia DM Gestión. Se puede repetir sin duplicar nada.',
+        explicacion: 'Volver a traer los datos de la base del VPS hacia esta computadora. Se puede repetir sin duplicar nada.',
       },
       {
         termino: 'Datos raros',
-        explicacion: 'Filas de la hoja con algo que no se pudo interpretar del todo (una fecha rara, un dato faltante). Quedan anotadas en el informe, pero no frenan la importación.',
+        explicacion: 'Filas con algo que no se pudo interpretar del todo (una fecha rara, un dato faltante). Quedan anotadas en el informe, pero no frenan la importación.',
       },
     ],
   },
   'administracion.sincronizacion': {
     clave: 'administracion.sincronizacion',
     titulo: 'Administración → Sincronización',
-    resumen: 'Mantiene a DM Gestión y a la planilla de Google al día en los dos sentidos, y muestra qué está esperando para subir.',
+    resumen: 'Mantiene a esta computadora y a la base del VPS al día en los dos sentidos, y muestra qué está esperando para subir.',
     secciones: [
       {
         titulo: 'Cómo funciona',
         parrafos: [
-          'Una vez conectada la hoja, cualquier cambio que se hace en DM Gestión (un pago, una baja, un dato editado) se sube solo a la planilla de Google cada pocos segundos, y lo que se edita directamente en la hoja se trae de vuelta cada algunos minutos. No hace falta hacer nada manual para que esto funcione: pasa solo, todo el tiempo, mientras haya conexión.',
-          '«Sincronizar ahora» fuerza un ciclo inmediato en lugar de esperar al próximo automático. «Forzar bajada completa» vuelve a traer la hoja entera desde cero, útil si algo quedó desactualizado y se quiere estar seguro de que todo coincide.',
+          'Cualquier cambio que se hace en DM Gestión (un pago, una baja, un dato editado) se sube solo a la base del VPS cada pocos segundos, y lo que cargaron las otras computadoras se trae de vuelta cada algunos minutos. No hace falta hacer nada manual para que esto funcione: pasa solo, todo el tiempo, mientras haya conexión.',
+          '«Sincronizar ahora» fuerza un ciclo inmediato en lugar de esperar al próximo automático. «Forzar bajada completa» vuelve a traer la base entera desde cero, útil si algo quedó desactualizado y se quiere estar seguro de que todo coincide.',
         ],
       },
       {
         titulo: 'La cola de subida',
         parrafos: [
-          'Es la lista de cambios hechos en DM Gestión que todavía no llegaron a la hoja de Google, por ejemplo porque se cortó internet. No se pierde nada: apenas vuelve la conexión, la cola se vacía sola. Si algún cambio no se pudo subir por un problema puntual, queda marcado «No se pudo» y el botón «Volver a intentar los que fallaron» lo reintenta.',
+          'Es la lista de cambios hechos en DM Gestión que todavía no llegaron a la base del VPS, por ejemplo porque se cortó internet. No se pierde nada: apenas vuelve la conexión, la cola se vacía sola. Si algún cambio no se pudo subir por un problema puntual, queda marcado «No se pudo» y el botón «Volver a intentar los que fallaron» lo reintenta.',
         ],
       },
       {
         titulo: 'Últimos movimientos y respaldos',
         parrafos: [
-          'Más abajo se ve un historial de lo último que pasó (subidas, bajadas, algún conflicto resuelto), útil para entender qué pasó si algo no cuadra. Y todos los días, después de las ocho de la noche, se guarda automáticamente una copia completa de la hoja en un archivo aparte, por si alguna vez hiciera falta volver atrás; se conservan las últimas 30 copias, y «Respaldar ahora» genera una en el momento.',
+          'Más abajo se ve un historial de lo último que pasó (subidas, bajadas, algún conflicto resuelto), útil para entender qué pasó si algo no cuadra. Y todos los días, después de las ocho de la noche, se guarda automáticamente una copia completa de la base en un archivo Excel aparte (y en Drive, si la cuenta de Google sigue cargada), por si alguna vez hiciera falta volver atrás; se conservan las últimas 30 copias, y «Respaldar ahora» genera una en el momento.',
         ],
       },
     ],
     conceptos: [
       {
         termino: 'Sincronización',
-        explicacion: 'El proceso automático que mantiene a DM Gestión y a la planilla de Google iguales en los dos sentidos, sin necesidad de importar a mano.',
+        explicacion: 'El proceso automático que mantiene a esta computadora y a la base del VPS iguales en los dos sentidos, sin necesidad de reimportar a mano.',
       },
       {
         termino: 'Cola de subida',
-        explicacion: 'Los cambios hechos en DM Gestión que todavía no llegaron a la hoja de Google, normalmente porque se está esperando conexión.',
+        explicacion: 'Los cambios hechos en DM Gestión que todavía no llegaron a la base del VPS, normalmente porque se está esperando conexión.',
       },
       {
         termino: 'Respaldo',
-        explicacion: 'Una copia guardada aparte de toda la hoja, por si alguna vez hace falta recuperar información.',
+        explicacion: 'Una copia guardada aparte de toda la base, por si alguna vez hace falta recuperar información.',
       },
     ],
   },

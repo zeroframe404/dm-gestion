@@ -7,6 +7,7 @@ import { ahoraIso, limpiar } from '../importacion/normalizar'
 import { db } from '../db/base'
 import { anotarEvento, marcarFallidas, marcarListas, marcarSinArreglo, pendientes, type EntradaCola } from './cola'
 import { columnaDelId, filasPorId, huellaDeFila, type ContextoHoja, type PestanaSincronizable } from './hoja'
+import { esPestanaDelMes } from './pestanasApp'
 
 export interface ResultadoSubida {
   subidas: number
@@ -64,9 +65,13 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   const desconocidas = entradas.filter((e) => !contexto.porTitulo.has(e.pestana))
   if (desconocidas.length > 0) {
     for (const entrada of desconocidas) {
+      // Las pestañas del mes las crea sola el motor (ver pestanasApp.ts) ANTES de llegar acá; si una
+      // llegó igual es porque no hubo otra planilla del mismo tipo para copiarle los encabezados.
       marcarSinArreglo(
         [entrada.id],
-        `La pestaña «${entrada.pestana}» no existe en la hoja. Creala en Google (podés duplicar la del mes anterior) y tocá «Volver a intentar».`,
+        esPestanaDelMes(entrada.pestana)
+          ? `La pestaña «${entrada.pestana}» no existe en la base y no se pudo crear sola porque no hay otra planilla del mismo tipo para copiarle los encabezados. Reimportá la base y tocá «Volver a intentar».`
+          : `La pestaña «${entrada.pestana}» no existe en la base del GENERAL DE CLIENTES.`,
       )
     }
   }
@@ -105,7 +110,7 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
     const columnaId = columnaDelId(pestana, valores)
     if (columnaId !== null) columnaIdPorPestana.set(entrada.pestana, columnaId)
     if (columnaId === null) {
-      fallidas.push({ id: entrada.id, motivo: `«${entrada.pestana}» no tiene columna _ID: importá la hoja de nuevo.` })
+      fallidas.push({ id: entrada.id, motivo: `«${entrada.pestana}» no tiene columna _ID: reimportá la base (Administración → Reimportar la base).` })
       continue
     }
     const primeraFila = (pestana.layout?.filaEncabezados ?? 0) + 2
@@ -137,7 +142,7 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
     if (numeroDeFila === undefined) {
       // La fila ya no está en la hoja: si era un borrado, ya está hecho; si era una edición, se perdió.
       if (entrada.operacion === 'borrar') hechas.push(entrada.id)
-      else fallidas.push({ id: entrada.id, motivo: 'La fila ya no está en la hoja (la borraron desde Google).' })
+      else fallidas.push({ id: entrada.id, motivo: 'La fila ya no está en la base (la borraron desde otra computadora).' })
       continue
     }
 
@@ -219,7 +224,7 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
     anotarEvento(
       'columna faltante',
       `La pestaña «${pestana}» no tiene columna para «${campo}»: ${filas} fila(s) se escribieron sin ese dato. ` +
-        'Agregale la columna en Google (la del mes anterior la tiene) y volvé a importar.',
+        'Reimportá la base (Administración → Reimportar la base) para que la pestaña gane la columna.',
       { filas, conError: true },
     )
   }

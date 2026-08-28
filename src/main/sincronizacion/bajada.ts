@@ -299,5 +299,5 @@ function anotarPisado(pestana: string, filaId: string, campo: string, valorLocal
        VALUES (?, NULL, 'Sincronización', 'sincronizacion', ?, NULL, ?, ?, ?, ?)`,
     )
     .run(ahoraIso(), pestana, filaId, `${campo} (pisado por sincronización)`, valorLocal, valorRemoto)
-  anotarEvento('conflicto', `«${campo}» de la fila ${filaId} cambió en la hoja: se pisó el valor local («${valorLocal}» → «${valorRemoto}»).`)
+  anotarEvento('conflicto', `«${campo}» de la fila ${filaId} cambió en la base: se pisó el valor local («${valorLocal}» → «${valorRemoto}»).`)
 }

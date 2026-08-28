@@ -77,15 +77,14 @@ export function Sincronizacion() {
       {aviso && <Alerta tono="exito">{aviso}</Alerta>}
       {!estado.configurada && (
         <Alerta tono="aviso">
-          Todavía no hay hoja conectada, así que la sincronización está apagada y todo se guarda sólo acá. Cargá la cuenta de servicio en{' '}
-          <strong className="font-semibold">Conexión con Google</strong>.
+          La conexión con la base del VPS no está disponible en esta computadora, así que la sincronización está apagada y todo se guarda sólo acá.
         </Alerta>
       )}
       {estado.ultimoError && <Alerta tono="error">Último error de sincronización: {estado.ultimoError}</Alerta>}
 
       <Tarjeta
         titulo="Estado"
-        descripcion="La aplicación sube cada 10 segundos lo que se va tocando y baja de la hoja cada 5 minutos."
+        descripcion="La aplicación sube cada 10 segundos lo que se va tocando y baja de la base del VPS cada 5 minutos."
         acciones={
           <>
             <Boton
@@ -145,7 +144,7 @@ export function Sincronizacion() {
         )}
       </Tarjeta>
 
-      <Tarjeta titulo="Cola de subida" descripcion="Lo que todavía no llegó a la hoja. Si no hay internet, espera acá sin perderse." alRas>
+      <Tarjeta titulo="Cola de subida" descripcion="Lo que todavía no llegó a la base del VPS. Si no hay internet, espera acá sin perderse." alRas>
         <div className="max-h-72 overflow-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-slate-50">
@@ -163,8 +162,8 @@ export function Sincronizacion() {
                 <tr>
                   <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
                     {estado.configurada
-                      ? `No hay nada esperando: todo lo de esta computadora ya está en la hoja.`
-                      : `No hay nada encolado todavía. Cuando conectes la hoja, lo que se vaya tocando va a aparecer acá hasta que suba.`}
+                      ? `No hay nada esperando: todo lo de esta computadora ya está en la base del VPS.`
+                      : `No hay nada encolado todavía. Cuando haya conexión con la base, lo que se vaya tocando va a aparecer acá hasta que suba.`}
                   </td>
                 </tr>
               )}
@@ -217,7 +216,7 @@ export function Sincronizacion() {
 
       <Tarjeta
         titulo="Respaldos"
-        descripcion="Todos los días después de las 20:00 se guarda una copia de la hoja entera en formato Excel y se sube a la carpeta «Respaldos DM» del Drive. Se conservan los últimos 30."
+        descripcion="Todos los días después de las 20:00 se guarda una copia de la base entera en formato Excel y, si la cuenta de Google sigue cargada, se sube a la carpeta «Respaldos DM» del Drive. Se conservan los últimos 30."
         acciones={
           <Boton
             icono="descargar"

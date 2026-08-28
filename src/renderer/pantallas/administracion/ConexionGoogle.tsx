@@ -1,4 +1,4 @@
-// Conexión con Google: JSON de la cuenta de servicio y URL de la hoja de cálculo.
+// Google Drive: JSON de la cuenta de servicio (para respaldos y adjuntos) y URL de la hoja de cálculo.
 // Se guardan en %APPDATA%/dm-gestion/config.json; la clave privada nunca vuelve al renderer.
 import { useEffect, useState, type FormEvent } from 'react'
 import type { EstadoConexionGoogle } from '../../../shared/tipos'
@@ -54,8 +54,8 @@ export function ConexionGoogle() {
   return (
     <div className="mx-auto max-w-3xl">
       <Tarjeta
-        titulo="Conexión con Google"
-        descripcion="Desde la versión 12 la base vive en el VPS: esta conexión queda sólo para la migración inicial y para las copias en Drive (respaldos y adjuntos)."
+        titulo="Google Drive"
+        descripcion="Desde la versión 12 la base vive en el VPS y el programa no sincroniza más con la hoja (el servidor la mantiene como copia de lectura). Esta cuenta de Google queda sólo para Drive: los respaldos diarios y los adjuntos de siniestros."
       >
         {cargando ? (
           <Cargando />

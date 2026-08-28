@@ -123,6 +123,16 @@ Cómo funciona, en corto:
 - **Google queda para dos cosas**: la migración (una vez) y Drive (respaldos y adjuntos), mientras
   la cuenta de servicio siga cargada. El respaldo diario ahora se arma desde la base del VPS con el
   generador de `.xlsx` propio; la copia a Drive se mantiene si Google está configurado.
+- **La hoja de Google se mantiene «pareja» sola, pero desde el servidor** (12.0.2 / servidor 12.1):
+  el VPS refleja cada cambio de la base hacia la hoja (espejo de una sola vía, módulo
+  `server/src/modules/dmg/espejo.*` del repo web). El programa NUNCA escribe ni lee la hoja: la
+  agencia puede seguir mirándola desde Google como copia de lectura, y lo que alguien escriba a
+  mano ahí se pisa en la próxima pasada del espejo.
+- **La planilla del mes nuevo se crea sola** (12.0.2): «Cerrar mes» (y la primera baja del mes)
+  dejan filas para una pestaña que todavía no existe, y el motor la crea al final de la base
+  copiando los encabezados de la pestaña más nueva del mismo tipo (`asegurarPestanasDelMes` en
+  `src/main/sincronizacion/pestanasApp.ts`). Hasta la v11 esto era «duplicar la pestaña en
+  Google»; ya no hay dónde duplicarla.
 - **En desarrollo nunca se toca el VPS real**: sin `DM_GESTION_VPS_URL` la sincronización queda
   apagada (como antes sin credenciales de Google) y el humo corre así, local. Las pruebas del
   transporte usan `scripts/vps-simulado.mjs`, el simulador local del puente (mismo patrón que

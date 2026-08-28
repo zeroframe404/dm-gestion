@@ -1,5 +1,6 @@
-// Importar desde Google: analiza la hoja configurada, corre la importación con progreso por pestaña
-// y muestra el informe final (descargable como archivo de texto).
+// Reimportar la base: analiza la base del VPS, corre la importación con progreso por pestaña
+// y muestra el informe final (descargable como archivo de texto). Desde la v12 la fuente es la
+// base del VPS, no la hoja de Google.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   NOMBRE_TIPO_PESTANA,
@@ -9,7 +10,6 @@ import {
   type InformeImportacion,
   type ProgresoImportacion,
   type ProgresoPestana,
-  type EstadoConexionGoogle,
   type VistaPreviaHoja,
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
@@ -62,7 +62,7 @@ const NOMBRE_REGISTRO: Record<string, string> = {
   clientes_con_clave_corregida: 'clientes corregidos',
   vehiculos_con_clave_corregida: 'vehículos corregidos',
   polizas_con_clave_corregida: 'pólizas corregidas',
-  filas_que_ya_no_estan: 'ya no están en la hoja',
+  filas_que_ya_no_estan: 'ya no están en la base',
   filas_de_encabezado_repetidas: 'encabezados repetidos',
   filas_sin_id_no_guardadas: 'sin _ID: no guardadas',
 }
@@ -74,7 +74,7 @@ function formatearFecha(iso: string | null): string {
 }
 
 export function ImportarGoogle() {
-  // Analizar la hoja es sólo mirar; importar la reescribe entera, así que pide «ver y editar».
+  // Analizar la base es sólo mirar; reimportar reescribe la copia local entera, así que pide «ver y editar».
   const puedeEditar = usePuedeEditar('administracion')
   const [estado, setEstado] = useState<EstadoImportador | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -86,7 +86,6 @@ export function ImportarGoogle() {
   const [guardando, setGuardando] = useState(false)
   const [cancelando, setCancelando] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
-  const [conexion, setConexion] = useState<EstadoConexionGoogle | null>(null)
 
   useEffect(() => {
     let vigente = true
@@ -95,9 +94,6 @@ export function ImportarGoogle() {
       if (resultado.ok) setEstado(resultado.datos)
       else setError(resultado.error)
       setCargando(false)
-    })
-    void window.dm.config.estadoGoogle().then((resultado) => {
-      if (vigente && resultado.ok) setConexion(resultado.datos)
     })
     // El progreso mantiene la importación "en curso" hasta que llega el evento de terminada con el informe
     // nuevo; si no, por un instante se mostraría el informe anterior como si fuera el actual.
@@ -160,7 +156,6 @@ export function ImportarGoogle() {
   }, [])
 
   const enCurso = estado?.enCurso ?? false
-  const sinConexion = conexion !== null && !conexion.configurado
 
   // Al arrancar una importación, el panel de progreso se trae a la vista (la vista previa puede ser larga).
   const refProgreso = useRef<HTMLDivElement | null>(null)
@@ -171,21 +166,21 @@ export function ImportarGoogle() {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <Tarjeta
-        titulo="Importar desde Google"
-        descripcion="Lee completa la hoja configurada en «Conexión con Google», escribe una columna _ID oculta en cada pestaña y carga la base local. Se puede volver a correr: las filas se reconocen por su _ID y no se duplican."
+        titulo="Reimportar la base"
+        descripcion="Lee completa la base del GENERAL DE CLIENTES en el VPS y recarga la copia local de esta computadora. Se puede volver a correr cuando haga falta: las filas se reconocen por su _ID y no se duplican."
         acciones={
           <>
-            <Boton icono="lupa" onClick={() => void analizar()} cargando={analizando} disabled={enCurso || sinConexion}>
-              Analizar hoja
+            <Boton icono="lupa" onClick={() => void analizar()} cargando={analizando} disabled={enCurso}>
+              Analizar la base
             </Boton>
             <Boton
               variante="primario"
               icono="nubeBajada"
               onClick={() => setConfirmando(true)}
-              disabled={enCurso || cargando || sinConexion || !puedeEditar}
+              disabled={enCurso || cargando || !puedeEditar}
               title={puedeEditar ? undefined : 'Tenés Administración en sólo lectura.'}
             >
-              Importar
+              Reimportar
             </Boton>
           </>
         }
@@ -193,20 +188,14 @@ export function ImportarGoogle() {
         <div className="flex flex-col gap-4">
           {error && <Alerta tono="error">{error}</Alerta>}
           {aviso && <Alerta tono="exito">{aviso}</Alerta>}
-          {sinConexion && (
-            <Alerta tono="aviso">
-              Todavía no hay ninguna hoja conectada. Entrá a <strong className="font-semibold">Administración → Conexión con Google</strong>, pegá el JSON de la
-              cuenta de servicio y la dirección de la hoja, y volvé acá.
-            </Alerta>
-          )}
           {!vista && !error && !estado?.ultima && !enCurso && (
             <p className="text-sm text-slate-500">
-              Analizá la hoja para ver qué pestañas se detectan, qué tipo de datos tiene cada una y cuál es la planilla mensual más nueva.
+              Analizá la base para ver qué pestañas se detectan, qué tipo de datos tiene cada una y cuál es la planilla mensual más nueva.
             </p>
           )}
           {vista && (
             <p className="text-sm text-slate-700">
-              Hoja <strong className="font-semibold text-slate-900">«{vista.titulo}»</strong> · {vista.pestanas.length} pestañas detectadas
+              Base <strong className="font-semibold text-slate-900">«{vista.titulo}»</strong> · {vista.pestanas.length} pestañas detectadas
               {vista.pestanas.some((p) => p.esLaMasNueva) && (
                 <>
                   {' '}
@@ -243,14 +232,14 @@ export function ImportarGoogle() {
       )}
 
       {vista && (
-        <Tarjeta titulo="Pestañas de la hoja" descripcion="Cómo se clasificó cada pestaña y qué período se le asignó.">
+        <Tarjeta titulo="Pestañas de la base" descripcion="Cómo se clasificó cada pestaña y qué período se le asignó.">
           <VistaPrevia vista={vista} />
         </Tarjeta>
       )}
 
       <Dialogo
         abierto={confirmando}
-        titulo="¿Importar desde Google?"
+        titulo="¿Reimportar la base?"
         alCerrar={() => setConfirmando(false)}
         pie={
           <>
@@ -258,15 +247,15 @@ export function ImportarGoogle() {
               Cancelar
             </Boton>
             <Boton variante="primario" icono="nubeBajada" onClick={() => void iniciar()} cargando={iniciando} disabled={!puedeEditar}>
-              Importar ahora
+              Reimportar ahora
             </Boton>
           </>
         }
       >
         <div className="flex flex-col gap-3 text-sm leading-relaxed text-slate-600">
           <p>
-            Se va a leer completa la hoja {vista ? <strong className="font-semibold text-slate-900">«{vista.titulo}»</strong> : 'configurada'} y a cargar
-            la base local con clientes, vehículos, pólizas, cuotas por mes, bajas, riesgos varios, siniestros, reglas de cobertura y pagos.
+            Se va a leer completa la base {vista ? <strong className="font-semibold text-slate-900">«{vista.titulo}»</strong> : 'del VPS'} y a recargar
+            la copia local con clientes, vehículos, pólizas, cuotas por mes, bajas, riesgos varios, siniestros, reglas de cobertura y pagos.
           </p>
           <p>
             En cada pestaña se escribe una columna <code className="rounded bg-slate-100 px-1 font-mono text-xs">_ID</code> (después se oculta) con un
@@ -401,7 +390,7 @@ function ResultadoImportacion({ informe, guardando, alDescargar, alAbrirCarpeta 
       titulo="Informe de importación"
       descripcion={
         <>
-          Importación Nº {informe.id} · hoja «{informe.hojaTitulo || '-'}» · {formatearFecha(informe.iniciadaEn)} → {formatearFecha(informe.terminadaEn)}
+          Importación Nº {informe.id} · base «{informe.hojaTitulo || '-'}» · {formatearFecha(informe.iniciadaEn)} → {formatearFecha(informe.terminadaEn)}
           {informe.pestanaMasNueva && (
             <>
               {' '}
@@ -438,7 +427,7 @@ function ResultadoImportacion({ informe, guardando, alDescargar, alAbrirCarpeta 
           <Cifra
             etiqueta="Datos raros"
             valor={t.problemas}
-            detalle={`${t.filasCrudas.toLocaleString('es-AR')} filas crudas${t.filasQueYaNoEstan ? ` · ${t.filasQueYaNoEstan} ya no están en la hoja` : ''}`}
+            detalle={`${t.filasCrudas.toLocaleString('es-AR')} filas crudas${t.filasQueYaNoEstan ? ` · ${t.filasQueYaNoEstan} ya no están en la base` : ''}`}
           />
         </div>
 

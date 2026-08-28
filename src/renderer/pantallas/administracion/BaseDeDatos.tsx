@@ -103,7 +103,7 @@ export function BaseDeDatos() {
             {usuario.rol === 'SUPER_ADMIN' && base !== null && !base.inicializada && !estado?.googleConfigurado && (
               <p className="text-sm text-slate-500">
                 Para migrar hace falta la conexión con Google configurada en esta computadora (la migración lee la
-                hoja por última vez). Cargala en «Conexión con Google» y volvé acá.
+                hoja por última vez). Cargala en «Google Drive» y volvé acá.
               </p>
             )}
           </div>
