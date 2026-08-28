@@ -86,6 +86,17 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
 
   const bases = basePorFilaId(entradas.map((e) => e.filaId))
   const columnaIdPorPestana = new Map<string, number>()
+  /**
+   * Campos con valor que no se pudieron escribir porque la pestaña destino no tiene esa columna, y
+   * cuántas filas los perdieron. Antes se descartaban en silencio: cerrar el mes contra una pestaña
+   * duplicada a mano SIN la columna LOCAL creaba las 2.392 filas sin sucursal, la computadora que cerró
+   * el mes se quedaba con el dato (lo tenía en su base) y todas las demás lo importaban en blanco.
+   */
+  const sinColumna = new Map<string, number>()
+  const anotarSinColumna = (pestana: string, campo: string) => {
+    const clave = `${pestana}\u0000${campo}`
+    sinColumna.set(clave, (sinColumna.get(clave) ?? 0) + 1)
+  }
 
   for (const entrada of entradas) {
     const pestana = contexto.porTitulo.get(entrada.pestana)
@@ -110,7 +121,10 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
       for (const [campo, valor] of Object.entries(entrada.campos)) {
         if (campo === '_id') continue
         const columna = pestana.layout?.mapeo.porCampo.get(campo as Campo)
-        if (columna === undefined || columna === null) continue
+        if (columna === undefined || columna === null) {
+          if (limpiar(valor ?? '')) anotarSinColumna(entrada.pestana, campo)
+          continue
+        }
         poner(columna, valor ?? '')
       }
       const lista = aAgregar.get(entrada.pestana) ?? []
@@ -148,7 +162,10 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
       }
       const campo = nombreCampo as Campo
       const columna = pestana.layout?.mapeo.porCampo.get(campo)
-      if (columna === undefined || columna === null) continue
+      if (columna === undefined || columna === null) {
+        if (limpiar(nuevo)) anotarSinColumna(entrada.pestana, nombreCampo)
+        continue
+      }
       const remoto = limpiar(celdasDeLaFila[columna])
       const anterior = valorBase(base, pestana, campo)
       if (anterior !== null && limpiar(anterior) !== remoto && remoto !== limpiar(nuevo)) {
@@ -197,6 +214,15 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   marcarListas(hechas)
   for (const { id, motivo } of fallidas) marcarSinArreglo([id], motivo)
   for (const conflicto of conflictos) anotarConflicto(conflicto)
+  for (const [clave, filas] of sinColumna) {
+    const [pestana, campo] = clave.split('\u0000')
+    anotarEvento(
+      'columna faltante',
+      `La pestaña «${pestana}» no tiene columna para «${campo}»: ${filas} fila(s) se escribieron sin ese dato. ` +
+        'Agregale la columna en Google (la del mes anterior la tiene) y volvé a importar.',
+      { filas, conError: true },
+    )
+  }
 
   return { subidas: hechas.length, conflictos: conflictos.length, llamadas, error: null }
 }

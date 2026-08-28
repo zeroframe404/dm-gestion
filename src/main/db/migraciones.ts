@@ -928,6 +928,55 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE bajas ADD COLUMN color TEXT;
     `,
   },
+  {
+    version: 14,
+    descripcion: 'Recuperar la sucursal de los clientes a los que se les había borrado',
+    sql: `
+      -- No cambia la forma del esquema: repara datos.
+      --
+      -- La columna «Sucursal» de la planilla del mes salía en blanco en algunas computadoras y bien en
+      -- otras. La fila del mes se respalda en el cliente, así que alcanzaba con que el cliente tampoco
+      -- la tuviera. Y no la tenía por dos motivos que se sumaban: el UPSERT de cuotas_mes pisaba
+      -- sucursal_texto con NULL cuando la pestaña del mes no traía la columna LOCAL (una pestaña recién
+      -- duplicada a mano), y el cliente sólo aprende su sucursal de la planilla MÁS NUEVA, que era
+      -- justamente la que no la traía. Las dos cosas ya están arregladas en el importador, pero las
+      -- bases que ya se vaciaron no se arreglan solas: la sincronización sólo aplica lo que CAMBIÓ en
+      -- la hoja, y la sucursal en la hoja no cambió nunca.
+      --
+      -- Acá se recupera de lo que la propia base todavía sabe: cualquier mes anterior del mismo cliente
+      -- que sí tenga la sucursal cargada. Sólo rellena huecos; nunca pisa una sucursal ya cargada.
+      UPDATE clientes
+         SET sucursal_texto = (
+               SELECT TRIM(c.sucursal_texto)
+                 FROM cuotas_mes c
+                WHERE c.cliente_id = clientes.id
+                  AND TRIM(COALESCE(c.sucursal_texto, '')) <> ''
+                ORDER BY c.periodo DESC
+                LIMIT 1
+             )
+       WHERE TRIM(COALESCE(sucursal_texto, '')) = ''
+         AND EXISTS (
+               SELECT 1
+                 FROM cuotas_mes c
+                WHERE c.cliente_id = clientes.id
+                  AND TRIM(COALESCE(c.sucursal_texto, '')) <> ''
+             );
+
+      -- Con el texto recuperado se vuelve a enganchar el id del catálogo, comparando como compara el
+      -- resto de la aplicación: sin distinguir mayúsculas y sin que la tilde de «Lanús» moleste (UPPER()
+      -- de SQLite sólo toca el ASCII, por eso se comparan las dos grafías a mano).
+      UPDATE clientes
+         SET sucursal_id = (
+               SELECT s.id
+                 FROM sucursales s
+                WHERE UPPER(REPLACE(REPLACE(s.nombre, 'ú', 'u'), 'Ú', 'U')) =
+                      UPPER(REPLACE(REPLACE(TRIM(clientes.sucursal_texto), 'ú', 'u'), 'Ú', 'U'))
+                LIMIT 1
+             )
+       WHERE sucursal_id IS NULL
+         AND TRIM(COALESCE(sucursal_texto, '')) <> '';
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {
