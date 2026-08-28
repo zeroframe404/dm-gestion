@@ -164,7 +164,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Las direcciones del ticket',
         parrafos: [
-          'El comprobante encabeza con la dirección de la sucursal donde se cobró; el resto del encabezado (provincia y teléfono, CUIT e inicio de actividades) es el mismo para toda la agencia. Las direcciones se cargan en la tarjeta «Direcciones del ticket», una por sucursal, y vienen puestas las tres de siempre: Avellaneda, Sarandí y Lanús.',
+          'El comprobante encabeza con la dirección de la sucursal donde se cobró; el resto del encabezado (provincia y teléfono, CUIT e inicio de actividades) es el mismo para toda la agencia. Las direcciones se cargan en la tarjeta «Direcciones del ticket», una por sucursal, y vienen puestas las tres de siempre: la de Dock Sud (Avellaneda), la de Sarandí y la de Lanús.',
           'Si mañana abre una sucursal nueva, se escribe su nombre en «Agregar una sucursal», se le carga la dirección y se guarda: desde el próximo ticket sale con la suya, sin tocar el programa.',
         ],
       },

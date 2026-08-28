@@ -9,7 +9,7 @@ import type { FuenteHoja } from '../src/main/importacion/fuente'
 import type { InformeImportacion, ProgresoImportacion } from '../src/shared/tipos'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 
-/** Base nueva, en memoria, con el esquema y los datos iniciales (las tres sucursales). */
+/** Base nueva, en memoria, con el esquema y los datos iniciales (las cuatro sucursales). */
 export function baseDePrueba(): BaseDeDatos {
   const db = new Database(':memory:') as BaseDeDatos
   db.pragma('foreign_keys = ON')

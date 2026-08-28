@@ -11,13 +11,13 @@
 import { BrowserWindow } from 'electron'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { claveDeSucursal, sucursalCanonica } from '../../shared/sucursales'
 import type { ConfigImpresora, DatosDeImpresora, DireccionDeSucursal, PedidoDeTicket } from '../../shared/tipos'
 import { fechaDeVencimiento, periodoSiguiente } from '../../shared/semaforo'
 import { db } from '../db/base'
 import { carpetaDatos } from '../rutas'
 import {
   anotarErrorDeImpresion,
-  claveDeSucursal,
   direccionDeSucursal,
   direccionesGuardadas,
   guardarDirecciones,
@@ -134,9 +134,12 @@ export function direccionesDeTicket(): DireccionDeSucursal[] {
     direccion: direccionDeSucursal(sucursal.nombre),
     enLaLista: true,
   }))
-  const conocidas = new Set(filas.map((fila) => claveDeSucursal(fila.sucursal)))
+  // «AVELLANEDA» guardada a mano es la misma fila que «Dock Sud» del catálogo: si no se cruzaran, la
+  // pantalla mostraría las dos y cada una con una dirección distinta para el mismo mostrador.
+  const identidad = (nombre: string) => claveDeSucursal(sucursalCanonica(nombre) ?? nombre)
+  const conocidas = new Set(filas.map((fila) => identidad(fila.sucursal)))
   for (const [sucursal, direccion] of direccionesGuardadas()) {
-    if (conocidas.has(claveDeSucursal(sucursal))) continue
+    if (conocidas.has(identidad(sucursal))) continue
     filas.push({ sucursal, direccion, enLaLista: false })
   }
   return filas

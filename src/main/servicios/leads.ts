@@ -34,7 +34,7 @@ import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
 import { nombreDePestana } from './hojas'
 import { presupuestosDeLead } from './presupuestos'
-import { idDeSucursalPorNombre } from './sucursales'
+import { idDeSucursalPorNombre, sucursalParaGuardar } from './sucursales'
 import { tareasDeVinculo } from './tareas'
 import { enteroPositivo, objeto, texto } from './validacion'
 
@@ -303,7 +303,7 @@ export function crearLead(datos: DatosDeLead, actor: SesionUsuario): FichaLead {
         documento_normalizado: normalizarDocumento(campos.documento) || null,
         email: campos.email || null,
         sucursal_id: idDeSucursalPorNombre(campos.sucursal),
-        sucursal_texto: campos.sucursal || null,
+        sucursal_texto: sucursalParaGuardar(campos.sucursal),
         interes: campos.interes || null,
         tipo_vehiculo: campos.tipoVehiculo || null,
         origen: campos.origen,
@@ -397,7 +397,7 @@ export function editarLead(leadId: number, datos: DatosDeLead, actor: SesionUsua
       documento_normalizado: normalizarDocumento(campos.documento) || null,
       email: campos.email || null,
       sucursal_id: idDeSucursalPorNombre(campos.sucursal),
-      sucursal_texto: campos.sucursal || null,
+      sucursal_texto: sucursalParaGuardar(campos.sucursal),
       interes: campos.interes || null,
       tipo_vehiculo: campos.tipoVehiculo || null,
       origen: campos.origen,

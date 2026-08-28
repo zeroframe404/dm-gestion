@@ -115,7 +115,7 @@ test('los filtros de sucursal, compañía y deuda acotan el listado', async () =
   const deLanus = listarClientes({ ...SIN_FILTROS, sucursal: 'LANUS' })
   assert.ok(deLanus.filas.length > 0 && deLanus.filas.length < todos.filas.length)
   assert.ok(
-    deLanus.filas.every((f) => (f.sucursal ?? '').toUpperCase().includes('LANUS')),
+    deLanus.filas.every((f) => f.sucursal === 'Lanús'),
     'todas las filas filtradas son de esa sucursal',
   )
 

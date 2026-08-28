@@ -26,6 +26,7 @@ import {
   sentenciasDeDatos,
 } from '../src/main/db/esquema'
 import { MIGRACIONES } from '../src/main/db/migraciones'
+import { SUCURSALES } from '../src/shared/sucursales'
 import { importar } from './ayuda'
 import { HUELLAS_POR_VERSION } from './esquema-congelado'
 import { construirHojaDePrueba } from './hoja-de-prueba'
@@ -307,7 +308,8 @@ test('una clave primaria que falta se informa como no reparable, no se inventa u
 
 test('un índice UNIQUE que no se puede crear por datos repetidos se avisa y no rompe el arranque', () => {
   const db = baseDesactualizada(['CREATE UNIQUE INDEX idx_usuarios_remoto ON usuarios (remoto_id);'])
-  const { id } = db.prepare(`INSERT INTO sucursales (nombre) VALUES ('Daniel') RETURNING id`).get() as { id: number }
+  // El catálogo ya viene sembrado por la migración 15: se usa esa fila en vez de crear otra «Daniel».
+  const { id } = db.prepare(`SELECT id FROM sucursales WHERE nombre = 'Daniel'`).get() as { id: number }
   db.prepare(`INSERT INTO usuarios (nombre, usuario, clave_hash, rol, sucursal_id, remoto_id)
               VALUES ('A', 'a', 'x', 'EMPLEADO', ?, 9)`).run(id)
   db.prepare(`INSERT INTO usuarios (nombre, usuario, clave_hash, rol, sucursal_id, remoto_id)
@@ -362,7 +364,7 @@ test('abrirBaseDeDatos repara al arrancar y deja constancia en la bitácora', (t
 
 test('la importación entera corre sobre una base a la que le faltaba la columna', async () => {
   const db = baseDesactualizada(['ALTER TABLE filas_crudas ADD COLUMN huella TEXT;'])
-  for (const nombre of ['Dock Sud', 'Lanús', 'Daniel']) {
+  for (const nombre of SUCURSALES) {
     db.prepare('INSERT OR IGNORE INTO sucursales (nombre) VALUES (?)').run(nombre)
   }
 

@@ -29,6 +29,33 @@ los usuarios de esa computadora en GitHub (ver «Base de usuarios compartida» m
 contraseña se comprueban contra la base compartida. A partir de ahí, el último que ingresó con
 conexión puede volver a entrar sin internet durante 30 días.
 
+## Las sucursales
+
+Son **cuatro y sólo cuatro**, y la lista vive en un único lugar: `src/shared/sucursales.ts`.
+
+| Sucursal | Cómo aparece escrita en la hoja |
+| --- | --- |
+| **Dock Sud** | `DOCK SUD`, `DOCKSUD`, `AVELLANEDA` |
+| **Lanús** | `LANUS`, `Lanús` |
+| **Sarandí** | `SARANDI`, `Sarandí` |
+| **Daniel** | `DANIEL` |
+
+**Dock Sud y Avellaneda son el mismo mostrador**: la agencia lo nombra de las dos maneras y la planilla
+escribe cualquiera de las dos. Todo lo que entra —la importación, una consulta cargada a mano, un
+cliente nuevo, el usuarios.json de GitHub— se guarda con el nombre de la izquierda, así que el
+desplegable ofrece cuatro opciones y no una por cada forma de escribirlas.
+
+Un texto que no sea ninguna de las cuatro **no crea una sucursal nueva**:
+
+- En la hoja se guarda tal cual y queda listado en el informe de importación, bajo «SUCURSALES FUERA DE
+  CATÁLOGO». La fila se ve igual; lo único que no tiene es el id del catálogo.
+- En el `usuarios.json` de GitHub se rechaza el archivo entero con el nombre que no existe, igual que
+  un rol inventado. Antes se creaba la sucursal en esa computadora y sólo en esa, y el mismo mostrador
+  terminaba partido en dos.
+
+La comparación se hace **en JavaScript, nunca en el SQL**: `UPPER()` y `COLLATE NOCASE` de SQLite sólo
+tocan el ASCII, así que `UPPER('Lanús')` devuelve `'LANúS'` y no empata con el `LANUS` de la planilla.
+
 ## Datos locales
 
 Todo queda en la carpeta `%APPDATA%/dm-gestion/`:

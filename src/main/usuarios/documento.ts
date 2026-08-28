@@ -4,6 +4,7 @@
 // devuelve otro nuevo, así el servicio puede releer el archivo y volver a aplicar el mismo cambio
 // cuando otra computadora escribió en el medio (el candado optimista del `sha` de GitHub).
 import { normalizarMatriz, permisosPorDefecto, type MatrizPermisos } from '../../shared/permisos'
+import { sucursalCanonica, sucursalesEnTexto, type NombreDeSucursal } from '../../shared/sucursales'
 import { ROLES, type Rol } from '../../shared/tipos'
 import { ErrorDeNegocio } from '../servicios/errores'
 
@@ -17,7 +18,7 @@ export interface UsuarioRemoto {
   /** Hash bcrypt. Es lo único que existe de la contraseña en cualquier lado. */
   claveHash: string
   rol: Rol
-  /** Por nombre: las sucursales se siembran iguales en todas las computadoras. */
+  /** Por nombre: las cuatro sucursales se siembran iguales en todas las computadoras. */
   sucursal: string
   activo: boolean
   debeCambiarClave: boolean
@@ -76,6 +77,19 @@ function textoObligatorio(valor: unknown, campo: string, contexto: string): stri
   return valor
 }
 
+/**
+ * La sucursal escrita como la escribe el catálogo. Sólo existen cuatro, así que cualquier otro texto se
+ * rechaza en vez de inventar una sucursal más: el archivo se puede editar a mano en GitHub, y una PC que
+ * leyera «Avellaneda» como un local aparte terminaba mostrándole a esa gente una cartera vacía.
+ */
+function exigirSucursal(valor: string, contexto: string): NombreDeSucursal {
+  const sucursal = sucursalCanonica(valor)
+  if (!sucursal) {
+    throw new ErrorDeNegocio(`${contexto}: la sucursal «${valor.trim()}» no existe; las únicas son ${sucursalesEnTexto()}.`)
+  }
+  return sucursal
+}
+
 function leerUsuario(crudo: unknown, posicion: number): UsuarioRemoto {
   const contexto = `El archivo usuarios.json de GitHub no es válido (usuario ${posicion + 1})`
   if (typeof crudo !== 'object' || crudo === null || Array.isArray(crudo)) throw new ErrorDeNegocio(`${contexto}.`)
@@ -85,8 +99,7 @@ function leerUsuario(crudo: unknown, posicion: number): UsuarioRemoto {
   if (typeof rol !== 'string' || !(ROLES as readonly string[]).includes(rol)) {
     throw new ErrorDeNegocio(`${contexto}: el rol «${String(rol)}» no existe.`)
   }
-  const sucursal = textoObligatorio(u.sucursal, 'sucursal', contexto).trim()
-  if (sucursal.length > 80) throw new ErrorDeNegocio(`${contexto}: el nombre de la sucursal es demasiado largo.`)
+  const sucursal = exigirSucursal(textoObligatorio(u.sucursal, 'sucursal', contexto), contexto)
   return {
     id: u.id,
     nombre: textoObligatorio(u.nombre, 'nombre', contexto).trim(),
@@ -208,7 +221,7 @@ export function agregarUsuario(documento: DocumentoUsuarios, datos: DatosDeAlta,
     usuario: datos.usuario,
     claveHash: datos.claveHash,
     rol: datos.rol,
-    sucursal: datos.sucursal,
+    sucursal: exigirSucursal(datos.sucursal, 'No se pudo dar de alta el usuario'),
     activo: true,
     debeCambiarClave: datos.debeCambiarClave,
     creadoEn: ahora,
@@ -230,6 +243,7 @@ export function agregarExistentes(documento: DocumentoUsuarios, usuarios: Omit<U
     if (buscarPorUsuario(actual, u.usuario)) continue
     const nuevo: UsuarioRemoto = {
       ...u,
+      sucursal: exigirSucursal(u.sucursal, `No se pudo subir el usuario «${u.usuario}»`),
       id: actual.siguienteId,
       creadoEn: u.creadoEn || ahora,
       actualizadoEn: u.actualizadoEn || ahora,
@@ -258,7 +272,7 @@ export function editarUsuario(documento: DocumentoUsuarios, id: number, datos: D
     nombre: datos.nombre,
     usuario: datos.usuario,
     rol: datos.rol,
-    sucursal: datos.sucursal,
+    sucursal: exigirSucursal(datos.sucursal, 'No se pudo guardar el usuario'),
     actualizadoEn: ahora,
   })
 }

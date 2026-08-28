@@ -84,7 +84,7 @@ test('mapea por nombre de encabezado aunque las columnas cambien de lugar en cad
   for (const periodo of ['2025-12', '2026-01', '2026-02', '2026-05', '2026-08']) {
     assert.equal(
       unico<string>(db, 'SELECT sucursal_texto FROM cuotas_mes WHERE periodo = ? AND numero_poliza = ?', periodo, CLIENTES.lopez.poliza),
-      'SARANDI',
+      'Sarandí',
       `la sucursal de ${periodo} no se mapeó`,
     )
   }
@@ -386,9 +386,9 @@ test('informa los datos raros sin frenar la importación', async () => {
   // Filas de TOTAL al pie: no son pólizas.
   assert.equal(tipos['fila de totales'], 2)
 
-  // Sucursales fuera de catálogo: SARANDI y BRENDA, con la cantidad de filas de cada una.
-  assert.deepEqual(Object.keys(informe.sucursalesDesconocidas).sort(), ['BRENDA', 'SARANDI'])
-  assert.equal(informe.sucursalesDesconocidas['SARANDI'], 9)
+  // Sucursales fuera de catálogo: sólo BRENDA. «SARANDI» sí es del catálogo —es una de las cuatro— y
+  // se guarda como «Sarandí», así que no aparece acá.
+  assert.deepEqual(Object.keys(informe.sucursalesDesconocidas).sort(), ['BRENDA'])
   assert.equal(informe.sucursalesDesconocidas['BRENDA'], 9)
 
   db.close()
@@ -403,7 +403,6 @@ test('el informe descargable trae los totales por pestaña y el detalle', async 
   assert.match(texto, /Planilla más nueva.*AGOSTO/)
   for (const titulo of TITULOS_ESPERADOS) assert.ok(texto.includes(`«${titulo}»`), `el informe no menciona «${titulo}»`)
   assert.match(texto, /SUCURSALES FUERA DE CATÁLOGO/)
-  assert.match(texto, /SARANDI/)
   assert.match(texto, /BRENDA/)
   assert.match(texto, /COLUMNAS RECONOCIDAS POR PESTAÑA/)
   assert.match(texto, /DETALLE DE FILAS CON DATOS RAROS/)

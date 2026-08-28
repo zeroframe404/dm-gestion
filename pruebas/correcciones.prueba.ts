@@ -377,10 +377,11 @@ test('el archivo del informe se abre bien en Windows', async () => {
 })
 
 test('un problema sistemático no tapa a los demás en el detalle', async () => {
-  // 300 filas con la misma sucursal fuera de catálogo y una sola fecha imposible al final.
+  // 300 filas con la misma sucursal fuera de catálogo («BERAZATEGUI» no es ninguna de las cuatro) y
+  // una sola fecha imposible al final.
   const filasHoja: string[][] = [['APELLIDO Y NOMBRE', 'DNI', 'SUCURSAL', 'CIA', 'NRO DE POLIZA', 'CUOTA', 'DIA DE VTO', 'PAGO']]
   for (let i = 0; i < 300; i++) {
-    filasHoja.push([`CLIENTE ${i}`, String(20000000 + i), 'SARANDI', 'SANCOR', String(300000 + i), '$ 10.000', '10', '05/08'])
+    filasHoja.push([`CLIENTE ${i}`, String(20000000 + i), 'BERAZATEGUI', 'SANCOR', String(300000 + i), '$ 10.000', '10', '05/08'])
   }
   filasHoja.push(['CLIENTE RARO', '29999999', 'DOCK SUD', 'SANCOR', '399999', '$ 10.000', '10', '31/02'])
 

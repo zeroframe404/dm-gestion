@@ -21,8 +21,9 @@ import { permisosPorDefecto } from '../src/shared/permisos'
 import type { EstadoDeAcceso, SesionUsuario } from '../src/shared/tipos'
 import { unico } from './ayuda'
 
+// Los ids del catálogo sembrado, en su orden: Dock Sud 1, Lanús 2, Sarandí 3, Daniel 4.
 const LANUS = 2
-const DANIEL_SUCURSAL = 3
+const DANIEL_SUCURSAL = 4
 
 function baseNueva(): BaseDeDatos {
   cerrarBaseDeDatos()
@@ -412,7 +413,7 @@ test('el espejo tolera sucursales escritas distinto y si se recreó la base loca
   const documento = documentoRemoto(principal.almacen)
   principal.almacen.escribirDirecto(escribirDocumento({ ...documento, usuarios: documento.usuarios.map((u) => (u.usuario === 'maria' ? { ...u, sucursal: 'lanus' } : u)) }))
   await base.comprobarAcceso()
-  assert.equal(unico(db(), 'SELECT COUNT(*) FROM sucursales'), 3, 'no se creó una sucursal fantasma')
+  assert.equal(unico(db(), 'SELECT COUNT(*) FROM sucursales'), 4, 'no se creó una sucursal fantasma')
   assert.equal(filaLocal('maria')?.sucursal_id, LANUS)
 
   const pc = await computadoraDeMaria(principal.almacen)

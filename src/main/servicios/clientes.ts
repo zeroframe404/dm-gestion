@@ -44,7 +44,7 @@ import {
 import { encolar } from '../sincronizacion/cola'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
-import { idDeSucursalPorNombre } from './sucursales'
+import { idDeSucursalPorNombre, sucursalParaGuardar } from './sucursales'
 import { registrarTareaNueva } from './tareas'
 import { enteroPositivo, objeto, texto as validarTexto } from './validacion'
 
@@ -862,7 +862,7 @@ export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): Resul
       direccion: campos.direccion || null,
       localidad: campos.localidad || null,
       sucursal_id: idDeSucursalPorNombre(campos.sucursal),
-      sucursal_texto: campos.sucursal || null,
+      sucursal_texto: sucursalParaGuardar(campos.sucursal),
       fecha_nacimiento: campos.fechaNacimiento || null,
       ahora,
     })
@@ -966,7 +966,7 @@ export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: S
         direccion: campos.direccion || null,
         localidad: campos.localidad || null,
         sucursal_id: idDeSucursalPorNombre(campos.sucursal),
-        sucursal_texto: campos.sucursal || null,
+        sucursal_texto: sucursalParaGuardar(campos.sucursal),
         fecha_nacimiento: campos.fechaNacimiento || null,
         ahora,
       })

@@ -132,7 +132,7 @@ test('el listado trae los siniestros de la hoja con sus columnas y su mes', asyn
   assert.equal(listado.total, 3)
   const robo = listado.filas.find((f) => f.numeroSiniestro === 'S-2026-0804')!
   assert.ok(robo, 'el siniestro con ROBO tiene que estar')
-  assert.equal(robo.sucursal, 'DOCK SUD')
+  assert.equal(robo.sucursal, 'Dock Sud')
   assert.equal(robo.compania, 'SANCOR')
   assert.equal(robo.cobertura, 'TODO RIESGO')
   assert.equal(robo.patente, CLIENTES.gonzalez.patente)
@@ -427,7 +427,7 @@ test('los riesgos varios se leen enteros, con su emisión', async () => {
   assert.equal(combinado.compania, 'SANCOR')
   assert.equal(combinado.numeroPoliza, 'CF-4455')
   assert.equal(combinado.telefono, '11-4444-5555')
-  assert.equal(combinado.sucursal, 'DOCK SUD')
+  assert.equal(combinado.sucursal, 'Dock Sud')
   assert.ok(listado.companias.includes('MERCANTIL ANDINA'))
   cerrarBaseDeDatos()
 })
@@ -511,7 +511,7 @@ test('AMP se importa con sus columnas y arranca todo pendiente', async () => {
   assert.equal(listado.resueltas, 0)
 
   const granizo = listado.filas.find((f) => (f.detalle ?? '').includes('GRANIZO'))!
-  assert.equal(granizo.sucursal, 'DOCK SUD')
+  assert.equal(granizo.sucursal, 'Dock Sud')
   assert.equal(granizo.clienteNombre, CLIENTES.gonzalez.nombre)
   assert.equal(granizo.formaPago, 'TARJETA')
   assert.equal(granizo.patente, CLIENTES.gonzalez.patente)

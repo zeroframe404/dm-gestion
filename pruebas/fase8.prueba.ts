@@ -273,7 +273,7 @@ test('«Convertir en cliente» crea el cliente con los datos del lead: no se tip
   assert.equal(cliente.telefono, '11 5555-4444')
   assert.equal(cliente.documento, '27-30444555-8')
   assert.equal(cliente.email, 'marcela@correo.com')
-  assert.equal(cliente.sucursal, 'LANUS')
+  assert.equal(cliente.sucursal, 'Lanús')
 
   // Y la consulta quedó ganada, apuntando a su ficha.
   assert.equal(conversion.lead.lead.estado, 'GANADO')
@@ -720,7 +720,8 @@ test('lo que se carga en los tres módulos aparece en su pestaña, en la columna
   assert.equal(enLaHoja(hoja, 'APP LEADS', lead.lead.filaId, 'TELEFONO'), '1155554444')
   assert.equal(enLaHoja(hoja, 'APP LEADS', lead.lead.filaId, 'ORIGEN'), 'WHATSAPP')
   assert.equal(enLaHoja(hoja, 'APP LEADS', lead.lead.filaId, 'QUE ASEGURA'), 'El Gol de la hija')
-  assert.equal(enLaHoja(hoja, 'APP LEADS', lead.lead.filaId, 'LOCAL'), 'LANUS')
+  // Se cargó «LANUS» y a la hoja viaja «Lanús»: la sucursal se guarda siempre como la escribe el catálogo.
+  assert.equal(enLaHoja(hoja, 'APP LEADS', lead.lead.filaId, 'LOCAL'), 'Lanús')
   assert.equal(enLaHoja(hoja, 'APP LEADS', lead.lead.filaId, 'ESTADO'), 'COTIZADO', 'el presupuesto ya la dejó cotizada')
   assert.equal(enLaHoja(hoja, 'APP LEADS', lead.lead.filaId, 'CARGADO POR'), DANIEL.nombre)
 

@@ -6,7 +6,7 @@
 //  - Sus pestañas de «BAJAS».
 //  - AMP, RIESGOS VARIOS, IMPUTADOS, SINIESTROS, CONTADOR, SEGUROS ACT y COBERTURA.
 //  - Datos raros a propósito: fechas imposibles, cuotas no numéricas, DNI repetido con dos nombres,
-//    sucursales fuera de catálogo (SARANDI, BRENDA), filas de TOTAL, CUIT que es el mismo DNI,
+//    una sucursal fuera de catálogo (BRENDA), filas de TOTAL, CUIT que es el mismo DNI,
 //    vehículos sin patente («SIN PATENTE», «0KM») y celdas vacías al final de las filas.
 import type { PestanaSimulada } from './hoja-simulada'
 
