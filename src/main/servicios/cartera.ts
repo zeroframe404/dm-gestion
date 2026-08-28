@@ -53,11 +53,18 @@ const MEDIOS_DE_PAGO = ['EFECTIVO', 'TRANSFERENCIA', 'MERCADO PAGO', 'TARJETA', 
  * póliza) mandan sobre el registro unificado: dos personas distintas que comparten DNI siguen mostrando
  * cada una lo suyo. El resto —teléfono, marca, cobertura, vigencias— sale del cliente, el vehículo y la
  * póliza, así corregir un dato una vez se ve en todos los meses.
+ *
+ * «Propia» quiere decir CARGADA, no en blanco: por eso el respaldo se elige con `NULLIF(TRIM(x), '')` y
+ * no con un COALESCE pelado. Una celda vacía no es un dato que mande sobre el cliente, y COALESCE la
+ * toma como si lo fuera —para SQL `''` no es NULL—, así que la columna salía en blanco aunque el cliente
+ * supiera la sucursal. Reportes y Métricas ya lo hacían así (reportes.ts, `SUCURSAL_DE_LA_CUOTA` en
+ * metricas.ts, que dice ser «el mismo COALESCE que usa SELECT_PLANILLA»): la planilla era la única que
+ * no, y de ahí salía que la misma fila tuviera sucursal en Métricas y ninguna en la Planilla del mes.
  */
 export const SELECT_PLANILLA = `
   SELECT
     c.id AS cuota_id, c.fila_id, c.periodo, c.pestana, c.poliza_id, c.cliente_id, p.vehiculo_id,
-    COALESCE(c.sucursal_texto, cl.sucursal_texto) AS sucursal,
+    COALESCE(NULLIF(TRIM(c.sucursal_texto), ''), cl.sucursal_texto) AS sucursal,
     COALESCE(c.cliente_nombre, cl.nombre) AS nombre,
     cl.telefono, COALESCE(c.documento, cl.documento) AS documento,
     cl.email, cl.direccion, cl.localidad,
@@ -1058,11 +1065,18 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
     throw new ErrorDeNegocio(`Ya está abierto ${actual}, que es el mes que viene. Esperá a que llegue para abrir ${nuevo}.`)
   }
 
+  // La sucursal se arrastra RESUELTA (la de la fila si la tiene, si no la del cliente), igual que la
+  // muestra la planilla. Si se copiara la columna cruda, un mes que quedó sin sucursal se la pasaría al
+  // siguiente y al siguiente: el mes nuevo se publica en la hoja compartida, así que ese hueco no se
+  // queda en una computadora, viaja a todas.
   const origen = db()
     .prepare(
-      `SELECT c.*, p.id AS poliza_activa_id FROM cuotas_mes c
-       JOIN polizas p ON p.id = c.poliza_id AND p.activa = 1
-       WHERE c.periodo = ? AND c.dada_de_baja = 0`,
+      `SELECT c.*, COALESCE(NULLIF(TRIM(c.sucursal_texto), ''), cl.sucursal_texto) AS sucursal_resuelta,
+              p.id AS poliza_activa_id
+         FROM cuotas_mes c
+         JOIN polizas p ON p.id = c.poliza_id AND p.activa = 1
+         LEFT JOIN clientes cl ON cl.id = c.cliente_id
+        WHERE c.periodo = ? AND c.dada_de_baja = 0`,
     )
     .all(actual) as Array<Record<string, unknown>>
   if (origen.length === 0) throw new ErrorDeNegocio(`La planilla de ${actual} no tiene pólizas activas para copiar.`)
@@ -1093,7 +1107,7 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
         compania: fila.compania,
         numero_poliza: fila.numero_poliza,
         patente: fila.patente,
-        sucursal_texto: fila.sucursal_texto,
+        sucursal_texto: fila.sucursal_resuelta,
         cuota: fila.cuota,
         cuota_monto: fila.cuota_monto,
         dia_vencimiento: fila.dia_vencimiento,
@@ -1115,7 +1129,7 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
           campos: {
             nombre: String(fila.cliente_nombre ?? ''),
             documento: String(fila.documento ?? ''),
-            sucursal: String(fila.sucursal_texto ?? ''),
+            sucursal: String(fila.sucursal_resuelta ?? ''),
             compania: String(fila.compania ?? ''),
             numero_poliza: String(fila.numero_poliza ?? ''),
             patente: String(fila.patente ?? ''),

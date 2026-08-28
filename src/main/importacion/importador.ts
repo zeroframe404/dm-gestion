@@ -226,7 +226,10 @@ function prepararSentencias(db: BaseDeDatos) {
         email = COALESCE(excluded.email, clientes.email),
         direccion = COALESCE(excluded.direccion, clientes.direccion),
         localidad = COALESCE(excluded.localidad, clientes.localidad),
-        sucursal_id = CASE WHEN excluded.sucursal_texto IS NOT NULL THEN excluded.sucursal_id ELSE clientes.sucursal_id END,
+        -- El texto manda, pero el id sólo se pisa si se pudo resolver: una sucursal escrita como no
+        -- está en el catálogo devuelve texto sin id (ver resolverSucursal), y con el CASE de antes ese
+        -- texto borraba el id que ya estaba bien resuelto.
+        sucursal_id = COALESCE(excluded.sucursal_id, clientes.sucursal_id),
         sucursal_texto = COALESCE(excluded.sucursal_texto, clientes.sucursal_texto),
         fecha_nacimiento = COALESCE(excluded.fecha_nacimiento, clientes.fecha_nacimiento),
         fila_id = excluded.fila_id, pestana_origen = excluded.pestana_origen, actualizado_en = excluded.actualizado_en
@@ -249,6 +252,18 @@ function prepararSentencias(db: BaseDeDatos) {
         sucursal_texto = COALESCE(sucursal_texto, @sucursal_texto),
         fecha_nacimiento = COALESCE(fecha_nacimiento, @fecha_nacimiento)
       WHERE id = @id`),
+
+    /**
+     * Completa la sucursal de un cliente que no la tiene. Sólo rellena el hueco: nunca pisa una
+     * sucursal ya cargada. Hace falta porque `guardarCliente` corre únicamente para la planilla MÁS
+     * NUEVA, y si a esa pestaña le falta la columna LOCAL —el caso de un mes recién duplicado a mano—
+     * ningún cliente llega a tener sucursal, ni siquiera los que sí la tienen en los meses anteriores.
+     */
+    completarSucursalDelCliente: db.prepare(`
+      UPDATE clientes SET
+        sucursal_id = COALESCE(sucursal_id, @sucursal_id),
+        sucursal_texto = @sucursal_texto
+      WHERE id = @id AND (sucursal_texto IS NULL OR TRIM(sucursal_texto) = '')`),
 
     clientePorClave: db.prepare('SELECT id FROM clientes WHERE clave = ?'),
     titularDeVehiculo: db.prepare('SELECT cliente_id FROM vehiculos WHERE clave = ?'),
@@ -315,7 +330,12 @@ function prepararSentencias(db: BaseDeDatos) {
         periodo = excluded.periodo, pestana = excluded.pestana,
         poliza_id = COALESCE(excluded.poliza_id, cuotas_mes.poliza_id), cliente_id = COALESCE(excluded.cliente_id, cuotas_mes.cliente_id),
         cliente_nombre = excluded.cliente_nombre, documento = excluded.documento, compania = excluded.compania,
-        numero_poliza = excluded.numero_poliza, patente = excluded.patente, sucursal_texto = excluded.sucursal_texto,
+        numero_poliza = excluded.numero_poliza, patente = excluded.patente,
+        -- Una pestaña SIN columna de sucursal no sabe nada de sucursales: no puede borrar la que ya
+        -- estaba. Fila.valor() devuelve '' tanto si la columna no existe como si la celda está vacía y
+        -- oNulo() convierte las dos en NULL, así que sin este CASE una hoja a la que le falta la
+        -- columna LOCAL dejaba sin sucursal, en silencio, a todas las filas que ya la tenían.
+        sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE cuotas_mes.sucursal_texto END,
         cuota = excluded.cuota, cuota_monto = excluded.cuota_monto, dia_vencimiento = excluded.dia_vencimiento,
         dia_vencimiento_numero = excluded.dia_vencimiento_numero, aviso = excluded.aviso, aviso_enviado = excluded.aviso_enviado,
         pago = excluded.pago, pago_fecha = excluded.pago_fecha, observaciones = excluded.observaciones,
@@ -331,7 +351,7 @@ function prepararSentencias(db: BaseDeDatos) {
         pestana = excluded.pestana, periodo = excluded.periodo, mes_texto = excluded.mes_texto,
         poliza_id = COALESCE(excluded.poliza_id, bajas.poliza_id), cliente_id = COALESCE(excluded.cliente_id, bajas.cliente_id), cliente_nombre = excluded.cliente_nombre, documento = excluded.documento,
         compania = excluded.compania, numero_poliza = excluded.numero_poliza, patente = excluded.patente,
-        sucursal_texto = excluded.sucursal_texto, motivo = excluded.motivo,
+        sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE bajas.sucursal_texto END, motivo = excluded.motivo,
         fecha_baja = excluded.fecha_baja, fecha_baja_iso = excluded.fecha_baja_iso, observaciones = excluded.observaciones,
         actualizado_en = excluded.actualizado_en`),
 
@@ -368,7 +388,7 @@ function prepararSentencias(db: BaseDeDatos) {
               @vigencia_desde, @vigencia_hasta, @forma_pago, @observaciones, @ahora, @ahora)
       ON CONFLICT(fila_id) DO UPDATE SET
         pestana = excluded.pestana, cliente_id = excluded.cliente_id, cliente_nombre = excluded.cliente_nombre, documento = excluded.documento,
-        telefono = excluded.telefono, sucursal_texto = excluded.sucursal_texto, emision = excluded.emision, emision_iso = excluded.emision_iso,
+        telefono = excluded.telefono, sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE riesgos_varios.sucursal_texto END, emision = excluded.emision, emision_iso = excluded.emision_iso,
         tipo_riesgo = excluded.tipo_riesgo,
         descripcion = excluded.descripcion, compania = excluded.compania, numero_poliza = excluded.numero_poliza, patente = excluded.patente,
         prima = excluded.prima, cuota = excluded.cuota, cuota_monto = excluded.cuota_monto, dia_vencimiento = excluded.dia_vencimiento,
@@ -384,7 +404,7 @@ function prepararSentencias(db: BaseDeDatos) {
               @observaciones, @resuelto, @ahora, @ahora)
       ON CONFLICT(fila_id) DO UPDATE SET
         pestana = excluded.pestana, cliente_id = COALESCE(excluded.cliente_id, amp.cliente_id),
-        poliza_id = COALESCE(excluded.poliza_id, amp.poliza_id), sucursal_texto = excluded.sucursal_texto,
+        poliza_id = COALESCE(excluded.poliza_id, amp.poliza_id), sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE amp.sucursal_texto END,
         fecha = excluded.fecha, fecha_iso = excluded.fecha_iso, cliente_nombre = excluded.cliente_nombre,
         documento = excluded.documento, telefono = excluded.telefono, forma_pago = excluded.forma_pago,
         patente = excluded.patente, marca = excluded.marca, modelo = excluded.modelo, compania = excluded.compania,
@@ -409,7 +429,7 @@ function prepararSentencias(db: BaseDeDatos) {
         poliza_id = COALESCE(excluded.poliza_id, siniestros.poliza_id), fecha = excluded.fecha,
         fecha_iso = excluded.fecha_iso, fecha_carga = excluded.fecha_carga, fecha_carga_iso = excluded.fecha_carga_iso,
         cliente_nombre = excluded.cliente_nombre, documento = excluded.documento, patente = excluded.patente,
-        sucursal_texto = excluded.sucursal_texto, compania = excluded.compania, numero_poliza = excluded.numero_poliza,
+        sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE siniestros.sucursal_texto END, compania = excluded.compania, numero_poliza = excluded.numero_poliza,
         cobertura = excluded.cobertura,
         numero_siniestro = excluded.numero_siniestro, descripcion = excluded.descripcion, estado = excluded.estado, importe = excluded.importe,
         observaciones = excluded.observaciones, actualizado_en = excluded.actualizado_en`),
@@ -430,7 +450,7 @@ function prepararSentencias(db: BaseDeDatos) {
         pestana = excluded.pestana, cliente_id = COALESCE(excluded.cliente_id, pagos.cliente_id),
         poliza_id = COALESCE(excluded.poliza_id, pagos.poliza_id), fecha = excluded.fecha,
         fecha_iso = excluded.fecha_iso, cliente_nombre = excluded.cliente_nombre, documento = excluded.documento, compania = excluded.compania,
-        numero_poliza = excluded.numero_poliza, patente = excluded.patente, sucursal_texto = excluded.sucursal_texto, importe = excluded.importe,
+        numero_poliza = excluded.numero_poliza, patente = excluded.patente, sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE pagos.sucursal_texto END, importe = excluded.importe,
         importe_monto = excluded.importe_monto, medio = excluded.medio, periodo_texto = excluded.periodo_texto, periodo = excluded.periodo,
         observaciones = excluded.observaciones,
         -- El RESULTADO sólo lo manda la hoja si la pestaña TIENE columna RESULTADO. Cuando no la tiene,
@@ -1104,6 +1124,19 @@ class TrabajoDeImportacion {
       if (faltan.length > 0) {
         this.problema(p.titulo, 1, null, 'columna clave no encontrada', `la planilla mensual no tiene columna de ${faltan.join(', ')}`)
       }
+      // La sucursal no impide importar, pero si falta la columna la pantalla queda con la columna
+      // «Sucursal» vacía y el filtro por sucursal no devuelve nada, sin decir por qué. Que se vea acá,
+      // que es donde el usuario va a mirar («Columnas reconocidas por pestaña»).
+      if (!mapeo.porCampo.has('sucursal')) {
+        this.problema(
+          p.titulo,
+          1,
+          null,
+          'columna de sucursal no encontrada',
+          'la planilla mensual no tiene columna LOCAL (ni SUCURSAL, SUC, OFICINA, SEDE o AGENCIA): las filas se ' +
+            'quedan con la sucursal del cliente y, si el cliente tampoco la tiene, la columna sale en blanco',
+        )
+      }
     }
   }
 
@@ -1289,6 +1322,13 @@ class TrabajoDeImportacion {
       clienteId = this.buscarCliente(ident)
       polizaId = this.buscarPoliza(ident)
       if (polizaId === null) this.contar(resumen, 'cuotas_sin_poliza_vigente')
+      // Las mensuales viejas no crean clientes, pero sí saben de qué sucursal es cada uno. Si a la más
+      // nueva le falta la columna LOCAL, son la única fuente que queda: sin esto, una computadora recién
+      // instalada importa la hoja entera y termina con TODOS los clientes sin sucursal, y como la
+      // planilla del mes se respalda en el cliente, la columna sale en blanco en todas las filas.
+      if (clienteId !== null && sucursalTexto) {
+        this.sentencias.completarSucursalDelCliente.run({ id: clienteId, sucursal_id: sucursalId, sucursal_texto: sucursalTexto })
+      }
     }
 
     const cuota = fila.valor('cuota')
@@ -1316,6 +1356,7 @@ class TrabajoDeImportacion {
       numero_poliza: oNulo(ident.numero),
       patente: oNulo(ident.patente),
       sucursal_texto: oNulo(sucursalTexto),
+      sucursal_mapeada: fila.tieneColumna('sucursal') ? 1 : 0,
       cuota: oNulo(cuota),
       cuota_monto: cuotaMonto,
       dia_vencimiento: oNulo(diaTexto),
@@ -1573,6 +1614,7 @@ class TrabajoDeImportacion {
       numero_poliza: oNulo(ident.numero),
       patente: oNulo(ident.patente),
       sucursal_texto: oNulo(sucursalTexto),
+      sucursal_mapeada: fila.tieneColumna('sucursal') ? 1 : 0,
       motivo: oNulo(fila.valor('motivo')),
       fecha_baja: oNulo(fechaTexto),
       fecha_baja_iso: fecha.iso,
@@ -1613,6 +1655,7 @@ class TrabajoDeImportacion {
       documento: oNulo(ident.documento),
       telefono: oNulo(fila.valor('telefono')),
       sucursal_texto: oNulo(sucursalTexto),
+      sucursal_mapeada: fila.tieneColumna('sucursal') ? 1 : 0,
       emision: oNulo(emisionTexto),
       emision_iso: emision.iso,
       tipo_riesgo: oNulo(fila.valor('tipo_riesgo')),
@@ -1660,6 +1703,7 @@ class TrabajoDeImportacion {
       documento: oNulo(ident.documento),
       patente: oNulo(ident.patente),
       sucursal_texto: oNulo(sucursalTexto),
+      sucursal_mapeada: fila.tieneColumna('sucursal') ? 1 : 0,
       compania: oNulo(ident.compania),
       numero_poliza: oNulo(ident.numero),
       cobertura: oNulo(fila.valor('cobertura')),
@@ -1695,6 +1739,7 @@ class TrabajoDeImportacion {
       cliente_id: this.buscarCliente(ident),
       poliza_id: this.buscarPoliza(ident),
       sucursal_texto: oNulo(sucursalTexto),
+      sucursal_mapeada: fila.tieneColumna('sucursal') ? 1 : 0,
       fecha: oNulo(fechaTexto),
       fecha_iso: fecha.iso,
       cliente_nombre: oNulo(ident.nombre),
@@ -1744,6 +1789,7 @@ class TrabajoDeImportacion {
       numero_poliza: oNulo(ident.numero),
       patente: oNulo(ident.patente),
       sucursal_texto: oNulo(sucursalTexto),
+      sucursal_mapeada: fila.tieneColumna('sucursal') ? 1 : 0,
       importe: oNulo(importe),
       importe_monto: importeMonto,
       medio: oNulo(fila.valor('medio_pago')),
