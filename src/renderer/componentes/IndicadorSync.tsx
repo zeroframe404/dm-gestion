@@ -1,5 +1,5 @@
 // Indicador de sincronización de la barra superior: de un vistazo, si lo que se está cargando llegó a
-// la hoja o está esperando. Verde sincronizado, amarillo con cambios por subir, rojo sin conexión.
+// la base del VPS o está esperando. Verde sincronizado, amarillo con cambios por subir, rojo sin conexión.
 import { useCallback, useEffect, useState } from 'react'
 import type { EstadoSincronizacion } from '../../shared/tipos'
 import { Icono, type NombreIcono } from './Icono'
@@ -20,7 +20,7 @@ function aspectoDe(estado: EstadoSincronizacion): Aspecto {
       punto: 'bg-slate-400',
       icono: null,
       texto: 'Local',
-      detalle: 'Todavía no hay hoja conectada: los datos se guardan sólo en esta computadora.',
+      detalle: 'La conexión con la base del VPS no está disponible en esta computadora: los datos se guardan sólo acá.',
     }
   }
   if (estado.situacion === 'sin-conexion') {
@@ -38,7 +38,7 @@ function aspectoDe(estado: EstadoSincronizacion): Aspecto {
       punto: 'bg-marino-500',
       icono: 'cargando',
       texto: 'Sincronizando…',
-      detalle: 'Subiendo y bajando cambios de la hoja.',
+      detalle: 'Subiendo y bajando cambios de la base del VPS.',
     }
   }
   if (estado.pendientes > 0) {
@@ -69,7 +69,9 @@ function aspectoDe(estado: EstadoSincronizacion): Aspecto {
     punto: 'bg-green-500',
     icono: null,
     texto: `Sincronizado ${haceCuanto(estado.ultimaBajada)}`,
-    detalle: `Última subida ${haceCuanto(estado.ultimaSubida)}. Todo lo de esta computadora está en la hoja.`,
+    // «Última subida» es la última vez que HUBO algo para subir (si nadie cargó nada, queda vieja y
+    // no significa que la sincronización esté caída): se aclara para que no asuste.
+    detalle: `Todo lo de esta computadora está en la base del VPS. Última subida ${haceCuanto(estado.ultimaSubida)} (la última vez que hubo cambios para subir).`,
   }
 }
 

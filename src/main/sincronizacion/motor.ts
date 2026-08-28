@@ -22,7 +22,7 @@ import {
 } from './cola'
 import { bajarCambios, type ResultadoBajada } from './bajada'
 import { leerContexto, type ContextoHoja } from './hoja'
-import { asegurarPestanasDeLaApp } from './pestanasApp'
+import { asegurarPestanasDeLaApp, asegurarPestanasDelMes } from './pestanasApp'
 import { subirTanda } from './subida'
 
 export const INTERVALO_SUBIDA_MS = 10_000
@@ -195,10 +195,15 @@ export class MotorDeSincronizacion {
     const arranque = Date.now()
     try {
       let contexto = await this.conContexto(fuente)
-      // Si lo que espera es para una pestaña de la aplicación (leads, presupuestos, tareas) y todavía
-      // no está en la hoja, se crea ahora al final del archivo y se relee la estructura: recién con la
-      // pestaña y sus encabezados leídos la subida sabe qué columna es cada campo.
-      const creadas = await asegurarPestanasDeLaApp(fuente, contexto, pestanasPendientes())
+      // Si lo que espera es para una pestaña que todavía no está en la base —una de la aplicación
+      // (leads, presupuestos, tareas) o la del mes nuevo que dejó «Cerrar mes»— se crea ahora al
+      // final y se relee la estructura: recién con la pestaña y sus encabezados leídos la subida
+      // sabe qué columna es cada campo.
+      const pendientesDeSubir = pestanasPendientes()
+      const creadas = [
+        ...(await asegurarPestanasDeLaApp(fuente, contexto, pendientesDeSubir)),
+        ...(await asegurarPestanasDelMes(fuente, contexto, pendientesDeSubir)),
+      ]
       if (creadas.length > 0) contexto = await this.conContexto(fuente, true)
       const resultado = await subirTanda(fuente, contexto)
       if (resultado.error) throw new Error(resultado.error)
@@ -251,7 +256,7 @@ export class MotorDeSincronizacion {
       guardarMarca('ultima_bajada', new Date().toISOString())
 
       if (resultado.necesitaImportacion) {
-        anotarEvento('bajada', `Aparecieron ${resultado.filasNuevas} filas nuevas en la hoja: se corre la importación completa para incorporarlas.`)
+        anotarEvento('bajada', `Aparecieron ${resultado.filasNuevas} filas nuevas en la base: se corre la importación completa para incorporarlas.`)
         await this.opciones.importar()
       }
       if (resultado.filasCambiadas > 0 || resultado.filasNuevas > 0 || resultado.filasQueYaNoEstan > 0 || completa) {

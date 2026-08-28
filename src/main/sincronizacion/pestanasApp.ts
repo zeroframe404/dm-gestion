@@ -13,7 +13,10 @@
 import type { TipoPestana } from '../../shared/tipos'
 import { ENCABEZADO_ID } from '../importacion/encabezados'
 import type { FuenteHoja } from '../importacion/fuente'
-import type { ContextoHoja } from './hoja'
+import type { Layout } from '../importacion/layouts'
+import { limpiar } from '../importacion/normalizar'
+import { clasificarPestana } from '../importacion/pestanas'
+import type { ContextoHoja, PestanaSincronizable } from './hoja'
 import { anotarEvento } from './cola'
 
 export interface PestanaDeLaApp {
@@ -148,6 +151,77 @@ export async function asegurarPestanasDeLaApp(fuente: FuenteHoja, contexto: Cont
         continue
       }
       anotarEvento('error', `No se pudo crear la pestaña «${pestana.titulo}»: ${motivo}`, { conError: true })
+      throw error
+    }
+  }
+  return creadas
+}
+
+// ---------------------------------------------------------------------------
+// Pestañas del mes (v12)
+// ---------------------------------------------------------------------------
+
+/** true si el título es una pestaña de mes que la aplicación sabe crear sola (planilla o sus bajas). */
+export function esPestanaDelMes(titulo: string): boolean {
+  const tipo = clasificarPestana(titulo).tipo
+  return tipo === 'MENSUAL' || tipo === 'BAJAS'
+}
+
+/**
+ * Encabezados para una pestaña de mes nueva: los de la plantilla, sin las celdas vacías del final y
+ * con la columna _ID garantizada (si la plantilla no la tiene con título, se agrega al final, que es
+ * lo mismo que hace el importador cuando falta). Devuelve null si la plantilla no aporta encabezados.
+ */
+export function encabezadosParaPestanaDelMes(layout: Layout | undefined): string[] | null {
+  if (!layout) return null
+  const encabezados = [...layout.mapeo.encabezados]
+  while (encabezados.length > 0 && limpiar(encabezados[encabezados.length - 1] ?? '') === '') encabezados.pop()
+  if (encabezados.length === 0) return null
+  if (!encabezados.some((encabezado) => limpiar(encabezado).toUpperCase() === ENCABEZADO_ID)) {
+    encabezados.push(ENCABEZADO_ID)
+  }
+  return encabezados
+}
+
+/** La pestaña más nueva del mismo tipo, para copiarle los encabezados (a igual período, la de más a la derecha). */
+function plantillaPara(contexto: ContextoHoja, tipo: TipoPestana): PestanaSincronizable | null {
+  const candidatas = contexto.pestanas
+    .filter((pestana) => pestana.tipo === tipo && pestana.layout)
+    .sort((a, b) => (b.periodo ?? '').localeCompare(a.periodo ?? '') || b.indice - a.indice)
+  return candidatas[0] ?? null
+}
+
+/**
+ * Crea la pestaña del mes nuevo (y la de sus bajas) cuando «Cerrar mes» o una baja dejan en la cola
+ * filas para una pestaña que todavía no existe en la base.
+ *
+ * Hasta la v11 esto se resolvía a mano: se duplicaba la pestaña del mes anterior en Google. Con la
+ * base en el VPS ya no hay dónde duplicarla, así que la aplicación la crea sola al final, copiando
+ * los encabezados de la pestaña más nueva del mismo tipo. Mismo contrato que las pestañas de la
+ * aplicación: devuelve los títulos creados y un «ya existe» de otra computadora no es un error.
+ */
+export async function asegurarPestanasDelMes(fuente: FuenteHoja, contexto: ContextoHoja, necesarias: Iterable<string>): Promise<string[]> {
+  const creadas: string[] = []
+  for (const titulo of new Set(necesarias)) {
+    if (contexto.porTitulo.has(titulo) || esPestanaDeLaApp(titulo)) continue
+    const tipo = clasificarPestana(titulo).tipo
+    if (tipo !== 'MENSUAL' && tipo !== 'BAJAS') continue
+    const plantilla = plantillaPara(contexto, tipo)
+    const encabezados = encabezadosParaPestanaDelMes(plantilla?.layout)
+    // Sin plantilla no se inventa nada: la subida lo deja anotado claro (ver subida.ts).
+    if (!plantilla || !encabezados) continue
+    try {
+      await fuente.crearPestana(titulo, encabezados)
+      creadas.push(titulo)
+      anotarEvento('pestana', `Se creó la pestaña «${titulo}» al final de la base, con los encabezados de «${plantilla.titulo}».`)
+    } catch (error) {
+      const motivo = error instanceof Error ? error.message : String(error)
+      // Otra computadora la creó entre la lectura de la estructura y ahora: no es un problema.
+      if (/already exists|ya existe/i.test(motivo)) {
+        creadas.push(titulo)
+        continue
+      }
+      anotarEvento('error', `No se pudo crear la pestaña «${titulo}»: ${motivo}`, { conError: true })
       throw error
     }
   }

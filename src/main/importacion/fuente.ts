@@ -216,7 +216,7 @@ export class FuenteGoogleSheets implements FuenteHoja {
     const estado = estadoHttp(error)
     const detalle = mensajeDeError(error)
     if (esErrorDeCredenciales(detalle)) {
-      return new ErrorDeNegocio(`Google rechazó la clave de la cuenta de servicio (${this.clientEmail}). Volvé a pegar el JSON completo en «Conexión con Google» o generá una clave nueva en Google Cloud. Detalle: ${detalle}`)
+      return new ErrorDeNegocio(`Google rechazó la clave de la cuenta de servicio (${this.clientEmail}). Volvé a pegar el JSON completo en «Google Drive» o generá una clave nueva en Google Cloud. Detalle: ${detalle}`)
     }
     if (estado === 403 && /has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(detalle)) {
       return new ErrorDeNegocio(`La API de Google Sheets no está habilitada en el proyecto de la cuenta de servicio. Habilitala en Google Cloud (APIs y servicios → Google Sheets API). Detalle: ${detalle}`)
@@ -224,8 +224,8 @@ export class FuenteGoogleSheets implements FuenteHoja {
     if (estado === 403) {
       return new ErrorDeNegocio(`La cuenta de servicio (${this.clientEmail}) no tiene acceso a la hoja. Compartí la hoja con ese correo como editor. Detalle: ${detalle}`)
     }
-    if (estado === 404) return new ErrorDeNegocio(`No se encontró la hoja de cálculo (ID ${this.hojaId}). Revisá la URL guardada en Conexión con Google.`)
-    if (estado === 401) return new ErrorDeNegocio(`Google rechazó las credenciales de la cuenta de servicio. Volvé a pegar el JSON en Conexión con Google. Detalle: ${detalle}`)
+    if (estado === 404) return new ErrorDeNegocio(`No se encontró la hoja de cálculo (ID ${this.hojaId}). Revisá la URL guardada en «Google Drive».`)
+    if (estado === 401) return new ErrorDeNegocio(`Google rechazó las credenciales de la cuenta de servicio. Volvé a pegar el JSON en «Google Drive». Detalle: ${detalle}`)
     if (estado === 429) return new ErrorDeNegocio(`Google limitó la cantidad de pedidos (cuota) al ${descripcion}. Esperá un minuto y volvé a correr la importación: continúa donde quedó.`)
     if (estado === 400) return new ErrorDeNegocio(`Google rechazó la operación (${descripcion}): ${detalle}`)
     if (estado === null) return new Error(`No se pudo conectar con Google (${descripcion}): ${detalle}`)

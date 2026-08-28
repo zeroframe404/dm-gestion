@@ -1,4 +1,4 @@
-// Módulo Administración: Usuarios y Permisos (sólo SUPER_ADMIN), Conexión con Google (SUPER_ADMIN y
+// Módulo Administración: Usuarios y Permisos (sólo SUPER_ADMIN), la base y Google Drive (SUPER_ADMIN y
 // ADMIN, y con permiso sobre el módulo), e Impresora y Acerca de, que las ve todo el mundo.
 import { useMemo, useState } from 'react'
 import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
@@ -37,10 +37,12 @@ export function Administracion() {
     // gastar papel sin esperar a un administrador.
     lista.push({ id: 'impresora', nombre: 'Impresora', icono: 'impresora', ayuda: 'administracion.impresora' })
     if (usuario.rol !== 'EMPLEADO' && puedeVer('administracion')) {
+      // Desde la v12 la base vive en el VPS: primero lo que se usa (base y sincronización), y Google
+      // queda al final, reencuadrado como lo que es ahora: la cuenta para Drive (respaldos y adjuntos).
       lista.push({ id: 'basededatos', nombre: 'Base de datos', icono: 'nube', ayuda: 'administracion.basededatos' })
-      lista.push({ id: 'google', nombre: 'Conexión con Google', icono: 'nube', ayuda: 'administracion.google' })
-      lista.push({ id: 'importar', nombre: 'Reimportar la base', icono: 'nubeBajada', ayuda: 'administracion.importar' })
       lista.push({ id: 'sincronizacion', nombre: 'Sincronización', icono: 'nube', ayuda: 'administracion.sincronizacion' })
+      lista.push({ id: 'importar', nombre: 'Reimportar la base', icono: 'nubeBajada', ayuda: 'administracion.importar' })
+      lista.push({ id: 'google', nombre: 'Google Drive', icono: 'nube', ayuda: 'administracion.google' })
     }
     lista.push({ id: 'acerca', nombre: 'Acerca de', icono: 'info', ayuda: 'administracion.acerca' })
     return lista

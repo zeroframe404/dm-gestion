@@ -191,16 +191,40 @@ test('varias bajas seguidas borran las filas en una sola pasada por la hoja', as
   cerrarBaseDeDatos()
 })
 
-test('cerrar el mes agrega las filas nuevas al final de la pestaña del mes', async () => {
-  const { motor } = await escenario()
+test('cerrar el mes crea solo la pestaña nueva en la base y sube las filas', async () => {
+  const { hoja, motor } = await escenario()
   cerrarMes(DANIEL)
   assert.equal(cuantasPendientes(), 7, 'una entrada por póliza activa')
 
-  // La pestaña de septiembre todavía no existe en la hoja: la subida lo dice claro y no rompe nada.
+  // La pestaña de septiembre no existe todavía: el motor la crea al final copiando los encabezados
+  // de AGOSTO (hasta la v11 esto se hacía duplicando la pestaña a mano en Google; con la base en el
+  // VPS lo hace la aplicación) y en el mismo ciclo suben las 7 filas.
   await motor.ciclarSubida()
-  assert.equal(cuantasFallidas(), 7)
-  const panel = (await import('../src/main/sincronizacion/cola')).pendientes(10)
-  assert.equal(panel.length, 0, 'no se reintentan para siempre')
+  assert.equal(cuantasFallidas(), 0, 'ninguna entrada queda sin arreglo')
+  assert.equal(cuantasPendientes(), 0, 'todo subió en el mismo ciclo')
+  assert.equal(hoja.llamadas.crearPestana, 1, 'la pestaña se creó una sola vez')
+
+  const encabezados = hoja.encabezadosDe('SEPTIEMBRE')
+  assert.ok(encabezados.length > 0, 'SEPTIEMBRE existe en la hoja con encabezados')
+  assert.ok(hoja.columnaIdDe('SEPTIEMBRE') >= 0, 'la pestaña nueva tiene su columna _ID')
+  for (const encabezado of ['LOCAL', 'CUOTA']) {
+    assert.ok(
+      encabezados.some((e) => e.trim().toUpperCase().includes(encabezado)),
+      `los encabezados copiados de AGOSTO traen «${encabezado}»`,
+    )
+  }
+  const idsDeSeptiembre = hoja.idsDe('SEPTIEMBRE')
+  assert.equal(idsDeSeptiembre.size, 7, 'las 7 pólizas activas quedaron en la pestaña nueva, cada una con su _ID')
+  assert.ok([...idsDeSeptiembre.values()].every((id) => id.length === 12), 'los _ID viajaron bien formados')
+
+  // Y la primera baja de septiembre crea también su pestaña de BAJAS, con los encabezados de las
+  // BAJAS anteriores más la columna _ID (las viejas no la tienen con título en la fila 1).
+  darDeBaja(fila(CLIENTES.gonzalez.nombre).filaId, { motivo: 'VENDIO', nota: '' }, DANIEL)
+  apurarAgrupadas()
+  await motor.ciclarSubida()
+  assert.equal(cuantasFallidas(), 0, 'la baja de septiembre subió sin quedar trabada')
+  assert.ok(hoja.columnaIdDe('BAJAS SEPTIEMBRE') >= 0, 'BAJAS SEPTIEMBRE se creó con su columna _ID')
+  assert.equal(hoja.idsDe('BAJAS SEPTIEMBRE').size, 1, 'la baja viajó a la pestaña nueva')
   cerrarBaseDeDatos()
 })
 
