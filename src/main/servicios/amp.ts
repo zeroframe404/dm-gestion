@@ -9,11 +9,12 @@
 import { hoyLocal } from '../../shared/semaforo'
 import type { FilaAmp, ListadoAmp, SesionUsuario } from '../../shared/tipos'
 import { db } from '../db/base'
-import { ahoraIso, limpiar } from '../importacion/normalizar'
+import { ahoraIso } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
 import { buscarPestana } from './hojas'
+import { sucursalesParaElegir } from './sucursales'
 import { booleano, enteroPositivo } from './validacion'
 
 const SIN_COLUMNA =
@@ -109,9 +110,13 @@ export function listarAmp(incluirResueltas: unknown = false): ListadoAmp {
   ).map(aFila)
 
   const contadores = db().prepare('SELECT resuelto, COUNT(*) AS n FROM amp GROUP BY resuelto').all() as Array<{ resuelto: number; n: number }>
-  const sucursales = (db().prepare(`SELECT DISTINCT sucursal_texto AS s FROM amp WHERE sucursal_texto IS NOT NULL ORDER BY s`).all() as Array<{ s: string }>)
-    .map((f) => limpiar(f.s))
-    .filter(Boolean)
+  // El DISTINCT y el ORDER BY salieron del SQL a propósito: SQLite compara byte a byte, así que
+  // «LANUS» y «Lanús» le parecían dos ampliaciones de sucursales distintas y el orden dejaba a las dos
+  // con tilde en cualquier lado. Y la lista ahora arranca por las cuatro de la agencia: la sucursal que
+  // todavía no pidió ninguna ampliación tiene que estar en el filtro igual.
+  const sucursales = sucursalesParaElegir(
+    (db().prepare('SELECT DISTINCT sucursal_texto AS s FROM amp').all() as Array<{ s: string | null }>).map((f) => f.s),
+  )
 
   return {
     filas,

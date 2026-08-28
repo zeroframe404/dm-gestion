@@ -9,6 +9,7 @@
 // un clic por persona, exactamente igual que el botón «Avisar» de la Cartera: lo que aporta el
 // segmento es no tener que buscar a quién le toca.
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal } from '../../shared/semaforo'
+import { mismaSucursal } from '../../shared/sucursales'
 import {
   CLAVE_AVISO_DE_VENCIMIENTO,
   SEGMENTO_SIN_FILTROS,
@@ -75,7 +76,9 @@ export function sanearFiltrosDeSegmento(bruto: unknown): FiltrosDeSegmento {
 }
 
 function coincide(fila: FilaCartera, vencimiento: string | null, filtros: FiltrosDeSegmento, hoy: string): boolean {
-  if (filtros.sucursal && !mismaCosa(fila.sucursal, filtros.sucursal)) return false
+  // La sucursal, con `mismaSucursal`: el desplegable del segmento sale de `catalogos().sucursales`,
+  // que pliega «AVELLANEDA» dentro de «Dock Sud», y el aviso tiene que salir para esas cuotas también.
+  if (filtros.sucursal && !mismaSucursal(fila.sucursal, filtros.sucursal)) return false
   if (filtros.compania && !mismaCosa(fila.compania, filtros.compania)) return false
   if (filtros.formaPago && !mismaCosa(fila.formaPago, filtros.formaPago)) return false
   if (filtros.excluirDebito && esDebitoAutomatico(fila.formaPago)) return false

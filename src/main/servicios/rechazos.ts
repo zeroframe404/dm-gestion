@@ -10,6 +10,7 @@
 // tiene que serlo, porque la sucursal avisada trabaja en otra computadora y ése es el único camino que
 // hay entre las dos. Lo que la sucursal cambia después —el estado y la nota— vuelve por la bajada.
 import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
+import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_RECHAZO,
   MOTIVOS_DE_RECHAZO,
@@ -30,6 +31,7 @@ import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
 import { nombreDePestana } from './hojas'
+import { sucursalesParaElegir } from './sucursales'
 import { enteroPositivo, objeto } from './validacion'
 
 const PESTANA_POR_DEFECTO = PESTANAS_DE_LA_APP.find((p) => p.tipo === 'APP_RECHAZOS')!.titulo
@@ -125,11 +127,13 @@ function todos(): FilaRechazo[] {
   return (db().prepare(`${SELECT_RECHAZOS} ${ORDEN}`).all() as FilaCruda[]).map(aFila)
 }
 
-/** Se compara sin tildes ni mayúsculas: «Dock Sud» y «DOCK SUD» son la misma sucursal. */
-function mismaSucursal(a: string | null, b: string | null): boolean {
-  const uno = normalizarTexto(a)
-  const otro = normalizarTexto(b)
-  return uno !== '' && uno === otro
+/**
+ * La sucursal de la fila, para comparar. `mismaSucursal` de shared da true con dos vacíos —dos filas
+ * sin sucursal son «la misma nada»—, y acá eso avisaría a todo el mundo de un rechazo que no tiene
+ * sucursal cargada, así que la fila sin sucursal no empata con nadie.
+ */
+function esDeLaSucursal(fila: FilaRechazo, sucursal: string | null): boolean {
+  return limpiar(fila.sucursal) !== '' && mismaSucursal(fila.sucursal, sucursal)
 }
 
 function coincideConLaBusqueda(fila: FilaRechazo, busqueda: string): boolean {
@@ -148,11 +152,16 @@ export function listarRechazos(filtros: unknown): ListadoRechazos {
   const filas = todos()
   // El contador de cada estado se calcula con todos los filtros MENOS el de estado: si no, tocar
   // «Resueltos» dejaría los otros dos en cero y no se sabría a qué se está volviendo.
-  const sinEstado = filas.filter((fila) => (!sucursal || mismaSucursal(fila.sucursal, sucursal)) && coincideConLaBusqueda(fila, busqueda))
+  const sinEstado = filas.filter((fila) => (!sucursal || esDeLaSucursal(fila, sucursal)) && coincideConLaBusqueda(fila, busqueda))
   const porEstado: Record<EstadoDeRechazo, number> = { PENDIENTE: 0, VISTO: 0, RESUELTO: 0 }
   for (const fila of sinEstado) porEstado[fila.estado]++
 
-  const sucursales = [...new Set(filas.map((fila) => limpiar(fila.sucursal)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
+  // Las cuatro de la agencia más las que traigan los avisos. Antes salían sólo las que ya tenían algún
+  // rechazo, y la pantalla le prependía a mano la sucursal de quien entró —que puede no tener ninguno
+  // todavía y aun así ser la que uno quiere mirar—: media lista acá y media allá. Armada entera desde
+  // acá, ese parche de Rechazos.tsx se pudo sacar. Además el `new Set` era sobre el texto crudo, así
+  // que «LANUS» y «Lanús» eran dos opciones para el mismo mostrador.
+  const sucursales = sucursalesParaElegir(filas.map((fila) => fila.sucursal))
 
   return {
     filas: estado ? sinEstado.filter((fila) => fila.estado === estado) : sinEstado,
@@ -166,7 +175,7 @@ export function listarRechazos(filtros: unknown): ListadoRechazos {
 /** Cuántos avisos sin resolver tiene la sucursal de quien entró: es lo que mira la campana. */
 export function avisosDeRechazos(actor: SesionUsuario): AvisosDeRechazos {
   const sucursal = actor.sucursal.nombre
-  const suyos = todos().filter((fila) => fila.estado !== 'RESUELTO' && mismaSucursal(fila.sucursal, sucursal))
+  const suyos = todos().filter((fila) => fila.estado !== 'RESUELTO' && esDeLaSucursal(fila, sucursal))
   return {
     nuevos: suyos.filter((fila) => fila.estado === 'PENDIENTE').length,
     sinResolver: suyos.length,
@@ -178,7 +187,7 @@ export function avisosDeRechazos(actor: SesionUsuario): AvisosDeRechazos {
 
 /** Abrir la campana cuenta como enterarse: lo PENDIENTE de la sucursal pasa a VISTO. */
 export function marcarRechazosVistos(actor: SesionUsuario): AvisosDeRechazos {
-  const pendientes = todos().filter((fila) => fila.estado === 'PENDIENTE' && mismaSucursal(fila.sucursal, actor.sucursal.nombre))
+  const pendientes = todos().filter((fila) => fila.estado === 'PENDIENTE' && esDeLaSucursal(fila, actor.sucursal.nombre))
   for (const fila of pendientes) escribirEstado(fila, 'VISTO', actor, { anotarEnHistorial: false })
   return avisosDeRechazos(actor)
 }

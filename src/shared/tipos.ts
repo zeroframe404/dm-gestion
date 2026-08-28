@@ -1150,6 +1150,12 @@ export interface BandejaRenovaciones {
   total: number
   hoy: string
   responsables: Array<{ id: number; nombre: string }>
+  /**
+   * Las mismas sucursales que ofrece el módulo Tareas. La bandeja tiene «Anotar tarea», que abre el
+   * MISMO diálogo que «Nueva tarea»: sin esta lista el diálogo se armaba con la sucursal de la
+   * renovación y la de quien entró, así que desde acá no se le podía anotar una tarea a ninguna otra.
+   */
+  sucursales: string[]
 }
 
 export interface DatosDeRenovacion {
@@ -1897,6 +1903,13 @@ export interface FichaLead {
   notas: NotaDeLead[]
   presupuestos: FilaPresupuesto[]
   tareas: FilaTarea[]
+  /**
+   * Las mismas sucursales que ofrece el listado. La ficha tiene el botón «Editar la consulta», que
+   * abre el MISMO diálogo que «Nueva consulta»: si acá viajara sólo la sucursal del lead, corregir una
+   * consulta desde su ficha ofrecería dos opciones (la de quien entró y la que ya tenía) y no habría
+   * forma de pasarla a ninguna de las otras. Es lo mismo que la ficha de la tarea ya hace.
+   */
+  sucursales: string[]
 }
 
 export interface DatosDeLead {

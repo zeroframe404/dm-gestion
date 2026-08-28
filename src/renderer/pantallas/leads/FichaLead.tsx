@@ -269,10 +269,12 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
         </Tarjeta>
       </div>
 
+      {/* Las sucursales son las que ofrece el listado, no la del lead sola: acá se corrige una consulta
+          anotada en la sucursal equivocada, y para eso hay que poder elegir cualquiera de las cuatro. */}
       {editarAbierto && (
         <DialogoLead
           lead={lead}
-          sucursales={lead.sucursal ? [lead.sucursal] : []}
+          sucursales={ficha.sucursales}
           alCerrar={() => setEditarAbierto(false)}
           alGuardar={(nueva) => {
             setFicha(nueva)

@@ -11,6 +11,7 @@
 // pago registrado desde la aplicación.
 import { comoTextoDeFecha } from '../../shared/polizas'
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal, nombreDePeriodo } from '../../shared/semaforo'
+import { mismaSucursal } from '../../shared/sucursales'
 import {
   DEUDORES_SIN_FILTROS,
   FORMATOS_DE_DEUDORES,
@@ -25,6 +26,7 @@ import { limpiar, normalizarTexto } from '../importacion/normalizar'
 import { aFila, periodosDisponibles, SELECT_PLANILLA, type FilaCruda } from './cartera'
 import { diasCoberturaPorCompania } from './companias'
 import { paraNombreDeArchivo } from './exportacion'
+import { sucursalesParaElegir } from './sucursales'
 import { construirXlsx, type ValorDeCelda } from './xlsx'
 
 // ---------------------------------------------------------------------------
@@ -56,6 +58,17 @@ function estaEntre(valor: string | null, tildados: string[]): boolean {
   if (tildados.length === 0) return true
   const normalizado = normalizarTexto(valor)
   return tildados.some((tildado) => normalizarTexto(tildado) === normalizado)
+}
+
+/**
+ * Lo mismo para la sucursal, que se compara con `mismaSucursal` y no con el texto pelado: los chips
+ * los arma `sucursalesParaElegir`, que pliega «AVELLANEDA» y «DOCKSUD» dentro de «Dock Sud». Si acá se
+ * comparara el texto, tildar «Dock Sud» dejaría afuera las cuotas viejas que dicen «Avellaneda» y no
+ * quedaría ningún chip que las traiga: la fila sigue en la base y no hay forma de verla.
+ */
+function esAlgunaDeLasSucursales(valor: string | null, tildadas: string[]): boolean {
+  if (tildadas.length === 0) return true
+  return tildadas.some((tildada) => mismaSucursal(valor, tildada))
 }
 
 function aDia(iso: string): number {
@@ -141,7 +154,7 @@ function relevar(filtros: FiltrosDeudores, hoy: string): Relevamiento {
     // Un pago registrado desde la aplicación puede no haber escrito todavía CUANDO PAGO en la fila.
     if (fila.pagoRegistrado) continue
     todas.push(fila)
-    if (!estaEntre(fila.sucursal, filtros.sucursales)) continue
+    if (!esAlgunaDeLasSucursales(fila.sucursal, filtros.sucursales)) continue
     if (!estaEntre(fila.compania, filtros.companias)) continue
     if (filtros.formasDePago.length > 0) {
       // Lo tildado manda: pedir TARJETA es querer ver justamente las tarjetas que no entraron.
@@ -154,7 +167,9 @@ function relevar(filtros: FiltrosDeudores, hoy: string): Relevamiento {
 
   return {
     filas,
-    sucursales: distintos(todas.map((fila) => fila.sucursal)),
+    // Las cuatro de la agencia siempre, más lo que traigan las cuotas. Los chips salen de acá y una
+    // sucursal sin deuda tiene que poder tildarse igual: verla en cero es una respuesta, no verla no.
+    sucursales: sucursalesParaElegir(todas.map((fila) => fila.sucursal)),
     companias: distintos(todas.map((fila) => fila.compania)),
     formasDePago: distintos(todas.map((fila) => fila.formaPago)),
   }

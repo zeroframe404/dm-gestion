@@ -38,6 +38,7 @@ import { registrarCambio } from './historial'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANA_APP, registrarFilaDeLaApp } from './filas'
 import { guardarPago, normalizarResultado } from './pagos'
+import { sucursalesParaElegir } from './sucursales'
 import { texto } from './validacion'
 
 /** Formas de pago que ya usa la agencia; el desplegable las ofrece pero deja escribir otra. */
@@ -211,10 +212,9 @@ export function catalogos(): CatalogosCartera {
   }
   return {
     formasDePago: combinar(FORMAS_DE_PAGO, valoresDistintos('SELECT DISTINCT forma_pago AS valor FROM cuotas_mes')),
-    sucursales: combinar(
-      valoresDistintos('SELECT nombre AS valor FROM sucursales'),
-      valoresDistintos('SELECT DISTINCT sucursal_texto AS valor FROM cuotas_mes'),
-    ),
+    // Las sucursales las arma `sucursalesParaElegir` y no el `combinar` de acá: es la misma lista que
+    // ofrecen las otras diez pantallas, con las cuatro de la agencia siempre presentes.
+    sucursales: sucursalesParaElegir(valoresDistintos('SELECT DISTINCT sucursal_texto AS valor FROM cuotas_mes')),
     companias: valoresDistintos('SELECT nombre AS valor FROM companias WHERE activa = 1'),
     coberturas: valoresDistintos('SELECT DISTINCT cobertura AS valor FROM polizas WHERE activa = 1'),
     tiposDeVehiculo: valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos'),

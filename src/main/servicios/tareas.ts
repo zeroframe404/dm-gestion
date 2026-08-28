@@ -10,6 +10,7 @@
 // se ve lo que falta hacer.
 import { aDia, diasEntre } from '../../shared/polizas'
 import { hoyLocal } from '../../shared/semaforo'
+import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_TAREA,
   NOMBRE_ESTADO_TAREA,
@@ -29,7 +30,7 @@ import {
   type VinculoDeTarea,
 } from '../../shared/tipos'
 import { db } from '../db/base'
-import { ahoraIso, generarId, limpiar, mismoTexto, normalizarTexto, sinRepetirTexto } from '../importacion/normalizar'
+import { ahoraIso, generarId, limpiar, normalizarTexto } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANAS_DE_LA_APP } from '../sincronizacion/pestanasApp'
 import {
@@ -44,6 +45,7 @@ import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
 import { nombreDePestana } from './hojas'
 import { dadorDeTokenDeGoogle } from './sincronizacion'
+import { sucursalesParaElegir } from './sucursales'
 import { enteroPositivo, objeto, texto } from './validacion'
 
 const PESTANA_POR_DEFECTO = PESTANAS_DE_LA_APP.find((p) => p.tipo === 'APP_TAREAS')!.titulo
@@ -245,7 +247,7 @@ export function listarTareas(filtros: unknown): ListadoTareas {
   const f = normalizarFiltros(filtros)
   const hoy = hoyLocal()
   const todas = (db().prepare(`${SELECT_TAREA} ${ORDEN}`).all() as FilaCruda[]).map((cruda) => aFila(cruda, hoy))
-  const sucursales = sinRepetirTexto(todas.map((t) => t.sucursal))
+  const sucursales = sucursalesDeLasTareas()
 
   const busqueda = normalizarTexto(f.busqueda)
   const coincide = (t: FilaTarea): boolean =>
@@ -257,7 +259,7 @@ export function listarTareas(filtros: unknown): ListadoTareas {
     (t) =>
       (!f.prioridad || t.prioridad === f.prioridad) &&
       (f.responsableId === 0 || (f.responsableId === -1 ? t.responsableId === null : t.responsableId === f.responsableId)) &&
-      (!f.sucursal || mismoTexto(t.sucursal, f.sucursal)) &&
+      (!f.sucursal || mismaSucursal(t.sucursal, f.sucursal)) &&
       (!f.soloVencidas || t.vencida || t.venceHoy) &&
       coincide(t),
   )
@@ -313,8 +315,24 @@ function adjuntosDe(tareaId: number): AdjuntoDeTarea[] {
   }))
 }
 
-function sucursalesConocidas(): string[] {
-  return (db().prepare('SELECT nombre FROM sucursales ORDER BY nombre').all() as Array<{ nombre: string }>).map((s) => s.nombre)
+/**
+ * El desplegable de sucursal de las tareas: las cuatro de la agencia más las que traigan las tareas
+ * cargadas. Es UNA sola lista para los cuatro lugares donde aparece —el filtro del listado, la ficha,
+ * el «Nueva tarea» de la pantalla de Tareas y el «Anotar tarea» de la bandeja de Renovaciones—, por eso
+ * está exportada: la bandeja abre el mismo diálogo desde otro módulo y armaba la suya con la sucursal
+ * de la renovación, así que ofrecía una opción o dos.
+ *
+ * Los dos extremos que hay que sostener juntos: la ficha mostraba sólo el catálogo, así que una tarea
+ * vieja con una sucursal que ya no está en la lista perdía su propio valor al abrirla y guardarla la
+ * mudaba de sucursal sin que nadie lo pidiera; y el filtro mostraba sólo lo cargado, así que una
+ * sucursal sin ninguna tarea no se podía elegir para anotarle la primera. Ordenar en SQL tampoco
+ * servía: `ORDER BY nombre` es binario y manda «Lanús» y «Sarandí» a otro lado.
+ */
+export function sucursalesDeLasTareas(): string[] {
+  const deLasTareas = (
+    db().prepare('SELECT DISTINCT sucursal_texto AS valor FROM tareas').all() as Array<{ valor: string | null }>
+  ).map((f) => f.valor)
+  return sucursalesParaElegir(deLasTareas)
 }
 
 /**
@@ -332,7 +350,7 @@ export function fichaDeTarea(tareaId: number, actor: SesionUsuario): FichaTarea 
     comentarios: comentariosDe(id),
     adjuntos: adjuntosDe(id),
     responsables: responsablesActivos(),
-    sucursales: sucursalesConocidas(),
+    sucursales: sucursalesDeLasTareas(),
     carpetaDeAdjuntos: carpetaDeAdjuntos(),
   }
 }

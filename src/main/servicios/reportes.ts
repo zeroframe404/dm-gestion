@@ -11,6 +11,7 @@
 // la agencia «LANUS», «Lanús» y «lanus » son el mismo local y SQLite no sabe eso.
 import { hoyLocal, nombreDePeriodo, periodoDeHoy } from '../../shared/semaforo'
 import { normalizarEstadoSiniestro } from '../../shared/siniestros'
+import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_SINIESTRO,
   type CatalogoDeReportes,
@@ -696,7 +697,11 @@ function filtrarEnMemoria(reporte: Reporte, filas: FilaDeReporte[], filtros: Fil
   const busqueda = normalizarTexto(filtros.busqueda).replace(/ /g, '')
 
   return filas.filter((fila) => {
-    if (sucursal && reporte.campoSucursal && !mismaCosa(fila[reporte.campoSucursal], sucursal)) return false
+    // La sucursal se compara con `mismaSucursal` y el resto con `mismaCosa`: el desplegable de
+    // sucursal sale de `catalogos().sucursales`, que pliega «AVELLANEDA» y «DOCKSUD» dentro de «Dock
+    // Sud». Comparar el texto pelado dejaría esas filas afuera del reporte sin ninguna opción que las
+    // traiga, que es justo lo que un reporte no puede hacer.
+    if (sucursal && reporte.campoSucursal && !mismaSucursal(fila[reporte.campoSucursal], sucursal)) return false
     if (compania && reporte.campoCompania && !mismaCosa(fila[reporte.campoCompania], compania)) return false
     if (estado && reporte.campoEstado && !mismaCosa(fila[reporte.campoEstado], estado)) return false
     if (busqueda && reporte.busca.length > 0) {
@@ -948,7 +953,7 @@ function filasClasicasDelMes(periodo: string, sucursal: string): FilaDeReporte[]
         ORDER BY c.dia_vencimiento_numero, nombre`,
     )
     .all(periodo) as FilaDeReporte[]
-  return sucursal ? filas.filter((fila) => mismaCosa(fila.sucursal, sucursal)) : filas
+  return sucursal ? filas.filter((fila) => mismaSucursal(fila.sucursal, sucursal)) : filas
 }
 
 function filasClasicasDeBajas(periodo: string, sucursal: string): FilaDeReporte[] {
@@ -964,7 +969,7 @@ function filasClasicasDeBajas(periodo: string, sucursal: string): FilaDeReporte[
         ORDER BY nombre`,
     )
     .all(periodo) as FilaDeReporte[]
-  return sucursal ? filas.filter((fila) => mismaCosa(fila.sucursal, sucursal)) : filas
+  return sucursal ? filas.filter((fila) => mismaSucursal(fila.sucursal, sucursal)) : filas
 }
 
 /**

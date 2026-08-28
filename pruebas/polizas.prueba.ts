@@ -384,7 +384,10 @@ test('los filtros encuentran aunque el catálogo tenga tildes y la hoja no', asy
     'con tilde y sin tilde dan lo mismo',
   )
 
-  // Ninguna opción del catálogo puede devolver cero: si está ofrecida, es porque hay filas con ese valor.
+  // Acá el desplegable no puede devolver cero porque la hoja de prueba tiene pólizas en las cuatro
+  // sucursales. En una base de verdad SÍ puede: el desplegable ofrece siempre las cuatro de la agencia
+  // aunque una no tenga ni una póliza todavía (es lo que pasó con Sarandí recién abierta). Lo que se
+  // prueba acá es que el filtro engancha con el texto de la hoja, no que toda opción tenga filas.
   for (const sucursal of catalogos.sucursales) {
     const cantidad = listarPolizas({ ...SIN_FILTROS, sucursal }).filas.length
     assert.ok(cantidad > 0, `el filtro de sucursal «${sucursal}» no encontró ninguna póliza`)

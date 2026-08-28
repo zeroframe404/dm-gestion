@@ -6,6 +6,7 @@
 // sola que se corrige encima— así que no hay selector de mes ni meses de sólo lectura.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { esDebitoAutomatico } from '../../../shared/semaforo'
+import { mismaSucursal } from '../../../shared/sucursales'
 import type { CampoDeRiesgo, FilaRiesgoVario, ListadoRiesgos } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
@@ -72,9 +73,10 @@ export function RiesgosVarios() {
     if (!datos) return []
     const texto = normalizar(busqueda)
     return datos.filas.filter((f) => {
-      // Normalizado como en el resto de la aplicación: la hoja escribe «LANUS» y el desplegable puede
-      // ofrecer «Lanús». Comparando el texto crudo, elegir una de las dos formas vaciaba el listado.
-      if (sucursal && normalizar(f.sucursal) !== normalizar(sucursal)) return false
+      // La sucursal se compara con `mismaSucursal`, que es con lo que el servicio arma el desplegable:
+      // además de las tildes y las mayúsculas sabe que «AVELLANEDA» y «DOCKSUD» son Dock Sud. Con el
+      // texto pelado, elegir una opción que pliega dos grafías dejaba el listado vacío.
+      if (sucursal && !mismaSucursal(f.sucursal, sucursal)) return false
       if (!texto) return true
       return [f.clienteNombre, f.documento, f.numeroPoliza, f.tipoRiesgo, f.compania, f.telefono].some((valor) =>
         normalizar(valor).includes(texto),

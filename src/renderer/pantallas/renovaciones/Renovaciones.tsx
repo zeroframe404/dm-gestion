@@ -298,7 +298,7 @@ export function Renovaciones() {
             texto: `la renovación de ${tareaPara.clienteNombre ?? 'la póliza'} (vence ${fechaCorta(tareaPara.venceEl)})`,
           }}
           responsables={bandeja?.responsables ?? []}
-          sucursales={tareaPara.sucursal ? [tareaPara.sucursal] : []}
+          sucursales={bandeja?.sucursales ?? []}
           alCerrar={() => setTareaPara(null)}
           alCrear={(tarea) => {
             setTareaPara(null)

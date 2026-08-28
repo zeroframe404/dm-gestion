@@ -3,7 +3,7 @@
 // La campana de la barra superior muestra sólo lo de la sucursal de quien entró, que es lo urgente.
 // Acá se ve todo, con el filtro de sucursal puesto en la propia: es la pantalla desde la que se hace el
 // seguimiento (llamé, no atendió, pagó) y desde la que la administración controla que se hayan cobrado.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import {
   ESTADOS_DE_RECHAZO,
@@ -67,13 +67,12 @@ export function Rechazos() {
     else setError(resultado.error)
   }
 
-  // El filtro de sucursal ofrece las que tienen algún rechazo más la propia, que puede no tener
-  // ninguno todavía y aun así ser la que uno quiere mirar.
-  const sucursales = useMemo(() => {
-    const lista = datos?.sucursales ?? []
-    const propia = usuario.sucursal.nombre
-    return lista.some((s) => s.localeCompare(propia, 'es', { sensitivity: 'base' }) === 0) ? lista : [propia, ...lista]
-  }, [datos, usuario.sucursal.nombre])
+  // El filtro de sucursal viene armado del servicio: las cuatro de la agencia más lo que traigan los
+  // avisos. Acá había un `useMemo` que le prependía la sucursal de quien entró, porque antes la lista
+  // salía sólo de los rechazos cargados y la propia podía no tener ninguno todavía. Desde que la arma
+  // `sucursalesParaElegir` ya está siempre, y el parche no hacía más que aparentar que la lista se
+  // completaba en la pantalla.
+  const sucursales = datos?.sucursales ?? []
 
   const encabezado = 'px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 whitespace-nowrap'
   const filas = datos?.filas ?? []

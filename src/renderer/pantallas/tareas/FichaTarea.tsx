@@ -102,7 +102,10 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
     if (t.clienteId !== null) return ir('clientes', { clienteId: t.clienteId })
   }
 
-  const opcionesDeSucursal = [...new Set([...ficha.sucursales, actuales.sucursal].filter(Boolean))].sort()
+  // Sin `.sort()`: `ficha.sucursales` ya viene en el orden de la agencia y reordenarla acá hacía que la
+  // ficha y el listado ofrecieran la misma lista en dos órdenes distintos. La sucursal de la tarea va
+  // al final por si es una vieja que no está en la lista: abrirla no puede hacerle perder su valor.
+  const opcionesDeSucursal = [...new Set([...ficha.sucursales, actuales.sucursal].filter(Boolean))]
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">

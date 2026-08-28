@@ -9,6 +9,7 @@
 // (ver sincronizacion/pestanasApp.ts). Igual se encola desde el primer día: si la pestaña todavía no
 // está, la crea el motor en cuanto haya conexión y la fila sube sola.
 import { hoyLocal } from '../../shared/semaforo'
+import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_LEAD,
   ORIGENES_DE_LEAD,
@@ -24,7 +25,7 @@ import {
   type SesionUsuario,
 } from '../../shared/tipos'
 import { db } from '../db/base'
-import { ahoraIso, generarId, limpiar, mismoTexto, normalizarDocumento, normalizarTexto, sinRepetirTexto } from '../importacion/normalizar'
+import { ahoraIso, generarId, limpiar, normalizarDocumento, normalizarTexto } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANAS_DE_LA_APP } from '../sincronizacion/pestanasApp'
 import { telefonoParaWhatsapp } from './cartera'
@@ -34,7 +35,7 @@ import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
 import { nombreDePestana } from './hojas'
 import { presupuestosDeLead } from './presupuestos'
-import { idDeSucursalPorNombre, sucursalParaGuardar } from './sucursales'
+import { idDeSucursalPorNombre, sucursalesParaElegir, sucursalParaGuardar } from './sucursales'
 import { tareasDeVinculo } from './tareas'
 import { enteroPositivo, objeto, texto } from './validacion'
 
@@ -119,6 +120,22 @@ function buscarLead(leadId: number): FilaCruda {
   return fila
 }
 
+/**
+ * El desplegable de sucursal del módulo: las cuatro de la agencia más las que traigan las consultas.
+ *
+ * No es sólo el filtro del listado. Es el mismo desplegable que ofrece «Nueva consulta» y el que
+ * ofrece «Editar la consulta» desde la ficha —son el mismo diálogo—, así que los tres caminos tienen
+ * que ver lo mismo: la sucursal recién abierta no tiene ninguna consulta justamente hasta que se la
+ * pueda elegir, y una consulta cargada con la sucursal equivocada se corrige desde la ficha, que es
+ * donde se la está mirando.
+ */
+function sucursalesDeLosLeads(): string[] {
+  const deLosLeads = (
+    db().prepare('SELECT DISTINCT sucursal_texto AS valor FROM leads').all() as Array<{ valor: string | null }>
+  ).map((f) => f.valor)
+  return sucursalesParaElegir(deLosLeads)
+}
+
 /** El lead como fila, para devolverlo desde cualquier lado sin rearmar la consulta. */
 export function filaDeLead(leadId: number): FilaLead {
   return aFila(buscarLead(leadId))
@@ -143,7 +160,7 @@ const CERRADOS: EstadoLead[] = ['GANADO', 'PERDIDO']
 export function listarLeads(filtros: unknown): ListadoLeads {
   const f = normalizarFiltros(filtros)
   const todos = (db().prepare(`${SELECT_LEAD} ORDER BY l.id DESC`).all() as FilaCruda[]).map(aFila)
-  const sucursales = sinRepetirTexto(todos.map((l) => l.sucursal))
+  const sucursales = sucursalesDeLosLeads()
 
   const busqueda = normalizarTexto(f.busqueda)
   const documento = normalizarDocumento(f.busqueda)
@@ -162,7 +179,7 @@ export function listarLeads(filtros: unknown): ListadoLeads {
   const sinEstado = todos.filter(
     (lead) =>
       (!f.origen || lead.origen === f.origen) &&
-      (!f.sucursal || mismoTexto(lead.sucursal, f.sucursal)) &&
+      (!f.sucursal || mismaSucursal(lead.sucursal, f.sucursal)) &&
       (f.incluirCerrados || !CERRADOS.includes(lead.estado) || lead.estado === f.estado) &&
       coincide(lead),
   )
@@ -170,7 +187,7 @@ export function listarLeads(filtros: unknown): ListadoLeads {
   const porEstado = { NUEVO: 0, 'EN CHARLA': 0, COTIZADO: 0, GANADO: 0, PERDIDO: 0 } as Record<EstadoLead, number>
   for (const lead of todos) {
     if (f.origen && lead.origen !== f.origen) continue
-    if (f.sucursal && !mismoTexto(lead.sucursal, f.sucursal)) continue
+    if (f.sucursal && !mismaSucursal(lead.sucursal, f.sucursal)) continue
     if (!coincide(lead)) continue
     porEstado[lead.estado]++
   }
@@ -201,6 +218,9 @@ export function fichaDeLead(leadId: number): FichaLead {
     notas: notasDe(id),
     presupuestos: presupuestosDeLead(id),
     tareas: tareasDeVinculo({ leadId: id }),
+    // La ficha edita la consulta con el mismo diálogo que la carga, así que necesita la misma lista
+    // que el listado: desde acá también hay que poder mudar una consulta a Sarandí.
+    sucursales: sucursalesDeLosLeads(),
   }
 }
 

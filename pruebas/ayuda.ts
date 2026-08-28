@@ -6,7 +6,19 @@ import { ejecutarMigraciones } from '../src/main/db/migraciones'
 import { sembrarDatosIniciales } from '../src/main/db/semilla'
 import { ejecutarImportacion } from '../src/main/importacion/importador'
 import type { FuenteHoja } from '../src/main/importacion/fuente'
-import type { InformeImportacion, ProgresoImportacion } from '../src/shared/tipos'
+import { listarAmp } from '../src/main/servicios/amp'
+import { catalogos } from '../src/main/servicios/cartera'
+import { listarClientes } from '../src/main/servicios/clientes'
+import { cajaDelDia, mora } from '../src/main/servicios/cobranzas'
+import { buscarDeudores } from '../src/main/servicios/deudores'
+import { listarLeads } from '../src/main/servicios/leads'
+import { catalogosDePoliza } from '../src/main/servicios/polizas'
+import { listarPresupuestos } from '../src/main/servicios/presupuestos'
+import { listarRechazos } from '../src/main/servicios/rechazos'
+import { listarRiesgos } from '../src/main/servicios/riesgos'
+import { listarSiniestros } from '../src/main/servicios/siniestros'
+import { listarTareas } from '../src/main/servicios/tareas'
+import { DEUDORES_SIN_FILTROS, type InformeImportacion, type ProgresoImportacion } from '../src/shared/tipos'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 
 /** Base nueva, en memoria, con el esquema y los datos iniciales (las cuatro sucursales). */
@@ -94,4 +106,50 @@ export function resumenDe(informe: InformeImportacion, titulo: string) {
   const resumen = informe.pestanas.find((p) => p.titulo === titulo)
   if (!resumen) throw new Error(`El informe no tiene la pestaña «${titulo}»`)
   return resumen
+}
+
+// ---------------------------------------------------------------------------
+// Los desplegables de sucursal
+// ---------------------------------------------------------------------------
+
+/**
+ * Cada pantalla que ofrece un desplegable de sucursal, con el nombre que tiene para la agencia y la
+ * lista que ofrece ahora mismo sobre la base abierta.
+ *
+ * Vive acá, y no dentro de una prueba, porque la miran dos: la de la base recién creada, donde no hay
+ * ni una fila, y la de la base llena de datos pero sin ninguna fila de la sucursal nueva. Las dos
+ * tienen que recorrer LAS MISMAS pantallas: el problema de Sarandí fue exactamente que una pantalla
+ * quedó afuera del arreglo y nadie se enteró hasta que lo dijo la sucursal.
+ *
+ * `hoy` se le pasa a las dos pantallas que miran el calendario —la mora y los deudores—, para que la
+ * prueba no dependa del día en que se corre: una cuota que hoy está vencida el mes que viene sigue
+ * estándolo, pero al revés no, y la lista se armaría con otras filas.
+ */
+export function desplegablesDeSucursal(hoy?: string): Array<[string, string[]]> {
+  const sinFiltros = {
+    busqueda: '',
+    estado: '',
+    origen: '',
+    sucursal: '',
+    compania: '',
+    prioridad: '',
+    responsableId: 0,
+    incluirCerrados: true,
+    incluirVersiones: true,
+  }
+  return [
+    ['Cartera', catalogos().sucursales],
+    ['Pólizas', catalogosDePoliza().sucursales],
+    ['Clientes', listarClientes({ busqueda: '', sucursal: '', compania: '', estado: '' }).sucursales],
+    ['Caja del día', cajaDelDia(null, '').sucursales],
+    ['Mora', mora({ busqueda: '', sucursal: '', compania: '', rango: '', incluirDebito: true }, hoy).sucursales],
+    ['Deudores', buscarDeudores(DEUDORES_SIN_FILTROS, hoy).sucursales],
+    ['Riesgos varios', listarRiesgos().sucursales],
+    ['Siniestros', listarSiniestros(sinFiltros).sucursales],
+    ['Presupuestos', listarPresupuestos(sinFiltros).sucursales],
+    ['Rechazos de débito', listarRechazos(sinFiltros).sucursales],
+    ['Leads', listarLeads(sinFiltros).sucursales],
+    ['AMP', listarAmp(true).sucursales],
+    ['Tareas', listarTareas(sinFiltros).sucursales],
+  ]
 }

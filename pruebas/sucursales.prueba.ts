@@ -10,13 +10,18 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos, db, type BaseDeDatos } from '../sr
 import { ajustarCatalogoDeSucursales } from '../src/main/db/semilla'
 import { catalogos } from '../src/main/servicios/cartera'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
+import { listarClientes } from '../src/main/servicios/clientes'
+import { fichaDeLead, listarLeads } from '../src/main/servicios/leads'
+import { bandejaDeRenovaciones } from '../src/main/servicios/renovaciones'
+import { fichaDeTarea, listarTareas } from '../src/main/servicios/tareas'
 import { idDeSucursalPorNombre, listarSucursales } from '../src/main/servicios/sucursales'
 import { direccionDeSucursal } from '../src/main/servicios/preferencias'
 import { leerDocumento } from '../src/main/usuarios/documento'
 import { idDeSucursal } from '../src/main/usuarios/espejo'
 import { mismaSucursal, SUCURSALES, sucursalCanonica } from '../src/shared/sucursales'
+import type { SesionUsuario } from '../src/shared/tipos'
 import { HojaSimulada } from './hoja-simulada'
-import { importar, unico } from './ayuda'
+import { desplegablesDeSucursal, importar, unico } from './ayuda'
 
 /** Base nueva y en silencio: las migraciones y la semilla avisan por consola. */
 function baseNueva(): BaseDeDatos {
@@ -66,10 +71,18 @@ test('comparar dos textos dice si son el mismo mostrador', () => {
 
 test('una base nueva arranca con las cuatro, en el orden de la agencia', () => {
   baseNueva()
-  // listarSucursales() da el orden de la agencia (es el de los desplegables de Administración); los
-  // filtros de la cartera las ofrecen ordenadas alfabéticamente.
+  // El orden de la agencia es UNO SOLO en toda la aplicación: el de listarSucursales() (los
+  // desplegables de Administración) y el de los filtros. Antes la cartera las ofrecía alfabéticas y
+  // Administración por orden de agencia, así que la misma lista se leía distinta en cada pantalla;
+  // desde que las arma `sucursalesParaElegir` no hay dos órdenes que mantener sincronizados.
+  //
+  // Lo que este banco NO puede mirar es el renderer: DialogoLead, DialogoNuevaTarea y FichaTarea
+  // reciben esta misma lista y durante un tiempo le hacían `.sort()` encima, así que el filtro de
+  // Leads arrancaba por «Dock Sud» y el «Nueva consulta» de esa misma pantalla por «Daniel». Ya no
+  // reordenan: si alguien vuelve a agregar un `.sort()` allá, esta prueba sigue en verde y la
+  // discrepancia vuelve. El orden se respeta desde acá hasta el desplegable, sin retoques en el medio.
   assert.deepEqual(listarSucursales().map((s) => s.nombre), ['Dock Sud', 'Lanús', 'Sarandí', 'Daniel'])
-  assert.deepEqual(catalogos().sucursales, ['Daniel', 'Dock Sud', 'Lanús', 'Sarandí'])
+  assert.deepEqual(catalogos().sucursales, ['Dock Sud', 'Lanús', 'Sarandí', 'Daniel'])
   cerrarBaseDeDatos()
 })
 
@@ -154,8 +167,9 @@ test('la planilla que escribe «AVELLANEDA» se guarda como «Dock Sud»', async
     .all() as string[]
   assert.deepEqual(guardadas, ['Dock Sud', 'Sarandí'], '«AVELLANEDA» y «DOCK SUD» son una sola opción')
 
-  // Y el desplegable de la pantalla ofrece las cuatro, ni una más.
-  assert.deepEqual(catalogos().sucursales, ['Daniel', 'Dock Sud', 'Lanús', 'Sarandí'])
+  // Y el desplegable de la pantalla ofrece las cuatro, ni una más: «AVELLANEDA» no se cuela como
+  // quinta opción al lado de «Dock Sud», y Daniel está aunque la hoja no traiga ni una fila suya.
+  assert.deepEqual(catalogos().sucursales, ['Dock Sud', 'Lanús', 'Sarandí', 'Daniel'])
   cerrarBaseDeDatos()
 })
 
@@ -180,5 +194,178 @@ test('la sucursal del usuario que abrió sesión sigue siendo una de las cuatro'
     .pluck()
     .get() as string
   assert.equal(daniel, 'Daniel')
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Los desplegables de sucursal
+// ---------------------------------------------------------------------------
+
+test('todos los desplegables ofrecen las cuatro aunque ninguna fila tenga esa sucursal', () => {
+  baseNueva()
+
+  // Es el caso de Sarandí: se sembró cuando abrió el mostrador y no tenía todavía ni un cliente, ni un
+  // lead, ni un siniestro. Las pantallas que armaban el desplegable sólo con lo ya cargado no la
+  // ofrecían, así que desde Sarandí parecía que la sucursal no existía —y para que existiera había que
+  // cargar una fila con esa sucursal, que era justamente lo que no se podía hacer—. Una base recién
+  // creada es la versión extrema del mismo caso: ninguna tabla tiene nada y las cuatro tienen que estar.
+  for (const [pantalla, ofrecidas] of desplegablesDeSucursal()) {
+    assert.deepEqual(ofrecidas, [...SUCURSALES], `el desplegable de ${pantalla}`)
+  }
+  cerrarBaseDeDatos()
+})
+
+test('una sucursal que no es del catálogo pero está en los datos no se pierde del desplegable', () => {
+  const base = baseNueva()
+  // «BRENDA» es de las filas viejas de la hoja: no es ninguna de las cuatro y nadie la va a volver a
+  // cargar, pero las filas que la tienen siguen ahí. Si desapareciera del desplegable no habría forma
+  // de filtrarlas para encontrarlas y corregirlas.
+  base.prepare(
+    `INSERT INTO leads (fila_id, pestana, nombre, sucursal_texto, origen, estado, creado_en, actualizado_en)
+     VALUES ('L-1', 'APP LEADS', 'QUIROGA NATALIA', 'BRENDA', 'OTRO', 'NUEVO', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+  ).run()
+  base.prepare(
+    `INSERT INTO tareas (titulo, sucursal_texto, estado, creado_por, creado_en, actualizado_en)
+     VALUES ('Llamar al perito', 'BRENDA', 'pendiente', 'daniel', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+  ).run()
+
+  const esperado = [...SUCURSALES, 'BRENDA']
+  assert.deepEqual(listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true }).sucursales, esperado)
+  assert.deepEqual(listarTareas({ busqueda: '', estado: '', prioridad: '', sucursal: '', responsableId: 0 }).sucursales, esperado)
+
+  // La ficha de la tarea tenía el problema al revés: ofrecía sólo el catálogo, así que abrir esta
+  // tarea y guardarla la mudaba de sucursal sin que nadie lo pidiera.
+  const tareaId = unico<number>(base, `SELECT id FROM tareas WHERE sucursal_texto = 'BRENDA'`)
+  const actor: SesionUsuario = {
+    id: 1,
+    nombre: 'Daniel Martínez',
+    usuario: 'daniel',
+    rol: 'SUPER_ADMIN',
+    sucursal: { id: 1, nombre: 'Daniel' },
+    debeCambiarClave: false,
+  }
+  assert.deepEqual(fichaDeTarea(tareaId, actor).sucursales, esperado)
+  cerrarBaseDeDatos()
+})
+
+test('«AVELLANEDA» en los datos no se suma como quinta opción al lado de «Dock Sud»', () => {
+  const base = baseNueva()
+  base.prepare(
+    `INSERT INTO leads (fila_id, pestana, nombre, sucursal_texto, origen, estado, creado_en, actualizado_en)
+     VALUES ('L-1', 'APP LEADS', 'SOSA MARTIN', 'AVELLANEDA', 'OTRO', 'NUEVO', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+  ).run()
+
+  // Es el mismo mostrador escrito de otra forma: dos opciones para el mismo local esconderían una las
+  // filas de la otra, que es de donde salió toda esta historia.
+  assert.deepEqual(listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true }).sucursales, [...SUCURSALES])
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// El desplegable y el filtro pliegan igual
+// ---------------------------------------------------------------------------
+//
+// La trampa de plegar las grafías en el desplegable es que el filtro tiene que plegarlas igual. Si el
+// desplegable esconde «AVELLANEDA» dentro de «Dock Sud» pero el filtro compara el texto pelado, esas
+// filas quedan sin NINGUNA opción que las traiga: ni la suya, que ya no está en la lista, ni la de Dock
+// Sud, que no las encuentra. Es peor que antes: antes al menos la grafía fea estaba y funcionaba.
+//
+// El texto crudo entra igual: la celda «Sucursal» de la Planilla del mes y el alta de un riesgo son
+// campos libres con sugerencias, así que se puede escribir «Avellaneda» a mano cuando se quiera.
+
+/** Los leads de la base, con la sucursal como está escrita en cada uno. */
+function leadsPorSucursal(sucursal: string): string[] {
+  return listarLeads({ busqueda: '', estado: '', origen: '', sucursal, incluirCerrados: true }).filas.map((l) => l.nombre)
+}
+
+test('elegir «Dock Sud» trae también las filas que dicen «AVELLANEDA» o «DOCKSUD»', () => {
+  const base = baseNueva()
+  const alta = (nombre: string, sucursal: string) =>
+    base
+      .prepare(
+        `INSERT INTO leads (fila_id, pestana, nombre, sucursal_texto, origen, estado, creado_en, actualizado_en)
+         VALUES (?, 'APP LEADS', ?, ?, 'OTRO', 'NUEVO', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+      )
+      .run(`L-${nombre}`, nombre, sucursal)
+  alta('SOSA MARTIN', 'AVELLANEDA')
+  alta('PEREZ ANA', 'DOCKSUD')
+  alta('GOMEZ LUIS', 'Dock  Sud')
+  alta('QUIROGA NATALIA', 'BRENDA')
+
+  // Cuatro grafías distintas y una sola opción para las tres primeras: son el mismo mostrador.
+  assert.deepEqual(listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true }).sucursales, [
+    ...SUCURSALES,
+    'BRENDA',
+  ])
+
+  // Y esa opción los trae a los tres. Con el filtro comparando el texto pelado devolvía uno solo y los
+  // otros dos no aparecían bajo ninguna opción de la lista.
+  assert.deepEqual(leadsPorSucursal('Dock Sud').sort(), ['GOMEZ LUIS', 'PEREZ ANA', 'SOSA MARTIN'])
+  assert.deepEqual(leadsPorSucursal('BRENDA'), ['QUIROGA NATALIA'])
+  for (const vacia of ['Lanús', 'Sarandí', 'Daniel']) {
+    assert.deepEqual(leadsPorSucursal(vacia), [], `«${vacia}» no tiene ninguna consulta`)
+  }
+
+  // Ninguna consulta se pierde: entre todas las opciones que ofrece el desplegable están las cuatro.
+  const alcanzadas = new Set(
+    listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true }).sucursales.flatMap((s) =>
+      leadsPorSucursal(s),
+    ),
+  )
+  assert.equal(alcanzadas.size, 4, 'toda fila tiene alguna opción que la trae')
+  cerrarBaseDeDatos()
+})
+
+test('en Clientes, «Dock Sud» encuentra la ficha que la celda dejó escrita «Avellaneda»', () => {
+  const base = baseNueva()
+  // Así queda una ficha cuando alguien escribe la sucursal a mano en la Planilla del mes: `editarCelda`
+  // guarda el texto tal cual, y la celda es un campo libre con sugerencias.
+  base.prepare(
+    `INSERT INTO clientes (clave, nombre, documento, sucursal_texto, creado_en, actualizado_en)
+     VALUES ('doc:26999888', 'QUIROGA NATALIA', '26999888', 'Avellaneda', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+  ).run()
+
+  const listado = listarClientes({ busqueda: '', sucursal: '', compania: '', estado: '' })
+  assert.deepEqual(listado.sucursales, [...SUCURSALES], '«Avellaneda» no es una quinta opción')
+
+  const porDockSud = listarClientes({ busqueda: '', sucursal: 'Dock Sud', compania: '', estado: '' })
+  assert.deepEqual(porDockSud.filas.map((f) => f.nombre), ['QUIROGA NATALIA'])
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Los otros lugares desde donde se abre el mismo diálogo
+// ---------------------------------------------------------------------------
+//
+// Un desplegable de sucursal no se arregla por pantalla sino por diálogo: el mismo formulario se abre
+// desde más de un lado y cada llamador le pasa la lista. Si uno se olvida, ahí queda el problema de
+// Sarandí, más difícil de ver porque la pantalla de al lado anda bien.
+
+test('la ficha de la consulta ofrece las mismas sucursales que el listado', () => {
+  const base = baseNueva()
+  base.prepare(
+    `INSERT INTO leads (fila_id, pestana, nombre, sucursal_texto, origen, estado, creado_en, actualizado_en)
+     VALUES ('L-1', 'APP LEADS', 'SOSA MARTIN', 'Lanús', 'OTRO', 'NUEVO', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+  ).run()
+  const leadId = unico<number>(base, `SELECT id FROM leads WHERE nombre = 'SOSA MARTIN'`)
+
+  // «Editar la consulta» de la ficha es el mismo diálogo que «Nueva consulta» del listado. Antes la
+  // ficha le pasaba nada más que la sucursal del lead, así que una consulta anotada en Lanús que en
+  // realidad era de Sarandí no se podía corregir desde donde se la estaba mirando.
+  assert.deepEqual(fichaDeLead(leadId).sucursales, listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true }).sucursales)
+  assert.deepEqual(fichaDeLead(leadId).sucursales, [...SUCURSALES])
+  cerrarBaseDeDatos()
+})
+
+test('«Anotar tarea» desde Renovaciones ofrece las mismas sucursales que Tareas', () => {
+  baseNueva()
+  // La bandeja abre el `DialogoNuevaTarea` del módulo Tareas. Le pasaba la sucursal de la renovación y
+  // nada más, así que desde acá no se le podía anotar una tarea a ninguna otra sucursal —y si la
+  // renovación no tenía sucursal cargada, la única opción era la de quien entró.
+  assert.deepEqual(
+    bandejaDeRenovaciones().sucursales,
+    listarTareas({ busqueda: '', estado: '', prioridad: '', sucursal: '', responsableId: 0 }).sucursales,
+  )
+  assert.deepEqual(bandejaDeRenovaciones().sucursales, [...SUCURSALES])
   cerrarBaseDeDatos()
 })
