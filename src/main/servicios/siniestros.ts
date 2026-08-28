@@ -8,6 +8,7 @@
 // de tiempo para que quien mire la planilla vea lo mismo que quien mira la ficha.
 import { hoyLocal } from '../../shared/semaforo'
 import { estadoTextoDiferente, mencionaRobo, normalizarEstadoSiniestro } from '../../shared/siniestros'
+import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_SINIESTRO,
   type AdjuntoDeSiniestro,
@@ -45,6 +46,7 @@ import { registrarCambio } from './historial'
 import { nombreDePestana } from './hojas'
 import { polizasDeCliente } from './polizas'
 import { dadorDeTokenDeGoogle } from './sincronizacion'
+import { sucursalesParaElegir } from './sucursales'
 import { registrarTareaNueva } from './tareas'
 import { enteroPositivo, objeto, texto } from './validacion'
 
@@ -180,7 +182,9 @@ export function listarSiniestros(filtros: unknown): ListadoSiniestros {
   )
 
   const periodos = [...new Set(todas.map((s) => s.cruda.periodo).filter((p): p is string => !!p))].sort().reverse()
-  const sucursales = sinRepetirTexto(todas.map((s) => s.fila.sucursal))
+  // Las cuatro de la agencia más las que traen los siniestros cargados: una sucursal sin ningún
+  // siniestro igual tiene que estar en el filtro, aunque sólo sea para ver que no tiene ninguno.
+  const sucursales = sucursalesParaElegir(todas.map((s) => s.fila.sucursal))
   const companias = sinRepetirTexto(todas.map((s) => s.fila.compania))
 
   const busqueda = normalizarTexto(f.busqueda)
@@ -199,7 +203,7 @@ export function listarSiniestros(filtros: unknown): ListadoSiniestros {
   const sinEstado = todas.filter(
     ({ fila, cruda }) =>
       (!f.periodo || cruda.periodo === f.periodo) &&
-      (!f.sucursal || mismoTexto(fila.sucursal, f.sucursal)) &&
+      (!f.sucursal || mismaSucursal(fila.sucursal, f.sucursal)) &&
       (!f.compania || mismoTexto(fila.compania, f.compania)) &&
       (!f.soloRobos || fila.esRobo) &&
       coincide(fila),

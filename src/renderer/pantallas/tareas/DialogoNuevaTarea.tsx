@@ -60,7 +60,10 @@ export function DialogoNuevaTarea({ vinculo, responsables, sucursales, alCerrar,
     else setError(resultado.error)
   }
 
-  const opcionesDeSucursal = [...new Set([usuario.sucursal.nombre, ...sucursales].filter(Boolean))].sort()
+  // Sin `.sort()`: la lista viene del servicio con las cuatro de la agencia adelante, en el orden de la
+  // agencia, y ordenarla de nuevo dejaba este desplegable arrancando por «Daniel» mientras el filtro de
+  // Tareas arrancaba por «Dock Sud». La sucursal de quien entró queda por si la lista todavía no llegó.
+  const opcionesDeSucursal = [...new Set([...sucursales, usuario.sucursal.nombre].filter(Boolean))]
 
   return (
     <Dialogo

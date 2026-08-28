@@ -4,6 +4,7 @@
 // cargan a mano acá. Esta pantalla los mira de tres maneras distintas —por día, por mes y por
 // compañía—, así que todo sale de la misma tabla `pagos` y de `pagos.ts`.
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal, periodoDeHoy } from '../../shared/semaforo'
+import { mismaSucursal } from '../../shared/sucursales'
 import {
   RESULTADOS_DE_IMPUTACION,
   type AvisoDeMora,
@@ -35,6 +36,7 @@ import {
   type FilaCruda,
 } from './cartera'
 import { comisionPorCompania, diasCoberturaPorCompania, listarCompanias, sincronizarCompanias } from './companias'
+import { sucursalesParaElegir } from './sucursales'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
 import { encolar } from '../sincronizacion/cola'
@@ -81,11 +83,10 @@ function distintos(valores: Array<string | null>): string[] {
 
 /** Las sucursales que pueden aparecer en la caja: las del catálogo más las que traen los pagos. */
 function sucursalesDeLaCaja(): string[] {
-  const delCatalogo = (db().prepare('SELECT nombre AS valor FROM sucursales').all() as Array<{ valor: string }>).map((f) => f.valor)
   const deLosPagos = (
     db().prepare('SELECT DISTINCT COALESCE(sucursal_cobro, sucursal_texto) AS valor FROM pagos').all() as Array<{ valor: string | null }>
   ).map((f) => f.valor)
-  return distintos([...delCatalogo, ...deLosPagos])
+  return sucursalesParaElegir(deLosPagos)
 }
 
 function totalesPorMedio(pagos: PagoRegistrado[]): TotalPorMedio[] {
@@ -104,10 +105,10 @@ function totalesPorMedio(pagos: PagoRegistrado[]): TotalPorMedio[] {
 export function cajaDelDia(fechaPedida: string | null, sucursalPedida: string): CajaDelDia {
   const fecha = exigirFecha(fechaPedida)
   const sucursales = sucursalesDeLaCaja()
-  const sucursal = sucursales.find((s) => mismaCosa(s, sucursalPedida)) ?? ''
+  const sucursal = sucursales.find((s) => mismaSucursal(s, sucursalPedida)) ?? ''
 
   const crudas = db().prepare(`${SELECT_PAGOS} WHERE p.fecha_iso = ? ORDER BY p.creado_en, p.id`).all(fecha) as PagoCrudo[]
-  const pagos = crudas.map(aPagoRegistrado).filter((pago) => !sucursal || mismaCosa(pago.sucursal, sucursal))
+  const pagos = crudas.map(aPagoRegistrado).filter((pago) => !sucursal || mismaSucursal(pago.sucursal, sucursal))
 
   return {
     fecha,
@@ -360,7 +361,7 @@ export function mora(filtros: FiltrosMora, hoy = hoyLocal()): ListadoMora {
   const sinRango = todas.filter(
     (fila) =>
       coincideConLaBusqueda(fila, busqueda) &&
-      (!sucursal || mismaCosa(fila.sucursal, sucursal)) &&
+      (!sucursal || mismaSucursal(fila.sucursal, sucursal)) &&
       (!compania || mismaCosa(fila.compania, compania)),
   )
   const filas = filtros.rango ? sinRango.filter((fila) => fila.rango === filtros.rango) : sinRango
@@ -370,7 +371,9 @@ export function mora(filtros: FiltrosMora, hoy = hoyLocal()): ListadoMora {
 
   return {
     filas,
-    sucursales: distintos(todas.map((f) => f.sucursal)),
+    // La sucursal que hoy no debe nada igual tiene que estar en el desplegable: si no aparece, desde
+    // el mostrador parece que la mora es de las otras y que a esta pantalla le falta la sucursal.
+    sucursales: sucursalesParaElegir(todas.map((f) => f.sucursal)),
     companias: distintos(todas.map((f) => f.compania)),
     total: todas.length,
     totalDeuda: filas.reduce((suma, fila) => suma + (fila.cuotaMonto ?? 0), 0),

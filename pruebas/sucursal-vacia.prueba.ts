@@ -17,11 +17,12 @@ import { catalogos, cerrarMes, planillaDelMes } from '../src/main/servicios/cart
 import { cajaDelDia } from '../src/main/servicios/cobranzas'
 import { listarLeads } from '../src/main/servicios/leads'
 import { idDeSucursalPorNombre } from '../src/main/servicios/sucursales'
+import { mismaSucursal, SUCURSALES } from '../src/shared/sucursales'
 import type { SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
 import type { PestanaSimulada } from './hoja-simulada'
-import { importar } from './ayuda'
+import { desplegablesDeSucursal, importar } from './ayuda'
 
 /** Los encabezados con los que la hoja puede nombrar a la sucursal (ver importacion/encabezados.ts). */
 const ENCABEZADOS_DE_SUCURSAL = new Set(['LOCAL', 'SUCURSAL', 'SUC', 'OFICINA', 'SEDE', 'AGENCIA'])
@@ -110,7 +111,11 @@ test('el desplegable de sucursal no repite la misma sucursal escrita de dos form
   baseConDosGrafias()
   const listado = listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true })
 
-  assert.equal(listado.sucursales.length, 1, '«LANUS» y «Lanús» son un solo local, no dos opciones')
+  // El desplegable ofrece siempre las cuatro del catálogo (una sucursal recién abierta no tiene ni un
+  // lead y tiene que poder elegirse igual), así que lo que se cuenta acá no es el largo de la lista
+  // sino cuántas opciones nombran a Lanús: los dos leads la escriben distinto y es un solo local.
+  const deLanus = listado.sucursales.filter((s) => mismaSucursal(s, 'Lanús'))
+  assert.deepEqual(deLanus, ['Lanús'], '«LANUS» y «Lanús» son un solo local, no dos opciones')
   cerrarBaseDeDatos()
 })
 
@@ -499,5 +504,153 @@ test('cerrar el mes arrastra la sucursal resuelta, no el hueco de la fila', asyn
     CLIENTE_CON_SUCURSAL,
     'el mes nuevo nace con la sucursal del cliente: si copiara el hueco, lo publicaría en la hoja de todos',
   )
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// La sucursal recién abierta: está en el catálogo y no tiene ni una fila
+// ---------------------------------------------------------------------------
+//
+// Lo que contó la agencia es «en Sarandí no aparece Sarandí». La sucursal se agregó al catálogo el día
+// que abrió el mostrador, así que en la base estaba; lo que no había era una sola fila cargada con esa
+// sucursal: ni un cliente, ni una cuota, ni un siniestro. Las pantallas que armaban el desplegable con
+// lo que ya venía en los datos no tenían de dónde sacarla, así que no la ofrecían —y para que la
+// tuvieran había que cargar una fila con esa sucursal, que era justamente lo que no se podía hacer sin
+// poder elegirla—. Desde el mostrador se ve más corto: la sucursal no existe.
+//
+// Las de sucursales.prueba.ts miran una base recién creada, que es la versión extrema (no hay nada de
+// nada). Éstas miran la base que se parece a la de la agencia: la hoja entera importada, filas en las
+// otras sucursales, «BRENDA» de las filas viejas, y de Sarandí ni una.
+
+/** El día desde el que se miran la mora y los deudores: fijo, así no cambia de un mes al otro. */
+const DESPUES_DE_TODOS_LOS_VENCIMIENTOS = '2026-12-31'
+
+/** Las columnas donde el esquema guarda un texto de sucursal, sin tener que listarlas a mano acá. */
+function columnasDeSucursal(db: BaseDeDatos): Array<{ tabla: string; columna: string }> {
+  return db
+    .prepare(
+      `SELECT m.name AS tabla, i.name AS columna
+         FROM sqlite_master m JOIN pragma_table_info(m.name) i
+        WHERE m.type = 'table' AND i.name IN ('sucursal_texto', 'sucursal_cobro')
+        ORDER BY m.name, i.name`,
+    )
+    .all() as Array<{ tabla: string; columna: string }>
+}
+
+/** Todos los textos de sucursal que hay cargados en la base, en cualquier tabla, sin repetir. */
+function sucursalesEnLosDatos(db: BaseDeDatos): string[] {
+  const vistos = new Set<string>()
+  for (const { tabla, columna } of columnasDeSucursal(db)) {
+    const valores = db
+      .prepare(`SELECT DISTINCT ${columna} AS valor FROM ${tabla} WHERE TRIM(COALESCE(${columna}, '')) <> ''`)
+      .all() as Array<{ valor: string }>
+    for (const { valor } of valores) vistos.add(valor)
+  }
+  return [...vistos].sort((a, b) => a.localeCompare(b, 'es'))
+}
+
+/**
+ * La base de la agencia el día que abrió Sarandí: la hoja entera importada y ni una fila de esa
+ * sucursal. Se importa todo y después se le saca Sarandí de los datos —lo que la hoja traía con esa
+ * sucursal pasa a Lanús— en vez de armar una hoja a medida: así lo que queda es la base de verdad, con
+ * sus clientes, sus cuotas, sus cobros, sus riesgos, sus siniestros y sus ampliaciones, y lo único que
+ * cambia es lo que se quiere probar.
+ */
+async function baseSinNingunaFilaDeSarandi(): Promise<BaseDeDatos> {
+  cerrarBaseDeDatos()
+  const registrar = console.log
+  console.log = () => undefined
+  const db = abrirBaseDeDatos(':memory:')
+  console.log = registrar
+  await importar(db, new HojaSimulada(construirHojaDePrueba()))
+
+  for (const { tabla, columna } of columnasDeSucursal(db)) {
+    const valores = db
+      .prepare(`SELECT DISTINCT ${columna} AS valor FROM ${tabla} WHERE ${columna} IS NOT NULL`)
+      .all() as Array<{ valor: string }>
+    for (const { valor } of valores) {
+      if (mismaSucursal(valor, 'Sarandí')) db.prepare(`UPDATE ${tabla} SET ${columna} = 'Lanús' WHERE ${columna} = ?`).run(valor)
+    }
+  }
+  db.prepare(
+    `UPDATE clientes SET sucursal_id = (SELECT id FROM sucursales WHERE nombre = 'Lanús')
+      WHERE sucursal_id = (SELECT id FROM sucursales WHERE nombre = 'Sarandí')`,
+  ).run()
+  return db
+}
+
+test('la base de la prueba tiene a Sarandí en el catálogo y en ninguna fila', async () => {
+  // Sin esto las dos pruebas que siguen podrían pasar por el motivo equivocado: si la hoja igual
+  // dejara una fila de Sarandí, el desplegable la ofrecería por los datos y no por el catálogo, que es
+  // lo único que se quiere fijar.
+  const db = await baseSinNingunaFilaDeSarandi()
+
+  const enElCatalogo = db.prepare(`SELECT COUNT(*) FROM sucursales WHERE nombre = 'Sarandí'`).pluck().get() as number
+  assert.equal(enElCatalogo, 1, 'Sarandí está sembrada, como el día que abrió el mostrador')
+
+  const enLosDatos = sucursalesEnLosDatos(db)
+  assert.ok(enLosDatos.length > 0, 'la base tiene datos: no es el caso fácil de la base vacía')
+  assert.deepEqual(
+    enLosDatos.filter((valor) => mismaSucursal(valor, 'Sarandí')),
+    [],
+    'ninguna tabla tiene una fila de Sarandí, escrita como se la escriba',
+  )
+  cerrarBaseDeDatos()
+})
+
+test('todas las pantallas ofrecen las cuatro aunque la sucursal nueva no tenga ni una fila', async () => {
+  await baseSinNingunaFilaDeSarandi()
+
+  for (const [pantalla, ofrecidas] of desplegablesDeSucursal(DESPUES_DE_TODOS_LOS_VENCIMIENTOS)) {
+    // Se comparan las cuatro primeras y no la lista entera porque cada pantalla mira una tabla
+    // distinta y detrás puede traer lo suyo; lo que tiene que ser igual en todas es el arranque: las
+    // cuatro de la agencia, en el orden de la agencia.
+    assert.deepEqual(ofrecidas.slice(0, SUCURSALES.length), [...SUCURSALES], `el desplegable de ${pantalla}`)
+  }
+  cerrarBaseDeDatos()
+})
+
+test('la sucursal fuera de catálogo que está en los datos sigue en el desplegable de cada pantalla', async () => {
+  const db = await baseSinNingunaFilaDeSarandi()
+
+  // «BRENDA» es de las filas viejas de la hoja: no es ninguna de las cuatro y nadie la va a volver a
+  // cargar, pero las filas que la tienen siguen ahí. La hoja de prueba ya la trae en los clientes y en
+  // las cuotas; acá se la pone también en el resto de las tablas para poder pedirle lo mismo a todas
+  // las pantallas. Si desapareciera del desplegable, esas filas quedarían en el listado sin ninguna
+  // opción que las traiga: imposibles de encontrar para corregirlas.
+  // En la ficha del cliente «BRENDA» no llega sola: la única que la tiene en la hoja es MARTINEZ
+  // SILVIA, que comparte el DNI con GONZALEZ MARIA LAURA —está puesto así a propósito— y las dos son un
+  // solo cliente, con la sucursal de la que ganó. En la cartera de la agencia sí hay fichas con la
+  // sucursal vieja, así que acá se carga una.
+  db.prepare(
+    `INSERT INTO clientes (clave, nombre, documento, sucursal_texto, creado_en, actualizado_en)
+     VALUES ('doc:26999888', 'QUIROGA NATALIA', '26999888', 'BRENDA', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+  ).run()
+  db.prepare(`UPDATE pagos SET sucursal_cobro = 'BRENDA' WHERE id = (SELECT MIN(id) FROM pagos)`).run()
+  db.prepare(`UPDATE riesgos_varios SET sucursal_texto = 'BRENDA' WHERE id = (SELECT MIN(id) FROM riesgos_varios)`).run()
+  db.prepare(`UPDATE siniestros SET sucursal_texto = 'BRENDA' WHERE id = (SELECT MIN(id) FROM siniestros)`).run()
+  db.prepare(`UPDATE amp SET sucursal_texto = 'BRENDA' WHERE id = (SELECT MIN(id) FROM amp)`).run()
+  db.prepare(
+    `INSERT INTO leads (fila_id, pestana, nombre, sucursal_texto, origen, estado, creado_en, actualizado_en)
+     VALUES ('L-1', 'APP LEADS', 'QUIROGA NATALIA', 'BRENDA', 'OTRO', 'NUEVO', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+  ).run()
+  db.prepare(
+    `INSERT INTO presupuestos (fila_id, pestana, numero, cliente_nombre, sucursal_texto, creado_en, actualizado_en)
+     VALUES ('PR-1', 'APP PRESUPUESTOS', 'P-0001', 'QUIROGA NATALIA', 'BRENDA', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+  ).run()
+  db.prepare(
+    `INSERT INTO rechazos_debito (cliente_nombre, sucursal_texto, fecha, creado_en, actualizado_en)
+     VALUES ('QUIROGA NATALIA', 'BRENDA', '2026-08-01', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+  ).run()
+  db.prepare(
+    `INSERT INTO tareas (titulo, sucursal_texto, estado, creado_por, creado_en, actualizado_en)
+     VALUES ('Llamar al perito', 'BRENDA', 'pendiente', 'daniel', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
+  ).run()
+
+  for (const [pantalla, ofrecidas] of desplegablesDeSucursal(DESPUES_DE_TODOS_LOS_VENCIMIENTOS)) {
+    // Las cuatro de la agencia y «BRENDA» detrás: lo que no es del catálogo va al final, para que el
+    // desplegable arranque siempre igual y lo viejo no se mezcle con lo que se usa todos los días.
+    assert.deepEqual(ofrecidas, [...SUCURSALES, 'BRENDA'], `el desplegable de ${pantalla}`)
+  }
   cerrarBaseDeDatos()
 })

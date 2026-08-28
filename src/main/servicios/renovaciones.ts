@@ -51,6 +51,7 @@ import { mesesDeRenovacionPorCompania, sincronizarCompanias } from './companias'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio, type AccionHistorial } from './historial'
+import { sucursalesDeLasTareas } from './tareas'
 import { enteroPositivo, objeto, texto } from './validacion'
 
 const PESTANA_APP = '(cargado en DM Gestión)'
@@ -259,7 +260,9 @@ export function bandejaDeRenovaciones(): BandejaRenovaciones {
       filas,
     }))
 
-  return { semanas, total: crudas.length, hoy, responsables: usuariosActivos() }
+  // Las sucursales salen de Tareas y no de las renovaciones que hay a la vista: el botón «Anotar
+  // tarea» de cada fila abre el diálogo del módulo Tareas, y tiene que ofrecer lo mismo que ahí.
+  return { semanas, total: crudas.length, hoy, responsables: usuariosActivos(), sucursales: sucursalesDeLasTareas() }
 }
 
 // ---------------------------------------------------------------------------

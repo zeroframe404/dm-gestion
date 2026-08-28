@@ -27,6 +27,7 @@ import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
 import { buscarPestana, nombreDePestana } from './hojas'
+import { sucursalesParaElegir } from './sucursales'
 import { enteroPositivo, objeto, texto } from './validacion'
 
 const NOMBRE_POR_DEFECTO = 'RIESGOS VARIOS'
@@ -115,7 +116,10 @@ export function listarRiesgos(): ListadoRiesgos {
   return {
     filas,
     total: filas.length,
-    sucursales: unicos(filas.map((f) => f.sucursal)),
+    // La sucursal no sale de `unicos`: la lista también es la que se ofrece al editar la celda y al
+    // dar de alta un riesgo, así que tiene que traer las cuatro de la agencia aunque ninguna fila las
+    // tenga todavía —si no, en Sarandí no hay forma de cargar un riesgo a nombre de Sarandí—.
+    sucursales: sucursalesParaElegir(filas.map((f) => f.sucursal)),
     companias: unicos(filas.map((f) => f.compania)),
     tiposDeRiesgo: unicos(filas.map((f) => f.tipoRiesgo)),
     // Las que ya se usan más las de siempre: la hoja acepta cualquier texto, el desplegable sólo sugiere.

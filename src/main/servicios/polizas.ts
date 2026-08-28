@@ -14,6 +14,7 @@ import {
   validarAntiguedad,
 } from '../../shared/polizas'
 import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
+import { mismaSucursal } from '../../shared/sucursales'
 import {
   MOTIVOS_DE_BAJA,
   type AvisoDeCobertura,
@@ -50,6 +51,7 @@ import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
 import { reglasVigentes } from './reglas'
+import { sucursalesParaElegir } from './sucursales'
 import { enteroPositivo, objeto, texto } from './validacion'
 
 /** El mismo valor que usa cartera.ts para las filas que nacieron en la aplicación y no en una pestaña. */
@@ -297,10 +299,10 @@ export function catalogosDePoliza(): CatalogosDePoliza {
       valoresDistintos('SELECT DISTINCT forma_pago AS valor FROM polizas'),
       valoresDistintos('SELECT DISTINCT forma_pago AS valor FROM cuotas_mes'),
     ),
-    sucursales: combinar(
-      valoresDistintos('SELECT nombre AS valor FROM sucursales'),
-      valoresDistintos('SELECT DISTINCT sucursal_texto AS valor FROM clientes'),
-    ),
+    // Las sucursales no pasan por `combinar`: la lista de sucursal es una sola en toda la aplicación
+    // y la arma `sucursalesParaElegir`, para que el alta de una póliza ofrezca las mismas cuatro que
+    // el filtro del listado y que la Cartera.
+    sucursales: sucursalesParaElegir(valoresDistintos('SELECT DISTINCT sucursal_texto AS valor FROM clientes')),
     tiposDeVehiculo: valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos'),
   }
 }
@@ -332,7 +334,10 @@ export function listarPolizas(filtros: FiltrosPolizas): ListadoPolizas {
   const filas = crudas
     .filter((fila) => compare(fila.compania, compania))
     .filter((fila) => compare(fila.cobertura, cobertura))
-    .filter((fila) => compare(fila.sucursal, sucursal))
+    // La sucursal no pasa por `compare`: la compara `mismaSucursal`, que además de las tildes sabe
+    // que «AVELLANEDA» y «DOCKSUD» son Dock Sud. Es el mismo plegado con el que `sucursalesParaElegir`
+    // arma el desplegable de arriba, así que toda opción trae sus filas y toda fila tiene su opción.
+    .filter((fila) => !sucursal || mismaSucursal(fila.sucursal, sucursal))
     .filter((fila) => coincideLaBusqueda(fila, busqueda))
     .map((fila) => aPoliza(fila, hoy))
     .filter((poliza) => estado === '' || poliza.estado === (estado as EstadoPoliza))

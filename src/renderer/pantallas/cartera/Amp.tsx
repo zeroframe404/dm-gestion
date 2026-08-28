@@ -4,6 +4,7 @@
 //
 // Nada se borra: destildar la devuelve, y «Ver también las resueltas» muestra el histórico completo.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { mismaSucursal } from '../../../shared/sucursales'
 import type { ListadoAmp } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
@@ -44,9 +45,10 @@ export function Amp() {
     if (!datos) return []
     const texto = normalizar(busqueda)
     return datos.filas.filter((f) => {
-      // Normalizado como en el resto de la aplicación: la hoja escribe «LANUS» y el desplegable puede
-      // ofrecer «Lanús». Comparando el texto crudo, elegir una de las dos formas vaciaba el listado.
-      if (sucursal && normalizar(f.sucursal) !== normalizar(sucursal)) return false
+      // La sucursal se compara con `mismaSucursal`, que es con lo que el servicio arma el desplegable:
+      // además de las tildes y las mayúsculas sabe que «AVELLANEDA» y «DOCKSUD» son Dock Sud. Con el
+      // texto pelado, elegir una opción que pliega dos grafías dejaba el listado vacío.
+      if (sucursal && !mismaSucursal(f.sucursal, sucursal)) return false
       if (!texto) return true
       return [f.clienteNombre, f.patente, f.marca, f.modelo, f.detalle].some((valor) => normalizar(valor).includes(texto))
     })

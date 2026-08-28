@@ -20,6 +20,7 @@ import {
 import { editarCompania, listarCompanias } from '../src/main/servicios/companias'
 import { hojaDeImputados, normalizarResultado } from '../src/main/servicios/pagos'
 import { historialDeFila } from '../src/main/servicios/historial'
+import { SUCURSALES } from '../src/shared/sucursales'
 import type { FilaCartera, FiltrosMora, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
@@ -281,9 +282,16 @@ test('los filtros de la mora acotan por sucursal y por compañía', async () => 
   assert.ok(porCompania.filas.length > 0)
   for (const fila of porCompania.filas) assert.equal(fila.compania, compania)
 
-  const sucursal = listado.sucursales[0]!
+  // La sucursal a probar sale de una cuota de verdad y no de `sucursales[0]`: el desplegable ofrece
+  // siempre las cuatro de la agencia, así que la primera de la lista puede no deber nada y el filtro
+  // devolvería vacío —la prueba pasaría sin haber probado nada—.
+  const sucursal = listado.filas.find((f) => f.sucursal)!.sucursal!
   const porSucursal = mora({ ...SIN_FILTROS, sucursal }, HOY)
+  assert.ok(porSucursal.filas.length > 0, 'filtrar por una sucursal que sí debe trae sus cuotas')
   for (const fila of porSucursal.filas) assert.equal(fila.sucursal, sucursal)
+
+  // Y la lista ofrece las cuatro, deban o no: la sucursal sin mora tiene que poder elegirse igual.
+  for (const deLaAgencia of SUCURSALES) assert.ok(listado.sucursales.includes(deLaAgencia), `«${deLaAgencia}» está en el filtro`)
 
   // La búsqueda encuentra por póliza aunque se escriba con espacios.
   const alguna = listado.filas.find((f) => f.numeroPoliza)!

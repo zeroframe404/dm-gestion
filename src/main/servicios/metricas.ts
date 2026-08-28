@@ -17,6 +17,7 @@
 //  3. BAJAS de un mes = las filas de la pestaña de BAJAS de ese mes, con su MOTIVO.
 import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { normalizarEstadoSiniestro } from '../../shared/siniestros'
+import { mismaSucursal } from '../../shared/sucursales'
 import type {
   BajaPorMotivo,
   CobranzaDelMes,
@@ -56,10 +57,10 @@ const PERIODO_DEL_PAGO = `COALESCE(p.periodo, substr(p.fecha_iso, 1, 7))`
  */
 const IDENTIDAD_DE_LA_CUOTA = `COALESCE('P' || c.poliza_id, 'X' || COALESCE(c.numero_poliza, '') || '|' || COALESCE(c.patente, '') || '|' || COALESCE(c.documento, ''))`
 
-/** Compara textos escritos a mano sin que las tildes ni las mayúsculas cuenten. */
-function mismaCosa(a: string | null, b: string | null): boolean {
-  return normalizarTexto(a) === normalizarTexto(b)
-}
+// La sucursal se compara con `mismaSucursal` de shared y no con el texto normalizado: el desplegable de
+// arriba lo arma `catalogos().sucursales`, que pliega «AVELLANEDA» y «DOCKSUD» dentro de «Dock Sud». Si
+// acá se comparara el texto pelado, elegir Dock Sud dejaría afuera esas cuotas y el tablero mostraría
+// números más chicos que la planilla sin decir por qué.
 
 function porcentaje(parte: number, total: number): number {
   if (total <= 0) return 0
@@ -142,7 +143,7 @@ function cuotasDelMes(periodo: string, sucursal: string): CuotaDelMes[] {
   }>
 
   return filas
-    .filter((fila) => !sucursal || mismaCosa(fila.sucursal, sucursal))
+    .filter((fila) => !sucursal || mismaSucursal(fila.sucursal, sucursal))
     .map((fila) => ({
       identidad: fila.identidad,
       compania: fila.compania,
@@ -174,7 +175,7 @@ function bajasDelMes(periodo: string, sucursal: string): BajaDelMes[] {
         WHERE b.periodo = ?`,
     )
     .all(periodo) as BajaDelMes[]
-  return filas.filter((fila) => !sucursal || mismaCosa(fila.sucursal, sucursal))
+  return filas.filter((fila) => !sucursal || mismaSucursal(fila.sucursal, sucursal))
 }
 
 interface PagoDelMes {
@@ -192,7 +193,7 @@ function pagosDelMes(periodo: string, sucursal: string): PagoDelMes[] {
         WHERE ${PERIODO_DEL_PAGO} = ?`,
     )
     .all(periodo) as PagoDelMes[]
-  return filas.filter((fila) => !sucursal || mismaCosa(fila.sucursal, sucursal))
+  return filas.filter((fila) => !sucursal || mismaSucursal(fila.sucursal, sucursal))
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +271,7 @@ function siniestrosAbiertos(sucursal: string): { total: number; porCompania: Por
     .all() as Array<{ compania: string | null; estado: string | null; sucursal: string | null }>
 
   const abiertos = filas.filter(
-    (fila) => (!sucursal || mismaCosa(fila.sucursal, sucursal)) && normalizarEstadoSiniestro(fila.estado) !== 'CERRADO',
+    (fila) => (!sucursal || mismaSucursal(fila.sucursal, sucursal)) && normalizarEstadoSiniestro(fila.estado) !== 'CERRADO',
   )
   const conteo = new Map<string, { etiqueta: string; cantidad: number }>()
   for (const fila of abiertos) sumarUno(conteo, fila.compania, '(sin compañía)')
@@ -285,7 +286,7 @@ export function tableroDeMetricas(filtros: FiltrosMetricas): TableroMetricas {
   const disponibles = periodosDisponibles().map((p) => p.periodo)
   const periodo = resolverPeriodo(filtros?.periodo, disponibles)
   const sucursales = catalogos().sucursales
-  const sucursal = sucursales.find((s) => mismaCosa(s, filtros?.sucursal ?? '')) ?? ''
+  const sucursal = sucursales.find((s) => mismaSucursal(s, filtros?.sucursal ?? '')) ?? ''
 
   const cuotas = cuotasDelMes(periodo, sucursal)
   const anterior = periodoAnterior(periodo)
@@ -366,7 +367,7 @@ export function estadisticasDeCartera(periodoPedido: string | null, sucursalPedi
   const disponibles = periodosDisponibles().map((p) => p.periodo)
   const periodo = resolverPeriodo(periodoPedido, disponibles)
   const sucursales = catalogos().sucursales
-  const sucursal = sucursales.find((s) => mismaCosa(s, sucursalPedida)) ?? ''
+  const sucursal = sucursales.find((s) => mismaSucursal(s, sucursalPedida)) ?? ''
 
   const cuotas = cuotasDelMes(periodo, sucursal)
   const identidadesAnteriores = identidadesDelMes(periodoAnterior(periodo), sucursal)

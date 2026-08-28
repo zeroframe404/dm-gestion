@@ -54,7 +54,12 @@ export function DialogoLead({ lead, sucursales, alCerrar, alGuardar }: Props) {
     else setError(resultado.error)
   }
 
-  const opcionesDeSucursal = [...new Set([usuario.sucursal.nombre, ...sucursales, datos.sucursal].filter(Boolean))].sort()
+  // Sin `.sort()`: `sucursales` ya viene armada del servicio, con las cuatro de la agencia en el orden
+  // de la agencia y lo de afuera del catálogo detrás. Ordenarlas de nuevo alfabéticamente hacía que
+  // este desplegable arrancara por «Daniel» y el filtro de la misma pantalla por «Dock Sud»: la misma
+  // lista leída de dos formas. Lo único que se agrega es la sucursal de la consulta si no está en la
+  // lista (una consulta vieja con una sucursal que ya no se usa no puede perder su valor al abrirla).
+  const opcionesDeSucursal = [...new Set([...sucursales, usuario.sucursal.nombre, datos.sucursal].filter(Boolean))]
 
   return (
     <Dialogo

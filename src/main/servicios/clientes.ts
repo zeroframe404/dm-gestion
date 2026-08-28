@@ -9,6 +9,7 @@
 // que no se encolan; sí quedan en el historial, como todo lo que se toca desde acá.
 import { diasParaVencer, estadoDePoliza, aDia } from '../../shared/polizas'
 import { esDebitoAutomatico, hoyLocal } from '../../shared/semaforo'
+import { mismaSucursal } from '../../shared/sucursales'
 import {
   NOMBRE_ESTADO_TAREA,
   type DatosDeCliente,
@@ -44,7 +45,7 @@ import {
 import { encolar } from '../sincronizacion/cola'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
-import { idDeSucursalPorNombre, sucursalParaGuardar } from './sucursales'
+import { idDeSucursalPorNombre, sucursalesParaElegir, sucursalParaGuardar } from './sucursales'
 import { registrarTareaNueva } from './tareas'
 import { enteroPositivo, objeto, texto as validarTexto } from './validacion'
 
@@ -337,14 +338,13 @@ function valoresDistintos(consulta: string): string[] {
   return [...vistos.values()].sort((a, b) => a.localeCompare(b, 'es'))
 }
 
-/** Las sucursales del catálogo más las que la hoja trae escritas de otra forma: el filtro tiene que ofrecer las dos. */
+/**
+ * Las cuatro de la agencia más cualquier sucursal que la hoja haya dejado escrita y no sea ninguna de
+ * ellas. Las cuatro van siempre, aunque no tengan un solo cliente: la sucursal recién abierta se elige
+ * en la ficha del cliente antes de tener el primero.
+ */
 function sucursalesDelListado(): string[] {
-  const vistos = new Map<string, string>()
-  for (const valor of valoresDistintos('SELECT nombre AS valor FROM sucursales')) vistos.set(normalizarTexto(valor), valor)
-  for (const valor of valoresDistintos('SELECT DISTINCT sucursal_texto AS valor FROM clientes')) {
-    if (!vistos.has(normalizarTexto(valor))) vistos.set(normalizarTexto(valor), valor)
-  }
-  return [...vistos.values()].sort((a, b) => a.localeCompare(b, 'es'))
+  return sucursalesParaElegir(valoresDistintos('SELECT DISTINCT sucursal_texto AS valor FROM clientes'))
 }
 
 // ---------------------------------------------------------------------------
@@ -365,7 +365,11 @@ function limpiarFiltros(filtros: FiltrosClientes): FiltrosLimpios {
   const estado = ESTADOS_DEL_FILTRO.includes(datos.estado as FiltroEstadoCliente) ? (datos.estado as FiltroEstadoCliente) : ''
   return {
     termino: interpretarBusqueda(datos.busqueda),
-    sucursal: normalizarTexto(datos.sucursal),
+    // La sucursal NO se pliega con `normalizarTexto`: se compara con `mismaSucursal`, que es la que
+    // sabe que «AVELLANEDA» es Dock Sud y que «DOCKSUD» sin espacio es el mismo mostrador. Es el mismo
+    // plegado con el que `sucursalesParaElegir` arma el desplegable: si acá se plegara distinto,
+    // habría opciones que no traen ninguna fila y filas que ninguna opción trae.
+    sucursal: limpiar(datos.sucursal),
     compania: normalizarTexto(datos.compania),
     estado,
   }
@@ -384,7 +388,7 @@ function filasFiltradas(filtros: FiltrosLimpios, datos: Agregados, limite: numbe
 
   const filas: FilaCliente[] = []
   for (const cruda of crudas) {
-    if (filtros.sucursal && normalizarTexto(cruda.sucursal_texto) !== filtros.sucursal) continue
+    if (filtros.sucursal && !mismaSucursal(cruda.sucursal_texto, filtros.sucursal)) continue
     if (filtros.compania) {
       const suyas = datos.companias.get(cruda.id) ?? []
       if (!suyas.some((compania) => normalizarTexto(compania) === filtros.compania)) continue

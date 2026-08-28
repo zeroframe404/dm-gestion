@@ -10,6 +10,7 @@ import {
   type Alerta,
   type ColorAlerta,
 } from '../../../shared/semaforo'
+import { mismaSucursal } from '../../../shared/sucursales'
 import type { CampoEditable, FilaCartera, PlanillaDelMes as DatosPlanilla } from '../../../shared/tipos'
 import { DialogoRechazo } from '../../componentes/DialogoRechazo'
 import { Icono } from '../../componentes/Icono'
@@ -203,7 +204,10 @@ export function PlanillaDelMes() {
           normalizar(fila.documento).includes(busqueda)
         if (!enTexto) return false
       }
-      if (filtros.sucursal && normalizar(fila.sucursal) !== normalizar(filtros.sucursal)) return false
+      // La sucursal, con `mismaSucursal`: es el mismo plegado con el que el servicio arma el
+      // desplegable, que mete «AVELLANEDA» y «DOCKSUD» dentro de «Dock Sud». Comparando el texto
+      // pelado, esa opción no traía las filas que la celda dejó escritas de la otra forma.
+      if (filtros.sucursal && !mismaSucursal(fila.sucursal, filtros.sucursal)) return false
       if (filtros.formaPago && normalizar(fila.formaPago) !== normalizar(filtros.formaPago)) return false
       if (filtros.compania && normalizar(fila.compania) !== normalizar(filtros.compania)) return false
       if (filtros.vehiculo && normalizar(fila.vehiculo) !== normalizar(filtros.vehiculo)) return false
