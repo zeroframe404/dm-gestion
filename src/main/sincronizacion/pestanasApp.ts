@@ -140,7 +140,7 @@ export async function asegurarPestanasDeLaApp(fuente: FuenteHoja, contexto: Cont
     try {
       await fuente.crearPestana(pestana.titulo, pestana.encabezados)
       creadas.push(pestana.titulo)
-      anotarEvento('pestana', `Se creó la pestaña «${pestana.titulo}» al final de la hoja, con sus encabezados.`)
+      anotarEvento('pestana', `Se creó la pestaña «${pestana.titulo}» al final de la base, con sus encabezados.`)
     } catch (error) {
       const motivo = error instanceof Error ? error.message : String(error)
       // Que ya exista no es un problema: alguien la creó desde otra computadora entre la lectura de la
@@ -183,13 +183,26 @@ export function encabezadosParaPestanaDelMes(layout: Layout | undefined): string
   return encabezados
 }
 
-/** La pestaña más nueva del mismo tipo, para copiarle los encabezados (a igual período, la de más a la derecha). */
+/**
+ * La pestaña más nueva del mismo tipo, para copiarle los encabezados. Se prefieren las que tienen
+ * fila de encabezados PROPIA (un layout prestado trae los encabezados de otra pestaña, que pueden no
+ * describir a ésta) y las visibles (una oculta suele ser un borrador o un mes escondido); a igual
+ * condición gana el período más nuevo y, a igual período, la de más a la derecha.
+ */
 function plantillaPara(contexto: ContextoHoja, tipo: TipoPestana): PestanaSincronizable | null {
+  const puntaje = (pestana: PestanaSincronizable): number =>
+    (pestana.layout && pestana.layout.filaEncabezados >= 0 ? 2 : 0) + (pestana.oculta ? 0 : 1)
   const candidatas = contexto.pestanas
     .filter((pestana) => pestana.tipo === tipo && pestana.layout)
-    .sort((a, b) => (b.periodo ?? '').localeCompare(a.periodo ?? '') || b.indice - a.indice)
+    .sort(
+      (a, b) =>
+        puntaje(b) - puntaje(a) || (b.periodo ?? '').localeCompare(a.periodo ?? '') || b.indice - a.indice,
+    )
   return candidatas[0] ?? null
 }
+
+/** Para avisar UNA vez por pestaña que no hay plantilla, y no en cada ciclo de diez segundos. */
+const sinPlantillaAvisadas = new Set<string>()
 
 /**
  * Crea la pestaña del mes nuevo (y la de sus bajas) cuando «Cerrar mes» o una baja dejan en la cola
@@ -208,8 +221,18 @@ export async function asegurarPestanasDelMes(fuente: FuenteHoja, contexto: Conte
     if (tipo !== 'MENSUAL' && tipo !== 'BAJAS') continue
     const plantilla = plantillaPara(contexto, tipo)
     const encabezados = encabezadosParaPestanaDelMes(plantilla?.layout)
-    // Sin plantilla no se inventa nada: la subida lo deja anotado claro (ver subida.ts).
-    if (!plantilla || !encabezados) continue
+    // Sin plantilla no se inventa nada: la entrada queda esperando en la cola y se avisa una vez.
+    if (!plantilla || !encabezados) {
+      if (!sinPlantillaAvisadas.has(titulo)) {
+        sinPlantillaAvisadas.add(titulo)
+        anotarEvento(
+          'error',
+          `No se puede crear la pestaña «${titulo}»: no hay otra planilla del mismo tipo para copiarle los encabezados. Reimportá la base y volvé a intentar.`,
+          { conError: true },
+        )
+      }
+      continue
+    }
     try {
       await fuente.crearPestana(titulo, encabezados)
       creadas.push(titulo)

@@ -435,7 +435,7 @@ function PlanillaClasica({ catalogo }: { catalogo: CatalogoDeReportes }) {
             <legend className="text-xs font-semibold text-slate-600">Meses ({elegidos.length} elegido(s))</legend>
             {catalogo.periodos.length === 0 ? (
               <p className="mt-2 text-sm text-slate-500">
-                Todavía no hay ninguna planilla cargada. Importá la hoja de Google desde Administración y volvé.
+                Todavía no hay ninguna planilla cargada. Reimportá la base desde Administración y volvé.
               </p>
             ) : (
               <div className="mt-2 flex max-h-56 flex-wrap gap-x-5 gap-y-2 overflow-y-auto">
@@ -483,8 +483,8 @@ function PlanillaClasica({ catalogo }: { catalogo: CatalogoDeReportes }) {
       {aviso && <Alerta tono="exito">{aviso}</Alerta>}
 
       <Alerta tono="info">
-        Este archivo se genera a partir de lo que hay hoy en DM Gestión, que es lo mismo que hay en la hoja: los cambios que todavía no
-        se subieron ya están acá. No reemplaza a la hoja de Google ni la modifica: es una copia para imprimir o mandar.
+        Este archivo se genera a partir de lo que hay hoy en DM Gestión, que es lo mismo que hay en la base del VPS: los cambios que todavía no
+        se subieron ya están acá. No toca la base ni la hoja de Google: es una copia para imprimir o mandar.
       </Alerta>
     </div>
   )

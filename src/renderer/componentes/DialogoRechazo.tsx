@@ -117,7 +117,7 @@ export function DialogoRechazo({ poliza, alCerrar, alAvisar, alFallar }: Props) 
         {poliza.formaPago && <p className="text-xs text-slate-500">Forma de pago cargada: {poliza.formaPago}.</p>}
         <p className="text-xs text-slate-500">
           El aviso queda en <strong className="font-semibold">Cartera → Rechazos</strong> hasta que la sucursal lo dé por resuelto, y
-          viaja a la hoja de Google para que llegue a su computadora.
+          viaja por la base del VPS para que llegue a su computadora.
         </p>
       </div>
     </Dialogo>

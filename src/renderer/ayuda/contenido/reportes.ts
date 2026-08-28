@@ -57,7 +57,7 @@ export const AYUDA_REPORTES: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Qué datos trae',
         parrafos: [
-          'El archivo se arma con lo que hay en ese momento en DM Gestión, que es lo mismo que hay en la hoja de Google: si hiciste cambios recién y todavía no se subieron a la hoja, igual ya están en este archivo. Generar la planilla clásica no cambia nada en la hoja de Google: es sólo una copia para imprimir o para mandarle al contador.',
+          'El archivo se arma con lo que hay en ese momento en DM Gestión, que es lo mismo que hay en la base del VPS: si hiciste cambios recién y todavía no se subieron, igual ya están en este archivo. Generar la planilla clásica no cambia nada ni en la base ni en la hoja de Google: es sólo una copia para imprimir o para mandarle al contador.',
         ],
       },
     ],

@@ -211,7 +211,7 @@ export function DialogoAltaSiniestro({ alCerrar, alCargar }: Props) {
 
             <p className="text-xs leading-relaxed text-slate-500">
               Al guardar se abre la ficha: ahí van las observaciones fechadas, los documentos y las tareas. La fila viaja a la pestaña
-              SINIESTROS de la hoja con la próxima sincronización.
+              SINIESTROS de la base con la próxima sincronización.
             </p>
           </>
         )}

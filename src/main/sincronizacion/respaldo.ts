@@ -62,7 +62,7 @@ export async function hacerRespaldo(
     contenido = await servicio.exportarXlsx(hojaId)
   } catch (error) {
     const motivo = error instanceof Error ? error.message : String(error)
-    anotarEvento('respaldo', `No se pudo exportar la hoja: ${motivo}`, { conError: true })
+    anotarEvento('respaldo', `No se pudo armar el respaldo de la base: ${motivo}`, { conError: true })
     return { hecho: false, motivo, ruta: null, enDrive: false }
   }
   writeFileSync(ruta, contenido)

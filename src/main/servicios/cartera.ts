@@ -1082,7 +1082,7 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
   if (origen.length === 0) throw new ErrorDeNegocio(`La planilla de ${actual} no tiene pólizas activas para copiar.`)
 
   const ahora = ahoraIso()
-  const pestanaDelMesNuevo = nombreDePestanaMensual(nuevo)
+  const pestanaDelMesNuevo = nombreParaPestanaNueva(nombreDePestanaMensual(nuevo), nuevo)
   const insertar = db().prepare(`
     INSERT INTO cuotas_mes (fila_id, periodo, pestana, poliza_id, cliente_id, cliente_nombre, documento, compania,
                             numero_poliza, patente, sucursal_texto, cuota, cuota_monto, dia_vencimiento,
@@ -1188,13 +1188,26 @@ export function nombreDePestanaMensual(periodo: string): string {
   return MESES_EN_MAYUSCULA[Number(periodo.slice(5, 7)) - 1] ?? periodo
 }
 
+/**
+ * Nombre para una pestaña NUEVA de ese período: el nombre pelado y, si ese título ya lo usa OTRO
+ * período, el nombre con el año. Es el caso del cambio de año: al cerrar diciembre de 2026, «ENERO»
+ * ya existe en la base (la de 2026) y las filas del mes nuevo irían a parar a la planilla vieja;
+ * «ENERO 27» es explícito y el clasificador lo entiende sin depender del orden de las pestañas.
+ */
+export function nombreParaPestanaNueva(base: string, periodo: string): string {
+  const chocada = db()
+    .prepare(`SELECT 1 FROM filas_crudas WHERE pestana = ? AND periodo IS NOT NULL AND periodo <> ? LIMIT 1`)
+    .get(base, periodo)
+  return chocada ? `${base} ${periodo.slice(2, 4)}` : base
+}
+
 /** La pestaña de bajas de ese período: la que ya existe en la hoja, o el nombre que le corresponde. */
 export function pestanaDeBajas(periodo: string | null): string {
   if (!periodo) return 'BAJAS'
   const existente = db()
     .prepare(`SELECT pestana FROM filas_crudas WHERE tipo_pestana = 'BAJAS' AND periodo = ? LIMIT 1`)
     .get(periodo) as { pestana: string } | undefined
-  return existente?.pestana ?? `BAJAS ${nombreDePestanaMensual(periodo)}`
+  return existente?.pestana ?? nombreParaPestanaNueva(`BAJAS ${nombreDePestanaMensual(periodo)}`, periodo)
 }
 
 /** Los campos de una fila de la planilla, con los nombres que usa la sincronización. */

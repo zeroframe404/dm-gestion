@@ -116,7 +116,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
       {error && <Alerta tono="error">{error}</Alerta>}
       {s.estadoTexto && (
         <Alerta tono="info">
-          En la hoja, la columna ESTADO de este siniestro dice «{s.estadoTexto}». Se está mostrando como{' '}
+          En la planilla, la columna ESTADO de este siniestro dice «{s.estadoTexto}». Se está mostrando como{' '}
           <strong className="font-semibold">{s.estado}</strong>; al tocar el desplegable se corrige también allá.
         </Alerta>
       )}

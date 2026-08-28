@@ -7,7 +7,7 @@ import { ahoraIso, limpiar } from '../importacion/normalizar'
 import { db } from '../db/base'
 import { anotarEvento, marcarFallidas, marcarListas, marcarSinArreglo, pendientes, type EntradaCola } from './cola'
 import { columnaDelId, filasPorId, huellaDeFila, type ContextoHoja, type PestanaSincronizable } from './hoja'
-import { esPestanaDelMes } from './pestanasApp'
+import { esPestanaDeLaApp, esPestanaDelMes } from './pestanasApp'
 
 export interface ResultadoSubida {
   subidas: number
@@ -65,14 +65,12 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   const desconocidas = entradas.filter((e) => !contexto.porTitulo.has(e.pestana))
   if (desconocidas.length > 0) {
     for (const entrada of desconocidas) {
-      // Las pestañas del mes las crea sola el motor (ver pestanasApp.ts) ANTES de llegar acá; si una
-      // llegó igual es porque no hubo otra planilla del mismo tipo para copiarle los encabezados.
-      marcarSinArreglo(
-        [entrada.id],
-        esPestanaDelMes(entrada.pestana)
-          ? `La pestaña «${entrada.pestana}» no existe en la base y no se pudo crear sola porque no hay otra planilla del mismo tipo para copiarle los encabezados. Reimportá la base y tocá «Volver a intentar».`
-          : `La pestaña «${entrada.pestana}» no existe en la base del GENERAL DE CLIENTES.`,
-      )
+      // Las pestañas de la aplicación y las del mes las crea solo el motor (ver pestanasApp.ts) ANTES
+      // de llegar acá. Una entrada para una de ellas que llegó igual es casi siempre una carrera: se
+      // encoló mientras este mismo ciclo estaba creando pestañas o releyendo la estructura. No es un
+      // error: queda esperando y el próximo ciclo (10 segundos) la crea y la sube.
+      if (esPestanaDeLaApp(entrada.pestana) || esPestanaDelMes(entrada.pestana)) continue
+      marcarSinArreglo([entrada.id], `La pestaña «${entrada.pestana}» no existe en la base del GENERAL DE CLIENTES.`)
     }
   }
   if (titulos.length === 0) return { subidas: 0, conflictos: 0, llamadas: 0, error: null }
@@ -242,7 +240,7 @@ function anotarConflicto(conflicto: Conflicto): void {
     .run(ahoraIso(), conflicto.pestana, conflicto.filaId, `${conflicto.campo} (pisado por sincronización)`, conflicto.valorRemoto, conflicto.valorLocal)
   anotarEvento(
     'conflicto',
-    `«${conflicto.campo}» de la fila ${conflicto.filaId} había cambiado en la hoja («${conflicto.valorRemoto}»): ganó el cambio de la aplicación («${conflicto.valorLocal}»).`,
+    `«${conflicto.campo}» de la fila ${conflicto.filaId} había cambiado en la base («${conflicto.valorRemoto}»): ganó el cambio de la aplicación («${conflicto.valorLocal}»).`,
   )
 }
 

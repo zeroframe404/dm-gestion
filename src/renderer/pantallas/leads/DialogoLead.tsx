@@ -67,7 +67,7 @@ export function DialogoLead({ lead, sucursales, alCerrar, alGuardar }: Props) {
       titulo={lead ? 'Editar la consulta' : 'Nueva consulta'}
       descripcion={
         lead
-          ? 'Corregí lo que haga falta. Lo que cambies viaja también a la pestaña APP LEADS de la hoja.'
+          ? 'Corregí lo que haga falta. Lo que cambies viaja también a la pestaña APP LEADS de la base.'
           : 'Con el nombre, el teléfono y qué quiere asegurar alcanza; el resto se completa mientras se habla.'
       }
       alCerrar={alCerrar}

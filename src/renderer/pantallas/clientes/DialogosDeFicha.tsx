@@ -273,7 +273,7 @@ export function DialogoSiniestro({ ficha, alCerrar, alCargar }: PropsSiniestro) 
         <AreaTexto etiqueta="Observaciones" rows={2} value={observaciones} onChange={(evento) => setObservaciones(evento.target.value)} />
 
         <p className="text-xs leading-relaxed text-slate-500">
-          Queda en la pestaña <strong className="font-semibold">Siniestros</strong> de la ficha y se sube a la hoja con la
+          Queda en la pestaña <strong className="font-semibold">Siniestros</strong> de la ficha y se sube a la base con la
           próxima sincronización. El seguimiento —estado, observaciones fechadas, documentos y tareas— se lleva desde el módulo
           Siniestros.
         </p>

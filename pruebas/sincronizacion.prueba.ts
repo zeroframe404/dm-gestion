@@ -225,6 +225,13 @@ test('cerrar el mes crea solo la pestaña nueva en la base y sube las filas', as
   assert.equal(cuantasFallidas(), 0, 'la baja de septiembre subió sin quedar trabada')
   assert.ok(hoja.columnaIdDe('BAJAS SEPTIEMBRE') >= 0, 'BAJAS SEPTIEMBRE se creó con su columna _ID')
   assert.equal(hoja.idsDe('BAJAS SEPTIEMBRE').size, 1, 'la baja viajó a la pestaña nueva')
+
+  // Cambio de año: si el nombre pelado ya lo usa OTRO período (la «ENERO» de este año cuando se
+  // cierre diciembre), la pestaña nueva sale con el año para no caer en la planilla vieja.
+  const { nombreParaPestanaNueva } = await import('../src/main/servicios/cartera')
+  assert.equal(nombreParaPestanaNueva('ENERO', '2027-01'), 'ENERO 27', 'ENERO de 2027 no pisa la ENERO de 2026')
+  assert.equal(nombreParaPestanaNueva('BAJAS ENERO', '2027-01'), 'BAJAS ENERO 27')
+  assert.equal(nombreParaPestanaNueva('OCTUBRE', '2026-10'), 'OCTUBRE', 'sin choque, el nombre pelado de siempre')
   cerrarBaseDeDatos()
 })
 

@@ -373,7 +373,7 @@ export class FuenteGoogleSheets implements FuenteHoja {
       { reintentarSinRespuesta: false },
     )
     const rango = respuesta.data.updates?.updatedRange ?? ''
-    const primera = Number(rango.match(/![A-Z]+(d+)/)?.[1] ?? '0')
+    const primera = Number(rango.match(/![A-Z]+(\d+)/)?.[1] ?? '0')
     return primera
   }
 
