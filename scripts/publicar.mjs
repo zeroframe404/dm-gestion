@@ -24,6 +24,16 @@ if (tokenVacio && !process.argv.includes('--sin-base-de-usuarios')) {
   process.exit(1)
 }
 
+// Lo mismo con el puente del VPS (v12): una versión sin token deja a todas las PCs sin poder
+// sincronizar la cartera contra la base del servidor.
+const fuenteVpsConfig = readFileSync(path.join(raiz, 'src/main/servicios/config.ts'), 'utf8')
+const vpsSinToken = /const VPS_TOKEN = ''/.test(fuenteVpsConfig) || /const VPS_URL_BASE = ''/.test(fuenteVpsConfig)
+if (vpsSinToken && !process.argv.includes('--sin-base-vps')) {
+  console.error('[publicar] VPS_TOKEN o VPS_URL_BASE están vacíos en src/main/servicios/config.ts: la cartera no podría sincronizar con el VPS.')
+  console.error('[publicar] Completalos (ver README, «La base en el VPS») o publicá con --sin-base-vps.')
+  process.exit(1)
+}
+
 const archivos = [
   `DM-Gestion-Setup-${version}.exe`,
   `DM-Gestion-Setup-${version}.exe.blockmap`,

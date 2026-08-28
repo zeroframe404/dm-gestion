@@ -52,6 +52,10 @@ const api: ApiDm = {
     plantillaAviso: () => invocar('config:plantillaAviso'),
     guardarPlantillaAviso: (texto) => invocar('config:guardarPlantillaAviso', texto),
   },
+  vps: {
+    estado: () => invocar('vps:estado'),
+    migrar: () => invocar('vps:migrar'),
+  },
   importacion: {
     vistaPrevia: () => invocar('importacion:vistaPrevia'),
     iniciar: () => invocar('importacion:iniciar'),

@@ -5,6 +5,7 @@ import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePe
 import { usePermisos } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { AcercaDe } from './AcercaDe'
+import { BaseDeDatos } from './BaseDeDatos'
 import { Companias } from './Companias'
 import { ConexionGoogle } from './ConexionGoogle'
 import { ImportarGoogle } from './ImportarGoogle'
@@ -13,7 +14,7 @@ import { Permisos } from './Permisos'
 import { Sincronizacion } from './Sincronizacion'
 import { Usuarios } from './Usuarios'
 
-type IdSeccion = 'usuarios' | 'permisos' | 'companias' | 'impresora' | 'google' | 'importar' | 'sincronizacion' | 'acerca'
+type IdSeccion = 'usuarios' | 'permisos' | 'companias' | 'impresora' | 'basededatos' | 'google' | 'importar' | 'sincronizacion' | 'acerca'
 
 export function Administracion() {
   const usuario = useUsuarioActual()
@@ -36,8 +37,9 @@ export function Administracion() {
     // gastar papel sin esperar a un administrador.
     lista.push({ id: 'impresora', nombre: 'Impresora', icono: 'impresora', ayuda: 'administracion.impresora' })
     if (usuario.rol !== 'EMPLEADO' && puedeVer('administracion')) {
+      lista.push({ id: 'basededatos', nombre: 'Base de datos', icono: 'nube', ayuda: 'administracion.basededatos' })
       lista.push({ id: 'google', nombre: 'Conexión con Google', icono: 'nube', ayuda: 'administracion.google' })
-      lista.push({ id: 'importar', nombre: 'Importar desde Google', icono: 'nubeBajada', ayuda: 'administracion.importar' })
+      lista.push({ id: 'importar', nombre: 'Reimportar la base', icono: 'nubeBajada', ayuda: 'administracion.importar' })
       lista.push({ id: 'sincronizacion', nombre: 'Sincronización', icono: 'nube', ayuda: 'administracion.sincronizacion' })
     }
     lista.push({ id: 'acerca', nombre: 'Acerca de', icono: 'info', ayuda: 'administracion.acerca' })
@@ -67,6 +69,7 @@ export function Administracion() {
         {seccion === 'permisos' && <Permisos />}
         {seccion === 'companias' && <Companias />}
         {seccion === 'impresora' && <Impresora />}
+        {seccion === 'basededatos' && <BaseDeDatos />}
         {seccion === 'google' && <ConexionGoogle />}
         {seccion === 'importar' && <ImportarGoogle />}
         {seccion === 'sincronizacion' && <Sincronizacion />}

@@ -3,6 +3,10 @@
 Aplicación de escritorio para Windows de **Seguros Daniel Martínez**.
 Electron + React + TypeScript + Vite + Tailwind, con base de datos local SQLite.
 
+**Desde la v12.0.0 el GENERAL DE CLIENTES vive en la base de datos del VPS de la agencia**
+(el mismo servidor de dmartinezseguros.com): todas las computadoras sincronizan contra ella y la
+hoja de Google dejó de ser la fuente de verdad. Ver «La base en el VPS (Fase 12)», más abajo.
+
 ## Comandos
 
 ```bash
@@ -37,7 +41,9 @@ Todo queda en la carpeta `%APPDATA%/dm-gestion/`:
   contraseña (nunca la contraseña) y su perfil; permite entrar sin internet por 30 días. Se borra sola si
   ese usuario fue desactivado o le cambiaron la contraseña. Borrar la carpeta `sesion/` la deja ilegible
   (ahí vive la clave de cifrado): hará falta un ingreso con internet.
-- `config.json`: credenciales de Google (cuenta de servicio y URL de la hoja). Nunca va al repositorio.
+- `config.json`: credenciales de Google (cuenta de servicio y URL de la hoja; desde la v12 sólo para
+  la migración inicial y Drive) y, opcionalmente, un bloque `vps` que pisa la URL o el token del
+  puente con el servidor. Nunca va al repositorio.
 - `informes/`: una copia en texto de cada informe de importación.
 - `adjuntos/<siniestro>/`: los documentos de cada siniestro (la denuncia, el presupuesto del taller, las fotos).
 - `respaldos/`: los últimos 30 respaldos diarios de la hoja en `.xlsx`.
@@ -61,6 +67,46 @@ Para cambiar el esquema, **agregá una versión nueva al final de `MIGRACIONES`*
 - `pruebas/esquema.prueba.ts` guarda la huella del esquema que deja cada versión (en
   `pruebas/esquema-congelado.ts`). Si alguien edita una migración vieja, `npm run prueba` falla y explica
   qué hacer. Los comentarios y el formato no cuentan: sólo cambia la huella si cambia el esquema.
+
+## La base en el VPS (Fase 12)
+
+Desde la **v12.0.0** el bus compartido entre las computadoras ya no es la hoja de Google: es la
+**base de datos PostgreSQL del VPS de la agencia**, detrás de los endpoints `/api/dmg` del servidor
+de `dmartinezseguros.com` (repositorio `Seguros_Daniel_Martinez`, módulo `server/src/modules/dmg/`).
+
+Cómo funciona, en corto:
+
+- **Nada de la lógica cambió.** El servidor expone la misma semántica de grilla que Google
+  (pestañas ordenadas, filas numeradas base 1, celdas de texto) y `FuenteVps`
+  (`src/main/vps/fuenteVps.ts`) implementa la misma interfaz `FuenteHoja` de siempre: el motor de
+  sincronización, la cola, los conflictos y el importador corren tal cual, sólo cambió el transporte.
+  Sin internet se sigue trabajando local y la cola espera, igual que siempre.
+- **La URL y el token van embebidos** (`src/main/servicios/config.ts`, mismo criterio que
+  `TOKEN_DATOS` y `UPDATE_TOKEN`): las PCs se actualizan y quedan conectadas sin configurar nada.
+  El token tiene que coincidir con el `DMG_SYNC_TOKEN` del `.env` del VPS.
+- **Primero se actualizan TODAS las computadoras a la v12, después se migra.** Una PC que siga en
+  1.0.x escribe en Google sin ningún aviso, y lo que cargue después de la migración no llega al VPS
+  (habría que repetirlo a mano en una PC al día). El ciclo de actualización automática es de hasta
+  4 horas; con «Acerca de → Buscar actualizaciones» se adelanta en cada PC.
+- **La migración inicial se hace una sola vez**, desde una sola PC, en
+  **Administración → Base de datos → «Migrar el GENERAL DE CLIENTES al VPS»** (SUPER_ADMIN, con la
+  conexión con Google todavía configurada): lee la hoja completa por última vez, la publica en el
+  VPS en tres fases y corre una reimportación de alineación. Hasta que la migración no está hecha,
+  la sincronización avisa «la base del VPS todavía no está inicializada» y todo sigue local.
+- **Google queda para dos cosas**: la migración (una vez) y Drive (respaldos y adjuntos), mientras
+  la cuenta de servicio siga cargada. El respaldo diario ahora se arma desde la base del VPS con el
+  generador de `.xlsx` propio; la copia a Drive se mantiene si Google está configurado.
+- **En desarrollo nunca se toca el VPS real**: sin `DM_GESTION_VPS_URL` la sincronización queda
+  apagada (como antes sin credenciales de Google) y el humo corre así, local. Las pruebas del
+  transporte usan `scripts/vps-simulado.mjs`, el simulador local del puente (mismo patrón que
+  `github-simulado.mjs`); `DM_GESTION_VPS_URL`/`DM_GESTION_VPS_TOKEN` permiten apuntar la app de
+  desarrollo a ese simulador.
+- **En el servidor**: token compartido por encabezado `Authorization`, Postgres sin exponer a
+  internet (todo entra por el 443), y la migración inicial rechazada con 409 si ya se hizo.
+
+Las secciones que siguen («Importar desde Google», «Sincronización con Google») describen mecánica
+que sigue existiendo tal cual, pero desde la v12 la fuente es la base del VPS: la pantalla de
+importación se llama ahora **Reimportar la base** y el ciclo de subida/bajada habla con el servidor.
 
 ## Importar desde Google
 

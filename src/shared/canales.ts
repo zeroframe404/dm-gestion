@@ -102,6 +102,8 @@ import type {
   DatosEdicionUsuario,
   DatosNuevoUsuario,
   EstadoConexionGoogle,
+  EstadoMigracionVps,
+  ResumenMigracionVps,
   EstadoDeAcceso,
   EstadoDeUsuarios,
   MatrizDePermisos,
@@ -163,6 +165,10 @@ export interface Canales {
 
   'config:estadoGoogle': () => Resultado<EstadoConexionGoogle>
   'config:guardarGoogle': (datos: DatosConexionGoogle) => Resultado<EstadoConexionGoogle>
+
+  // La base del GENERAL DE CLIENTES en el VPS (v12): estado y migración inicial.
+  'vps:estado': () => Resultado<EstadoMigracionVps>
+  'vps:migrar': () => Resultado<ResumenMigracionVps>
 
   'importacion:vistaPrevia': () => Resultado<VistaPreviaHoja>
   'importacion:iniciar': () => Resultado<{ importacionId: number }>

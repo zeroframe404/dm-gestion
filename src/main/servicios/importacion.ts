@@ -6,14 +6,14 @@ import path from 'node:path'
 import type { DatosDeEvento, NombreEvento } from '../../shared/canales'
 import type { EstadoImportador, InformeImportacion, ProgresoImportacion, SesionUsuario, VistaPreviaHoja } from '../../shared/tipos'
 import { db } from '../db/base'
-import { extraerIdDeHoja, FuenteGoogleSheets, type FuenteHoja } from '../importacion/fuente'
+import type { FuenteHoja } from '../importacion/fuente'
 import { ejecutarImportacion } from '../importacion/importador'
 import { generarTextoDeInforme, informeParaArchivo } from '../importacion/informe'
 import { ahoraIso } from '../importacion/normalizar'
 import { clasificarPestanas, elegirMasNueva } from '../importacion/pestanas'
 import { carpetaDatos } from '../rutas'
-import { credencialesGoogle } from './config'
 import { ErrorDeNegocio } from './errores'
+import { crearFuenteVps } from './sincronizacion'
 
 interface ImportacionEnCurso {
   id: number
@@ -35,16 +35,16 @@ export function carpetaInformes(): string {
   return carpeta
 }
 
+// v12: la reimportación completa lee de la base del VPS, que es la fuente de verdad. La fuente de
+// Google quedó sólo dentro de la migración inicial (migracionVps.ts).
 function crearFuente(): { fuente: FuenteHoja; hojaId: string } {
-  const credenciales = credencialesGoogle()
-  if (!credenciales) {
-    throw new ErrorDeNegocio('Primero pegá el JSON de la cuenta de servicio y la URL de la hoja en «Conexión con Google».')
+  const fuente = crearFuenteVps()
+  if (!fuente) {
+    throw new ErrorDeNegocio(
+      'En desarrollo la base del VPS no está disponible: apuntá DM_GESTION_VPS_URL a un servidor local (scripts/vps-simulado.mjs).',
+    )
   }
-  const hojaId = extraerIdDeHoja(credenciales.urlHoja)
-  if (!hojaId) throw new ErrorDeNegocio('La URL guardada en «Conexión con Google» no es de una hoja de cálculo de Google.')
-  // Sólo en desarrollo y para pruebas locales: permite apuntar a un servidor que simula la API de Sheets.
-  const urlBase = !app.isPackaged && process.env.DM_GESTION_SHEETS_URL_BASE ? process.env.DM_GESTION_SHEETS_URL_BASE : undefined
-  return { fuente: new FuenteGoogleSheets({ hojaId, cuentaServicio: credenciales.cuentaServicio, urlBase }), hojaId }
+  return { fuente, hojaId: 'vps' }
 }
 
 export function hayImportacionEnCurso(): boolean {
@@ -104,7 +104,7 @@ export function iniciarImportacion(actor: SesionUsuario): { importacionId: numbe
   enCurso = {
     id: fila.id,
     cancelada: false,
-    progreso: { importacionId: fila.id, fase: 'preparando', porcentaje: 0, mensaje: 'Conectando con Google…', pestanas: [] },
+    progreso: { importacionId: fila.id, fase: 'preparando', porcentaje: 0, mensaje: 'Conectando con la base del VPS…', pestanas: [] },
   }
   emitir('importacion:progreso', enCurso.progreso)
   void correr(fila.id, fuente)

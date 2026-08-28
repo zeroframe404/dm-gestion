@@ -22,8 +22,29 @@ interface ConfigGoogle {
   actualizadoEn: string
 }
 
+/** Ajustes opcionales del puente con el VPS; sin este bloque valen los valores embebidos. */
+interface ConfigVps {
+  urlBase?: string
+  token?: string
+}
+
 interface Config {
   google?: ConfigGoogle
+  vps?: ConfigVps
+}
+
+// La base del GENERAL DE CLIENTES vive en el VPS de la agencia desde la v12. La URL y el token van
+// embebidos (mismo criterio que TOKEN_DATOS y UPDATE_TOKEN: el repositorio es privado) y config.json
+// puede pisarlos para pruebas o si algún día cambia el dominio.
+const VPS_URL_BASE = 'https://dmartinezseguros.com'
+const VPS_TOKEN = '8b8e041002f5125c317b463b551e6fd90fd6fad0ec827cac09e824d17ed3a5cb'
+
+export function credencialesVps(): { urlBase: string; token: string } {
+  const vps = leerConfig().vps
+  return {
+    urlBase: typeof vps?.urlBase === 'string' && vps.urlBase.trim() ? vps.urlBase.trim() : VPS_URL_BASE,
+    token: typeof vps?.token === 'string' && vps.token.trim() ? vps.token.trim() : VPS_TOKEN,
+  }
 }
 
 function leerConfig(): Config {

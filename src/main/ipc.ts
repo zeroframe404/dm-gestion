@@ -154,6 +154,7 @@ import {
   volverAIntentar,
 } from './servicios/sincronizacion'
 import { ErrorDeNegocio } from './servicios/errores'
+import { estadoDeLaBaseVps, migrarAlVps } from './servicios/migracionVps'
 import {
   abrirCarpetaInformes,
   cancelarImportacion,
@@ -312,6 +313,19 @@ export function registrarIpc(): void {
     exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirEdicion('administracion')
     return exito(guardarGoogle(datos))
+  })
+
+  // La base del GENERAL DE CLIENTES en el VPS (v12). El estado lo ven SUPER_ADMIN y ADMIN;
+  // la migración inicial —una sola vez, pisa la base del servidor— es del SUPER_ADMIN.
+  manejar('vps:estado', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('administracion')
+    return exito(await estadoDeLaBaseVps())
+  })
+  manejar('vps:migrar', async () => {
+    exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await migrarAlVps())
   })
 
   // Importación desde Google Sheets: SUPER_ADMIN y ADMIN
