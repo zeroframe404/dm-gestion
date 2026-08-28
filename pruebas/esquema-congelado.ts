@@ -20,4 +20,6 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   12: '5015fee4d15cffd6',
   13: 'fd05b8e5fd4af5fb',
   14: 'fd05b8e5fd4af5fb',
+  // La 15 no toca la forma del esquema: siembra Sarandí y reescribe el texto de las sucursales.
+  15: 'fd05b8e5fd4af5fb',
 }

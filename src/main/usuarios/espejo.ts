@@ -5,7 +5,9 @@
 // computadora conserva una fila por usuario, pero SIN contraseña (clave_hash = '') y enganchada al id
 // de GitHub por `remoto_id`. El id local sigue siendo el que usan las claves foráneas; el remoto es el
 // que une la misma persona en todas las computadoras.
+import { claveDeSucursal, sucursalCanonica, sucursalesEnTexto } from '../../shared/sucursales'
 import type { BaseDeDatos } from '../db/base'
+import { ErrorDeNegocio } from '../servicios/errores'
 import { buscarPorUsuario, type DocumentoUsuarios, type UsuarioRemoto } from './documento'
 
 export interface ResultadoEspejo {
@@ -16,21 +18,26 @@ export interface ResultadoEspejo {
   total: number
 }
 
-function clave(texto: string): string {
-  return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
-}
-
 /**
- * Devuelve el id de la sucursal por nombre sin distinguir mayúsculas ni tildes («Lanus» es «Lanús»:
- * el archivo se puede editar a mano en GitHub), creándola si esta computadora no la tenía.
+ * Devuelve el id de la sucursal por nombre sin distinguir mayúsculas ni tildes, y entendiendo los dos
+ * nombres del mismo mostrador («Lanus» es «Lanús», «Avellaneda» es «Dock Sud»: el archivo se puede
+ * editar a mano en GitHub).
+ *
+ * Sólo existen cuatro sucursales. Antes, un nombre desconocido se creaba como una sucursal más, y
+ * bastaba escribir «Avellaneda» en el usuarios.json para que esa computadora tuviera dos locales
+ * distintos para el mismo mostrador. Ahora se siembra la que falte —del catálogo, escrita como
+ * corresponde— y cualquier otro texto es un error del archivo.
  */
 export function idDeSucursal(db: BaseDeDatos, nombre: string): number {
-  const buscada = clave(nombre)
+  const buscada = sucursalCanonica(nombre)
+  if (!buscada) {
+    throw new ErrorDeNegocio(`La sucursal «${nombre.trim()}» no existe; las únicas son ${sucursalesEnTexto()}.`)
+  }
   const existentes = db.prepare('SELECT id, nombre FROM sucursales').all() as Array<{ id: number; nombre: string }>
-  const igual = existentes.find((s) => clave(s.nombre) === buscada)
+  const igual = existentes.find((s) => claveDeSucursal(s.nombre) === claveDeSucursal(buscada))
   if (igual) return igual.id
-  console.log(`[usuarios] La sucursal «${nombre}» no existía en esta computadora: se crea.`)
-  return Number(db.prepare('INSERT INTO sucursales (nombre) VALUES (?)').run(nombre.trim()).lastInsertRowid)
+  console.log(`[usuarios] La sucursal «${buscada}» no existía en esta computadora: se crea.`)
+  return Number(db.prepare('INSERT INTO sucursales (nombre) VALUES (?)').run(buscada).lastInsertRowid)
 }
 
 /** Prefijo de los nombres provisorios durante el volcado. El formato de usuario no admite «#». */

@@ -977,6 +977,167 @@ export const MIGRACIONES: Migracion[] = [
          AND TRIM(COALESCE(sucursal_texto, '')) <> '';
     `,
   },
+  {
+    version: 15,
+    descripcion: 'Las cuatro sucursales: se siembra Sarandí y «Avellaneda» pasa a ser «Dock Sud»',
+    sql: `
+      -- La agencia tiene cuatro mostradores y la base traía tres. Faltaba Sarandí, y el de Dock Sud
+      -- viajaba con dos nombres: la planilla escribe «AVELLANEDA» en unas pestañas y «DOCK SUD» en
+      -- otras, así que el mismo local aparecía dos veces en cada desplegable y elegir uno escondía las
+      -- filas del otro. Desde ahora el importador guarda siempre el nombre del catálogo (la lista vive
+      -- en shared/sucursales.ts); acá se arregla lo que ya estaba escrito.
+      INSERT OR IGNORE INTO sucursales (nombre) VALUES ('Dock Sud'), ('Lanús'), ('Sarandí'), ('Daniel');
+
+      -- Cada UPDATE se compara con la misma clave que usa la aplicación: en mayúsculas, sin tildes y
+      -- sin espacios. UPPER() de SQLite sólo sube el ASCII —a «Lanús» le deja la ú—, así que las
+      -- vocales con tilde se reemplazan a mano. Un texto que no sea de los cuatro cae en el ELSE y
+      -- queda tal cual estaba; volver a correr el UPDATE no cambia nada, que es lo que necesita la
+      -- reconciliación de esquema (ver db/esquema.ts).
+      UPDATE clientes
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE cuotas_mes
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE bajas
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE riesgos_varios
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE siniestros
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE pagos
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE pagos
+         SET sucursal_cobro = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_cobro)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_cobro
+                          END
+       WHERE TRIM(COALESCE(sucursal_cobro, '')) <> '';
+
+      UPDATE amp
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE leads
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE presupuestos
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE tareas
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE rechazos_debito
+         SET sucursal_texto = CASE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(sucursal_texto)), 'ú', 'U'), 'Ú', 'U'), 'í', 'I'), 'Í', 'I'), ' ', '')
+                            WHEN 'DOCKSUD' THEN 'Dock Sud'
+                            WHEN 'AVELLANEDA' THEN 'Dock Sud'
+                            WHEN 'LANUS' THEN 'Lanús'
+                            WHEN 'SARANDI' THEN 'Sarandí'
+                            WHEN 'DANIEL' THEN 'Daniel'
+                            ELSE sucursal_texto
+                          END
+       WHERE TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      -- Con el texto ya escrito como el catálogo, los que quedaron sin id lo recuperan. Es el caso de
+      -- las filas que decían «Avellaneda»: no enganchaban con ninguna sucursal y guardaban el id vacío.
+      UPDATE clientes
+         SET sucursal_id = (SELECT s.id FROM sucursales s WHERE s.nombre = TRIM(clientes.sucursal_texto))
+       WHERE sucursal_id IS NULL
+         AND TRIM(COALESCE(sucursal_texto, '')) <> '';
+
+      UPDATE leads
+         SET sucursal_id = (SELECT s.id FROM sucursales s WHERE s.nombre = TRIM(leads.sucursal_texto))
+       WHERE sucursal_id IS NULL
+         AND TRIM(COALESCE(sucursal_texto, '')) <> '';
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

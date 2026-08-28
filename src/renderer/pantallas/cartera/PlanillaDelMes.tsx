@@ -215,9 +215,9 @@ export function PlanillaDelMes() {
 
   /**
    * Cuántas filas del mes no tienen sucursal cargada. El desplegable de sucursal se arma con el
-   * catálogo (Dock Sud, Lanús, Daniel), que existe en toda computadora aunque los datos no lo tengan:
-   * si la planilla de Google que importó ESA computadora no traía la columna LOCAL, el filtro ofrece
-   * las tres y las tres devuelven cero. Sin este número, el vacío no se explica solo.
+   * catálogo (Dock Sud, Lanús, Sarandí, Daniel), que existe en toda computadora aunque los datos no lo
+   * tengan: si la planilla de Google que importó ESA computadora no traía la columna LOCAL, el filtro
+   * ofrece las cuatro y las cuatro devuelven cero. Sin este número, el vacío no se explica solo.
    */
   const sinSucursal = useMemo(() => conAlerta.filter(({ fila }) => !normalizar(fila.sucursal)).length, [conAlerta])
 

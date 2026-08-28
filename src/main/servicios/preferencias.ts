@@ -1,6 +1,7 @@
 // Preferencias de la aplicación que viven en la base (no son credenciales): hoy, la ticketeadora de
 // Cobranzas y las direcciones que encabezan su comprobante. Las plantillas de los mensajes se mudaron
 // a plantillas.ts en la Fase 9, que es cuando dejaron de ser una sola.
+import { claveDeSucursal, mismaSucursal, sucursalCanonica, type NombreDeSucursal } from '../../shared/sucursales'
 import type { DatosDeImpresora } from '../../shared/tipos'
 import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
@@ -89,24 +90,19 @@ export function guardarImpresora(datos: DatosDeImpresora): ImpresoraGuardada {
 const CLAVE_DIRECCIONES = 'direcciones_ticket'
 
 /**
- * Las tres direcciones que la agencia ya tenía impresas. Están acá para que el ticket salga bien desde
- * el primer arranque; cualquiera de ellas se puede pisar desde Administración → Impresora, y una
- * sucursal nueva se carga ahí mismo sin tocar código.
+ * Las direcciones que la agencia ya tenía impresas, por sucursal del catálogo. Están acá para que el
+ * ticket salga bien desde el primer arranque; cualquiera se puede pisar desde Administración →
+ * Impresora.
+ *
+ * La de Dock Sud está escrita como «Avellaneda» a propósito: es la calle del mostrador, que la agencia
+ * nombra de las dos maneras. Mientras estas direcciones se guardaban bajo la clave «AVELLANEDA», el
+ * ticket de la sucursal «Dock Sud» salía sin dirección porque los dos nombres no se cruzaban.
  */
-const DIRECCIONES_INICIALES: Record<string, string> = {
-  AVELLANEDA: 'Manuel Estévez N° 1234 Avellaneda',
-  SARANDI: 'Av. Bartolomé Mitre 2588',
-  LANUS: 'Centenario Uruguayo 1217',
-}
-
-/** Los nombres de sucursal se comparan sin acentos, mayúsculas ni espacios de más («Lanús» = «LANUS»). */
-export function claveDeSucursal(nombre: string): string {
-  return nombre
-    .trim()
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/\s+/g, ' ')
+const DIRECCIONES_INICIALES: Record<NombreDeSucursal, string> = {
+  'Dock Sud': 'Manuel Estévez N° 1234 Avellaneda',
+  Lanús: 'Centenario Uruguayo 1217',
+  Sarandí: 'Av. Bartolomé Mitre 2588',
+  Daniel: '',
 }
 
 /** Lo guardado tal cual: nombre de sucursal → dirección. Sin las iniciales. */
@@ -150,14 +146,15 @@ export function direccionDeSucursal(nombre: string | null | undefined): string {
   const buscado = claveDeSucursal(nombre ?? '')
   if (!buscado) return ''
   for (const [sucursal, direccion] of direccionesGuardadas()) {
-    if (claveDeSucursal(sucursal) === buscado) return direccion
+    if (mismaSucursal(sucursal, nombre)) return direccion
   }
-  return DIRECCIONES_INICIALES[buscado] ?? ''
+  return direccionInicial(nombre ?? '')
 }
 
 /** La inicial de fábrica de una sucursal, para no perderla al listar las que nadie tocó. */
 export function direccionInicial(nombre: string): string {
-  return DIRECCIONES_INICIALES[claveDeSucursal(nombre)] ?? ''
+  const sucursal = sucursalCanonica(nombre)
+  return sucursal ? DIRECCIONES_INICIALES[sucursal] : ''
 }
 
 /**

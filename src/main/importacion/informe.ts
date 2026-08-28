@@ -1,4 +1,5 @@
 // Versión legible (texto plano) del informe de importación, pensada para abrirse con el Bloc de notas.
+import { SUCURSALES } from '../../shared/sucursales'
 import { NOMBRE_TIPO_PESTANA, type InformeImportacion } from '../../shared/tipos'
 
 const ESTADOS: Record<InformeImportacion['estado'], string> = {
@@ -91,7 +92,7 @@ export function generarTextoDeInforme(informe: InformeImportacion): string {
 
   const sucursales = Object.entries(informe.sucursalesDesconocidas).sort((a, b) => b[1] - a[1])
   if (sucursales.length > 0) {
-    salida.push('', 'SUCURSALES FUERA DE CATÁLOGO (Dock Sud, Lanús, Daniel)', linea('-'))
+    salida.push('', `SUCURSALES FUERA DE CATÁLOGO (${SUCURSALES.join(', ')})`, linea('-'))
     for (const [valor, cantidad] of sucursales) salida.push(`${String(cantidad).padStart(6)}  ${valor}`)
   }
 

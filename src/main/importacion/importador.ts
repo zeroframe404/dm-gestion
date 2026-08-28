@@ -9,6 +9,7 @@
 //  - Cada fila recibe un _ID estable en la hoja; re-importar no duplica nada.
 //  - Los datos raros se registran en el informe y NO frenan la importación.
 import type { BaseDeDatos } from '../db/base'
+import { claveDeSucursal, sucursalCanonica, sucursalesEnTexto } from '../../shared/sucursales'
 import {
   NOMBRE_TIPO_PESTANA,
   type EstadoImportacion,
@@ -607,11 +608,9 @@ class TrabajoDeImportacion {
     }
 
     this.polizasActivasAntes = (this.sentencias.contarPolizasActivas.get() as { total: number }).total
+    // La clave no lleva espacios ni tildes: en la hoja conviven «DOCK SUD», «DOCKSUD» y «LANUS».
     for (const fila of this.sentencias.sucursales.all() as Array<{ id: number; nombre: string }>) {
-      const clave = normalizarTexto(fila.nombre)
-      this.sucursales.set(clave, fila.id)
-      // Sin los espacios también: en la hoja conviven «DOCK SUD» y «DOCKSUD».
-      this.sucursales.set(clave.replace(/ /g, ''), fila.id)
+      this.sucursales.set(claveDeSucursal(fila.nombre), fila.id)
     }
     this.cargarIndicesDePolizas()
 
@@ -1258,14 +1257,24 @@ class TrabajoDeImportacion {
     return null
   }
 
+  /**
+   * El texto de la columna LOCAL escrito como lo escribe el catálogo: «AVELLANEDA» y «DOCK SUD» son el
+   * mismo mostrador y los dos se guardan como «Dock Sud». Así el desplegable ofrece las cuatro
+   * sucursales de la agencia y no una opción por cada forma de escribirlas. Lo que no es ninguna de las
+   * cuatro se guarda tal cual y se lista en el informe.
+   */
+  private sucursalDeLaFila(fila: Fila): string {
+    const texto = fila.valor('sucursal')
+    return sucursalCanonica(texto) ?? texto
+  }
+
   private resolverSucursal(p: PestanaTrabajo, fila: Fila, texto: string): number | null {
     if (!texto) return null
-    const normalizado = normalizarTexto(texto)
-    const id = this.sucursales.get(normalizado) ?? this.sucursales.get(normalizado.replace(/ /g, ''))
+    const id = this.sucursales.get(claveDeSucursal(texto))
     if (id !== undefined) return id
     const clave = texto.toUpperCase()
     this.sucursalesDesconocidas[clave] = (this.sucursalesDesconocidas[clave] ?? 0) + 1
-    this.problema(p.titulo, fila.numero, fila.id, 'sucursal fuera de catálogo', `"${texto}" no es Dock Sud, Lanús ni Daniel; se guardó el texto tal cual`)
+    this.problema(p.titulo, fila.numero, fila.id, 'sucursal fuera de catálogo', `"${texto}" no es ${sucursalesEnTexto()}; se guardó el texto tal cual`)
     return null
   }
 
@@ -1309,7 +1318,7 @@ class TrabajoDeImportacion {
     }
 
     const esLaMasNueva = p === this.masNueva
-    const sucursalTexto = fila.valor('sucursal')
+    const sucursalTexto = this.sucursalDeLaFila(fila)
     const sucursalId = this.resolverSucursal(p, fila, sucursalTexto)
 
     let clienteId: number | null
@@ -1597,7 +1606,7 @@ class TrabajoDeImportacion {
     if (fila.tieneColumna('motivo') && !fila.valor('motivo')) {
       this.problema(p.titulo, fila.numero, fila.id, 'baja sin motivo', 'la fila no dice por qué se dio de baja')
     }
-    const sucursalTexto = fila.valor('sucursal')
+    const sucursalTexto = this.sucursalDeLaFila(fila)
     this.resolverSucursal(p, fila, sucursalTexto)
 
     const polizaId = this.buscarPoliza(ident)
@@ -1642,7 +1651,7 @@ class TrabajoDeImportacion {
     const cuotaMonto = interpretarNumero(cuota)
     if (cuota && cuotaMonto === null && !esTextoDeCuotaConocido(cuota)) this.problema(p.titulo, fila.numero, fila.id, 'cuota no numérica', `"${cuota}" no es un importe ni un texto conocido (A/D, ---)`)
     const clienteId = this.buscarCliente(ident)
-    const sucursalTexto = fila.valor('sucursal')
+    const sucursalTexto = this.sucursalDeLaFila(fila)
     this.resolverSucursal(p, fila, sucursalTexto)
     const emisionTexto = fila.valor('emision')
     const emision = interpretarFecha(emisionTexto, null, this.anioActual)
@@ -1688,7 +1697,7 @@ class TrabajoDeImportacion {
     const cargaTexto = fila.valor('fecha_carga')
     const carga = interpretarFecha(cargaTexto, null, this.anioActual)
     if (carga.problema) this.problema(p.titulo, fila.numero, fila.id, 'fecha de carga inválida', carga.problema)
-    const sucursalTexto = fila.valor('sucursal')
+    const sucursalTexto = this.sucursalDeLaFila(fila)
     this.resolverSucursal(p, fila, sucursalTexto)
     this.sentencias.siniestro.run({
       fila_id: fila.id,
@@ -1731,7 +1740,7 @@ class TrabajoDeImportacion {
     const vencimientoTexto = fila.valor('dia_vencimiento')
     const vencimiento = interpretarFecha(vencimientoTexto, null, this.anioActual)
     if (vencimiento.problema) this.problema(p.titulo, fila.numero, fila.id, 'vencimiento de AMP inválido', vencimiento.problema)
-    const sucursalTexto = fila.valor('sucursal')
+    const sucursalTexto = this.sucursalDeLaFila(fila)
     this.resolverSucursal(p, fila, sucursalTexto)
     this.sentencias.amp.run({
       fila_id: fila.id,
@@ -1774,7 +1783,7 @@ class TrabajoDeImportacion {
     const mesTexto = fila.valor('mes')
     const periodo = periodoDesdeTextoDeMes(mesTexto, this.periodoPorMes, fecha.iso ? Number(fecha.iso.slice(0, 4)) : this.anioDelPeriodo(this.masNueva?.periodo ?? null)) ?? (fecha.iso ? fecha.iso.slice(0, 7) : null)
     if (mesTexto && !periodo) this.problema(p.titulo, fila.numero, fila.id, 'mes ilegible', `"${mesTexto}" no se reconoce como mes`)
-    const sucursalTexto = fila.valor('sucursal')
+    const sucursalTexto = this.sucursalDeLaFila(fila)
     this.resolverSucursal(p, fila, sucursalTexto)
     this.sentencias.pago.run({
       fila_id: fila.id,
@@ -1823,7 +1832,7 @@ class TrabajoDeImportacion {
     const periodo =
       periodoDesdeTextoDeMes(mesTexto, this.periodoPorMes, this.anioDelPeriodo(this.masNueva?.periodo ?? null)) ??
       (/^\d{4}-\d{2}$/.test(mesTexto) ? mesTexto : null)
-    const sucursalTexto = fila.valor('sucursal')
+    const sucursalTexto = this.sucursalDeLaFila(fila)
     this.resolverSucursal(p, fila, sucursalTexto)
     const estado = normalizarTexto(fila.valor('estado'))
     this.sentencias.rechazo.run({

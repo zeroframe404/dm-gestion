@@ -3,9 +3,9 @@
 // La computadora de Lanús se instaló igual que las demás, pero al filtrar por sucursal el listado
 // salía vacío. El motivo no es el filtro: es que la hoja que importó ESA computadora no traía la
 // columna LOCAL, así que todas sus filas quedaron sin sucursal. El desplegable, en cambio, se arma
-// con el catálogo sembrado (Dock Sud, Lanús, Daniel), que existe siempre y en todas las bases.
+// con el catálogo sembrado (Dock Sud, Lanús, Sarandí y Daniel), que existe siempre y en todas las bases.
 //
-// Resultado: la pantalla ofrece tres sucursales, ninguna puede coincidir con nada, y el vacío no se
+// Resultado: la pantalla ofrece cuatro sucursales, ninguna puede coincidir con nada, y el vacío no se
 // explica solo. Esta prueba fija esa combinación para que se vea de dónde sale.
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -62,16 +62,16 @@ test('una hoja sin columna LOCAL deja toda la cartera sin sucursal', async () =>
   cerrarBaseDeDatos()
 })
 
-test('el desplegable ofrece las tres sucursales aunque ninguna fila las tenga', async () => {
+test('el desplegable ofrece las cuatro sucursales aunque ninguna fila las tenga', async () => {
   await baseSinSucursales()
   const ofrecidas = catalogos().sucursales
 
   // El catálogo sembrado siempre está: por eso el filtro parece sano hasta que se usa.
-  assert.deepEqual([...ofrecidas].sort(), ['Daniel', 'Dock Sud', 'Lanús'])
+  assert.deepEqual([...ofrecidas].sort(), ['Daniel', 'Dock Sud', 'Lanús', 'Sarandí'])
   cerrarBaseDeDatos()
 })
 
-test('filtrar por cualquiera de las tres deja el listado en cero', async () => {
+test('filtrar por cualquiera de las cuatro deja el listado en cero', async () => {
   await baseSinSucursales()
   const planilla = planillaDelMes(null)
 
@@ -144,7 +144,7 @@ test('«LANUS» de la planilla engancha con la sucursal «Lanús» del catálogo
   console.log = registrar
 
   // UPPER() y COLLATE NOCASE de SQLite sólo suben el ASCII: UPPER('Lanús') es 'LANúS'. Resolver la
-  // sucursal dentro del SQL dejaba a Lanús —la única de las tres con tilde— sin enganchar nunca.
+  // sucursal dentro del SQL dejaba a Lanús y a Sarandí —las que llevan tilde— sin enganchar nunca.
   const comoLoHaciaElSql = db.prepare(`SELECT UPPER('Lanús') = 'LANUS' AS empata`).get() as { empata: number }
   assert.equal(comoLoHaciaElSql.empata, 0, 'en SQLite la comparación de Lanús falla: por eso se resuelve en JavaScript')
 
@@ -153,10 +153,19 @@ test('«LANUS» de la planilla engancha con la sucursal «Lanús» del catálogo
     assert.equal(idDeSucursalPorNombre(escrito), lanus.id, `«${escrito}» es la sucursal Lanús`)
   }
 
+  const sarandi = db.prepare(`SELECT id FROM sucursales WHERE nombre = 'Sarandí'`).get() as { id: number }
+  for (const escrito of ['SARANDI', 'Sarandí', 'sarandi ']) {
+    assert.equal(idDeSucursalPorNombre(escrito), sarandi.id, `«${escrito}» es la sucursal Sarandí`)
+  }
+
   // Las otras dos ya andaban, y tienen que seguir andando (incluida la forma pegada de la hoja).
   const dockSud = db.prepare(`SELECT id FROM sucursales WHERE nombre = 'Dock Sud'`).get() as { id: number }
   assert.equal(idDeSucursalPorNombre('DOCK SUD'), dockSud.id)
   assert.equal(idDeSucursalPorNombre('DOCKSUD'), dockSud.id)
+  // El mostrador de Dock Sud está en Avellaneda y la agencia lo nombra de las dos maneras: es UNA
+  // sucursal, no dos. Antes «AVELLANEDA» no enganchaba con nada y quedaba como un local aparte.
+  assert.equal(idDeSucursalPorNombre('AVELLANEDA'), dockSud.id, '«Avellaneda» es «Dock Sud»')
+  assert.equal(idDeSucursalPorNombre('avellaneda'), dockSud.id)
   assert.equal(idDeSucursalPorNombre('QUILMES'), null, 'una sucursal que no existe sigue sin enganchar')
   assert.equal(idDeSucursalPorNombre(''), null)
   cerrarBaseDeDatos()
@@ -296,12 +305,12 @@ test('los meses viejos le enseñan al cliente de qué sucursal es', async () => 
   )
 
   // Y con el texto recuperado se engancha el id del catálogo, que es lo que usan los filtros por
-  // sucursal. Sólo enganchan las tres sembradas: «SARANDI» y «BRENDA» no son del catálogo y quedan
-  // como texto suelto, igual que antes.
+  // sucursal. Sólo enganchan las cuatro del catálogo: «BRENDA» no es ninguna de ellas y queda como
+  // texto suelto, igual que antes.
   const gonzalez = db
     .prepare('SELECT sucursal_id, sucursal_texto FROM clientes WHERE nombre = ?')
     .get(CLIENTES.gonzalez.nombre) as { sucursal_id: number | null; sucursal_texto: string }
-  assert.equal(gonzalez.sucursal_texto, CLIENTES.gonzalez.sucursal, 'recuperó el texto que traían los meses viejos')
+  assert.equal(gonzalez.sucursal_texto, 'Dock Sud', 'recuperó del mes viejo el «DOCK SUD» de la hoja, ya escrito como el catálogo')
   assert.ok(gonzalez.sucursal_id !== null, 'y quedó enganchado a «Dock Sud» del catálogo')
   cerrarBaseDeDatos()
 })
@@ -435,7 +444,8 @@ test('la migración le devuelve la sucursal a los clientes a los que se les hab�
     sucursal_texto: string | null
     sucursal_id: number | null
   }
-  assert.equal(cliente.sucursal_texto, 'DOCK SUD', 'la recuperó del mes que todavía la tenía')
+  // «DOCK SUD» es como lo escribe la hoja; la migración 15 lo deja escrito como el catálogo.
+  assert.equal(cliente.sucursal_texto, 'Dock Sud', 'la recuperó del mes que todavía la tenía')
   assert.ok(cliente.sucursal_id !== null, 'y volvió a engancharse al catálogo, que es lo que usa el filtro')
   db.close()
 })
