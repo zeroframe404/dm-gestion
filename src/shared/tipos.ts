@@ -82,6 +82,30 @@ export interface EstadoConexionGoogle {
 }
 
 // ---------------------------------------------------------------------------
+// La base del GENERAL DE CLIENTES en el VPS — v12
+// ---------------------------------------------------------------------------
+
+export interface EstadoBaseVps {
+  inicializada: boolean
+  inicializada_en: string | null
+  pestanas: number
+  filas: number
+}
+
+export interface EstadoMigracionVps {
+  urlBase: string
+  googleConfigurado: boolean
+  base: EstadoBaseVps | null
+  /** Por qué no se pudo consultar la base (sin internet, token inválido, servidor sin configurar). */
+  error: string | null
+}
+
+export interface ResumenMigracionVps {
+  pestanas: number
+  filas: number
+}
+
+// ---------------------------------------------------------------------------
 // Base de usuarios compartida (GitHub) e ingreso sin internet — Fase 11
 // ---------------------------------------------------------------------------
 

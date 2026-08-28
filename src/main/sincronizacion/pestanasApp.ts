@@ -142,7 +142,8 @@ export async function asegurarPestanasDeLaApp(fuente: FuenteHoja, contexto: Cont
       const motivo = error instanceof Error ? error.message : String(error)
       // Que ya exista no es un problema: alguien la creó desde otra computadora entre la lectura de la
       // estructura y ahora. Releyendo el contexto aparece y la cola sube sola en el ciclo siguiente.
-      if (/already exists/i.test(motivo)) {
+      // («already exists» lo dice Google; «Ya existe» lo dice la base del VPS.)
+      if (/already exists|ya existe/i.test(motivo)) {
         creadas.push(pestana.titulo)
         continue
       }

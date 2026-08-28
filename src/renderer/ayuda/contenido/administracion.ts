@@ -182,6 +182,37 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.basededatos': {
+    clave: 'administracion.basededatos',
+    titulo: 'Administración → Base de datos',
+    resumen: 'Desde la versión 12, el GENERAL DE CLIENTES vive en la base de datos del servidor de la agencia (el VPS). Esta pantalla muestra si la conexión está bien y es donde se hace la migración inicial.',
+    secciones: [
+      {
+        titulo: 'Qué cambió con la versión 12',
+        parrafos: [
+          'Antes, la planilla de Google era el lugar donde vivía la información y las computadoras se sincronizaban a través de ella. Ahora la información vive en la base de datos del servidor de la agencia, y todas las computadoras se mantienen iguales contra esa base. El trabajo diario no cambia en nada: las pantallas son las mismas, y si se corta internet se sigue trabajando local igual que siempre.',
+        ],
+      },
+      {
+        titulo: 'La migración inicial',
+        parrafos: [
+          'Se hace una sola vez, desde una sola computadora, y la hace el superadministrador. El botón lee la planilla de Google completa por última vez y la publica en la base del servidor. A partir de ese momento todas las computadoras sincronizan contra el servidor y la planilla de Google queda de recuerdo (nadie la borra, pero ya no manda).',
+        ],
+      },
+      {
+        titulo: 'Probar conexión',
+        parrafos: [
+          'Consulta el servidor y dice si la base está migrada, cuántas pestañas y filas tiene. Si falla, el mensaje explica si es un problema de internet, del token o del servidor.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'VPS',
+        explicacion: 'El servidor propio de la agencia en internet (el mismo donde está la página web). Ahí adentro vive ahora la base de datos del GENERAL DE CLIENTES.',
+      },
+    ],
+  },
   'administracion.google': {
     clave: 'administracion.google',
     titulo: 'Administración → Conexión con Google',

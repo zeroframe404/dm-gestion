@@ -42,6 +42,10 @@ export interface ApiDm {
     plantillaAviso: Remota<'config:plantillaAviso'>
     guardarPlantillaAviso: Remota<'config:guardarPlantillaAviso'>
   }
+  vps: {
+    estado: Remota<'vps:estado'>
+    migrar: Remota<'vps:migrar'>
+  }
   cartera: {
     planilla: Remota<'cartera:planilla'>
     editarCelda: Remota<'cartera:editarCelda'>

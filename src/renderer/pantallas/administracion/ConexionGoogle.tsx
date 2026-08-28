@@ -55,7 +55,7 @@ export function ConexionGoogle() {
     <div className="mx-auto max-w-3xl">
       <Tarjeta
         titulo="Conexión con Google"
-        descripcion="Credenciales de la cuenta de servicio y hoja de cálculo que va a usar la sincronización cuando esté disponible."
+        descripcion="Desde la versión 12 la base vive en el VPS: esta conexión queda sólo para la migración inicial y para las copias en Drive (respaldos y adjuntos)."
       >
         {cargando ? (
           <Cargando />

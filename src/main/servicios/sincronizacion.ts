@@ -1,6 +1,6 @@
 // Servicio de sincronización: arma el motor con las credenciales guardadas, avisa al renderer cuando
 // cambia el estado y expone lo que muestra Administración → Sincronización.
-import { BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
 import type { DatosDeEvento, NombreEvento } from '../../shared/canales'
 import type {
@@ -24,8 +24,10 @@ import {
   tocaRespaldar,
   type ServicioDeRespaldo,
 } from '../sincronizacion/respaldo'
-import { credencialesGoogle } from './config'
+import { FuenteVps } from '../vps/fuenteVps'
+import { credencialesGoogle, credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
+import { construirXlsx, type HojaXlsx } from './xlsx'
 
 let motor: MotorDeSincronizacion | null = null
 /** En las pruebas se puede poner una hoja simulada acá y saltear las credenciales. */
@@ -42,9 +44,38 @@ export function carpetaDeRespaldos(): string {
   return path.join(carpetaDatos(), 'respaldos')
 }
 
-function crearFuente(): FuenteHoja | null {
+// v12: la base compartida vive en el VPS de la agencia; Google quedó sólo para la migración
+// inicial (ver migracionVps.ts) y para Drive (respaldos y adjuntos), si sigue configurado.
+export function crearFuente(): FuenteHoja | null {
   if (fuenteDePrueba) return fuenteDePrueba
-  const credenciales = credencialesGoogle()
+  return crearFuenteVps()
+}
+
+export function crearFuenteVps(): FuenteVps | null {
+  // En desarrollo (y en las pruebas, donde electron ni existe) NUNCA se toca el VPS real: sólo se
+  // sincroniza si DM_GESTION_VPS_URL apunta a un servidor local (el simulador), igual que
+  // DM_GESTION_GITHUB_API con la base de usuarios.
+  const empaquetada = (app as typeof app | undefined)?.isPackaged ?? false
+  if (!empaquetada) {
+    const urlBase = process.env.DM_GESTION_VPS_URL
+    if (!urlBase) return null
+    // Nunca el token real en desarrollo: 'prueba' es el del simulador (scripts/vps-simulado.mjs).
+    return new FuenteVps({ urlBase, token: process.env.DM_GESTION_VPS_TOKEN ?? 'prueba' })
+  }
+  return new FuenteVps(credencialesVps())
+}
+
+/** La conexión directa con Google, si la agencia todavía la tiene configurada (migración y Drive). */
+export function fuenteGoogleDirecta(): FuenteGoogleSheets | null {
+  // Con una fuente de prueba puesta no hay Google; y fuera de Electron (las pruebas)
+  // ni siquiera se puede leer config.json (no existe app.getPath): ahí tampoco hay Google.
+  if (fuenteDePrueba) return null
+  let credenciales: ReturnType<typeof credencialesGoogle>
+  try {
+    credenciales = credencialesGoogle()
+  } catch {
+    return null
+  }
   if (!credenciales) return null
   const hojaId = extraerIdDeHoja(credenciales.urlHoja)
   if (!hojaId) return null
@@ -94,7 +125,7 @@ export function estadoDeSincronizacion(): EstadoSincronizacion {
 
 export async function sincronizarAhora(completa = false): Promise<EstadoSincronizacion> {
   const motor = obtenerMotor()
-  if (!crearFuente()) throw new ErrorDeNegocio('Primero cargá la cuenta de servicio y la hoja en «Conexión con Google».')
+  if (!crearFuente()) throw new ErrorDeNegocio('La sincronización no está disponible en este momento.')
   if (!motor.estaEncendido()) motor.encender()
   await motor.sincronizarAhora(completa)
   return motor.estado()
@@ -160,20 +191,42 @@ export function respaldos(): RespaldoGuardado[] {
 }
 
 /**
- * Cómo pedir un token de la cuenta de servicio para hablar con Drive, o null si Google todavía no está
- * configurado. Lo usan los adjuntos de los siniestros para subir su copia.
+ * Cómo pedir un token de la cuenta de servicio para hablar con Drive, o null si Google no está
+ * configurado. Lo usan los adjuntos de los siniestros para subir su copia; sigue funcionando
+ * después del corte al VPS mientras la cuenta de servicio quede cargada.
  */
 export function dadorDeTokenDeGoogle(): (() => Promise<string>) | null {
-  const fuente = crearFuente()
-  if (!(fuente instanceof FuenteGoogleSheets)) return null
+  const fuente = fuenteGoogleDirecta()
+  if (!fuente) return null
   return () => fuente.obtenerToken()
 }
 
+/**
+ * v12: el respaldo diario se arma desde la base del VPS (la fuente de verdad) con el generador de
+ * .xlsx propio. La copia a Drive se mantiene sólo si la cuenta de Google sigue configurada.
+ */
 function servicioDeRespaldo(): ServicioDeRespaldo | null {
   if (servicioDeRespaldoDePrueba) return servicioDeRespaldoDePrueba
   const fuente = crearFuente()
-  if (!(fuente instanceof FuenteGoogleSheets)) return null
-  return servicioDeRespaldoDeGoogle(() => fuente.obtenerToken())
+  if (!fuente) return null
+  return {
+    exportarXlsx: async () => {
+      const estructura = await fuente.estructura()
+      const hojas: HojaXlsx[] = []
+      // De a una pestaña por pedido: la base entera en una sola respuesta puede pasarse
+      // del tiempo máximo por pedido; así cada llamada es chica y reintentable.
+      for (const pestana of estructura.pestanas) {
+        const [lectura] = await fuente.leerVarias([pestana.titulo])
+        hojas.push({ nombre: pestana.titulo, encabezados: null, filas: lectura?.valores ?? [] })
+      }
+      return construirXlsx(hojas)
+    },
+    subirADrive: async (nombre, contenido) => {
+      const google = fuenteGoogleDirecta()
+      if (!google) return null
+      return servicioDeRespaldoDeGoogle(() => google.obtenerToken()).subirADrive(nombre, contenido)
+    },
+  }
 }
 
 /** El respaldo del día, si ya pasaron las 20:00 y todavía no se hizo. */
@@ -184,10 +237,8 @@ export async function respaldarSiCorresponde(ahora = new Date()): Promise<boolea
 
 export async function respaldarAhora(ahora = new Date()): Promise<boolean> {
   const servicio = servicioDeRespaldo()
-  const credenciales = credencialesGoogle()
-  const hojaId = credenciales ? extraerIdDeHoja(credenciales.urlHoja) : null
-  if (!servicio || !hojaId) return false
-  const resultado = await hacerRespaldo(servicio, hojaId, carpetaDeRespaldos(), ahora)
+  if (!servicio) return false
+  const resultado = await hacerRespaldo(servicio, 'vps', carpetaDeRespaldos(), ahora)
   return resultado.hecho
 }
 
