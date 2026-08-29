@@ -5,8 +5,10 @@
 // muestra quién es y ofrece las dos únicas salidas sensatas: abrir esa ficha, o corregir lo cargado.
 // No hay tercera opción, y no la tiene que haber: el duplicado es el error que después cuesta días.
 import { useEffect, useState, type ReactNode } from 'react'
+import { DIRECCION_VACIA, type DireccionEstructurada } from '../../../shared/direccion'
 import type { DatosDeCliente, FichaCliente, FilaCliente, Sucursal } from '../../../shared/tipos'
-import { Alerta, AreaTexto, Boton, Campo, Dialogo, Etiqueta } from '../../componentes/ui'
+import { Alerta, Boton, Campo, Dialogo, Etiqueta } from '../../componentes/ui'
+import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, recortar, type CampoDeTexto } from './CamposDeCliente'
 
 const LISTA_SUCURSALES = 'lista-sucursales-alta'
 
@@ -19,6 +21,7 @@ const DATOS_VACIOS: DatosDeCliente = {
   localidad: '',
   sucursal: '',
   fechaNacimiento: '',
+  direccionDetalle: DIRECCION_VACIA,
 }
 
 interface Props {
@@ -36,6 +39,9 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
+  // Las localidades que ya están cargadas en la agencia: se sugieren para que «Lanús» se escriba una
+  // sola forma y no cuatro. No obligan: el campo sigue siendo libre.
+  const [localidades, setLocalidades] = useState<string[]>([])
 
   useEffect(() => {
     if (!abierto) return
@@ -45,23 +51,23 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
     void window.dm.sucursales.listar().then((resultado) => {
       if (resultado.ok) setSucursales(resultado.datos)
     })
+    void window.dm.clientes.localidades().then((resultado) => {
+      if (resultado.ok) setLocalidades(resultado.datos)
+    })
   }, [abierto])
 
   if (!abierto) return null
 
-  const cambiar = (campo: keyof DatosDeCliente) => (evento: { target: { value: string } }) =>
-    setDatos((previos) => ({ ...previos, [campo]: evento.target.value }))
+  const cambiarTexto = (campo: CampoDeTexto) => (valor: string) => setDatos((previos) => ({ ...previos, [campo]: valor }))
+
+  const cambiarDireccion = (direccionDetalle: DireccionEstructurada) => setDatos((previos) => ({ ...previos, direccionDetalle }))
 
   const guardar = async () => {
     setGuardando(true)
     setError(null)
     // Se recortan los espacios, nada más: el resto lo valida y lo normaliza el proceso principal, que
     // es el que sabe cómo se compara un documento contra los 2.100 que ya están cargados.
-    const limpios = Object.fromEntries(
-      (Object.keys(datos) as Array<keyof DatosDeCliente>).map((campo) => [campo, datos[campo].trim()]),
-    ) as unknown as DatosDeCliente
-
-    const resultado = await window.dm.clientes.crear(limpios)
+    const resultado = await window.dm.clientes.crear(recortar(datos))
     setGuardando(false)
 
     if (!resultado.ok) {
@@ -104,7 +110,7 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
                 <span className="tabular-nums">{existente.documento ?? '—'}</span>
               </Dato>
               <Dato etiqueta="Sucursal">{existente.sucursal ?? '—'}</Dato>
-              <Dato etiqueta="Teléfono">
+              <Dato etiqueta="Celular/WhatsApp">
                 <span className="tabular-nums">{existente.telefono ?? '—'}</span>
               </Dato>
               <Dato etiqueta="Pólizas activas">
@@ -150,29 +156,43 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
         {error && <Alerta tono="error">{error}</Alerta>}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Campo etiqueta="Nombre y apellido" value={datos.nombre} onChange={cambiar('nombre')} autoFocus autoComplete="off" />
           <Campo
-            etiqueta="DNI / CUIT"
-            value={datos.documento}
-            onChange={cambiar('documento')}
+            etiqueta="Nombre y apellido"
+            value={datos.nombre}
+            onChange={(evento) => cambiarTexto('nombre')(evento.target.value)}
+            autoFocus
+            autoComplete="off"
+          />
+          <CampoDeDocumento
+            valor={datos.documento}
+            alCambiar={cambiarTexto('documento')}
+            ayudaExtra="Con o sin puntos y guiones. Si ya existe, te lo vamos a decir antes de crear nada."
+          />
+          <Campo
+            etiqueta="Celular/WhatsApp"
+            value={datos.telefono}
+            onChange={(evento) => cambiarTexto('telefono')(evento.target.value)}
             className="tabular-nums"
-            ayuda="Sin puntos ni guiones. Si ya existe, te lo vamos a decir antes de crear nada."
+            ayuda="Es el número al que después salen los avisos de vencimiento."
             autoComplete="off"
           />
-          <Campo etiqueta="Teléfono" value={datos.telefono} onChange={cambiar('telefono')} className="tabular-nums" autoComplete="off" />
-          <Campo etiqueta="Email" type="email" value={datos.email} onChange={cambiar('email')} autoComplete="off" />
-          <Campo etiqueta="Localidad" value={datos.localidad} onChange={cambiar('localidad')} autoComplete="off" />
-          <Campo etiqueta="Sucursal" value={datos.sucursal} onChange={cambiar('sucursal')} list={LISTA_SUCURSALES} autoComplete="off" />
           <Campo
-            etiqueta="Fecha de nacimiento"
-            value={datos.fechaNacimiento}
-            onChange={cambiar('fechaNacimiento')}
-            ayuda="Como se escribe en la hoja (por ejemplo 12/05/1980)."
+            etiqueta="Email"
+            type="email"
+            value={datos.email}
+            onChange={(evento) => cambiarTexto('email')(evento.target.value)}
             autoComplete="off"
           />
+          <BotonDeDireccion direccion={datos.direccionDetalle} alCambiar={cambiarDireccion} localidadesConocidas={localidades} />
+          <Campo
+            etiqueta="Sucursal"
+            value={datos.sucursal}
+            onChange={(evento) => cambiarTexto('sucursal')(evento.target.value)}
+            list={LISTA_SUCURSALES}
+            autoComplete="off"
+          />
+          <CampoDeNacimiento valor={datos.fechaNacimiento} alCambiar={cambiarTexto('fechaNacimiento')} />
         </div>
-
-        <AreaTexto etiqueta="Dirección" rows={2} value={datos.direccion} onChange={cambiar('direccion')} autoComplete="off" />
 
         <datalist id={LISTA_SUCURSALES}>
           {sucursales.map((sucursal) => (

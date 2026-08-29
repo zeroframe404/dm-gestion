@@ -15,6 +15,7 @@ import {
 } from '../src/main/servicios/clientes'
 import { cuotasDelClienteEnElMes } from '../src/main/servicios/cartera'
 import { crearSiniestro } from '../src/main/servicios/siniestros'
+import { DIRECCION_VACIA } from '../src/shared/direccion'
 import { hoyLocal } from '../src/shared/semaforo'
 import { darDeBajaPoliza } from '../src/main/servicios/polizas'
 import { cuantasPendientes } from '../src/main/sincronizacion/cola'
@@ -43,6 +44,7 @@ const VACIO: DatosDeCliente = {
   localidad: '',
   sucursal: '',
   fechaNacimiento: '',
+  direccionDetalle: DIRECCION_VACIA,
 }
 
 /**

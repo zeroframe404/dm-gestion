@@ -8,6 +8,12 @@
 // Notas y tareas son internas de la aplicación: en la hoja no hay ninguna columna donde ponerlas, así
 // que no se encolan; sí quedan en el historial, como todo lo que se toca desde acá.
 import { diasParaVencer, estadoDePoliza, aDia } from '../../shared/polizas'
+import {
+  direccionEstaVacia,
+  sanearDireccion,
+  textoDeDireccion,
+  type DireccionEstructurada,
+} from '../../shared/direccion'
 import { esDebitoAutomatico, hoyLocal } from '../../shared/semaforo'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
@@ -87,6 +93,12 @@ interface ClienteCrudo extends FilaClienteCruda {
   clave: string
   direccion: string | null
   fecha_nacimiento: string | null
+  calle: string | null
+  calle2: string | null
+  altura: string | null
+  sin_altura: number
+  provincia: string | null
+  codigo_postal: string | null
 }
 
 interface Agregados {
@@ -452,7 +464,11 @@ export function buscarClientes(busqueda: string, limite = 20): FilaCliente[] {
 
 function buscarCliente(id: number): ClienteCrudo {
   const fila = db()
-    .prepare(`SELECT ${COLUMNAS_DE_FILA}, clave, direccion, fecha_nacimiento FROM clientes WHERE id = ?`)
+    .prepare(
+      `SELECT ${COLUMNAS_DE_FILA}, clave, direccion, fecha_nacimiento,
+              calle, calle2, altura, sin_altura, provincia, codigo_postal
+         FROM clientes WHERE id = ?`,
+    )
     .get(id) as ClienteCrudo | undefined
   if (!fila) throw new ErrorDeNegocio('No se encontró ese cliente. Actualizá la pantalla y probá de nuevo.')
   return fila
@@ -734,6 +750,7 @@ export function fichaDeCliente(clienteId: number): FichaCliente {
     localidad: cliente.localidad,
     sucursal: cliente.sucursal_texto,
     fechaNacimiento: cliente.fecha_nacimiento,
+    direccionDetalle: direccionDe(cliente),
     vehiculos: vehiculosDe(cliente.id, polizas),
     polizas,
     pagos: pagosDe(cliente.id),
@@ -756,6 +773,28 @@ interface CamposDeCliente {
   localidad: string
   sucursal: string
   fechaNacimiento: string
+  // La dirección en partes, aplanada a texto: así entra en la lista de campos que se compara y se
+  // registra en el historial sin un caso especial para el objeto.
+  calle: string
+  calle2: string
+  altura: string
+  /** '1' o ''. Es un booleano, pero viaja como texto por lo mismo que los de arriba. */
+  sinAltura: string
+  provincia: string
+  codigoPostal: string
+}
+
+/** La dirección en partes tal como está guardada en la ficha. */
+function direccionDe(cliente: ClienteCrudo): DireccionEstructurada {
+  return sanearDireccion({
+    calle: cliente.calle ?? '',
+    calle2: cliente.calle2 ?? '',
+    altura: cliente.altura ?? '',
+    sinAltura: cliente.sin_altura === 1,
+    provincia: cliente.provincia ?? '',
+    localidad: cliente.localidad ?? '',
+    codigoPostal: cliente.codigo_postal ?? '',
+  })
 }
 
 /** Campo que puede venir vacío: se acepta el vacío y sólo se controla el largo cuando trae algo. */
@@ -772,15 +811,33 @@ function opcional(valor: unknown, campo: string, maximo: number): string {
  */
 function validarDatos(datos: DatosDeCliente): CamposDeCliente {
   const d = objeto(datos, 'Los datos del cliente')
+  const detalle = sanearDireccion(d.direccionDetalle)
+  const cargoLaDireccion = !direccionEstaVacia(detalle)
+
+  // El documento se guarda como se escribió, siempre. La detección de DNI vs CUIT (y el aviso de que
+  // el verificador no cierra) es de la PANTALLA, para que quien carga se dé cuenta en el momento; acá
+  // no rechaza nada, y no es un olvido: en la hoja hay CUIT escritos a mano hace años con un dígito
+  // cambiado, y son de clientes reales que hay que poder seguir atendiendo. La aplicación no puede
+  // negarse a trabajar con los datos que la agencia ya tiene.
+  const documento = opcional(d.documento, 'El DNI/CUIT', 20)
+
   return {
     nombre: limpiar(validarTexto(d.nombre, 'El nombre', 1, 120)),
-    documento: opcional(d.documento, 'El DNI/CUIT', 20),
-    telefono: opcional(d.telefono, 'El teléfono', 60),
+    documento,
+    telefono: opcional(d.telefono, 'El celular', 60),
     email: opcional(d.email, 'El email', 120),
-    direccion: opcional(d.direccion, 'La dirección', 160),
-    localidad: opcional(d.localidad, 'La localidad', 80),
+    // Con la dirección cargada en partes, el renglón de siempre se arma y lo que venga escrito a mano
+    // se descarta: si no, la ficha guardaría dos direcciones distintas que nadie sabría cuál manda.
+    direccion: cargoLaDireccion ? textoDeDireccion(detalle) : opcional(d.direccion, 'La dirección', 160),
+    localidad: cargoLaDireccion ? detalle.localidad : opcional(d.localidad, 'La localidad', 80),
     sucursal: opcional(d.sucursal, 'La sucursal', 80),
     fechaNacimiento: opcional(d.fechaNacimiento, 'La fecha de nacimiento', 20),
+    calle: opcional(detalle.calle, 'La calle', 120),
+    calle2: opcional(detalle.calle2, 'La segunda calle', 120),
+    altura: opcional(detalle.altura, 'La altura', 20),
+    sinAltura: detalle.sinAltura ? '1' : '',
+    provincia: opcional(detalle.provincia, 'La provincia', 60),
+    codigoPostal: opcional(detalle.codigoPostal, 'El código postal', 12),
   }
 }
 
@@ -826,6 +883,23 @@ function claveDisponible(nombre: string, documentoNormalizado: string): string {
   return `APP:${generarId()}`
 }
 
+/**
+ * Las localidades que ya están cargadas, sin repetir y ordenadas. Es para sugerirlas al escribir una
+ * dirección: que «Lanús» se escriba de una sola forma y no de cuatro. No obliga a nada —el campo sigue
+ * siendo libre— porque en la hoja hay variantes viejas que no se pueden pisar sin preguntar.
+ */
+export function localidadesConocidas(): string[] {
+  const filas = db()
+    .prepare(
+      `SELECT DISTINCT TRIM(localidad) AS localidad
+         FROM clientes
+        WHERE TRIM(COALESCE(localidad, '')) <> ''
+        ORDER BY 1`,
+    )
+    .all() as Array<{ localidad: string }>
+  return filas.map((fila) => fila.localidad)
+}
+
 export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): ResultadoAltaCliente {
   const campos = validarDatos(datos)
   const documentoNormalizado = normalizarDocumento(campos.documento)
@@ -853,9 +927,11 @@ export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): Resul
   const resultado = db()
     .prepare(
       `INSERT INTO clientes (clave, documento, documento_normalizado, nombre, telefono, email, direccion, localidad,
-                             sucursal_id, sucursal_texto, fecha_nacimiento, fila_id, pestana_origen, creado_en, actualizado_en)
+                             sucursal_id, sucursal_texto, fecha_nacimiento, calle, calle2, altura, sin_altura,
+                             provincia, codigo_postal, fila_id, pestana_origen, creado_en, actualizado_en)
        VALUES (@clave, @documento, @documento_normalizado, @nombre, @telefono, @email, @direccion, @localidad,
-               @sucursal_id, @sucursal_texto, @fecha_nacimiento, NULL, NULL, @ahora, @ahora)`,
+               @sucursal_id, @sucursal_texto, @fecha_nacimiento, @calle, @calle2, @altura, @sin_altura,
+               @provincia, @codigo_postal, NULL, NULL, @ahora, @ahora)`,
     )
     .run({
       clave: claveDisponible(campos.nombre, documentoNormalizado),
@@ -869,6 +945,12 @@ export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): Resul
       sucursal_id: idDeSucursalPorNombre(campos.sucursal),
       sucursal_texto: sucursalParaGuardar(campos.sucursal),
       fecha_nacimiento: campos.fechaNacimiento || null,
+      calle: campos.calle || null,
+      calle2: campos.calle2 || null,
+      altura: campos.altura || null,
+      sin_altura: campos.sinAltura ? 1 : 0,
+      provincia: campos.provincia || null,
+      codigo_postal: campos.codigoPostal || null,
       ahora,
     })
   const id = Number(resultado.lastInsertRowid)
@@ -902,6 +984,12 @@ const CAMPOS_DEL_CLIENTE = [
   { campo: 'direccion', columna: 'direccion', etiqueta: 'DIRECCION', enLaCuota: null, enLaHoja: null },
   { campo: 'localidad', columna: 'localidad', etiqueta: 'LOCALIDAD', enLaCuota: null, enLaHoja: null },
   { campo: 'fechaNacimiento', columna: 'fecha_nacimiento', etiqueta: 'FECHA DE NACIMIENTO', enLaCuota: null, enLaHoja: null },
+  { campo: 'calle', columna: 'calle', etiqueta: 'CALLE', enLaCuota: null, enLaHoja: null },
+  { campo: 'calle2', columna: 'calle2', etiqueta: 'ENTRE CALLES', enLaCuota: null, enLaHoja: null },
+  { campo: 'altura', columna: 'altura', etiqueta: 'ALTURA', enLaCuota: null, enLaHoja: null },
+  { campo: 'sinAltura', columna: 'sin_altura', etiqueta: 'SIN ALTURA', enLaCuota: null, enLaHoja: null },
+  { campo: 'provincia', columna: 'provincia', etiqueta: 'PROVINCIA', enLaCuota: null, enLaHoja: null },
+  { campo: 'codigoPostal', columna: 'codigo_postal', etiqueta: 'CODIGO POSTAL', enLaCuota: null, enLaHoja: null },
 ] as const
 
 export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: SesionUsuario): FichaCliente {
@@ -931,6 +1019,12 @@ export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: S
     direccion: limpiar(actual.direccion),
     localidad: limpiar(actual.localidad),
     fechaNacimiento: limpiar(actual.fecha_nacimiento),
+    calle: limpiar(actual.calle),
+    calle2: limpiar(actual.calle2),
+    altura: limpiar(actual.altura),
+    sinAltura: actual.sin_altura === 1 ? '1' : '',
+    provincia: limpiar(actual.provincia),
+    codigoPostal: limpiar(actual.codigo_postal),
   }
   const cambiados = CAMPOS_DEL_CLIENTE.filter((c) => anteriores[c.campo] !== campos[c.campo])
   if (cambiados.length === 0) return fichaDeCliente(id)
@@ -957,7 +1051,9 @@ export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: S
         `UPDATE clientes SET clave = @clave, nombre = @nombre, documento = @documento,
                 documento_normalizado = @documento_normalizado, telefono = @telefono, email = @email,
                 direccion = @direccion, localidad = @localidad, sucursal_id = @sucursal_id,
-                sucursal_texto = @sucursal_texto, fecha_nacimiento = @fecha_nacimiento, actualizado_en = @ahora
+                sucursal_texto = @sucursal_texto, fecha_nacimiento = @fecha_nacimiento,
+                calle = @calle, calle2 = @calle2, altura = @altura, sin_altura = @sin_altura,
+                provincia = @provincia, codigo_postal = @codigo_postal, actualizado_en = @ahora
          WHERE id = @id`,
       )
       .run({
@@ -970,6 +1066,12 @@ export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: S
         email: campos.email || null,
         direccion: campos.direccion || null,
         localidad: campos.localidad || null,
+        calle: campos.calle || null,
+        calle2: campos.calle2 || null,
+        altura: campos.altura || null,
+        sin_altura: campos.sinAltura ? 1 : 0,
+        provincia: campos.provincia || null,
+        codigo_postal: campos.codigoPostal || null,
         sucursal_id: idDeSucursalPorNombre(campos.sucursal),
         sucursal_texto: sucursalParaGuardar(campos.sucursal),
         fecha_nacimiento: campos.fechaNacimiento || null,

@@ -8,6 +8,7 @@
 // Nada de esto existe en el Excel de la agencia, así que la pestaña de la hoja la crea DM Gestión
 // (ver sincronizacion/pestanasApp.ts). Igual se encola desde el primer día: si la pestaña todavía no
 // está, la crea el motor en cuanto haya conexión y la fila sube sola.
+import { DIRECCION_VACIA } from '../../shared/direccion'
 import { hoyLocal } from '../../shared/semaforo'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
@@ -530,6 +531,8 @@ export function convertirLeadEnCliente(leadId: number, actor: SesionUsuario): Re
       localidad: '',
       sucursal: limpiar(lead.sucursal),
       fechaNacimiento: '',
+      // Una consulta no trae dirección: se carga después, desde la ficha del cliente.
+      direccionDetalle: DIRECCION_VACIA,
     },
     actor,
   )

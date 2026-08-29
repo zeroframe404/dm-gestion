@@ -1,5 +1,6 @@
 // Tipos compartidos entre el proceso principal, la precarga y el renderer.
 // Este archivo no puede importar nada de Electron ni de Node: lo usan los tres lados.
+import type { DireccionEstructurada } from './direccion'
 import type { MatrizPermisos, PermisosDeUnRol } from './permisos'
 
 export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'EMPLEADO'] as const
@@ -915,12 +916,20 @@ export interface ResumenDeClientes {
 export interface DatosDeCliente {
   nombre: string
   documento: string
+  /** El celular. Es el mismo número de WhatsApp: en la agencia nunca fue otro. */
   telefono: string
   email: string
+  /**
+   * El renglón de la calle, como se imprime. Cuando `direccionDetalle` trae algo se ARMA con ella y lo
+   * que se mande acá se ignora; en las fichas viejas, que sólo tienen el renglón libre que vino de la
+   * hoja, se sigue guardando tal cual hasta que alguien complete la dirección en partes.
+   */
   direccion: string
   localidad: string
   sucursal: string
   fechaNacimiento: string
+  /** La dirección en partes. Vacía en las fichas que todavía no se pasaron al formulario nuevo. */
+  direccionDetalle: DireccionEstructurada
 }
 
 /** Resultado del alta: o se creó, o ya existía alguien con ese documento. */
@@ -1022,6 +1031,8 @@ export interface FichaCliente {
   localidad: string | null
   sucursal: string | null
   fechaNacimiento: string | null
+  /** La dirección en partes. Toda vacía en las fichas viejas: ahí sólo hay `direccion` y `localidad`. */
+  direccionDetalle: DireccionEstructurada
   vehiculos: VehiculoDeCliente[]
   polizas: PolizaDeCliente[]
   pagos: PagoDeCliente[]

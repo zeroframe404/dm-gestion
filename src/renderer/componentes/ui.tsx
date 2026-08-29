@@ -310,22 +310,41 @@ interface PropsDialogo {
 
 const ANCHOS_DIALOGO = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-7xl' }
 
+/**
+ * Los diálogos abiertos, del primero al último. Hace falta desde que hay diálogos adentro de otro
+ * diálogo —la dirección del cliente, por ejemplo—: sin esto, un Escape cerraría los dos de una vez y
+ * quien estaba corrigiendo la calle perdería además todo el alta.
+ *
+ * Es una lista de módulo y no un contexto a propósito: un contexto obligaría a envolver cada pantalla
+ * que abra un diálogo, y son casi todas.
+ */
+const DIALOGOS_ABIERTOS: string[] = []
+
 export function Dialogo({ abierto, titulo, descripcion, alCerrar, pie, ancho = 'md', children }: PropsDialogo) {
   const idTitulo = useId()
+  const [profundidad, setProfundidad] = useState(0)
 
   useEffect(() => {
     if (!abierto) return
+    DIALOGOS_ABIERTOS.push(idTitulo)
+    setProfundidad(DIALOGOS_ABIERTOS.length - 1)
     const alTeclear = (evento: KeyboardEvent) => {
-      if (evento.key === 'Escape') alCerrar()
+      // Sólo el de más arriba se cierra con Escape. El de abajo sigue abierto, que es lo que espera
+      // cualquiera que abrió una ventanita encima de un formulario a medio llenar.
+      if (evento.key === 'Escape' && DIALOGOS_ABIERTOS[DIALOGOS_ABIERTOS.length - 1] === idTitulo) alCerrar()
     }
     window.addEventListener('keydown', alTeclear)
-    return () => window.removeEventListener('keydown', alTeclear)
-  }, [abierto, alCerrar])
+    return () => {
+      window.removeEventListener('keydown', alTeclear)
+      const posicion = DIALOGOS_ABIERTOS.lastIndexOf(idTitulo)
+      if (posicion !== -1) DIALOGOS_ABIERTOS.splice(posicion, 1)
+    }
+  }, [abierto, alCerrar, idTitulo])
 
   if (!abierto) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div className="fixed inset-0 flex items-center justify-center p-6" style={{ zIndex: 50 + profundidad * 10 }}>
       <div className="absolute inset-0 bg-marino-950/55 backdrop-blur-[2px]" onClick={alCerrar} aria-hidden="true" />
       <div
         role="dialog"

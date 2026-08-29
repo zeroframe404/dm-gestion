@@ -102,6 +102,7 @@ import {
   editarCliente,
   fichaDeCliente,
   listarClientes,
+  localidadesConocidas,
 } from './servicios/clientes'
 import { archivoDeDeudores, buscarDeudores } from './servicios/deudores'
 import {
@@ -567,6 +568,12 @@ export function registrarIpc(): void {
   manejar('clientes:ficha', (clienteId) => {
     exigirVista('clientes', 'polizas', 'presupuestos')
     return exito(fichaDeCliente(enteroPositivo(clienteId, 'El cliente')))
+  })
+  // Las localidades ya cargadas: sólo sugerencias para el formulario de dirección. Se pide el mismo
+  // permiso que la ficha porque la dirección se carga desde el alta y también desde Pólizas.
+  manejar('clientes:localidades', () => {
+    exigirVista('clientes', 'polizas', 'presupuestos')
+    return exito(localidadesConocidas())
   })
   // El alta de un cliente sale de un solo lado (Clientes → «Nuevo cliente»), así que pide el permiso
   // de Clientes y nada más. Convertir un lead también da de alta un cliente, y por eso el canal

@@ -259,6 +259,8 @@ export interface Canales {
   'clientes:buscar': (busqueda: string) => Resultado<FilaCliente[]>
   'clientes:ficha': (clienteId: number) => Resultado<FichaCliente>
   /** Si el DNI/CUIT ya existe devuelve el cliente existente en vez de duplicarlo. */
+  /** Las localidades ya cargadas, para sugerirlas al escribir una dirección. */
+  'clientes:localidades': () => Resultado<string[]>
   'clientes:crear': (datos: DatosDeCliente) => Resultado<ResultadoAltaCliente>
   'clientes:editar': (clienteId: number, datos: DatosDeCliente) => Resultado<FichaCliente>
   'clientes:agregarNota': (clienteId: number, texto: string) => Resultado<NotaDeCliente[]>

@@ -114,6 +114,7 @@ const api: ApiDm = {
     listar: (filtros) => invocar('clientes:listar', filtros),
     buscar: (busqueda) => invocar('clientes:buscar', busqueda),
     ficha: (clienteId) => invocar('clientes:ficha', clienteId),
+    localidades: () => invocar('clientes:localidades'),
     crear: (datos) => invocar('clientes:crear', datos),
     editar: (clienteId, datos) => invocar('clientes:editar', clienteId, datos),
     agregarNota: (clienteId, texto) => invocar('clientes:agregarNota', clienteId, texto),

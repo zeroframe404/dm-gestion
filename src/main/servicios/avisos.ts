@@ -14,8 +14,21 @@ import { BrowserWindow, Notification } from 'electron'
 import type { DatosDeEvento, NombreEvento } from '../../shared/canales'
 import type { TareaCompletada } from '../../shared/tipos'
 
+/**
+ * Las ventanas abiertas, o ninguna si no hay Electron alrededor. El banco de pruebas importa los
+ * servicios directamente, sin proceso de Electron: ahí `BrowserWindow` no existe, y un aviso que no se
+ * puede mostrar no puede hacer fallar la operación que lo generó.
+ */
+function ventanas(): BrowserWindow[] {
+  try {
+    return typeof BrowserWindow?.getAllWindows === 'function' ? BrowserWindow.getAllWindows() : []
+  } catch {
+    return []
+  }
+}
+
 function emitir<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
-  for (const ventana of BrowserWindow.getAllWindows()) {
+  for (const ventana of ventanas()) {
     if (!ventana.isDestroyed()) ventana.webContents.send(evento, datos)
   }
 }
@@ -26,12 +39,12 @@ function emitir<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): voi
  */
 export function notificarEnElSistema(titulo: string, cuerpo: string): void {
   try {
-    if (!Notification.isSupported()) return
+    if (typeof Notification?.isSupported !== 'function' || !Notification.isSupported()) return
     const notificacion = new Notification({ title: titulo, body: cuerpo, silent: true })
     // `silent: true` a propósito: el sonido lo pone la aplicación (check.mp3), no Windows. Con los dos
     // se escucharían dos avisos pisados y el de Windows es el mismo para todo.
     notificacion.on('click', () => {
-      const ventana = BrowserWindow.getAllWindows().find((candidata) => !candidata.isDestroyed())
+      const ventana = ventanas().find((candidata) => !candidata.isDestroyed())
       if (!ventana) return
       if (ventana.isMinimized()) ventana.restore()
       ventana.focus()

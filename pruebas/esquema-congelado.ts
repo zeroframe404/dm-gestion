@@ -22,4 +22,6 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   14: 'fd05b8e5fd4af5fb',
   // La 15 no toca la forma del esquema: siembra Sarandí y reescribe el texto de las sucursales.
   15: 'fd05b8e5fd4af5fb',
+  // La 16 suma las partes de la dirección del cliente (calle, altura, provincia, código postal).
+  16: 'bfb228d6238ad748',
 }

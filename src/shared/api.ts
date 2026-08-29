@@ -95,6 +95,7 @@ export interface ApiDm {
     listar: Remota<'clientes:listar'>
     buscar: Remota<'clientes:buscar'>
     ficha: Remota<'clientes:ficha'>
+    localidades: Remota<'clientes:localidades'>
     crear: Remota<'clientes:crear'>
     editar: Remota<'clientes:editar'>
     agregarNota: Remota<'clientes:agregarNota'>

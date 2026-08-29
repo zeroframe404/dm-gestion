@@ -1138,6 +1138,29 @@ export const MIGRACIONES: Migracion[] = [
          AND TRIM(COALESCE(sucursal_texto, '')) <> '';
     `,
   },
+  {
+    version: 16,
+    descripcion: 'Dirección del cliente en partes: calle, altura, provincia y código postal',
+    sql: `
+      -- Hasta acá la dirección era un renglón libre («Mitre 1234») y la localidad, otro campo suelto.
+      -- Con eso alcanzaba para imprimir un ticket y no para nada más: no se podía buscar por
+      -- localidad, ni saber si faltaba el código postal, ni que dos personas escribieran la misma
+      -- calle igual. Las columnas nuevas guardan las partes; \`direccion\` y \`localidad\` siguen
+      -- existiendo con el renglón armado, que es lo que ya usan el ticket, la hoja y los listados.
+      --
+      -- Todo entra como NULL: las 2.100 fichas que ya están siguen con su renglón libre y ninguna se
+      -- toca. Se completan a medida que alguien abre el cliente y carga la dirección en el formulario
+      -- nuevo. Convertir el texto viejo a partes con una expresión regular sería inventar datos.
+      ALTER TABLE clientes ADD COLUMN calle TEXT;
+      ALTER TABLE clientes ADD COLUMN calle2 TEXT;
+      ALTER TABLE clientes ADD COLUMN altura TEXT;
+      -- La dirección no tiene número de puerta. No es lo mismo que no habérselo preguntado todavía,
+      -- y en el conurbano pasa: un pasaje, un barrio sin nomenclar.
+      ALTER TABLE clientes ADD COLUMN sin_altura INTEGER NOT NULL DEFAULT 0 CHECK (sin_altura IN (0, 1));
+      ALTER TABLE clientes ADD COLUMN provincia TEXT;
+      ALTER TABLE clientes ADD COLUMN codigo_postal TEXT;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {
