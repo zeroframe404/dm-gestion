@@ -71,6 +71,14 @@ import type {
   FiltrosMora,
   ListadoMora,
   ArchivoParaPublicar,
+  DatosDelProveedorDeVehiculos,
+  EstadoDelCatalogo,
+  LineaDeCatalogo,
+  OpcionDeCatalogo,
+  ProgresoDeCatalogo,
+  PruebaDelProveedor,
+  TipoDeVehiculo,
+  VehiculoDelCatalogo,
   DatosDeMeta,
   EstadoDeMeta,
   PanelDeRedes,
@@ -435,6 +443,27 @@ export interface Canales {
     plantillaClave: string,
   ) => Resultado<AvisoDeSegmento>
 
+  // Catálogo de vehículos (autos y motos por API). Los desplegables salen SIEMPRE de la caché local:
+  // dibujar un desplegable no sale a internet. A internet se sale con 'vehiculos:refrescar'.
+  'vehiculos:estado': () => Resultado<EstadoDelCatalogo>
+  'vehiculos:guardarCredenciales': (datos: DatosDelProveedorDeVehiculos) => Resultado<EstadoDelCatalogo>
+  'vehiculos:borrarCredenciales': () => Resultado<EstadoDelCatalogo>
+  'vehiculos:probar': () => Resultado<PruebaDelProveedor>
+  /** `tipo` en null refresca autos y motos. Puede tardar: el avance llega por 'vehiculos:progreso'. */
+  'vehiculos:refrescar': (tipo: TipoDeVehiculo | null) => Resultado<EstadoDelCatalogo>
+  'vehiculos:marcas': (tipo: TipoDeVehiculo) => Resultado<OpcionDeCatalogo[]>
+  'vehiculos:modelos': (tipo: TipoDeVehiculo, marcaId: string) => Resultado<OpcionDeCatalogo[]>
+  'vehiculos:lineas': (tipo: TipoDeVehiculo, marcaId: string, modeloId: string) => Resultado<LineaDeCatalogo[]>
+  'vehiculos:anios': (tipo: TipoDeVehiculo, marcaId: string, modeloId: string, lineaId: string) => Resultado<number[]>
+  /** El vehículo terminado, con la categoría que decide el catálogo y que no se puede elegir. */
+  'vehiculos:resolver': (
+    tipo: TipoDeVehiculo,
+    marcaId: string,
+    modeloId: string,
+    lineaId: string,
+    anio: string,
+  ) => Resultado<VehiculoDelCatalogo>
+
   // Marketing → Redes: publicar en la Página de Facebook de la agencia y en su Instagram. El App ID y
   // el App Secret se cargan en Administración; el token de la Página nunca sale del proceso principal.
   'redes:panel': () => Resultado<PanelDeRedes>
@@ -476,6 +505,8 @@ export interface Eventos {
   'permisos:cambiaron': MisPermisos
   /** Se registró un pago y la impresora está en «preguntar»: hay que confirmar el comprobante. */
   'impresora:preguntar': PedidoDeTicket
+  /** Cómo va la bajada del catálogo de vehículos: son decenas de miles de filas. */
+  'vehiculos:progreso': ProgresoDeCatalogo
   /** Una tarea se dio por terminada: el renderer hace sonar el aviso y refresca lo que tenga a la vista. */
   'tareas:completada': TareaCompletada
 }

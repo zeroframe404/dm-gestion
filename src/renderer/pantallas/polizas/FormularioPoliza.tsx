@@ -17,6 +17,7 @@ import {
 import { NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
 import { DialogoRechazo } from '../../componentes/DialogoRechazo'
 import { Icono } from '../../componentes/Icono'
+import { SelectorDeVehiculo } from '../../componentes/SelectorDeVehiculo'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Selector } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
@@ -64,7 +65,20 @@ const CAMPOS_VACIOS: CamposPoliza = {
 
 type VehiculoNuevo = NonNullable<DatosDePoliza['vehiculoNuevo']>
 
-const VEHICULO_VACIO: VehiculoNuevo = { patente: '', marca: '', modelo: '', anio: '', tipo: '', motor: '', chasis: '', uso: '', color: '' }
+const VEHICULO_VACIO: VehiculoNuevo = {
+  patente: '',
+  marca: '',
+  modelo: '',
+  linea: '',
+  anio: '',
+  tipo: '',
+  categoria: '',
+  catalogoCodigo: '',
+  motor: '',
+  chasis: '',
+  uso: '',
+  color: '',
+}
 
 /** Lo mínimo del cliente que hace falta mostrar arriba del formulario. */
 interface ClienteElegido {
@@ -110,7 +124,6 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
   const idCompanias = useId()
   const idCoberturas = useId()
   const idFormasDePago = useId()
-  const idTiposDeVehiculo = useId()
   const idAvisarVto = useId()
   const cima = useRef<HTMLDivElement | null>(null)
 
@@ -499,27 +512,20 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
                   )}
                 </>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  <Campo etiqueta="Patente" value={vehiculoNuevo.patente} onChange={(e) => cambiarVehiculo({ patente: e.target.value })} className="uppercase" />
-                  <Campo etiqueta="Marca" value={vehiculoNuevo.marca} onChange={(e) => cambiarVehiculo({ marca: e.target.value })} />
-                  <Campo etiqueta="Modelo" value={vehiculoNuevo.modelo} onChange={(e) => cambiarVehiculo({ modelo: e.target.value })} />
-                  <Campo
-                    etiqueta="Año"
-                    value={vehiculoNuevo.anio}
-                    onChange={(e) => cambiarVehiculo({ anio: e.target.value })}
-                    inputMode="numeric"
-                    className="tabular-nums"
-                  />
-                  <Campo etiqueta="Tipo" list={idTiposDeVehiculo} value={vehiculoNuevo.tipo} onChange={(e) => cambiarVehiculo({ tipo: e.target.value })} />
-                  <Campo etiqueta="Uso" value={vehiculoNuevo.uso} onChange={(e) => cambiarVehiculo({ uso: e.target.value })} />
-                  <Campo etiqueta="Motor" value={vehiculoNuevo.motor} onChange={(e) => cambiarVehiculo({ motor: e.target.value })} />
-                  <Campo etiqueta="Chasis" value={vehiculoNuevo.chasis} onChange={(e) => cambiarVehiculo({ chasis: e.target.value })} />
-                  <Campo etiqueta="Color" value={vehiculoNuevo.color} onChange={(e) => cambiarVehiculo({ color: e.target.value })} />
-                  <datalist id={idTiposDeVehiculo}>
-                    {(catalogos?.tiposDeVehiculo ?? []).map((tipo) => (
-                      <option key={tipo} value={tipo} />
-                    ))}
-                  </datalist>
+                <div className="flex flex-col gap-4">
+                  {/* Marca, modelo, línea, año y la categoría salen del catálogo. Lo único que se
+                      elige a mano es Auto o Moto: la categoría —pick-up, SUV, furgón— la decide el
+                      catálogo, porque de ella dependen la prima y qué coberturas se pueden emitir. */}
+                  <SelectorDeVehiculo valor={vehiculoNuevo} alCambiar={cambiarVehiculo} />
+
+                  {/* Lo que no está en ningún catálogo: es de este auto en particular y no del modelo. */}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <Campo etiqueta="Patente" value={vehiculoNuevo.patente} onChange={(e) => cambiarVehiculo({ patente: e.target.value })} className="uppercase" />
+                    <Campo etiqueta="Uso" value={vehiculoNuevo.uso} onChange={(e) => cambiarVehiculo({ uso: e.target.value })} />
+                    <Campo etiqueta="Color" value={vehiculoNuevo.color} onChange={(e) => cambiarVehiculo({ color: e.target.value })} />
+                    <Campo etiqueta="Motor" value={vehiculoNuevo.motor} onChange={(e) => cambiarVehiculo({ motor: e.target.value })} />
+                    <Campo etiqueta="Chasis" value={vehiculoNuevo.chasis} onChange={(e) => cambiarVehiculo({ chasis: e.target.value })} />
+                  </div>
                 </div>
               )}
               {!cliente && <p className="text-xs text-slate-500">Elegí primero el cliente: los vehículos son suyos.</p>}

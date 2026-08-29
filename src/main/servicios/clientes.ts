@@ -36,6 +36,7 @@ import {
   type SiniestroDeCliente,
   type TareaDeCliente,
   type VehiculoDeCliente,
+  type CategoriaDeVehiculo,
 } from '../../shared/tipos'
 import { db } from '../db/base'
 import {
@@ -601,7 +602,7 @@ function vehiculosDe(clienteId: number, polizas: PolizaDeCliente[]): VehiculoDeC
   }
   const filas = db()
     .prepare(
-      `SELECT id, patente, marca, modelo, anio, anio_numero, tipo, motor, chasis, uso, color
+      `SELECT id, patente, marca, modelo, linea, anio, anio_numero, tipo, categoria, motor, chasis, uso, color
        FROM vehiculos WHERE cliente_id = ? ORDER BY id`,
     )
     .all(clienteId) as Array<{
@@ -609,9 +610,11 @@ function vehiculosDe(clienteId: number, polizas: PolizaDeCliente[]): VehiculoDeC
     patente: string | null
     marca: string | null
     modelo: string | null
+    linea: string | null
     anio: string | null
     anio_numero: number | null
     tipo: string | null
+    categoria: string | null
     motor: string | null
     chasis: string | null
     uso: string | null
@@ -622,9 +625,11 @@ function vehiculosDe(clienteId: number, polizas: PolizaDeCliente[]): VehiculoDeC
     patente: f.patente,
     marca: f.marca,
     modelo: f.modelo,
+    linea: f.linea,
     anio: f.anio,
     anioNumero: f.anio_numero,
     tipo: f.tipo,
+    categoria: (f.categoria as CategoriaDeVehiculo | null) ?? null,
     motor: f.motor,
     chasis: f.chasis,
     uso: f.uso,

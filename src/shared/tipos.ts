@@ -954,9 +954,13 @@ export interface VehiculoDeCliente {
   patente: string | null
   marca: string | null
   modelo: string | null
+  /** La versión concreta. null en los vehículos cargados antes del catálogo. */
+  linea: string | null
   anio: string | null
   anioNumero: number | null
   tipo: string | null
+  /** La que decidió el catálogo. null en los que se cargaron a mano. */
+  categoria: CategoriaDeVehiculo | null
   motor: string | null
   chasis: string | null
   uso: string | null
@@ -1093,8 +1097,14 @@ export interface DatosDePoliza {
     patente: string
     marca: string
     modelo: string
+    /** La versión, del catálogo. Vacío si se cargó a mano. */
+    linea: string
     anio: string
     tipo: string
+    /** La decide el catálogo, no la pantalla. Vacío si se cargó a mano. */
+    categoria: string
+    /** El código del proveedor: distingue un vehículo identificado de uno tipeado. */
+    catalogoCodigo: string
     motor: string
     chasis: string
     uso: string
@@ -2453,6 +2463,133 @@ export interface OpcionesPlanillaClasica {
   /** Meses elegidos, 'AAAA-MM'. Una pestaña por mes, más su pestaña de BAJAS. */
   periodos: string[]
   sucursal: string
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo de vehículos (autos y motos por API)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lo ÚNICO que se elige a mano de todo el vehículo. El resto —marca, modelo, línea, año y sobre todo
+ * la categoría— sale del catálogo, porque quien carga no tiene por qué saber si una Amarok es
+ * camioneta o pick-up, y la compañía sí.
+ */
+export const TIPOS_DE_VEHICULO = ['AUTO', 'MOTO'] as const
+export type TipoDeVehiculo = (typeof TIPOS_DE_VEHICULO)[number]
+
+export const NOMBRE_TIPO_VEHICULO: Record<TipoDeVehiculo, string> = {
+  AUTO: 'Auto',
+  MOTO: 'Moto',
+}
+
+/**
+ * La categoría la DECIDE el catálogo con los datos elegidos: no se puede elegir ni corregir. Es lo
+ * que pidió la agencia y además es lo correcto: de la categoría dependen la prima y la cobertura, y
+ * dejar que se elija a mano es dejar que se equivoque a mano.
+ */
+export const CATEGORIAS_DE_VEHICULO = [
+  'SEDAN',
+  'HATCHBACK',
+  'COUPE',
+  'CABRIOLET',
+  'RURAL',
+  'MONOVOLUMEN',
+  'SUV',
+  'PICKUP',
+  'FURGON',
+  'CAMION',
+  'MICRO',
+  'MOTO',
+  'SCOOTER',
+  'CUATRICICLO',
+  'OTRO',
+] as const
+export type CategoriaDeVehiculo = (typeof CATEGORIAS_DE_VEHICULO)[number]
+
+export const NOMBRE_CATEGORIA: Record<CategoriaDeVehiculo, string> = {
+  SEDAN: 'Sedán',
+  HATCHBACK: 'Hatchback',
+  COUPE: 'Coupé',
+  CABRIOLET: 'Cabriolet',
+  RURAL: 'Rural / familiar',
+  MONOVOLUMEN: 'Monovolumen',
+  SUV: 'SUV',
+  PICKUP: 'Pick-up',
+  FURGON: 'Furgón / utilitario',
+  CAMION: 'Camión',
+  MICRO: 'Micro / colectivo',
+  MOTO: 'Moto',
+  SCOOTER: 'Scooter',
+  CUATRICICLO: 'Cuatriciclo',
+  OTRO: 'Otro',
+}
+
+/** Una opción de un desplegable del selector encadenado. */
+export interface OpcionDeCatalogo {
+  id: string
+  nombre: string
+}
+
+/** Una línea (la versión concreta): es el único nivel que trae categoría y años. */
+export interface LineaDeCatalogo extends OpcionDeCatalogo {
+  anioDesde: number | null
+  anioHasta: number | null
+  categoria: CategoriaDeVehiculo | null
+}
+
+/** Lo que queda cuando el vehículo se terminó de elegir del catálogo. */
+export interface VehiculoDelCatalogo {
+  tipo: TipoDeVehiculo
+  marca: string
+  modelo: string
+  linea: string
+  anio: string
+  /** null cuando el catálogo no la sabe. No se inventa un «OTRO» que después nadie puede corregir. */
+  categoria: CategoriaDeVehiculo | null
+  /** El código del proveedor: es lo que distingue un vehículo identificado de uno tipeado. */
+  codigo: string
+}
+
+/** Cómo está la caché de un tipo de vehículo. */
+export interface EstadoDeUnTipo {
+  tipo: TipoDeVehiculo
+  refrescadoEn: string | null
+  marcas: number
+  modelos: number
+  lineas: number
+  ultimoError: string | null
+}
+
+export interface EstadoDelCatalogo {
+  /** false = faltan las credenciales del proveedor en esta computadora. */
+  configurado: boolean
+  proveedor: string
+  usuario: string
+  /** Dónde se guardan las credenciales, para poder decirlo en la pantalla. */
+  rutaDeConfig: string
+  porTipo: EstadoDeUnTipo[]
+  /** true si hay algo bajado: sin esto el selector cae solo a los campos de texto de siempre. */
+  hayCatalogo: boolean
+}
+
+export interface DatosDelProveedorDeVehiculos {
+  usuario: string
+  clave: string
+}
+
+export interface PruebaDelProveedor {
+  ok: boolean
+  detalle: string
+  marcasEncontradas: number
+}
+
+/** El avance del refresco, que baja decenas de miles de filas y no puede parecer colgado. */
+export interface ProgresoDeCatalogo {
+  tipo: TipoDeVehiculo
+  etapa: 'marcas' | 'modelos' | 'lineas' | 'listo'
+  hechas: number
+  totales: number
+  detalle: string
 }
 
 // ---------------------------------------------------------------------------

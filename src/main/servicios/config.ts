@@ -39,10 +39,23 @@ interface ConfigMeta {
   actualizadoEn: string
 }
 
+/**
+ * El catálogo de vehículos (InfoAuto). El `refreshToken` no lo escribe una persona: lo guarda el
+ * adaptador después de entrar, para no tener que volver a mandar la clave en cada arranque. Dura un
+ * día; vencido, se entra de nuevo con usuario y clave y no pasa nada.
+ */
+interface ConfigVehiculos {
+  usuario: string
+  clave: string
+  refreshToken?: string | null
+  actualizadoEn: string
+}
+
 interface Config {
   google?: ConfigGoogle
   vps?: ConfigVps
   meta?: ConfigMeta
+  vehiculos?: ConfigVehiculos
 }
 
 /**
@@ -67,9 +80,25 @@ export function credencialesVps(): { urlBase: string; token: string } {
   }
 }
 
+/**
+ * La ruta del config.json, o '' si no hay Electron alrededor.
+ *
+ * El banco de pruebas importa los servicios en Node pelado y ahí `app.getPath` no existe. Sin este
+ * guard, cualquier prueba que toque un servicio que lee la configuración —el catálogo de vehículos,
+ * por ejemplo— se cae con «Cannot read properties of undefined». Sin ruta no hay configuración, que
+ * es exactamente lo que una prueba quiere: arrancar sin nada cargado.
+ */
+function rutaSegura(): string {
+  try {
+    return rutaConfig()
+  } catch {
+    return ''
+  }
+}
+
 function leerConfig(): Config {
-  const ruta = rutaConfig()
-  if (!existsSync(ruta)) return {}
+  const ruta = rutaSegura()
+  if (!ruta || !existsSync(ruta)) return {}
   try {
     const contenido = JSON.parse(readFileSync(ruta, 'utf8')) as unknown
     return typeof contenido === 'object' && contenido !== null ? (contenido as Config) : {}
@@ -116,9 +145,55 @@ export function estadoMeta(): EstadoDeMeta {
     // El App ID se muestra —está a la vista en cualquier posteo— y el App Secret no sale nunca de acá.
     appId: meta?.appId ?? '',
     urlDeRedireccion: URL_DE_REDIRECCION_DE_META,
-    rutaDeConfig: rutaConfig(),
+    rutaDeConfig: rutaSegura(),
     actualizadoEn: meta?.actualizadoEn ?? null,
   }
+}
+
+// ---------------------------------------------------------------------------
+// El catálogo de vehículos
+// ---------------------------------------------------------------------------
+
+/** Dónde está el config.json de esta computadora, para poder decirlo en las pantallas. */
+export function rutaDeLaConfig(): string {
+  return rutaSegura()
+}
+
+export function credencialesDeVehiculos(): { usuario: string; clave: string; refreshToken: string | null } | null {
+  const vehiculos = leerConfig().vehiculos
+  if (!vehiculos?.usuario || !vehiculos.clave) return null
+  return { usuario: vehiculos.usuario, clave: vehiculos.clave, refreshToken: vehiculos.refreshToken ?? null }
+}
+
+export function guardarCredencialesDeVehiculos(datos: unknown): { usuario: string; configurado: boolean } {
+  const d = objeto(datos, 'Los datos del catálogo de vehículos')
+  const usuario = texto(d.usuario, 'El usuario del catálogo', 1, 120)
+  const config = leerConfig()
+  // Con la clave vacía se conserva la que ya estaba: así se puede corregir el usuario sin tener que ir
+  // a buscar la clave de nuevo.
+  const escrita = typeof d.clave === 'string' ? d.clave.trim() : ''
+  const clave = escrita || config.vehiculos?.clave || ''
+  if (!clave) throw new ErrorDeNegocio('Falta la clave del catálogo de vehículos.')
+
+  escribirConfig({
+    ...config,
+    // Al cambiar las credenciales el token de refresco viejo ya no sirve.
+    vehiculos: { usuario, clave, refreshToken: null, actualizadoEn: new Date().toISOString() },
+  })
+  return { usuario, configurado: true }
+}
+
+export function borrarCredencialesDeVehiculos(): void {
+  const config = leerConfig()
+  delete config.vehiculos
+  escribirConfig(config)
+}
+
+/** Lo guarda el adaptador solo, cada vez que entra. `null` lo borra (venció). */
+export function guardarRefrescoDeVehiculos(token: string | null): void {
+  const config = leerConfig()
+  if (!config.vehiculos) return
+  escribirConfig({ ...config, vehiculos: { ...config.vehiculos, refreshToken: token } })
 }
 
 /** Las credenciales completas, sólo para el proceso principal. */

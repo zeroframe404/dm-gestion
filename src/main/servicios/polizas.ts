@@ -28,6 +28,7 @@ import {
   type PolizaDeCliente,
   type SesionUsuario,
   type VehiculoDeCliente,
+  type CategoriaDeVehiculo,
 } from '../../shared/tipos'
 import { db } from '../db/base'
 import type { Campo } from '../importacion/encabezados'
@@ -217,7 +218,7 @@ export function vehiculosDeCliente(clienteId: number): VehiculoDeCliente[] {
   const id = enteroPositivo(clienteId, 'El cliente')
   const filas = db()
     .prepare(
-      `SELECT v.id, v.patente, v.marca, v.modelo, v.anio, v.anio_numero, v.tipo, v.motor, v.chasis, v.uso, v.color,
+      `SELECT v.id, v.patente, v.marca, v.modelo, v.linea, v.anio, v.anio_numero, v.tipo, v.categoria, v.motor, v.chasis, v.uso, v.color,
               (SELECT COUNT(*) FROM polizas p WHERE p.vehiculo_id = v.id) AS polizas
        FROM vehiculos v WHERE v.cliente_id = ? ORDER BY v.patente, v.marca, v.id`,
     )
@@ -226,9 +227,11 @@ export function vehiculosDeCliente(clienteId: number): VehiculoDeCliente[] {
     patente: string | null
     marca: string | null
     modelo: string | null
+    linea: string | null
     anio: string | null
     anio_numero: number | null
     tipo: string | null
+    categoria: string | null
     motor: string | null
     chasis: string | null
     uso: string | null
@@ -240,9 +243,11 @@ export function vehiculosDeCliente(clienteId: number): VehiculoDeCliente[] {
     patente: f.patente,
     marca: f.marca,
     modelo: f.modelo,
+    linea: f.linea,
     anio: f.anio,
     anioNumero: f.anio_numero,
     tipo: f.tipo,
+    categoria: (f.categoria as CategoriaDeVehiculo | null) ?? null,
     motor: f.motor,
     chasis: f.chasis,
     uso: f.uso,
@@ -597,6 +602,11 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
   const modelo = opcional(n.modelo, 'El modelo', 60)
   const anio = opcional(n.anio, 'El año del vehículo', 20)
   const tipo = opcional(n.tipo, 'El tipo de vehículo', 60)
+  // Lo que viene del catálogo. La categoría NO se valida contra una lista de la pantalla: llega tal
+  // como la resolvió el catálogo o llega vacía, y el único que puede llenarla es 'vehiculos:resolver'.
+  const linea = opcional(n.linea, 'La línea del vehículo', 120)
+  const categoria = opcional(n.categoria, 'La categoría del vehículo', 30)
+  const catalogoCodigo = opcional(n.catalogoCodigo, 'El código del catálogo', 60)
   const motor = opcional(n.motor, 'El motor', 60)
   const chasis = opcional(n.chasis, 'El chasis', 60)
   const uso = opcional(n.uso, 'El uso', 60)
@@ -640,8 +650,13 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
       patente_normalizada: normalizarPatente(patente) || null,
       marca: marca || null,
       modelo: modelo || null,
+      linea: linea || null,
       anio: anio || null,
       anio_numero: interpretarEntero(anio, 1950, Number(hoyLocal().slice(0, 4)) + 1),
+      categoria: categoria || null,
+      // Sin código, el vehículo se cargó a mano: es lo que distingue uno identificado de uno tipeado.
+      catalogo_proveedor: catalogoCodigo ? 'InfoAuto' : null,
+      catalogo_codigo: catalogoCodigo || null,
       motor: motor || null,
       chasis: chasis || null,
       tipo: tipo || null,
@@ -655,10 +670,11 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
 function crearVehiculo(aCrear: Record<string, unknown>, ahora: string): number {
   const fila = db()
     .prepare(
-      `INSERT INTO vehiculos (clave, patente, patente_normalizada, marca, modelo, anio, anio_numero, motor, chasis,
-                              tipo, uso, color, cliente_id, creado_en, actualizado_en)
-       VALUES (@clave, @patente, @patente_normalizada, @marca, @modelo, @anio, @anio_numero, @motor, @chasis,
-               @tipo, @uso, @color, @cliente_id, @ahora, @ahora)
+      `INSERT INTO vehiculos (clave, patente, patente_normalizada, marca, modelo, linea, anio, anio_numero, categoria,
+                              catalogo_proveedor, catalogo_codigo, motor, chasis, tipo, uso, color, cliente_id,
+                              creado_en, actualizado_en)
+       VALUES (@clave, @patente, @patente_normalizada, @marca, @modelo, @linea, @anio, @anio_numero, @categoria,
+               @catalogo_proveedor, @catalogo_codigo, @motor, @chasis, @tipo, @uso, @color, @cliente_id, @ahora, @ahora)
        RETURNING id`,
     )
     .get({ ...aCrear, ahora }) as { id: number }

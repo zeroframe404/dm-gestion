@@ -404,6 +404,54 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
     ],
   },
 
+  'administracion.vehiculos': {
+    clave: 'administracion.vehiculos',
+    titulo: 'Administración → Catálogo de vehículos',
+    resumen: 'La conexión con el catálogo de autos y motos, y la copia local que usa el alta de pólizas.',
+    secciones: [
+      {
+        titulo: 'Qué cambia con esto',
+        parrafos: [
+          'Sin catálogo, al cargar una póliza hay que escribir la marca, el modelo y el año a mano, y así en la base terminan conviviendo «FORD», «Ford» y «FRD», y «FIESTA» sin saber cuál de las catorce versiones es. Con el catálogo cargado, el formulario los ofrece en listas encadenadas: se elige la marca y aparecen sus modelos, se elige el modelo y aparecen sus versiones (líneas), y después el año.',
+          'Y algo más importante: la CATEGORÍA —pick-up, SUV, furgón, camión, sedán— la decide el catálogo con lo ya elegido y no se puede tocar. De la categoría dependen la prima y qué coberturas se pueden emitir, y quien está cargando no tiene por qué saber si una Amarok es camioneta o pick-up.',
+        ],
+      },
+      {
+        titulo: 'Las credenciales',
+        parrafos: [
+          'Son el usuario y la clave de la cuenta que la agencia tiene con el proveedor del catálogo. Se guardan sólo en esta computadora, en el archivo de configuración local: no viajan a la hoja ni a las otras sucursales, así que cada computadora que vaya a cargar pólizas necesita las suyas.',
+          'El botón «Probar la conexión» dice enseguida si el usuario y la clave son correctos, sin bajar nada.',
+        ],
+      },
+      {
+        titulo: 'La copia local',
+        parrafos: [
+          'Los desplegables del formulario salen SIEMPRE de una copia guardada en esta computadora, y nunca de internet. Es a propósito: elegir un vehículo en el mostrador tiene que ser instantáneo, y tiene que funcionar aunque se corte la conexión, que es justo cuando más se cobra.',
+          '«Refrescar todo» baja el catálogo entero. Son decenas de miles de versiones y puede tardar varios minutos; mientras tanto se puede seguir usando el programa. Conviene hacerlo una vez por mes: los modelos nuevos salen todo el año. La pantalla marca «Conviene refrescarlo» cuando pasó un mes.',
+          'La agencia puede tener contratada una sola mitad del catálogo (los autos y no las motos, por ejemplo). Si una falla, la otra se baja igual y el motivo queda escrito en su tarjeta.',
+        ],
+      },
+      {
+        titulo: 'Qué pasa con lo que ya está cargado',
+        parrafos: [
+          'Nada. Las pólizas y los vehículos que ya están en la base siguen con su marca y su modelo tal como se escribieron, y no se toca ninguno. Sólo se completan la línea y la categoría si alguien vuelve a elegir ese vehículo del catálogo.',
+          'Eso es a propósito: emparejar automáticamente «FORD FIESTA» contra el catálogo obligaría a elegir una de catorce versiones por la agencia, y elegir mal es peor que dejar el dato como está.',
+          'Y si un vehículo no aparece en el catálogo —un importado, un modelo del año que todavía no cargaron—, el formulario tiene el botón «Cargarlo a mano» de siempre. El catálogo nunca puede frenar una póliza.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Línea',
+        explicacion: 'La versión exacta dentro de un modelo: «Corolla 2.0 XEI CVT» es una línea del modelo Corolla. Es la que define la categoría.',
+      },
+      {
+        termino: 'Categoría',
+        explicacion: 'Qué clase de vehículo es (sedán, SUV, pick-up, furgón, camión…). La decide el catálogo y no se puede elegir a mano.',
+      },
+    ],
+  },
+
   'administracion.acerca': {
     clave: 'administracion.acerca',
     titulo: 'Administración → Acerca de',

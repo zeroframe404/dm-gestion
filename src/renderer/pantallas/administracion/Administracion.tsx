@@ -12,6 +12,7 @@ import { usePermisos } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { AcercaDe } from './AcercaDe'
 import { BaseDeDatos } from './BaseDeDatos'
+import { CatalogoVehiculos } from './CatalogoVehiculos'
 import { Companias } from './Companias'
 import { ConexionGoogle } from './ConexionGoogle'
 import { ImportarGoogle } from './ImportarGoogle'
@@ -33,6 +34,7 @@ type IdSeccion =
   | 'importar'
   | 'sincronizacion'
   | 'redessociales'
+  | 'vehiculos'
   | 'acerca'
 
 export function Administracion() {
@@ -68,6 +70,7 @@ export function Administracion() {
       lista.push({ id: 'importar', nombre: 'Reimportar la base', icono: 'nubeBajada', ayuda: 'administracion.importar' })
       lista.push({ id: 'google', nombre: 'Google Drive', icono: 'nube', ayuda: 'administracion.google' })
       lista.push({ id: 'redessociales', nombre: 'Redes sociales', icono: 'instagram', ayuda: 'administracion.redessociales' })
+      lista.push({ id: 'vehiculos', nombre: 'Catálogo de vehículos', icono: 'auto', ayuda: 'administracion.vehiculos' })
     }
     lista.push({ id: 'acerca', nombre: 'Acerca de', icono: 'info', ayuda: 'administracion.acerca' })
     return lista
@@ -102,6 +105,7 @@ export function Administracion() {
         {seccion === 'importar' && <ImportarGoogle />}
         {seccion === 'sincronizacion' && <Sincronizacion />}
         {seccion === 'redessociales' && <RedesSociales />}
+        {seccion === 'vehiculos' && <CatalogoVehiculos />}
         {seccion === 'acerca' && <AcercaDe />}
       </div>
     </div>

@@ -1189,6 +1189,88 @@ export const MIGRACIONES: Migracion[] = [
       CREATE INDEX idx_publicaciones_redes_fecha ON publicaciones_redes (publicado_en);
     `,
   },
+  {
+    version: 18,
+    descripcion: 'Catálogo de vehículos por API: la caché local y las columnas de línea y categoría',
+    sql: `
+      -- La caché del catálogo. Sin ella el selector saldría a internet para dibujar cada desplegable,
+      -- y en el mostrador eso es medio segundo de espera por cada clic —y nada cuando se cae la
+      -- conexión—. Con la caché, elegir un vehículo funciona igual sin internet.
+      --
+      -- Los ids del proveedor van como TEXT aunque InfoAuto use números: el día que haya otro
+      -- proveedor no hay que rehacer las tablas por un tipo de dato.
+      CREATE TABLE catalogo_marcas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proveedor TEXT NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('AUTO', 'MOTO')),
+        marca_id TEXT NOT NULL,
+        nombre TEXT NOT NULL,
+        nombre_normalizado TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_catalogo_marcas_clave ON catalogo_marcas (proveedor, tipo, marca_id);
+      CREATE INDEX idx_catalogo_marcas_nombre ON catalogo_marcas (tipo, nombre_normalizado);
+
+      CREATE TABLE catalogo_modelos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proveedor TEXT NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('AUTO', 'MOTO')),
+        marca_id TEXT NOT NULL,
+        modelo_id TEXT NOT NULL,
+        nombre TEXT NOT NULL,
+        nombre_normalizado TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_catalogo_modelos_clave ON catalogo_modelos (proveedor, tipo, marca_id, modelo_id);
+      CREATE INDEX idx_catalogo_modelos_marca ON catalogo_modelos (tipo, marca_id, nombre_normalizado);
+
+      -- Una línea es la versión concreta, y es el único nivel que trae categoría y años. Se guardan
+      -- las dos categorías: \`categoria\` es la nuestra ya traducida y \`categoria_cruda\` es lo que dijo
+      -- la API, para poder corregir el mapeo sin volver a bajar decenas de miles de filas.
+      CREATE TABLE catalogo_lineas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proveedor TEXT NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('AUTO', 'MOTO')),
+        marca_id TEXT NOT NULL,
+        modelo_id TEXT NOT NULL,
+        linea_id TEXT NOT NULL,
+        nombre TEXT NOT NULL,
+        nombre_normalizado TEXT NOT NULL,
+        anio_desde INTEGER,
+        anio_hasta INTEGER,
+        categoria TEXT,
+        categoria_cruda TEXT,
+        precio_lista INTEGER,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_catalogo_lineas_clave ON catalogo_lineas (proveedor, tipo, marca_id, modelo_id, linea_id);
+      CREATE INDEX idx_catalogo_lineas_modelo ON catalogo_lineas (tipo, marca_id, modelo_id, nombre_normalizado);
+
+      -- Cuándo se bajó cada mitad del catálogo y cómo salió. Una fila por tipo: la agencia puede tener
+      -- contratados los autos y no las motos, y eso hay que poder decirlo en pantalla sin adivinar.
+      CREATE TABLE catalogo_estado (
+        tipo TEXT PRIMARY KEY CHECK (tipo IN ('AUTO', 'MOTO')),
+        proveedor TEXT NOT NULL,
+        refrescado_en TEXT,
+        marcas INTEGER NOT NULL DEFAULT 0,
+        modelos INTEGER NOT NULL DEFAULT 0,
+        lineas INTEGER NOT NULL DEFAULT 0,
+        ultimo_error TEXT
+      );
+
+      -- Las columnas nuevas del vehículo. Todo entra como NULL: los vehículos que ya están siguen con
+      -- su marca y su modelo escritos a mano y ninguno se toca. Emparejar automáticamente ese texto
+      -- libre contra el catálogo sería inventar: «FORD FIESTA» son catorce versiones distintas y
+      -- elegir una por la agencia es peor que dejar el dato como está.
+      --
+      -- \`catalogo_codigo\` es lo que distingue un vehículo identificado de uno tipeado.
+      ALTER TABLE vehiculos ADD COLUMN linea TEXT;
+      ALTER TABLE vehiculos ADD COLUMN categoria TEXT;
+      ALTER TABLE vehiculos ADD COLUMN catalogo_proveedor TEXT;
+      ALTER TABLE vehiculos ADD COLUMN catalogo_codigo TEXT;
+      CREATE INDEX idx_vehiculos_catalogo ON vehiculos (catalogo_codigo);
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

@@ -222,6 +222,19 @@ export interface ApiDm {
     borrarSegmento: Remota<'marketing:borrarSegmento'>
     avisar: Remota<'marketing:avisar'>
   }
+  vehiculos: {
+    estado: Remota<'vehiculos:estado'>
+    guardarCredenciales: Remota<'vehiculos:guardarCredenciales'>
+    borrarCredenciales: Remota<'vehiculos:borrarCredenciales'>
+    probar: Remota<'vehiculos:probar'>
+    refrescar: Remota<'vehiculos:refrescar'>
+    marcas: Remota<'vehiculos:marcas'>
+    modelos: Remota<'vehiculos:modelos'>
+    lineas: Remota<'vehiculos:lineas'>
+    anios: Remota<'vehiculos:anios'>
+    resolver: Remota<'vehiculos:resolver'>
+    alProgresar: Suscripcion<'vehiculos:progreso'>
+  }
   redes: {
     panel: Remota<'redes:panel'>
     estadoMeta: Remota<'redes:estadoMeta'>

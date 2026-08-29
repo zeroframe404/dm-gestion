@@ -26,4 +26,6 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   16: 'bfb228d6238ad748',
   // La 17 crea publicaciones_redes: el historial de lo publicado en Facebook e Instagram.
   17: '8c5b02d9800d56b1',
+  // La 18 crea la caché del catálogo de vehículos y las columnas de línea y categoría.
+  18: '4f9827fa2494bd1e',
 }

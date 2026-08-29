@@ -154,7 +154,25 @@ import {
   renovar,
 } from './servicios/renovaciones'
 import { editarCompania, listarCompanias } from './servicios/companias'
-import { borrarMeta, estadoGoogle, estadoMeta, guardarGoogle, guardarMeta } from './servicios/config'
+import {
+  borrarCredencialesDeVehiculos,
+  borrarMeta,
+  estadoGoogle,
+  estadoMeta,
+  guardarCredencialesDeVehiculos,
+  guardarGoogle,
+  guardarMeta,
+} from './servicios/config'
+import {
+  aniosDeLaLinea,
+  estadoDelCatalogo,
+  lineasDelCatalogo,
+  marcasDelCatalogo,
+  modelosDelCatalogo,
+  probarProveedorDeVehiculos,
+  refrescarCatalogo,
+  resolverVehiculoDelCatalogo,
+} from './servicios/catalogoVehiculos'
 import { guardarPlantillaDeAviso, plantillaDeAviso } from './servicios/plantillas'
 import { historialDeFila } from './servicios/historial'
 import {
@@ -960,6 +978,58 @@ export function registrarIpc(): void {
   )
 
   // Abrir un enlace en el navegador del sistema (WhatsApp). Sólo http/https.
+  // --- Catálogo de vehículos -------------------------------------------------
+  //
+  // Los desplegables los consulta cualquiera que pueda cargar una póliza o un presupuesto: son datos
+  // públicos de un catálogo de autos, no de la agencia. Configurar el proveedor y bajar el catálogo,
+  // en cambio, es de administradores: son credenciales y una descarga de decenas de miles de filas.
+  manejar('vehiculos:estado', () => {
+    exigirVista('polizas', 'presupuestos', 'administracion')
+    return exito(estadoDelCatalogo())
+  })
+  manejar('vehiculos:guardarCredenciales', (datos) => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    guardarCredencialesDeVehiculos(datos)
+    return exito(estadoDelCatalogo())
+  })
+  manejar('vehiculos:borrarCredenciales', () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    borrarCredencialesDeVehiculos()
+    return exito(estadoDelCatalogo())
+  })
+  manejar('vehiculos:probar', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('administracion')
+    return exito(await probarProveedorDeVehiculos())
+  })
+  manejar('vehiculos:refrescar', async (tipo) => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await refrescarCatalogo(tipo, (progreso) => emitirATodas('vehiculos:progreso', progreso)))
+  })
+  manejar('vehiculos:marcas', (tipo) => {
+    exigirVista('polizas', 'presupuestos', 'cartera')
+    return exito(marcasDelCatalogo(tipo))
+  })
+  manejar('vehiculos:modelos', (tipo, marcaId) => {
+    exigirVista('polizas', 'presupuestos', 'cartera')
+    return exito(modelosDelCatalogo(tipo, marcaId))
+  })
+  manejar('vehiculos:lineas', (tipo, marcaId, modeloId) => {
+    exigirVista('polizas', 'presupuestos', 'cartera')
+    return exito(lineasDelCatalogo(tipo, marcaId, modeloId))
+  })
+  manejar('vehiculos:anios', (tipo, marcaId, modeloId, lineaId) => {
+    exigirVista('polizas', 'presupuestos', 'cartera')
+    return exito(aniosDeLaLinea(tipo, marcaId, modeloId, lineaId))
+  })
+  manejar('vehiculos:resolver', (tipo, marcaId, modeloId, lineaId, anio) => {
+    exigirVista('polizas', 'presupuestos', 'cartera')
+    return exito(resolverVehiculoDelCatalogo(tipo, marcaId, modeloId, lineaId, anio))
+  })
+
   // --- Marketing → Redes -----------------------------------------------------
   //
   // Publicar es EDITAR Marketing: sale en nombre de la agencia y se ve desde afuera. Cargar la app de
