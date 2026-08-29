@@ -154,6 +154,36 @@ test('lo que no es una fecha no se fuerza a serlo', () => {
   assert.equal(interpretarNacimiento('12/05/2030', HOY), null)
 })
 
+test('una fecha de este mismo año pero que todavía no pasó no es un nacimiento', () => {
+  // Mirar sólo el año dejaba entrar todo lo que faltaba del año en curso, y con eso la pantalla
+  // mostraba «Usuario menor de edad · -1 años» a quien se equivocó tipeando el año.
+  assert.equal(interpretarNacimiento('30/08/2026', HOY), null)
+  assert.equal(interpretarNacimiento('31/12/2026', HOY), null)
+  assert.equal(interpretarNacimiento('2026-12-31', HOY), null)
+
+  const futura = calcularEdad('31/12/2026', HOY)
+  assert.equal(futura.esMenor, false)
+  assert.equal(futura.leyenda, '')
+  assert.equal(futura.anios, null)
+  assert.equal(futura.problema, 'Esa fecha todavía no pasó. Revisá el año.')
+
+  // Un recién nacido de hoy sí entra: el corte es mañana, no este año.
+  assert.equal(interpretarNacimiento('29/08/2026', HOY), '2026-08-29')
+  assert.equal(calcularEdad('29/08/2026', HOY).anios, 0)
+})
+
+test('con dos dígitos, el año que caería en el futuro se va cien años atrás', () => {
+  // «31/12/26» escrito en agosto de 2026 es alguien de 99 años, no un nacimiento de diciembre.
+  assert.equal(interpretarNacimiento('31/12/26', HOY), '1926-12-31')
+  // El que ya pasó este año se queda donde está.
+  assert.equal(interpretarNacimiento('01/01/26', HOY), '2026-01-01')
+})
+
+test('el año demasiado viejo se explica por lo que le pasa', () => {
+  assert.equal(interpretarNacimiento('12/05/1850', HOY), null)
+  assert.equal(calcularEdad('12/05/1850', HOY).problema, 'Revisá el año: esa fecha es demasiado vieja.')
+})
+
 test('los años cumplidos cuentan si el cumpleaños ya pasó', () => {
   assert.equal(aniosCumplidos('1980-05-12', HOY), 46)
   // Cumple en diciembre: todavía no los cumplió.
