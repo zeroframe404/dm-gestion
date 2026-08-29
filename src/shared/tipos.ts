@@ -169,6 +169,13 @@ export interface MatrizDePermisos {
 export interface MisPermisos {
   rol: Rol
   areas: PermisosDeUnRol
+  /**
+   * Si puede ver los números agregados de la agencia (el bruto cobrado en el mes, la comisión
+   * estimada, el porcentaje de cada compañía). Va aparte de `areas` porque no dice a qué módulo
+   * entra sino qué números ve adentro. Lo decide el rol; el proceso principal ya filtra lo que
+   * manda, así que esto es sólo para que la pantalla no dibuje huecos.
+   */
+  veNumerosDeLaAgencia: boolean
 }
 
 /** Lo que necesita Administración → Usuarios además de la lista. */
@@ -400,8 +407,11 @@ export interface Compania {
   id: number
   nombre: string
   diasCoberturaFinanciera: number
-  /** Porcentaje de comisión que deja la compañía. 0 = todavía no se cargó. */
-  comisionPorcentaje: number
+  /**
+   * Porcentaje de comisión que deja la compañía. 0 = todavía no se cargó; `null` = quien está mirando
+   * no ve los números de la agencia (un empleado), y por eso el dato ni siquiera viajó.
+   */
+  comisionPorcentaje: number | null
   /**
    * Cada cuántos meses hay que renovar a mano en esta compañía (Agrosalta 4, Río Uruguay 6, Metropol
    * 12). `null` = la compañía renueva sola: sus pólizas no entran en la bandeja de renovaciones.
@@ -2249,17 +2259,21 @@ export interface MesDeEvolucion {
   activos: number
   altas: number
   bajas: number
-  cobrado: number
+  /** null cuando quien mira no ve los números de la agencia. Un cero diría «no se cobró nada». */
+  cobrado: number | null
 }
 
 export interface CobranzaDelMes {
-  cobrado: number
-  pendiente: number
+  /** null cuando quien mira no ve los números de la agencia. */
+  cobrado: number | null
+  pendiente: number | null
+  /** La CANTIDAD de cuotas la ve todo el mundo: es trabajo hecho y trabajo por hacer, no plata. */
   cuotasCobradas: number
   cuotasPendientes: number
   /** Cuotas sin importe numérico: no suman ni de un lado ni del otro, pero se cuentan. */
   sinImporte: number
-  porMedio: TotalPorMedio[]
+  /** null por lo mismo que `cobrado`: es el reparto de lo recaudado. */
+  porMedio: TotalPorMedio[] | null
 }
 
 /**
@@ -2297,9 +2311,10 @@ export interface FilaEstadistica {
   activos: number
   altas: number
   bajas: number
-  /** Cuántos pagos entraron en el mes y cuánto suman. */
+  /** Cuántos pagos entraron en el mes. La cantidad la ve todo el mundo. */
   pagos: number
-  cobrado: number
+  /** Cuánto suman. null cuando quien mira no ve los números de la agencia. */
+  cobrado: number | null
 }
 
 export interface EstadisticasDeCartera {

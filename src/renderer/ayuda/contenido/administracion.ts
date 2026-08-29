@@ -16,7 +16,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Los tres roles',
         parrafos: [
-          'EMPLEADO ve y usa el día a día de la agencia (cartera, clientes, cobranzas, siniestros, etcétera) pero no entra a Administración salvo «Impresora» y «Acerca de», que las ve todo el mundo. ADMIN ve además Compañías, Base de datos, Sincronización, Reimportar la base y Google Drive. SUPER_ADMIN tiene todo lo anterior más esta pantalla, Usuarios, y es el único que puede resolver un problema serio con la lista compartida de usuarios si llegara a aparecer.',
+          'EMPLEADO ve y usa el día a día de la agencia (cartera, clientes, cobranzas, siniestros, etcétera) y de Administración entra a «Compañías», «Impresora», «Sincronizar» y «Acerca de», que las ve todo el mundo. Lo que no ve un empleado son los números agregados de la agencia: lo recaudado del mes, el porcentaje de comisión de cada compañía y la estimación de comisiones. Sí ve todo lo que necesita para trabajar: la caja de su sucursal, la mora que tiene que cobrar y la cuota de la persona que tiene delante. ADMIN ve además Base de datos, Sincronización, Reimportar la base y Google Drive, y sí ve los números de la agencia. SUPER_ADMIN tiene todo lo anterior más esta pantalla, Usuarios, y es el único que puede resolver un problema serio con la lista compartida de usuarios si llegara a aparecer.',
           'Eso es lo que trae cada rol de fábrica, y se puede recortar módulo por módulo en Administración → Permisos: por ejemplo, dejar a los empleados con Cobranzas en «sólo ver» o sin Marketing. Lo que ahí se configura vale para todas las computadoras de la agencia.',
         ],
       },
@@ -92,7 +92,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.companias': {
     clave: 'administracion.companias',
     titulo: 'Administración → Compañías',
-    resumen: 'Los días de cobertura financiera de cada aseguradora, el porcentaje de comisión, cada cuánto se renueva y el mensaje del aviso de vencimiento.',
+    resumen: 'Los días de cobertura financiera de cada aseguradora, cada cuánto se renueva y el mensaje del aviso de vencimiento. La miran todos; la editan los administradores.',
     secciones: [
       {
         titulo: 'Días de cobertura financiera',
@@ -101,9 +101,16 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'Quién ve y quién toca esta pantalla',
+        parrafos: [
+          'La mira todo el equipo, con el rol que sea: los días de cobertura de cada compañía son los que explican por qué la fila que tenés delante está amarilla y no roja, y saber si una compañía renueva sola o a mano es la mitad de una llamada. Cambiar los números sigue siendo cosa de administradores, porque un cambio acá repinta la planilla de todas las sucursales.',
+        ],
+      },
+      {
         titulo: 'Porcentaje de comisión',
         parrafos: [
           'Es lo que la aseguradora le reconoce a la agencia por cada póliza. Se usa en Cobranzas → Comisiones para estimar cuánto deja cada mes según lo que se cobró. Se edita igual que los días de cobertura: clic en el número de la fila de esa compañía, escribir el nuevo porcentaje y listo.',
+          'Esta columna la ven sólo los administradores: es lo que gana la agencia, no algo que haga falta para atender. A un empleado la tabla le aparece sin ella.',
         ],
       },
       {
@@ -319,6 +326,44 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.sincronizar': {
+    clave: 'administracion.sincronizar',
+    titulo: 'Administración → Sincronizar',
+    resumen: 'El botón para forzar una sincronización completa cuando algo no aparece. Lo puede usar cualquiera del equipo.',
+    secciones: [
+      {
+        titulo: 'Para qué está',
+        parrafos: [
+          'DM Gestión sincroniza solo cada tanto: sube lo que cargaste y baja lo que cargaron en las otras sucursales. El 99 % de los días nadie tiene que hacer nada. Esta pantalla es para el otro 1 %: tenés gente en el mostrador, alguien pregunta por una cuota que se cargó ayer en otra sucursal y acá no aparece, o cargaste un pago y ves que quedó «esperando para subir».',
+          'El botón «Sincronizar todo» fuerza una vuelta completa: sube todo lo que estaba en la cola y vuelve a bajar los datos de la hoja. No configura nada ni cambia nada de las otras computadoras, sólo apura lo que la aplicación iba a hacer sola. Por eso lo puede tocar cualquiera, con el rol que sea.',
+        ],
+      },
+      {
+        titulo: 'Qué dicen los tres números',
+        parrafos: [
+          '«Esperando para subir» son los cambios que hiciste en esta computadora y que todavía no llegaron a la hoja. En cero está todo bien. Con un número, la aplicación va a seguir intentando sola; el botón apura ese intento.',
+          '«Última subida» y «Última bajada» son los momentos en que esta computadora habló con la hoja por última vez. Si son de hace mucho —horas, o de ayer— y sincronizar no los mueve, es un problema de conexión o de la hoja y ahí sí hay que avisarle a un administrador, que tiene la pantalla «Sincronización» con el detalle.',
+        ],
+      },
+      {
+        titulo: 'Qué hacer si no alcanza',
+        parrafos: [
+          'Sincronizar de más no rompe nada: si no hay novedades, no pasa nada. Si después de sincronizar sigue faltando algo, o quedan cambios esperando, avisale a un administrador con lo que dice esta pantalla: con la última subida, la última bajada y cuántos cambios quedaron pendientes ya se sabe por dónde empezar a mirar.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Sincronizar',
+        explicacion: 'Poner de acuerdo lo que hay en esta computadora con lo que hay en la hoja de la agencia: subir lo tuyo y bajar lo de los demás.',
+      },
+      {
+        termino: 'Cambio pendiente',
+        explicacion: 'Algo que cargaste o corregiste acá y que todavía no llegó a la hoja. No se pierde: la aplicación lo reintenta sola.',
+      },
+    ],
+  },
+
   'administracion.acerca': {
     clave: 'administracion.acerca',
     titulo: 'Administración → Acerca de',

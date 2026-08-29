@@ -123,33 +123,73 @@ export async function guardarConfiguracionDeImpresora(datos: DatosDeImpresora): 
 // Direcciones del encabezado
 // ---------------------------------------------------------------------------
 
+/** «AVELLANEDA» guardada a mano y «Dock Sud» del catálogo son el mismo mostrador. */
+function identidadDeSucursal(nombre: string): string {
+  return claveDeSucursal(sucursalCanonica(nombre) ?? nombre)
+}
+
 /**
  * Una fila por sucursal de la agencia, con la dirección que encabeza su ticket. Al final van las
  * direcciones guardadas para nombres que ya no están en la lista: se ven y se pueden borrar, pero no
  * se pierden solas.
+ *
+ * Con `soloLaSucursal` se devuelve una sola fila: la del mostrador de quien está mirando. Es lo que ve
+ * un empleado, porque la impresora que tiene delante imprime esa dirección y ninguna otra; ver —y
+ * peor, poder cambiar— la dirección de Lanús desde Dock Sud sólo sirve para romper el ticket de una
+ * sucursal en la que uno no está.
  */
-export function direccionesDeTicket(): DireccionDeSucursal[] {
+export function direccionesDeTicket(soloLaSucursal?: string | null): DireccionDeSucursal[] {
   const filas = listarSucursales().map((sucursal) => ({
     sucursal: sucursal.nombre,
     direccion: direccionDeSucursal(sucursal.nombre),
     enLaLista: true,
   }))
-  // «AVELLANEDA» guardada a mano es la misma fila que «Dock Sud» del catálogo: si no se cruzaran, la
-  // pantalla mostraría las dos y cada una con una dirección distinta para el mismo mostrador.
-  const identidad = (nombre: string) => claveDeSucursal(sucursalCanonica(nombre) ?? nombre)
-  const conocidas = new Set(filas.map((fila) => identidad(fila.sucursal)))
+  // Si no se cruzaran, la pantalla mostraría las dos y cada una con una dirección distinta para el
+  // mismo mostrador.
+  const conocidas = new Set(filas.map((fila) => identidadDeSucursal(fila.sucursal)))
   for (const [sucursal, direccion] of direccionesGuardadas()) {
-    if (conocidas.has(identidad(sucursal))) continue
+    if (conocidas.has(identidadDeSucursal(sucursal))) continue
     filas.push({ sucursal, direccion, enLaLista: false })
   }
-  return filas
+
+  if (soloLaSucursal === undefined || soloLaSucursal === null) return filas
+  const mia = identidadDeSucursal(soloLaSucursal)
+  const propias = filas.filter((fila) => identidadDeSucursal(fila.sucursal) === mia)
+  // Una sucursal que todavía no tiene fila (recién creada, o con un nombre que no está en el catálogo)
+  // igual tiene que poder cargar su dirección: se devuelve una fila vacía en vez de una lista vacía.
+  return propias.length > 0 ? propias : [{ sucursal: soloLaSucursal, direccion: '', enLaLista: false }]
 }
 
-/** Guarda las direcciones tal como quedaron en la pantalla. Una sucursal nueva se carga acá mismo. */
-export function guardarDireccionesDeTicket(direcciones: DireccionDeSucursal[]): DireccionDeSucursal[] {
+/**
+ * Guarda las direcciones tal como quedaron en la pantalla. Una sucursal nueva se carga acá mismo.
+ *
+ * Con `soloLaSucursal` sólo se acepta la de ese mostrador y el resto se deja intacto: si se guardara
+ * la lista entera, la pantalla recortada de un empleado —que recibió una sola fila— borraría las
+ * direcciones de todas las demás sucursales al guardar.
+ */
+export function guardarDireccionesDeTicket(
+  direcciones: DireccionDeSucursal[],
+  soloLaSucursal?: string | null,
+): DireccionDeSucursal[] {
   if (!Array.isArray(direcciones)) throw new ErrorDeNegocio('No llegó ninguna dirección para guardar.')
-  guardarDirecciones(direcciones.map((fila) => ({ sucursal: fila.sucursal, direccion: fila.direccion })))
-  return direccionesDeTicket()
+
+  if (soloLaSucursal === undefined || soloLaSucursal === null) {
+    guardarDirecciones(direcciones.map((fila) => ({ sucursal: fila.sucursal, direccion: fila.direccion })))
+    return direccionesDeTicket()
+  }
+
+  const mia = identidadDeSucursal(soloLaSucursal)
+  const propia = direcciones.find((fila) => identidadDeSucursal(fila.sucursal) === mia)
+  if (!propia) throw new ErrorDeNegocio('Sólo podés cambiar la dirección de tu sucursal.')
+  // Se reescribe la lista completa con lo que ya había y sólo la propia cambiada.
+  const todas = direccionesDeTicket().map((fila) =>
+    identidadDeSucursal(fila.sucursal) === mia ? { sucursal: fila.sucursal, direccion: propia.direccion } : { sucursal: fila.sucursal, direccion: fila.direccion },
+  )
+  if (!todas.some((fila) => identidadDeSucursal(fila.sucursal) === mia)) {
+    todas.push({ sucursal: propia.sucursal, direccion: propia.direccion })
+  }
+  guardarDirecciones(todas)
+  return direccionesDeTicket(soloLaSucursal)
 }
 
 // ---------------------------------------------------------------------------

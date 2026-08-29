@@ -18,6 +18,7 @@ import {
   resumenDeCambios,
   ROLES_CONFIGURABLES,
   sonIguales,
+  veLosNumerosDeLaAgencia,
   type Area,
   type MatrizPermisos,
   type Nivel,
@@ -102,7 +103,11 @@ export function puedeEditar(actor: SesionUsuario, area: Area): boolean {
 }
 
 export function misPermisos(actor: SesionUsuario): MisPermisos {
-  return { rol: actor.rol, areas: permisosDelRol(matrizVigente(), actor.rol) }
+  return {
+    rol: actor.rol,
+    areas: permisosDelRol(matrizVigente(), actor.rol),
+    veNumerosDeLaAgencia: veLosNumerosDeLaAgencia(actor.rol),
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 // en consola y se devuelve un mensaje genérico para no filtrar detalles internos al renderer.
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type { ArgumentosDe, DatosDeEvento, NombreCanal, NombreEvento, RespuestaDe } from '../shared/canales'
+import { veLosNumerosDeLaAgencia } from '../shared/permisos'
 import type { InfoApp, Resultado } from '../shared/tipos'
 import { carpetaDatos, rutaBaseDeDatos, rutaConfig } from './rutas'
 import { cambiarClave, ingresar, salir } from './servicios/auth'
@@ -435,11 +436,16 @@ export function registrarIpc(): void {
   // Compañías y sus días de cobertura financiera: SUPER_ADMIN y ADMIN
   // El listado incluye el porcentaje de comisión, que es información de la agencia: no sale de acá
   // para un empleado, aunque la pantalla que lo usa ya sea sólo de administradores.
+  // Compañías la MIRA cualquiera con sesión abierta, con el rol que sea y sin permiso sobre
+  // Administración: los días de cobertura financiera son los que decidieron el color de la fila que el
+  // mostrador tiene delante, y saber si una compañía renueva sola o a mano es la mitad de una llamada.
+  // El porcentaje de comisión no viaja a un empleado: eso sí es lo que gana la agencia.
   manejar('companias:listar', () => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
-    exigirVista('administracion')
-    return exito(listarCompanias())
+    const actor = exigirSesion()
+    return exito(listarCompanias(veLosNumerosDeLaAgencia(actor.rol)))
   })
+  // Tocarlas sigue siendo de administradores: cambiar los días de cobertura repinta la planilla de
+  // todas las sucursales.
   manejar('companias:editar', (id, datos) => {
     exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirEdicion('administracion')
@@ -498,14 +504,15 @@ export function registrarIpc(): void {
     return exito(null)
   })
   // Las direcciones del encabezado del ticket, una por sucursal.
-  manejar('impresora:direcciones', () => {
-    exigirSesion()
-    return exito(direccionesDeTicket())
-  })
-  manejar('impresora:guardarDirecciones', (direcciones) => {
-    exigirSesion()
-    return exito(guardarDireccionesDeTicket(direcciones))
-  })
+  // Un empleado ve y edita la dirección de SU sucursal y ninguna otra: la impresora que tiene delante
+  // imprime esa y nada más, y poder tocar la de Lanús desde Dock Sud sólo sirve para romper el ticket
+  // de un mostrador en el que uno no está. El recorte se hace acá, no en la pantalla.
+  const miSucursalSiEsEmpleado = (): string | null => {
+    const actor = exigirSesion()
+    return actor.rol === 'EMPLEADO' ? actor.sucursal.nombre : null
+  }
+  manejar('impresora:direcciones', () => exito(direccionesDeTicket(miSucursalSiEsEmpleado())))
+  manejar('impresora:guardarDirecciones', (direcciones) => exito(guardarDireccionesDeTicket(direcciones, miSucursalSiEsEmpleado())))
   // El «sí» del cartel que pregunta si imprimir: lo toca quien cobró, con los mismos permisos con los
   // que registró el pago. No lanza si la impresora falla: el motivo queda anotado y el pago ya está.
   manejar('impresora:imprimirPago', async (pagoId) => {
@@ -845,14 +852,17 @@ export function registrarIpc(): void {
   manejar('tareas:marcarVistos', () => exito(marcarAvisosVistos(exigirVista('tareas', 'clientes', 'siniestros'))))
 
   // Métricas: los números de la agencia.
+  // Los agregados de plata de la agencia (lo recaudado del mes, su evolución, el reparto por medio de
+  // pago) no viajan a un empleado. Se decide acá y no en la pantalla: un dato que llega al renderer ya
+  // está afuera, y ocultarlo con un `if` en el JSX no lo oculta, sólo no lo dibuja.
   manejar('metricas:tablero', (filtros) => {
-    exigirVista('metricas')
-    return exito(tableroDeMetricas(filtros))
+    const actor = exigirVista('metricas')
+    return exito(tableroDeMetricas(filtros, veLosNumerosDeLaAgencia(actor.rol)))
   })
   // Estadísticas es la pestaña de Cartera con los mismos números en tabla.
   manejar('metricas:estadisticas', (periodo, sucursal) => {
-    exigirVista('metricas', 'cartera')
-    return exito(estadisticasDeCartera(periodo, sucursal))
+    const actor = exigirVista('metricas', 'cartera')
+    return exito(estadisticasDeCartera(periodo, sucursal, veLosNumerosDeLaAgencia(actor.rol)))
   })
 
   // Reportes: exportar lo que ya se ve en pantalla. Un reporte junta datos de varios módulos, así que

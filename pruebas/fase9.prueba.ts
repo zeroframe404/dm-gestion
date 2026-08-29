@@ -102,7 +102,7 @@ test('los seguros activos por compañía coinciden con los COUNTIF de la hoja', 
   await prepararBase()
 
   const esperado = countifPorCompania('AGOSTO')
-  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' })
+  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
 
   const total = [...esperado.values()].reduce((suma, n) => suma + n, 0)
   assert.equal(tablero.activos, total, 'el total de activos tiene que ser el de las filas de la pestaña')
@@ -123,8 +123,8 @@ test('los seguros activos por compañía coinciden con los COUNTIF de la hoja', 
 test('el filtro de sucursal recorta el tablero sin romper los porcentajes', async () => {
   await prepararBase()
 
-  const completo = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' })
-  const lanus = tableroDeMetricas({ periodo: AGOSTO, sucursal: 'Lanús' })
+  const completo = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
+  const lanus = tableroDeMetricas({ periodo: AGOSTO, sucursal: 'Lanús' }, true)
 
   // En AGOSTO Lanús tiene las dos pólizas de Pérez (el auto y la moto).
   assert.equal(lanus.activos, 2)
@@ -136,14 +136,14 @@ test('el filtro de sucursal recorta el tablero sin romper los porcentajes', asyn
 test('altas, bajas y evolución cuentan lo mismo que comparar dos pestañas a mano', async () => {
   await prepararBase()
 
-  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' })
+  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
 
   // En AGOSTO entró Suárez (no estaba en JULIO) y no se fue nadie: la baja de Fernández es de JULIO.
   assert.equal(tablero.hayMesAnterior, true)
   assert.equal(tablero.altas, 1, 'la única alta de agosto es Suárez')
   assert.equal(tablero.bajas, 0, 'BAJAS AGOSTO está vacía')
 
-  const julio = tableroDeMetricas({ periodo: JULIO, sucursal: '' })
+  const julio = tableroDeMetricas({ periodo: JULIO, sucursal: '' }, true)
   assert.equal(julio.bajas, 1, 'en julio se dio de baja Fernández')
   assert.equal(julio.bajasPorMotivo[0]!.motivo, 'SE PASO A OTRO PRODUCTOR')
 
@@ -162,25 +162,58 @@ test('altas, bajas y evolución cuentan lo mismo que comparar dos pestañas a ma
 test('la cobranza del mes separa lo cobrado de lo pendiente', async () => {
   await prepararBase()
 
-  const { cobranza } = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' })
+  const { cobranza } = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
 
   // Tres filas de AGOSTO están sin pagar (Martínez, Suárez y Rodríguez); las otras cuatro, pagas.
   assert.equal(cobranza.cuotasPendientes, 3)
   assert.equal(cobranza.cuotasCobradas, 4)
-  assert.ok(cobranza.cobrado > 0, 'la pestaña IMPUTADOS trae pagos de agosto')
-  assert.ok(cobranza.pendiente > 0)
-  assert.ok(cobranza.porMedio.length > 0)
+  assert.ok((cobranza.cobrado ?? 0) > 0, 'la pestaña IMPUTADOS trae pagos de agosto')
+  assert.ok((cobranza.pendiente ?? 0) > 0)
+  assert.ok((cobranza.porMedio ?? []).length > 0)
   assert.equal(
-    cobranza.porMedio.reduce((suma, medio) => suma + medio.total, 0),
+    (cobranza.porMedio ?? []).reduce((suma, medio) => suma + medio.total, 0),
     cobranza.cobrado,
     'los medios de pago tienen que sumar lo cobrado',
   )
 })
 
+test('a un empleado los números de la agencia no le llegan: viajan en null, no en cero', async () => {
+  await prepararBase()
+
+  const conNumeros = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
+  const sinNumeros = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, false)
+
+  // Lo agregado de plata no viaja. En null y no en cero a propósito: un cero se lee «no se cobró
+  // nada», que sería mentira, y además haría que la pantalla dibujara una tarjeta con $ 0.
+  assert.equal(sinNumeros.cobranza.cobrado, null)
+  assert.equal(sinNumeros.cobranza.pendiente, null)
+  assert.equal(sinNumeros.cobranza.porMedio, null)
+  assert.ok(sinNumeros.evolucion.length > 0)
+  assert.ok(sinNumeros.evolucion.every((mes) => mes.cobrado === null))
+
+  // Todo lo demás sí: es lo que necesita para trabajar. Cuántas cuotas cobró y cuántas le faltan es
+  // trabajo hecho y trabajo por hacer, no la plata de la agencia.
+  assert.equal(sinNumeros.activos, conNumeros.activos)
+  assert.equal(sinNumeros.altas, conNumeros.altas)
+  assert.equal(sinNumeros.bajas, conNumeros.bajas)
+  assert.equal(sinNumeros.cobranza.cuotasCobradas, conNumeros.cobranza.cuotasCobradas)
+  assert.equal(sinNumeros.cobranza.cuotasPendientes, conNumeros.cobranza.cuotasPendientes)
+  assert.equal(sinNumeros.siniestrosAbiertos, conNumeros.siniestrosAbiertos)
+  assert.deepEqual(sinNumeros.activosPorCompania, conNumeros.activosPorCompania)
+
+  // Y lo mismo en la versión en tabla, incluido el total: que el total no sume nulls y dé cero.
+  const tabla = estadisticasDeCartera(AGOSTO, '', false)
+  assert.equal(tabla.totales.cobrado, null)
+  assert.ok(tabla.porCompania.length > 0)
+  assert.ok(tabla.porCompania.every((fila) => fila.cobrado === null))
+  assert.equal(tabla.totales.activos, estadisticasDeCartera(AGOSTO, '', true).totales.activos)
+  assert.ok((estadisticasDeCartera(AGOSTO, '', true).totales.cobrado ?? 0) > 0, 'con permiso el total sí tiene que venir')
+})
+
 test('los siniestros abiertos dejan afuera los cerrados', async () => {
   await prepararBase()
 
-  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' })
+  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
   // De los tres de la hoja, uno está CERRADO: quedan el de granizo y el robo.
   assert.equal(tablero.siniestrosAbiertos, 2)
   assert.equal(
@@ -192,8 +225,8 @@ test('los siniestros abiertos dejan afuera los cerrados', async () => {
 test('Estadísticas dice lo mismo que Métricas, en tabla', async () => {
   await prepararBase()
 
-  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' })
-  const tabla = estadisticasDeCartera(AGOSTO, '')
+  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
+  const tabla = estadisticasDeCartera(AGOSTO, '', true)
 
   assert.equal(tabla.totales.activos, tablero.activos)
   assert.equal(tabla.totales.altas, tablero.altas)

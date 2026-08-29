@@ -213,17 +213,19 @@ function totalesPorMedio(pagos: PagoDelMes[]): TotalPorMedio[] {
   return [...acumulado.values()].sort((a, b) => b.total - a.total || a.medio.localeCompare(b.medio, 'es'))
 }
 
-function cobranzaDelMes(cuotas: CuotaDelMes[], pagos: PagoDelMes[]): CobranzaDelMes {
+function cobranzaDelMes(cuotas: CuotaDelMes[], pagos: PagoDelMes[], conNumeros: boolean): CobranzaDelMes {
   const impagas = cuotas.filter((cuota) => !cuota.pagada)
   return {
-    cobrado: pagos.reduce((suma, pago) => suma + (pago.importe ?? 0), 0),
-    pendiente: impagas.reduce((suma, cuota) => suma + (cuota.cuotaMonto ?? 0), 0),
+    // Lo recaudado del mes es el número de la agencia: para un empleado viaja en null y no en cero,
+    // porque un cero se lee «no se cobró nada» y sería mentira.
+    cobrado: conNumeros ? pagos.reduce((suma, pago) => suma + (pago.importe ?? 0), 0) : null,
+    pendiente: conNumeros ? impagas.reduce((suma, cuota) => suma + (cuota.cuotaMonto ?? 0), 0) : null,
     cuotasCobradas: cuotas.length - impagas.length,
     cuotasPendientes: impagas.length,
     // Una cuota escrita como «A CONVENIR» no se puede sumar: se cuenta aparte para que la diferencia
     // entre lo pendiente y la realidad tenga explicación en la pantalla.
     sinImporte: impagas.filter((cuota) => cuota.cuotaMonto === null && limpiar(cuota.cuota) !== '').length,
-    porMedio: totalesPorMedio(pagos),
+    porMedio: conNumeros ? totalesPorMedio(pagos) : null,
   }
 }
 
@@ -235,7 +237,7 @@ function cobranzaDelMes(cuotas: CuotaDelMes[], pagos: PagoDelMes[]): CobranzaDel
  * Los doce meses que terminan en el elegido, tomados de los que realmente tienen planilla cargada. Si
  * la agencia importó ocho meses, la evolución muestra ocho: no se inventan meses en cero.
  */
-function evolucion(periodo: string, sucursal: string, disponibles: string[]): MesDeEvolucion[] {
+function evolucion(periodo: string, sucursal: string, disponibles: string[], conNumeros: boolean): MesDeEvolucion[] {
   const hasta = disponibles.filter((candidato) => candidato <= periodo).slice(0, MESES_DE_EVOLUCION)
   const meses = [...hasta].sort()
   const filas: MesDeEvolucion[] = []
@@ -248,7 +250,7 @@ function evolucion(periodo: string, sucursal: string, disponibles: string[]): Me
       activos: cuotas.length,
       altas,
       bajas: bajasDelMes(mes, sucursal).length,
-      cobrado: pagosDelMes(mes, sucursal).reduce((suma, pago) => suma + (pago.importe ?? 0), 0),
+      cobrado: conNumeros ? pagosDelMes(mes, sucursal).reduce((suma, pago) => suma + (pago.importe ?? 0), 0) : null,
     })
   }
   return filas
@@ -282,7 +284,12 @@ function siniestrosAbiertos(sucursal: string): { total: number; porCompania: Por
 // El tablero
 // ---------------------------------------------------------------------------
 
-export function tableroDeMetricas(filtros: FiltrosMetricas): TableroMetricas {
+/**
+ * El tablero. `conNumeros` en false deja afuera todo lo que sea plata agregada de la agencia: es lo
+ * que ve un empleado. Se decide en el proceso principal y no en la pantalla a propósito —el dato ni
+ * siquiera viaja—, porque una pantalla que oculta un número que igual llegó no oculta nada.
+ */
+export function tableroDeMetricas(filtros: FiltrosMetricas, conNumeros: boolean): TableroMetricas {
   const disponibles = periodosDisponibles().map((p) => p.periodo)
   const periodo = resolverPeriodo(filtros?.periodo, disponibles)
   const sucursales = catalogos().sucursales
@@ -324,8 +331,8 @@ export function tableroDeMetricas(filtros: FiltrosMetricas): TableroMetricas {
     bajasPorMotivo,
     hayMesAnterior,
 
-    evolucion: evolucion(periodo, sucursal, disponibles),
-    cobranza: cobranzaDelMes(cuotas, pagosDelMes(periodo, sucursal)),
+    evolucion: evolucion(periodo, sucursal, disponibles, conNumeros),
+    cobranza: cobranzaDelMes(cuotas, pagosDelMes(periodo, sucursal), conNumeros),
 
     siniestrosAbiertos: siniestros.total,
     siniestrosPorCompania: siniestros.porCompania,
@@ -338,9 +345,15 @@ export function tableroDeMetricas(filtros: FiltrosMetricas): TableroMetricas {
 // La versión tabular (Cartera → Estadísticas)
 // ---------------------------------------------------------------------------
 
-/** Acumulador de una fila de la tabla mientras se recorren cuotas, bajas y pagos. */
-interface Acumulador extends FilaEstadistica {
+/**
+ * Acumulador de una fila de la tabla mientras se recorren cuotas, bajas y pagos. Acá `cobrado` es
+ * siempre un número: la suma se hace igual para todos y recién al armar la fila que sale se decide si
+ * viaja o no. Sumar `number | null` obligaría a un `?? 0` en cada paso, y ese cero terminaría
+ * confundiéndose con un cobro real.
+ */
+interface Acumulador extends Omit<FilaEstadistica, 'cobrado'> {
   clave: string
+  cobrado: number
 }
 
 function tomar(mapa: Map<string, Acumulador>, valor: string | null, vacio: string): Acumulador {
@@ -353,9 +366,9 @@ function tomar(mapa: Map<string, Acumulador>, valor: string | null, vacio: strin
   return nuevo
 }
 
-function ordenar(mapa: Map<string, Acumulador>): FilaEstadistica[] {
+function ordenar(mapa: Map<string, Acumulador>, conNumeros: boolean): FilaEstadistica[] {
   return [...mapa.values()]
-    .map(({ clave: _clave, ...fila }) => fila)
+    .map(({ clave: _clave, cobrado, ...fila }) => ({ ...fila, cobrado: conNumeros ? cobrado : null }))
     .sort((a, b) => b.activos - a.activos || a.etiqueta.localeCompare(b.etiqueta, 'es'))
 }
 
@@ -363,7 +376,11 @@ function ordenar(mapa: Map<string, Acumulador>): FilaEstadistica[] {
  * Lo mismo que el tablero pero en tabla, que es como se compara contra la planilla: se pone la
  * pantalla al lado de la hoja y los números tienen que dar.
  */
-export function estadisticasDeCartera(periodoPedido: string | null, sucursalPedida: string): EstadisticasDeCartera {
+export function estadisticasDeCartera(
+  periodoPedido: string | null,
+  sucursalPedida: string,
+  conNumeros: boolean,
+): EstadisticasDeCartera {
   const disponibles = periodosDisponibles().map((p) => p.periodo)
   const periodo = resolverPeriodo(periodoPedido, disponibles)
   const sucursales = catalogos().sucursales
@@ -393,26 +410,26 @@ export function estadisticasDeCartera(periodoPedido: string | null, sucursalPedi
     }
   }
 
-  const porCompania = ordenar(companias)
+  const porCompania = ordenar(companias, conNumeros)
+  // El total sale del acumulador y no de las filas ya recortadas: si no, con los números ocultos el
+  // total sumaría nulls y daría cero.
+  const totalCobrado = [...companias.values()].reduce((suma, fila) => suma + fila.cobrado, 0)
   return {
     periodo,
     periodos: disponibles.includes(periodo) ? disponibles : [periodo, ...disponibles],
     sucursal,
     sucursales,
     porCompania,
-    porSucursal: ordenar(sucursalesMapa),
+    porSucursal: ordenar(sucursalesMapa, conNumeros),
     // El total sale de las filas por compañía: cada cuota, baja y pago cae en una sola.
-    totales: porCompania.reduce(
-      (total, fila) => ({
-        etiqueta: 'Total',
-        activos: total.activos + fila.activos,
-        altas: total.altas + fila.altas,
-        bajas: total.bajas + fila.bajas,
-        pagos: total.pagos + fila.pagos,
-        cobrado: total.cobrado + fila.cobrado,
-      }),
-      { etiqueta: 'Total', activos: 0, altas: 0, bajas: 0, pagos: 0, cobrado: 0 } as FilaEstadistica,
-    ),
+    totales: {
+      etiqueta: 'Total',
+      activos: porCompania.reduce((suma, fila) => suma + fila.activos, 0),
+      altas: porCompania.reduce((suma, fila) => suma + fila.altas, 0),
+      bajas: porCompania.reduce((suma, fila) => suma + fila.bajas, 0),
+      pagos: porCompania.reduce((suma, fila) => suma + fila.pagos, 0),
+      cobrado: conNumeros ? totalCobrado : null,
+    },
     hayMesAnterior,
     hoy: hoyLocal(),
   }

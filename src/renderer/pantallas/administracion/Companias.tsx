@@ -1,14 +1,22 @@
 // Compañías: sus días de cobertura financiera (los que siguen cubriendo después del vencimiento) y la
 // plantilla del aviso por WhatsApp. Las dos cosas cambian lo que ve la gente en la planilla del mes.
+//
+// La pantalla la MIRA todo el equipo, con el rol que sea: los días de cobertura son los que decidieron
+// el color de la fila que el mostrador tiene delante, y saber si una compañía renueva sola o a mano es
+// la mitad de una llamada. Tocarla sigue siendo de administradores, y el porcentaje de comisión —que
+// es lo que gana la agencia— ni siquiera llega a un empleado: el proceso principal lo manda en null.
 import { useCallback, useEffect, useState } from 'react'
 import { PLANTILLA_AVISO_POR_DEFECTO, type Compania } from '../../../shared/tipos'
 import { Alerta, AreaTexto, Boton, Cargando, Tarjeta, cx } from '../../componentes/ui'
-import { usePuedeEditar } from '../../contexto/Permisos'
+import { usePuedeEditar, useVeNumerosDeLaAgencia } from '../../contexto/Permisos'
+import { useUsuarioActual } from '../../contexto/Sesion'
 
 export function Companias() {
   // Con Administración en «sólo ver» la pantalla se consulta pero no se toca: el proceso principal
   // rechaza igual estos guardados, así que no tiene sentido dejar los campos habilitados.
-  const puedeEditar = usePuedeEditar('administracion')
+  const usuario = useUsuarioActual()
+  const puedeEditar = usePuedeEditar('administracion') && usuario.rol !== 'EMPLEADO'
+  const verComision = useVeNumerosDeLaAgencia()
   const [companias, setCompanias] = useState<Compania[]>([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -35,7 +43,10 @@ export function Companias() {
     const resultado = await window.dm.companias.editar(compania.id, {
       nombre: compania.nombre,
       diasCoberturaFinanciera: cambios.diasCoberturaFinanciera ?? compania.diasCoberturaFinanciera,
-      comisionPorcentaje: cambios.comisionPorcentaje ?? compania.comisionPorcentaje,
+      // Sin permiso para verla, el porcentaje llegó en null y no se puede reenviar: se manda 0, que es
+      // lo que el proceso principal entiende como «no cargado». En la práctica no pasa: quien no lo ve
+      // tampoco puede guardar.
+      comisionPorcentaje: cambios.comisionPorcentaje ?? compania.comisionPorcentaje ?? 0,
       // Con ?? no alcanza: acá null es un valor («renueva sola»), no un campo que no vino.
       mesesRenovacion: 'mesesRenovacion' in cambios ? (cambios.mesesRenovacion ?? null) : compania.mesesRenovacion,
       activa: compania.activa,
@@ -68,7 +79,7 @@ export function Companias() {
 
       <Tarjeta
         titulo="Compañías"
-        descripcion="Los días de cobertura financiera son los que cada compañía sigue cubriendo al cliente después del vencimiento: mientras corren, la fila de la planilla queda amarilla; el último día, naranja; después, roja. El porcentaje de comisión es el que usa Cobranzas → Comisiones para estimar lo que deja cada mes. Los meses de renovación son cada cuánto hay que renovar a mano en esa compañía (Agrosalta 4, Río Uruguay 6, Metropol 12): las que quedan vacías renuevan solas y no aparecen en la bandeja de Renovaciones."
+        descripcion="Los días de cobertura financiera son los que cada compañía sigue cubriendo al cliente después del vencimiento: mientras corren, la fila de la planilla queda amarilla; el último día, naranja; después, roja. Los meses de renovación son cada cuánto hay que renovar a mano en esa compañía (Agrosalta 4, Río Uruguay 6, Metropol 12): las que quedan vacías renuevan solas y no aparecen en la bandeja de Renovaciones."
         alRas
       >
         <div className="overflow-x-auto">
@@ -78,14 +89,14 @@ export function Companias() {
                 <th className={encabezado}>Compañía</th>
                 <th className={cx(encabezado, 'text-right')}>Pólizas activas</th>
                 <th className={cx(encabezado, 'text-right')}>Días de cobertura</th>
-                <th className={cx(encabezado, 'text-right')}>Comisión (%)</th>
+                {verComision && <th className={cx(encabezado, 'text-right')}>Comisión (%)</th>}
                 <th className={cx(encabezado, 'text-right')}>Renovación (meses)</th>
               </tr>
             </thead>
             <tbody>
               {companias.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={verComision ? 5 : 4} className="px-3 py-8 text-center text-slate-500">
                     Todavía no hay compañías: se dan de alta solas al importar la hoja.
                   </td>
                 </tr>
@@ -118,29 +129,31 @@ export function Companias() {
                       className="h-8 w-20 rounded border border-slate-300 px-2 text-right text-sm tabular-nums disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                     />
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      aria-label={`Comisión de ${compania.nombre}`}
-                      disabled={!puedeEditar}
-                      defaultValue={compania.comisionPorcentaje}
-                      onBlur={(evento) => {
-                        const escrito = evento.currentTarget.value.trim()
-                        if (!escrito) {
-                          evento.currentTarget.value = String(compania.comisionPorcentaje)
-                          return
-                        }
-                        const comision = Number(escrito)
-                        if (Number.isFinite(comision) && comision !== compania.comisionPorcentaje) {
-                          void guardar(compania, { comisionPorcentaje: comision }, `${compania.nombre}: ${comision} % de comisión.`)
-                        }
-                      }}
-                      className="h-8 w-20 rounded border border-slate-300 px-2 text-right text-sm tabular-nums disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
-                    />
-                  </td>
+                  {compania.comisionPorcentaje !== null && (
+                    <td className="px-3 py-2 text-right">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        aria-label={`Comisión de ${compania.nombre}`}
+                        disabled={!puedeEditar}
+                        defaultValue={compania.comisionPorcentaje}
+                        onBlur={(evento) => {
+                          const escrito = evento.currentTarget.value.trim()
+                          if (!escrito) {
+                            evento.currentTarget.value = String(compania.comisionPorcentaje)
+                            return
+                          }
+                          const comision = Number(escrito)
+                          if (Number.isFinite(comision) && comision !== compania.comisionPorcentaje) {
+                            void guardar(compania, { comisionPorcentaje: comision }, `${compania.nombre}: ${comision} % de comisión.`)
+                          }
+                        }}
+                        className="h-8 w-20 rounded border border-slate-300 px-2 text-right text-sm tabular-nums disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                      />
+                    </td>
+                  )}
                   <td className="px-3 py-2 text-right">
                     <input
                       type="number"
