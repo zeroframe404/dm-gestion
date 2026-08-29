@@ -24,7 +24,7 @@ export function BotonManual({ variante = 'secundario' }: { variante?: 'secundari
       const html = htmlDelManual({
         version,
         fecha: new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }),
-        logo: await logoDelManual(),
+        logo: logoDelManual(),
       })
       const resultado = await window.dm.ayuda.guardarPdf({ html, nombreDeArchivo: nombreDelManual(version) })
       if (!resultado.ok) setError(resultado.error)
