@@ -8,6 +8,7 @@ import { NOMBRE_ROL, type FilaTarea } from '../../shared/tipos'
 import { Icono } from '../componentes/Icono'
 import { Etiqueta, cx } from '../componentes/ui'
 import { BotonAyuda } from '../componentes/Ayuda'
+import { BotonManual } from '../componentes/BotonManual'
 import { useNavegacion } from '../contexto/Navegacion'
 import { usePermisos } from '../contexto/Permisos'
 import { useUsuarioActual } from '../contexto/Sesion'
@@ -35,6 +36,10 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/75">
           Estás trabajando en la sucursal {usuario.sucursal.nombre} como {NOMBRE_ROL[usuario.rol].toLowerCase()}.
         </p>
+        {/* Acá y no enterrado en Administración: quien recién empieza mira esta pantalla. */}
+        <div className="mt-4">
+          <BotonManual />
+        </div>
       </section>
 
       <MisTareas />

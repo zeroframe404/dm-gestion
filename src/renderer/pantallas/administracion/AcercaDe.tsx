@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { EstadoActualizacion, EstadoDeAcceso, InfoApp } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { BotonManual } from '../../componentes/BotonManual'
 import { Boton, Cargando, Tarjeta, haceCuanto } from '../../componentes/ui'
 import { avisoDeVencimiento, useAcceso } from '../../contexto/Acceso'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -92,6 +93,10 @@ export function AcercaDe() {
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-700">Seguros Daniel Martínez</p>
                 <h2 className="font-display text-3xl font-extrabold tracking-tight text-slate-900">DM Gestión</h2>
                 <p className="mt-0.5 text-sm font-medium text-slate-600">Versión {info.version}</p>
+              </div>
+              {/* El manual también acá: es donde se lo busca cuando ya se sabe que existe. */}
+              <div className="ml-auto">
+                <BotonManual />
               </div>
             </div>
 

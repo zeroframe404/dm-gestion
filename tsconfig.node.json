@@ -18,7 +18,8 @@
     "noFallthroughCasesInSwitch": true,
     "types": [
       "node"
-    ]
+    ],
+    "jsx": "react-jsx"
   },
   "include": [
     "src/main",
@@ -28,6 +29,7 @@
     "vite.main.config.mts",
     "vite.preload.config.mts",
     "pruebas",
-    "vite.pruebas.config.mts"
+    "vite.pruebas.config.mts",
+    "vite.manual.config.mts"
   ]
 }
