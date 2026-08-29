@@ -208,6 +208,10 @@ export interface ApiDm {
     exportar: Remota<'reportes:exportar'>
     planillaClasica: Remota<'reportes:planillaClasica'>
   }
+  excel: {
+    catalogo: Remota<'excel:catalogo'>
+    filas: Remota<'excel:filas'>
+  }
   marketing: {
     plantillas: Remota<'marketing:plantillas'>
     crearPlantilla: Remota<'marketing:crearPlantilla'>

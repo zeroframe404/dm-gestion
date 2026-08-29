@@ -31,6 +31,8 @@ export interface ParametrosDeNavegacion {
   seccion?: string
   /** Texto para dejar cargado en el buscador del módulo. */
   busqueda?: string
+  /** Qué área abrir en «General Excel»: lo usa el botón «Ver como Excel» de cada módulo. */
+  area?: string
 }
 
 interface Navegacion {

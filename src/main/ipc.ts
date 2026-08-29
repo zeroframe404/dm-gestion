@@ -44,7 +44,10 @@ import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportac
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
 import { estadisticasDeCartera, tableroDeMetricas } from './servicios/metricas'
 import {
+  areasDelReporte,
+  catalogoDeExcel,
   catalogoDeReportes,
+  filasDeReporte,
   htmlDelReporte,
   vistaPreviaDeReporte,
   xlsxDePlanillaClasica,
@@ -172,6 +175,7 @@ import {
   guardarPermisos,
   matrizDePermisos,
   misPermisos,
+  puedeVer as puedeVerElArea,
 } from './servicios/permisos'
 import { exigirRol, exigirSesion, sesion } from './servicios/sesion'
 import { listarSucursales } from './servicios/sucursales'
@@ -870,6 +874,20 @@ export function registrarIpc(): void {
   manejar('reportes:catalogo', () => {
     exigirVista('reportes')
     return exito(catalogoDeReportes())
+  })
+
+  // «General Excel»: el mismo dato del módulo, en planilla. Se pide el permiso del MÓDULO —Cartera
+  // para la cartera, Cobranzas para la mora— y no el de Reportes: si no, sería una puerta de atrás
+  // para mirar lo que a alguien le sacaron de la barra lateral.
+  manejar('excel:catalogo', () => {
+    const actor = exigirSesion()
+    return exito(catalogoDeExcel((area) => puedeVerElArea(actor, area)))
+  })
+  manejar('excel:filas', (pedido) => {
+    const areas = areasDelReporte(pedido?.reporteId ?? '')
+    if (areas.length === 0) throw new ErrorDeNegocio('Ese listado no se puede ver como planilla.')
+    exigirVista(...areas)
+    return exito(filasDeReporte(pedido))
   })
   manejar('reportes:vistaPrevia', (pedido) => {
     exigirVista('reportes')

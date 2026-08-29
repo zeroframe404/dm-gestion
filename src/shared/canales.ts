@@ -121,7 +121,9 @@ import type {
   VistaPreviaHoja,
   // Fase 9: métricas, reportes y marketing.
   AvisoDeSegmento,
+  CatalogoDeExcel,
   CatalogoDeReportes,
+  FilasDeReporte,
   DatosDePlantilla,
   DatosDeSegmento,
   EstadisticasDeCartera,
@@ -391,6 +393,11 @@ export interface Canales {
 
   // Reportes: el centro de exportación.
   'reportes:catalogo': () => Resultado<CatalogoDeReportes>
+
+  // «General Excel»: los mismos datos de cada módulo, en formato planilla. El catálogo trae sólo las
+  // áreas que quien pregunta puede ver, y las filas exigen el permiso de ESE módulo, no el de Reportes.
+  'excel:catalogo': () => Resultado<CatalogoDeExcel>
+  'excel:filas': (pedido: PedidoDeReporte) => Resultado<FilasDeReporte>
   'reportes:vistaPrevia': (pedido: PedidoDeReporte) => Resultado<VistaPreviaDeReporte>
   /**
    * Con `ruta` en null abre el diálogo «Guardar como», que es lo que hace la pantalla, y devuelve la

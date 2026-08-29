@@ -17,10 +17,10 @@ import { RiesgosVarios } from './RiesgosVarios'
 type IdSeccion = 'planilla' | 'bajas' | 'rechazos' | 'riesgos' | 'amp' | 'imputados' | 'reglas' | 'estadisticas'
 
 const SECCIONES: ItemDePestana<IdSeccion>[] = [
-  { id: 'planilla', nombre: 'Planilla del mes', icono: 'tabla', ayuda: 'cartera.planilla' },
-  { id: 'bajas', nombre: 'Bajas', icono: 'cerrar', ayuda: 'cartera.bajas' },
+  { id: 'planilla', nombre: 'Planilla del mes', icono: 'tabla', ayuda: 'cartera.planilla', excel: 'cartera' },
+  { id: 'bajas', nombre: 'Bajas', icono: 'cerrar', ayuda: 'cartera.bajas', excel: 'bajas' },
   { id: 'rechazos', nombre: 'Rechazos', icono: 'alerta', ayuda: 'cartera.rechazos' },
-  { id: 'riesgos', nombre: 'Riesgos varios', icono: 'escudo', ayuda: 'cartera.riesgos' },
+  { id: 'riesgos', nombre: 'Riesgos varios', icono: 'escudo', ayuda: 'cartera.riesgos', excel: 'riesgos' },
   { id: 'amp', nombre: 'AMP', icono: 'mas', ayuda: 'cartera.amp' },
   { id: 'imputados', nombre: 'Imputados', icono: 'billete', ayuda: 'imputados' },
   { id: 'reglas', nombre: 'Reglas de cobertura', icono: 'polizas', ayuda: 'cartera.reglas' },

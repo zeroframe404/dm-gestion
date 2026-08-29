@@ -4,6 +4,7 @@
 import type { NombreIcono } from './Icono'
 import { Icono } from './Icono'
 import { BotonAyuda } from './Ayuda'
+import { BotonVerComoExcel } from './BotonVerComoExcel'
 import { cx } from './ui'
 
 export interface ItemDePestana<T extends string> {
@@ -12,6 +13,11 @@ export interface ItemDePestana<T extends string> {
   icono: NombreIcono
   /** Clave del contenido de ayuda (en `ayuda/contenido`) para esta pestaña. */
   ayuda: string
+  /**
+   * Id del listado equivalente en «General Excel». Con esto puesto, la barra dibuja «Ver como Excel»
+   * al lado de la ayuda: la misma información de esta pestaña, en planilla. Sin esto, no.
+   */
+  excel?: string
 }
 
 interface PropsBarraDePestanas<T extends string> {
@@ -56,6 +62,11 @@ export function BarraDePestanas<T extends string>({ etiqueta, prefijo, items, ac
             )
           })}
         </div>
+        {seccionActiva?.excel && (
+          <div className="mb-1.5 shrink-0">
+            <BotonVerComoExcel area={seccionActiva.excel} />
+          </div>
+        )}
         {seccionActiva && <BotonAyuda clave={seccionActiva.ayuda} className="mb-2 shrink-0" />}
       </div>
     </div>

@@ -8,6 +8,7 @@ import type { EstadoPoliza, FiltrosPolizas, ListadoPolizas, PolizaDeCliente } fr
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
+import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { FormularioPoliza } from './FormularioPoliza'
@@ -248,6 +249,7 @@ export function Polizas() {
               Nueva póliza
             </Boton>
           )}
+          <BotonVerComoExcel area="polizas" />
           <BotonAyuda clave="polizas" />
         </div>
       </div>

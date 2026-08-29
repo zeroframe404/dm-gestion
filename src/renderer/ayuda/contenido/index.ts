@@ -3,6 +3,7 @@ import { AYUDA_ADMINISTRACION } from './administracion'
 import { AYUDA_CARTERA } from './cartera'
 import { AYUDA_CLIENTES } from './clientes'
 import { AYUDA_COBRANZAS } from './cobranzas'
+import { AYUDA_EXCEL } from './excel'
 import { AYUDA_INICIO } from './inicio'
 import { AYUDA_LEADS } from './leads'
 import { AYUDA_MARKETING } from './marketing'
@@ -29,5 +30,6 @@ export const CONTENIDO_AYUDA: Record<string, ContenidoDeAyuda> = {
   ...AYUDA_METRICAS,
   ...AYUDA_MARKETING,
   ...AYUDA_REPORTES,
+  ...AYUDA_EXCEL,
   ...AYUDA_ADMINISTRACION,
 }

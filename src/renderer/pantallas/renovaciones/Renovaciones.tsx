@@ -18,6 +18,7 @@ import {
 import { Icono } from '../../componentes/Icono'
 import { Alerta as Aviso, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
+import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos } from '../../contexto/Permisos'
 import { DialogoNuevaTarea } from '../tareas/DialogoNuevaTarea'
@@ -164,6 +165,7 @@ export function Renovaciones() {
           <Boton icono="cargando" onClick={() => void cargar()} disabled={cargando}>
             Actualizar
           </Boton>
+          <BotonVerComoExcel area="renovaciones" />
           <BotonAyuda clave="renovaciones" />
         </div>
       </div>

@@ -27,7 +27,11 @@ import {
   plantillaDeAviso,
 } from '../src/main/servicios/plantillas'
 import {
+  areasDelReporte,
+  catalogoDeExcel,
   catalogoDeReportes,
+  filasDeReporte,
+  FILTROS_DE_REPORTE_VACIOS,
   htmlDelReporte,
   vistaPreviaDeReporte,
   xlsxDePlanillaClasica,
@@ -175,6 +179,53 @@ test('la cobranza del mes separa lo cobrado de lo pendiente', async () => {
     cobranza.cobrado,
     'los medios de pago tienen que sumar lo cobrado',
   )
+})
+
+test('«General Excel» muestra sólo las áreas que la persona ya podía ver', async () => {
+  await prepararBase()
+
+  // Con todo a la vista están las doce áreas del catálogo de reportes.
+  const completo = catalogoDeExcel(() => true)
+  assert.equal(completo.areas.length, catalogoDeReportes().reportes.length)
+  assert.ok(completo.areas.some((area) => area.id === 'cartera'))
+  assert.ok(completo.areas.some((area) => area.id === 'mora'))
+
+  // Sin Siniestros, los siniestros no están: no es una puerta de atrás, es la misma información con
+  // los mismos permisos. Y las tres áreas que salen de Cartera se van juntas con Cartera.
+  const sinSiniestros = catalogoDeExcel((area) => area !== 'siniestros')
+  assert.ok(!sinSiniestros.areas.some((area) => area.id === 'siniestros'))
+  assert.ok(sinSiniestros.areas.some((area) => area.id === 'cartera'))
+
+  const soloCartera = catalogoDeExcel((area) => area === 'cartera')
+  assert.deepEqual(soloCartera.areas.map((area) => area.id).sort(), ['bajas', 'cartera', 'riesgos'])
+  // El botón «Abrir el módulo» tiene que llevar al módulo correcto.
+  assert.equal(soloCartera.areas.find((area) => area.id === 'bajas')?.modulo, 'cartera')
+
+  // Sin ningún permiso no queda nada, y la pantalla lo explica en vez de romperse.
+  assert.equal(catalogoDeExcel(() => false).areas.length, 0)
+})
+
+test('las filas de «General Excel» son las mismas que las de la vista previa, sin el tope de 50', async () => {
+  await prepararBase()
+
+  const pedido = { reporteId: 'cartera', filtros: { ...FILTROS_DE_REPORTE_VACIOS, periodo: AGOSTO }, columnas: [] }
+  const previa = vistaPreviaDeReporte(pedido)
+  const planilla = filasDeReporte(pedido)
+
+  assert.equal(planilla.reporteId, 'cartera')
+  assert.equal(planilla.total, previa.total)
+  assert.deepEqual(planilla.columnas, previa.columnas)
+  // La vista previa corta en 50; la planilla trae todo lo que haya (acá son pocas).
+  assert.equal(planilla.filas.length, planilla.total)
+  assert.equal(planilla.recortado, false)
+  assert.deepEqual(planilla.filas.slice(0, previa.filas.length), previa.filas)
+
+  // Cada fila tiene exactamente una celda por columna: si no, la planilla se dibujaría desalineada.
+  for (const fila of planilla.filas) assert.equal(fila.length, planilla.columnas.length)
+
+  // Un listado que no es un área no se puede pedir como planilla.
+  assert.deepEqual(areasDelReporte('inventado'), [])
+  assert.deepEqual(areasDelReporte('mora'), ['cobranzas'])
 })
 
 test('a un empleado los números de la agencia no le llegan: viajan en null, no en cero', async () => {

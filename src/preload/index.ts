@@ -226,6 +226,10 @@ const api: ApiDm = {
     exportar: (pedido, formato, ruta) => invocar('reportes:exportar', pedido, formato, ruta),
     planillaClasica: (opciones, ruta) => invocar('reportes:planillaClasica', opciones, ruta),
   },
+  excel: {
+    catalogo: () => invocar('excel:catalogo'),
+    filas: (pedido) => invocar('excel:filas', pedido),
+  },
   marketing: {
     plantillas: () => invocar('marketing:plantillas'),
     crearPlantilla: (datos) => invocar('marketing:crearPlantilla', datos),

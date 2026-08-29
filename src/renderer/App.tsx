@@ -16,6 +16,7 @@ import { Administracion } from './pantallas/administracion/Administracion'
 import { Cartera } from './pantallas/cartera/Cartera'
 import { Clientes } from './pantallas/clientes/Clientes'
 import { Cobranzas } from './pantallas/cobranzas/Cobranzas'
+import { GeneralExcel } from './pantallas/excel/GeneralExcel'
 import { Leads } from './pantallas/leads/Leads'
 import { Marketing } from './pantallas/marketing/Marketing'
 import { Metricas } from './pantallas/metricas/Metricas'
@@ -110,6 +111,8 @@ function Escritorio() {
     contenido = <Reportes />
   } else if (modulo.id === 'marketing') {
     contenido = <Marketing />
+  } else if (modulo.id === 'excel') {
+    contenido = <GeneralExcel />
   } else if (modulo.id === 'administracion') {
     contenido = <Administracion />
   } else {

@@ -2397,6 +2397,48 @@ export interface VistaPreviaDeReporte {
   mostradas: number
 }
 
+/**
+ * Lo mismo que la vista previa pero entero, para la pantalla que muestra un área «como en Excel».
+ *
+ * Va aparte de `VistaPreviaDeReporte` porque son dos cosas distintas: la vista previa son cincuenta
+ * filas para mirar antes de exportar, y esto es la planilla para trabajar. Con un tope igual, porque
+ * mandar setenta mil filas al renderer cuelga la ventana; cuando se llega, la pantalla lo dice y
+ * ofrece filtrar o bajar el .xlsx, en vez de mostrar un pedazo sin avisar.
+ */
+export interface FilasDeReporte {
+  reporteId: string
+  nombre: string
+  columnas: ColumnaDeReporte[]
+  filas: string[][]
+  /** Cuántas hay en total, antes del tope. */
+  total: number
+  /** true si `filas` está recortada: hay más de las que se mandaron. */
+  recortado: boolean
+}
+
+/** Un área del programa mirada como planilla: qué reporte la alimenta y cómo se llama. */
+export interface AreaDeExcel {
+  /** El id del reporte que la alimenta. */
+  id: string
+  nombre: string
+  descripcion: string
+  /** Los filtros que entiende, para dibujar sólo esos. */
+  filtros: FiltroDeReporte[]
+  estados: string[]
+  etiquetaDeEstado: string
+  /** A qué módulo de la barra lateral corresponde: el botón «Ver como Excel» vuelve desde ahí. */
+  modulo: string
+}
+
+/** Lo que necesita el módulo «General Excel» para dibujarse. */
+export interface CatalogoDeExcel {
+  areas: AreaDeExcel[]
+  periodos: string[]
+  sucursales: string[]
+  companias: string[]
+  hoy: string
+}
+
 /** Lo que hace falta para armar el reporte especial «Planilla clásica». */
 export interface OpcionesPlanillaClasica {
   /** Meses elegidos, 'AAAA-MM'. Una pestaña por mes, más su pestaña de BAJAS. */

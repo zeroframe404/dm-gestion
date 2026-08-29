@@ -17,6 +17,7 @@ import {
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
+import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { DialogoLead } from './DialogoLead'
 import { FichaLead } from './FichaLead'
@@ -136,6 +137,7 @@ export function Leads() {
               Nueva consulta
             </Boton>
           )}
+          <BotonVerComoExcel area="leads" />
           <BotonAyuda clave="leads" />
         </div>
       </div>
