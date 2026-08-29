@@ -16,6 +16,8 @@ const POLITICA_CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
+  // Los tres sonidos de aviso (campana, débito rechazado, tarea hecha) se empaquetan con la app.
+  "media-src 'self' data:",
   "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",

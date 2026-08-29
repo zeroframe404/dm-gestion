@@ -3,6 +3,7 @@
 // en consola y se devuelve un mensaje genérico para no filtrar detalles internos al renderer.
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type { ArgumentosDe, DatosDeEvento, NombreCanal, NombreEvento, RespuestaDe } from '../shared/canales'
+import { veLosNumerosDeLaAgencia } from '../shared/permisos'
 import type { InfoApp, Resultado } from '../shared/tipos'
 import { carpetaDatos, rutaBaseDeDatos, rutaConfig } from './rutas'
 import { cambiarClave, ingresar, salir } from './servicios/auth'
@@ -43,13 +44,24 @@ import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportac
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
 import { estadisticasDeCartera, tableroDeMetricas } from './servicios/metricas'
 import {
+  areasDelReporte,
+  catalogoDeExcel,
   catalogoDeReportes,
+  filasDeReporte,
   htmlDelReporte,
   vistaPreviaDeReporte,
   xlsxDePlanillaClasica,
   xlsxDelReporte,
 } from './servicios/reportes'
 import { borrarPlantilla, crearPlantilla, editarPlantilla, listarPlantillas } from './servicios/plantillas'
+import {
+  desvincularDeMeta,
+  elegirPaginaVinculada,
+  panelDeRedes,
+  publicarEnRed,
+  revisarArchivoParaPublicar,
+  vincularConMeta,
+} from './servicios/redes'
 import { avisarDeSegmento, borrarSegmento, guardarSegmento, resultadoDeSegmento } from './servicios/marketing'
 import {
   agregarNotaDeLead,
@@ -102,6 +114,7 @@ import {
   editarCliente,
   fichaDeCliente,
   listarClientes,
+  localidadesConocidas,
 } from './servicios/clientes'
 import { archivoDeDeudores, buscarDeudores } from './servicios/deudores'
 import {
@@ -141,7 +154,25 @@ import {
   renovar,
 } from './servicios/renovaciones'
 import { editarCompania, listarCompanias } from './servicios/companias'
-import { estadoGoogle, guardarGoogle } from './servicios/config'
+import {
+  borrarCredencialesDeVehiculos,
+  borrarMeta,
+  estadoGoogle,
+  estadoMeta,
+  guardarCredencialesDeVehiculos,
+  guardarGoogle,
+  guardarMeta,
+} from './servicios/config'
+import {
+  aniosDeLaLinea,
+  estadoDelCatalogo,
+  lineasDelCatalogo,
+  marcasDelCatalogo,
+  modelosDelCatalogo,
+  probarProveedorDeVehiculos,
+  refrescarCatalogo,
+  resolverVehiculoDelCatalogo,
+} from './servicios/catalogoVehiculos'
 import { guardarPlantillaDeAviso, plantillaDeAviso } from './servicios/plantillas'
 import { historialDeFila } from './servicios/historial'
 import {
@@ -170,6 +201,7 @@ import {
   guardarPermisos,
   matrizDePermisos,
   misPermisos,
+  puedeVer as puedeVerElArea,
 } from './servicios/permisos'
 import { exigirRol, exigirSesion, sesion } from './servicios/sesion'
 import { listarSucursales } from './servicios/sucursales'
@@ -434,11 +466,16 @@ export function registrarIpc(): void {
   // Compañías y sus días de cobertura financiera: SUPER_ADMIN y ADMIN
   // El listado incluye el porcentaje de comisión, que es información de la agencia: no sale de acá
   // para un empleado, aunque la pantalla que lo usa ya sea sólo de administradores.
+  // Compañías la MIRA cualquiera con sesión abierta, con el rol que sea y sin permiso sobre
+  // Administración: los días de cobertura financiera son los que decidieron el color de la fila que el
+  // mostrador tiene delante, y saber si una compañía renueva sola o a mano es la mitad de una llamada.
+  // El porcentaje de comisión no viaja a un empleado: eso sí es lo que gana la agencia.
   manejar('companias:listar', () => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
-    exigirVista('administracion')
-    return exito(listarCompanias())
+    const actor = exigirSesion()
+    return exito(listarCompanias(veLosNumerosDeLaAgencia(actor.rol)))
   })
+  // Tocarlas sigue siendo de administradores: cambiar los días de cobertura repinta la planilla de
+  // todas las sucursales.
   manejar('companias:editar', (id, datos) => {
     exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirEdicion('administracion')
@@ -497,14 +534,15 @@ export function registrarIpc(): void {
     return exito(null)
   })
   // Las direcciones del encabezado del ticket, una por sucursal.
-  manejar('impresora:direcciones', () => {
-    exigirSesion()
-    return exito(direccionesDeTicket())
-  })
-  manejar('impresora:guardarDirecciones', (direcciones) => {
-    exigirSesion()
-    return exito(guardarDireccionesDeTicket(direcciones))
-  })
+  // Un empleado ve y edita la dirección de SU sucursal y ninguna otra: la impresora que tiene delante
+  // imprime esa y nada más, y poder tocar la de Lanús desde Dock Sud sólo sirve para romper el ticket
+  // de un mostrador en el que uno no está. El recorte se hace acá, no en la pantalla.
+  const miSucursalSiEsEmpleado = (): string | null => {
+    const actor = exigirSesion()
+    return actor.rol === 'EMPLEADO' ? actor.sucursal.nombre : null
+  }
+  manejar('impresora:direcciones', () => exito(direccionesDeTicket(miSucursalSiEsEmpleado())))
+  manejar('impresora:guardarDirecciones', (direcciones) => exito(guardarDireccionesDeTicket(direcciones, miSucursalSiEsEmpleado())))
   // El «sí» del cartel que pregunta si imprimir: lo toca quien cobró, con los mismos permisos con los
   // que registró el pago. No lanza si la impresora falla: el motivo queda anotado y el pago ya está.
   manejar('impresora:imprimirPago', async (pagoId) => {
@@ -567,6 +605,12 @@ export function registrarIpc(): void {
   manejar('clientes:ficha', (clienteId) => {
     exigirVista('clientes', 'polizas', 'presupuestos')
     return exito(fichaDeCliente(enteroPositivo(clienteId, 'El cliente')))
+  })
+  // Las localidades ya cargadas: sólo sugerencias para el formulario de dirección. Se pide el mismo
+  // permiso que la ficha porque la dirección se carga desde el alta y también desde Pólizas.
+  manejar('clientes:localidades', () => {
+    exigirVista('clientes', 'polizas', 'presupuestos')
+    return exito(localidadesConocidas())
   })
   // El alta de un cliente sale de un solo lado (Clientes → «Nuevo cliente»), así que pide el permiso
   // de Clientes y nada más. Convertir un lead también da de alta un cliente, y por eso el canal
@@ -838,14 +882,17 @@ export function registrarIpc(): void {
   manejar('tareas:marcarVistos', () => exito(marcarAvisosVistos(exigirVista('tareas', 'clientes', 'siniestros'))))
 
   // Métricas: los números de la agencia.
+  // Los agregados de plata de la agencia (lo recaudado del mes, su evolución, el reparto por medio de
+  // pago) no viajan a un empleado. Se decide acá y no en la pantalla: un dato que llega al renderer ya
+  // está afuera, y ocultarlo con un `if` en el JSX no lo oculta, sólo no lo dibuja.
   manejar('metricas:tablero', (filtros) => {
-    exigirVista('metricas')
-    return exito(tableroDeMetricas(filtros))
+    const actor = exigirVista('metricas')
+    return exito(tableroDeMetricas(filtros, veLosNumerosDeLaAgencia(actor.rol)))
   })
   // Estadísticas es la pestaña de Cartera con los mismos números en tabla.
   manejar('metricas:estadisticas', (periodo, sucursal) => {
-    exigirVista('metricas', 'cartera')
-    return exito(estadisticasDeCartera(periodo, sucursal))
+    const actor = exigirVista('metricas', 'cartera')
+    return exito(estadisticasDeCartera(periodo, sucursal, veLosNumerosDeLaAgencia(actor.rol)))
   })
 
   // Reportes: exportar lo que ya se ve en pantalla. Un reporte junta datos de varios módulos, así que
@@ -853,6 +900,30 @@ export function registrarIpc(): void {
   manejar('reportes:catalogo', () => {
     exigirVista('reportes')
     return exito(catalogoDeReportes())
+  })
+
+  // «General Excel»: el mismo dato del módulo, en planilla. Se pide el permiso del MÓDULO —Cartera
+  // para la cartera, Cobranzas para la mora— y no el de Reportes: si no, sería una puerta de atrás
+  // para mirar lo que a alguien le sacaron de la barra lateral.
+  manejar('excel:catalogo', () => {
+    const actor = exigirSesion()
+    return exito(catalogoDeExcel((area) => puedeVerElArea(actor, area)))
+  })
+  manejar('excel:filas', (pedido) => {
+    const areas = areasDelReporte(pedido?.reporteId ?? '')
+    if (areas.length === 0) throw new ErrorDeNegocio('Ese listado no se puede ver como planilla.')
+    exigirVista(...areas)
+    return exito(filasDeReporte(pedido))
+  })
+  // Bajar el .xlsx de lo que ya está en pantalla pide lo mismo que verlo. Con el permiso de Reportes
+  // el botón le fallaría siempre a quien tiene el módulo y no tiene Reportes, que es justo el recorte
+  // que la agencia haría para que un empleado no se baje la cartera entera.
+  manejar('excel:exportar', async (pedido) => {
+    const areas = areasDelReporte(pedido?.reporteId ?? '')
+    if (areas.length === 0) throw new ErrorDeNegocio('Ese listado no se puede bajar como planilla.')
+    exigirVista(...areas)
+    const archivo = xlsxDelReporte(pedido)
+    return exito(await guardarBinarioComo({ ...archivo, descripcion: 'Planilla de Excel' }, ventanaActual()))
   })
   manejar('reportes:vistaPrevia', (pedido) => {
     exigirVista('reportes')
@@ -917,6 +988,119 @@ export function registrarIpc(): void {
   )
 
   // Abrir un enlace en el navegador del sistema (WhatsApp). Sólo http/https.
+  // --- Catálogo de vehículos -------------------------------------------------
+  //
+  // Los desplegables los consulta cualquiera que pueda cargar una póliza o un presupuesto: son datos
+  // públicos de un catálogo de autos, no de la agencia. Configurar el proveedor y bajar el catálogo,
+  // en cambio, es de administradores: son credenciales y una descarga de decenas de miles de filas.
+  manejar('vehiculos:estado', () => {
+    exigirVista('polizas', 'presupuestos', 'administracion')
+    return exito(estadoDelCatalogo())
+  })
+  manejar('vehiculos:guardarCredenciales', (datos) => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    guardarCredencialesDeVehiculos(datos)
+    return exito(estadoDelCatalogo())
+  })
+  manejar('vehiculos:borrarCredenciales', () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    borrarCredencialesDeVehiculos()
+    return exito(estadoDelCatalogo())
+  })
+  manejar('vehiculos:probar', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('administracion')
+    return exito(await probarProveedorDeVehiculos())
+  })
+  manejar('vehiculos:refrescar', async (tipo) => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await refrescarCatalogo(tipo, (progreso) => emitirATodas('vehiculos:progreso', progreso)))
+  })
+  manejar('vehiculos:marcas', (tipo) => {
+    exigirVista('polizas', 'presupuestos', 'cartera')
+    return exito(marcasDelCatalogo(tipo))
+  })
+  manejar('vehiculos:modelos', (tipo, marcaId) => {
+    exigirVista('polizas', 'presupuestos', 'cartera')
+    return exito(modelosDelCatalogo(tipo, marcaId))
+  })
+  manejar('vehiculos:lineas', (tipo, marcaId, modeloId) => {
+    exigirVista('polizas', 'presupuestos', 'cartera')
+    return exito(lineasDelCatalogo(tipo, marcaId, modeloId))
+  })
+  manejar('vehiculos:anios', (tipo, marcaId, modeloId, lineaId) => {
+    exigirVista('polizas', 'presupuestos', 'cartera')
+    return exito(aniosDeLaLinea(tipo, marcaId, modeloId, lineaId))
+  })
+  manejar('vehiculos:resolver', (tipo, marcaId, modeloId, lineaId, anio) => {
+    exigirVista('polizas', 'presupuestos', 'cartera')
+    return exito(resolverVehiculoDelCatalogo(tipo, marcaId, modeloId, lineaId, anio))
+  })
+
+  // --- Marketing → Redes -----------------------------------------------------
+  //
+  // Publicar es EDITAR Marketing: sale en nombre de la agencia y se ve desde afuera. Cargar la app de
+  // Meta, en cambio, es una credencial y por eso pide administrador, igual que la cuenta de Google.
+  // Mirar la pestaña alcanza con ver Marketing: tiene que poder abrirse aunque no haya nada cargado,
+  // para que la pantalla explique qué falta en vez de romperse.
+  manejar('redes:panel', async () => {
+    exigirVista('marketing')
+    return exito(await panelDeRedes())
+  })
+  manejar('redes:estadoMeta', () => {
+    exigirVista('marketing', 'administracion')
+    return exito(estadoMeta())
+  })
+  manejar('redes:guardarMeta', (datos) => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(guardarMeta(datos))
+  })
+  manejar('redes:borrarMeta', () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(borrarMeta())
+  })
+  // Vincular deja la cuenta de la agencia atada a esta computadora: es de administradores.
+  manejar('redes:vincular', async () => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('marketing')
+    return exito(await vincularConMeta(ventanaActual(), actor))
+  })
+  manejar('redes:elegirPagina', async (paginaId) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('marketing')
+    elegirPaginaVinculada(paginaId, actor)
+    return exito(await panelDeRedes())
+  })
+  manejar('redes:desvincular', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('marketing')
+    desvincularDeMeta()
+    return exito(await panelDeRedes())
+  })
+  manejar('redes:elegirArchivo', async () => {
+    exigirEdicion('marketing')
+    const ventana = ventanaActual()
+    const opciones = {
+      title: 'Elegí la foto para publicar',
+      buttonLabel: 'Usar esta foto',
+      properties: ['openFile'] as Array<'openFile'>,
+      // Sólo fotos: los videos y los reels necesitan otro camino y todavía no están.
+      filters: [{ name: 'Fotos', extensions: ['jpg', 'jpeg', 'png'] }],
+    }
+    const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
+    if (elegido.canceled || elegido.filePaths.length === 0) return exito(null)
+    return exito(await revisarArchivoParaPublicar(elegido.filePaths[0]!))
+  })
+  manejar('redes:publicar', async (pedido) => {
+    const actor = exigirEdicion('marketing')
+    return exito(await publicarEnRed(pedido, actor))
+  })
+
   manejar('sistema:abrirEnlace', async (url) => {
     exigirSesion()
     if (!/^https?:\/\//i.test(url)) throw new ErrorDeNegocio('Sólo se pueden abrir direcciones http o https.')

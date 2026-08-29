@@ -77,4 +77,56 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+
+  'marketing.redes': {
+    clave: 'marketing.redes',
+    titulo: 'Marketing → Redes',
+    resumen: 'Publicar en la página de Facebook de la agencia y en su Instagram, desde el programa.',
+    secciones: [
+      {
+        titulo: 'Qué se hace acá',
+        parrafos: [
+          'Se elige una foto, se escribe el texto, se marca si va a Facebook o a Instagram y se publica. Sale en nombre de la agencia, igual que si lo publicara alguien desde el teléfono: la diferencia es que queda anotado quién lo publicó y cuándo, y que se puede hacer desde la misma pantalla donde ya estás trabajando.',
+          'Es de a una publicación por vez, a propósito. No hay envíos masivos ni programados: las dos cosas son las que hacen que una cuenta termine bloqueada, y la de la agencia es la que se usa todo el día.',
+        ],
+      },
+      {
+        titulo: 'Vincular la cuenta',
+        parrafos: [
+          'Se hace una vez por computadora y lo hace un administrador. Al tocar «Vincular cuenta» se abre una ventana de Facebook para ingresar; después, si la cuenta administra más de una página, el programa pregunta cuál usar. El permiso queda guardado y cifrado en esa computadora, y no viaja a ninguna otra.',
+          'Para que esto funcione hace falta, antes, que un administrador cargue la app de Meta en Administración → Redes sociales. Si todavía no está, esta pantalla te lo dice y no te deja seguir.',
+        ],
+      },
+      {
+        titulo: 'Facebook e Instagram no son lo mismo',
+        parrafos: [
+          'Facebook acepta un posteo de texto solo, o texto con una foto. Instagram siempre necesita una foto: sin imagen no publica, y por eso el botón queda apagado.',
+          'Además, Instagram sólo se puede publicar por programa si la cuenta es Business y está vinculada a la página de Facebook. Eso se configura una vez desde Facebook, no desde acá. Si la página no tiene una cuenta así, la pantalla lo dice y el botón de Instagram queda apagado en vez de fallar al publicar.',
+          'Por ahora se publican fotos .jpg o .png de hasta 8 MB. Los videos y los reels necesitan otro camino y todavía no están; cuando estén, va a decirlo esta misma pantalla.',
+        ],
+      },
+      {
+        titulo: 'Cuando algo no sale',
+        parrafos: [
+          'Todo lo que se intenta queda en la lista de abajo, incluidas las publicaciones que fallaron y el motivo que dio Facebook. Eso es a propósito: el error se pierde apenas cerrás la pantalla, y sin él nadie puede averiguar qué pasó tres días después.',
+          'Si aparece «se cortó la conexión con Meta», hay que volver a vincular la cuenta: pasa cuando alguien cambió la contraseña de Facebook, le sacó el permiso a la app, o dejó de ser administrador de la página. La vinculación no se borra sola para que se pueda ver el motivo.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Página de Facebook',
+        explicacion: 'La cuenta pública de la agencia, distinta del perfil personal de quien la administra. Es donde se publica.',
+      },
+      {
+        termino: 'Cuenta Business de Instagram',
+        explicacion: 'Un tipo de cuenta de Instagram, gratuita, que se vincula a una página de Facebook. Es la única desde la que se puede publicar por programa.',
+      },
+      {
+        termino: 'Vincular',
+        explicacion: 'Darle permiso al programa para publicar en nombre de la agencia. Se hace una vez por computadora, ingresando en Facebook.',
+      },
+    ],
+  },
+
 }

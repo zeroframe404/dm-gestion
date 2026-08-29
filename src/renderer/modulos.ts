@@ -16,6 +16,7 @@ export type IdModulo =
   | 'reportes'
   | 'marketing'
   | 'tareas'
+  | 'excel'
   | 'administracion'
 
 export interface Modulo {
@@ -108,6 +109,13 @@ export const MODULOS: Modulo[] = [
     descripcion: 'Los pendientes del equipo: a quién le toca, para cuándo, con comentarios y documentos.',
     disponible: true,
   },
+  {
+    id: 'excel',
+    nombre: 'General Excel',
+    icono: 'cuadricula',
+    descripcion: 'Todas las áreas en un solo lugar y en formato planilla, como se venía trabajando.',
+    disponible: true,
+  },
 ]
 
 /** Va separado, al pie de la barra lateral. */
@@ -120,8 +128,11 @@ export const MODULO_ADMINISTRACION: Modulo = {
 }
 
 /**
- * Todos los módulos son un área de permisos menos Inicio, que es la pantalla que queda cuando no se
- * tiene ninguna otra y por eso no se puede sacar.
+ * Todos los módulos son un área de permisos menos Inicio —la pantalla que queda cuando no se tiene
+ * ninguna otra, y por eso no se puede sacar— y «General Excel», que no tiene permiso propio a
+ * propósito: no muestra datos nuevos, sino los de los módulos que cada uno ya puede ver, y con el
+ * permiso de esos módulos. Darle un permiso aparte permitiría dos configuraciones que se contradicen:
+ * alguien sin Siniestros que igual ve los siniestros «en Excel».
  */
 export function esAreaDePermisos(id: IdModulo): id is IdModulo & Area {
   return esArea(id)

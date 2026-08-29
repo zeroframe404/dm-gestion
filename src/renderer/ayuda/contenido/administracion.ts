@@ -16,7 +16,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Los tres roles',
         parrafos: [
-          'EMPLEADO ve y usa el día a día de la agencia (cartera, clientes, cobranzas, siniestros, etcétera) pero no entra a Administración salvo «Impresora» y «Acerca de», que las ve todo el mundo. ADMIN ve además Compañías, Base de datos, Sincronización, Reimportar la base y Google Drive. SUPER_ADMIN tiene todo lo anterior más esta pantalla, Usuarios, y es el único que puede resolver un problema serio con la lista compartida de usuarios si llegara a aparecer.',
+          'EMPLEADO ve y usa el día a día de la agencia (cartera, clientes, cobranzas, siniestros, etcétera) y de Administración entra a «Compañías», «Impresora», «Sincronizar» y «Acerca de», que las ve todo el mundo. Lo que no ve un empleado son los números agregados de la agencia: lo recaudado del mes, el porcentaje de comisión de cada compañía y la estimación de comisiones. Sí ve todo lo que necesita para trabajar: la caja de su sucursal, la mora que tiene que cobrar y la cuota de la persona que tiene delante. ADMIN ve además Base de datos, Sincronización, Reimportar la base y Google Drive, y sí ve los números de la agencia. SUPER_ADMIN tiene todo lo anterior más esta pantalla, Usuarios, y es el único que puede resolver un problema serio con la lista compartida de usuarios si llegara a aparecer.',
           'Eso es lo que trae cada rol de fábrica, y se puede recortar módulo por módulo en Administración → Permisos: por ejemplo, dejar a los empleados con Cobranzas en «sólo ver» o sin Marketing. Lo que ahí se configura vale para todas las computadoras de la agencia.',
         ],
       },
@@ -92,7 +92,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.companias': {
     clave: 'administracion.companias',
     titulo: 'Administración → Compañías',
-    resumen: 'Los días de cobertura financiera de cada aseguradora, el porcentaje de comisión, cada cuánto se renueva y el mensaje del aviso de vencimiento.',
+    resumen: 'Los días de cobertura financiera de cada aseguradora, cada cuánto se renueva y el mensaje del aviso de vencimiento. La miran todos; la editan los administradores.',
     secciones: [
       {
         titulo: 'Días de cobertura financiera',
@@ -101,9 +101,16 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'Quién ve y quién toca esta pantalla',
+        parrafos: [
+          'La mira todo el equipo, con el rol que sea: los días de cobertura de cada compañía son los que explican por qué la fila que tenés delante está amarilla y no roja, y saber si una compañía renueva sola o a mano es la mitad de una llamada. Cambiar los números sigue siendo cosa de administradores, porque un cambio acá repinta la planilla de todas las sucursales.',
+        ],
+      },
+      {
         titulo: 'Porcentaje de comisión',
         parrafos: [
           'Es lo que la aseguradora le reconoce a la agencia por cada póliza. Se usa en Cobranzas → Comisiones para estimar cuánto deja cada mes según lo que se cobró. Se edita igual que los días de cobertura: clic en el número de la fila de esa compañía, escribir el nuevo porcentaje y listo.',
+          'Esta columna la ven sólo los administradores: es lo que gana la agencia, no algo que haga falta para atender. A un empleado la tabla le aparece sin ella.',
         ],
       },
       {
@@ -319,6 +326,132 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.sincronizar': {
+    clave: 'administracion.sincronizar',
+    titulo: 'Administración → Sincronizar',
+    resumen: 'El botón para forzar una sincronización completa cuando algo no aparece. Lo puede usar cualquiera del equipo.',
+    secciones: [
+      {
+        titulo: 'Para qué está',
+        parrafos: [
+          'DM Gestión sincroniza solo cada tanto: sube lo que cargaste y baja lo que cargaron en las otras sucursales. El 99 % de los días nadie tiene que hacer nada. Esta pantalla es para el otro 1 %: tenés gente en el mostrador, alguien pregunta por una cuota que se cargó ayer en otra sucursal y acá no aparece, o cargaste un pago y ves que quedó «esperando para subir».',
+          'El botón «Sincronizar todo» fuerza una vuelta completa: sube todo lo que estaba en la cola y vuelve a bajar los datos de la hoja. No configura nada ni cambia nada de las otras computadoras, sólo apura lo que la aplicación iba a hacer sola. Por eso lo puede tocar cualquiera, con el rol que sea.',
+        ],
+      },
+      {
+        titulo: 'Qué dicen los tres números',
+        parrafos: [
+          '«Esperando para subir» son los cambios que hiciste en esta computadora y que todavía no llegaron a la hoja. En cero está todo bien. Con un número, la aplicación va a seguir intentando sola; el botón apura ese intento.',
+          '«Última subida» y «Última bajada» son los momentos en que esta computadora habló con la hoja por última vez. Si son de hace mucho —horas, o de ayer— y sincronizar no los mueve, es un problema de conexión o de la hoja y ahí sí hay que avisarle a un administrador, que tiene la pantalla «Sincronización» con el detalle.',
+        ],
+      },
+      {
+        titulo: 'Qué hacer si no alcanza',
+        parrafos: [
+          'Sincronizar de más no rompe nada: si no hay novedades, no pasa nada. Si después de sincronizar sigue faltando algo, o quedan cambios esperando, avisale a un administrador con lo que dice esta pantalla: con la última subida, la última bajada y cuántos cambios quedaron pendientes ya se sabe por dónde empezar a mirar.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Sincronizar',
+        explicacion: 'Poner de acuerdo lo que hay en esta computadora con lo que hay en la hoja de la agencia: subir lo tuyo y bajar lo de los demás.',
+      },
+      {
+        termino: 'Cambio pendiente',
+        explicacion: 'Algo que cargaste o corregiste acá y que todavía no llegó a la hoja. No se pierde: la aplicación lo reintenta sola.',
+      },
+    ],
+  },
+
+  'administracion.redessociales': {
+    clave: 'administracion.redessociales',
+    titulo: 'Administración → Redes sociales',
+    resumen: 'La app de Meta que el programa usa para publicar en Facebook e Instagram. Se carga una vez por computadora.',
+    secciones: [
+      {
+        titulo: 'Qué es esto',
+        parrafos: [
+          'Para que el programa pueda publicar en la página de Facebook de la agencia y en su Instagram, Meta exige que exista una «app» a nombre de la agencia. Se crea una sola vez en developers.facebook.com y de ahí salen dos datos: el App ID (un número) y el App Secret (una clave). Los dos se cargan acá.',
+          'Se guardan sólo en esta computadora, en el archivo de configuración local. No viajan a la hoja, ni a la base compartida, ni a las otras sucursales: cada computadora que vaya a publicar los tiene que tener cargados. Es el mismo criterio que la cuenta de Google.',
+        ],
+      },
+      {
+        titulo: 'La dirección de vuelta',
+        parrafos: [
+          'Es lo que más falla. En el panel de Meta, en «Facebook Login → Configuración», hay que pegar exactamente la dirección que muestra esta pantalla, en «URI de redireccionamiento de OAuth válidos». Si no coincide letra por letra, Facebook rechaza el ingreso con un error que no explica nada. El botón «Copiar» la deja lista para pegar.',
+          'El programa nunca abre esa dirección: atrapa el intento y lo cancela. No hace falta que la página exista.',
+        ],
+      },
+      {
+        titulo: 'Tres cosas que Meta exige y no dependen del programa',
+        parrafos: [
+          'Primero, la app tiene que salir de «modo Desarrollo» para que la use cualquiera. Mientras esté en Desarrollo funciona sólo para las personas dadas de alta como Administrador, Desarrollador o Tester en el panel de Meta. Es el motivo número uno de «no aparece ninguna página» al vincular.',
+          'Segundo, los permisos de publicación piden Revisión de la app y verificación del negocio. Es un trámite de Meta, con formularios y un video de demostración.',
+          'Y tercero, para Instagram la cuenta tiene que ser Business y estar vinculada a la página de Facebook. Una cuenta personal no se puede publicar por programa, sin importar cómo esté configurada la app.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'App de Meta',
+        explicacion: 'Un registro gratuito en developers.facebook.com que identifica al programa ante Facebook. Sin esto, Meta no acepta ninguna publicación automática.',
+      },
+      {
+        termino: 'App Secret',
+        explicacion: 'La clave de esa app. Meta la muestra una sola vez al crearla; si se pierde, hay que generar otra desde el panel.',
+      },
+    ],
+  },
+
+  'administracion.vehiculos': {
+    clave: 'administracion.vehiculos',
+    titulo: 'Administración → Catálogo de vehículos',
+    resumen: 'La conexión con el catálogo de autos y motos, y la copia local que usa el alta de pólizas.',
+    secciones: [
+      {
+        titulo: 'Qué cambia con esto',
+        parrafos: [
+          'Sin catálogo, al cargar una póliza hay que escribir la marca, el modelo y el año a mano, y así en la base terminan conviviendo «FORD», «Ford» y «FRD», y «FIESTA» sin saber cuál de las catorce versiones es. Con el catálogo cargado, el formulario los ofrece en listas encadenadas: se elige la marca y aparecen sus modelos, se elige el modelo y aparecen sus versiones (líneas), y después el año.',
+          'Y algo más importante: la CATEGORÍA —pick-up, SUV, furgón, camión, sedán— la decide el catálogo con lo ya elegido y no se puede tocar. De la categoría dependen la prima y qué coberturas se pueden emitir, y quien está cargando no tiene por qué saber si una Amarok es camioneta o pick-up.',
+        ],
+      },
+      {
+        titulo: 'Las credenciales',
+        parrafos: [
+          'Son el usuario y la clave de la cuenta que la agencia tiene con el proveedor del catálogo. Se guardan sólo en esta computadora, en el archivo de configuración local: no viajan a la hoja ni a las otras sucursales, así que cada computadora que vaya a cargar pólizas necesita las suyas.',
+          'El botón «Probar la conexión» dice enseguida si el usuario y la clave son correctos, sin bajar nada.',
+        ],
+      },
+      {
+        titulo: 'La copia local',
+        parrafos: [
+          'Los desplegables del formulario salen SIEMPRE de una copia guardada en esta computadora, y nunca de internet. Es a propósito: elegir un vehículo en el mostrador tiene que ser instantáneo, y tiene que funcionar aunque se corte la conexión, que es justo cuando más se cobra.',
+          '«Refrescar todo» baja el catálogo entero. Son decenas de miles de versiones y puede tardar varios minutos; mientras tanto se puede seguir usando el programa. Conviene hacerlo una vez por mes: los modelos nuevos salen todo el año. La pantalla marca «Conviene refrescarlo» cuando pasó un mes.',
+          'La agencia puede tener contratada una sola mitad del catálogo (los autos y no las motos, por ejemplo). Si una falla, la otra se baja igual y el motivo queda escrito en su tarjeta.',
+        ],
+      },
+      {
+        titulo: 'Qué pasa con lo que ya está cargado',
+        parrafos: [
+          'Nada. Las pólizas y los vehículos que ya están en la base siguen con su marca y su modelo tal como se escribieron, y no se toca ninguno. Sólo se completan la línea y la categoría si alguien vuelve a elegir ese vehículo del catálogo.',
+          'Eso es a propósito: emparejar automáticamente «FORD FIESTA» contra el catálogo obligaría a elegir una de catorce versiones por la agencia, y elegir mal es peor que dejar el dato como está.',
+          'Y si un vehículo no aparece en el catálogo —un importado, un modelo del año que todavía no cargaron—, el formulario tiene el botón «Cargarlo a mano» de siempre. El catálogo nunca puede frenar una póliza.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Línea',
+        explicacion: 'La versión exacta dentro de un modelo: «Corolla 2.0 XEI CVT» es una línea del modelo Corolla. Es la que define la categoría.',
+      },
+      {
+        termino: 'Categoría',
+        explicacion: 'Qué clase de vehículo es (sedán, SUV, pick-up, furgón, camión…). La decide el catálogo y no se puede elegir a mano.',
+      },
+    ],
+  },
+
   'administracion.acerca': {
     clave: 'administracion.acerca',
     titulo: 'Administración → Acerca de',

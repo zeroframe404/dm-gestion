@@ -100,7 +100,15 @@ export function sincronizarCompanias(): number {
   return nuevas
 }
 
-export function listarCompanias(): Compania[] {
+/**
+ * Las compañías, con sus días de cobertura y sus meses de renovación.
+ *
+ * `conComision` en false deja el porcentaje afuera: es lo que gana la agencia y no hace falta para
+ * nada del día a día. Un empleado igual necesita esta pantalla —los días de cobertura financiera son
+ * los que decidieron el color de la fila que tiene delante, y saber si una compañía renueva sola o a
+ * mano es la mitad de una llamada—, así que la lista se le da igual, sin ese número.
+ */
+export function listarCompanias(conComision = true): Compania[] {
   sincronizarCompanias()
   const filas = db()
     .prepare(
@@ -115,7 +123,7 @@ export function listarCompanias(): Compania[] {
     id: f.id,
     nombre: f.nombre,
     diasCoberturaFinanciera: f.dias,
-    comisionPorcentaje: f.comision,
+    comisionPorcentaje: conComision ? f.comision : null,
     mesesRenovacion: f.meses,
     activa: f.activa === 1,
     polizas: f.polizas,

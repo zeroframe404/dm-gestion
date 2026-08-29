@@ -12,9 +12,13 @@
 import { hoyLocal, nombreDePeriodo, periodoDeHoy } from '../../shared/semaforo'
 import { normalizarEstadoSiniestro } from '../../shared/siniestros'
 import { mismaSucursal } from '../../shared/sucursales'
+import type { Area } from '../../shared/permisos'
 import {
   ESTADOS_DE_SINIESTRO,
+  type AreaDeExcel,
+  type CatalogoDeExcel,
   type CatalogoDeReportes,
+  type FilasDeReporte,
   type ColumnaDeReporte,
   type DefinicionDeReporte,
   type FiltroDeReporte,
@@ -790,6 +794,85 @@ export function catalogoDeReportes(): CatalogoDeReportes {
     sucursales: catalogo.sucursales,
     companias: catalogo.companias,
     hoy: hoyLocal(),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Las áreas «como en Excel»
+// ---------------------------------------------------------------------------
+
+/**
+ * Qué área del programa mira cada reporte y con qué permiso. Es lo que hace que la pantalla «como en
+ * Excel» sea exactamente los mismos datos que la persona ya podía ver en su módulo, en otra forma:
+ * quien no entra a Siniestros tampoco lo ve acá, y quien no entra a Cobranzas no ve la mora.
+ *
+ * Pedir el permiso del MÓDULO y no el de Reportes es la diferencia entre una vista alternativa y una
+ * puerta de atrás. Reportes no aparece en la lista porque no tiene datos propios: son estos.
+ */
+const AREA_DE_CADA_REPORTE: Record<string, { areas: Area[]; modulo: string }> = {
+  cartera: { areas: ['cartera'], modulo: 'cartera' },
+  bajas: { areas: ['cartera'], modulo: 'cartera' },
+  riesgos: { areas: ['cartera'], modulo: 'cartera' },
+  clientes: { areas: ['clientes'], modulo: 'clientes' },
+  polizas: { areas: ['polizas'], modulo: 'polizas' },
+  renovaciones: { areas: ['renovaciones'], modulo: 'renovaciones' },
+  siniestros: { areas: ['siniestros'], modulo: 'siniestros' },
+  pagos: { areas: ['cobranzas'], modulo: 'cobranzas' },
+  mora: { areas: ['cobranzas'], modulo: 'cobranzas' },
+  leads: { areas: ['leads'], modulo: 'leads' },
+  presupuestos: { areas: ['presupuestos'], modulo: 'presupuestos' },
+  tareas: { areas: ['tareas'], modulo: 'tareas' },
+}
+
+/** Con qué permisos se puede mirar un reporte como planilla. Vacío = ninguno lo habilita. */
+export function areasDelReporte(reporteId: string): Area[] {
+  return AREA_DE_CADA_REPORTE[limpiar(reporteId)]?.areas ?? []
+}
+
+/**
+ * Más que esto no se manda al renderer de una sola vez: una planilla de setenta mil filas cuelga la
+ * ventana mientras React la dibuja, y nadie mira setenta mil filas. Cuando se llega al tope la
+ * pantalla lo dice y ofrece filtrar o bajarse el .xlsx completo, que no tiene este límite.
+ */
+export const TOPE_DE_FILAS_EN_PANTALLA = 5_000
+
+/**
+ * El catálogo de «General Excel»: sólo las áreas que la persona puede ver. Se arma con los permisos
+ * que ya tiene y no con una lista aparte, así no hay dos verdades que se puedan desincronizar.
+ */
+export function catalogoDeExcel(puedeVerArea: (area: Area) => boolean): CatalogoDeExcel {
+  const catalogo = catalogos()
+  const areas = REPORTES.filter((reporte) => areasDelReporte(reporte.id).some(puedeVerArea)).map(
+    (reporte): AreaDeExcel => ({
+      id: reporte.id,
+      nombre: reporte.nombre,
+      descripcion: reporte.descripcion,
+      filtros: reporte.filtros,
+      estados: reporte.estados,
+      etiquetaDeEstado: reporte.etiquetaDeEstado,
+      modulo: AREA_DE_CADA_REPORTE[reporte.id]?.modulo ?? 'reportes',
+    }),
+  )
+  return {
+    areas,
+    periodos: periodosDisponibles().map((p) => p.periodo),
+    sucursales: catalogo.sucursales,
+    companias: catalogo.companias,
+    hoy: hoyLocal(),
+  }
+}
+
+/** Las filas de un área, ya como texto, para dibujarlas en la planilla de la pantalla. */
+export function filasDeReporte(pedido: PedidoDeReporte): FilasDeReporte {
+  const armado = armar(pedido)
+  const mostradas = armado.filas.slice(0, TOPE_DE_FILAS_EN_PANTALLA)
+  return {
+    reporteId: armado.reporte.id,
+    nombre: armado.titulo,
+    columnas: armado.columnas,
+    filas: mostradas.map((fila) => fila.map(comoTexto)),
+    total: armado.filas.length,
+    recortado: armado.filas.length > mostradas.length,
   }
 }
 

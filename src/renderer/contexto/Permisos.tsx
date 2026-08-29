@@ -15,6 +15,12 @@ interface ContextoPermisos {
   nivel: (area: Area) => Nivel
   puedeVer: (area: Area) => boolean
   puedeEditar: (area: Area) => boolean
+  /**
+   * Si ve los números agregados de la agencia (lo recaudado del mes, la comisión estimada, el
+   * porcentaje de cada compañía). El proceso principal ya no manda esos datos a quien no corresponde;
+   * esto es para que la pantalla no dibuje huecos donde no va a llegar nada.
+   */
+  veNumerosDeLaAgencia: boolean
 }
 
 const Contexto = createContext<ContextoPermisos | null>(null)
@@ -66,6 +72,9 @@ export function ProveedorPermisos({ children }: { children: ReactNode }) {
       nivel,
       puedeVer: (area) => alcanza(nivel(area), 'ver'),
       puedeEditar: (area) => alcanza(nivel(area), 'editar'),
+      // Mientras no se sepa, se asume que NO: es preferible una tarjeta de menos por un segundo que
+      // un número de la agencia que aparece y desaparece delante de quien no tenía que verlo.
+      veNumerosDeLaAgencia: permisos?.veNumerosDeLaAgencia === true,
     }),
     [permisos, cargando, nivel],
   )
@@ -82,4 +91,9 @@ export function usePermisos(): ContextoPermisos {
 /** Atajo para las pantallas que sólo necesitan saber si pueden editar su propio módulo. */
 export function usePuedeEditar(area: Area): boolean {
   return usePermisos().puedeEditar(area)
+}
+
+/** Atajo para las pantallas que muestran plata agregada de la agencia. */
+export function useVeNumerosDeLaAgencia(): boolean {
+  return usePermisos().veNumerosDeLaAgencia
 }

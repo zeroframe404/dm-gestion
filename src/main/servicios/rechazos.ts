@@ -178,6 +178,8 @@ export function avisosDeRechazos(actor: SesionUsuario): AvisosDeRechazos {
   const suyos = todos().filter((fila) => fila.estado !== 'RESUELTO' && esDeLaSucursal(fila, sucursal))
   return {
     nuevos: suyos.filter((fila) => fila.estado === 'PENDIENTE').length,
+    // Sin tope, a diferencia de `filas`: son los que deciden si suena el aviso.
+    idsNuevos: suyos.filter((fila) => fila.estado === 'PENDIENTE').map((fila) => fila.id),
     sinResolver: suyos.length,
     filas: suyos.slice(0, 12),
     sucursal,

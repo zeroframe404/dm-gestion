@@ -91,6 +91,26 @@ export function permisosPorDefecto(): MatrizPermisos {
   }
 }
 
+/**
+ * ¿Este rol puede ver los números de la agencia?
+ *
+ * Es una línea distinta de la matriz de permisos y por eso no está en ella: la matriz dice a qué
+ * MÓDULOS entra cada uno, y esto dice qué NÚMEROS ve dentro de los módulos a los que ya entró. Un
+ * empleado necesita Cobranzas todos los días —la caja de su sucursal, la mora que tiene que salir a
+ * cobrar, la cuota de la persona que tiene delante— y nada de eso es lo que gana la agencia.
+ *
+ * Lo que queda del otro lado es lo agregado: el bruto cobrado en el mes, la comisión estimada, el
+ * porcentaje que paga cada compañía, la evolución de la recaudación. Se oculta para que el sueldo de
+ * nadie se discuta contra un número que además está mal leído —«cobrado» no es «ganado»—, que es
+ * exactamente el problema que pidió resolver la agencia.
+ *
+ * Es una regla de ROL y no un permiso configurable a propósito: si se pudiera activar por pantalla,
+ * alcanzaría con que alguien se distraiga una vez.
+ */
+export function veLosNumerosDeLaAgencia(rol: Rol): boolean {
+  return rol !== 'EMPLEADO'
+}
+
 export function esArea(valor: unknown): valor is Area {
   return typeof valor === 'string' && (AREAS as readonly string[]).includes(valor)
 }

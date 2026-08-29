@@ -9,6 +9,7 @@ import type { FilaCliente, FiltroEstadoCliente, FiltrosClientes, ListadoClientes
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
+import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
@@ -252,6 +253,7 @@ function ListadoDeClientes({
               Nuevo cliente
             </Boton>
           )}
+          <BotonVerComoExcel area="clientes" />
           <BotonAyuda clave="clientes" />
         </div>
       </div>

@@ -95,6 +95,7 @@ export interface ApiDm {
     listar: Remota<'clientes:listar'>
     buscar: Remota<'clientes:buscar'>
     ficha: Remota<'clientes:ficha'>
+    localidades: Remota<'clientes:localidades'>
     crear: Remota<'clientes:crear'>
     editar: Remota<'clientes:editar'>
     agregarNota: Remota<'clientes:agregarNota'>
@@ -194,6 +195,8 @@ export interface ApiDm {
     mias: Remota<'tareas:mias'>
     avisos: Remota<'tareas:avisos'>
     marcarVistos: Remota<'tareas:marcarVistos'>
+    /** Alguien terminó una tarea: suena el aviso y las pantallas abiertas se refrescan. */
+    alCompletarse: Suscripcion<'tareas:completada'>
   }
   metricas: {
     tablero: Remota<'metricas:tablero'>
@@ -205,6 +208,11 @@ export interface ApiDm {
     exportar: Remota<'reportes:exportar'>
     planillaClasica: Remota<'reportes:planillaClasica'>
   }
+  excel: {
+    catalogo: Remota<'excel:catalogo'>
+    filas: Remota<'excel:filas'>
+    exportar: Remota<'excel:exportar'>
+  }
   marketing: {
     plantillas: Remota<'marketing:plantillas'>
     crearPlantilla: Remota<'marketing:crearPlantilla'>
@@ -214,6 +222,30 @@ export interface ApiDm {
     guardarSegmento: Remota<'marketing:guardarSegmento'>
     borrarSegmento: Remota<'marketing:borrarSegmento'>
     avisar: Remota<'marketing:avisar'>
+  }
+  vehiculos: {
+    estado: Remota<'vehiculos:estado'>
+    guardarCredenciales: Remota<'vehiculos:guardarCredenciales'>
+    borrarCredenciales: Remota<'vehiculos:borrarCredenciales'>
+    probar: Remota<'vehiculos:probar'>
+    refrescar: Remota<'vehiculos:refrescar'>
+    marcas: Remota<'vehiculos:marcas'>
+    modelos: Remota<'vehiculos:modelos'>
+    lineas: Remota<'vehiculos:lineas'>
+    anios: Remota<'vehiculos:anios'>
+    resolver: Remota<'vehiculos:resolver'>
+    alProgresar: Suscripcion<'vehiculos:progreso'>
+  }
+  redes: {
+    panel: Remota<'redes:panel'>
+    estadoMeta: Remota<'redes:estadoMeta'>
+    guardarMeta: Remota<'redes:guardarMeta'>
+    borrarMeta: Remota<'redes:borrarMeta'>
+    vincular: Remota<'redes:vincular'>
+    elegirPagina: Remota<'redes:elegirPagina'>
+    desvincular: Remota<'redes:desvincular'>
+    elegirArchivo: Remota<'redes:elegirArchivo'>
+    publicar: Remota<'redes:publicar'>
   }
   sistema: {
     abrirEnlace: Remota<'sistema:abrirEnlace'>

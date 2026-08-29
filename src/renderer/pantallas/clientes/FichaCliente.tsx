@@ -7,6 +7,7 @@
 //  · Las cuatro acciones del encabezado (nueva póliza, registrar pago, cargar siniestro, nueva tarea)
 //    son las que se hacen con el cliente delante, por teléfono o en el mostrador.
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { direccionEstaVacia, sanearDireccion } from '../../../shared/direccion'
 import { diasParaVencer, estadoDePoliza, NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
 import { hoyLocal } from '../../../shared/semaforo'
 import {
@@ -23,6 +24,7 @@ import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
+import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, conDireccion, recortar } from './CamposDeCliente'
 import { DialogoPagoDelCliente, DialogoSiniestro } from './DialogosDeFicha'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
@@ -52,7 +54,13 @@ function datosDe(ficha: FichaCliente): DatosDeCliente {
     localidad: ficha.localidad ?? '',
     sucursal: ficha.sucursal ?? '',
     fechaNacimiento: ficha.fechaNacimiento ?? '',
+    direccionDetalle: sanearDireccion(ficha.direccionDetalle),
   }
+}
+
+/** Dos fichas son iguales si lo son campo a campo, con la dirección comparada por su contenido. */
+function hayDiferencias(a: DatosDeCliente, b: DatosDeCliente): boolean {
+  return JSON.stringify(a) !== JSON.stringify(b)
 }
 
 export function FichaDelCliente({ clienteId, alVolver }: { clienteId: number; alVolver: () => void }) {
@@ -276,12 +284,16 @@ function PestanaDatos({
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
+  const [localidades, setLocalidades] = useState<string[]>([])
 
   // Las sucursales oficiales, para sugerirlas sin obligar: el campo es texto libre porque en la hoja
-  // hay variantes viejas que no se pueden pisar sin preguntar.
+  // hay variantes viejas que no se pueden pisar sin preguntar. Con las localidades, lo mismo.
   useEffect(() => {
     void window.dm.sucursales.listar().then((resultado) => {
       if (resultado.ok) setSucursales(resultado.datos)
+    })
+    void window.dm.clientes.localidades().then((resultado) => {
+      if (resultado.ok) setLocalidades(resultado.datos)
     })
   }, [])
 
@@ -294,19 +306,16 @@ function PestanaDatos({
   }, [ficha.id])
 
   const original = datosDe(ficha)
-  const hayCambios = (Object.keys(original) as Array<keyof DatosDeCliente>).some((campo) => borrador[campo] !== original[campo])
+  const hayCambios = hayDiferencias(borrador, original)
 
-  const cambiar = (campo: keyof DatosDeCliente) => (evento: { target: { value: string } }) =>
-    setBorrador((previo) => ({ ...previo, [campo]: evento.target.value }))
+  const cambiarTexto = (campo: Exclude<keyof DatosDeCliente, 'direccionDetalle'>) => (valor: string) =>
+    setBorrador((previo) => ({ ...previo, [campo]: valor }))
 
   const guardar = async () => {
     setGuardando(true)
     setError(null)
     alAvisar(null)
-    const limpios = Object.fromEntries(
-      (Object.keys(borrador) as Array<keyof DatosDeCliente>).map((campo) => [campo, borrador[campo].trim()]),
-    ) as unknown as DatosDeCliente
-    const resultado = await window.dm.clientes.editar(ficha.id, limpios)
+    const resultado = await window.dm.clientes.editar(ficha.id, recortar(borrador))
     setGuardando(false)
     if (!resultado.ok) {
       setError(resultado.error)
@@ -320,28 +329,54 @@ function PestanaDatos({
   return (
     <section className="max-w-3xl rounded-xl border border-slate-200 bg-white p-5 shadow-suave">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Nombre y apellido" value={borrador.nombre} onChange={cambiar('nombre')} autoComplete="off" />
         <Campo
-          etiqueta="DNI / CUIT"
-          value={borrador.documento}
-          onChange={cambiar('documento')}
+          etiqueta="Nombre y apellido"
+          value={borrador.nombre}
+          onChange={(evento) => cambiarTexto('nombre')(evento.target.value)}
+          autoComplete="off"
+        />
+        <CampoDeDocumento
+          valor={borrador.documento}
+          alCambiar={cambiarTexto('documento')}
+          ayudaExtra="Es lo que identifica al cliente: dos personas no pueden tener el mismo."
+        />
+        <Campo
+          etiqueta="Celular/WhatsApp"
+          value={borrador.telefono}
+          onChange={(evento) => cambiarTexto('telefono')(evento.target.value)}
           className="tabular-nums"
-          ayuda="Es lo que identifica al cliente: dos personas no pueden tener el mismo."
           autoComplete="off"
         />
-        <Campo etiqueta="Teléfono" value={borrador.telefono} onChange={cambiar('telefono')} className="tabular-nums" autoComplete="off" />
-        <Campo etiqueta="Email" type="email" value={borrador.email} onChange={cambiar('email')} autoComplete="off" />
-        <Campo etiqueta="Dirección" value={borrador.direccion} onChange={cambiar('direccion')} autoComplete="off" />
-        <Campo etiqueta="Localidad" value={borrador.localidad} onChange={cambiar('localidad')} autoComplete="off" />
-        <Campo etiqueta="Sucursal" value={borrador.sucursal} onChange={cambiar('sucursal')} list={LISTA_SUCURSALES} autoComplete="off" />
         <Campo
-          etiqueta="Fecha de nacimiento"
-          value={borrador.fechaNacimiento}
-          onChange={cambiar('fechaNacimiento')}
-          ayuda="Como figura en la hoja (por ejemplo 12/05/1980)."
+          etiqueta="Email"
+          type="email"
+          value={borrador.email}
+          onChange={(evento) => cambiarTexto('email')(evento.target.value)}
           autoComplete="off"
         />
+        <BotonDeDireccion
+          direccion={borrador.direccionDetalle}
+          alCambiar={(direccionDetalle) => setBorrador((previo) => conDireccion(previo, direccionDetalle))}
+          localidadesConocidas={localidades}
+        />
+        <Campo
+          etiqueta="Sucursal"
+          value={borrador.sucursal}
+          onChange={(evento) => cambiarTexto('sucursal')(evento.target.value)}
+          list={LISTA_SUCURSALES}
+          autoComplete="off"
+        />
+        <CampoDeNacimiento valor={borrador.fechaNacimiento} alCambiar={cambiarTexto('fechaNacimiento')} />
       </div>
+
+      {/* Las fichas viejas sólo tienen el renglón libre que vino de la hoja: se muestra tal cual hasta
+          que alguien cargue la dirección en partes, y ahí este cartel desaparece solo. */}
+      {direccionEstaVacia(borrador.direccionDetalle) && (borrador.direccion || borrador.localidad) && (
+        <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Dirección cargada de la hoja: <span className="font-medium text-slate-800">{[borrador.direccion, borrador.localidad].filter(Boolean).join(', ')}</span>.
+          Cargala con el botón de arriba para dejarla en partes.
+        </p>
+      )}
 
       <datalist id={LISTA_SUCURSALES}>
         {sucursales.map((sucursal) => (

@@ -107,6 +107,9 @@ interface PropsTabla {
 }
 
 function TablaDeEstadisticas({ titulo, encabezadoDeFila, filas, totales, vacio }: PropsTabla) {
+  // La columna de plata sólo existe si el proceso principal la mandó: a un empleado le llega en null.
+  const conCobrado = totales.cobrado !== null
+
   const encabezado = 'px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 whitespace-nowrap'
   return (
     <section className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-suave">
@@ -122,13 +125,13 @@ function TablaDeEstadisticas({ titulo, encabezadoDeFila, filas, totales, vacio }
               <th className={cx(encabezado, 'text-right')}>Altas</th>
               <th className={cx(encabezado, 'text-right')}>Bajas</th>
               <th className={cx(encabezado, 'text-right')}>Pagos</th>
-              <th className={cx(encabezado, 'text-right')}>Cobrado</th>
+              {conCobrado && <th className={cx(encabezado, 'text-right')}>Cobrado</th>}
             </tr>
           </thead>
           <tbody>
             {filas.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-10 text-center text-slate-500">
+                <td colSpan={conCobrado ? 6 : 5} className="px-3 py-10 text-center text-slate-500">
                   {vacio}
                 </td>
               </tr>
@@ -144,7 +147,7 @@ function TablaDeEstadisticas({ titulo, encabezadoDeFila, filas, totales, vacio }
                   {fila.bajas > 0 ? numero(fila.bajas) : '—'}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-600">{numero(fila.pagos)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-900">{pesos(fila.cobrado)}</td>
+                {fila.cobrado !== null && <td className="px-3 py-2 text-right tabular-nums text-slate-900">{pesos(fila.cobrado)}</td>}
               </tr>
             ))}
           </tbody>
@@ -156,7 +159,7 @@ function TablaDeEstadisticas({ titulo, encabezadoDeFila, filas, totales, vacio }
                 <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(totales.altas)}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(totales.bajas)}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(totales.pagos)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-900">{pesos(totales.cobrado)}</td>
+                {totales.cobrado !== null && <td className="px-3 py-2 text-right tabular-nums text-slate-900">{pesos(totales.cobrado)}</td>}
               </tr>
             </tfoot>
           )}

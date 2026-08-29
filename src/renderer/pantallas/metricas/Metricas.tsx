@@ -95,20 +95,41 @@ export function Metricas() {
         />
         <TarjetaGrande etiqueta="Altas del mes" valor={numero(datos.altas)} detalle="Están este mes y no estaban el anterior" tono="exito" />
         <TarjetaGrande etiqueta="Bajas del mes" valor={numero(datos.bajas)} detalle={resumenDeMotivos(datos)} tono="peligro" />
-        <TarjetaGrande
-          etiqueta="Cobrado en el mes"
-          valor={pesosRedondos(datos.cobranza.cobrado)}
-          detalle={`${numero(datos.cobranza.cuotasCobradas)} cuota(s) cobrada(s)`}
-        />
-        <TarjetaGrande
-          etiqueta="Pendiente de cobro"
-          valor={pesosRedondos(datos.cobranza.pendiente)}
-          detalle={
-            datos.cobranza.sinImporte > 0
-              ? `${numero(datos.cobranza.cuotasPendientes)} impaga(s) · ${numero(datos.cobranza.sinImporte)} sin importe numérico`
-              : `${numero(datos.cobranza.cuotasPendientes)} cuota(s) impaga(s)`
-          }
-        />
+        {/* Las dos de plata sólo para quien ve los números de la agencia. Cuando no, en su lugar va la
+            CANTIDAD de cuotas, que es lo mismo en términos de trabajo hecho y por hacer, y es lo que
+            de verdad necesita el mostrador. Una tarjeta con un guion invitaría a preguntar por qué. */}
+        {datos.cobranza.cobrado !== null ? (
+          <TarjetaGrande
+            etiqueta="Cobrado en el mes"
+            valor={pesosRedondos(datos.cobranza.cobrado)}
+            detalle={`${numero(datos.cobranza.cuotasCobradas)} cuota(s) cobrada(s)`}
+          />
+        ) : (
+          <TarjetaGrande
+            etiqueta="Cuotas cobradas"
+            valor={numero(datos.cobranza.cuotasCobradas)}
+            detalle={`De ${numero(datos.cobranza.cuotasCobradas + datos.cobranza.cuotasPendientes)} del mes`}
+            tono="exito"
+          />
+        )}
+        {datos.cobranza.pendiente !== null ? (
+          <TarjetaGrande
+            etiqueta="Pendiente de cobro"
+            valor={pesosRedondos(datos.cobranza.pendiente)}
+            detalle={
+              datos.cobranza.sinImporte > 0
+                ? `${numero(datos.cobranza.cuotasPendientes)} impaga(s) · ${numero(datos.cobranza.sinImporte)} sin importe numérico`
+                : `${numero(datos.cobranza.cuotasPendientes)} cuota(s) impaga(s)`
+            }
+          />
+        ) : (
+          <TarjetaGrande
+            etiqueta="Cuotas impagas"
+            valor={numero(datos.cobranza.cuotasPendientes)}
+            detalle="Las que todavía hay que salir a cobrar"
+            tono="peligro"
+          />
+        )}
         <TarjetaGrande
           etiqueta="Siniestros abiertos"
           valor={numero(datos.siniestrosAbiertos)}
@@ -149,6 +170,8 @@ export function Metricas() {
           />
         </Tarjeta>
 
+        {/* El reparto de lo recaudado es el número de la agencia: sin permiso, la tarjeta no existe. */}
+        {datos.cobranza.porMedio !== null && (
         <Tarjeta titulo="Cobranza del mes por medio de pago" descripcion="Cómo entró la plata que se cobró en el mes.">
           {datos.cobranza.porMedio.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-500">Todavía no hay cobranza registrada en este mes.</p>
@@ -166,6 +189,7 @@ export function Metricas() {
             </ul>
           )}
         </Tarjeta>
+        )}
 
         <Tarjeta titulo="Siniestros abiertos por compañía" descripcion="Los trámites que siguen sin cerrarse, sin importar de qué mes son.">
           <Ranking filas={datos.siniestrosPorCompania} vacio="No hay siniestros abiertos." />

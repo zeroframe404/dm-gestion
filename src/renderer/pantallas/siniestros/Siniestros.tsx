@@ -16,6 +16,7 @@ import {
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
+import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { DialogoAltaSiniestro } from './DialogoAltaSiniestro'
 import { FichaSiniestro } from './FichaSiniestro'
@@ -136,6 +137,7 @@ export function Siniestros() {
               Cargar siniestro
             </Boton>
           )}
+          <BotonVerComoExcel area="siniestros" />
           <BotonAyuda clave="siniestros" />
         </div>
       </div>

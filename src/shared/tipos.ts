@@ -1,5 +1,6 @@
 // Tipos compartidos entre el proceso principal, la precarga y el renderer.
 // Este archivo no puede importar nada de Electron ni de Node: lo usan los tres lados.
+import type { DireccionEstructurada } from './direccion'
 import type { MatrizPermisos, PermisosDeUnRol } from './permisos'
 
 export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'EMPLEADO'] as const
@@ -168,6 +169,13 @@ export interface MatrizDePermisos {
 export interface MisPermisos {
   rol: Rol
   areas: PermisosDeUnRol
+  /**
+   * Si puede ver los números agregados de la agencia (el bruto cobrado en el mes, la comisión
+   * estimada, el porcentaje de cada compañía). Va aparte de `areas` porque no dice a qué módulo
+   * entra sino qué números ve adentro. Lo decide el rol; el proceso principal ya filtra lo que
+   * manda, así que esto es sólo para que la pantalla no dibuje huecos.
+   */
+  veNumerosDeLaAgencia: boolean
 }
 
 /** Lo que necesita Administración → Usuarios además de la lista. */
@@ -399,8 +407,11 @@ export interface Compania {
   id: number
   nombre: string
   diasCoberturaFinanciera: number
-  /** Porcentaje de comisión que deja la compañía. 0 = todavía no se cargó. */
-  comisionPorcentaje: number
+  /**
+   * Porcentaje de comisión que deja la compañía. 0 = todavía no se cargó; `null` = quien está mirando
+   * no ve los números de la agencia (un empleado), y por eso el dato ni siquiera viajó.
+   */
+  comisionPorcentaje: number | null
   /**
    * Cada cuántos meses hay que renovar a mano en esta compañía (Agrosalta 4, Río Uruguay 6, Metropol
    * 12). `null` = la compañía renueva sola: sus pólizas no entran en la bandeja de renovaciones.
@@ -744,6 +755,8 @@ export interface ListadoRechazos {
 export interface AvisosDeRechazos {
   /** Avisos de la sucursal que todavía nadie abrió: son los que encienden el punto. */
   nuevos: number
+  /** Los ids de esos mismos, sin tope. Es lo que decide si suena el aviso; ver `AvisosDeTareas`. */
+  idsNuevos: number[]
   /** Todo lo que la sucursal tiene sin resolver (pendiente o visto). */
   sinResolver: number
   filas: FilaRechazo[]
@@ -915,12 +928,20 @@ export interface ResumenDeClientes {
 export interface DatosDeCliente {
   nombre: string
   documento: string
+  /** El celular. Es el mismo número de WhatsApp: en la agencia nunca fue otro. */
   telefono: string
   email: string
+  /**
+   * El renglón de la calle, como se imprime. Cuando `direccionDetalle` trae algo se ARMA con ella y lo
+   * que se mande acá se ignora; en las fichas viejas, que sólo tienen el renglón libre que vino de la
+   * hoja, se sigue guardando tal cual hasta que alguien complete la dirección en partes.
+   */
   direccion: string
   localidad: string
   sucursal: string
   fechaNacimiento: string
+  /** La dirección en partes. Vacía en las fichas que todavía no se pasaron al formulario nuevo. */
+  direccionDetalle: DireccionEstructurada
 }
 
 /** Resultado del alta: o se creó, o ya existía alguien con ese documento. */
@@ -933,9 +954,13 @@ export interface VehiculoDeCliente {
   patente: string | null
   marca: string | null
   modelo: string | null
+  /** La versión concreta. null en los vehículos cargados antes del catálogo. */
+  linea: string | null
   anio: string | null
   anioNumero: number | null
   tipo: string | null
+  /** La que decidió el catálogo. null en los que se cargaron a mano. */
+  categoria: CategoriaDeVehiculo | null
   motor: string | null
   chasis: string | null
   uso: string | null
@@ -1022,6 +1047,8 @@ export interface FichaCliente {
   localidad: string | null
   sucursal: string | null
   fechaNacimiento: string | null
+  /** La dirección en partes. Toda vacía en las fichas viejas: ahí sólo hay `direccion` y `localidad`. */
+  direccionDetalle: DireccionEstructurada
   vehiculos: VehiculoDeCliente[]
   polizas: PolizaDeCliente[]
   pagos: PagoDeCliente[]
@@ -1070,8 +1097,14 @@ export interface DatosDePoliza {
     patente: string
     marca: string
     modelo: string
+    /** La versión, del catálogo. Vacío si se cargó a mano. */
+    linea: string
     anio: string
     tipo: string
+    /** La decide el catálogo, no la pantalla. Vacío si se cargó a mano. */
+    categoria: string
+    /** El código del proveedor: distingue un vehículo identificado de uno tipeado. */
+    catalogoCodigo: string
     motor: string
     chasis: string
     uso: string
@@ -2190,9 +2223,28 @@ export interface AvisosDeTareas {
   venceHoy: number
   vencidas: number
   pendientes: number
+  /**
+   * Los ids de las que todavía no vi. Es lo que decide si SUENA la campana, y va aparte de `filas` a
+   * propósito: `filas` son las ocho primeras de todo lo abierto, así que sonar por lo que aparece ahí
+   * daría un aviso cada vez que una tarea vieja sube un lugar, y ninguno por una tarea nueva que
+   * ordena novena. Sin tope: son sólo números.
+   */
+  idsNuevas: number[]
   /** Las primeras, para el desplegable de la campana. */
   filas: FilaTarea[]
   hoy: string
+}
+
+/**
+ * Una tarea que se acaba de dar por terminada. Viaja del proceso principal al renderer para que suene
+ * el aviso, y es lo mismo que dice la notificación del sistema. Se manda desde las tres pantallas que
+ * pueden cerrar una tarea (el módulo Tareas, la ficha de un cliente y la de un siniestro).
+ */
+export interface TareaCompletada {
+  tareaId: number
+  titulo: string
+  /** Quién la marcó. Vacío si no se sabe. */
+  porQuien: string
 }
 
 // ---------------------------------------------------------------------------
@@ -2226,17 +2278,21 @@ export interface MesDeEvolucion {
   activos: number
   altas: number
   bajas: number
-  cobrado: number
+  /** null cuando quien mira no ve los números de la agencia. Un cero diría «no se cobró nada». */
+  cobrado: number | null
 }
 
 export interface CobranzaDelMes {
-  cobrado: number
-  pendiente: number
+  /** null cuando quien mira no ve los números de la agencia. */
+  cobrado: number | null
+  pendiente: number | null
+  /** La CANTIDAD de cuotas la ve todo el mundo: es trabajo hecho y trabajo por hacer, no plata. */
   cuotasCobradas: number
   cuotasPendientes: number
   /** Cuotas sin importe numérico: no suman ni de un lado ni del otro, pero se cuentan. */
   sinImporte: number
-  porMedio: TotalPorMedio[]
+  /** null por lo mismo que `cobrado`: es el reparto de lo recaudado. */
+  porMedio: TotalPorMedio[] | null
 }
 
 /**
@@ -2274,9 +2330,10 @@ export interface FilaEstadistica {
   activos: number
   altas: number
   bajas: number
-  /** Cuántos pagos entraron en el mes y cuánto suman. */
+  /** Cuántos pagos entraron en el mes. La cantidad la ve todo el mundo. */
   pagos: number
-  cobrado: number
+  /** Cuánto suman. null cuando quien mira no ve los números de la agencia. */
+  cobrado: number | null
 }
 
 export interface EstadisticasDeCartera {
@@ -2359,11 +2416,286 @@ export interface VistaPreviaDeReporte {
   mostradas: number
 }
 
+/**
+ * Lo mismo que la vista previa pero entero, para la pantalla que muestra un área «como en Excel».
+ *
+ * Va aparte de `VistaPreviaDeReporte` porque son dos cosas distintas: la vista previa son cincuenta
+ * filas para mirar antes de exportar, y esto es la planilla para trabajar. Con un tope igual, porque
+ * mandar setenta mil filas al renderer cuelga la ventana; cuando se llega, la pantalla lo dice y
+ * ofrece filtrar o bajar el .xlsx, en vez de mostrar un pedazo sin avisar.
+ */
+export interface FilasDeReporte {
+  reporteId: string
+  nombre: string
+  columnas: ColumnaDeReporte[]
+  filas: string[][]
+  /** Cuántas hay en total, antes del tope. */
+  total: number
+  /** true si `filas` está recortada: hay más de las que se mandaron. */
+  recortado: boolean
+}
+
+/** Un área del programa mirada como planilla: qué reporte la alimenta y cómo se llama. */
+export interface AreaDeExcel {
+  /** El id del reporte que la alimenta. */
+  id: string
+  nombre: string
+  descripcion: string
+  /** Los filtros que entiende, para dibujar sólo esos. */
+  filtros: FiltroDeReporte[]
+  estados: string[]
+  etiquetaDeEstado: string
+  /** A qué módulo de la barra lateral corresponde: el botón «Ver como Excel» vuelve desde ahí. */
+  modulo: string
+}
+
+/** Lo que necesita el módulo «General Excel» para dibujarse. */
+export interface CatalogoDeExcel {
+  areas: AreaDeExcel[]
+  periodos: string[]
+  sucursales: string[]
+  companias: string[]
+  hoy: string
+}
+
 /** Lo que hace falta para armar el reporte especial «Planilla clásica». */
 export interface OpcionesPlanillaClasica {
   /** Meses elegidos, 'AAAA-MM'. Una pestaña por mes, más su pestaña de BAJAS. */
   periodos: string[]
   sucursal: string
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo de vehículos (autos y motos por API)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lo ÚNICO que se elige a mano de todo el vehículo. El resto —marca, modelo, línea, año y sobre todo
+ * la categoría— sale del catálogo, porque quien carga no tiene por qué saber si una Amarok es
+ * camioneta o pick-up, y la compañía sí.
+ */
+export const TIPOS_DE_VEHICULO = ['AUTO', 'MOTO'] as const
+export type TipoDeVehiculo = (typeof TIPOS_DE_VEHICULO)[number]
+
+export const NOMBRE_TIPO_VEHICULO: Record<TipoDeVehiculo, string> = {
+  AUTO: 'Auto',
+  MOTO: 'Moto',
+}
+
+/**
+ * La categoría la DECIDE el catálogo con los datos elegidos: no se puede elegir ni corregir. Es lo
+ * que pidió la agencia y además es lo correcto: de la categoría dependen la prima y la cobertura, y
+ * dejar que se elija a mano es dejar que se equivoque a mano.
+ */
+export const CATEGORIAS_DE_VEHICULO = [
+  'SEDAN',
+  'HATCHBACK',
+  'COUPE',
+  'CABRIOLET',
+  'RURAL',
+  'MONOVOLUMEN',
+  'SUV',
+  'PICKUP',
+  'FURGON',
+  'CAMION',
+  'MICRO',
+  'MOTO',
+  'SCOOTER',
+  'CUATRICICLO',
+  'OTRO',
+] as const
+export type CategoriaDeVehiculo = (typeof CATEGORIAS_DE_VEHICULO)[number]
+
+export const NOMBRE_CATEGORIA: Record<CategoriaDeVehiculo, string> = {
+  SEDAN: 'Sedán',
+  HATCHBACK: 'Hatchback',
+  COUPE: 'Coupé',
+  CABRIOLET: 'Cabriolet',
+  RURAL: 'Rural / familiar',
+  MONOVOLUMEN: 'Monovolumen',
+  SUV: 'SUV',
+  PICKUP: 'Pick-up',
+  FURGON: 'Furgón / utilitario',
+  CAMION: 'Camión',
+  MICRO: 'Micro / colectivo',
+  MOTO: 'Moto',
+  SCOOTER: 'Scooter',
+  CUATRICICLO: 'Cuatriciclo',
+  OTRO: 'Otro',
+}
+
+/** Una opción de un desplegable del selector encadenado. */
+export interface OpcionDeCatalogo {
+  id: string
+  nombre: string
+}
+
+/** Una línea (la versión concreta): es el único nivel que trae categoría y años. */
+export interface LineaDeCatalogo extends OpcionDeCatalogo {
+  anioDesde: number | null
+  anioHasta: number | null
+  categoria: CategoriaDeVehiculo | null
+}
+
+/** Lo que queda cuando el vehículo se terminó de elegir del catálogo. */
+export interface VehiculoDelCatalogo {
+  tipo: TipoDeVehiculo
+  marca: string
+  modelo: string
+  linea: string
+  anio: string
+  /** null cuando el catálogo no la sabe. No se inventa un «OTRO» que después nadie puede corregir. */
+  categoria: CategoriaDeVehiculo | null
+  /** El código del proveedor: es lo que distingue un vehículo identificado de uno tipeado. */
+  codigo: string
+}
+
+/** Cómo está la caché de un tipo de vehículo. */
+export interface EstadoDeUnTipo {
+  tipo: TipoDeVehiculo
+  refrescadoEn: string | null
+  marcas: number
+  modelos: number
+  lineas: number
+  ultimoError: string | null
+}
+
+export interface EstadoDelCatalogo {
+  /** false = faltan las credenciales del proveedor en esta computadora. */
+  configurado: boolean
+  proveedor: string
+  usuario: string
+  /** Dónde se guardan las credenciales, para poder decirlo en la pantalla. */
+  rutaDeConfig: string
+  porTipo: EstadoDeUnTipo[]
+  /** true si hay algo bajado: sin esto el selector cae solo a los campos de texto de siempre. */
+  hayCatalogo: boolean
+}
+
+export interface DatosDelProveedorDeVehiculos {
+  usuario: string
+  clave: string
+}
+
+export interface PruebaDelProveedor {
+  ok: boolean
+  detalle: string
+  marcasEncontradas: number
+}
+
+/** El avance del refresco, que baja decenas de miles de filas y no puede parecer colgado. */
+export interface ProgresoDeCatalogo {
+  tipo: TipoDeVehiculo
+  etapa: 'marcas' | 'modelos' | 'lineas' | 'listo'
+  hechas: number
+  totales: number
+  detalle: string
+}
+
+// ---------------------------------------------------------------------------
+// Marketing · Redes sociales (Facebook e Instagram)
+// ---------------------------------------------------------------------------
+
+export const DESTINOS_DE_PUBLICACION = ['FACEBOOK', 'INSTAGRAM'] as const
+export type DestinoDePublicacion = (typeof DESTINOS_DE_PUBLICACION)[number]
+
+export const NOMBRE_DESTINO: Record<DestinoDePublicacion, string> = {
+  FACEBOOK: 'Facebook',
+  INSTAGRAM: 'Instagram',
+}
+
+/** Lo que hay cargado de la app de Meta. El App Secret NUNCA viaja al renderer. */
+export interface EstadoDeMeta {
+  /** true si están cargados el App ID y el App Secret en esta computadora. */
+  configurada: boolean
+  appId: string
+  /** La dirección que hay que registrar en el panel de Meta. Es el error de configuración más común. */
+  urlDeRedireccion: string
+  /** Dónde se guarda, para poder decirlo en la pantalla. */
+  rutaDeConfig: string
+  actualizadoEn: string | null
+}
+
+export interface DatosDeMeta {
+  appId: string
+  appSecret: string
+}
+
+/** Una Página para elegir, cuando la persona administra más de una. */
+export interface PaginaParaElegir {
+  id: string
+  nombre: string
+  /** El usuario de Instagram vinculado a esa Página, o null si no tiene. */
+  instagramUsuario: string | null
+}
+
+/** El vínculo activo, tal como lo ve la pantalla. Sin tokens. */
+export interface VinculoConMeta {
+  paginaId: string
+  paginaNombre: string
+  instagramUsuario: string | null
+  vinculadoPor: string
+  vinculadoEn: string
+}
+
+/** Lo que devuelve «Vincular cuenta»: las Páginas encontradas, para elegir una. */
+export interface VinculacionPendiente {
+  paginas: PaginaParaElegir[]
+  /**
+   * Cuando hay una sola Página se elige sola y esto viene con el vínculo ya hecho: preguntar «cuál de
+   * esta única opción» es una pregunta que no es una pregunta.
+   */
+  vinculada: VinculoConMeta | null
+}
+
+export interface PublicacionDeRed {
+  id: number
+  destino: DestinoDePublicacion
+  estado: 'PUBLICADA' | 'FALLIDA'
+  texto: string
+  /** El nombre del archivo que se publicó, sin la ruta. null si fue sólo texto. */
+  archivo: string | null
+  /** La dirección de la publicación, para abrirla. null si falló. */
+  url: string | null
+  /** El motivo, cuando falló. Se guarda porque si no se pierde apenas se cierra la pantalla. */
+  error: string | null
+  publicadoPor: string
+  publicadoEn: string
+}
+
+/** Un archivo elegido para publicar, ya revisado por el proceso principal. */
+export interface ArchivoParaPublicar {
+  ruta: string
+  nombre: string
+  tipo: string
+  bytes: number
+  /** La imagen en data: URI para la vista previa. */
+  vistaPrevia: string
+  /** Qué le impide ir a Instagram, si algo. Vacío = se puede. */
+  avisoDeInstagram: string
+}
+
+/** Todo lo que necesita la pestaña Marketing → Redes para dibujarse. */
+export interface PanelDeRedes {
+  /** false = falta cargar el App ID y el App Secret en Administración. */
+  appConfigurada: boolean
+  /** false = el sistema no puede cifrar y no se puede guardar el vínculo. */
+  puedeGuardar: boolean
+  vinculo: VinculoConMeta | null
+  /** Si la Página vinculada tiene una cuenta de Instagram Business. */
+  puedePublicarEnInstagram: boolean
+  /** Cuántas publicaciones más admite Instagram hoy; null si no se pudo averiguar. */
+  cuotaDeInstagram: number | null
+  /** El último error de Meta, si el vínculo se cayó. */
+  ultimoError: string | null
+  historial: PublicacionDeRed[]
+}
+
+export interface PedidoDePublicacion {
+  destino: DestinoDePublicacion
+  texto: string
+  /** Ruta del archivo elegido. Vacío = sólo texto (que Instagram no acepta). */
+  ruta: string
 }
 
 // ---------------------------------------------------------------------------

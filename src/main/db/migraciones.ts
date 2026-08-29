@@ -1138,6 +1138,139 @@ export const MIGRACIONES: Migracion[] = [
          AND TRIM(COALESCE(sucursal_texto, '')) <> '';
     `,
   },
+  {
+    version: 16,
+    descripcion: 'Dirección del cliente en partes: calle, altura, provincia y código postal',
+    sql: `
+      -- Hasta acá la dirección era un renglón libre («Mitre 1234») y la localidad, otro campo suelto.
+      -- Con eso alcanzaba para imprimir un ticket y no para nada más: no se podía buscar por
+      -- localidad, ni saber si faltaba el código postal, ni que dos personas escribieran la misma
+      -- calle igual. Las columnas nuevas guardan las partes; \`direccion\` y \`localidad\` siguen
+      -- existiendo con el renglón armado, que es lo que ya usan el ticket, la hoja y los listados.
+      --
+      -- Todo entra como NULL: las 2.100 fichas que ya están siguen con su renglón libre y ninguna se
+      -- toca. Se completan a medida que alguien abre el cliente y carga la dirección en el formulario
+      -- nuevo. Convertir el texto viejo a partes con una expresión regular sería inventar datos.
+      ALTER TABLE clientes ADD COLUMN calle TEXT;
+      ALTER TABLE clientes ADD COLUMN calle2 TEXT;
+      ALTER TABLE clientes ADD COLUMN altura TEXT;
+      -- La dirección no tiene número de puerta. No es lo mismo que no habérselo preguntado todavía,
+      -- y en el conurbano pasa: un pasaje, un barrio sin nomenclar.
+      ALTER TABLE clientes ADD COLUMN sin_altura INTEGER NOT NULL DEFAULT 0 CHECK (sin_altura IN (0, 1));
+      ALTER TABLE clientes ADD COLUMN provincia TEXT;
+      ALTER TABLE clientes ADD COLUMN codigo_postal TEXT;
+    `,
+  },
+  {
+    version: 17,
+    descripcion: 'Redes sociales: historial de lo publicado en Facebook e Instagram',
+    sql: `
+      -- Se guardan también las FALLIDAS, y ese es el punto de la tabla: el error que devuelve Meta se
+      -- pierde apenas se cierra la pantalla, y sin él nadie puede averiguar por qué no salió el
+      -- posteo. Con el motivo escrito, el problema se puede leer una semana después.
+      --
+      -- No se guarda el archivo: ya está subido a la red, y copiarlo de nuevo sólo engorda la carpeta
+      -- de datos. Queda el nombre, que es lo que sirve para reconocerlo.
+      --
+      -- Es historial LOCAL: no sube a la hoja, igual que las plantillas y los segmentos.
+      CREATE TABLE publicaciones_redes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        destino TEXT NOT NULL CHECK (destino IN ('FACEBOOK', 'INSTAGRAM')),
+        estado TEXT NOT NULL CHECK (estado IN ('PUBLICADA', 'FALLIDA')),
+        texto TEXT NOT NULL DEFAULT '',
+        archivo TEXT,
+        id_en_la_red TEXT,
+        url TEXT,
+        error TEXT,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        publicado_por TEXT NOT NULL,
+        publicado_en TEXT NOT NULL
+      );
+      CREATE INDEX idx_publicaciones_redes_fecha ON publicaciones_redes (publicado_en);
+    `,
+  },
+  {
+    version: 18,
+    descripcion: 'Catálogo de vehículos por API: la caché local y las columnas de línea y categoría',
+    sql: `
+      -- La caché del catálogo. Sin ella el selector saldría a internet para dibujar cada desplegable,
+      -- y en el mostrador eso es medio segundo de espera por cada clic —y nada cuando se cae la
+      -- conexión—. Con la caché, elegir un vehículo funciona igual sin internet.
+      --
+      -- Los ids del proveedor van como TEXT aunque InfoAuto use números: el día que haya otro
+      -- proveedor no hay que rehacer las tablas por un tipo de dato.
+      CREATE TABLE catalogo_marcas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proveedor TEXT NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('AUTO', 'MOTO')),
+        marca_id TEXT NOT NULL,
+        nombre TEXT NOT NULL,
+        nombre_normalizado TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_catalogo_marcas_clave ON catalogo_marcas (proveedor, tipo, marca_id);
+      CREATE INDEX idx_catalogo_marcas_nombre ON catalogo_marcas (tipo, nombre_normalizado);
+
+      CREATE TABLE catalogo_modelos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proveedor TEXT NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('AUTO', 'MOTO')),
+        marca_id TEXT NOT NULL,
+        modelo_id TEXT NOT NULL,
+        nombre TEXT NOT NULL,
+        nombre_normalizado TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_catalogo_modelos_clave ON catalogo_modelos (proveedor, tipo, marca_id, modelo_id);
+      CREATE INDEX idx_catalogo_modelos_marca ON catalogo_modelos (tipo, marca_id, nombre_normalizado);
+
+      -- Una línea es la versión concreta, y es el único nivel que trae categoría y años. Se guardan
+      -- las dos categorías: \`categoria\` es la nuestra ya traducida y \`categoria_cruda\` es lo que dijo
+      -- la API, para poder corregir el mapeo sin volver a bajar decenas de miles de filas.
+      CREATE TABLE catalogo_lineas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proveedor TEXT NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('AUTO', 'MOTO')),
+        marca_id TEXT NOT NULL,
+        modelo_id TEXT NOT NULL,
+        linea_id TEXT NOT NULL,
+        nombre TEXT NOT NULL,
+        nombre_normalizado TEXT NOT NULL,
+        anio_desde INTEGER,
+        anio_hasta INTEGER,
+        categoria TEXT,
+        categoria_cruda TEXT,
+        precio_lista INTEGER,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_catalogo_lineas_clave ON catalogo_lineas (proveedor, tipo, marca_id, modelo_id, linea_id);
+      CREATE INDEX idx_catalogo_lineas_modelo ON catalogo_lineas (tipo, marca_id, modelo_id, nombre_normalizado);
+
+      -- Cuándo se bajó cada mitad del catálogo y cómo salió. Una fila por tipo: la agencia puede tener
+      -- contratados los autos y no las motos, y eso hay que poder decirlo en pantalla sin adivinar.
+      CREATE TABLE catalogo_estado (
+        tipo TEXT PRIMARY KEY CHECK (tipo IN ('AUTO', 'MOTO')),
+        proveedor TEXT NOT NULL,
+        refrescado_en TEXT,
+        marcas INTEGER NOT NULL DEFAULT 0,
+        modelos INTEGER NOT NULL DEFAULT 0,
+        lineas INTEGER NOT NULL DEFAULT 0,
+        ultimo_error TEXT
+      );
+
+      -- Las columnas nuevas del vehículo. Todo entra como NULL: los vehículos que ya están siguen con
+      -- su marca y su modelo escritos a mano y ninguno se toca. Emparejar automáticamente ese texto
+      -- libre contra el catálogo sería inventar: «FORD FIESTA» son catorce versiones distintas y
+      -- elegir una por la agencia es peor que dejar el dato como está.
+      --
+      -- \`catalogo_codigo\` es lo que distingue un vehículo identificado de uno tipeado.
+      ALTER TABLE vehiculos ADD COLUMN linea TEXT;
+      ALTER TABLE vehiculos ADD COLUMN categoria TEXT;
+      ALTER TABLE vehiculos ADD COLUMN catalogo_proveedor TEXT;
+      ALTER TABLE vehiculos ADD COLUMN catalogo_codigo TEXT;
+      CREATE INDEX idx_vehiculos_catalogo ON vehiculos (catalogo_codigo);
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

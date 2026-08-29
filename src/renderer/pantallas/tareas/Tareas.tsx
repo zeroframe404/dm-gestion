@@ -17,6 +17,7 @@ import {
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
+import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoNuevaTarea } from './DialogoNuevaTarea'
@@ -154,6 +155,7 @@ export function Tareas() {
               Nueva tarea
             </Boton>
           )}
+          <BotonVerComoExcel area="tareas" />
           <BotonAyuda clave="tareas" />
         </div>
       </div>

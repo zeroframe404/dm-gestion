@@ -40,6 +40,7 @@ import {
 } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { borrarArchivoDeAdjunto, carpetaDeAdjuntos, copiarAdjunto, rutaDeAdjunto, subirAdjuntoADrive } from './adjuntos'
+import { avisarTareaCompletada } from './avisos'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
@@ -805,6 +806,7 @@ export function cambiarEstadoDeTareaDeSiniestro(tareaId: number, estado: unknown
       valorAnterior: tarea.estado,
       valorNuevo: estado,
     })
+    if (estado === 'hecha') avisarTareaCompletada({ tareaId: id, titulo: tarea.titulo, porQuien: actor.nombre })
   }
   return fichaDeSiniestro(tarea.siniestro_id)
 }

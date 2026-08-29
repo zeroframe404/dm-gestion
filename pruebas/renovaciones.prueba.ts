@@ -266,7 +266,7 @@ test('una compañía se puede pasar a renovación manual (o sacar) desde Compañ
   editarCompania(sancor.id, {
     nombre: sancor.nombre,
     diasCoberturaFinanciera: sancor.diasCoberturaFinanciera,
-    comisionPorcentaje: sancor.comisionPorcentaje,
+    comisionPorcentaje: sancor.comisionPorcentaje ?? 0,
     mesesRenovacion: 6,
     activa: true,
   })
@@ -279,7 +279,7 @@ test('una compañía se puede pasar a renovación manual (o sacar) desde Compañ
       editarCompania(sancor.id, {
         nombre: sancor.nombre,
         diasCoberturaFinanciera: sancor.diasCoberturaFinanciera,
-        comisionPorcentaje: sancor.comisionPorcentaje,
+        comisionPorcentaje: sancor.comisionPorcentaje ?? 0,
         mesesRenovacion: 0,
         activa: true,
       }),

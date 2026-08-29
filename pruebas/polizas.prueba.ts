@@ -81,8 +81,12 @@ function datosBase(clienteId: number): DatosDePoliza {
       patente: 'AG333NP',
       marca: 'FORD',
       modelo: 'FALCON',
+      // Cargado a mano: sin línea, sin categoría y sin código de catálogo, como los de siempre.
+      linea: '',
       anio: '1995',
       tipo: 'AUTO',
+      categoria: '',
+      catalogoCodigo: '',
       motor: '',
       chasis: '',
       uso: 'PARTICULAR',

@@ -20,6 +20,7 @@
     "preversion": "node scripts/verificar-al-dia.mjs",
     "postversion": "git push && git push --tags",
     "prueba": "vite build -c vite.pruebas.config.mts && node dist/pruebas/todas.js",
+    "manual": "vite build -c vite.manual.config.mts && node scripts/manual.mjs",
     "prueba:copia": "vite build -c vite.pruebas.config.mts && node dist/pruebas/copia.js",
     "sembrar": "vite build -c vite.pruebas.config.mts && node dist/pruebas/sembrar.js",
     "humo": "node scripts/humo-cartera.mjs",

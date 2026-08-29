@@ -1,15 +1,22 @@
-// Módulo Marketing: las plantillas de los mensajes de WhatsApp y los segmentos de la cartera.
+// Módulo Marketing: las plantillas de los mensajes de WhatsApp, los segmentos de la cartera y las
+// redes sociales de la agencia.
+//
+// Las tres pestañas son tres formas de avisar, ordenadas de la más cercana a la más lejana: un
+// segmento es a quién le escribís por WhatsApp uno por uno, una plantilla es qué le escribís, y Redes
+// es lo que se publica para todos a la vez.
 import { useEffect, useState } from 'react'
 import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { Plantillas } from './Plantillas'
+import { Redes } from './Redes'
 import { Segmentos } from './Segmentos'
 
-type IdSeccion = 'segmentos' | 'plantillas'
+type IdSeccion = 'segmentos' | 'plantillas' | 'redes'
 
 const SECCIONES: ItemDePestana<IdSeccion>[] = [
   { id: 'segmentos', nombre: 'Segmentos', icono: 'clientes', ayuda: 'marketing.segmentos' },
   { id: 'plantillas', nombre: 'Plantillas', icono: 'mensaje', ayuda: 'marketing.plantillas' },
+  { id: 'redes', nombre: 'Redes', icono: 'instagram', ayuda: 'marketing.redes' },
 ]
 
 export function Marketing() {
@@ -34,7 +41,9 @@ export function Marketing() {
         aria-labelledby={`tab-marketing-${seccion}`}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {seccion === 'segmentos' ? <Segmentos /> : <Plantillas />}
+        {seccion === 'segmentos' && <Segmentos />}
+        {seccion === 'plantillas' && <Plantillas />}
+        {seccion === 'redes' && <Redes />}
       </div>
     </div>
   )

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ConfigImpresora, DireccionDeSucursal } from '../../../shared/tipos'
 import { Alerta, Boton, Campo, Cargando, Selector, Tarjeta } from '../../componentes/ui'
+import { useUsuarioActual } from '../../contexto/Sesion'
 
 export function Impresora() {
   const [estado, setEstado] = useState<ConfigImpresora | null>(null)
@@ -188,6 +189,11 @@ export function Impresora() {
  * sucursal, y se puede agregar la de una sucursal nueva sin tocar el programa.
  */
 function DireccionesDelTicket() {
+  // A un empleado el proceso principal le manda UNA sola fila —la de su mostrador— y sólo le acepta
+  // esa al guardar. Acá además se le esconde el «agregar una sucursal»: dar de alta la dirección de un
+  // local en el que uno no está no es algo que haga falta desde el mostrador.
+  const usuario = useUsuarioActual()
+  const soloLaMia = usuario.rol === 'EMPLEADO'
   const [filas, setFilas] = useState<DireccionDeSucursal[] | null>(null)
   const [guardadas, setGuardadas] = useState<DireccionDeSucursal[]>([])
   const [nueva, setNueva] = useState('')
@@ -253,8 +259,12 @@ function DireccionesDelTicket() {
 
   return (
     <Tarjeta
-      titulo="Direcciones del ticket"
-      descripcion="Cada comprobante encabeza con la dirección de la sucursal donde se cobró. El resto del encabezado (provincia, teléfono, CUIT e inicio de actividades) es igual para toda la agencia."
+      titulo={soloLaMia ? 'Dirección del ticket de tu sucursal' : 'Direcciones del ticket'}
+      descripcion={
+        soloLaMia
+          ? `Los comprobantes que salgan de esta computadora encabezan con la dirección de ${usuario.sucursal.nombre}. El resto del encabezado (provincia, teléfono, CUIT e inicio de actividades) es igual para toda la agencia.`
+          : 'Cada comprobante encabeza con la dirección de la sucursal donde se cobró. El resto del encabezado (provincia, teléfono, CUIT e inicio de actividades) es igual para toda la agencia.'
+      }
       acciones={
         <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios}>
           Guardar direcciones
@@ -276,7 +286,7 @@ function DireccionesDelTicket() {
               placeholder="Calle y número, localidad"
               ayuda={fila.enLaLista ? undefined : 'Esta sucursal ya no está en la lista de la agencia.'}
             />
-            {!fila.enLaLista && (
+            {!fila.enLaLista && !soloLaMia && (
               <div className="mt-1.5 flex justify-end">
                 <Boton tamano="sm" variante="fantasma" icono="basura" onClick={() => quitar(indice)}>
                   Quitar esta dirección
@@ -286,6 +296,7 @@ function DireccionesDelTicket() {
           </div>
         ))}
 
+        {!soloLaMia && (
         <div className="border-t border-slate-200 pt-4">
           <Campo
             etiqueta="Agregar una sucursal"
@@ -303,6 +314,7 @@ function DireccionesDelTicket() {
             </Boton>
           </div>
         </div>
+        )}
       </div>
     </Tarjeta>
   )

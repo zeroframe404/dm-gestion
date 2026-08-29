@@ -15,10 +15,11 @@ import {
 } from '../src/main/servicios/clientes'
 import { cuotasDelClienteEnElMes } from '../src/main/servicios/cartera'
 import { crearSiniestro } from '../src/main/servicios/siniestros'
+import { DIRECCION_VACIA, sanearDireccion } from '../src/shared/direccion'
 import { hoyLocal } from '../src/shared/semaforo'
 import { darDeBajaPoliza } from '../src/main/servicios/polizas'
 import { cuantasPendientes } from '../src/main/sincronizacion/cola'
-import type { DatosDeCliente, FiltrosClientes, SesionUsuario } from '../src/shared/tipos'
+import type { DatosDeCliente, FichaCliente, FiltrosClientes, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
 import { filas, importar } from './ayuda'
@@ -34,6 +35,21 @@ const DANIEL: SesionUsuario = {
 
 const SIN_FILTROS: FiltrosClientes = { busqueda: '', sucursal: '', compania: '', estado: '' }
 
+/** Los datos editables sacados de la ficha, igual que hace la pantalla. */
+function datosDe(ficha: FichaCliente): DatosDeCliente {
+  return {
+    nombre: ficha.nombre,
+    documento: ficha.documento ?? '',
+    telefono: ficha.telefono ?? '',
+    email: ficha.email ?? '',
+    direccion: ficha.direccion ?? '',
+    localidad: ficha.localidad ?? '',
+    sucursal: ficha.sucursal ?? '',
+    fechaNacimiento: ficha.fechaNacimiento ?? '',
+    direccionDetalle: ficha.direccionDetalle,
+  }
+}
+
 const VACIO: DatosDeCliente = {
   nombre: '',
   documento: '',
@@ -43,6 +59,7 @@ const VACIO: DatosDeCliente = {
   localidad: '',
   sucursal: '',
   fechaNacimiento: '',
+  direccionDetalle: DIRECCION_VACIA,
 }
 
 /**
@@ -292,6 +309,59 @@ test('el nombre es obligatorio y el documento puede faltar', async () => {
 // ---------------------------------------------------------------------------
 // Edición, notas y tareas
 // ---------------------------------------------------------------------------
+
+test('editar cualquier dato de un cliente importado NO le borra la dirección que vino de la hoja', async () => {
+  await carteraDePrueba()
+  const id = idDe(CLIENTES.lopez.nombre)
+
+  // Un cliente como los ~2.100 que ya están: dirección y localidad de texto libre, sin las partes
+  // nuevas cargadas. Es el estado en el que quedan todos después de la migración.
+  const conDireccionVieja = { ...datosDe(fichaDeCliente(id)), direccion: 'Mitre 1234', localidad: 'Lanús' }
+  editarCliente(id, conDireccionVieja, DANIEL)
+  assert.equal(fichaDeCliente(id).direccion, 'Mitre 1234')
+
+  // Y ahora se cambia SÓLO el celular, que es lo que hace cualquiera en la ficha. Sin tocar la
+  // dirección, la dirección no se puede mover.
+  editarCliente(id, { ...conDireccionVieja, telefono: '11-2222-3333' }, DANIEL)
+
+  const despues = fichaDeCliente(id)
+  assert.equal(despues.telefono, '11-2222-3333')
+  assert.equal(despues.direccion, 'Mitre 1234', 'cambiar el celular no puede borrar la dirección')
+  assert.equal(despues.localidad, 'Lanús', 'ni la localidad')
+})
+
+test('cargar la dirección en partes reemplaza el renglón viejo, y vaciarla no lo resucita', async () => {
+  await carteraDePrueba()
+  const id = idDe(CLIENTES.lopez.nombre)
+  const base = { ...datosDe(fichaDeCliente(id)), direccion: 'Mitre 1234', localidad: 'Lanús' }
+  editarCliente(id, base, DANIEL)
+
+  // Cargada en partes, el renglón se ARMA con ellas y pisa al viejo: si no, la ficha guardaría dos
+  // direcciones distintas y nadie sabría cuál manda.
+  const conPartes = editarCliente(
+    id,
+    {
+      ...base,
+      direccionDetalle: sanearDireccion({
+        calle: 'Belgrano',
+        altura: '567',
+        provincia: 'Buenos Aires',
+        localidad: 'Sarandí',
+        codigoPostal: 'B1872',
+      }),
+    },
+    DANIEL,
+  )
+  assert.equal(conPartes.direccion, 'Belgrano 567')
+  assert.equal(conPartes.localidad, 'Sarandí')
+  assert.equal(conPartes.direccionDetalle.codigoPostal, 'B1872')
+
+  // Y si después alguien vacía las partes con el botón «Vaciar», queda vacío: no vuelve el renglón
+  // viejo, que ya no existe en ningún lado.
+  const vaciada = editarCliente(id, { ...base, direccion: '', localidad: '', direccionDetalle: DIRECCION_VACIA }, DANIEL)
+  assert.equal(vaciada.direccion, null)
+  assert.equal(vaciada.direccionDetalle.calle, '')
+})
 
 test('editar el cliente actualiza su ficha y encola el cambio hacia la hoja', async () => {
   await carteraDePrueba()

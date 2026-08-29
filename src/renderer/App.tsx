@@ -1,6 +1,7 @@
 // Raíz de la interfaz: decide entre carga, login, cambio de contraseña obligatorio y el escritorio.
 import type { ReactNode } from 'react'
 import { AvisoActualizacion } from './componentes/AvisoActualizacion'
+import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
 import { BarraLateral } from './componentes/BarraLateral'
 import { BarraSuperior } from './componentes/BarraSuperior'
 import { Icono } from './componentes/Icono'
@@ -15,6 +16,7 @@ import { Administracion } from './pantallas/administracion/Administracion'
 import { Cartera } from './pantallas/cartera/Cartera'
 import { Clientes } from './pantallas/clientes/Clientes'
 import { Cobranzas } from './pantallas/cobranzas/Cobranzas'
+import { GeneralExcel } from './pantallas/excel/GeneralExcel'
 import { Leads } from './pantallas/leads/Leads'
 import { Marketing } from './pantallas/marketing/Marketing'
 import { Metricas } from './pantallas/metricas/Metricas'
@@ -109,6 +111,8 @@ function Escritorio() {
     contenido = <Reportes />
   } else if (modulo.id === 'marketing') {
     contenido = <Marketing />
+  } else if (modulo.id === 'excel') {
+    contenido = <GeneralExcel />
   } else if (modulo.id === 'administracion') {
     contenido = <Administracion />
   } else {
@@ -144,6 +148,8 @@ function Marco({
       </div>
       {/* Fuera del módulo activo: se cobra desde Cartera, desde la ficha del cliente y desde la caja. */}
       <PreguntaDeTicket />
+      {/* Ídem: una tarea se cierra desde tres pantallas distintas y hasta desde otra computadora. */}
+      <AvisoDeTareaHecha />
     </div>
   )
 }

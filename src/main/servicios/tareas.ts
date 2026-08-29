@@ -40,6 +40,7 @@ import {
   rutaDeAdjunto,
   subirAdjuntoADriveComo,
 } from './adjuntos'
+import { avisarTareaCompletada } from './avisos'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
@@ -597,6 +598,9 @@ export function cambiarEstadoDeTareaDelModulo(tareaId: number, estado: unknown, 
   if (actual.estado === nuevo) return aFila(actual, hoyLocal())
 
   db().prepare('UPDATE tareas SET estado = ?, actualizado_en = ? WHERE id = ?').run(nuevo, ahoraIso(), id)
+  // Terminar una tarea es la única de las tres transiciones que se avisa: es la buena noticia, y la
+  // que el resto del equipo quiere ver aunque tenga la aplicación detrás de otra ventana.
+  if (nuevo === 'hecha') avisarTareaCompletada({ tareaId: id, titulo: actual.titulo, porQuien: actor.nombre })
   sincronizar(id, { estado: NOMBRE_ESTADO_TAREA[nuevo as EstadoTarea] }, actor)
   registrarCambio(actor, {
     accion: 'tarea',
@@ -721,6 +725,10 @@ export function avisosDeTareas(actor: SesionUsuario): AvisosDeTareas {
 
   return {
     nuevas: abiertas.filter((t) => t.visto === null).length,
+    // Los ids, además del conteo: son los que la campana compara para decidir si suena. Una tarea que
+    // uno se asigna a sí mismo ya nace con `visto_en` puesto, así que no entra acá y no suena, que es
+    // exactamente lo que corresponde.
+    idsNuevas: abiertas.filter((t) => t.visto === null).map((t) => t.fila.id),
     venceHoy: abiertas.filter((t) => t.fila.venceHoy).length,
     vencidas: abiertas.filter((t) => t.fila.vencida).length,
     pendientes: abiertas.length,

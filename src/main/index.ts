@@ -8,6 +8,7 @@ import { configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
 import { hayImportacionEnCurso, marcarImportacionesInterrumpidas } from './servicios/importacion'
 import { detenerSincronizacion } from './servicios/sincronizacion'
 import { detenerActualizaciones, iniciarActualizaciones } from './servicios/updater'
+import { AlmacenDeVinculo, configurarAlmacenDeRedes } from './redes/almacen'
 import { AlmacenDeCredencial } from './usuarios/credencial'
 import { AlmacenGitHub, REPO_DATOS, TOKEN_DATOS, TOKEN_DATOS_ANTERIOR } from './usuarios/github'
 
@@ -104,6 +105,9 @@ function prepararBaseDeUsuarios(): void {
     sinTokenEnProduccion: !enDesarrollo && !hayToken,
     version: app.getVersion(),
   })
+  // El vínculo con Meta usa el mismo cifrador: adentro va el token de la Página, que no vence y
+  // publica en nombre de la agencia.
+  configurarAlmacenDeRedes(new AlmacenDeVinculo(path.join(carpetaDatos(), 'redes.bin'), cifrador))
   if (!hayToken) console.log(enDesarrollo ? '[usuarios] Desarrollo sin DM_GESTION_TOKEN_DATOS: usuarios locales.' : '[usuarios] Versión publicada sin TOKEN_DATOS: usuarios locales.')
 }
 

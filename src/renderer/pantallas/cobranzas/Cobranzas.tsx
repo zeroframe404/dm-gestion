@@ -19,8 +19,8 @@ export function Cobranzas() {
   // El proceso principal lo vuelve a controlar en cada llamado.
   const secciones = useMemo<ItemDePestana<IdSeccion>[]>(() => {
     const lista: ItemDePestana<IdSeccion>[] = [
-      { id: 'caja', nombre: 'Caja del día', icono: 'billete', ayuda: 'cobranzas.caja' },
-      { id: 'mora', nombre: 'Mora', icono: 'alerta', ayuda: 'cobranzas.mora' },
+      { id: 'caja', nombre: 'Caja del día', icono: 'billete', ayuda: 'cobranzas.caja', excel: 'pagos' },
+      { id: 'mora', nombre: 'Mora', icono: 'alerta', ayuda: 'cobranzas.mora', excel: 'mora' },
       { id: 'imputados', nombre: 'Imputados', icono: 'tabla', ayuda: 'imputados' },
     ]
     if (usuario.rol !== 'EMPLEADO') lista.push({ id: 'comisiones', nombre: 'Comisiones', icono: 'porcentaje', ayuda: 'cobranzas.comisiones' })
