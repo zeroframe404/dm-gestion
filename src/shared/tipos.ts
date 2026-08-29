@@ -755,6 +755,8 @@ export interface ListadoRechazos {
 export interface AvisosDeRechazos {
   /** Avisos de la sucursal que todavía nadie abrió: son los que encienden el punto. */
   nuevos: number
+  /** Los ids de esos mismos, sin tope. Es lo que decide si suena el aviso; ver `AvisosDeTareas`. */
+  idsNuevos: number[]
   /** Todo lo que la sucursal tiene sin resolver (pendiente o visto). */
   sinResolver: number
   filas: FilaRechazo[]
@@ -2211,6 +2213,13 @@ export interface AvisosDeTareas {
   venceHoy: number
   vencidas: number
   pendientes: number
+  /**
+   * Los ids de las que todavía no vi. Es lo que decide si SUENA la campana, y va aparte de `filas` a
+   * propósito: `filas` son las ocho primeras de todo lo abierto, así que sonar por lo que aparece ahí
+   * daría un aviso cada vez que una tarea vieja sube un lugar, y ninguno por una tarea nueva que
+   * ordena novena. Sin tope: son sólo números.
+   */
+  idsNuevas: number[]
   /** Las primeras, para el desplegable de la campana. */
   filas: FilaTarea[]
   hoy: string
@@ -2444,6 +2453,112 @@ export interface OpcionesPlanillaClasica {
   /** Meses elegidos, 'AAAA-MM'. Una pestaña por mes, más su pestaña de BAJAS. */
   periodos: string[]
   sucursal: string
+}
+
+// ---------------------------------------------------------------------------
+// Marketing · Redes sociales (Facebook e Instagram)
+// ---------------------------------------------------------------------------
+
+export const DESTINOS_DE_PUBLICACION = ['FACEBOOK', 'INSTAGRAM'] as const
+export type DestinoDePublicacion = (typeof DESTINOS_DE_PUBLICACION)[number]
+
+export const NOMBRE_DESTINO: Record<DestinoDePublicacion, string> = {
+  FACEBOOK: 'Facebook',
+  INSTAGRAM: 'Instagram',
+}
+
+/** Lo que hay cargado de la app de Meta. El App Secret NUNCA viaja al renderer. */
+export interface EstadoDeMeta {
+  /** true si están cargados el App ID y el App Secret en esta computadora. */
+  configurada: boolean
+  appId: string
+  /** La dirección que hay que registrar en el panel de Meta. Es el error de configuración más común. */
+  urlDeRedireccion: string
+  /** Dónde se guarda, para poder decirlo en la pantalla. */
+  rutaDeConfig: string
+  actualizadoEn: string | null
+}
+
+export interface DatosDeMeta {
+  appId: string
+  appSecret: string
+}
+
+/** Una Página para elegir, cuando la persona administra más de una. */
+export interface PaginaParaElegir {
+  id: string
+  nombre: string
+  /** El usuario de Instagram vinculado a esa Página, o null si no tiene. */
+  instagramUsuario: string | null
+}
+
+/** El vínculo activo, tal como lo ve la pantalla. Sin tokens. */
+export interface VinculoConMeta {
+  paginaId: string
+  paginaNombre: string
+  instagramUsuario: string | null
+  vinculadoPor: string
+  vinculadoEn: string
+}
+
+/** Lo que devuelve «Vincular cuenta»: las Páginas encontradas, para elegir una. */
+export interface VinculacionPendiente {
+  paginas: PaginaParaElegir[]
+  /**
+   * Cuando hay una sola Página se elige sola y esto viene con el vínculo ya hecho: preguntar «cuál de
+   * esta única opción» es una pregunta que no es una pregunta.
+   */
+  vinculada: VinculoConMeta | null
+}
+
+export interface PublicacionDeRed {
+  id: number
+  destino: DestinoDePublicacion
+  estado: 'PUBLICADA' | 'FALLIDA'
+  texto: string
+  /** El nombre del archivo que se publicó, sin la ruta. null si fue sólo texto. */
+  archivo: string | null
+  /** La dirección de la publicación, para abrirla. null si falló. */
+  url: string | null
+  /** El motivo, cuando falló. Se guarda porque si no se pierde apenas se cierra la pantalla. */
+  error: string | null
+  publicadoPor: string
+  publicadoEn: string
+}
+
+/** Un archivo elegido para publicar, ya revisado por el proceso principal. */
+export interface ArchivoParaPublicar {
+  ruta: string
+  nombre: string
+  tipo: string
+  bytes: number
+  /** La imagen en data: URI para la vista previa. */
+  vistaPrevia: string
+  /** Qué le impide ir a Instagram, si algo. Vacío = se puede. */
+  avisoDeInstagram: string
+}
+
+/** Todo lo que necesita la pestaña Marketing → Redes para dibujarse. */
+export interface PanelDeRedes {
+  /** false = falta cargar el App ID y el App Secret en Administración. */
+  appConfigurada: boolean
+  /** false = el sistema no puede cifrar y no se puede guardar el vínculo. */
+  puedeGuardar: boolean
+  vinculo: VinculoConMeta | null
+  /** Si la Página vinculada tiene una cuenta de Instagram Business. */
+  puedePublicarEnInstagram: boolean
+  /** Cuántas publicaciones más admite Instagram hoy; null si no se pudo averiguar. */
+  cuotaDeInstagram: number | null
+  /** El último error de Meta, si el vínculo se cayó. */
+  ultimoError: string | null
+  historial: PublicacionDeRed[]
+}
+
+export interface PedidoDePublicacion {
+  destino: DestinoDePublicacion
+  texto: string
+  /** Ruta del archivo elegido. Vacío = sólo texto (que Instagram no acepta). */
+  ruta: string
 }
 
 // ---------------------------------------------------------------------------

@@ -725,6 +725,10 @@ export function avisosDeTareas(actor: SesionUsuario): AvisosDeTareas {
 
   return {
     nuevas: abiertas.filter((t) => t.visto === null).length,
+    // Los ids, además del conteo: son los que la campana compara para decidir si suena. Una tarea que
+    // uno se asigna a sí mismo ya nace con `visto_en` puesto, así que no entra acá y no suena, que es
+    // exactamente lo que corresponde.
+    idsNuevas: abiertas.filter((t) => t.visto === null).map((t) => t.fila.id),
     venceHoy: abiertas.filter((t) => t.fila.venceHoy).length,
     vencidas: abiertas.filter((t) => t.fila.vencida).length,
     pendientes: abiertas.length,

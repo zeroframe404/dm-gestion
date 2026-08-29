@@ -240,6 +240,17 @@ const api: ApiDm = {
     borrarSegmento: (segmentoId) => invocar('marketing:borrarSegmento', segmentoId),
     avisar: (filaId, segmentoId, filtros, plantillaClave) => invocar('marketing:avisar', filaId, segmentoId, filtros, plantillaClave),
   },
+  redes: {
+    panel: () => invocar('redes:panel'),
+    estadoMeta: () => invocar('redes:estadoMeta'),
+    guardarMeta: (datos) => invocar('redes:guardarMeta', datos),
+    borrarMeta: () => invocar('redes:borrarMeta'),
+    vincular: () => invocar('redes:vincular'),
+    elegirPagina: (paginaId) => invocar('redes:elegirPagina', paginaId),
+    desvincular: () => invocar('redes:desvincular'),
+    elegirArchivo: () => invocar('redes:elegirArchivo'),
+    publicar: (pedido) => invocar('redes:publicar', pedido),
+  },
   sistema: {
     abrirEnlace: (url) => invocar('sistema:abrirEnlace', url),
   },

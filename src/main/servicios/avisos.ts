@@ -61,6 +61,13 @@ export function notificarEnElSistema(titulo: string, cuerpo: string): void {
  * vuelve a avisar.
  */
 export function avisarTareaCompletada(datos: TareaCompletada): void {
-  notificarEnElSistema('Tarea completada', `«${datos.titulo}» quedó marcada como hecha${datos.porQuien ? ` por ${datos.porQuien}` : ''}.`)
+  // La notificación de Windows sale SÓLO con la aplicación detrás de otra ventana, que es cuando
+  // sirve. Con la ventana a la vista sería un cartel del sistema encima de la propia pantalla, más el
+  // cartel de la aplicación, más una entrada permanente en el Centro de actividades, y todo eso por
+  // cada tarea que alguien tilda mirando la lista. El sonido y el cartel de adentro salen siempre.
+  const aLaVista = ventanas().some((ventana) => !ventana.isDestroyed() && ventana.isFocused())
+  if (!aLaVista) {
+    notificarEnElSistema('Tarea completada', `«${datos.titulo}» quedó marcada como hecha${datos.porQuien ? ` por ${datos.porQuien}` : ''}.`)
+  }
   emitir('tareas:completada', datos)
 }

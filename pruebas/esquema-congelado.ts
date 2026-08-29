@@ -24,4 +24,6 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   15: 'fd05b8e5fd4af5fb',
   // La 16 suma las partes de la dirección del cliente (calle, altura, provincia, código postal).
   16: 'bfb228d6238ad748',
+  // La 17 crea publicaciones_redes: el historial de lo publicado en Facebook e Instagram.
+  17: '8c5b02d9800d56b1',
 }

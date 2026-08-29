@@ -70,7 +70,13 @@ import type {
   DireccionDeSucursal,
   FiltrosMora,
   ListadoMora,
+  ArchivoParaPublicar,
+  DatosDeMeta,
+  EstadoDeMeta,
+  PanelDeRedes,
+  PedidoDePublicacion,
   PedidoDeTicket,
+  VinculacionPendiente,
   TareaCompletada,
   RendicionImputados,
   ResultadoImputacion,
@@ -428,6 +434,20 @@ export interface Canales {
     filtros: FiltrosDeSegmento | null,
     plantillaClave: string,
   ) => Resultado<AvisoDeSegmento>
+
+  // Marketing → Redes: publicar en la Página de Facebook de la agencia y en su Instagram. El App ID y
+  // el App Secret se cargan en Administración; el token de la Página nunca sale del proceso principal.
+  'redes:panel': () => Resultado<PanelDeRedes>
+  'redes:estadoMeta': () => Resultado<EstadoDeMeta>
+  'redes:guardarMeta': (datos: DatosDeMeta) => Resultado<EstadoDeMeta>
+  'redes:borrarMeta': () => Resultado<EstadoDeMeta>
+  /** Abre el ingreso de Facebook. Con una sola Página vincula sola; con varias, hay que elegir. */
+  'redes:vincular': () => Resultado<VinculacionPendiente>
+  'redes:elegirPagina': (paginaId: string) => Resultado<PanelDeRedes>
+  'redes:desvincular': () => Resultado<PanelDeRedes>
+  /** Abre el diálogo para elegir la foto y la revisa. null si se canceló. */
+  'redes:elegirArchivo': () => Resultado<ArchivoParaPublicar | null>
+  'redes:publicar': (pedido: PedidoDePublicacion) => Resultado<PanelDeRedes>
 
   'sistema:abrirEnlace': (url: string) => Resultado<null>
 

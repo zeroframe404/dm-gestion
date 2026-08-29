@@ -222,6 +222,17 @@ export interface ApiDm {
     borrarSegmento: Remota<'marketing:borrarSegmento'>
     avisar: Remota<'marketing:avisar'>
   }
+  redes: {
+    panel: Remota<'redes:panel'>
+    estadoMeta: Remota<'redes:estadoMeta'>
+    guardarMeta: Remota<'redes:guardarMeta'>
+    borrarMeta: Remota<'redes:borrarMeta'>
+    vincular: Remota<'redes:vincular'>
+    elegirPagina: Remota<'redes:elegirPagina'>
+    desvincular: Remota<'redes:desvincular'>
+    elegirArchivo: Remota<'redes:elegirArchivo'>
+    publicar: Remota<'redes:publicar'>
+  }
   sistema: {
     abrirEnlace: Remota<'sistema:abrirEnlace'>
   }

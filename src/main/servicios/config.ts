@@ -2,7 +2,7 @@
 // Acá viven las credenciales de Google: nunca se guardan en la base ni en el repositorio.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { EstadoConexionGoogle } from '../../shared/tipos'
+import type { EstadoConexionGoogle, EstadoDeMeta } from '../../shared/tipos'
 import { rutaConfig } from '../rutas'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
@@ -28,10 +28,30 @@ interface ConfigVps {
   token?: string
 }
 
+/**
+ * La app de Meta para publicar en Facebook e Instagram. Es una credencial, así que va acá y no en la
+ * base, por el mismo criterio que la cuenta de servicio de Google: config.json no se sincroniza ni
+ * entra al repositorio.
+ */
+interface ConfigMeta {
+  appId: string
+  appSecret: string
+  actualizadoEn: string
+}
+
 interface Config {
   google?: ConfigGoogle
   vps?: ConfigVps
+  meta?: ConfigMeta
 }
+
+/**
+ * La dirección a la que Facebook vuelve después de que la persona autoriza. Nunca se navega a ella
+ * —el programa atrapa el intento y lo cancela—, así que no hace falta que exista: sólo tiene que ser
+ * EXACTAMENTE la misma que está registrada en el panel de Meta, y ese es el error de configuración
+ * número uno. Por eso la pantalla la muestra con un botón para copiarla.
+ */
+export const URL_DE_REDIRECCION_DE_META = 'https://dmartinezseguros.com/meta/vuelta'
 
 // La base del GENERAL DE CLIENTES vive en el VPS de la agencia desde la v12. La URL y el token van
 // embebidos (mismo criterio que TOKEN_DATOS y UPDATE_TOKEN: el repositorio es privado) y config.json
@@ -83,6 +103,53 @@ function aEstado(google: ConfigGoogle | undefined): EstadoConexionGoogle {
 
 export function estadoGoogle(): EstadoConexionGoogle {
   return aEstado(leerConfig().google)
+}
+
+// ---------------------------------------------------------------------------
+// La app de Meta (Facebook e Instagram)
+// ---------------------------------------------------------------------------
+
+export function estadoMeta(): EstadoDeMeta {
+  const meta = leerConfig().meta
+  return {
+    configurada: Boolean(meta?.appId && meta.appSecret),
+    // El App ID se muestra —está a la vista en cualquier posteo— y el App Secret no sale nunca de acá.
+    appId: meta?.appId ?? '',
+    urlDeRedireccion: URL_DE_REDIRECCION_DE_META,
+    rutaDeConfig: rutaConfig(),
+    actualizadoEn: meta?.actualizadoEn ?? null,
+  }
+}
+
+/** Las credenciales completas, sólo para el proceso principal. */
+export function credencialesMeta(): { appId: string; appSecret: string } | null {
+  const meta = leerConfig().meta
+  if (!meta?.appId || !meta.appSecret) return null
+  return { appId: meta.appId, appSecret: meta.appSecret }
+}
+
+export function guardarMeta(datos: unknown): EstadoDeMeta {
+  const d = objeto(datos, 'Los datos de la app de Meta')
+  const appId = texto(d.appId, 'El identificador de la app (App ID)', 1, 64)
+  if (!/^\d+$/.test(appId)) throw new ErrorDeNegocio('El App ID de Meta es sólo números. Copialo de developers.facebook.com.')
+
+  const config = leerConfig()
+  // Con el secreto vacío se conserva el que ya estaba: así se puede corregir el App ID sin tener que
+  // ir a buscar de nuevo el secreto, que Meta muestra una sola vez.
+  const escrito = typeof d.appSecret === 'string' ? d.appSecret.trim() : ''
+  const appSecret = escrito || config.meta?.appSecret || ''
+  if (!appSecret) throw new ErrorDeNegocio('Falta la clave secreta de la app (App Secret).')
+
+  escribirConfig({ ...config, meta: { appId, appSecret, actualizadoEn: new Date().toISOString() } })
+  return estadoMeta()
+}
+
+/** Saca la app de Meta de esta computadora. El vínculo con la Página se borra aparte. */
+export function borrarMeta(): EstadoDeMeta {
+  const config = leerConfig()
+  delete config.meta
+  escribirConfig(config)
+  return estadoMeta()
 }
 
 /** Credenciales completas para el importador (nunca salen del proceso principal). */

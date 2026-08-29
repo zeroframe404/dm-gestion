@@ -54,6 +54,14 @@ import {
   xlsxDelReporte,
 } from './servicios/reportes'
 import { borrarPlantilla, crearPlantilla, editarPlantilla, listarPlantillas } from './servicios/plantillas'
+import {
+  desvincularDeMeta,
+  elegirPaginaVinculada,
+  panelDeRedes,
+  publicarEnRed,
+  revisarArchivoParaPublicar,
+  vincularConMeta,
+} from './servicios/redes'
 import { avisarDeSegmento, borrarSegmento, guardarSegmento, resultadoDeSegmento } from './servicios/marketing'
 import {
   agregarNotaDeLead,
@@ -146,7 +154,7 @@ import {
   renovar,
 } from './servicios/renovaciones'
 import { editarCompania, listarCompanias } from './servicios/companias'
-import { estadoGoogle, guardarGoogle } from './servicios/config'
+import { borrarMeta, estadoGoogle, estadoMeta, guardarGoogle, guardarMeta } from './servicios/config'
 import { guardarPlantillaDeAviso, plantillaDeAviso } from './servicios/plantillas'
 import { historialDeFila } from './servicios/historial'
 import {
@@ -952,6 +960,67 @@ export function registrarIpc(): void {
   )
 
   // Abrir un enlace en el navegador del sistema (WhatsApp). Sólo http/https.
+  // --- Marketing → Redes -----------------------------------------------------
+  //
+  // Publicar es EDITAR Marketing: sale en nombre de la agencia y se ve desde afuera. Cargar la app de
+  // Meta, en cambio, es una credencial y por eso pide administrador, igual que la cuenta de Google.
+  // Mirar la pestaña alcanza con ver Marketing: tiene que poder abrirse aunque no haya nada cargado,
+  // para que la pantalla explique qué falta en vez de romperse.
+  manejar('redes:panel', async () => {
+    exigirVista('marketing')
+    return exito(await panelDeRedes())
+  })
+  manejar('redes:estadoMeta', () => {
+    exigirVista('marketing', 'administracion')
+    return exito(estadoMeta())
+  })
+  manejar('redes:guardarMeta', (datos) => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(guardarMeta(datos))
+  })
+  manejar('redes:borrarMeta', () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(borrarMeta())
+  })
+  // Vincular deja la cuenta de la agencia atada a esta computadora: es de administradores.
+  manejar('redes:vincular', async () => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('marketing')
+    return exito(await vincularConMeta(ventanaActual(), actor))
+  })
+  manejar('redes:elegirPagina', async (paginaId) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('marketing')
+    elegirPaginaVinculada(paginaId, actor)
+    return exito(await panelDeRedes())
+  })
+  manejar('redes:desvincular', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('marketing')
+    desvincularDeMeta()
+    return exito(await panelDeRedes())
+  })
+  manejar('redes:elegirArchivo', async () => {
+    exigirEdicion('marketing')
+    const ventana = ventanaActual()
+    const opciones = {
+      title: 'Elegí la foto para publicar',
+      buttonLabel: 'Usar esta foto',
+      properties: ['openFile'] as Array<'openFile'>,
+      // Sólo fotos: los videos y los reels necesitan otro camino y todavía no están.
+      filters: [{ name: 'Fotos', extensions: ['jpg', 'jpeg', 'png'] }],
+    }
+    const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
+    if (elegido.canceled || elegido.filePaths.length === 0) return exito(null)
+    return exito(await revisarArchivoParaPublicar(elegido.filePaths[0]!))
+  })
+  manejar('redes:publicar', async (pedido) => {
+    const actor = exigirEdicion('marketing')
+    return exito(await publicarEnRed(pedido, actor))
+  })
+
   manejar('sistema:abrirEnlace', async (url) => {
     exigirSesion()
     if (!/^https?:\/\//i.test(url)) throw new ErrorDeNegocio('Sólo se pueden abrir direcciones http o https.')

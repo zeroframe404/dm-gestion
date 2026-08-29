@@ -364,6 +364,46 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
     ],
   },
 
+  'administracion.redessociales': {
+    clave: 'administracion.redessociales',
+    titulo: 'Administración → Redes sociales',
+    resumen: 'La app de Meta que el programa usa para publicar en Facebook e Instagram. Se carga una vez por computadora.',
+    secciones: [
+      {
+        titulo: 'Qué es esto',
+        parrafos: [
+          'Para que el programa pueda publicar en la página de Facebook de la agencia y en su Instagram, Meta exige que exista una «app» a nombre de la agencia. Se crea una sola vez en developers.facebook.com y de ahí salen dos datos: el App ID (un número) y el App Secret (una clave). Los dos se cargan acá.',
+          'Se guardan sólo en esta computadora, en el archivo de configuración local. No viajan a la hoja, ni a la base compartida, ni a las otras sucursales: cada computadora que vaya a publicar los tiene que tener cargados. Es el mismo criterio que la cuenta de Google.',
+        ],
+      },
+      {
+        titulo: 'La dirección de vuelta',
+        parrafos: [
+          'Es lo que más falla. En el panel de Meta, en «Facebook Login → Configuración», hay que pegar exactamente la dirección que muestra esta pantalla, en «URI de redireccionamiento de OAuth válidos». Si no coincide letra por letra, Facebook rechaza el ingreso con un error que no explica nada. El botón «Copiar» la deja lista para pegar.',
+          'El programa nunca abre esa dirección: atrapa el intento y lo cancela. No hace falta que la página exista.',
+        ],
+      },
+      {
+        titulo: 'Tres cosas que Meta exige y no dependen del programa',
+        parrafos: [
+          'Primero, la app tiene que salir de «modo Desarrollo» para que la use cualquiera. Mientras esté en Desarrollo funciona sólo para las personas dadas de alta como Administrador, Desarrollador o Tester en el panel de Meta. Es el motivo número uno de «no aparece ninguna página» al vincular.',
+          'Segundo, los permisos de publicación piden Revisión de la app y verificación del negocio. Es un trámite de Meta, con formularios y un video de demostración.',
+          'Y tercero, para Instagram la cuenta tiene que ser Business y estar vinculada a la página de Facebook. Una cuenta personal no se puede publicar por programa, sin importar cómo esté configurada la app.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'App de Meta',
+        explicacion: 'Un registro gratuito en developers.facebook.com que identifica al programa ante Facebook. Sin esto, Meta no acepta ninguna publicación automática.',
+      },
+      {
+        termino: 'App Secret',
+        explicacion: 'La clave de esa app. Meta la muestra una sola vez al crearla; si se pierde, hay que generar otra desde el panel.',
+      },
+    ],
+  },
+
   'administracion.acerca': {
     clave: 'administracion.acerca',
     titulo: 'Administración → Acerca de',

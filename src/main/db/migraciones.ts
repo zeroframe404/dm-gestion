@@ -1161,6 +1161,34 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE clientes ADD COLUMN codigo_postal TEXT;
     `,
   },
+  {
+    version: 17,
+    descripcion: 'Redes sociales: historial de lo publicado en Facebook e Instagram',
+    sql: `
+      -- Se guardan también las FALLIDAS, y ese es el punto de la tabla: el error que devuelve Meta se
+      -- pierde apenas se cierra la pantalla, y sin él nadie puede averiguar por qué no salió el
+      -- posteo. Con el motivo escrito, el problema se puede leer una semana después.
+      --
+      -- No se guarda el archivo: ya está subido a la red, y copiarlo de nuevo sólo engorda la carpeta
+      -- de datos. Queda el nombre, que es lo que sirve para reconocerlo.
+      --
+      -- Es historial LOCAL: no sube a la hoja, igual que las plantillas y los segmentos.
+      CREATE TABLE publicaciones_redes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        destino TEXT NOT NULL CHECK (destino IN ('FACEBOOK', 'INSTAGRAM')),
+        estado TEXT NOT NULL CHECK (estado IN ('PUBLICADA', 'FALLIDA')),
+        texto TEXT NOT NULL DEFAULT '',
+        archivo TEXT,
+        id_en_la_red TEXT,
+        url TEXT,
+        error TEXT,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        publicado_por TEXT NOT NULL,
+        publicado_en TEXT NOT NULL
+      );
+      CREATE INDEX idx_publicaciones_redes_fecha ON publicaciones_redes (publicado_en);
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

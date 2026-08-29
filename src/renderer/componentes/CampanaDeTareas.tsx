@@ -10,7 +10,7 @@
 //
 // Cuando aparece una tarea que antes no estaba, además suena la campana: la aplicación pasa el día
 // de fondo y un punto rojo que nadie mira no avisa nada.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AvisosDeTareas } from '../../shared/tipos'
 import { useNavegacion } from '../contexto/Navegacion'
 import { useAvisoNuevo } from '../sonidos/useAvisoNuevo'
@@ -37,10 +37,12 @@ export function CampanaDeTareas() {
     return () => clearInterval(reloj)
   }, [traer])
 
-  // Los identificadores de lo que hay ahora. Con `null` mientras no llegó nada, para que la primera
-  // consulta del día no suene: al abrir el programa hay tareas pendientes y ninguna es una novedad.
-  const idsDeTareas = useMemo(() => (avisos ? avisos.filas.map((tarea) => tarea.id) : null), [avisos])
-  useAvisoNuevo(idsDeTareas, 'campana')
+  // Suenan las que todavía no vi, no las que están a la vista en el desplegable: `filas` son las ocho
+  // primeras de TODO lo abierto, así que sonar por eso daría un aviso cada vez que se completa una y
+  // sube la novena —una tarea vieja—, y ninguno cuando la nueva ordena más abajo del octavo lugar.
+  // Con `null` mientras no llegó nada, para que la primera consulta del día no suene: al abrir el
+  // programa hay tareas pendientes y ninguna es una novedad.
+  useAvisoNuevo(avisos ? avisos.idsNuevas : null, 'campana')
 
   // Cerrar al tocar afuera o con Escape: es un desplegable, no un diálogo.
   useEffect(() => {

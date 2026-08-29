@@ -17,6 +17,7 @@ import { ConexionGoogle } from './ConexionGoogle'
 import { ImportarGoogle } from './ImportarGoogle'
 import { Impresora } from './Impresora'
 import { Permisos } from './Permisos'
+import { RedesSociales } from './RedesSociales'
 import { Sincronizacion } from './Sincronizacion'
 import { SincronizarTodo } from './SincronizarTodo'
 import { Usuarios } from './Usuarios'
@@ -31,6 +32,7 @@ type IdSeccion =
   | 'google'
   | 'importar'
   | 'sincronizacion'
+  | 'redessociales'
   | 'acerca'
 
 export function Administracion() {
@@ -65,6 +67,7 @@ export function Administracion() {
       lista.push({ id: 'sincronizacion', nombre: 'Sincronización', icono: 'nube', ayuda: 'administracion.sincronizacion' })
       lista.push({ id: 'importar', nombre: 'Reimportar la base', icono: 'nubeBajada', ayuda: 'administracion.importar' })
       lista.push({ id: 'google', nombre: 'Google Drive', icono: 'nube', ayuda: 'administracion.google' })
+      lista.push({ id: 'redessociales', nombre: 'Redes sociales', icono: 'instagram', ayuda: 'administracion.redessociales' })
     }
     lista.push({ id: 'acerca', nombre: 'Acerca de', icono: 'info', ayuda: 'administracion.acerca' })
     return lista
@@ -98,6 +101,7 @@ export function Administracion() {
         {seccion === 'google' && <ConexionGoogle />}
         {seccion === 'importar' && <ImportarGoogle />}
         {seccion === 'sincronizacion' && <Sincronizacion />}
+        {seccion === 'redessociales' && <RedesSociales />}
         {seccion === 'acerca' && <AcercaDe />}
       </div>
     </div>
