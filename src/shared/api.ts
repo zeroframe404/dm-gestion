@@ -194,6 +194,8 @@ export interface ApiDm {
     mias: Remota<'tareas:mias'>
     avisos: Remota<'tareas:avisos'>
     marcarVistos: Remota<'tareas:marcarVistos'>
+    /** Alguien terminó una tarea: suena el aviso y las pantallas abiertas se refrescan. */
+    alCompletarse: Suscripcion<'tareas:completada'>
   }
   metricas: {
     tablero: Remota<'metricas:tablero'>

@@ -2195,6 +2195,18 @@ export interface AvisosDeTareas {
   hoy: string
 }
 
+/**
+ * Una tarea que se acaba de dar por terminada. Viaja del proceso principal al renderer para que suene
+ * el aviso, y es lo mismo que dice la notificación del sistema. Se manda desde las tres pantallas que
+ * pueden cerrar una tarea (el módulo Tareas, la ficha de un cliente y la de un siniestro).
+ */
+export interface TareaCompletada {
+  tareaId: number
+  titulo: string
+  /** Quién la marcó. Vacío si no se sabe. */
+  porQuien: string
+}
+
 // ---------------------------------------------------------------------------
 // Fase 9 · Métricas y estadísticas
 // ---------------------------------------------------------------------------

@@ -213,6 +213,7 @@ const api: ApiDm = {
     mias: () => invocar('tareas:mias'),
     avisos: () => invocar('tareas:avisos'),
     marcarVistos: () => invocar('tareas:marcarVistos'),
+    alCompletarse: (escuchar) => suscribir('tareas:completada', escuchar),
   },
   metricas: {
     tablero: (filtros) => invocar('metricas:tablero', filtros),

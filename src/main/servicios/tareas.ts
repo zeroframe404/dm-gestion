@@ -40,6 +40,7 @@ import {
   rutaDeAdjunto,
   subirAdjuntoADriveComo,
 } from './adjuntos'
+import { avisarTareaCompletada } from './avisos'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
@@ -597,6 +598,9 @@ export function cambiarEstadoDeTareaDelModulo(tareaId: number, estado: unknown, 
   if (actual.estado === nuevo) return aFila(actual, hoyLocal())
 
   db().prepare('UPDATE tareas SET estado = ?, actualizado_en = ? WHERE id = ?').run(nuevo, ahoraIso(), id)
+  // Terminar una tarea es la única de las tres transiciones que se avisa: es la buena noticia, y la
+  // que el resto del equipo quiere ver aunque tenga la aplicación detrás de otra ventana.
+  if (nuevo === 'hecha') avisarTareaCompletada({ tareaId: id, titulo: actual.titulo, porQuien: actor.nombre })
   sincronizar(id, { estado: NOMBRE_ESTADO_TAREA[nuevo as EstadoTarea] }, actor)
   registrarCambio(actor, {
     accion: 'tarea',

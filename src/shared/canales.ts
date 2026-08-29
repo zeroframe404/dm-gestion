@@ -71,6 +71,7 @@ import type {
   FiltrosMora,
   ListadoMora,
   PedidoDeTicket,
+  TareaCompletada,
   RendicionImputados,
   ResultadoImputacion,
   ResumenComisiones,
@@ -446,6 +447,8 @@ export interface Eventos {
   'permisos:cambiaron': MisPermisos
   /** Se registró un pago y la impresora está en «preguntar»: hay que confirmar el comprobante. */
   'impresora:preguntar': PedidoDeTicket
+  /** Una tarea se dio por terminada: el renderer hace sonar el aviso y refresca lo que tenga a la vista. */
+  'tareas:completada': TareaCompletada
 }
 
 export type NombreCanal = keyof Canales

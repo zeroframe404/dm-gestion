@@ -3,6 +3,7 @@ import { NOMBRE_ROL } from '../../shared/tipos'
 import { useAcceso } from '../contexto/Acceso'
 import { usePermisos } from '../contexto/Permisos'
 import { useSesion, useUsuarioActual } from '../contexto/Sesion'
+import { BotonDeSonido } from './BotonDeSonido'
 import { CampanaDeRechazos } from './CampanaDeRechazos'
 import { CampanaDeTareas } from './CampanaDeTareas'
 import { IndicadorSync } from './IndicadorSync'
@@ -55,6 +56,8 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
             <CampanaDeTareas />
           </>
         )}
+        {/* Pegado a las campanas: es lo que se busca justo después de que sonó una y molestó. */}
+        <BotonDeSonido />
         <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
 
         <div className="flex items-center gap-3">

@@ -1,6 +1,7 @@
 // Raíz de la interfaz: decide entre carga, login, cambio de contraseña obligatorio y el escritorio.
 import type { ReactNode } from 'react'
 import { AvisoActualizacion } from './componentes/AvisoActualizacion'
+import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
 import { BarraLateral } from './componentes/BarraLateral'
 import { BarraSuperior } from './componentes/BarraSuperior'
 import { Icono } from './componentes/Icono'
@@ -144,6 +145,8 @@ function Marco({
       </div>
       {/* Fuera del módulo activo: se cobra desde Cartera, desde la ficha del cliente y desde la caja. */}
       <PreguntaDeTicket />
+      {/* Ídem: una tarea se cierra desde tres pantallas distintas y hasta desde otra computadora. */}
+      <AvisoDeTareaHecha />
     </div>
   )
 }

@@ -7,9 +7,13 @@
 //
 // Se refresca sola cada dos minutos, igual que la otra: el aviso lo carga alguien de otra sucursal y
 // llega por la sincronización, así que preguntar cada tanto es lo único que puede enterarse.
-import { useCallback, useEffect, useRef, useState } from 'react'
+// Cuando aparece un rechazo que antes no estaba suena su propio aviso, distinto al de las tareas: hay
+// que poder saber cuál de las dos campanas sonó sin dar vuelta la cabeza, porque un rechazo se cobra
+// llamando por teléfono y una tarea puede esperar a la tarde.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NOMBRE_MOTIVO_RECHAZO, type AvisosDeRechazos, type MotivoDeRechazo } from '../../shared/tipos'
 import { useNavegacion } from '../contexto/Navegacion'
+import { useAvisoNuevo } from '../sonidos/useAvisoNuevo'
 import { Icono } from './Icono'
 import { cx } from './ui'
 
@@ -32,6 +36,9 @@ export function CampanaDeRechazos({ puedeResolver, puedeVerLaPantalla }: { puede
     const reloj = setInterval(() => void traer(), CADA_CUANTO_MS)
     return () => clearInterval(reloj)
   }, [traer])
+
+  const idsDeRechazos = useMemo(() => (avisos ? avisos.filas.map((fila) => fila.id) : null), [avisos])
+  useAvisoNuevo(idsDeRechazos, 'rechazo')
 
   useEffect(() => {
     if (!abierta) return

@@ -43,6 +43,7 @@ import {
   soloDigitos,
 } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
+import { avisarTareaCompletada } from './avisos'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
 import { idDeSucursalPorNombre, sucursalesParaElegir, sucursalParaGuardar } from './sucursales'
@@ -1149,6 +1150,8 @@ export function cambiarEstadoDeTarea(tareaId: number, estado: EstadoTarea, actor
       valorAnterior: NOMBRE_ESTADO_TAREA[tarea.estado] ?? tarea.estado,
       valorNuevo: NOMBRE_ESTADO_TAREA[estado],
     })
+    // Igual que en el módulo Tareas: cerrarla avisa, y da lo mismo desde qué pantalla se cerró.
+    if (estado === 'hecha') avisarTareaCompletada({ tareaId: id, titulo: tarea.titulo, porQuien: actor.nombre })
   }
 
   // Una tarea puede no tener cliente (las del módulo de tareas suelto): en ese caso no hay lista de
