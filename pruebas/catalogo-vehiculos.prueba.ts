@@ -228,6 +228,33 @@ test('un refresco que se corta no deja al mostrador sin catálogo', async () => 
   assert.ok(estadoDelCatalogo().porTipo.find((tipo) => tipo.tipo === 'AUTO')?.ultimoError)
 })
 
+test('una bajada que vuelve vacía NO borra la caché ni se anota como exitosa', async () => {
+  baseLimpia()
+  usarProveedorDePrueba(proveedorFalso())
+  await refrescarCatalogo('AUTO', () => undefined)
+  assert.equal(marcasDelCatalogo('AUTO').length, 2)
+
+  // El proveedor no falla: devuelve listas vacías, que es lo que pasa si cambia la forma de la
+  // respuesta (otra envoltura, otro nombre para el id). Sin guard, esto borraba las 2 marcas y las 2
+  // versiones y lo registraba como un refresco correcto, sin error que mirar.
+  const mudo = proveedorFalso()
+  usarProveedorDePrueba({ ...mudo, marcas: async () => [] })
+  const estado = await refrescarCatalogo('AUTO', () => undefined)
+
+  assert.equal(marcasDelCatalogo('AUTO').length, 2, 'lo que estaba bajado no se toca')
+  assert.equal(lineasDelCatalogo('AUTO', '1', '11').length, 1)
+  const autos = estado.porTipo.find((tipo) => tipo.tipo === 'AUTO')!
+  assert.equal(autos.marcas, 2, 'las cuentas siguen siendo las de la bajada buena')
+  assert.ok(autos.ultimoError?.includes('marca'), 'y queda el motivo escrito')
+  assert.equal(estado.hayCatalogo, true)
+
+  // Lo mismo si trae marcas pero ninguna versión: una caché sin líneas no sirve para nada.
+  const sinVersiones = proveedorFalso()
+  usarProveedorDePrueba({ ...sinVersiones, lineas: async () => [] })
+  await refrescarCatalogo('AUTO', () => undefined)
+  assert.equal(lineasDelCatalogo('AUTO', '1', '11').length, 1, 'tampoco se toca')
+})
+
 test('la categoría se deduce de la descripción cuando la API no la trae', () => {
   // Es la tabla de palabras, que es la parte más frágil del mapeo y por eso se prueba sola.
   assert.equal(categoriaDeCatalogo('AUTO', 'PICK UP', 'AMAROK 2.0 TDI'), 'PICKUP')

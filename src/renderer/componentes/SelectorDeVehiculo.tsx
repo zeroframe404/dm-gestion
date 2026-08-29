@@ -78,9 +78,15 @@ export function SelectorDeVehiculo({ valor, alCambiar, deshabilitado = false }: 
     void window.dm.vehiculos.estado().then((resultado) => {
       const hay = resultado.ok && resultado.datos.hayCatalogo
       setHayCatalogo(hay)
-      // Un vehículo que ya venía cargado a mano se sigue editando a mano: cambiarle el modo debajo de
-      // los pies a quien está corrigiendo una patente sería perder lo que tenía escrito.
-      if (!hay || (valor.marca && !valor.catalogoCodigo)) setAMano(true)
+      // Un vehículo que YA tiene algo cargado se edita a mano, venga del catálogo o no.
+      //
+      // Los tres desplegables se dibujan con `eleccion`, que son ids del catálogo y viven sólo en este
+      // componente: al volver a montarse (cambiar a «uno de los del cliente» y volver, o abrir la
+      // edición de una póliza) esos ids se perdieron aunque `valor` siga trayendo la marca, el modelo
+      // y la línea. En modo catálogo eso se vería como un formulario vacío que sin embargo guarda un
+      // vehículo cargado: la pantalla estaría mintiendo. En modo a mano se ve lo que de verdad hay, y
+      // el botón de abajo deja volver al catálogo cuando se quiera.
+      if (!hay || valor.marca) setAMano(true)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -222,8 +228,21 @@ export function SelectorDeVehiculo({ valor, alCambiar, deshabilitado = false }: 
 
       {aMano ? (
         <div className="grid gap-4 sm:grid-cols-3">
-          <Campo etiqueta="Marca" value={valor.marca} disabled={deshabilitado} onChange={(e) => alCambiar({ marca: e.target.value, catalogoCodigo: '' })} />
-          <Campo etiqueta="Modelo" value={valor.modelo} disabled={deshabilitado} onChange={(e) => alCambiar({ modelo: e.target.value, catalogoCodigo: '' })} />
+          {/* Tocar la marca o el modelo a mano deja de ser lo que dijo el catálogo: se van con ellos
+              el código, la línea y la categoría. Dejar la línea pegada guardaría un CHERY TIGGO con
+              la versión de un Focus, y no hay pantalla donde eso se vea para corregirlo. */}
+          <Campo
+            etiqueta="Marca"
+            value={valor.marca}
+            disabled={deshabilitado}
+            onChange={(e) => alCambiar({ marca: e.target.value, linea: '', categoria: '', catalogoCodigo: '' })}
+          />
+          <Campo
+            etiqueta="Modelo"
+            value={valor.modelo}
+            disabled={deshabilitado}
+            onChange={(e) => alCambiar({ modelo: e.target.value, linea: '', categoria: '', catalogoCodigo: '' })}
+          />
           <Campo
             etiqueta="Año"
             value={valor.anio}
@@ -277,8 +296,9 @@ export function SelectorDeVehiculo({ valor, alCambiar, deshabilitado = false }: 
           onClick={() => {
             setAMano((previo) => !previo)
             setEleccion(SIN_ELEGIR)
-            // Al pasar a mano se borra el código: lo que se escriba ya no es lo que dijo el catálogo.
-            if (!aMano) alCambiar({ catalogoCodigo: '', categoria: '' })
+            // Al pasar a mano se borra lo que había dicho el catálogo —el código, la línea y la
+            // categoría—: de acá en adelante lo que valga es lo que se escriba.
+            if (!aMano) alCambiar({ linea: '', categoria: '', catalogoCodigo: '' })
           }}
           className={cx('self-start text-xs font-semibold text-marino-700 hover:underline disabled:opacity-50')}
         >

@@ -262,6 +262,24 @@ async function refrescarUnTipo(
     lineas.push(...(await quien.lineas(tipo, modelo.marcaId, modelo.id)))
   }
 
+  // Una bajada que no trajo nada NO puede borrar lo que había. El proveedor no siempre falla con un
+  // error: si cambia la forma de la respuesta (otra envoltura, otro nombre para el id), la lectura
+  // devuelve listas vacías en silencio, y entonces el borrado de más abajo dejaría al mostrador sin
+  // catálogo y lo anotaría como un refresco exitoso, sin motivo que mirar. Se corta acá, por el
+  // camino del error, que conserva las cuentas anteriores y guarda el porqué.
+  if (marcas.length === 0) {
+    throw new ErrorDeProveedor(
+      'El catálogo no devolvió ninguna marca. No se tocó lo que ya estaba bajado; probá de nuevo o revisá la cuenta.',
+      false,
+    )
+  }
+  if (lineas.length === 0) {
+    throw new ErrorDeProveedor(
+      `El catálogo devolvió ${marcas.length} marca(s) pero ninguna versión. No se tocó lo que ya estaba bajado.`,
+      false,
+    )
+  }
+
   const ahora = ahoraIso()
   db().transaction(() => {
     db().prepare('DELETE FROM catalogo_marcas WHERE tipo = ?').run(tipo)

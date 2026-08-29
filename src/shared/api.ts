@@ -211,6 +211,7 @@ export interface ApiDm {
   excel: {
     catalogo: Remota<'excel:catalogo'>
     filas: Remota<'excel:filas'>
+    exportar: Remota<'excel:exportar'>
   }
   marketing: {
     plantillas: Remota<'marketing:plantillas'>

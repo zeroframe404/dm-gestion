@@ -24,7 +24,7 @@ import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
-import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, recortar } from './CamposDeCliente'
+import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, conDireccion, recortar } from './CamposDeCliente'
 import { DialogoPagoDelCliente, DialogoSiniestro } from './DialogosDeFicha'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
@@ -356,7 +356,7 @@ function PestanaDatos({
         />
         <BotonDeDireccion
           direccion={borrador.direccionDetalle}
-          alCambiar={(direccionDetalle) => setBorrador((previo) => ({ ...previo, direccionDetalle }))}
+          alCambiar={(direccionDetalle) => setBorrador((previo) => conDireccion(previo, direccionDetalle))}
           localidadesConocidas={localidades}
         />
         <Campo

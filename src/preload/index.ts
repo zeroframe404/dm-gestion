@@ -229,6 +229,7 @@ const api: ApiDm = {
   excel: {
     catalogo: () => invocar('excel:catalogo'),
     filas: (pedido) => invocar('excel:filas', pedido),
+    exportar: (pedido) => invocar('excel:exportar', pedido),
   },
   marketing: {
     plantillas: () => invocar('marketing:plantillas'),

@@ -88,7 +88,7 @@ export function GeneralExcel() {
     if (!areaId) return
     setGuardando(true)
     setAviso(null)
-    const resultado = await window.dm.reportes.exportar({ reporteId: areaId, filtros, columnas: [] }, 'xlsx', null)
+    const resultado = await window.dm.excel.exportar({ reporteId: areaId, filtros, columnas: [] })
     setGuardando(false)
     if (resultado.ok) {
       if (resultado.datos.ruta) setAviso(`Se guardó en ${resultado.datos.ruta}`)

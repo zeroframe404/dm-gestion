@@ -412,6 +412,12 @@ export interface Canales {
   // áreas que quien pregunta puede ver, y las filas exigen el permiso de ESE módulo, no el de Reportes.
   'excel:catalogo': () => Resultado<CatalogoDeExcel>
   'excel:filas': (pedido: PedidoDeReporte) => Resultado<FilasDeReporte>
+  /**
+   * El .xlsx de lo que se está viendo. Va aparte de 'reportes:exportar' porque pide el permiso del
+   * MÓDULO y no el de Reportes: la pantalla se abre con el permiso del módulo, así que exigir otro
+   * para bajar lo mismo que ya está a la vista sería un botón que nunca funciona.
+   */
+  'excel:exportar': (pedido: PedidoDeReporte) => Resultado<{ ruta: string | null }>
   'reportes:vistaPrevia': (pedido: PedidoDeReporte) => Resultado<VistaPreviaDeReporte>
   /**
    * Con `ruta` en null abre el diálogo «Guardar como», que es lo que hace la pantalla, y devuelve la

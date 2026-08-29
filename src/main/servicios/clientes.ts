@@ -9,7 +9,6 @@
 // que no se encolan; sí quedan en el historial, como todo lo que se toca desde acá.
 import { diasParaVencer, estadoDePoliza, aDia } from '../../shared/polizas'
 import {
-  direccionEstaVacia,
   sanearDireccion,
   textoDeDireccion,
   type DireccionEstructurada,
@@ -817,7 +816,14 @@ function opcional(valor: unknown, campo: string, maximo: number): string {
 function validarDatos(datos: DatosDeCliente): CamposDeCliente {
   const d = objeto(datos, 'Los datos del cliente')
   const detalle = sanearDireccion(d.direccionDetalle)
-  const cargoLaDireccion = !direccionEstaVacia(detalle)
+  /**
+   * Que la dirección esté «cargada en partes» lo deciden las partes que arman el RENGLÓN: la calle,
+   * la otra calle y la altura. La localidad NO cuenta, y ese es justo el detalle que importa: en una
+   * ficha vieja `direccionDetalle` llega con la localidad que vino de la hoja y nada más, así que
+   * tomar eso por «cargada» hacía que guardar cualquier otro campo —el celular, el email— reemplazara
+   * el renglón de la dirección por uno vacío y le borrara la dirección al cliente.
+   */
+  const cargoLaDireccion = Boolean(detalle.calle || detalle.calle2 || detalle.altura || detalle.sinAltura)
 
   // El documento se guarda como se escribió, siempre. La detección de DNI vs CUIT (y el aviso de que
   // el verificador no cierra) es de la PANTALLA, para que quien carga se dé cuenta en el momento; acá

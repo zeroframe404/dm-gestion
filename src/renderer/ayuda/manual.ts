@@ -13,6 +13,7 @@
 // pantalla, el banco de pruebas y el script de línea de comandos— y si se le mete un `document.` deja
 // de andar en dos de los tres.
 import { AREAS, DESCRIPCION_AREA, NOMBRE_NIVEL, permisosPorDefecto } from '../../shared/permisos'
+import { SUCURSALES } from '../../shared/sucursales'
 import { NOMBRE_ROL } from '../../shared/tipos'
 import { MODULOS, MODULO_ADMINISTRACION, type Modulo } from '../modulos'
 import { CONTENIDO_AYUDA } from './contenido'
@@ -271,7 +272,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
       <p>Lo que en la planilla eran pestañas, acá son módulos, y están en la barra azul de la izquierda. Se pasa de uno a otro con un clic y lo que se carga en uno aparece en los demás sin tener que copiarlo.</p>
 
       <h2>Lo que cargás acá, lo ven todos</h2>
-      <p>El programa está en las computadoras de las cinco sucursales y todas trabajan sobre los mismos datos. Cuando registrás un pago en Dock Sud, en Lanús lo ven a los pocos minutos. No hay que mandarse nada por WhatsApp ni pasar planillas.</p>
+      <p>El programa está en las computadoras de las ${SUCURSALES.length} sucursales de la agencia y todas trabajan sobre los mismos datos. Cuando registrás un pago en Dock Sud, en Lanús lo ven a los pocos minutos. No hay que mandarse nada por WhatsApp ni pasar planillas.</p>
       <p>Eso vale también al revés: si algo que cargaron hoy en otra sucursal todavía no aparece, no está perdido, está viajando. En Administración → Sincronizar hay un botón para apurarlo.</p>
 
       <h2>Trabaja sin internet</h2>

@@ -3,6 +3,7 @@ import {
   forwardRef,
   useEffect,
   useId,
+  useRef,
   useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
@@ -324,6 +325,15 @@ export function Dialogo({ abierto, titulo, descripcion, alCerrar, pie, ancho = '
   const idTitulo = useId()
   const [profundidad, setProfundidad] = useState(0)
 
+  // `alCerrar` casi siempre es una función nueva en cada render (una flecha escrita en el JSX). Si
+  // estuviera en las dependencias, cualquier re-render del padre —por ejemplo cuando llega
+  // `permisos:cambiaron` desde otra computadora— volvería a correr el efecto: se sacaría este diálogo
+  // de la pila y se lo volvería a poner ARRIBA. Con la dirección abierta encima del alta, el Escape
+  // siguiente cerraría el alta entera y no la ventanita. Guardado en un ref, el efecto depende sólo
+  // de abrir y cerrar, que es cuando la pila tiene que cambiar de verdad.
+  const cerrar = useRef(alCerrar)
+  cerrar.current = alCerrar
+
   useEffect(() => {
     if (!abierto) return
     DIALOGOS_ABIERTOS.push(idTitulo)
@@ -331,7 +341,7 @@ export function Dialogo({ abierto, titulo, descripcion, alCerrar, pie, ancho = '
     const alTeclear = (evento: KeyboardEvent) => {
       // Sólo el de más arriba se cierra con Escape. El de abajo sigue abierto, que es lo que espera
       // cualquiera que abrió una ventanita encima de un formulario a medio llenar.
-      if (evento.key === 'Escape' && DIALOGOS_ABIERTOS[DIALOGOS_ABIERTOS.length - 1] === idTitulo) alCerrar()
+      if (evento.key === 'Escape' && DIALOGOS_ABIERTOS[DIALOGOS_ABIERTOS.length - 1] === idTitulo) cerrar.current()
     }
     window.addEventListener('keydown', alTeclear)
     return () => {
@@ -339,7 +349,7 @@ export function Dialogo({ abierto, titulo, descripcion, alCerrar, pie, ancho = '
       const posicion = DIALOGOS_ABIERTOS.lastIndexOf(idTitulo)
       if (posicion !== -1) DIALOGOS_ABIERTOS.splice(posicion, 1)
     }
-  }, [abierto, alCerrar, idTitulo])
+  }, [abierto, idTitulo])
 
   if (!abierto) return null
 

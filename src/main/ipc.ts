@@ -915,6 +915,16 @@ export function registrarIpc(): void {
     exigirVista(...areas)
     return exito(filasDeReporte(pedido))
   })
+  // Bajar el .xlsx de lo que ya está en pantalla pide lo mismo que verlo. Con el permiso de Reportes
+  // el botón le fallaría siempre a quien tiene el módulo y no tiene Reportes, que es justo el recorte
+  // que la agencia haría para que un empleado no se baje la cartera entera.
+  manejar('excel:exportar', async (pedido) => {
+    const areas = areasDelReporte(pedido?.reporteId ?? '')
+    if (areas.length === 0) throw new ErrorDeNegocio('Ese listado no se puede bajar como planilla.')
+    exigirVista(...areas)
+    const archivo = xlsxDelReporte(pedido)
+    return exito(await guardarBinarioComo({ ...archivo, descripcion: 'Planilla de Excel' }, ventanaActual()))
+  })
   manejar('reportes:vistaPrevia', (pedido) => {
     exigirVista('reportes')
     return exito(vistaPreviaDeReporte(pedido))

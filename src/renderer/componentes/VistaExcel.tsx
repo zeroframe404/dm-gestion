@@ -55,6 +55,27 @@ export function VistaExcel({ columnas, filas, vacio }: Props) {
     }
   }, [cursor, ancla])
 
+  /**
+   * El cursor tiene que quedar siempre adentro de la grilla.
+   *
+   * `filas` cambia sin que el componente se desmonte —alcanza con escribir en el buscador— y el
+   * cursor es estado de acá. Sin esto, quien estaba parado en la fila 700 y filtra a cinco filas se
+   * queda con el cursor en una celda que ya no existe: no se ve ninguna celda marcada, la barra de
+   * abajo dice «A700» y Ctrl+C no copia NADA sin decirlo, que es lo peor de todo: la persona se va a
+   * Excel y pega lo que tenía de antes creyendo que pegó lo que acababa de filtrar.
+   */
+  useEffect(() => {
+    const ultimaFila = Math.max(filas.length - 1, 0)
+    const ultimaColumna = Math.max(columnas.length - 1, 0)
+    setCursor((previo) => {
+      const fila = Math.min(previo.fila, ultimaFila)
+      const columna = Math.min(previo.columna, ultimaColumna)
+      return fila === previo.fila && columna === previo.columna ? previo : { fila, columna }
+    })
+    // La selección también se pierde: el rango que había marcado ya no señala las mismas filas.
+    setAncla(null)
+  }, [filas.length, columnas.length])
+
   const estaEnElRango = useCallback(
     (fila: number, columna: number) =>
       fila >= rango.filaDesde && fila <= rango.filaHasta && columna >= rango.columnaDesde && columna <= rango.columnaHasta,

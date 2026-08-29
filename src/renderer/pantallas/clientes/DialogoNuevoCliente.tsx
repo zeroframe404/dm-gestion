@@ -8,7 +8,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { DIRECCION_VACIA, type DireccionEstructurada } from '../../../shared/direccion'
 import type { DatosDeCliente, FichaCliente, FilaCliente, Sucursal } from '../../../shared/tipos'
 import { Alerta, Boton, Campo, Dialogo, Etiqueta } from '../../componentes/ui'
-import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, recortar, type CampoDeTexto } from './CamposDeCliente'
+import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, conDireccion, recortar, type CampoDeTexto } from './CamposDeCliente'
 
 const LISTA_SUCURSALES = 'lista-sucursales-alta'
 
@@ -60,7 +60,7 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
 
   const cambiarTexto = (campo: CampoDeTexto) => (valor: string) => setDatos((previos) => ({ ...previos, [campo]: valor }))
 
-  const cambiarDireccion = (direccionDetalle: DireccionEstructurada) => setDatos((previos) => ({ ...previos, direccionDetalle }))
+  const cambiarDireccion = (direccionDetalle: DireccionEstructurada) => setDatos((previos) => conDireccion(previos, direccionDetalle))
 
   const guardar = async () => {
     setGuardando(true)

@@ -4,7 +4,7 @@
 // Que el alta detecte el CUIT y la ficha no sería peor que si ninguna de las dos lo hiciera: quien
 // carga aprende una regla en una pantalla y descubre que en la otra no vale.
 import { useMemo, useState } from 'react'
-import { direccionCompleta, direccionEstaVacia, type DireccionEstructurada } from '../../../shared/direccion'
+import { direccionCompleta, direccionEstaVacia, textoDeDireccion, type DireccionEstructurada } from '../../../shared/direccion'
 import { detectarDocumento } from '../../../shared/documento'
 import { calcularEdad } from '../../../shared/edad'
 import type { DatosDeCliente } from '../../../shared/tipos'
@@ -24,6 +24,25 @@ const CAMPOS_DE_TEXTO: CampoDeTexto[] = [
   'sucursal',
   'fechaNacimiento',
 ]
+
+/**
+ * Los datos del cliente con la dirección cambiada.
+ *
+ * Cambia TRES campos y no uno: además de las partes, el renglón de siempre y la localidad, que se
+ * arman con ellas. Si no, vaciar la dirección con el botón «Vaciar» dejaría las partes en blanco y el
+ * renglón viejo intacto, y al guardar el proceso principal —que sin partes conserva lo que había—
+ * lo resucitaría. Es lo mismo que hace el proceso principal al guardar; acá se hace para que la
+ * pantalla muestre desde ya lo que va a quedar.
+ */
+export function conDireccion(datos: DatosDeCliente, direccionDetalle: DireccionEstructurada): DatosDeCliente {
+  const vacia = direccionEstaVacia(direccionDetalle)
+  return {
+    ...datos,
+    direccionDetalle,
+    direccion: vacia ? '' : textoDeDireccion(direccionDetalle),
+    localidad: vacia ? '' : direccionDetalle.localidad,
+  }
+}
 
 /**
  * Le saca los espacios de los costados a lo que se escribió. Antes esto era un `Object.fromEntries`
