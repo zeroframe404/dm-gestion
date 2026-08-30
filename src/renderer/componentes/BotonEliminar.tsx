@@ -94,6 +94,10 @@ export function DialogoEliminar({
   const [vista, setVista] = useState<VistaPreviaDeEliminacion | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [borrando, setBorrando] = useState(false)
+  // El botón se apaga con `borrando`, pero eso es estado de React: dos clics muy seguidos entran los
+  // dos antes del re-dibujo. El segundo mandaría a borrar un registro que ya no está y lo único que
+  // conseguiría es un cartel de error confuso encima del que ya se fue bien.
+  const yaSalio = useRef(false)
   const restante = useCuentaRegresiva(vista !== null ? SEGUNDOS_PARA_CONFIRMAR : null)
   const nombre = NOMBRE_ELIMINABLE[tipo]
 
@@ -110,12 +114,19 @@ export function DialogoEliminar({
   }, [tipo, id])
 
   const borrar = async () => {
+    if (yaSalio.current) return
+    yaSalio.current = true
     setBorrando(true)
     setError(null)
     const resultado = await window.dm.eliminacion.borrar(tipo, id)
     setBorrando(false)
-    if (resultado.ok) alBorrar(resultado.datos)
-    else setError(resultado.error)
+    if (resultado.ok) {
+      alBorrar(resultado.datos)
+      return
+    }
+    // Falló: se puede volver a intentar (por ejemplo, la base estaba ocupada).
+    yaSalio.current = false
+    setError(resultado.error)
   }
 
   const listo = vista !== null && restante === 0
@@ -138,7 +149,7 @@ export function DialogoEliminar({
             disabled={!listo || borrando}
             cargando={borrando}
           >
-            {listo || borrando ? 'Eliminar definitivamente' : `Esperá ${restante} s…`}
+            {vista !== null && restante > 0 && !borrando ? `Esperá ${restante} s…` : 'Eliminar definitivamente'}
           </Boton>
         </>
       }
