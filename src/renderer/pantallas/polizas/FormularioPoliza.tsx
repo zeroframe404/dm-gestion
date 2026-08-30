@@ -31,6 +31,8 @@ interface Props {
   clienteIdInicial: number | null
   alCerrar: () => void
   alGuardar: (poliza: PolizaDeCliente) => void
+  /** Se borró la póliza de la base (papelera del superadministrador): hay que releer el listado. */
+  alBorrar: (titulo: string) => void
   /** La baja no devuelve la póliza, así que avisa aparte con el nombre para el mensaje del listado. */
   alDarDeBaja: (clienteNombre: string) => void
 }
@@ -89,7 +91,7 @@ interface ClienteElegido {
   sucursal: string | null
 }
 
-export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuardar, alDarDeBaja }: Props) {
+export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuardar, alDarDeBaja, alBorrar }: Props) {
   const usuario = useUsuarioActual()
   const { ir } = useNavegacion()
   const permisos = usePermisos()
@@ -358,7 +360,13 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
           )}
           {/* Dar de baja guarda la historia; esto la borra. Sólo un superadministrador lo ve. */}
           {enEdicion && polizaId !== null && (
-            <BotonEliminar tipo="poliza" id={polizaId} tamano="md" etiqueta="Eliminar" alBorrar={alCerrar} />
+            <BotonEliminar
+              tipo="poliza"
+              id={polizaId}
+              tamano="md"
+              etiqueta="Eliminar"
+              alBorrar={(resultado) => alBorrar(resultado.titulo)}
+            />
           )}
           <Boton
             variante="primario"

@@ -64,7 +64,16 @@ function hayDiferencias(a: DatosDeCliente, b: DatosDeCliente): boolean {
   return JSON.stringify(a) !== JSON.stringify(b)
 }
 
-export function FichaDelCliente({ clienteId, alVolver }: { clienteId: number; alVolver: () => void }) {
+export function FichaDelCliente({
+  clienteId,
+  alVolver,
+  alBorrar,
+}: {
+  clienteId: number
+  alVolver: () => void
+  /** Se borró el cliente de la base. Distinto de volver: el listado tiene que releerse. */
+  alBorrar: () => void
+}) {
   const { ir } = useNavegacion()
   const { puedeEditar } = usePermisos()
   const [ficha, setFicha] = useState<FichaCliente | null>(null)
@@ -177,7 +186,7 @@ export function FichaDelCliente({ clienteId, alVolver }: { clienteId: number; al
             )}
             {/* La papelera. Para quien no es superadministrador el componente no dibuja nada: ni un
                 botón apagado, que lo único que consigue es que alguien lo intente. */}
-            <BotonEliminar tipo="cliente" id={ficha.id} tamano="md" etiqueta="Eliminar cliente" alBorrar={alVolver} />
+            <BotonEliminar tipo="cliente" id={ficha.id} tamano="md" etiqueta="Eliminar cliente" alBorrar={alBorrar} />
           </div>
         </div>
 

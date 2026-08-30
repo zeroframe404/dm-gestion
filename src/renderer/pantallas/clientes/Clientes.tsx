@@ -56,6 +56,10 @@ export function Clientes() {
   const { parametros, limpiarParametros } = useNavegacion()
   const [clienteAbierto, setClienteAbierto] = useState<number | null>(null)
   const [busquedaInicial, setBusquedaInicial] = useState('')
+  // El listado no se desmonta al abrir una ficha (queda escondido con `hidden`), así que volver de ella
+  // no vuelve a consultar. Cuando el cliente se BORRA eso dejaría la fila fantasma en la tabla hasta que
+  // alguien toque «Actualizar»: este número sube y el listado relee.
+  const [relecturas, setRelecturas] = useState(0)
 
   // Otro módulo puede abrir directamente la ficha de alguien (`ir('clientes', { clienteId })`).
   // Los parámetros son de un solo uso: se consumen acá y se limpian, así volver a la solapa Clientes
@@ -72,6 +76,7 @@ export function Clientes() {
       <ListadoDeClientes
         oculto={clienteAbierto !== null}
         busquedaInicial={busquedaInicial}
+        relecturas={relecturas}
         alAbrirCliente={(id) => setClienteAbierto(id)}
       />
       {clienteAbierto !== null && (
@@ -81,6 +86,10 @@ export function Clientes() {
           key={clienteAbierto}
           clienteId={clienteAbierto}
           alVolver={() => setClienteAbierto(null)}
+          alBorrar={() => {
+            setClienteAbierto(null)
+            setRelecturas((n) => n + 1)
+          }}
         />
       )}
     </div>
@@ -94,10 +103,13 @@ export function Clientes() {
 function ListadoDeClientes({
   oculto,
   busquedaInicial,
+  relecturas,
   alAbrirCliente,
 }: {
   oculto: boolean
   busquedaInicial: string
+  /** Sube cuando algo de afuera cambió la cartera (hoy: un cliente borrado desde su ficha). */
+  relecturas: number
   alAbrirCliente: (clienteId: number) => void
 }) {
   const puedeEditar = usePuedeEditar('clientes')
@@ -147,7 +159,7 @@ function ListadoDeClientes({
     // Cambiar la búsqueda o un filtro es empezar otra cosa: el aviso de la última alta ya no aplica.
     setAviso(null)
     void cargar(filtros)
-  }, [cargar, filtros])
+  }, [cargar, filtros, relecturas])
 
   const hayFiltros = Boolean(filtros.busqueda || filtros.sucursal || filtros.compania || filtros.estado)
 
