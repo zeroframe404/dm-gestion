@@ -13,10 +13,11 @@ import test from 'node:test'
 import { abrirBaseDeDatos, cerrarBaseDeDatos, db, type BaseDeDatos } from '../src/main/db/base'
 import { eliminarRegistro, vistaPreviaDeEliminacion } from '../src/main/servicios/eliminacion'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
-import { listarClientes } from '../src/main/servicios/clientes'
+import { agregarNota, crearTarea, listarClientes } from '../src/main/servicios/clientes'
 import { bajasDelMes, darDeBaja, planillaDelMes } from '../src/main/servicios/cartera'
 import { avisarRechazo, listarRechazos } from '../src/main/servicios/rechazos'
 import { crearLead } from '../src/main/servicios/leads'
+import { crearSiniestro } from '../src/main/servicios/siniestros'
 import { crearPresupuesto } from '../src/main/servicios/presupuestos'
 import { crearTareaCompleta } from '../src/main/servicios/tareas'
 import { encolar } from '../src/main/sincronizacion/cola'
@@ -197,6 +198,77 @@ test('el lead del que salió la venta no se borra: queda sin cliente', async () 
   eliminarRegistro('cliente', cliente, DANIEL)
   assert.equal(contar(base, 'leads', `id = ${lead.id}`), 1, 'el lead sobrevive')
   assert.equal(unico<number | null>(base, 'SELECT cliente_id FROM leads WHERE id = ?', lead.id), null, 'sin cliente')
+})
+
+test('la cascada completa: un cliente con todo colgando se borra sin dejar nada roto', async () => {
+  const base = await carteraDePrueba()
+  const cliente = idDeCliente('gonzalez')
+  const poliza = unico<number>(base, 'SELECT id FROM polizas WHERE cliente_id = ? LIMIT 1', cliente)
+
+  // Se le cuelga de todo, que es la única forma de saber que la cascada está entera: las claves
+  // foráneas están en ON y cualquier tabla que el plan haya olvidado tira la transacción.
+  agregarNota(cliente, 'llamó preguntando por la cuota', DANIEL)
+  crearTarea(
+    { clienteId: cliente, polizaId: poliza, titulo: 'Mandarle la póliza', detalle: '', responsableId: DANIEL.id, venceEl: '' },
+    DANIEL,
+  )
+  crearSiniestro(
+    {
+      clienteId: cliente,
+      polizaId: poliza,
+      fecha: '2026-08-10',
+      numeroSiniestro: 'S-1',
+      descripcion: 'granizo',
+      estado: 'ABIERTO',
+      importe: '$ 100.000',
+      observaciones: '',
+    },
+    DANIEL,
+  )
+  avisarRechazo(poliza, { motivo: 'SIN FONDOS', nota: '', sucursal: '' }, DANIEL)
+  const presupuesto = crearPresupuesto(
+    {
+      leadId: null,
+      clienteId: cliente,
+      clienteNombre: 'GONZALEZ MARIA LAURA',
+      telefono: '',
+      documento: '',
+      sucursal: 'DOCK SUD',
+      patente: 'AB123CD',
+      marca: 'FORD',
+      modelo: 'FIESTA',
+      anio: '2018',
+      tipoVehiculo: 'AUTO',
+      observaciones: '',
+      opciones: [{ compania: 'SANCOR', cobertura: 'TERCEROS COMPLETO', precio: '$ 20.000', comentario: '' }],
+    },
+    DANIEL,
+  ).presupuesto
+  base.prepare('INSERT INTO renovaciones (poliza_id, vence_el, creado_en, actualizado_en) VALUES (?, ?, ?, ?)').run(
+    poliza,
+    '2027-01-01',
+    ahoraIso(),
+    ahoraIso(),
+  )
+
+  const vista = vistaPreviaDeEliminacion('cliente', cliente, DANIEL)
+  for (const que of ['póliza', 'nota', 'tarea', 'siniestro', 'aviso de rechazo', 'presupuesto']) {
+    assert.ok(
+      vista.arrastra.some((l) => l.que === que && l.cuantos > 0),
+      `el cartel no cuenta «${que}»`,
+    )
+  }
+
+  eliminarRegistro('cliente', cliente, DANIEL)
+
+  assert.equal(contar(base, 'clientes', `id = ${cliente}`), 0)
+  assert.equal(contar(base, 'presupuestos', `id = ${presupuesto.id}`), 0)
+  assert.equal(contar(base, 'renovaciones', `poliza_id = ${poliza}`), 0)
+  for (const tabla of ['notas', 'tareas', 'siniestros', 'rechazos_debito', 'presupuesto_opciones', 'tarea_comentarios']) {
+    assert.equal(contar(base, tabla, `1 = 1`) >= 0, true, `${tabla} consultable`)
+  }
+  // La prueba de fuego: SQLite mira si quedó alguna fila apuntando a algo que ya no está.
+  assert.deepEqual(base.pragma('foreign_key_check'), [], 'quedaron referencias rotas en la base')
 })
 
 test('el historial no se borra nunca, y queda anotado quién borró y qué', async () => {
