@@ -67,6 +67,13 @@ interface Plan {
   detalle: string[]
   arrastra: LoQueArrastra[]
   renglones: Renglon[]
+  /**
+   * TODOS los `_ID` que toca el borrado, tengan renglón en la hoja o no. No es lo mismo que
+   * `renglones`: una fila creada en la aplicación y todavía sin subir no tiene renglón que sacar, pero
+   * sí tiene un «crear» esperando en la cola que hay que cancelar. Si no se cancelara, la subida
+   * escribiría en Google una fila que acá ya no existe y que nadie va a sacar nunca.
+   */
+  filas: string[]
   /** Rutas relativas de los adjuntos, tal como las guarda `adjuntos.ts`. */
   archivos: string[]
   advertencias: string[]
@@ -139,13 +146,6 @@ function renglon(filaId: unknown, pestanaDeLaTabla: unknown): Renglon | null {
   // que sacar, y contarlo en el cartel sería prometer un borrado en Google que no va a pasar.
   if (cruda && Number(cruda.en_la_hoja) === 0 && Number(cruda.numero_fila) === 0) return null
   return { filaId: id, pestana }
-}
-
-/** Los renglones de todas las filas que devuelve la consulta (tiene que traer `fila_id` y `pestana`). */
-function renglonesDe(sql: string, ...parametros: unknown[]): Renglon[] {
-  return todas(sql, ...parametros)
-    .map((f) => renglon(f.fila_id, f.pestana))
-    .filter((r): r is Renglon => r !== null)
 }
 
 /** Los adjuntos de un grupo de siniestros o de tareas, con la ruta relativa que guarda `adjuntos.ts`. */
@@ -254,21 +254,31 @@ function contarGrupos(grupos: Grupo[]): LoQueArrastra[] {
   )
 }
 
-function renglonesDeGrupos(grupos: Grupo[]): Renglon[] {
-  const juntos: Renglon[] = []
+/**
+ * Lo que estos grupos tienen en la hoja: los renglones que hay que sacar y todos los `_ID` que tocan.
+ * Se devuelven juntos porque salen de la misma consulta y porque separarlos fue exactamente el error
+ * que este comentario evita: cancelar la cola sólo de las filas con renglón dejaba viva la entrada de
+ * «crear» de una fila que todavía no había viajado.
+ */
+function deLaHoja(grupos: Grupo[]): { renglones: Renglon[]; filas: string[] } {
+  const renglones: Renglon[] = []
+  const filas: string[] = []
+  const vistos = new Set<string>()
   for (const g of grupos) {
     if (!g.enLaHoja) continue
-    juntos.push(...renglonesDe(`SELECT fila_id, pestana FROM ${g.tabla} WHERE ${g.condicion.donde}`, ...g.condicion.parametros))
+    for (const f of todas(`SELECT fila_id, pestana FROM ${g.tabla} WHERE ${g.condicion.donde}`, ...g.condicion.parametros)) {
+      const id = algo(f.fila_id)
+      if (id === null) continue
+      // Un mismo _ID no se toca dos veces: borrar corre las filas de abajo, y pedir el mismo renglón
+      // dos veces sacaría de la hoja el que quedó en su lugar.
+      if (vistos.has(id)) continue
+      vistos.add(id)
+      filas.push(id)
+      const donde = renglon(id, f.pestana)
+      if (donde) renglones.push(donde)
+    }
   }
-  // Un mismo _ID no se encola dos veces: borrar corre las filas de abajo, y pedir el mismo renglón dos
-  // veces sacaría de la hoja el que quedó en su lugar.
-  const vistos = new Set<string>()
-  return juntos.filter((r) => {
-    const clave = `${r.pestana} | ${r.filaId}`
-    if (vistos.has(clave)) return false
-    vistos.add(clave)
-    return true
-  })
+  return { renglones, filas }
 }
 
 /**
@@ -432,7 +442,7 @@ function planDeCliente(id: number): Plan {
       juntar(algo(c.sucursal_texto), algo(c.localidad), algo(c.direccion)),
     ].filter((l) => l !== ''),
     arrastra: contarGrupos(grupos),
-    renglones: renglonesDeGrupos(grupos),
+    ...deLaHoja(grupos),
     archivos: [
       ...archivosDe('siniestro_adjuntos', 'siniestro_id', siniestroIds),
       ...archivosDe('tarea_adjuntos', 'tarea_id', tareaIds),
@@ -528,7 +538,7 @@ function planDePoliza(id: number): Plan {
       ),
     ].filter((l) => l !== ''),
     arrastra: contarGrupos(grupos),
-    renglones: renglonesDeGrupos(grupos),
+    ...deLaHoja(grupos),
     archivos: [
       ...archivosDe('siniestro_adjuntos', 'siniestro_id', siniestroIds),
       ...archivosDe('tarea_adjuntos', 'tarea_id', tareaIds),
@@ -547,7 +557,14 @@ function planDePoliza(id: number): Plan {
 // ---------------------------------------------------------------------------
 
 function planDeCuota(id: number): Plan {
-  const q = una('SELECT * FROM cuotas_mes WHERE id = ?', id)
+  // El nombre se lee igual que en la pantalla de la que salió el botón: la fila importada puede no
+  // traerlo y tenerlo sólo en la ficha del cliente. Un cartel que dice «Sin nombre» sobre un registro
+  // que en la tabla de al lado se ve con nombre y apellido es exactamente el que nadie lee.
+  const q = una(
+    `SELECT c.*, COALESCE(c.cliente_nombre, cl.nombre) AS cliente_nombre
+     FROM cuotas_mes c LEFT JOIN clientes cl ON cl.id = c.cliente_id WHERE c.id = ?`,
+    id,
+  )
   if (!q) noSeEncontro('cuota')
   const filaId = algo(q.fila_id)
   const deLaFila = igual('cuota_fila_id', filaId)
@@ -578,7 +595,7 @@ function planDeCuota(id: number): Plan {
       juntar(algo(q.sucursal_texto), algo(q.pago) ? `pago: ${String(q.pago)}` : 'sin pagar'),
     ].filter((l) => l !== ''),
     arrastra,
-    renglones: renglonesDeGrupos([grupo('la fila', 'cuotas_mes', igual('id', id)), ...grupos]),
+    ...deLaHoja([grupo('la fila', 'cuotas_mes', igual('id', id)), ...grupos]),
     archivos: [],
     advertencias,
     instantanea: { cuota: q },
@@ -596,7 +613,14 @@ function planDeCuota(id: number): Plan {
 // ---------------------------------------------------------------------------
 
 function planDeBaja(id: number): Plan {
-  const b = una('SELECT * FROM bajas WHERE id = ?', id)
+  // El nombre se lee igual que en la pantalla de la que salió el botón: la fila importada puede no
+  // traerlo y tenerlo sólo en la ficha del cliente. Un cartel que dice «Sin nombre» sobre un registro
+  // que en la tabla de al lado se ve con nombre y apellido es exactamente el que nadie lee.
+  const b = una(
+    `SELECT j.*, COALESCE(j.cliente_nombre, cl.nombre) AS cliente_nombre
+     FROM bajas j LEFT JOIN clientes cl ON cl.id = j.cliente_id WHERE j.id = ?`,
+    id,
+  )
   if (!b) noSeEncontro('baja')
 
   const advertencias = [
@@ -625,7 +649,7 @@ function planDeBaja(id: number): Plan {
       juntar(algo(b.sucursal_texto), algo(b.nota)),
     ].filter((l) => l !== ''),
     arrastra: [],
-    renglones: renglonesDeGrupos([grupo('la baja', 'bajas', igual('id', id))]),
+    ...deLaHoja([grupo('la baja', 'bajas', igual('id', id))]),
     archivos: [],
     advertencias,
     instantanea: { baja: b },
@@ -640,7 +664,14 @@ function planDeBaja(id: number): Plan {
 // ---------------------------------------------------------------------------
 
 function planDeRechazo(id: number): Plan {
-  const r = una('SELECT * FROM rechazos_debito WHERE id = ?', id)
+  // El nombre se lee igual que en la pantalla de la que salió el botón: la fila importada puede no
+  // traerlo y tenerlo sólo en la ficha del cliente. Un cartel que dice «Sin nombre» sobre un registro
+  // que en la tabla de al lado se ve con nombre y apellido es exactamente el que nadie lee.
+  const r = una(
+    `SELECT d.*, COALESCE(d.cliente_nombre, cl.nombre) AS cliente_nombre
+     FROM rechazos_debito d LEFT JOIN clientes cl ON cl.id = d.cliente_id WHERE d.id = ?`,
+    id,
+  )
   if (!r) noSeEncontro('rechazo')
 
   return {
@@ -652,7 +683,7 @@ function planDeRechazo(id: number): Plan {
       juntar(algo(r.sucursal_texto), algo(r.telefono), algo(r.nota)),
     ].filter((l) => l !== ''),
     arrastra: [],
-    renglones: renglonesDeGrupos([grupo('el aviso', 'rechazos_debito', igual('id', id))]),
+    ...deLaHoja([grupo('el aviso', 'rechazos_debito', igual('id', id))]),
     archivos: [],
     advertencias: [
       'La computadora de la sucursal avisada ya tiene su propia copia del aviso: sacarlo de la hoja no lo borra ' +
@@ -700,7 +731,7 @@ function planDeLead(id: number): Plan {
       juntar(algo(l.interes), algo(l.usuario_nombre) ? `cargó ${String(l.usuario_nombre)}` : null),
     ].filter((l2) => l2 !== ''),
     arrastra: contarGrupos(grupos),
-    renglones: renglonesDeGrupos([grupo('el lead', 'leads', igual('id', id)), ...grupos]),
+    ...deLaHoja([grupo('el lead', 'leads', igual('id', id)), ...grupos]),
     archivos: archivosDe('tarea_adjuntos', 'tarea_id', tareaIds),
     advertencias,
     instantanea: { lead: l },
@@ -746,7 +777,7 @@ function planDePresupuesto(id: number): Plan {
       juntar(algo(p.telefono), algo(p.usuario_nombre) ? `cargó ${String(p.usuario_nombre)}` : null),
     ].filter((l) => l !== ''),
     arrastra: contarGrupos(grupos),
-    renglones: renglonesDeGrupos(grupos),
+    ...deLaHoja(grupos),
     archivos: archivosDe('tarea_adjuntos', 'tarea_id', tareaIds),
     advertencias: [
       ...(versionIds.length > 1 ? [`Se borran las ${versionIds.length} versiones de ${numero}, no sólo la que estás mirando.`] : []),
@@ -772,7 +803,14 @@ function planDePresupuesto(id: number): Plan {
 // ---------------------------------------------------------------------------
 
 function planDeSiniestro(id: number): Plan {
-  const s = una('SELECT * FROM siniestros WHERE id = ?', id)
+  // El nombre se lee igual que en la pantalla de la que salió el botón: la fila importada puede no
+  // traerlo y tenerlo sólo en la ficha del cliente. Un cartel que dice «Sin nombre» sobre un registro
+  // que en la tabla de al lado se ve con nombre y apellido es exactamente el que nadie lee.
+  const s = una(
+    `SELECT n.*, COALESCE(n.cliente_nombre, cl.nombre) AS cliente_nombre
+     FROM siniestros n LEFT JOIN clientes cl ON cl.id = n.cliente_id WHERE n.id = ?`,
+    id,
+  )
   if (!s) noSeEncontro('siniestro')
 
   const tareaIds = ids('SELECT id FROM tareas WHERE siniestro_id = ?', id)
@@ -791,7 +829,7 @@ function planDeSiniestro(id: number): Plan {
       juntar(algo(s.descripcion), algo(s.importe)),
     ].filter((l) => l !== ''),
     arrastra: contarGrupos(grupos),
-    renglones: renglonesDeGrupos([grupo('el siniestro', 'siniestros', igual('id', id)), ...grupos]),
+    ...deLaHoja([grupo('el siniestro', 'siniestros', igual('id', id)), ...grupos]),
     archivos: [
       ...archivosDe('siniestro_adjuntos', 'siniestro_id', [id]),
       ...archivosDe('tarea_adjuntos', 'tarea_id', tareaIds),
@@ -810,7 +848,14 @@ function planDeSiniestro(id: number): Plan {
 // ---------------------------------------------------------------------------
 
 function planDeRiesgo(id: number): Plan {
-  const r = una('SELECT * FROM riesgos_varios WHERE id = ?', id)
+  // El nombre se lee igual que en la pantalla de la que salió el botón: la fila importada puede no
+  // traerlo y tenerlo sólo en la ficha del cliente. Un cartel que dice «Sin nombre» sobre un registro
+  // que en la tabla de al lado se ve con nombre y apellido es exactamente el que nadie lee.
+  const r = una(
+    `SELECT v.*, COALESCE(v.cliente_nombre, cl.nombre) AS cliente_nombre
+     FROM riesgos_varios v LEFT JOIN clientes cl ON cl.id = v.cliente_id WHERE v.id = ?`,
+    id,
+  )
   if (!r) noSeEncontro('riesgo')
   return {
     tabla: 'riesgos_varios',
@@ -821,7 +866,7 @@ function planDeRiesgo(id: number): Plan {
       juntar(algo(r.sucursal_texto), algo(r.telefono), algo(r.observaciones)),
     ].filter((l) => l !== ''),
     arrastra: [],
-    renglones: renglonesDeGrupos([grupo('el riesgo', 'riesgos_varios', igual('id', id))]),
+    ...deLaHoja([grupo('el riesgo', 'riesgos_varios', igual('id', id))]),
     archivos: [],
     advertencias: [],
     instantanea: { riesgo: r },
@@ -832,7 +877,14 @@ function planDeRiesgo(id: number): Plan {
 }
 
 function planDeAmp(id: number): Plan {
-  const a = una('SELECT * FROM amp WHERE id = ?', id)
+  // El nombre se lee igual que en la pantalla de la que salió el botón: la fila importada puede no
+  // traerlo y tenerlo sólo en la ficha del cliente. Un cartel que dice «Sin nombre» sobre un registro
+  // que en la tabla de al lado se ve con nombre y apellido es exactamente el que nadie lee.
+  const a = una(
+    `SELECT m.*, COALESCE(m.cliente_nombre, cl.nombre) AS cliente_nombre
+     FROM amp m LEFT JOIN clientes cl ON cl.id = m.cliente_id WHERE m.id = ?`,
+    id,
+  )
   if (!a) noSeEncontro('amp')
   return {
     tabla: 'amp',
@@ -843,7 +895,7 @@ function planDeAmp(id: number): Plan {
       juntar(algo(a.sucursal_texto), Number(a.resuelto) === 1 ? 'resuelta' : 'pendiente', algo(a.observaciones)),
     ].filter((l) => l !== ''),
     arrastra: [],
-    renglones: renglonesDeGrupos([grupo('la ampliación', 'amp', igual('id', id))]),
+    ...deLaHoja([grupo('la ampliación', 'amp', igual('id', id))]),
     archivos: [],
     advertencias: [
       'Si lo que querés es sacarla de la lista sin perderla, tildá «Resuelta»: para eso está esa columna.',
@@ -877,7 +929,7 @@ function planDeTarea(id: number): Plan {
       juntar(algo(t.responsable_nombre) ? `de ${String(t.responsable_nombre)}` : null, algo(t.sucursal_texto), algo(t.detalle)),
     ].filter((l) => l !== ''),
     arrastra: contarGrupos(grupos),
-    renglones: renglonesDeGrupos([grupo('la tarea', 'tareas', igual('id', id))]),
+    ...deLaHoja([grupo('la tarea', 'tareas', igual('id', id))]),
     archivos: archivosDe('tarea_adjuntos', 'tarea_id', [id]),
     advertencias: [],
     instantanea: { tarea: t },
@@ -996,7 +1048,7 @@ export function eliminarRegistro(tipoCrudo: unknown, idCrudo: unknown, actor: Se
   try {
     db().transaction(() => {
       plan.ejecutar()
-      cancelarPendientes(plan.renglones.map((r) => r.filaId))
+      cancelarPendientes(plan.filas)
       registrarCambio(actor, {
         accion: 'eliminacion',
         tabla: plan.tabla,

@@ -288,10 +288,14 @@ test('lo que nunca llegó a la hoja no se cuenta como renglón a borrar', async 
   const vista = vistaPreviaDeEliminacion('lead', lead.id, DANIEL)
   assert.equal(vista.filasDeLaHoja, 0, 'no hay renglón en Google que sacar')
 
-  vaciarCola(base)
+  // Pero el «crear» que dejó el alta SÍ tiene que salir de la cola. Si sobreviviera, la subida
+  // escribiría en Google una fila que acá ya no existe y que nadie va a sacar nunca.
+  assert.equal(contar(base, 'cola_sync', `fila_id = '${lead.filaId}' AND operacion = 'crear'`), 1)
+
   const resultado = eliminarRegistro('lead', lead.id, DANIEL)
   assert.equal(resultado.filasDeLaHoja, 0)
-  assert.equal(borradosEncolados(base).length, 0)
+  assert.equal(borradosEncolados(base).length, 0, 'no hay renglón que sacar de la hoja')
+  assert.equal(contar(base, 'cola_sync', `fila_id = '${lead.filaId}'`), 0, 'y el crear pendiente se canceló')
   assert.equal(contar(base, 'leads', `id = ${lead.id}`), 0)
 })
 
