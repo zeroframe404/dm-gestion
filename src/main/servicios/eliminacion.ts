@@ -152,10 +152,12 @@ function renglon(filaId: unknown, pestanaDeLaTabla: unknown): Renglon | null {
   const cruda = una('SELECT pestana, numero_fila, en_la_hoja FROM filas_crudas WHERE fila_id = ?', id)
   const pestana = algo(cruda?.pestana) ?? algo(pestanaDeLaTabla)
   if (pestana === null || pestana === PESTANA_APP) return null
-  // La fila nació acá y todavía no viajó: `registrarFilaDeLaApp` la deja en `en_la_hoja = 0` con
-  // `numero_fila = 0`, y la subida le pone los dos al escribirla (`registrarFilaSubida`). No hay renglón
-  // que sacar, y contarlo en el cartel sería prometer un borrado en Google que no va a pasar.
-  if (cruda && Number(cruda.en_la_hoja) === 0 && Number(cruda.numero_fila) === 0) return null
+  // Sólo cuenta como renglón lo que HOY está en la hoja. Quedan afuera los dos casos de `en_la_hoja = 0`:
+  // la fila que nació acá y todavía no viajó (`registrarFilaDeLaApp` la deja en 0, y la subida le pone
+  // el 1 al escribirla) y la que estuvo y ya no está (la sacó una baja, o alguien la borró a mano). En
+  // los dos, prometer en el cartel un borrado en Google sería prometer algo que no va a pasar.
+  // Encolarlo igual sí se hace, por las dudas: eso es `paraSacar`, no esto.
+  if (cruda && Number(cruda.en_la_hoja) !== 1) return null
   return { filaId: id, pestana }
 }
 

@@ -24,7 +24,7 @@ import { crearSiniestro } from '../src/main/servicios/siniestros'
 import { crearPresupuesto, guardarPresupuesto } from '../src/main/servicios/presupuestos'
 import { crearTareaCompleta } from '../src/main/servicios/tareas'
 import { copiarAdjunto, rutaDeAdjunto, usarCarpetaDeAdjuntosDePrueba } from '../src/main/servicios/adjuntos'
-import { encolar } from '../src/main/sincronizacion/cola'
+import { encolar, pestanasPendientes } from '../src/main/sincronizacion/cola'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 import { resumenDeLoBorrado, TIPOS_ELIMINABLES } from '../src/shared/eliminacion'
 import type { FiltrosClientes, SesionUsuario } from '../src/shared/tipos'
@@ -875,6 +875,43 @@ test('lo que se desenlaza no se borra: el presupuesto de una póliza que se va',
   eliminarRegistro('poliza', poliza, DANIEL)
   assert.equal(contar(base, 'presupuestos', `id = ${presupuesto.id}`), 1, 'la cotización no se borra')
   assert.equal(unico<number | null>(base, 'SELECT poliza_id FROM presupuestos WHERE id = ?', presupuesto.id), null)
+})
+
+test('un borrado nunca hace que se cree una pestaña nueva en la hoja', async () => {
+  const base = await carteraDePrueba()
+  vaciarCola(base)
+
+  // La agencia archivó las planillas viejas: «MARZO 2021» ya no está en la hoja. Borrar un cliente de
+  // esa época encola el borrado de sus filas igual, y el motor pregunta a qué pestañas hay que
+  // escribir para crear las que falten. Si el borrado contara, crearía una pestaña vacía por cada mes
+  // archivado, nada más que para sacarle una fila que tampoco está.
+  encolar({ operacion: 'borrar', pestana: 'MARZO 2021', filaId: 'FILA-VIEJA', campos: {} }, DANIEL)
+  assert.deepEqual(pestanasPendientes(), [], 'una pestaña donde lo único pendiente es un borrado no se crea')
+
+  encolar({ operacion: 'crear', pestana: 'MARZO 2021', filaId: 'FILA-NUEVA', campos: {} }, DANIEL)
+  assert.deepEqual(pestanasPendientes(), ['MARZO 2021'], 'pero si además hay algo que escribir, sí hace falta')
+})
+
+test('la fila que ya no está en la hoja no se cuenta como renglón a sacar', async () => {
+  const base = await carteraDePrueba()
+  const cliente = idDeCliente('lopez')
+  const conTodas = vistaPreviaDeEliminacion('cliente', cliente, DANIEL).filasDeLaHoja
+  assert.ok(conTodas > 1)
+
+  // Una de sus filas ya salió de la hoja (una baja de un mes anterior la sacó, y la bajada la marcó).
+  const alguna = filas<{ fila_id: string }>(
+    base,
+    'SELECT fila_id FROM cuotas_mes WHERE cliente_id = ? AND fila_id IN (SELECT fila_id FROM filas_crudas WHERE en_la_hoja = 1) LIMIT 1',
+    cliente,
+  )[0]
+  assert.ok(alguna)
+  base.prepare('UPDATE filas_crudas SET en_la_hoja = 0 WHERE fila_id = ?').run(alguna.fila_id)
+
+  assert.equal(
+    vistaPreviaDeEliminacion('cliente', cliente, DANIEL).filasDeLaHoja,
+    conTodas - 1,
+    'el cartel no promete sacar de Google un renglón que ya no está ahí',
+  )
 })
 
 // ---------------------------------------------------------------------------
