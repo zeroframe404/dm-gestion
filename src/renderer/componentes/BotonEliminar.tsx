@@ -10,7 +10,7 @@
 //   3. El botón de confirmar arranca apagado y se enciende recién a los cinco segundos, con la cuenta a
 //      la vista. Es el rato que separa «me equivoqué de fila» de «esto lo quise borrar», y es lo que se
 //      tarda en leer la lista de arriba.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   conArticulo,
   NOMBRE_ELIMINABLE,
@@ -220,31 +220,33 @@ export function DialogoEliminar({
 }
 
 /**
- * Cuenta regresiva en segundos. Con `desde` en null no corre (todavía no llegó la vista previa: no
- * tiene sentido descontar los cinco segundos mientras no hay nada para leer).
+ * Cuenta regresiva en segundos. Con `desde` en null no corre: todavía no llegó la vista previa y no
+ * tiene sentido descontar los cinco segundos mientras no hay nada para leer.
+ *
+ * Lo que queda devuelto NO se guarda en un estado, se calcula en cada dibujo contra el instante en que
+ * arrancó. La primera versión sí lo guardaba y tenía un agujero que se comía la función entera: en el
+ * dibujo en que llega la vista previa —o sea, cuando `desde` pasa de null a 5— el efecto todavía no
+ * corrió, así que el estado seguía en 0 y el botón salía HABILITADO durante ese cuadro. Con la vista
+ * previa de un cliente grande, que tarda, alcanzaba con estar apoyando el clic para borrar sin haber
+ * esperado nada. Calculándolo, mientras no arrancó faltan los cinco segundos enteros y punto.
  */
 function useCuentaRegresiva(desde: number | null): number {
-  const [restante, setRestante] = useState(desde ?? 0)
-  // El instante en que arrancó, para que la cuenta no se atrase si el navegador demora un tic.
-  const arranque = useRef<number | null>(null)
-
-  const recalcular = useCallback((inicio: number, total: number) => {
-    const pasados = Math.floor((Date.now() - inicio) / 1000)
-    setRestante(Math.max(0, total - pasados))
-  }, [])
+  const [arranque, setArranque] = useState<number | null>(null)
+  // Sólo para volver a dibujar cuatro veces por segundo: la cuenta sale del reloj, no de acá.
+  const [, latir] = useState(0)
 
   useEffect(() => {
     if (desde === null) {
-      arranque.current = null
-      setRestante(0)
+      setArranque(null)
       return
     }
-    if (arranque.current === null) arranque.current = Date.now()
-    const inicio = arranque.current
-    recalcular(inicio, desde)
-    const reloj = setInterval(() => recalcular(inicio, desde), 250)
+    setArranque(Date.now())
+    const reloj = setInterval(() => latir((n) => n + 1), 250)
     return () => clearInterval(reloj)
-  }, [desde, recalcular])
+  }, [desde])
 
-  return desde === null ? 0 : restante
+  if (desde === null) return 0
+  // Todavía no arrancó (el efecto corre después de pintar): falta todo, nunca cero.
+  if (arranque === null) return desde
+  return Math.max(0, desde - Math.floor((Date.now() - arranque) / 1000))
 }

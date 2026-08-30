@@ -68,6 +68,17 @@ interface Plan {
   arrastra: LoQueArrastra[]
   renglones: Renglon[]
   /**
+   * Los borrados que se encolan de verdad, que son MÁS que `renglones`.
+   *
+   * Una fila que todavía no viajó no tiene renglón que sacar y por eso no se cuenta en el cartel. Pero
+   * el proceso principal es de un solo hilo y este borrado puede entrar justo mientras `subirTanda`
+   * está esperando la respuesta de Google con esa fila ya en la mano: cancelarle la entrada de la cola
+   * no le saca los datos que ya leyó, así que la va a escribir igual y `marcarListas` no va a encontrar
+   * nada que marcar. Ese renglón quedaría en la hoja para siempre. Encolar el borrado igual no cuesta
+   * nada —si la fila nunca llegó, la subida lo da por hecho en el ciclo siguiente— y tapa la carrera.
+   */
+  paraSacar: Renglon[]
+  /**
    * TODOS los `_ID` que toca el borrado, tengan renglón en la hoja o no. No es lo mismo que
    * `renglones`: una fila creada en la aplicación y todavía sin subir no tiene renglón que sacar, pero
    * sí tiene un «crear» esperando en la cola que hay que cancelar. Si no se cancelara, la subida
@@ -145,6 +156,19 @@ function renglon(filaId: unknown, pestanaDeLaTabla: unknown): Renglon | null {
   // `numero_fila = 0`, y la subida le pone los dos al escribirla (`registrarFilaSubida`). No hay renglón
   // que sacar, y contarlo en el cartel sería prometer un borrado en Google que no va a pasar.
   if (cruda && Number(cruda.en_la_hoja) === 0 && Number(cruda.numero_fila) === 0) return null
+  return { filaId: id, pestana }
+}
+
+/**
+ * La pestaña que le toca a este `_ID`, esté hoy en la hoja o no. Es lo que hace falta para encolar un
+ * borrado defensivo: ver `deLaHoja` y el comentario de `paraSacar`.
+ */
+function dondeIria(filaId: unknown, pestanaDeLaTabla: unknown): Renglon | null {
+  const id = algo(filaId)
+  if (id === null) return null
+  const cruda = una('SELECT pestana FROM filas_crudas WHERE fila_id = ?', id)
+  const pestana = algo(cruda?.pestana) ?? algo(pestanaDeLaTabla)
+  if (pestana === null || pestana === PESTANA_APP) return null
   return { filaId: id, pestana }
 }
 
@@ -270,8 +294,9 @@ function contarGrupos(grupos: Grupo[]): LoQueArrastra[] {
  * que este comentario evita: cancelar la cola sólo de las filas con renglón dejaba viva la entrada de
  * «crear» de una fila que todavía no había viajado.
  */
-function deLaHoja(grupos: Grupo[]): { renglones: Renglon[]; filas: string[] } {
+function deLaHoja(grupos: Grupo[]): { renglones: Renglon[]; paraSacar: Renglon[]; filas: string[] } {
   const renglones: Renglon[] = []
+  const paraSacar: Renglon[] = []
   const filas: string[] = []
   const vistos = new Set<string>()
   for (const g of grupos) {
@@ -284,11 +309,13 @@ function deLaHoja(grupos: Grupo[]): { renglones: Renglon[]; filas: string[] } {
       if (vistos.has(id)) continue
       vistos.add(id)
       filas.push(id)
-      const donde = renglon(id, f.pestana)
-      if (donde) renglones.push(donde)
+      const enLaHoja = renglon(id, f.pestana)
+      if (enLaHoja) renglones.push(enLaHoja)
+      const iria = dondeIria(id, f.pestana)
+      if (iria) paraSacar.push(iria)
     }
   }
-  return { renglones, filas }
+  return { renglones, paraSacar, filas }
 }
 
 /**
@@ -592,6 +619,15 @@ function planDeCuota(id: number): Plan {
   const arrastra = contarGrupos(grupos)
 
   const advertencias = ['La póliza y el cliente no se tocan: esto borra la fila de ESTE mes y nada más.']
+  const polizaVigente =
+    algo(q.poliza_id) !== null && cuantos('SELECT COUNT(*) AS n FROM polizas WHERE id = ? AND activa = 1', q.poliza_id) > 0
+  if (polizaVigente) {
+    advertencias.push(
+      'Ojo: esta póliza está VIGENTE. Sin su fila desaparece de la planilla del mes sin figurar como baja, ' +
+        'así que no se le va a cobrar y tampoco va a aparecer entre las bajas. Si el cliente se fue, lo que ' +
+        'corresponde es darla de baja.',
+    )
+  }
   if (arrastra.some((l) => l.que === 'pago')) {
     advertencias.push(
       'Entre lo que se borra hay plata ya cobrada: el pago desaparece también de la caja del día y de la rendición de imputados.',
@@ -1064,6 +1100,13 @@ export function eliminarRegistro(tipoCrudo: unknown, idCrudo: unknown, actor: Se
     db().transaction(() => {
       plan.ejecutar()
       cancelarPendientes(plan.filas)
+      // Los borrados de la hoja se anotan DENTRO de la transacción, como dice el encabezado de cola.ts:
+      // si el borrado local se cae, no queda nadie pidiéndole a Google que saque nada; y si sale bien,
+      // no hay ninguna ventana en la que la aplicación pueda cerrarse con lo local borrado y la hoja
+      // intacta.
+      for (const salida of plan.paraSacar) {
+        encolar({ operacion: 'borrar', pestana: salida.pestana, filaId: salida.filaId, campos: {} }, actor)
+      }
       registrarCambio(actor, {
         accion: 'eliminacion',
         tabla: plan.tabla,
@@ -1083,14 +1126,17 @@ export function eliminarRegistro(tipoCrudo: unknown, idCrudo: unknown, actor: Se
     throw new ErrorDeNegocio(porQueNoSePudo(tipo, error))
   }
 
-  for (const renglon of plan.renglones) {
-    encolar({ operacion: 'borrar', pestana: renglon.pestana, filaId: renglon.filaId, campos: {} }, actor)
-  }
-
+  // Los archivos, al final y sin poder voltear nada: el registro YA se borró y la transacción cerró.
+  // En Windows un adjunto abierto en otro programa hace fallar el borrado del archivo (EBUSY), y dejar
+  // que esa excepción suba diría «no se pudo borrar» sobre algo que sí se borró. Se cuenta y se sigue.
   let archivos = 0
   for (const relativa of plan.archivos) {
-    if (existsSync(rutaDeAdjunto(relativa))) archivos++
-    borrarArchivoDeAdjunto(relativa)
+    try {
+      if (existsSync(rutaDeAdjunto(relativa))) archivos++
+      borrarArchivoDeAdjunto(relativa)
+    } catch (error) {
+      console.error(`[eliminacion] No se pudo borrar el adjunto ${relativa}:`, error)
+    }
   }
 
   return {
