@@ -22,6 +22,7 @@ import {
 import { Icono, type NombreIcono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
+import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
 import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, conDireccion, recortar } from './CamposDeCliente'
@@ -174,6 +175,9 @@ export function FichaDelCliente({ clienteId, alVolver }: { clienteId: number; al
                 Nueva tarea
               </Boton>
             )}
+            {/* La papelera. Para quien no es superadministrador el componente no dibuja nada: ni un
+                botón apagado, que lo único que consigue es que alguien lo intente. */}
+            <BotonEliminar tipo="cliente" id={ficha.id} tamano="md" etiqueta="Eliminar cliente" alBorrar={alVolver} />
           </div>
         </div>
 

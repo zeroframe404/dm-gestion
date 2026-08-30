@@ -13,6 +13,7 @@ import {
   type PrioridadTarea,
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Selector, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -140,6 +141,7 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
             </option>
           ))}
         </select>
+        <BotonEliminar tipo="tarea" id={t.id} tamano="md" etiqueta="Eliminar" alBorrar={alVolver} />
       </div>
 
       {error && <Alerta tono="error">{error}</Alerta>}

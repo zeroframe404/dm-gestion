@@ -15,6 +15,7 @@ import {
   type MotivoDeRechazo,
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { usePermisos } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -206,16 +207,19 @@ export function Rechazos() {
                   {fila.resueltoPor && <span className="block text-green-700">resolvió {fila.resueltoPor}</span>}
                 </td>
                 <td className="px-3 py-2 text-right whitespace-nowrap">
-                  {puedeSeguir &&
-                    (fila.estado === 'RESUELTO' ? (
-                      <Boton tamano="sm" variante="fantasma" onClick={() => void cambiarEstado(fila.id, 'PENDIENTE')}>
-                        Volver a abrir
-                      </Boton>
-                    ) : (
-                      <Boton tamano="sm" variante="fantasma" icono="ok" onClick={() => void cambiarEstado(fila.id, 'RESUELTO')}>
-                        Resuelto
-                      </Boton>
-                    ))}
+                  <div className="flex items-center justify-end gap-1">
+                    {puedeSeguir &&
+                      (fila.estado === 'RESUELTO' ? (
+                        <Boton tamano="sm" variante="fantasma" onClick={() => void cambiarEstado(fila.id, 'PENDIENTE')}>
+                          Volver a abrir
+                        </Boton>
+                      ) : (
+                        <Boton tamano="sm" variante="fantasma" icono="ok" onClick={() => void cambiarEstado(fila.id, 'RESUELTO')}>
+                          Resuelto
+                        </Boton>
+                      ))}
+                    <BotonEliminar tipo="rechazo" id={fila.id} etiqueta={false} alBorrar={() => void cargar(filtros)} />
+                  </div>
                 </td>
               </tr>
             ))}

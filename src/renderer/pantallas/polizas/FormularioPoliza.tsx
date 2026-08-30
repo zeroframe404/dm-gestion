@@ -16,6 +16,7 @@ import {
 } from '../../../shared/tipos'
 import { NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
 import { DialogoRechazo } from '../../componentes/DialogoRechazo'
+import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Icono } from '../../componentes/Icono'
 import { SelectorDeVehiculo } from '../../componentes/SelectorDeVehiculo'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Selector } from '../../componentes/ui'
@@ -354,6 +355,10 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
             <Boton variante="peligro" icono="cerrar" onClick={() => setBajaAbierta(true)} disabled={guardando || !puedeEditar}>
               Dar de baja
             </Boton>
+          )}
+          {/* Dar de baja guarda la historia; esto la borra. Sólo un superadministrador lo ve. */}
+          {enEdicion && polizaId !== null && (
+            <BotonEliminar tipo="poliza" id={polizaId} tamano="md" etiqueta="Eliminar" alBorrar={alCerrar} />
           )}
           <Boton
             variante="primario"

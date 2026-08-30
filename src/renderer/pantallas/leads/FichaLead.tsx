@@ -5,6 +5,7 @@
 // formulario de póliza nueva. Ése es el punto del módulo entero —que nadie vuelva a tipear el nombre y
 // el teléfono que ya están escritos acá.
 import { useCallback, useEffect, useState } from 'react'
+import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { ESTADOS_DE_LEAD, NOMBRE_ORIGEN_LEAD, type EstadoLead, type FichaLead as Ficha } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Tarjeta, cx } from '../../componentes/ui'
@@ -116,6 +117,7 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
         <Boton icono="lapiz" disabled={!puedeEditarLeads} onClick={() => setEditarAbierto(true)}>
           Editar
         </Boton>
+        <BotonEliminar tipo="lead" id={lead.id} tamano="md" etiqueta="Eliminar" alBorrar={alVolver} />
         <Boton
           variante="primario"
           icono="clientes"

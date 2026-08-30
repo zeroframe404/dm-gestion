@@ -138,6 +138,11 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         termino: 'Motivo',
         explicacion: 'La razón de la baja (por ejemplo, cambio de compañía o vehículo vendido), si se cargó al darla de baja. Puede venir vacío si la hoja original no tenía esa columna.',
       },
+      {
+        termino: 'Eliminar la baja',
+        explicacion:
+          'El botón rojo de la papelera, que sólo ve un superadministrador: borra el registro de la baja para siempre, también de la pestaña BAJAS de la base. No devuelve nada a la cartera: para eso están «Deshacer» y «Poner vigente». Sirve para la baja cargada por error, no para el cliente que volvió.',
+      },
     ],
   },
   'cartera.rechazos': {

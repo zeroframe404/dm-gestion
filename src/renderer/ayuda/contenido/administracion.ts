@@ -67,6 +67,14 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'El botón de eliminar',
+        parrafos: [
+          'Hay un botón rojo con una papelera que borra un registro de la base para siempre: un cliente, una póliza, una fila de la planilla, una baja, un aviso de rechazo, un lead, un presupuesto, un siniestro, un riesgo vario, una ampliación o una tarea. Lo ve ÚNICAMENTE el superadministrador. Para el resto del equipo el botón no existe: no aparece apagado ni con un cartel, directamente no está.',
+          'No se puede dar por esta pantalla ni por ninguna otra, y es a propósito. Un administrador tiene todo lo demás —dar de baja, deshacer, poner vigente, corregir— y todo eso se puede revertir. Esto no: se va el cliente, sus pólizas, cada mes que pagó y cada mes que no. Con que alguien se distraiga una vez, la agencia pierde a una persona entera y no hay forma de traerla de vuelta.',
+          'Antes de borrar, la aplicación abre un cartel que dice exactamente qué se lleva puesto («3 pólizas, 42 cuotas del mes, 12 pagos»), qué renglones se sacan de la hoja de Google y qué conviene saber antes. El botón de confirmar arranca apagado y se enciende recién a los cinco segundos, con la cuenta a la vista: es el rato que se tarda en leer esa lista. Todo borrado queda anotado en el historial con quién lo hizo, cuándo y qué decía el registro.',
+        ],
+      },
+      {
         titulo: 'Dónde se guardan',
         parrafos: [
           'Los permisos viajan junto con la lista compartida de usuarios, así que valen igual en todas las computadoras de la agencia: se configuran una vez desde cualquier PC y el resto los toma la próxima vez que lee la lista (como mucho, unos minutos; en el momento, si la persona vuelve a entrar). Si todavía no se subió la lista compartida, valen sólo en esta computadora y suben con ella cuando se inicialice.',
@@ -86,6 +94,11 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Ver y editar',
         explicacion: 'Trabaja el módulo con normalidad, siempre dentro de lo que ya permitía su rol.',
+      },
+      {
+        termino: 'Eliminar',
+        explicacion:
+          'Borrar un registro de la base para siempre, con todo lo que cuelga de él. Es del superadministrador y no se puede dar por permisos. No es lo mismo que dar de baja: la baja guarda la historia, esto la saca.',
       },
     ],
   },

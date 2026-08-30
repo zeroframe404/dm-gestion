@@ -568,6 +568,12 @@ export function PlanillaDelMes() {
             soloLectura={soloLectura}
             alCerrar={() => setSeleccionada(null)}
             alGuardar={(campo, valor) => void guardarCelda(filaSeleccionada.filaId, campo, valor)}
+            alBorrar={(resultado) => {
+              setSeleccionada(null)
+              setError(null)
+              setAviso(`Se borró de la base la fila de ${resultado.titulo}.`)
+              void cargar(datos.periodo)
+            }}
           />
         )}
       </div>

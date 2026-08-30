@@ -184,6 +184,7 @@ import {
   sincronizarAhora,
   volverAIntentar,
 } from './servicios/sincronizacion'
+import { eliminarRegistro, vistaPreviaDeEliminacion } from './servicios/eliminacion'
 import { ErrorDeNegocio } from './servicios/errores'
 import { estadoDeLaBaseVps, migrarAlVps } from './servicios/migracionVps'
 import {
@@ -334,6 +335,12 @@ export function registrarIpc(): void {
     const actual = sesion()
     if (actual) emitirATodas('permisos:cambiaron', misPermisos(actual))
   })
+
+  // Borrado definitivo y puntual: sólo el SUPER_ADMIN, sin excepción y sin permiso que lo habilite.
+  // Se pide el rol también para MIRAR lo que se llevaría el borrado: el detalle de un cliente entero
+  // (cuántos pagos, cuántos siniestros) no tiene por qué salir de acá para quien no puede borrarlo.
+  manejar('eliminacion:vistaPrevia', (tipo, id) => exito(vistaPreviaDeEliminacion(tipo, id, exigirRol('SUPER_ADMIN'))))
+  manejar('eliminacion:borrar', (tipo, id) => exito(eliminarRegistro(tipo, id, exigirRol('SUPER_ADMIN'))))
 
   // Conexión con Google: SUPER_ADMIN y ADMIN, y con permiso sobre Administración.
   manejar('config:estadoGoogle', () => {

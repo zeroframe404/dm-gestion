@@ -1,5 +1,6 @@
 // Contrato tipado de los canales IPC: cada canal declara sus argumentos y su respuesta.
 // El proceso principal implementa exactamente estas firmas y la precarga las expone.
+import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion } from './eliminacion'
 import type { MatrizPermisos } from './permisos'
 import type {
   AceptacionDePresupuesto,
@@ -179,6 +180,12 @@ export interface Canales {
   'permisos:mios': () => Resultado<MisPermisos>
   'permisos:matriz': () => Resultado<MatrizDePermisos>
   'permisos:guardar': (permisos: MatrizPermisos) => Resultado<MatrizDePermisos>
+
+  // Borrado definitivo y puntual de un registro (el botón de la papelera). Sólo el SUPER_ADMIN: lo
+  // exige ipc.ts, y shared/eliminacion.ts explica por qué no es un permiso configurable.
+  /** Qué se lleva puesto el borrado. Es lo que el cartel muestra antes de confirmar; no toca nada. */
+  'eliminacion:vistaPrevia': (tipo: TipoEliminable, id: number) => Resultado<VistaPreviaDeEliminacion>
+  'eliminacion:borrar': (tipo: TipoEliminable, id: number) => Resultado<ResultadoDeEliminacion>
 
   'config:estadoGoogle': () => Resultado<EstadoConexionGoogle>
   'config:guardarGoogle': (datos: DatosConexionGoogle) => Resultado<EstadoConexionGoogle>

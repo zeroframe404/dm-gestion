@@ -4,6 +4,7 @@
 //
 // Nada se borra: destildar la devuelve, y «Ver también las resueltas» muestra el histórico completo.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { ListadoAmp } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
@@ -120,12 +121,13 @@ export function Amp() {
               <th className={encabezado}>Modelo</th>
               <th className={encabezado}>Fecha de vto</th>
               <th className={encabezado}>Ampliación</th>
+              <th className={encabezado} aria-label="Acciones" />
             </tr>
           </thead>
           <tbody>
             {filtradas.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-10 text-center text-slate-500">
+                <td colSpan={11} className="px-3 py-10 text-center text-slate-500">
                   {datos.pendientes === 0 && datos.resueltas === 0
                     ? 'Todavía no se importó la pestaña AMP de la hoja.'
                     : datos.pendientes === 0 && !verResueltas
@@ -156,6 +158,9 @@ export function Amp() {
                 <td className="px-3 py-2">{fila.modelo ?? '—'}</td>
                 <td className="px-3 py-2 whitespace-nowrap tabular-nums">{fila.vencimiento ?? '—'}</td>
                 <td className="px-3 py-2">{[fila.detalle, fila.observaciones].filter(Boolean).join(' · ') || '—'}</td>
+                <td className="px-3 py-2 text-right">
+                  <BotonEliminar tipo="amp" id={fila.id} etiqueta={false} alBorrar={() => void cargar(verResueltas)} />
+                </td>
               </tr>
             ))}
           </tbody>
