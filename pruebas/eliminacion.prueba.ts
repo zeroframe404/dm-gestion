@@ -158,6 +158,19 @@ test('borrar un cliente NO borra el vehículo que también usa otro cliente', as
   const polizaDeLopez = unico<number>(base, 'SELECT id FROM polizas WHERE cliente_id = ? LIMIT 1', lopez)
   base.prepare('UPDATE polizas SET vehiculo_id = ? WHERE id = ?').run(vehiculo, polizaDeLopez)
 
+  // Y el cartel no lo cuenta entre lo que borra: promete lo que va a pasar, ni uno más.
+  const antes = contar(base, 'vehiculos', `cliente_id = ${gonzalez}`)
+  const vista = vistaPreviaDeEliminacion('cliente', gonzalez, DANIEL)
+  assert.equal(
+    vista.arrastra.find((l) => l.que === 'vehículo')?.cuantos ?? 0,
+    antes - 1,
+    'el compartido no entra en la cuenta de lo que se borra',
+  )
+  assert.ok(
+    vista.advertencias.some((a) => /vehículo/i.test(a)),
+    'pero sí se avisa que queda sin dueño',
+  )
+
   eliminarRegistro('cliente', gonzalez, DANIEL)
 
   assert.equal(contar(base, 'vehiculos', `id = ${vehiculo}`), 1, 'el auto sigue existiendo')

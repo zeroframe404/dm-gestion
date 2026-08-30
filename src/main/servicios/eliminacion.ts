@@ -217,6 +217,16 @@ function dentroDe(columna: string, listaIds: number[]): Condicion {
   return { donde: `${columna} IN ${enLista(listaIds.length)}`, parametros: [...listaIds] }
 }
 
+/** `(a) AND (b)`. */
+function ambas(a: Condicion, b: Condicion): Condicion {
+  return { donde: `(${a.donde}) AND (${b.donde})`, parametros: [...a.parametros, ...b.parametros] }
+}
+
+/** `(a) AND NOT (b)`. */
+function salvo(a: Condicion, b: Condicion): Condicion {
+  return { donde: `(${a.donde}) AND NOT (${b.donde})`, parametros: [...a.parametros, ...b.parametros] }
+}
+
 function alguna(...condiciones: Condicion[]): Condicion {
   return {
     donde: condiciones.map((c) => `(${c.donde})`).join(' OR '),
@@ -367,6 +377,15 @@ function planDeCliente(id: number): Plan {
   if (!c) noSeEncontro('cliente')
 
   const delCliente = igual('cliente_id', id)
+  // El auto que este cliente vendió y que el comprador aseguró acá es LA MISMA fila (la clave de un
+  // vehículo es la patente a secas): ése no se borra, se desenlaza. Y por eso tampoco se cuenta entre
+  // lo que se borra: el cartel promete lo que va a pasar, ni uno más.
+  const vehiculoDeOtro: Condicion = {
+    donde:
+      'EXISTS (SELECT 1 FROM polizas p WHERE p.vehiculo_id = vehiculos.id AND p.cliente_id <> ?)' +
+      ' OR EXISTS (SELECT 1 FROM bajas b WHERE b.vehiculo_id = vehiculos.id AND b.cliente_id IS NOT NULL AND b.cliente_id <> ?)',
+    parametros: [id, id],
+  }
   const polizaIds = ids('SELECT id FROM polizas WHERE cliente_id = ?', id)
   const dePoliza = dentroDe('poliza_id', polizaIds)
   const suyo = alguna(delCliente, dePoliza)
@@ -385,7 +404,7 @@ function planDeCliente(id: number): Plan {
 
   const grupos = [
     grupo('póliza', 'polizas', delCliente, false),
-    grupo('vehículo', 'vehiculos', delCliente, false),
+    grupo('vehículo', 'vehiculos', salvo(delCliente, vehiculoDeOtro), false),
     grupo('cuota del mes', 'cuotas_mes', suyo),
     grupo('baja', 'bajas', suyo),
     grupo('pago', 'pagos', suyo),
@@ -409,15 +428,11 @@ function planDeCliente(id: number): Plan {
     )
   }
 
-  const vehiculosCompartidos = cuantos(
-    `SELECT COUNT(*) AS n FROM vehiculos v
-     WHERE v.cliente_id = ?
-       AND (EXISTS (SELECT 1 FROM polizas p WHERE p.vehiculo_id = v.id AND p.cliente_id <> ?)
-         OR EXISTS (SELECT 1 FROM bajas b WHERE b.vehiculo_id = v.id AND b.cliente_id IS NOT NULL AND b.cliente_id <> ?))`,
-    id,
-    id,
-    id,
-  )
+  // La misma condición que decide el grupo de arriba, del otro lado: los que sobreviven. Sale de
+  // `vehiculoDeOtro` y no de un SQL escrito de nuevo justamente para que las dos cuentas no puedan
+  // separarse (los que se borran + los que quedan = todos los del cliente, siempre).
+  const compartidos = ambas(delCliente, vehiculoDeOtro)
+  const vehiculosCompartidos = cuantos(`SELECT COUNT(*) AS n FROM vehiculos WHERE ${compartidos.donde}`, ...compartidos.parametros)
   if (vehiculosCompartidos > 0) {
     advertencias.push(
       `${resumenDeLoBorrado([{ que: 'vehículo', cuantos: vehiculosCompartidos }])} figuran también en la póliza de ` +
