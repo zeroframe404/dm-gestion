@@ -1220,6 +1220,14 @@ Cuatro reglas que atraviesan todos los planes:
   figura— y se daría por hecho sin borrar nada. La fila quedaría en Google para siempre.
 - **Borrar una baja no devuelve nada a la cartera.** Para eso están «Deshacer» y «Poner vigente». El
   cartel lo dice y manda al botón que corresponde.
+- **Borrar la última fila que una póliza vigente tiene en el mes abierto la saca de la cartera para
+  siempre.** `cerrarMes` arma el mes que viene copiando desde las filas del mes abierto: una póliza que
+  se queda sin fila ahí no tiene de dónde copiarse y no se copia nunca más. Desaparece de la planilla,
+  de la mora, de la caja y de los deudores mientras en Pólizas se la sigue viendo activa —nadie le cobra
+  y nadie se entera— y para devolverla hay que darla de baja desde Pólizas y después «Poner vigente» en
+  Bajas. El aviso es fino a propósito: si la planilla tiene DOS filas de la misma póliza (dos renglones
+  en la hoja con distinto _ID), sacar la que sobra es justamente para lo que está la papelera, y ahí no
+  corresponde. En un mes ya cerrado tampoco, porque el cierre sólo mira el mes más nuevo.
 - **Los adjuntos del Drive no se borran**: la copia local sí, la de Google hay que sacarla desde Google.
 
 ### Probarlo
@@ -1228,8 +1236,13 @@ Cuatro reglas que atraviesan todos los planes:
 npm run prueba   # pruebas/eliminacion.prueba.ts
 ```
 
-Cubre: que un ADMIN y un EMPLEADO no puedan ni borrar ni mirar la vista previa; que todos los tipos
-declarados tengan plan; que la cascada del cliente no deje filas huérfanas; que el vehículo compartido y
-el lead convertido sobrevivan; que lo que el cartel promete sea exactamente lo que se borra; que cada
-renglón se encole una sola vez y en su pestaña; que lo que nunca llegó a la hoja no se cuente; que un
-«crear» pendiente salga de la cola; y que el historial crezca en vez de achicarse.
+Treinta y dos casos. Cubre que un ADMIN y un EMPLEADO no puedan ni borrar ni mirar la vista previa; que
+todos los tipos declarados tengan plan; que la cascada del cliente no deje filas huérfanas (con un
+`PRAGMA foreign_key_check` al final, que es la única forma de probarlo de verdad); que una tabla nueva
+que apunte al cliente y que ningún plan conozca tire la transacción entera sin borrar nada; que el
+vehículo compartido y el lead convertido sobrevivan; que lo que el cartel promete sea exactamente lo que
+se borra; que el renglón salga de la pestaña donde vive de verdad y no de la que dice la tabla; que lo
+que ya no está en la hoja no se cuente; que un «crear» pendiente —o uno ya dado por perdido— salga de la
+cola; que un borrado no cree pestañas; que los adjuntos se borren del disco; que el historial sobreviva;
+y que la advertencia de la póliza vigente describa lo que de verdad pasa, cerrando el mes para
+comprobarlo.

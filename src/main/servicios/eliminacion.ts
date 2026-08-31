@@ -39,6 +39,7 @@ import {
 } from '../../shared/eliminacion'
 import type { SesionUsuario } from '../../shared/tipos'
 import { db } from '../db/base'
+import { periodosDisponibles } from './cartera'
 import { ahoraIso } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { borrarArchivoDeAdjunto, rutaDeAdjunto } from './adjuntos'
@@ -620,16 +621,41 @@ function planDeCuota(id: number): Plan {
   ]
   const arrastra = contarGrupos(grupos)
 
-  const advertencias = ['La póliza y el cliente no se tocan: esto borra la fila de ESTE mes y nada más.']
-  const polizaVigente =
-    algo(q.poliza_id) !== null && cuantos('SELECT COUNT(*) AS n FROM polizas WHERE id = ? AND activa = 1', q.poliza_id) > 0
-  if (polizaVigente) {
-    advertencias.push(
-      'Ojo: esta póliza está VIGENTE. Sin su fila desaparece de la planilla del mes sin figurar como baja, ' +
-        'así que no se le va a cobrar y tampoco va a aparecer entre las bajas. Si el cliente se fue, lo que ' +
-        'corresponde es darla de baja.',
-    )
-  }
+  /**
+   * El caso que hay que decir entero: ésta es la ÚNICA fila viva que la póliza tiene en el mes ABIERTO
+   * y la póliza está vigente.
+   *
+   * `cerrarMes` arma el mes que viene copiando desde las filas del mes abierto (ver el JOIN con
+   * `polizas.activa = 1` en cartera.ts). Una póliza que se queda sin fila en ese mes no tiene de dónde
+   * copiarse, así que no se copia nunca más: desaparece de la planilla, de la mora, de la caja y de los
+   * deudores, mientras en Pólizas se la sigue viendo activa. Nadie le cobra y nadie se entera.
+   *
+   * La condición es fina a propósito. No alcanza con «la póliza está vigente»: la planilla puede tener
+   * DOS filas de la misma póliza —dos renglones en la hoja con distinto _ID— y sacar la que sobra es
+   * justamente para lo que está la papelera. Y en un mes ya cerrado no corresponde ningún aviso, porque
+   * el cierre sólo mira el mes más nuevo.
+   */
+  const mesAbierto = periodosDisponibles()[0]?.periodo ?? null
+  const ultimaDelMesAbierto =
+    algo(q.poliza_id) !== null &&
+    algo(q.periodo) === mesAbierto &&
+    Number(q.dada_de_baja) === 0 &&
+    cuantos(
+      'SELECT COUNT(*) AS n FROM cuotas_mes WHERE poliza_id = ? AND periodo = ? AND dada_de_baja = 0',
+      q.poliza_id,
+      q.periodo,
+    ) === 1 &&
+    cuantos('SELECT COUNT(*) AS n FROM polizas WHERE id = ? AND activa = 1', q.poliza_id) === 1
+
+  const advertencias = ultimaDelMesAbierto
+    ? [
+        'Ésta es la única fila que la póliza tiene en el mes abierto, y la póliza está VIGENTE. La póliza no se ' +
+          'borra, pero queda fuera de la planilla: el cierre de mes copia el mes que viene desde estas filas, así ' +
+          'que no se la va a copiar nunca más y no se le va a cobrar, aunque en Pólizas se siga viendo como activa. ' +
+          'Si lo que pasó es que se fue, lo que corresponde es Dar de baja, que deja constancia. Si igual la borrás, ' +
+          'para devolverla hay que darla de baja desde Pólizas y después «Poner vigente» en Bajas.',
+      ]
+    : ['La póliza y el cliente no se tocan: esto borra la fila de ESTE mes y nada más.']
   if (arrastra.some((l) => l.que === 'pago')) {
     advertencias.push(
       'Entre lo que se borra hay plata ya cobrada: el pago desaparece también de la caja del día y de la rendición de imputados.',

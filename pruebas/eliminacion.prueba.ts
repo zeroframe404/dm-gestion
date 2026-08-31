@@ -17,7 +17,7 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos, db, type BaseDeDatos } from '../sr
 import { eliminarRegistro, vistaPreviaDeEliminacion } from '../src/main/servicios/eliminacion'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
 import { agregarNota, crearTarea, listarClientes } from '../src/main/servicios/clientes'
-import { bajasDelMes, darDeBaja, planillaDelMes } from '../src/main/servicios/cartera'
+import { bajasDelMes, cerrarMes, darDeBaja, planillaDelMes } from '../src/main/servicios/cartera'
 import { avisarRechazo, listarRechazos } from '../src/main/servicios/rechazos'
 import { crearLead } from '../src/main/servicios/leads'
 import { crearSiniestro } from '../src/main/servicios/siniestros'
@@ -650,6 +650,98 @@ test('borrar una fila de la planilla se lleva su pago, su baja y su aviso', asyn
   assert.equal(contar(base, 'pagos', `cuota_fila_id = '${fila.filaId}'`), 0, 'el pago se fue con la fila')
   assert.equal(contar(base, 'rechazos_debito', `cuota_fila_id = '${fila.filaId}'`), 0, 'y el aviso también')
   assert.equal(contar(base, 'polizas', `id = ${fila.polizaId}`), 1, 'la póliza no se toca')
+})
+
+test('el cartel dice la verdad sobre la última fila de una póliza vigente, y la verdad es que no vuelve', async () => {
+  const base = await carteraDePrueba()
+  const planilla = planillaDelMes(null)
+  const fila = planilla.filas.find((f) => f.polizaId !== null)
+  assert.ok(fila)
+  const cuotaId = unico<number>(base, 'SELECT id FROM cuotas_mes WHERE fila_id = ?', fila.filaId)
+
+  const vista = vistaPreviaDeEliminacion('cuota', cuotaId, DANIEL)
+  assert.ok(
+    vista.advertencias.some((a) => /única fila/i.test(a) && /cierre de mes/i.test(a) && /Dar de baja/i.test(a)),
+    'tiene que decir que el cierre de mes no la va a copiar más y mandar a dar de baja',
+  )
+  assert.ok(
+    !vista.advertencias.some((a) => /nada más/.test(a)),
+    'y NO puede decir «borra la fila de ESTE mes y nada más», que es justo lo que no pasa',
+  )
+
+  eliminarRegistro('cuota', cuotaId, DANIEL)
+
+  // Y ahora la parte que importa: que la advertencia describa lo que de verdad pasa. `cerrarMes` copia
+  // el mes que viene desde las filas del mes abierto, así que una póliza sin fila no se copia nunca más.
+  assert.equal(unico<number>(base, 'SELECT activa FROM polizas WHERE id = ?', fila.polizaId), 1, 'la póliza sigue vigente')
+  const cierre = cerrarMes(DANIEL)
+  assert.equal(
+    contar(base, 'cuotas_mes', `poliza_id = ${fila.polizaId} AND periodo = '${cierre.periodo}'`),
+    0,
+    'la póliza vigente no entró en el mes nuevo: es exactamente lo que el cartel avisó',
+  )
+})
+
+test('con dos filas de la misma póliza en el mes, borrar la que sobra no dispara el aviso grave', async () => {
+  const base = await carteraDePrueba()
+  const planilla = planillaDelMes(null)
+  const fila = planilla.filas.find((f) => f.polizaId !== null)
+  assert.ok(fila)
+
+  // La hoja tenía la misma póliza cargada dos veces: dos renglones con distinto _ID. Sacar el duplicado
+  // es justamente para lo que está la papelera, así que ahí el aviso grave no corresponde.
+  const original = filas<Record<string, unknown>>(base, 'SELECT * FROM cuotas_mes WHERE fila_id = ?', fila.filaId)[0]
+  assert.ok(original)
+  base
+    .prepare(
+      `INSERT INTO cuotas_mes (fila_id, periodo, pestana, poliza_id, cliente_id, cliente_nombre, dada_de_baja, creado_en, actualizado_en)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    )
+    .run(
+      `${fila.filaId}-BIS`,
+      original.periodo,
+      original.pestana,
+      original.poliza_id,
+      original.cliente_id,
+      original.cliente_nombre,
+      ahoraIso(),
+      ahoraIso(),
+    )
+  const duplicada = unico<number>(base, 'SELECT id FROM cuotas_mes WHERE fila_id = ?', `${fila.filaId}-BIS`)
+
+  const vista = vistaPreviaDeEliminacion('cuota', duplicada, DANIEL)
+  assert.ok(!vista.advertencias.some((a) => /única fila/i.test(a)), 'no es la única fila: no corresponde el aviso grave')
+  assert.ok(vista.advertencias.some((a) => /nada más/.test(a)), 'y sí el de siempre')
+
+  eliminarRegistro('cuota', duplicada, DANIEL)
+  assert.equal(contar(base, 'cuotas_mes', `poliza_id = ${fila.polizaId} AND periodo = '${original.periodo}'`), 1, 'quedó una sola')
+})
+
+test('el título del cartel identifica el registro en todos los tipos', async () => {
+  const base = await carteraDePrueba()
+
+  const cliente = idDeCliente('gonzalez')
+  assert.match(vistaPreviaDeEliminacion('cliente', cliente, DANIEL).titulo, /GONZALEZ/i)
+
+  const poliza = unico<number>(base, 'SELECT id FROM polizas WHERE cliente_id = ? LIMIT 1', cliente)
+  assert.match(vistaPreviaDeEliminacion('poliza', poliza, DANIEL).titulo, /GONZALEZ/i)
+
+  const cuota = unico<number>(base, 'SELECT id FROM cuotas_mes WHERE cliente_id = ? LIMIT 1', cliente)
+  assert.match(vistaPreviaDeEliminacion('cuota', cuota, DANIEL).titulo, /GONZALEZ/i)
+
+  // El riesgo y la ampliación pueden venir de la hoja sin la columna NOMBRE: el nombre sale de la ficha
+  // del cliente, igual que en la pantalla desde la que se apretó el botón.
+  const riesgo = unico<number>(base, 'SELECT id FROM riesgos_varios LIMIT 1')
+  base.prepare('UPDATE riesgos_varios SET cliente_nombre = NULL, cliente_id = ? WHERE id = ?').run(cliente, riesgo)
+  assert.match(
+    vistaPreviaDeEliminacion('riesgo', riesgo, DANIEL).titulo,
+    /GONZALEZ/i,
+    'sin NOMBRE propio, el título tiene que salir de la ficha y no decir «Sin nombre»',
+  )
+
+  const ampliacion = unico<number>(base, 'SELECT id FROM amp LIMIT 1')
+  base.prepare('UPDATE amp SET cliente_nombre = NULL, cliente_id = ? WHERE id = ?').run(cliente, ampliacion)
+  assert.match(vistaPreviaDeEliminacion('amp', ampliacion, DANIEL).titulo, /GONZALEZ/i)
 })
 
 test('el renglón se saca de la pestaña donde vive de verdad, no de la que dice la tabla', async () => {
