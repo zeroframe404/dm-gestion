@@ -217,6 +217,7 @@ export function Polizas() {
           )
         }
         alDarDeBaja={(nombre) => volverAlListado(`La póliza de ${nombre} quedó dada de baja.`, true)}
+        alBorrar={(titulo) => volverAlListado(`Se borró de la base la póliza de ${titulo}.`, true)}
       />
     )
   }

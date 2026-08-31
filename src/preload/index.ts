@@ -46,6 +46,10 @@ const api: ApiDm = {
     guardar: (permisos) => invocar('permisos:guardar', permisos),
     alCambiar: (escuchar) => suscribir('permisos:cambiaron', escuchar),
   },
+  eliminacion: {
+    vistaPrevia: (tipo, id) => invocar('eliminacion:vistaPrevia', tipo, id),
+    borrar: (tipo, id) => invocar('eliminacion:borrar', tipo, id),
+  },
   config: {
     estadoGoogle: () => invocar('config:estadoGoogle'),
     guardarGoogle: (datos) => invocar('config:guardarGoogle', datos),

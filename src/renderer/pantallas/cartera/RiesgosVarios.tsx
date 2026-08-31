@@ -5,6 +5,7 @@
 // azul para lo que se cobra solo (TARJETA y CBU) y un alta simple. Acá no hay período —es una tabla
 // sola que se corrige encima— así que no hay selector de mes ni meses de sólo lectura.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { BotonEliminar, useEsSuperAdmin } from '../../componentes/BotonEliminar'
 import { esDebitoAutomatico } from '../../../shared/semaforo'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { CampoDeRiesgo, FilaRiesgoVario, ListadoRiesgos } from '../../../shared/tipos'
@@ -48,6 +49,7 @@ const COLUMNAS: Columna[] = [
 
 export function RiesgosVarios() {
   const puedeEditar = usePuedeEditar('cartera')
+  const puedeBorrar = useEsSuperAdmin()
   const [datos, setDatos] = useState<ListadoRiesgos | null>(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -148,12 +150,14 @@ export function RiesgosVarios() {
                   {columna.titulo}
                 </th>
               ))}
+              {/* Ver el comentario de Amp.tsx: sin permiso no se dibuja la columna, no una vacía. */}
+              {puedeBorrar && <th className={cx(encabezado, 'w-12')} aria-label="Acciones" />}
             </tr>
           </thead>
           <tbody>
             {filtradas.length === 0 && (
               <tr>
-                <td colSpan={COLUMNAS.length + 1} className="px-3 py-10 text-center text-slate-500">
+                <td colSpan={COLUMNAS.length + (puedeBorrar ? 2 : 1)} className="px-3 py-10 text-center text-slate-500">
                   {datos.total === 0
                     ? 'Todavía no hay riesgos varios. Se cargan con «Nuevo riesgo» y también entran con la pestaña RIESGOS VARIOS de la base.'
                     : 'Ningún riesgo coincide con la búsqueda.'}
@@ -186,6 +190,11 @@ export function RiesgosVarios() {
                     />
                   </td>
                 ))}
+                {puedeBorrar && (
+                  <td className="px-3 py-2 text-right">
+                    <BotonEliminar tipo="riesgo" id={fila.id} etiqueta={false} alBorrar={() => void cargar()} />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

@@ -36,6 +36,10 @@ export interface ApiDm {
     guardar: Remota<'permisos:guardar'>
     alCambiar: Suscripcion<'permisos:cambiaron'>
   }
+  eliminacion: {
+    vistaPrevia: Remota<'eliminacion:vistaPrevia'>
+    borrar: Remota<'eliminacion:borrar'>
+  }
   config: {
     estadoGoogle: Remota<'config:estadoGoogle'>
     guardarGoogle: Remota<'config:guardarGoogle'>

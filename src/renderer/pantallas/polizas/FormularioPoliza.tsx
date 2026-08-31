@@ -16,6 +16,7 @@ import {
 } from '../../../shared/tipos'
 import { NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
 import { DialogoRechazo } from '../../componentes/DialogoRechazo'
+import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Icono } from '../../componentes/Icono'
 import { SelectorDeVehiculo } from '../../componentes/SelectorDeVehiculo'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Selector } from '../../componentes/ui'
@@ -30,6 +31,8 @@ interface Props {
   clienteIdInicial: number | null
   alCerrar: () => void
   alGuardar: (poliza: PolizaDeCliente) => void
+  /** Se borró la póliza de la base (papelera del superadministrador): hay que releer el listado. */
+  alBorrar: (titulo: string) => void
   /** La baja no devuelve la póliza, así que avisa aparte con el nombre para el mensaje del listado. */
   alDarDeBaja: (clienteNombre: string) => void
 }
@@ -88,7 +91,7 @@ interface ClienteElegido {
   sucursal: string | null
 }
 
-export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuardar, alDarDeBaja }: Props) {
+export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuardar, alDarDeBaja, alBorrar }: Props) {
   const usuario = useUsuarioActual()
   const { ir } = useNavegacion()
   const permisos = usePermisos()
@@ -354,6 +357,16 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
             <Boton variante="peligro" icono="cerrar" onClick={() => setBajaAbierta(true)} disabled={guardando || !puedeEditar}>
               Dar de baja
             </Boton>
+          )}
+          {/* Dar de baja guarda la historia; esto la borra. Sólo un superadministrador lo ve. */}
+          {enEdicion && polizaId !== null && (
+            <BotonEliminar
+              tipo="poliza"
+              id={polizaId}
+              tamano="md"
+              etiqueta="Eliminar"
+              alBorrar={(resultado) => alBorrar(resultado.titulo)}
+            />
           )}
           <Boton
             variante="primario"

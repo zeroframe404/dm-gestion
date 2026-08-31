@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FichaPresupuesto as Ficha, OpcionDePresupuesto } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos } from '../../contexto/Permisos'
@@ -104,6 +105,7 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
           </p>
         </div>
         <span className={cx('rounded-full border px-3 py-1 text-sm font-semibold', CLASES_ESTADO_PRESUPUESTO[p.estado])}>{p.estado}</span>
+        <BotonEliminar tipo="presupuesto" id={p.id} tamano="md" etiqueta="Eliminar" alBorrar={alVolver} />
       </div>
 
       {!p.vigente && (

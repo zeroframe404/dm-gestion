@@ -8,8 +8,10 @@
 //    se dio de baja en julio y vuelve en septiembre.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
+import type { ResultadoDeEliminacion } from '../../../shared/eliminacion'
 import { NOMBRE_MOTIVO_BAJA, type FilaBaja, type MotivoDeBaja, type PeriodoCartera } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, Boton, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useNavegacion } from '../../contexto/Navegacion'
@@ -157,6 +159,13 @@ export function Bajas() {
     }
   }
 
+  const borrada = (resultado: ResultadoDeEliminacion) => {
+    setError(null)
+    setSeleccionada(null)
+    setAviso(`Se borró de la base la baja de ${resultado.titulo}.`)
+    void cargar(periodo)
+  }
+
   const reactivar = async (baja: FilaBaja) => {
     setError(null)
     setAviso(null)
@@ -285,13 +294,16 @@ export function Bajas() {
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-slate-600">{baja.fechaBaja ?? '—'}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap" onClick={(evento) => evento.stopPropagation()}>
-                      {esAdministrador && baja.puedeReactivarse ? (
-                        <Boton tamano="sm" icono="ok" onClick={() => setAReactivar(baja)}>
-                          Poner vigente
-                        </Boton>
-                      ) : (
-                        <Etiqueta tono="neutro">{baja.hechaEnLaApp ? 'En la app' : 'De la planilla'}</Etiqueta>
-                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        {esAdministrador && baja.puedeReactivarse ? (
+                          <Boton tamano="sm" icono="ok" onClick={() => setAReactivar(baja)}>
+                            Poner vigente
+                          </Boton>
+                        ) : (
+                          <Etiqueta tono="neutro">{baja.hechaEnLaApp ? 'En la app' : 'De la planilla'}</Etiqueta>
+                        )}
+                        <BotonEliminar tipo="baja" id={baja.id} etiqueta={false} alBorrar={borrada} />
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -307,6 +319,7 @@ export function Bajas() {
               alCerrar={() => setSeleccionada(null)}
               alDeshacer={() => void deshacer(detalle)}
               alReactivar={() => setAReactivar(detalle)}
+              alBorrar={borrada}
               alVerCliente={detalle.clienteId === null ? null : () => ir('clientes', { clienteId: detalle.clienteId! })}
             />
           )}
@@ -335,6 +348,7 @@ function PanelDeBaja({
   alCerrar,
   alDeshacer,
   alReactivar,
+  alBorrar,
   alVerCliente,
 }: {
   baja: FilaBaja
@@ -343,6 +357,7 @@ function PanelDeBaja({
   alCerrar: () => void
   alDeshacer: () => void
   alReactivar: () => void
+  alBorrar: (resultado: ResultadoDeEliminacion) => void
   alVerCliente: (() => void) | null
 }) {
   return (
@@ -404,6 +419,7 @@ function PanelDeBaja({
             Poner vigente
           </Boton>
         )}
+        <BotonEliminar tipo="baja" id={baja.id} alBorrar={alBorrar} className="ml-auto" />
       </footer>
     </aside>
   )

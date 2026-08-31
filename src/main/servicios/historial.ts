@@ -30,6 +30,9 @@ export type AccionHistorial =
   | 'permisos'
   // Avisos de rechazo del débito automático.
   | 'rechazo_debito'
+  // Borrado definitivo de un registro (sólo el SUPER_ADMIN). El historial NO se borra nunca: esta
+  // entrada es lo único que queda de lo que se fue.
+  | 'eliminacion'
 
 export interface CambioARegistrar {
   accion: AccionHistorial

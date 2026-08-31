@@ -139,11 +139,23 @@ export function apurarAgrupadas(): number {
     .run().changes
 }
 
-/** A qué pestañas apunta lo que está esperando en la cola. */
+/**
+ * A qué pestañas hay que ESCRIBIR algo de lo que está esperando en la cola. Es lo único para lo que se
+ * usa (ver `asegurarPestanasDeLaApp` y `asegurarPestanasDelMes` en el motor), y por eso deja afuera las
+ * pestañas donde lo único pendiente es un borrado.
+ *
+ * La diferencia no es cosmética. Si la agencia archivó las planillas viejas —las sacó de la hoja— y
+ * después se borra un cliente de esa época, sus filas siguen anotadas contra «MARZO 2021» y compañía.
+ * Encolar esos borrados hacía que el motor viera pestañas pendientes que no existen y las CREARA
+ * vacías, una por cada mes, nada más que para sacarles una fila que tampoco está. Un borrado no puede
+ * agregarle pestañas a la base de la agencia: si la pestaña no existe, no hay nada que borrar ahí.
+ */
 export function pestanasPendientes(): string[] {
-  return (db().prepare(`SELECT DISTINCT pestana FROM cola_sync WHERE estado = 'pendiente'`).all() as Array<{ pestana: string }>).map(
-    (fila) => fila.pestana,
-  )
+  return (
+    db()
+      .prepare(`SELECT DISTINCT pestana FROM cola_sync WHERE estado = 'pendiente' AND operacion <> 'borrar'`)
+      .all() as Array<{ pestana: string }>
+  ).map((fila) => fila.pestana)
 }
 
 export function cuantasPendientes(): number {

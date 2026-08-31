@@ -1,14 +1,18 @@
 // Panel lateral con el resto de las columnas de la fila (las que no entran en la tabla) y su historial.
 import { useEffect, useState } from 'react'
 import type { CampoEditable, EntradaHistorial, FilaCartera } from '../../../shared/tipos'
+import type { ResultadoDeEliminacion } from '../../../shared/eliminacion'
 import { Icono } from '../../componentes/Icono'
 import { cx } from '../../componentes/ui'
+import { BotonEliminar, useEsSuperAdmin } from '../../componentes/BotonEliminar'
 
 interface Props {
   fila: FilaCartera
   soloLectura: boolean
   alCerrar: () => void
   alGuardar: (campo: CampoEditable, valor: string) => void
+  /** Se borró la fila de la planilla. Sólo lo puede hacer un superadministrador. */
+  alBorrar: (resultado: ResultadoDeEliminacion) => void
 }
 
 const GRUPOS: Array<{ titulo: string; campos: Array<{ campo: CampoEditable; etiqueta: string }> }> = [
@@ -65,7 +69,7 @@ const GRUPOS: Array<{ titulo: string; campos: Array<{ campo: CampoEditable; etiq
   },
 ]
 
-export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar }: Props) {
+export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar }: Props) {
   const [historial, setHistorial] = useState<EntradaHistorial[]>([])
   const [verHistorial, setVerHistorial] = useState(false)
 
@@ -159,6 +163,20 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar }: Props) 
             ))}
         </section>
       </div>
+
+      {/* La papelera va al pie y separada del resto: es lo único de este panel que no se deshace. Para
+          quien no es superadministrador no se dibuja nada, ni el pie. */}
+      <PieDeBorrado fila={fila} alBorrar={alBorrar} />
     </aside>
+  )
+}
+
+function PieDeBorrado({ fila, alBorrar }: { fila: FilaCartera; alBorrar: Props['alBorrar'] }) {
+  if (!useEsSuperAdmin()) return null
+  return (
+    <footer className="flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-3">
+      <p className="text-xs text-slate-500">Borra esta fila del mes, no la póliza.</p>
+      <BotonEliminar tipo="cuota" id={fila.cuotaId} alBorrar={alBorrar} />
+    </footer>
   )
 }

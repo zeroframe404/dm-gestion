@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ESTADOS_DE_SINIESTRO, type EstadoSiniestro, type FichaSiniestro as Ficha, type EstadoTarea } from '../../../shared/tipos'
 import { NOMBRE_ESTADO_TAREA } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Dialogo, Selector, Tarjeta, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -111,6 +112,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
             ))}
           </select>
         </label>
+        <BotonEliminar tipo="siniestro" id={s.id} tamano="md" etiqueta="Eliminar" alBorrar={alVolver} />
       </div>
 
       {error && <Alerta tono="error">{error}</Alerta>}

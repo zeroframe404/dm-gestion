@@ -48,6 +48,11 @@ export const AYUDA_CLIENTES: Record<string, ContenidoDeAyuda> = {
         explicacion: 'Un cliente que tuvo pólizas y hoy no le queda ninguna activa. Es distinto de «Sin pólizas», que nunca llegó a tener una.',
       },
       {
+        termino: 'Eliminar cliente',
+        explicacion:
+          'El botón rojo de la ficha, que sólo ve un superadministrador: borra a la persona de la base con sus vehículos, sus pólizas, sus cuotas, sus pagos y sus siniestros, para siempre. Si el cliente simplemente se fue, lo que corresponde es dar de baja sus pólizas, no borrarlo.',
+      },
+      {
         termino: 'Sin pólizas',
         explicacion: 'Un cliente recién dado de alta al que todavía no se le cargó ninguna póliza. No es lo mismo que una baja: nunca tuvo cobertura, no la perdió.',
       },

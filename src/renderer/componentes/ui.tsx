@@ -362,7 +362,13 @@ export function Dialogo({ abierto, titulo, descripcion, alCerrar, pie, ancho = '
         aria-labelledby={idTitulo}
         // El diálogo no puede pasarse de alto: la ventana no scrollea (body tiene overflow oculto) y
         // los botones del pie quedarían fuera de la pantalla. Se limita el alto y scrollea el cuerpo.
-        className={cx('relative flex max-h-full w-full flex-col rounded-2xl bg-white shadow-media', ANCHOS_DIALOGO[ancho])}
+        // `text-left` y `whitespace-normal` explícitos: un diálogo se abre muchas veces desde un botón que
+        // vive en una celda de tabla, y desde ahí hereda el `text-right whitespace-nowrap` de la columna
+        // de acciones. El cartel salía alineado a la derecha y con cada párrafo en un solo renglón larguísimo.
+        className={cx(
+          'relative flex max-h-full w-full flex-col rounded-2xl bg-white text-left whitespace-normal shadow-media',
+          ANCHOS_DIALOGO[ancho],
+        )}
       >
         <header className="flex shrink-0 items-start gap-4 px-6 pt-6 pb-2">
           <div className="min-w-0 flex-1">

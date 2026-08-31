@@ -1135,3 +1135,114 @@ edición y el acceso aunque se llame al canal a mano (incluida el alta de client
 permiso de Leads). Después asciende a esa usuaria a ADMIN con Administración en «sólo ver» y comprueba
 que las secciones del módulo se ven con los campos apagados. Al final deja los permisos y el rol como
 estaban, aunque algún paso haya fallado.
+
+## Eliminar registros (sólo el superadministrador)
+
+Hasta acá el programa no borraba nada. Se daba de baja, se deshacía, se ponía vigente, se corregía: todo
+reversible, y todo con el historial detrás. Pero un cliente cargado dos veces, un aviso de rechazo mandado
+por error o una fila de la planilla que nunca tendría que haber existido no se arreglan dando de baja —dar
+de baja es un hecho del negocio, no un botón de deshacer— y quedaban ahí para siempre.
+
+Ahora hay un **botón rojo con una papelera** que borra un registro de la base de verdad. Es del
+`SUPER_ADMIN` y de nadie más.
+
+### Qué se puede borrar y dónde está el botón
+
+| Tipo | Dónde | Qué se lleva puesto |
+| --- | --- | --- |
+| `cliente` | Clientes → ficha, arriba a la derecha | Vehículos, pólizas, cuotas de todos los meses, pagos, bajas, siniestros con sus documentos, notas, tareas, presupuestos, riesgos varios, AMP y avisos de rechazo |
+| `poliza` | Pólizas → Editar póliza | Sus cuotas, pagos, bajas, siniestros, AMP, avisos de rechazo, tareas y el seguimiento de renovación |
+| `cuota` | Cartera → Planilla del mes, panel de la derecha | Los pagos hechos contra esa fila, su baja y su aviso de rechazo |
+| `baja` | Cartera → Bajas, en la fila y en el panel | Nada más que la baja |
+| `rechazo` | Cartera → Rechazos, en la fila | Nada más que el aviso |
+| `lead` | Leads → ficha | Sus notas y sus tareas |
+| `presupuesto` | Presupuestos → ficha | **Todas** sus versiones, sus opciones y sus tareas |
+| `siniestro` | Siniestros → ficha | Sus observaciones, sus documentos adjuntos y sus tareas |
+| `riesgo` | Cartera → Riesgos varios, en la fila | Nada más que el riesgo |
+| `amp` | Cartera → AMP, en la fila | Nada más que la ampliación |
+| `tarea` | Tareas → ficha | Sus comentarios y sus adjuntos |
+
+Para quien no es superadministrador el botón **no se dibuja**: no aparece apagado ni con un cartel de
+«no tenés permiso», directamente no está (`BotonEliminar` devuelve `null`). Un botón que no se puede
+tocar sólo sirve para que alguien lo intente.
+
+### Los cinco segundos
+
+El cartel de confirmación no es un «¿Estás seguro?». Antes de abrirlo se le pregunta al proceso principal
+qué se lleva puesto el borrado y se muestra contado —«3 pólizas, 42 cuotas del mes, 12 pagos»—, con los
+renglones que se sacan de la hoja de Google, los archivos que se borran del disco y las advertencias que
+correspondan a ese tipo. El botón de confirmar arranca apagado y se enciende **a los cinco segundos**, con
+la cuenta a la vista (`SEGUNDOS_PARA_CONFIRMAR`). Es el rato que separa «me equivoqué de fila» de «esto lo
+quise borrar», y es más o menos lo que se tarda en leer la lista de arriba.
+
+### Cómo está armado
+
+- `src/shared/eliminacion.ts` — qué se puede borrar, cómo se llama cada cosa y los cinco segundos. Puro
+  y compartido, como `permisos.ts`.
+- `src/main/servicios/eliminacion.ts` — el trabajo. Cada tipo tiene un **plan**: título, lo que arrastra,
+  los renglones de la hoja, los archivos, las advertencias y las sentencias. El mismo plan lo arma
+  `vistaPreviaDeEliminacion` (que no lo ejecuta) y `eliminarRegistro` (que sí): lo que el cartel promete y
+  lo que el borrado hace **no pueden separarse, son la misma cuenta**.
+- `src/renderer/componentes/BotonEliminar.tsx` — el botón y el cartel con la cuenta regresiva.
+- Canales `eliminacion:vistaPrevia` y `eliminacion:borrar`, los dos con `exigirRol('SUPER_ADMIN')` en
+  `ipc.ts`. El servicio vuelve a controlar el rol por su cuenta: un borrado definitivo se merece que la
+  regla esté escrita al lado de lo que borra.
+
+Cuatro reglas que atraviesan todos los planes:
+
+1. **Se borra lo que existe sólo por el registro y se desenlaza lo que tiene vida propia.** El lead del
+   que salió la venta no se borra al borrar el cliente: queda sin cliente asociado, porque es de dónde vino
+   una venta y las métricas del mes lo cuentan. Lo mismo el presupuesto que terminó en una póliza. Y el
+   vehículo que también está en la póliza de otro cliente —el auto se vendió y el comprador se aseguró
+   acá; la clave de un vehículo es la patente a secas— se desenlaza en vez de borrarse.
+2. **El historial no se toca nunca.** Además, cada borrado le agrega una entrada con quién lo hizo, cuándo
+   y la foto de lo que se fue.
+3. **`filas_crudas` tampoco se toca.** Es lo que la bajada usa para reconocer un `_ID` de la hoja. Si se
+   borrara, la fila que todavía está en Google se vería como «vino de otra computadora» y dispararía una
+   importación completa que volvería a crear todo lo que se acaba de borrar. Queda como lápida hasta que
+   la subida saque el renglón.
+4. **Las claves foráneas están en ON y eso juega a favor.** Si un plan se olvidara de una tabla que apunta
+   al registro, la transacción entera se cae y no se borra nada. Un borrado a medias sería mucho peor que
+   uno que no se hizo.
+
+### Lo que el cartel avisa, y por qué
+
+- **La cola de subida.** Los renglones salen de la hoja recién cuando la sincronización llegue a subirlos
+  (los borrados esperan hasta un minuto para viajar juntos, ver `ESPERA_DE_AGRUPADO_MS`). Hasta entonces,
+  una importación completa volvería a crear lo que se borró. Sólo se avisa para los tipos que el
+  importador sabe reconstruir desde la hoja: leads, presupuestos y tareas no se reimportan.
+- **Las otras computadoras.** Cada PC tiene su propia base y lo único que viaja es la hoja. Cuando el
+  renglón desaparece, la bajada de la otra máquina lo marca como «ya no está» pero **no borra** lo que ya
+  tenía guardado. Hay que borrarlo también desde ahí.
+- **Lo pendiente en la cola se cancela antes de encolar el borrado.** No es prolijidad: `subirTanda`
+  recorre la cola por id, así que un «crear» pendiente se aplicaría primero y el «borrar» que va detrás
+  busca la fila en el mapa de la hoja tal como estaba al empezar la tanda —donde la recién creada no
+  figura— y se daría por hecho sin borrar nada. La fila quedaría en Google para siempre.
+- **Borrar una baja no devuelve nada a la cartera.** Para eso están «Deshacer» y «Poner vigente». El
+  cartel lo dice y manda al botón que corresponde.
+- **Borrar la última fila que una póliza vigente tiene en el mes abierto la saca de la cartera para
+  siempre.** `cerrarMes` arma el mes que viene copiando desde las filas del mes abierto: una póliza que
+  se queda sin fila ahí no tiene de dónde copiarse y no se copia nunca más. Desaparece de la planilla,
+  de la mora, de la caja y de los deudores mientras en Pólizas se la sigue viendo activa —nadie le cobra
+  y nadie se entera— y para devolverla hay que darla de baja desde Pólizas y después «Poner vigente» en
+  Bajas. El aviso es fino a propósito: si la planilla tiene DOS filas de la misma póliza (dos renglones
+  en la hoja con distinto _ID), sacar la que sobra es justamente para lo que está la papelera, y ahí no
+  corresponde. En un mes ya cerrado tampoco, porque el cierre sólo mira el mes más nuevo.
+- **Los adjuntos del Drive no se borran**: la copia local sí, la de Google hay que sacarla desde Google.
+
+### Probarlo
+
+```bash
+npm run prueba   # pruebas/eliminacion.prueba.ts
+```
+
+Treinta y dos casos. Cubre que un ADMIN y un EMPLEADO no puedan ni borrar ni mirar la vista previa; que
+todos los tipos declarados tengan plan; que la cascada del cliente no deje filas huérfanas (con un
+`PRAGMA foreign_key_check` al final, que es la única forma de probarlo de verdad); que una tabla nueva
+que apunte al cliente y que ningún plan conozca tire la transacción entera sin borrar nada; que el
+vehículo compartido y el lead convertido sobrevivan; que lo que el cartel promete sea exactamente lo que
+se borra; que el renglón salga de la pestaña donde vive de verdad y no de la que dice la tabla; que lo
+que ya no está en la hoja no se cuente; que un «crear» pendiente —o uno ya dado por perdido— salga de la
+cola; que un borrado no cree pestañas; que los adjuntos se borren del disco; que el historial sobreviva;
+y que la advertencia de la póliza vigente describa lo que de verdad pasa, cerrando el mes para
+comprobarlo.
