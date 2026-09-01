@@ -24,6 +24,19 @@ export interface OpcionesFuenteVps {
 
 export type { EstadoBaseVps }
 
+/** La ficha de un ajuste compartido, sin el secreto: cuándo se cargó, quién y con qué huella. */
+export interface FichaDeAjusteVps {
+  clave: string
+  /** Hash del valor en claro: dos computadoras con la misma huella tienen lo mismo. */
+  huella: string
+  actualizadoEn: string
+  actualizadoPor: string | null
+}
+
+export interface AjusteVps extends FichaDeAjusteVps {
+  valor: unknown
+}
+
 export interface PestanaParaMigrar {
   titulo: string
   oculta: boolean
@@ -257,5 +270,56 @@ export class FuenteVps implements FuenteHoja {
       reintentarSinRespuesta: false,
     })) as { pestanas: number; filas: number }
     return datos
+  }
+
+  // --- Ajustes compartidos --------------------------------------------------
+  //
+  // Credenciales que el superadministrador carga UNA vez y todas las computadoras adoptan. El
+  // servidor las guarda cifradas; acá viajan en claro por el mismo canal https y con el mismo token
+  // que ya lleva el GENERAL DE CLIENTES entero.
+
+  //
+  // Las dos lecturas van SIN reintentos: son consultas de estado que dibujan una pantalla o corren al
+  // arrancar, y esperar cuatro reintentos con espera exponencial contra un servidor caído sería dejar
+  // colgada la pantalla medio minuto para terminar diciendo lo mismo.
+
+  async leerAjuste(clave: string): Promise<AjusteVps | null> {
+    const datos = (await this.pedir(
+      `leer el ajuste «${clave}»`,
+      'GET',
+      `/api/dmg/ajustes/${encodeURIComponent(clave)}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { ajuste: AjusteVps | null }
+    return datos?.ajuste ?? null
+  }
+
+  /** La ficha sin el secreto: alcanza para saber si esta computadora está al día. */
+  async estadoAjuste(clave: string): Promise<FichaDeAjusteVps | null> {
+    const datos = (await this.pedir(
+      `consultar el ajuste «${clave}»`,
+      'GET',
+      `/api/dmg/ajustes/${encodeURIComponent(clave)}/estado`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { ajuste: FichaDeAjusteVps | null }
+    return datos?.ajuste ?? null
+  }
+
+  async guardarAjuste(clave: string, valor: unknown, actualizadoPor: string | null): Promise<FichaDeAjusteVps> {
+    const datos = (await this.pedir(
+      `guardar el ajuste «${clave}»`,
+      'POST',
+      `/api/dmg/ajustes/${encodeURIComponent(clave)}`,
+      { valor, actualizadoPor },
+      // Guardar es idempotente: es un upsert por clave, así que repetirlo tras un corte sin
+      // respuesta deja exactamente lo mismo y conviene reintentarlo.
+      { reintentarSinRespuesta: true },
+    )) as { ajuste: FichaDeAjusteVps }
+    return datos.ajuste
+  }
+
+  async borrarAjuste(clave: string): Promise<void> {
+    await this.pedir(`borrar el ajuste «${clave}»`, 'POST', `/api/dmg/ajustes/${encodeURIComponent(clave)}/borrar`, {})
   }
 }

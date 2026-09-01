@@ -248,7 +248,10 @@ const api: ApiDm = {
   vehiculos: {
     estado: () => invocar('vehiculos:estado'),
     guardarCredenciales: (datos) => invocar('vehiculos:guardarCredenciales', datos),
-    borrarCredenciales: () => invocar('vehiculos:borrarCredenciales'),
+    publicar: () => invocar('vehiculos:publicar'),
+    estadoCompartido: () => invocar('vehiculos:estadoCompartido'),
+    adoptar: () => invocar('vehiculos:adoptar'),
+    borrarCredenciales: (tambienDelServidor) => invocar('vehiculos:borrarCredenciales', tambienDelServidor),
     probar: () => invocar('vehiculos:probar'),
     refrescar: (tipo) => invocar('vehiculos:refrescar', tipo),
     marcas: (tipo) => invocar('vehiculos:marcas', tipo),

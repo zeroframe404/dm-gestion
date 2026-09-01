@@ -4,6 +4,7 @@ import path from 'node:path'
 import { abrirBaseDeDatos, cerrarBaseDeDatos } from './db/base'
 import { registrarIpc } from './ipc'
 import { carpetaDatos, configurarCarpetaDatos, rutaBaseDeDatos } from './rutas'
+import { adoptarAjustesAlArrancar } from './servicios/ajustesCompartidos'
 import { configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
 import { hayImportacionEnCurso, marcarImportacionesInterrumpidas } from './servicios/importacion'
 import { detenerSincronizacion } from './servicios/sincronizacion'
@@ -142,6 +143,9 @@ if (!app.requestSingleInstanceLock()) {
     registrarIpc()
     crearVentana()
     iniciarActualizaciones()
+    // Las credenciales que cargó el superadministrador. No se espera: si el VPS no contesta, el
+    // programa abre igual con lo que ya tenía guardado.
+    adoptarAjustesAlArrancar()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) crearVentana()

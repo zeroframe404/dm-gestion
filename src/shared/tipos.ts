@@ -2567,11 +2567,66 @@ export interface EstadoDeUnTipo {
   ultimoError: string | null
 }
 
+/**
+ * Con qué proveedor habla el catálogo. InfoAuto es el catálogo clásico de las aseguradoras
+ * argentinas; Mercado Libre es la API que la agencia contrató desde el panel de desarrolladores de
+ * Mercado Pago. Se elige uno: los ids de marca y modelo de cada uno no tienen nada que ver entre sí,
+ * así que mezclarlos rompería las pólizas ya cargadas con el código del otro.
+ */
+export const PROVEEDORES_DE_CATALOGO = ['INFOAUTO', 'MERCADO_LIBRE'] as const
+export type ProveedorDeCatalogo = (typeof PROVEEDORES_DE_CATALOGO)[number]
+
+export const NOMBRE_PROVEEDOR_CATALOGO: Record<ProveedorDeCatalogo, string> = {
+  INFOAUTO: 'InfoAuto',
+  MERCADO_LIBRE: 'Mercado Libre',
+}
+
+/**
+ * Cómo se llama cada credencial según el proveedor. Es lo mismo por dentro —un identificador y un
+ * secreto— pero en el panel de cada uno se llama distinto, y la pantalla tiene que decir el nombre
+ * que la persona está viendo del otro lado.
+ */
+export const ETIQUETAS_DE_CREDENCIAL: Record<ProveedorDeCatalogo, { usuario: string; clave: string; ayuda: string }> = {
+  INFOAUTO: {
+    usuario: 'Usuario',
+    clave: 'Clave',
+    ayuda: 'El usuario y la clave de la cuenta que la agencia tiene con InfoAuto.',
+  },
+  MERCADO_LIBRE: {
+    usuario: 'App ID',
+    clave: 'Clave secreta',
+    ayuda: 'Se copian del panel de desarrolladores de Mercado Pago, en la aplicación que creaste (App ID y Clave secreta).',
+  },
+}
+
+/**
+ * Cómo quedó la sincronización de las credenciales con el VPS.
+ *
+ * El superadministrador las carga una sola vez y viajan al servidor; el resto de las computadoras las
+ * adopta al arrancar. `alDia` compara huellas: sirve para decir «esta PC tiene lo mismo que el
+ * servidor» sin volver a bajar el secreto.
+ */
+export interface EstadoDeAjusteCompartido {
+  /** true si el VPS tiene credenciales guardadas para compartir. */
+  enElServidor: boolean
+  actualizadoEn: string | null
+  actualizadoPor: string | null
+  /** true si lo que hay en esta computadora coincide con lo del servidor. */
+  alDia: boolean
+  /** Por qué no se pudo hablar con el servidor, si no se pudo. Nunca frena nada. */
+  error: string | null
+}
+
 export interface EstadoDelCatalogo {
   /** false = faltan las credenciales del proveedor en esta computadora. */
   configurado: boolean
   proveedor: string
+  proveedorId: ProveedorDeCatalogo
   usuario: string
+  /** true si además del identificador y el secreto hay un Access Token pegado a mano. */
+  tokenCargado: boolean
+  /** Los tipos de vehículo que este proveedor puede servir: Mercado Libre no publica motos. */
+  tiposQueSirve: TipoDeVehiculo[]
   /** Dónde se guardan las credenciales, para poder decirlo en la pantalla. */
   rutaDeConfig: string
   porTipo: EstadoDeUnTipo[]
@@ -2580,8 +2635,28 @@ export interface EstadoDelCatalogo {
 }
 
 export interface DatosDelProveedorDeVehiculos {
+  proveedor?: ProveedorDeCatalogo
   usuario: string
   clave: string
+  /** Sólo Mercado Libre: un Access Token `APP_USR-…` pegado a mano, si se prefiere ese camino. */
+  accessToken?: string
+}
+
+/** El estado de las credenciales acá y en el servidor: lo que devuelve todo lo que las toca. */
+export interface EstadoDeCredencialesDeVehiculos {
+  estado: EstadoDelCatalogo
+  compartido: EstadoDeAjusteCompartido
+}
+
+export interface GuardadoDeCredencialesDeVehiculos extends EstadoDeCredencialesDeVehiculos {
+  /** Qué pasó, en una frase, para mostrar arriba de la pantalla. */
+  detalle: string
+}
+
+export interface AdopcionDeCredencialesDeVehiculos extends EstadoDeCredencialesDeVehiculos {
+  /** true si esta computadora se quedó con las credenciales que había en el servidor. */
+  adoptadas: boolean
+  detalle: string
 }
 
 export interface PruebaDelProveedor {
