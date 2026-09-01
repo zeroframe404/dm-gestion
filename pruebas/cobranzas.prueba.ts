@@ -428,22 +428,34 @@ test('corregir un pago antes de que se suba junta los dos cambios en una sola fi
   cerrarBaseDeDatos()
 })
 
-test('sin una pestaña IMPUTADOS que sirva, el resultado se guarda igual y se avisa por qué', async () => {
+test('sin una pestaña IMPUTADOS que sirva, los pagos y el resultado viajan por APP PAGOS', async () => {
   const db = await cobranzasDePrueba()
   // Se simula la hoja real: IMPUTADOS es una planilla de resumen, no una tabla por fila.
   db.prepare(`UPDATE filas_crudas SET en_la_hoja = 0 WHERE tipo_pestana = 'PAGOS'`).run()
 
   const hoja = hojaDeImputados()
-  assert.equal(hoja.pestana, null)
-  assert.match(hoja.aviso ?? '', /no tiene una pestaña IMPUTADOS/)
+  assert.equal(hoja.pestana, 'APP PAGOS', 'la pestaña de la aplicación, que el motor crea sola')
+  assert.equal(hoja.esDeLaApp, true)
+  assert.equal(hoja.tieneColumnaResultado, true)
+  assert.equal(hoja.aviso, null, 'ya no hay nada que avisar: los pagos no se quedan sólo en esta computadora')
 
   const rendicion = imputados('2026-08', '')
-  assert.match(rendicion.avisoDeSincronizacion ?? '', /sólo en DM Gestión/)
+  assert.equal(rendicion.avisoDeSincronizacion, null)
 
+  // Un pago que vino de la hoja vieja (nunca estuvo en APP PAGOS): al imputarlo se agrega entero allá,
+  // con el resultado adentro.
   const pendiente = rendicion.pagos.find((p) => p.resultado === '')!
   const despues = cambiarResultado(pendiente.id, 'OK', '', DANIEL)
   assert.equal(despues.pagos.find((p) => p.id === pendiente.id)?.resultado, 'OK')
-  assert.equal(colaDeImputados(db).filter((e) => e.fila_id === pendiente.filaId).length, 0)
+  const encolada = filas<{ operacion: string; pestana: string; campos_json: string }>(
+    db,
+    `SELECT operacion, pestana, campos_json FROM cola_sync WHERE fila_id = ? ORDER BY id`,
+    pendiente.filaId,
+  )
+  assert.equal(encolada.length, 1)
+  assert.equal(encolada[0]!.operacion, 'crear')
+  assert.equal(encolada[0]!.pestana, 'APP PAGOS')
+  assert.equal((JSON.parse(encolada[0]!.campos_json) as Record<string, string>).resultado, 'OK')
   cerrarBaseDeDatos()
 })
 
@@ -603,24 +615,34 @@ test('corregir un pago no le borra a la contadora el RESULTADO que puso en la ho
   cerrarBaseDeDatos()
 })
 
-test('un pago cobrado sin pestaña IMPUTADOS se suma a la hoja en cuanto la pestaña existe', async () => {
+test('un pago cobrado sin pestaña IMPUTADOS va a APP PAGOS, y se queda ahí aunque después aparezca una', async () => {
   const db = await cobranzasDePrueba()
-  // Se simula la hoja real: IMPUTADOS todavía no es una tabla por fila.
+  // Se simula la hoja real: IMPUTADOS no es una tabla por fila.
   db.prepare(`UPDATE filas_crudas SET en_la_hoja = 0 WHERE tipo_pestana = 'PAGOS'`).run()
   const fila = buscar(CLIENTES.suarez.nombre)
   registrarPago(fila.filaId, { fecha: DIA_DE_CAJA, importe: '$ 28.000', medioDePago: 'EFECTIVO' }, DANIEL)
-  assert.equal(colaDeImputados(db).length, 0, 'sin pestaña usable no se escribe nada en la hoja')
+  assert.equal(colaDeImputados(db).length, 0, 'a la IMPUTADOS de la agencia no se le escribe nada')
+  const enAppPagos = filas<{ operacion: string; fila_id: string; campos_json: string }>(
+    db,
+    `SELECT operacion, fila_id, campos_json FROM cola_sync WHERE pestana = 'APP PAGOS' ORDER BY id`,
+  )
+  assert.equal(enAppPagos.length, 1, 'el pago se encola hacia APP PAGOS en el momento')
+  assert.equal(enAppPagos[0]!.operacion, 'crear')
+  const campos = JSON.parse(enAppPagos[0]!.campos_json) as Record<string, string>
+  assert.equal(campos.usuario, DANIEL.nombre, 'con quién cobró')
+  assert.equal(campos.sucursal, 'Daniel', 'y en qué mostrador')
+  assert.equal((db.prepare('SELECT pestana FROM pagos WHERE fila_id = ?').get(`PAGO:${fila.filaId}`) as { pestana: string }).pestana, 'APP PAGOS')
 
-  // La agencia arma la pestaña y la importa: al imputar, el pago se agrega entero.
+  // La fila ya viajó y después la agencia arma una IMPUTADOS por fila: el resultado se actualiza
+  // donde vive el pago, no en la pestaña nueva.
+  db.prepare(`UPDATE filas_crudas SET en_la_hoja = 1 WHERE fila_id = ?`).run(`PAGO:${fila.filaId}`)
+  db.prepare(`UPDATE cola_sync SET estado = 'listo'`).run()
   db.prepare(`UPDATE filas_crudas SET en_la_hoja = 1 WHERE tipo_pestana = 'PAGOS' AND numero_fila > 0`).run()
+  assert.equal(hojaDeImputados().pestana, 'IMPUTADOS')
   const pago = imputados('2026-08', '').pagos.find((p) => p.numeroPoliza === CLIENTES.suarez.poliza)!
   cambiarResultado(pago.id, 'IMPUTADO', '', DANIEL)
-
-  const creada = colaDeImputados(db).find((e) => e.fila_id === `PAGO:${fila.filaId}`)
-  assert.ok(creada, 'el pago tiene que quedar encolado hacia la pestaña')
-  assert.equal(creada.operacion, 'crear')
-  assert.equal((JSON.parse(creada.campos_json) as Record<string, string>).resultado, 'IMPUTADO')
-  assert.equal((db.prepare('SELECT pestana FROM pagos WHERE id = ?').get(pago.id) as { pestana: string }).pestana, 'IMPUTADOS')
+  const actualizada = filas<{ operacion: string; pestana: string }>(db, `SELECT operacion, pestana FROM cola_sync WHERE estado = 'pendiente' AND fila_id = ?`, `PAGO:${fila.filaId}`)
+  assert.deepEqual(actualizada, [{ operacion: 'actualizar', pestana: 'APP PAGOS' }])
   cerrarBaseDeDatos()
 })
 

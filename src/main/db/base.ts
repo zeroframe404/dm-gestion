@@ -68,3 +68,11 @@ export function cerrarBaseDeDatos(): void {
   instancia?.close()
   instancia = null
 }
+
+/**
+ * Cambia la base activa por otra ya abierta, sin cerrar la anterior. Lo usan las pruebas que simulan
+ * dos computadoras contra la misma base de la agencia: cada una tiene su SQLite y se alternan.
+ */
+export function usarBaseDeDatos(db: BaseDeDatos): void {
+  instancia = db
+}

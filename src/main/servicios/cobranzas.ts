@@ -102,10 +102,28 @@ function totalesPorMedio(pagos: PagoRegistrado[]): TotalPorMedio[] {
   return [...acumulado.values()].sort((a, b) => b.total - a.total || a.medio.localeCompare(b.medio, 'es'))
 }
 
-export function cajaDelDia(fechaPedida: string | null, sucursalPedida: string): CajaDelDia {
+/**
+ * Qué sucursales puede mirar quien pregunta. Un administrador (SUPER_ADMIN o ADMIN) ve la caja y la
+ * rendición de todas; un empleado, sólo las de su mostrador. Es una regla de ROL, como la de los
+ * números de la agencia (ver `veLosNumerosDeLaAgencia`): la caja de las otras sucursales es la plata
+ * que entró en otro mostrador, y quien la mira desde arriba es quien administra la agencia.
+ *
+ * Devuelve '' cuando no hay restricción (también cuando no se sabe quién pregunta: los llamados
+ * internos y las pruebas). Se compara por sucursal, no por usuario: dos personas del mismo mostrador
+ * se ven entre sí, que es exactamente lo que faltaba en Lanús.
+ */
+export function sucursalObligadaDe(actor: SesionUsuario | null | undefined): string {
+  if (!actor || actor.rol !== 'EMPLEADO') return ''
+  return actor.sucursal.nombre
+}
+
+export function cajaDelDia(fechaPedida: string | null, sucursalPedida: string, actor?: SesionUsuario | null): CajaDelDia {
   const fecha = exigirFecha(fechaPedida)
-  const sucursales = sucursalesDeLaCaja()
-  const sucursal = sucursales.find((s) => mismaSucursal(s, sucursalPedida)) ?? ''
+  const obligada = sucursalObligadaDe(actor)
+  const todas = sucursalesDeLaCaja()
+  const sucursales = obligada ? todas.filter((s) => mismaSucursal(s, obligada)) : todas
+  // Con sucursal obligada, la pedida no cuenta: se mira la del mostrador y nada más.
+  const sucursal = sucursales.find((s) => mismaSucursal(s, obligada || sucursalPedida)) ?? (obligada || '')
 
   const crudas = db().prepare(`${SELECT_PAGOS} WHERE p.fecha_iso = ? ORDER BY p.creado_en, p.id`).all(fecha) as PagoCrudo[]
   const pagos = crudas.map(aPagoRegistrado).filter((pago) => !sucursal || mismaSucursal(pago.sucursal, sucursal))
@@ -114,6 +132,7 @@ export function cajaDelDia(fechaPedida: string | null, sucursalPedida: string): 
     fecha,
     sucursal,
     sucursales,
+    sucursalFija: obligada !== '',
     mediosDePago: catalogos().mediosDePago,
     pagos,
     totalesPorMedio: totalesPorMedio(pagos),
@@ -143,8 +162,8 @@ function celda(valor: string | number | null): string {
  * El día en CSV, con punto y coma de separador y BOM: así se abre de un doble clic en el Excel de la
  * agencia, sin pasar por el asistente de importación.
  */
-export function csvDeLaCaja(fechaPedida: string | null, sucursalPedida: string): { nombre: string; contenido: string } {
-  const caja = cajaDelDia(fechaPedida, sucursalPedida)
+export function csvDeLaCaja(fechaPedida: string | null, sucursalPedida: string, actor?: SesionUsuario | null): { nombre: string; contenido: string } {
+  const caja = cajaDelDia(fechaPedida, sucursalPedida, actor)
   const lineas: string[] = []
   lineas.push(celda(`Caja del ${caja.fecha}${caja.sucursal ? ` · ${caja.sucursal}` : ' · todas las sucursales'}`))
   lineas.push('')
@@ -213,7 +232,7 @@ export function registrarPagoManual(datos: DatosDePagoManual, actor: SesionUsuar
     registrarPago(cuotaFilaId, { fecha, importe: limpiar(datos.importe), medioDePago: limpiar(datos.medioDePago), sucursal }, actor)
     const pagoId = idDelPagoDeLaCuota(cuotaFilaId)
     if (pagoId === null) throw new ErrorDeNegocio('El pago se guardó pero no se pudo leer de vuelta. Actualizá la pantalla.')
-    return { caja: cajaDelDia(interpretada.iso, sucursal), pagoId }
+    return { caja: cajaDelDia(interpretada.iso, sucursal, actor), pagoId }
   }
 
   const nombre = texto(datos.clienteNombre, 'El nombre del cliente', 2, 200)
@@ -256,7 +275,7 @@ export function registrarPagoManual(datos: DatosDePagoManual, actor: SesionUsuar
     valorAnterior: null,
     valorNuevo: `${nombre} · ${importe}${medio ? ` · ${medio}` : ''} (${fecha})`,
   })
-  return { caja: cajaDelDia(interpretada.iso, sucursal), pagoId }
+  return { caja: cajaDelDia(interpretada.iso, sucursal, actor), pagoId }
 }
 
 // ---------------------------------------------------------------------------
@@ -409,15 +428,17 @@ function periodosConPagos(): string[] {
   return filas.map((f) => f.periodo)
 }
 
-export function imputados(periodoPedido: string | null, companiaPedida: string): RendicionImputados {
+export function imputados(periodoPedido: string | null, companiaPedida: string, actor?: SesionUsuario | null): RendicionImputados {
   const periodos = periodosConPagos()
   const pedido = limpiar(periodoPedido)
   const periodo = pedido && FORMATO_PERIODO.test(pedido) ? pedido : (periodos[0] ?? periodoDeHoy())
+  const sucursal = sucursalObligadaDe(actor)
 
   const crudas = db()
     .prepare(`${SELECT_PAGOS} WHERE ${PERIODO_DEL_PAGO} = ? ORDER BY p.fecha_iso, p.cliente_nombre`)
     .all(periodo) as PagoCrudo[]
-  const todos = crudas.map(aPagoRegistrado)
+  // Un empleado rinde lo que cobró su mostrador; las otras sucursales no son de su incumbencia.
+  const todos = crudas.map(aPagoRegistrado).filter((pago) => !sucursal || mismaSucursal(pago.sucursal, sucursal))
 
   const companias = distintos(todos.map((pago) => pago.compania))
   const compania = companias.find((c) => mismaCosa(c, companiaPedida)) ?? ''
@@ -429,6 +450,7 @@ export function imputados(periodoPedido: string | null, companiaPedida: string):
   return {
     periodo,
     compania,
+    sucursal,
     // Sin ningún pago cargado la lista queda vacía a propósito: es lo que la pantalla mira para
     // explicar que la rendición todavía no tiene nada.
     periodos: periodos.length === 0 || periodos.includes(periodo) ? periodos : [periodo, ...periodos],
@@ -472,16 +494,21 @@ export function cambiarResultado(
   }
   const pago = db().prepare(`${SELECT_PAGOS} WHERE p.id = ?`).get(identificador) as PagoCrudo | undefined
   if (!pago) throw new ErrorDeNegocio('No se encontró ese pago.')
+  const obligada = sucursalObligadaDe(actor)
+  if (obligada && !mismaSucursal(pago.sucursal, obligada)) {
+    throw new ErrorDeNegocio(`Ese pago se cobró en otra sucursal: sólo lo rinde quien administra la agencia o el mostrador de ${pago.sucursal ?? 'esa sucursal'}.`)
+  }
 
   if (normalizarResultado(pago.resultado) !== resultado) {
     db().prepare('UPDATE pagos SET resultado = ?, actualizado_en = ? WHERE id = ?').run(resultado || null, ahoraIso(), identificador)
 
     const hoja = hojaDeImputados()
-    if (hoja.pestana && hoja.tieneColumnaResultado) {
+    if (hoja.tieneColumnaResultado) {
       // Si el pago todavía no está en la pestaña, primero se agrega entero: la fila nueva ya lleva el
       // resultado adentro y no hace falta un segundo cambio.
-      if (asegurarPagoEnLaHoja(identificador, actor) === 'actualizar') {
-        encolar({ operacion: 'actualizar', pestana: hoja.pestana, filaId: pago.fila_id, campos: { resultado } }, actor)
+      const lugar = asegurarPagoEnLaHoja(identificador, actor)
+      if (lugar?.operacion === 'actualizar') {
+        encolar({ operacion: 'actualizar', pestana: lugar.pestana, filaId: pago.fila_id, campos: { resultado } }, actor)
       }
     }
 
@@ -495,7 +522,7 @@ export function cambiarResultado(
       valorNuevo: resultado || null,
     })
   }
-  return imputados(pago.periodo, companiaDelFiltro)
+  return imputados(pago.periodo, companiaDelFiltro, actor)
 }
 
 // ---------------------------------------------------------------------------

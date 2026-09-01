@@ -114,6 +114,24 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
     const primeraFila = (pestana.layout?.filaEncabezados ?? 0) + 2
     const filas = filasPorId(valores, columnaId, primeraFila)
 
+    // Un «crear» de una fila cuyo _ID YA está en la pestaña no agrega otra: escribe sobre la que hay.
+    // Pasa cuando el agregado anterior se aplicó pero la respuesta no llegó (y la entrada quedó como
+    // fallida), cuando la misma baja se hizo desde dos computadoras, o cuando se vuelve a dar de baja
+    // una póliza cuya fila de BAJAS nunca se llegó a sacar. Antes cada uno de esos casos dejaba dos
+    // renglones con el mismo _ID, y la importación siguiente le inventaba un _ID nuevo al segundo: de
+    // ahí salían las bajas duplicadas. Se escriben sólo los campos con valor, para no pisar con un
+    // vacío lo que otra computadora ya haya completado (el RESULTADO de un pago, por ejemplo).
+    if (entrada.operacion === 'crear' && filas.has(entrada.filaId)) {
+      entrada.operacion = 'actualizar'
+      entrada.campos = Object.fromEntries(Object.entries(entrada.campos).filter(([, valor]) => limpiar(valor ?? '') !== ''))
+      registrarFilaSubida(entrada.filaId, entrada.pestana, filas.get(entrada.filaId)!, valores[filas.get(entrada.filaId)! - 1] ?? [], columnaId)
+      if (Object.keys(entrada.campos).length === 0) {
+        // No había nada con valor para escribir: la fila ya está, y con eso alcanza.
+        hechas.push(entrada.id)
+        continue
+      }
+    }
+
     if (entrada.operacion === 'crear') {
       const fila: string[] = []
       const poner = (columna: number, valor: string) => {

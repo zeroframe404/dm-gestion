@@ -10,7 +10,8 @@ import { resolverCampo, type Campo } from '../importacion/encabezados'
 import { MESES } from '../importacion/pestanas'
 import { ahoraIso, limpiar, interpretarNumero, normalizarTexto } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
-import { PESTANA_APP, registrarFilaDeLaApp } from './filas'
+import { PESTANA_PAGOS_APP } from '../sincronizacion/pestanasApp'
+import { registrarFilaDeLaApp } from './filas'
 
 // ---------------------------------------------------------------------------
 // El RESULTADO de la rendición
@@ -50,37 +51,44 @@ export function normalizarResultado(valor: unknown): ResultadoImputacion {
 // ---------------------------------------------------------------------------
 
 export interface HojaDeImputados {
-  /** Título de la pestaña, si la hoja tiene una IMPUTADOS que sea una tabla por fila; null si no. */
-  pestana: string | null
+  /**
+   * Título de la pestaña donde viajan los pagos: la IMPUTADOS de la agencia si es una tabla por fila,
+   * y si no, «APP PAGOS», la que crea la aplicación (ver `esDeLaApp`). Nunca es null desde la 12.2.
+   */
+  pestana: string
   /** true si esa pestaña tiene una columna que se reconoce como RESULTADO. */
   tieneColumnaResultado: boolean
   /** Por qué el RESULTADO no va a viajar a la hoja, o null si sí va. */
   aviso: string | null
+  /**
+   * true cuando los pagos viajan por «APP PAGOS», la pestaña que la aplicación crea sola al final de
+   * la base cuando la agencia no tiene una IMPUTADOS que sea una tabla por fila. Es lo que hace que el
+   * pago que cobra una computadora aparezca en la caja del día de las otras: hasta la 12.1 quedaba
+   * sólo en la que lo cobró, y en Lanús cada mostrador veía nada más que lo suyo.
+   */
+  esDeLaApp: boolean
 }
 
-const SIN_PESTANA =
-  'La hoja de Google no tiene una pestaña IMPUTADOS con una fila por pago (en la hoja de la agencia es una ' +
-  'planilla de resumen, no una tabla), así que los pagos y el RESULTADO quedan sólo en DM Gestión. Para ' +
-  'sincronizarlos, armá en la hoja una pestaña IMPUTADOS con encabezados FECHA, NOMBRE, DNI, CIA, POLIZA, ' +
-  'IMPORTE, MEDIO DE PAGO, MES y RESULTADO, e importala.'
+const POR_LA_APP: HojaDeImputados = { pestana: PESTANA_PAGOS_APP, tieneColumnaResultado: true, aviso: null, esDeLaApp: true }
 
 /** Campos que tiene que reconocer una pestaña para que valga como tabla de pagos. */
 const CAMPOS_MINIMOS: Campo[] = ['fecha', 'importe']
 
 /**
- * Busca la pestaña de pagos de la hoja y mira si sirve. No alcanza con que exista una pestaña llamada
- * IMPUTADOS: la de la agencia es una matriz de resumen con años y totales, sin una fila por pago. Se
- * la da por buena sólo si sus encabezados se reconocen como una tabla (fecha e importe, al menos).
+ * La pestaña por la que viajan los pagos. Si la agencia tiene una IMPUTADOS que sea una tabla por fila
+ * se sigue usando ésa (es la que mira la contadora); si no —la de la agencia es una matriz de resumen
+ * con años y totales, sin una fila por pago— los pagos van a «APP PAGOS», que el motor crea sola la
+ * primera vez que hay algo que subir, igual que APP RECHAZOS.
  */
 export function hojaDeImputados(): HojaDeImputados {
   const candidata = db()
     .prepare(
       `SELECT pestana, COUNT(*) AS filas FROM filas_crudas
-       WHERE tipo_pestana = 'PAGOS' AND en_la_hoja = 1
+       WHERE tipo_pestana = 'PAGOS' AND en_la_hoja = 1 AND pestana <> ?
        GROUP BY pestana ORDER BY filas DESC LIMIT 1`,
     )
-    .get() as { pestana: string; filas: number } | undefined
-  if (!candidata) return { pestana: null, tieneColumnaResultado: false, aviso: SIN_PESTANA }
+    .get(PESTANA_PAGOS_APP) as { pestana: string; filas: number } | undefined
+  if (!candidata) return POR_LA_APP
 
   const cruda = db()
     .prepare(`SELECT datos_json FROM filas_crudas WHERE pestana = ? AND datos_json <> '{}' LIMIT 1`)
@@ -93,12 +101,13 @@ export function hojaDeImputados(): HojaDeImputados {
     }
   }
   const esTabla = campos.size >= 3 && CAMPOS_MINIMOS.some((campo) => campos.has(campo))
-  if (!esTabla) return { pestana: null, tieneColumnaResultado: false, aviso: SIN_PESTANA }
+  if (!esTabla) return POR_LA_APP
 
   const tieneColumnaResultado = campos.has('resultado')
   return {
     pestana: candidata.pestana,
     tieneColumnaResultado,
+    esDeLaApp: false,
     aviso: tieneColumnaResultado
       ? null
       : `La pestaña «${candidata.pestana}» de la hoja no tiene columna RESULTADO. Agregale una con ese ` +
@@ -168,7 +177,13 @@ const INSERTAR_PAGO = `
  * la fila viajan las dos; al corregir un cobro, sólo la primera, o corregir el importe le borraría a
  * la contadora el IMPUTADO que ya había puesto en la hoja.
  */
-function camposParaLaHoja(datos: PagoAGuardar, sucursalCobro: string, conRendicion: boolean): Record<string, string> {
+function camposParaLaHoja(
+  datos: PagoAGuardar,
+  sucursalCobro: string,
+  conRendicion: boolean,
+  hoja: HojaDeImputados,
+  actor: SesionUsuario | null,
+): Record<string, string> {
   const campos: Record<string, string> = {
     fecha: datos.fecha,
     nombre: datos.clienteNombre ?? '',
@@ -185,6 +200,9 @@ function camposParaLaHoja(datos: PagoAGuardar, sucursalCobro: string, conRendici
     campos.observaciones = datos.observaciones ?? ''
     campos.resultado = datos.resultado
   }
+  // Quién cobró viaja sólo por APP PAGOS, que tiene la columna: la IMPUTADOS de una agencia no la
+  // tiene, y mandarla igual anotaría «columna faltante» en cada ciclo.
+  if (hoja.esDeLaApp && actor) campos.usuario = actor.nombre
   return campos
 }
 
@@ -198,8 +216,8 @@ function camposParaLaHoja(datos: PagoAGuardar, sucursalCobro: string, conRendici
 export function guardarPago(datos: PagoAGuardar, actor: SesionUsuario): number {
   const hoja = hojaDeImputados()
   const sucursalCobro = limpiar(datos.sucursalCobro) || actor.sucursal.nombre
-  const conocida = db().prepare('SELECT en_la_hoja FROM filas_crudas WHERE fila_id = ?').get(datos.filaId) as
-    | { en_la_hoja: number }
+  const conocida = db().prepare('SELECT pestana, en_la_hoja FROM filas_crudas WHERE fila_id = ?').get(datos.filaId) as
+    | { pestana: string; en_la_hoja: number }
     | undefined
   const ahora = ahoraIso()
 
@@ -207,7 +225,7 @@ export function guardarPago(datos: PagoAGuardar, actor: SesionUsuario): number {
     .prepare(INSERTAR_PAGO)
     .run({
       fila_id: datos.filaId,
-      pestana: hoja.pestana ?? PESTANA_APP,
+      pestana: hoja.pestana,
       cliente_id: datos.clienteId,
       poliza_id: datos.polizaId,
       fecha: datos.fecha,
@@ -234,23 +252,21 @@ export function guardarPago(datos: PagoAGuardar, actor: SesionUsuario): number {
 
   const { id } = db().prepare('SELECT id FROM pagos WHERE fila_id = ?').get(datos.filaId) as { id: number }
 
-  if (hoja.pestana) {
-    // Si la fila todavía no llegó a la hoja se vuelve a encolar como «crear»: la cola junta los dos
-    // pedidos en uno solo, así no quedan dos filas ni un «actualizar» sobre algo que no existe.
-    const nueva = !conocida || conocida.en_la_hoja === 0
-    if (nueva) {
-      registrarFilaDeLaApp({ filaId: datos.filaId, pestana: hoja.pestana, tipoPestana: 'PAGOS', periodo: datos.periodo })
-    }
-    encolar(
-      {
-        operacion: nueva ? 'crear' : 'actualizar',
-        pestana: hoja.pestana,
-        filaId: datos.filaId,
-        campos: camposParaLaHoja(datos, sucursalCobro, nueva),
-      },
-      actor,
-    )
+  // Si la fila todavía no llegó a la hoja se vuelve a encolar como «crear»: la cola junta los dos
+  // pedidos en uno solo, así no quedan dos filas ni un «actualizar» sobre algo que no existe.
+  const nueva = !conocida || conocida.en_la_hoja === 0
+  if (nueva) {
+    registrarFilaDeLaApp({ filaId: datos.filaId, pestana: hoja.pestana, tipoPestana: 'PAGOS', periodo: datos.periodo })
   }
+  encolar(
+    {
+      operacion: nueva ? 'crear' : 'actualizar',
+      pestana: nueva ? hoja.pestana : (conocida?.pestana ?? hoja.pestana),
+      filaId: datos.filaId,
+      campos: camposParaLaHoja(datos, sucursalCobro, nueva, hoja, actor),
+    },
+    actor,
+  )
   return id
 }
 
@@ -271,56 +287,81 @@ interface PagoParaLaHoja {
   sucursal: string | null
 }
 
+/** Dónde quedó encolado un pago: en qué pestaña y si se agrega entero o se actualiza. */
+export interface LugarDelPago {
+  operacion: 'crear' | 'actualizar'
+  pestana: string
+}
+
 /**
- * Deja el pago apuntando a la pestaña IMPUTADOS de la hoja y encolado para agregarse, si todavía no
- * lo estaba. Hace falta para el pago que se cobró ANTES de que la hoja tuviera una pestaña usable:
- * en cuanto la agencia la arma e importa, ese pago se suma a la rendición en vez de quedarse para
- * siempre sólo en DM Gestión.
+ * Deja el pago apuntando a la pestaña de pagos de la hoja y encolado para agregarse, si todavía no
+ * lo estaba. Hace falta para el pago que se cobró ANTES de tener dónde escribirlo (hasta la 12.1, sin
+ * una IMPUTADOS usable no se escribía nada): en cuanto hay pestaña, ese pago se suma a la rendición y
+ * a la caja de las otras computadoras en vez de quedarse para siempre sólo en ésta.
  *
- * Devuelve qué operación quedó encolada, o null si no hay pestaña donde escribir.
+ * Devuelve dónde quedó, o null si el pago no existe.
  */
-export function asegurarPagoEnLaHoja(pagoId: number, actor: SesionUsuario): 'crear' | 'actualizar' | null {
+export function asegurarPagoEnLaHoja(pagoId: number, actor: SesionUsuario | null): LugarDelPago | null {
   const hoja = hojaDeImputados()
-  if (!hoja.pestana) return null
   const pago = db()
     .prepare(
       `SELECT fila_id, pestana, fecha, cliente_nombre, documento, compania, numero_poliza, patente, importe, medio,
-              periodo, observaciones, resultado, COALESCE(sucursal_cobro, sucursal_texto) AS sucursal
+              periodo, observaciones, resultado, COALESCE(sucursal_cobro, sucursal_texto) AS sucursal, usuario_nombre
        FROM pagos WHERE id = ?`,
     )
-    .get(pagoId) as PagoParaLaHoja | undefined
+    .get(pagoId) as (PagoParaLaHoja & { usuario_nombre: string | null }) | undefined
   if (!pago) return null
 
-  const conocida = db().prepare('SELECT en_la_hoja FROM filas_crudas WHERE fila_id = ?').get(pago.fila_id) as
-    | { en_la_hoja: number }
+  const conocida = db().prepare('SELECT pestana, en_la_hoja FROM filas_crudas WHERE fila_id = ?').get(pago.fila_id) as
+    | { pestana: string; en_la_hoja: number }
     | undefined
-  if (conocida && conocida.en_la_hoja === 1 && pago.pestana === hoja.pestana) return 'actualizar'
+  // Ya está en la hoja: se actualiza donde vive, que puede no ser la pestaña de hoy (un pago que viajó
+  // por APP PAGOS sigue ahí aunque la agencia después arme una IMPUTADOS por fila).
+  if (conocida && conocida.en_la_hoja === 1) return { operacion: 'actualizar', pestana: conocida.pestana }
 
   db().prepare('UPDATE pagos SET pestana = ?, actualizado_en = ? WHERE id = ?').run(hoja.pestana, ahoraIso(), pagoId)
   registrarFilaDeLaApp({ filaId: pago.fila_id, pestana: hoja.pestana, tipoPestana: 'PAGOS', periodo: pago.periodo })
-  encolar(
-    {
-      operacion: 'crear',
-      pestana: hoja.pestana,
-      filaId: pago.fila_id,
-      campos: {
-        fecha: pago.fecha ?? '',
-        nombre: pago.cliente_nombre ?? '',
-        documento: pago.documento ?? '',
-        sucursal: pago.sucursal ?? '',
-        compania: pago.compania ?? '',
-        numero_poliza: pago.numero_poliza ?? '',
-        patente: pago.patente ?? '',
-        importe: pago.importe ?? '',
-        medio_pago: pago.medio ?? '',
-        mes: nombreDeMesDelPeriodo(pago.periodo),
-        observaciones: pago.observaciones ?? '',
-        resultado: normalizarResultado(pago.resultado),
-      },
-    },
-    actor,
-  )
-  return 'crear'
+  const campos: Record<string, string> = {
+    fecha: pago.fecha ?? '',
+    nombre: pago.cliente_nombre ?? '',
+    documento: pago.documento ?? '',
+    sucursal: pago.sucursal ?? '',
+    compania: pago.compania ?? '',
+    numero_poliza: pago.numero_poliza ?? '',
+    patente: pago.patente ?? '',
+    importe: pago.importe ?? '',
+    medio_pago: pago.medio ?? '',
+    mes: nombreDeMesDelPeriodo(pago.periodo),
+    observaciones: pago.observaciones ?? '',
+    resultado: normalizarResultado(pago.resultado),
+  }
+  if (hoja.esDeLaApp && pago.usuario_nombre) campos.usuario = pago.usuario_nombre
+  encolar({ operacion: 'crear', pestana: hoja.pestana, filaId: pago.fila_id, campos }, actor)
+  return { operacion: 'crear', pestana: hoja.pestana }
+}
+
+/**
+ * Los pagos que esta computadora cobró y nunca viajaron: los de antes de la 12.2, cuando sin una
+ * IMPUTADOS usable el pago quedaba sólo acá (eso era lo que hacía que en Lanús cada mostrador viera
+ * nada más que lo que cobraba él). Se encolan hacia la pestaña de pagos de hoy, de a uno, con lo que
+ * la caja del día de las otras computadoras los ve en cuanto suben. Devuelve cuántos encoló.
+ */
+export function subirPagosRezagados(): number {
+  const rezagados = db()
+    .prepare(
+      `SELECT p.id FROM pagos p
+       LEFT JOIN filas_crudas fc ON fc.fila_id = p.fila_id
+       WHERE p.hecho_en_la_app = 1
+         AND (fc.fila_id IS NULL OR (fc.en_la_hoja = 0 AND fc.numero_fila = 0))
+         AND p.fila_id NOT IN (SELECT fila_id FROM cola_sync WHERE estado IN ('pendiente', 'fallido'))
+       ORDER BY p.id`,
+    )
+    .all() as Array<{ id: number }>
+  let encolados = 0
+  for (const { id } of rezagados) {
+    if (asegurarPagoEnLaHoja(id, null)?.operacion === 'crear') encolados++
+  }
+  return encolados
 }
 
 // ---------------------------------------------------------------------------

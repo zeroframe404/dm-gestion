@@ -67,12 +67,16 @@ export function CajaDelDia() {
         </label>
         <label className="text-sm font-semibold text-slate-700">
           Sucursal
+          {/* Un empleado ve la caja de su mostrador y nada más: el desplegable queda fijo. Las otras
+              sucursales las mira quien administra la agencia (SUPER_ADMIN y ADMIN). */}
           <select
             value={datos.sucursal}
             onChange={(evento) => void cargar(datos.fecha, evento.target.value)}
-            className="ml-2 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800"
+            disabled={datos.sucursalFija}
+            title={datos.sucursalFija ? 'Las cajas de las otras sucursales las ven los administradores.' : undefined}
+            className="ml-2 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800 disabled:bg-slate-100 disabled:text-slate-500"
           >
-            <option value="">Todas</option>
+            {!datos.sucursalFija && <option value="">Todas</option>}
             {datos.sucursales.map((sucursal) => (
               <option key={sucursal} value={sucursal}>
                 {sucursal}

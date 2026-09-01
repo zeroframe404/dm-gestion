@@ -632,6 +632,14 @@ export const INSERT_BAJA = `
   ON CONFLICT(fila_id) DO UPDATE SET
     motivo = excluded.motivo, nota = excluded.nota, fecha_baja = excluded.fecha_baja,
     fecha_baja_iso = excluded.fecha_baja_iso, actualizado_en = excluded.actualizado_en,
+    -- Si el registro ya existía es porque la misma baja llegó antes por la hoja (la hizo otra
+    -- computadora, o ésta y se reimportó): desde ahora es una baja de la aplicación, con su cuota,
+    -- su mes y todo lo que hace falta para poder deshacerla.
+    hecha_en_la_app = 1, cuota_fila_id = excluded.cuota_fila_id, periodo = excluded.periodo,
+    mes_texto = excluded.mes_texto, poliza_id = COALESCE(excluded.poliza_id, bajas.poliza_id),
+    cliente_id = COALESCE(excluded.cliente_id, bajas.cliente_id), cliente_nombre = excluded.cliente_nombre,
+    documento = excluded.documento, compania = excluded.compania, numero_poliza = excluded.numero_poliza,
+    patente = excluded.patente, sucursal_texto = excluded.sucursal_texto, observaciones = excluded.observaciones,
     telefono = excluded.telefono, email = excluded.email, direccion = excluded.direccion,
     localidad = excluded.localidad, cobertura = excluded.cobertura, propuesta = excluded.propuesta,
     cuota = excluded.cuota, dia_vencimiento = excluded.dia_vencimiento, forma_pago = excluded.forma_pago,
@@ -747,7 +755,7 @@ export function deshacerBaja(bajaId: number, actor: SesionUsuario): FilaBaja[] {
 
   const filaDeVuelta = db().prepare(`${SELECT_PLANILLA} WHERE c.fila_id = ?`).get(baja.cuota_fila_id) as FilaCruda | undefined
   if (filaDeVuelta) {
-    encolar({ operacion: 'borrar', pestana: baja.pestana, filaId: baja.fila_id, campos: {} }, actor)
+    encolar({ operacion: 'borrar', pestana: bajaEnLaHoja(baja.id, baja.fila_id), filaId: baja.fila_id, campos: {} }, actor)
     encolar(
       { operacion: 'crear', pestana: filaDeVuelta.pestana, filaId: filaDeVuelta.fila_id, campos: camposDeLaFila(filaDeVuelta) },
       actor,
@@ -886,9 +894,14 @@ export function reactivarBaja(bajaId: number, actor: SesionUsuario): ResultadoDe
 
 /** La pestaña de la hoja donde vive el renglón de esta baja, para poder sacarlo al reactivarla. */
 function bajaEnLaHoja(bajaId: number, filaId: string): string {
-  const fila = db().prepare('SELECT pestana FROM bajas WHERE id = ?').get(bajaId) as { pestana: string } | undefined
-  if (fila?.pestana) return fila.pestana
+  // Manda `filas_crudas`: una baja hecha en la aplicación se guarda con la pestaña «(cargado en DM
+  // Gestión)», que no existe en ninguna base, mientras que su renglón de verdad está en «BAJAS …» (lo
+  // anotó `registrarFilaDeLaApp` y lo confirmó la subida). Encolar el borrado contra la de la tabla
+  // lo dejaba como «no se pudo» para siempre y la fila seguía en BAJAS en todas las computadoras.
   const cruda = db().prepare('SELECT pestana FROM filas_crudas WHERE fila_id = ?').get(filaId) as { pestana: string } | undefined
+  if (cruda?.pestana && cruda.pestana !== PESTANA_APP) return cruda.pestana
+  const fila = db().prepare('SELECT pestana FROM bajas WHERE id = ?').get(bajaId) as { pestana: string } | undefined
+  if (fila?.pestana && fila.pestana !== PESTANA_APP) return fila.pestana
   return cruda?.pestana ?? 'BAJAS'
 }
 

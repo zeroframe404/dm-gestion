@@ -504,6 +504,10 @@ Por **sucursal y fecha**: hora, cliente, DNI, compañía, póliza, patente, impo
 quién cobró. Arriba, el total del día y el subtotal por cada medio de pago.
 
 - Abre en el día de hoy y en la sucursal de quien entró, que es el caso normal del mostrador.
+- **Quién ve qué caja es una regla de rol** (12.2): SUPER_ADMIN y ADMIN eligen cualquier sucursal o
+  «Todas»; un EMPLEADO ve la caja de su mostrador y el desplegable queda fijo. Dos personas de la misma
+  sucursal se ven entre sí (lo que cobra una aparece en la caja de la otra, ver «Los pagos viajan por
+  APP PAGOS», más abajo). Lo mismo rige en Imputados: un empleado rinde sólo lo cobrado en su sucursal.
 - La sucursal de la caja es **la del mostrador donde entró la plata**, no la del cliente: un cliente de
   Lanús que paga en Dock Sud suma a la caja de Dock Sud (`pagos.sucursal_cobro`).
 - **Exportar el día** guarda un CSV con punto y coma y BOM, listo para abrir de un doble clic en Excel.
@@ -536,13 +540,17 @@ la hoja, y lo que la contadora escriba allá vuelve en la próxima bajada.
 
 Dos cosas que hacen falta saber:
 
-- **Los pagos que cobra la aplicación se agregan a la pestaña IMPUTADOS de la hoja.** Si no, el mes
-  siguiente la rendición mostraría sólo lo que alguien cargó a mano.
-- **La pestaña IMPUTADOS de la hoja real NO es una tabla por fila** (es una matriz de resumen con años
-  y totales). Cuando es así, la pantalla lo dice y todo queda guardado sólo en DM Gestión: no se
-  escriben filas sueltas en una planilla que no las espera. Lo mismo si la pestaña existe como tabla
-  pero le falta la columna RESULTADO. Para sincronizar hay que armar en la hoja una pestaña IMPUTADOS
-  con encabezados FECHA, NOMBRE, DNI, CIA, POLIZA, IMPORTE, MEDIO DE PAGO, MES y RESULTADO, e importarla.
+- **Los pagos que cobra la aplicación se agregan a la pestaña de pagos de la base.** Si no, el mes
+  siguiente la rendición mostraría sólo lo que alguien cargó a mano, y la caja del día de las otras
+  computadoras no los vería nunca.
+- **Los pagos viajan por «APP PAGOS» (12.2).** La pestaña IMPUTADOS de la hoja real NO es una tabla por
+  fila (es una matriz de resumen con años y totales), y hasta la 12.1 eso dejaba cada pago sólo en la
+  computadora que lo cobró: en Lanús, lo que registraba un mostrador no aparecía en el otro. Ahora,
+  cuando la base no tiene una IMPUTADOS que sea una tabla, la aplicación crea sola la pestaña
+  **APP PAGOS** al final (como APP RECHAZOS) y los pagos van y vuelven por ahí, con la sucursal donde
+  se cobró y quién cobró (`COBRADO POR`). Si la agencia tiene una IMPUTADOS por fila, se sigue usando
+  ésa. Los pagos de antes de la 12.2 que nunca salieron de su computadora se encolan solos la primera
+  vez que arranca la sincronización (`subirPagosRezagados`, en `pagos.ts`).
 
 ### Comisiones
 
@@ -741,8 +749,8 @@ siniestro); acá está el módulo propio.
 
 Leads, presupuestos, tareas y los avisos de rechazo del débito no existen en el Excel de la agencia.
 Para que igual se puedan mirar desde Google, DM Gestión crea **«APP LEADS»**, **«APP PRESUPUESTOS»**,
-**«APP TAREAS»** y **«APP RECHAZOS»** al final del archivo, con sus encabezados, **la primera vez que
-hay algo que subir a alguna de ellas**.
+**«APP TAREAS»**, **«APP RECHAZOS»** y **«APP PAGOS»** al final del archivo, con sus encabezados, **la
+primera vez que hay algo que subir a alguna de ellas**.
 
 - Se crean tarde a propósito: una hoja de una agencia que todavía no cargó ni un lead no tiene por qué
   llenarse de pestañas vacías.
@@ -751,9 +759,10 @@ hay algo que subir a alguna de ellas**.
 - Las tres primeras van en un solo sentido (la aplicación escribe, la hoja mira). Sus filas quedan
   anotadas como conocidas igual que las de cualquier otro módulo, así que volver a importar no las
   duplica ni dispara una importación completa.
-- **«APP RECHAZOS» es la excepción y va en los dos sentidos**: se lee de vuelta a `rechazos_debito` y
-  entra en el ciclo de bajada de todos los días, porque es el camino por el que un aviso cargado en una
-  sucursal llega a la computadora de la otra. Ver **Rechazos del débito automático**, más arriba.
+- **«APP RECHAZOS» y «APP PAGOS» van en los dos sentidos**: se leen de vuelta (a `rechazos_debito` y a
+  `pagos`) y entran en el ciclo de bajada de todos los días, porque son el camino por el que un aviso o
+  un pago cargado en una sucursal llega a la computadora de la otra. Ver **Rechazos del débito
+  automático** y **Cobranzas e Imputados**, más arriba.
 - Las tareas de la Fase 5 —creadas antes de que la pestaña existiera— se quedan sin subir: no se inventa
   historia en la hoja.
 

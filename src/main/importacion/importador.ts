@@ -59,6 +59,7 @@ import {
 } from './layouts'
 import { clasificarPestanas, periodoDesdeTextoDeMes, revisarCoherenciaDePeriodos, type PestanaClasificada } from './pestanas'
 import { huellaDeFila } from '../sincronizacion/hoja'
+import { alDesaparecerDeLaHoja, alLlegarUnaBaja, cuotaDelMesDeLaBaja, filasConCambiosSinSubir } from '../servicios/filas'
 
 export interface OpcionesImportacion {
   db: BaseDeDatos
@@ -209,6 +210,10 @@ function prepararSentencias(db: BaseDeDatos) {
     marcarFilasQueYaNoEstan: db.prepare(`
       UPDATE filas_crudas SET en_la_hoja = 0
       WHERE pestana = @pestana AND en_la_hoja = 1 AND (vista_en IS NULL OR vista_en <> @ahora)`),
+    /** Las mismas filas que va a marcar la sentencia anterior, para saber cuáles fueron. */
+    filasQueYaNoEstan: db.prepare(`
+      SELECT fila_id FROM filas_crudas
+      WHERE pestana = @pestana AND en_la_hoja = 1 AND (vista_en IS NULL OR vista_en <> @ahora)`),
 
     /** En qué pestaña se registró un _ID: sirve para saber quién es el dueño cuando aparece repetido. */
     pestanaDeFila: db.prepare('SELECT pestana FROM filas_crudas WHERE fila_id = ?'),
@@ -341,19 +346,24 @@ function prepararSentencias(db: BaseDeDatos) {
         dia_vencimiento_numero = excluded.dia_vencimiento_numero, aviso = excluded.aviso, aviso_enviado = excluded.aviso_enviado,
         pago = excluded.pago, pago_fecha = excluded.pago_fecha, observaciones = excluded.observaciones,
         forma_pago = excluded.forma_pago, fecha_envio = excluded.fecha_envio, avisar_vto = excluded.avisar_vto,
+        -- La fila está en la planilla de la hoja, así que está vigente: si acá figuraba dada de baja es
+        -- porque la baja se deshizo desde otra computadora. Salvo que sea esta computadora la que
+        -- todavía no subió su cambio (la baja de recién, cuyo borrado espera su ventana): ahí manda lo local.
+        dada_de_baja = CASE WHEN @sin_subir = 1 THEN cuotas_mes.dada_de_baja ELSE 0 END,
         actualizado_en = excluded.actualizado_en`),
 
     baja: db.prepare(`
       INSERT INTO bajas (fila_id, pestana, periodo, mes_texto, poliza_id, cliente_id, cliente_nombre, documento, compania, numero_poliza,
-                         patente, sucursal_texto, motivo, fecha_baja, fecha_baja_iso, observaciones, creado_en, actualizado_en)
+                         patente, sucursal_texto, motivo, fecha_baja, fecha_baja_iso, observaciones, cuota_fila_id, creado_en, actualizado_en)
       VALUES (@fila_id, @pestana, @periodo, @mes_texto, @poliza_id, @cliente_id, @cliente_nombre, @documento, @compania, @numero_poliza,
-              @patente, @sucursal_texto, @motivo, @fecha_baja, @fecha_baja_iso, @observaciones, @ahora, @ahora)
+              @patente, @sucursal_texto, @motivo, @fecha_baja, @fecha_baja_iso, @observaciones, @cuota_fila_id, @ahora, @ahora)
       ON CONFLICT(fila_id) DO UPDATE SET
         pestana = excluded.pestana, periodo = excluded.periodo, mes_texto = excluded.mes_texto,
         poliza_id = COALESCE(excluded.poliza_id, bajas.poliza_id), cliente_id = COALESCE(excluded.cliente_id, bajas.cliente_id), cliente_nombre = excluded.cliente_nombre, documento = excluded.documento,
         compania = excluded.compania, numero_poliza = excluded.numero_poliza, patente = excluded.patente,
         sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE bajas.sucursal_texto END, motivo = excluded.motivo,
         fecha_baja = excluded.fecha_baja, fecha_baja_iso = excluded.fecha_baja_iso, observaciones = excluded.observaciones,
+        cuota_fila_id = COALESCE(bajas.cuota_fila_id, excluded.cuota_fila_id),
         actualizado_en = excluded.actualizado_en`),
 
     // Los avisos de rechazo del débito. Es la única pestaña APP que se lee de vuelta a su tabla, y es
@@ -444,10 +454,15 @@ function prepararSentencias(db: BaseDeDatos) {
 
     pago: db.prepare(`
       INSERT INTO pagos (fila_id, pestana, cliente_id, poliza_id, fecha, fecha_iso, cliente_nombre, documento, compania, numero_poliza,
-                         patente, sucursal_texto, importe, importe_monto, medio, periodo_texto, periodo, observaciones, resultado, creado_en, actualizado_en)
+                         patente, sucursal_texto, importe, importe_monto, medio, periodo_texto, periodo, observaciones, resultado,
+                         usuario_nombre, creado_en, actualizado_en)
       VALUES (@fila_id, @pestana, @cliente_id, @poliza_id, @fecha, @fecha_iso, @cliente_nombre, @documento, @compania, @numero_poliza,
-              @patente, @sucursal_texto, @importe, @importe_monto, @medio, @periodo_texto, @periodo, @observaciones, @resultado, @ahora, @ahora)
+              @patente, @sucursal_texto, @importe, @importe_monto, @medio, @periodo_texto, @periodo, @observaciones, @resultado,
+              @usuario_nombre, @ahora, @ahora)
       ON CONFLICT(fila_id) DO UPDATE SET
+        -- Quién cobró lo sabe la computadora que cobró (y la pestaña APP PAGOS, que lo escribe): la
+        -- hoja no puede borrarlo.
+        usuario_nombre = COALESCE(pagos.usuario_nombre, excluded.usuario_nombre),
         pestana = excluded.pestana, cliente_id = COALESCE(excluded.cliente_id, pagos.cliente_id),
         poliza_id = COALESCE(excluded.poliza_id, pagos.poliza_id), fecha = excluded.fecha,
         fecha_iso = excluded.fecha_iso, cliente_nombre = excluded.cliente_nombre, documento = excluded.documento, compania = excluded.compania,
@@ -475,6 +490,8 @@ class TrabajoDeImportacion {
   private readonly anioActual: number
   /** Marca de tiempo única de la corrida: todo lo que toca esta importación lleva este actualizado_en. */
   private readonly ahora = ahoraIso()
+  /** Filas con cambios locales que todavía no viajaron: sobre ellas la hoja no manda (ver filas.ts). */
+  private readonly sinSubir: Set<string>
   private readonly iniciadaEn = this.ahora
   private readonly sentencias: ReturnType<typeof prepararSentencias>
 
@@ -531,6 +548,7 @@ class TrabajoDeImportacion {
     this.estaCancelada = opciones.estaCancelada ?? (() => false)
     this.anioActual = opciones.anioActual ?? new Date().getFullYear()
     this.sentencias = prepararSentencias(this.db)
+    this.sinSubir = filasConCambiosSinSubir(this.db)
   }
 
   async ejecutar(): Promise<InformeImportacion> {
@@ -1034,8 +1052,17 @@ class TrabajoDeImportacion {
               break
           }
         }
-        // Lo que estaba en esta pestaña y ya no aparece se marca como fuera de la hoja.
+        // Lo que estaba en esta pestaña y ya no aparece se marca como fuera de la hoja, y lo que esa
+        // fila representaba se acomoda (la cuota sale de la planilla, la baja deshecha se olvida).
+        const desaparecidas = (this.sentencias.filasQueYaNoEstan.all({ pestana: p.titulo, ahora: this.ahora }) as Array<{ fila_id: string }>).map(
+          (cruda) => cruda.fila_id,
+        )
         const yaNoEstan = this.sentencias.marcarFilasQueYaNoEstan.run({ pestana: p.titulo, ahora: this.ahora }).changes
+        alDesaparecerDeLaHoja(
+          this.db,
+          desaparecidas.map((filaId) => ({ filaId, tipo: p.tipo })),
+          this.sinSubir,
+        )
         if (yaNoEstan > 0) {
           this.filasQueYaNoEstan += yaNoEstan
           this.contar(resumen, 'filas_que_ya_no_estan', yaNoEstan)
@@ -1378,6 +1405,7 @@ class TrabajoDeImportacion {
       forma_pago: oNulo(fila.valor('forma_pago')),
       fecha_envio: oNulo(fila.valor('fecha_envio')),
       avisar_vto: oNulo(fila.valor('avisar_vto')),
+      sin_subir: this.sinSubir.has(fila.id) ? 1 : 0,
       ahora: this.ahora,
     })
     this.contar(resumen, 'cuotas_mes')
@@ -1591,6 +1619,10 @@ class TrabajoDeImportacion {
   // ---------------------------------------------------------------------------
   private guardarBaja(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
     if (this.sinDatosUtiles(p, fila)) return
+    // Una baja que esta computadora está deshaciendo (su borrado todavía no viajó) no se vuelve a
+    // guardar desde la hoja: la hoja va atrás de lo local, y el registro reaparecería hasta que el
+    // borrado salga. Lo mismo si acaba de hacerla y todavía no la subió: ya está guardada entera.
+    if (this.sinSubir.has(fila.id)) return
     const ident = this.identificar(p, fila)
     const mesTexto = fila.valor('mes')
     const anioMasNueva = this.anioDelPeriodo(this.masNueva?.periodo ?? null)
@@ -1628,8 +1660,13 @@ class TrabajoDeImportacion {
       fecha_baja: oNulo(fechaTexto),
       fecha_baja_iso: fecha.iso,
       observaciones: oNulo(fila.valor('observaciones')),
+      // Una baja hecha en la aplicación (en cualquier computadora) nombra a su cuota en el _ID.
+      cuota_fila_id: cuotaDelMesDeLaBaja(this.db, fila.id, periodo),
       ahora: this.ahora,
     })
+    // La cuota que esta baja nombra sale de la planilla también acá, aunque su fila todavía esté en la
+    // hoja: es lo que hace que la baja hecha en otra sucursal no se pueda volver a hacer desde ésta.
+    alLlegarUnaBaja(this.db, fila.id, periodo, this.sinSubir)
     this.contar(resumen, 'bajas')
     if (polizaId === null) this.contar(resumen, 'bajas_sin_poliza_conocida')
   }
@@ -1808,6 +1845,8 @@ class TrabajoDeImportacion {
       // El RESULTADO de la rendición se guarda tal cual está en la hoja; la pantalla lo normaliza.
       resultado: oNulo(fila.valor('resultado')),
       hay_columna_resultado: fila.tieneColumna('resultado') ? 1 : 0,
+      // «COBRADO POR» sólo lo trae APP PAGOS: es el nombre de quien cobró en la otra computadora.
+      usuario_nombre: oNulo(fila.valor('usuario')),
       ahora: this.ahora,
     })
     this.contar(resumen, 'pagos')

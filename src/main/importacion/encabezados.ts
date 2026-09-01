@@ -214,6 +214,8 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
     // En IMPUTADOS la columna de estado es el resultado de la rendición, no el estado de la póliza.
     ESTADO: 'resultado',
     SITUACION: 'resultado',
+    // Quién cobró: la columna que escribe la aplicación en APP PAGOS.
+    'COBRADO POR': 'usuario',
   },
   COBERTURA: {
     DESCRIPCION: 'detalle',
@@ -267,7 +269,7 @@ const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
   BAJAS: ['nombre', 'documento', 'telefono', 'sucursal', 'compania', 'numero_poliza', 'cobertura', 'patente', 'marca', 'modelo', 'motivo', 'fecha_baja', 'mes', 'observaciones', 'cuota', 'productor'],
   RIESGOS_VARIOS: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'sucursal', 'emision', 'tipo_riesgo', 'descripcion', 'compania', 'numero_poliza', 'prima', 'cuota', 'vigencia_desde', 'vigencia_hasta', 'forma_pago', 'dia_vencimiento', 'aviso', 'pago', 'observaciones', 'productor', 'estado', 'patente', 'marca', 'modelo'],
   SINIESTROS: ['fecha', 'fecha_carga', 'nombre', 'documento', 'telefono', 'sucursal', 'patente', 'marca', 'modelo', 'compania', 'numero_poliza', 'cobertura', 'numero_siniestro', 'descripcion', 'estado', 'importe', 'observaciones'],
-  PAGOS: ['fecha', 'nombre', 'documento', 'sucursal', 'compania', 'numero_poliza', 'patente', 'importe', 'medio_pago', 'mes', 'observaciones', 'cuota', 'resultado'],
+  PAGOS: ['fecha', 'nombre', 'documento', 'sucursal', 'compania', 'numero_poliza', 'patente', 'importe', 'medio_pago', 'mes', 'observaciones', 'cuota', 'resultado', 'usuario'],
   COBERTURA: ['compania', 'cobertura', 'incluye', 'franquicia', 'detalle', 'observaciones', 'prima'],
   CONTADOR: 'todos',
   SEGUROS_ACT: 'todos',
