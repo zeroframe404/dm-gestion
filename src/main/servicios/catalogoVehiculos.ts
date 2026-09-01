@@ -10,6 +10,7 @@
 // póliza porque un proveedor externo no contesta es peor que no tener el catálogo.
 import {
   NOMBRE_CATEGORIA,
+  NOMBRE_PROVEEDOR_CATALOGO,
   TIPOS_DE_VEHICULO,
   type CategoriaDeVehiculo,
   type EstadoDelCatalogo,
@@ -24,8 +25,9 @@ import {
 import { db } from '../db/base'
 import { ahoraIso, limpiar, normalizarTexto } from '../importacion/normalizar'
 import { crearProveedorInfoauto } from '../vehiculos/infoauto'
+import { crearProveedorMercadoLibre } from '../vehiculos/mercadolibre'
 import { ErrorDeProveedor, type ProveedorDeVehiculos } from '../vehiculos/proveedor'
-import { credencialesDeVehiculos, guardarRefrescoDeVehiculos, rutaDeLaConfig } from './config'
+import { credencialesDeVehiculos, guardarRefrescoDeVehiculos, proveedorDeVehiculosElegido, rutaDeLaConfig } from './config'
 import { ErrorDeNegocio } from './errores'
 
 /** Pasado esto, el catálogo se considera viejo y la pantalla lo dice. Los modelos salen todo el año. */
@@ -45,6 +47,13 @@ function proveedor(): ProveedorDeVehiculos | null {
   if (proveedorDePrueba) return proveedorDePrueba
   const credenciales = credencialesDeVehiculos()
   if (!credenciales) return null
+  if (credenciales.proveedor === 'MERCADO_LIBRE') {
+    return crearProveedorMercadoLibre({
+      appId: credenciales.usuario,
+      claveSecreta: credenciales.clave,
+      accessToken: credenciales.accessToken,
+    })
+  }
   return crearProveedorInfoauto(
     { usuario: credenciales.usuario, clave: credenciales.clave, refreshToken: credenciales.refreshToken },
     (token) => guardarRefrescoDeVehiculos(token),
@@ -85,10 +94,18 @@ function estadoDeUnTipo(tipo: TipoDeVehiculo): EstadoDeUnTipo {
 export function estadoDelCatalogo(): EstadoDelCatalogo {
   const credenciales = credencialesDeVehiculos()
   const porTipo = TIPOS_DE_VEHICULO.map(estadoDeUnTipo)
+  const elegido = proveedorDeVehiculosElegido()
+  const quien = proveedor()
   return {
     configurado: hayProveedorConfigurado(),
-    proveedor: proveedor()?.nombre ?? 'InfoAuto',
+    proveedor: quien?.nombre ?? NOMBRE_PROVEEDOR_CATALOGO[elegido],
+    proveedorId: elegido,
     usuario: credenciales?.usuario ?? '',
+    tokenCargado: Boolean(credenciales?.accessToken),
+    // Sin credenciales todavía no hay a quién preguntarle, y hay que decir algo: se muestran los dos
+    // tipos, que es lo que la pantalla venía mostrando y lo que sirve Mercado Libre se corrige solo
+    // en cuanto se guardan las credenciales.
+    tiposQueSirve: quien ? quien.tiposQueSirve() : [...TIPOS_DE_VEHICULO],
     rutaDeConfig: rutaDeLaConfig(),
     porTipo,
     hayCatalogo: porTipo.some((estado) => estado.lineas > 0),

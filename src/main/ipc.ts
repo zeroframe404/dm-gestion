@@ -173,6 +173,12 @@ import {
   refrescarCatalogo,
   resolverVehiculoDelCatalogo,
 } from './servicios/catalogoVehiculos'
+import {
+  adoptarVehiculosDelVps,
+  borrarVehiculosDelVps,
+  estadoCompartidoDeVehiculos,
+  publicarVehiculosEnElVps,
+} from './servicios/ajustesCompartidos'
 import { guardarPlantillaDeAviso, plantillaDeAviso } from './servicios/plantillas'
 import { historialDeFila } from './servicios/historial'
 import {
@@ -186,6 +192,7 @@ import {
 } from './servicios/sincronizacion'
 import { eliminarRegistro, vistaPreviaDeEliminacion } from './servicios/eliminacion'
 import { ErrorDeNegocio } from './servicios/errores'
+import { estadoDelMesh } from './servicios/mesh'
 import { estadoDeLaBaseVps, migrarAlVps } from './servicios/migracionVps'
 import {
   abrirCarpetaInformes,
@@ -999,17 +1006,70 @@ export function registrarIpc(): void {
     exigirVista('polizas', 'presupuestos', 'administracion')
     return exito(estadoDelCatalogo())
   })
-  manejar('vehiculos:guardarCredenciales', (datos) => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
+  // Guardar las credenciales es, para el superadministrador, guardarlas PARA TODAS LAS COMPUTADORAS:
+  // se escriben acá y salen para el VPS en el mismo movimiento. Que el servidor no conteste no puede
+  // deshacer el guardado local —quedó bien escrito— así que el motivo viaja en la respuesta y la
+  // pantalla lo muestra con el botón para reintentar.
+  //
+  // Un ADMIN puede cargarlas en SU computadora pero no publicarlas: son las credenciales de toda la
+  // agencia y pisar las de las otras cinco máquinas es del que manda.
+  manejar('vehiculos:guardarCredenciales', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirEdicion('administracion')
     guardarCredencialesDeVehiculos(datos)
-    return exito(estadoDelCatalogo())
+    const estado = estadoDelCatalogo()
+    if (actor.rol !== 'SUPER_ADMIN') {
+      return exito({
+        estado,
+        compartido: await estadoCompartidoDeVehiculos(),
+        detalle: 'Quedaron guardadas en esta computadora. Mandarlas al resto lo hace el superadministrador.',
+      })
+    }
+    try {
+      return exito({
+        estado,
+        compartido: await publicarVehiculosEnElVps(actor.nombre),
+        detalle: 'Guardadas y mandadas al servidor: el resto de las computadoras las va a tomar al abrir el programa.',
+      })
+    } catch (error) {
+      return exito({
+        estado,
+        compartido: {
+          ...(await estadoCompartidoDeVehiculos()),
+          error: error instanceof Error ? error.message : String(error),
+        },
+        detalle: 'Quedaron guardadas en esta computadora, pero no se pudieron mandar al servidor.',
+      })
+    }
   })
-  manejar('vehiculos:borrarCredenciales', () => {
+  // Reintento manual de la publicación, para cuando el guardado la encontró sin conexión.
+  manejar('vehiculos:publicar', async () => {
+    const actor = exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await publicarVehiculosEnElVps(actor.nombre))
+  })
+  manejar('vehiculos:estadoCompartido', async () => {
+    exigirVista('administracion')
+    return exito(await estadoCompartidoDeVehiculos())
+  })
+  // Traer a mano lo que cargó el superadministrador, sin esperar al próximo arranque.
+  manejar('vehiculos:adoptar', async () => {
     exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirEdicion('administracion')
+    const resultado = await adoptarVehiculosDelVps()
+    return exito({ ...resultado, estado: estadoDelCatalogo(), compartido: await estadoCompartidoDeVehiculos() })
+  })
+  manejar('vehiculos:borrarCredenciales', async (tambienDelServidor) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
     borrarCredencialesDeVehiculos()
-    return exito(estadoDelCatalogo())
+    // Sacarlas del servidor es aparte y sólo del superadministrador: borrarlas de una computadora
+    // tiene que poder hacerse sin dejar sin catálogo a las otras cuatro.
+    if (tambienDelServidor === true) {
+      if (actor.rol !== 'SUPER_ADMIN') throw new ErrorDeNegocio('Sacarlas del servidor lo hace el superadministrador.')
+      await borrarVehiculosDelVps()
+    }
+    return exito({ estado: estadoDelCatalogo(), compartido: await estadoCompartidoDeVehiculos() })
   })
   manejar('vehiculos:probar', async () => {
     exigirRol('SUPER_ADMIN', 'ADMIN')
@@ -1101,6 +1161,14 @@ export function registrarIpc(): void {
   manejar('redes:publicar', async (pedido) => {
     const actor = exigirEdicion('marketing')
     return exito(await publicarEnRed(pedido, actor))
+  })
+
+  // El control remoto de las computadoras de la agencia. Mirar si está en línea lo puede hacer
+  // cualquiera que vea Administración; entrar a la consola pide su propia clave del otro lado, que es
+  // como tiene que ser para un acceso a todas las máquinas.
+  manejar('mesh:estado', async () => {
+    exigirVista('administracion')
+    return exito(await estadoDelMesh())
   })
 
   manejar('sistema:abrirEnlace', async (url) => {

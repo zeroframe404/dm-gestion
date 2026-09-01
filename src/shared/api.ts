@@ -230,6 +230,9 @@ export interface ApiDm {
   vehiculos: {
     estado: Remota<'vehiculos:estado'>
     guardarCredenciales: Remota<'vehiculos:guardarCredenciales'>
+    publicar: Remota<'vehiculos:publicar'>
+    estadoCompartido: Remota<'vehiculos:estadoCompartido'>
+    adoptar: Remota<'vehiculos:adoptar'>
     borrarCredenciales: Remota<'vehiculos:borrarCredenciales'>
     probar: Remota<'vehiculos:probar'>
     refrescar: Remota<'vehiculos:refrescar'>
@@ -253,6 +256,9 @@ export interface ApiDm {
   }
   sistema: {
     abrirEnlace: Remota<'sistema:abrirEnlace'>
+  }
+  mesh: {
+    estado: Remota<'mesh:estado'>
   }
   importacion: {
     vistaPrevia: Remota<'importacion:vistaPrevia'>

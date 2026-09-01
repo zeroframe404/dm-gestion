@@ -15,6 +15,7 @@ import { BaseDeDatos } from './BaseDeDatos'
 import { CatalogoVehiculos } from './CatalogoVehiculos'
 import { Companias } from './Companias'
 import { ConexionGoogle } from './ConexionGoogle'
+import { ControlRemoto } from './ControlRemoto'
 import { ImportarGoogle } from './ImportarGoogle'
 import { Impresora } from './Impresora'
 import { Permisos } from './Permisos'
@@ -35,6 +36,7 @@ type IdSeccion =
   | 'sincronizacion'
   | 'redessociales'
   | 'vehiculos'
+  | 'controlremoto'
   | 'acerca'
 
 export function Administracion() {
@@ -71,6 +73,10 @@ export function Administracion() {
       lista.push({ id: 'google', nombre: 'Google Drive', icono: 'nube', ayuda: 'administracion.google' })
       lista.push({ id: 'redessociales', nombre: 'Redes sociales', icono: 'instagram', ayuda: 'administracion.redessociales' })
       lista.push({ id: 'vehiculos', nombre: 'Catálogo de vehículos', icono: 'auto', ayuda: 'administracion.vehiculos' })
+      // El control remoto de las computadoras de las sucursales. Va acá, junto al resto de lo que es
+      // de toda la agencia y no de esta máquina, y es lo que se necesita cuando en otra sucursal hay
+      // algo que no anda y hay gente esperando en el mostrador.
+      lista.push({ id: 'controlremoto', nombre: 'Control remoto', icono: 'cuadricula', ayuda: 'administracion.controlremoto' })
     }
     lista.push({ id: 'acerca', nombre: 'Acerca de', icono: 'info', ayuda: 'administracion.acerca' })
     return lista
@@ -106,6 +112,7 @@ export function Administracion() {
         {seccion === 'sincronizacion' && <Sincronizacion />}
         {seccion === 'redessociales' && <RedesSociales />}
         {seccion === 'vehiculos' && <CatalogoVehiculos />}
+        {seccion === 'controlremoto' && <ControlRemoto />}
         {seccion === 'acerca' && <AcercaDe />}
       </div>
     </div>

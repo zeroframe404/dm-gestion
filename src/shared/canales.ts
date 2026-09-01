@@ -72,8 +72,13 @@ import type {
   FiltrosMora,
   ListadoMora,
   ArchivoParaPublicar,
+  AdopcionDeCredencialesDeVehiculos,
   DatosDelProveedorDeVehiculos,
+  EstadoDeAjusteCompartido,
+  EstadoDeCredencialesDeVehiculos,
   EstadoDelCatalogo,
+  EstadoDelMesh,
+  GuardadoDeCredencialesDeVehiculos,
   LineaDeCatalogo,
   OpcionDeCatalogo,
   ProgresoDeCatalogo,
@@ -459,8 +464,19 @@ export interface Canales {
   // Catálogo de vehículos (autos y motos por API). Los desplegables salen SIEMPRE de la caché local:
   // dibujar un desplegable no sale a internet. A internet se sale con 'vehiculos:refrescar'.
   'vehiculos:estado': () => Resultado<EstadoDelCatalogo>
-  'vehiculos:guardarCredenciales': (datos: DatosDelProveedorDeVehiculos) => Resultado<EstadoDelCatalogo>
-  'vehiculos:borrarCredenciales': () => Resultado<EstadoDelCatalogo>
+  /**
+   * Guarda las credenciales acá y —si lo hace el superadministrador— las manda al VPS en el mismo
+   * movimiento, para que el resto de las computadoras las adopte al abrir el programa.
+   */
+  'vehiculos:guardarCredenciales': (datos: DatosDelProveedorDeVehiculos) => Resultado<GuardadoDeCredencialesDeVehiculos>
+  /** Reintento manual de la publicación, para cuando el guardado la encontró sin conexión. */
+  'vehiculos:publicar': () => Resultado<EstadoDeAjusteCompartido>
+  /** Cómo está el ajuste en el VPS. Va aparte de 'vehiculos:estado' porque sale a la red. */
+  'vehiculos:estadoCompartido': () => Resultado<EstadoDeAjusteCompartido>
+  /** Trae a mano lo que cargó el superadministrador, sin esperar al próximo arranque. */
+  'vehiculos:adoptar': () => Resultado<AdopcionDeCredencialesDeVehiculos>
+  /** `tambienDelServidor` sólo lo puede pedir el superadministrador: deja sin catálogo a todas. */
+  'vehiculos:borrarCredenciales': (tambienDelServidor?: boolean) => Resultado<EstadoDeCredencialesDeVehiculos>
   'vehiculos:probar': () => Resultado<PruebaDelProveedor>
   /** `tipo` en null refresca autos y motos. Puede tardar: el avance llega por 'vehiculos:progreso'. */
   'vehiculos:refrescar': (tipo: TipoDeVehiculo | null) => Resultado<EstadoDelCatalogo>
@@ -492,6 +508,10 @@ export interface Canales {
   'redes:publicar': (pedido: PedidoDePublicacion) => Resultado<PanelDeRedes>
 
   'sistema:abrirEnlace': (url: string) => Resultado<null>
+
+  // --- Control remoto de las computadoras (MeshCentral) ---
+  /** Mide si la consola contesta. El link se abre después con 'sistema:abrirEnlace'. */
+  'mesh:estado': () => Resultado<EstadoDelMesh>
 
   'app:info': () => Resultado<InfoApp>
 

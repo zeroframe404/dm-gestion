@@ -2,7 +2,11 @@
 // con la misma semántica de grilla que el servidor real: pestañas ordenadas, filas numeradas
 // base 1, celdas de texto, y la migración inicial en tres fases. Lo usan las pruebas y el humo,
 // igual que github-simulado.mjs simula la base de usuarios.
+import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
+
+/** Las mismas claves que acepta el servidor real: es una lista blanca, no un almacén libre. */
+const CLAVES_DE_AJUSTE = new Set(['vehiculos'])
 
 const TOKEN_POR_DEFECTO = 'prueba'
 
@@ -31,7 +35,12 @@ export class VpsSimulado {
     /** No responder nunca (para probar el timeout). */
     this.colgar = false
     this.intercambios = []
-    this.llamadas = { estructura: 0, leer: 0, celdas: 0, agregar: 0, borrar: 0, pestanas: 0, tramos: 0, estado: 0 }
+    this.llamadas = {
+      estructura: 0, leer: 0, celdas: 0, agregar: 0, borrar: 0, pestanas: 0, tramos: 0, estado: 0,
+      ajusteLeido: 0, ajusteConsultado: 0, ajusteGuardado: 0,
+    }
+    /** Los ajustes compartidos, por clave. */
+    this.ajustes = new Map()
 
     for (const pestana of opciones.pestanas ?? []) {
       this.cargarPestanaDirecto(pestana)
@@ -293,6 +302,45 @@ export class VpsSimulado {
       let filas = 0
       for (const pestana of this.pestanas) filas += pestana.filas.size
       return responder(200, { ok: true, pestanas: this.pestanas.length, filas })
+    }
+    // Ajustes compartidos: la credencial que el superadministrador carga una vez y el resto de las
+    // computadoras adopta. El servidor real las guarda cifradas; acá alcanza con guardarlas en
+    // memoria, porque lo que las pruebas miran es el contrato y la huella.
+    const ajuste = /^\/api\/dmg\/ajustes\/([^/]+)(\/estado|\/borrar)?$/.exec(ruta)
+    if (ajuste) {
+      const clave = decodeURIComponent(ajuste[1])
+      const cola = ajuste[2] ?? ''
+      if (!CLAVES_DE_AJUSTE.has(clave)) {
+        return responder(404, { error: `El puente DM Gestión no conoce el ajuste «${clave}».` })
+      }
+      const guardado = this.ajustes.get(clave) ?? null
+      if (metodo === 'GET' && cola === '') {
+        this.llamadas.ajusteLeido++
+        return responder(200, { ajuste: guardado })
+      }
+      if (metodo === 'GET' && cola === '/estado') {
+        this.llamadas.ajusteConsultado++
+        return responder(200, { ajuste: guardado ? { ...guardado, valor: undefined } : null })
+      }
+      if (metodo === 'POST' && cola === '') {
+        const valor = json?.valor
+        if (!valor || typeof valor !== 'object' || Array.isArray(valor)) {
+          return responder(400, { error: 'El ajuste tiene que ser un objeto.' })
+        }
+        this.llamadas.ajusteGuardado++
+        const ficha = {
+          clave,
+          valor,
+          huella: createHash('sha256').update(JSON.stringify(valor)).digest('hex'),
+          actualizadoEn: new Date().toISOString(),
+          actualizadoPor: typeof json?.actualizadoPor === 'string' ? json.actualizadoPor : null,
+        }
+        this.ajustes.set(clave, ficha)
+        return responder(200, { ajuste: { ...ficha, valor: undefined } })
+      }
+      if (metodo === 'POST' && cola === '/borrar') {
+        return responder(200, { borrado: this.ajustes.delete(clave) })
+      }
     }
     return responder(404, { error: `Ruta desconocida: ${metodo} ${ruta}` })
   }
