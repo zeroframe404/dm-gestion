@@ -103,6 +103,14 @@ export function Imputados() {
             ))}
           </select>
         </label>
+        {datos.sucursal && (
+          <span
+            className="inline-flex h-9 items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 text-xs font-semibold text-slate-600"
+            title="La rendición de las otras sucursales la ven los administradores."
+          >
+            Sólo {datos.sucursal}
+          </span>
+        )}
         <span className="ml-auto text-sm text-slate-500">
           {numero(datos.total)} pagos · {pesos(datos.totalImporte)}
         </span>

@@ -491,18 +491,16 @@ export function registrarIpc(): void {
 
   // Cobranzas: la caja y la mora las trabaja quien tenga el módulo; las comisiones siguen pidiendo
   // administrador, aunque un empleado tenga «editar» en Cobranzas.
-  manejar('cobranzas:caja', (fecha, sucursal) => {
-    exigirVista('cobranzas')
-    return exito(cajaDelDia(fecha, sucursal))
-  })
+  // La caja y la rendición de las OTRAS sucursales son de los administradores; un empleado mira y
+  // rinde lo de su mostrador (ver `sucursalObligadaDe` en cobranzas.ts).
+  manejar('cobranzas:caja', (fecha, sucursal) => exito(cajaDelDia(fecha, sucursal, exigirVista('cobranzas'))))
   manejar('cobranzas:registrarPagoManual', (datos) => {
     const resultado = registrarPagoManual(datos, exigirEdicion('cobranzas'))
     resolverTicketDelPago(resultado.pagoId)
     return exito(resultado.caja)
   })
   manejar('cobranzas:exportarCaja', async (fecha, sucursal) => {
-    exigirVista('cobranzas')
-    const archivo = csvDeLaCaja(fecha, sucursal)
+    const archivo = csvDeLaCaja(fecha, sucursal, exigirVista('cobranzas'))
     return exito(await guardarComo({ ...archivo, descripcion: 'Planilla CSV' }, ventanaActual()))
   })
   manejar('cobranzas:mora', (filtros) => {
@@ -511,10 +509,7 @@ export function registrarIpc(): void {
   })
   manejar('cobranzas:avisarMora', (filaId) => exito(avisarMora(filaId, exigirEdicion('cobranzas'))))
   // Imputados es una pestaña de Cartera que trabaja sobre los pagos: se pide cualquiera de los dos.
-  manejar('cobranzas:imputados', (periodo, compania) => {
-    exigirVista('cartera', 'cobranzas')
-    return exito(imputados(periodo, compania))
-  })
+  manejar('cobranzas:imputados', (periodo, compania) => exito(imputados(periodo, compania, exigirVista('cartera', 'cobranzas'))))
   manejar('cobranzas:cambiarResultado', (pagoId, resultado, compania) =>
     exito(cambiarResultado(pagoId, resultado, compania, exigirEdicion('cartera', 'cobranzas'))),
   )

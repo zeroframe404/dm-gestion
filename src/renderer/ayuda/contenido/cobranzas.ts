@@ -9,7 +9,8 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Qué es esta pantalla',
         parrafos: [
-          'Es la pantalla para mirar al cerrar el mostrador: todos los pagos de un día, en una sucursal, con hora, cliente, compañía, póliza, patente, importe, medio de pago y quién lo cobró. Por defecto se abre en el día de hoy y en la sucursal de quien inició sesión, pero se puede cambiar el día (con el selector de fecha) y la sucursal (con el desplegable, o «Todas» para verlas juntas).',
+          'Es la pantalla para mirar al cerrar el mostrador: todos los pagos de un día, en una sucursal, con hora, cliente, compañía, póliza, patente, importe, medio de pago y quién lo cobró. Por defecto se abre en el día de hoy y en la sucursal de quien inició sesión, y se puede cambiar el día con el selector de fecha.',
+          'Quién puede mirar las otras sucursales depende del rol: los administradores (SUPER_ADMIN y ADMIN) eligen cualquier sucursal en el desplegable, o «Todas» para verlas juntas; un empleado ve la caja de su propio mostrador y el desplegable queda fijo. Lo que cobra un compañero de la misma sucursal, en otra computadora, aparece en la caja en cuanto sincroniza (unos segundos con internet).',
           'Arriba de la tabla hay tarjetas con el total del día, la cantidad de pagos y un total por cada medio de pago (efectivo, tarjeta, transferencia, etc.), para saber de un vistazo cuánto entró y de qué forma.',
         ],
       },
@@ -17,6 +18,7 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
         titulo: 'De dónde salen los pagos',
         parrafos: [
           'Un pago llega a esta lista de dos maneras: porque se cobró desde la Cartera del mes (el botón «Registrar pago» de una fila) o desde acá mismo con «Registrar pago», o porque ya venía cargado en la planilla de la agencia al importar. La sucursal que cuenta es siempre la del mostrador donde se cobró, no la sucursal donde vive el cliente: alguien de una localidad que paga en otra sucursal suma a la caja de esa sucursal, no a la suya.',
+          'Los pagos que se cobran en la aplicación viajan a la base de la agencia por la pestaña «APP PAGOS», con la sucursal y quién cobró, y de ahí llegan a las demás computadoras: la caja de un día es la misma se la mire desde donde se la mire.',
         ],
       },
       {
@@ -134,6 +136,7 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
         titulo: 'Filtrar y lo que puede faltar',
         parrafos: [
           'Arriba se elige el mes y, opcionalmente, una compañía puntual para ver sólo sus pagos. Si algunos pagos no tienen fecha ni mes legible, aparece un aviso: esos quedan afuera de cualquier rendición hasta corregir el dato de origen.',
+          'Los administradores (SUPER_ADMIN y ADMIN) rinden los pagos de todas las sucursales. Un empleado ve y rinde sólo los que se cobraron en su mostrador: la pantalla lo indica con la etiqueta «Sólo …» al lado de los filtros.',
         ],
       },
     ],

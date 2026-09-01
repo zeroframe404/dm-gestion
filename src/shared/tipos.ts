@@ -1445,6 +1445,11 @@ export interface CajaDelDia {
   /** Sucursal filtrada; '' = todas. */
   sucursal: string
   sucursales: string[]
+  /**
+   * true cuando la sucursal no se puede cambiar: un empleado ve la caja de su mostrador y nada más.
+   * Los administradores eligen cualquiera (o «Todas»).
+   */
+  sucursalFija: boolean
   mediosDePago: string[]
   pagos: PagoRegistrado[]
   totalesPorMedio: TotalPorMedio[]
@@ -1559,6 +1564,8 @@ export interface RendicionImputados {
   periodo: string
   /** Compañía filtrada; '' = todas. */
   compania: string
+  /** Sucursal a la que está acotada la rendición ('' = todas): la del mostrador cuando pregunta un empleado. */
+  sucursal: string
   periodos: string[]
   companias: string[]
   pagos: PagoRegistrado[]

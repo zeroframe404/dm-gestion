@@ -1,4 +1,5 @@
-// Las pestañas que DM Gestión agrega a la hoja: APP LEADS, APP PRESUPUESTOS, APP TAREAS y APP RECHAZOS.
+// Las pestañas que DM Gestión agrega a la hoja: APP LEADS, APP PRESUPUESTOS, APP TAREAS, APP RECHAZOS
+// y APP PAGOS.
 //
 // Leads, presupuestos, tareas y los avisos de rechazo del débito no existen en el Excel de la agencia.
 // Para que igual se puedan mirar desde Google —que es donde la agencia mira todo— la aplicación crea las
@@ -111,7 +112,35 @@ export const PESTANAS_DE_LA_APP: PestanaDeLaApp[] = [
       ENCABEZADO_ID,
     ],
   },
+  // Los pagos que cobra la aplicación cuando la base no tiene una pestaña IMPUTADOS que sea una tabla
+  // por fila (la de la agencia es una matriz de resumen). Es el camino por el que el pago que registra
+  // una computadora aparece en la caja del día de las otras: sin esta pestaña, cada pago quedaba sólo
+  // en la PC que lo cobró. Va en los dos sentidos, como APP RECHAZOS: se escribe al cobrar y se lee de
+  // vuelta a `pagos` en la importación (ver importador.ts, `guardarPago`).
+  {
+    titulo: 'APP PAGOS',
+    tipo: 'PAGOS',
+    encabezados: [
+      'FECHA',
+      'LOCAL',
+      'NOMBRE',
+      'DNI/CUIT',
+      'COMPAÑIA',
+      'POLIZA',
+      'PATENTE',
+      'IMPORTE',
+      'MEDIO DE PAGO',
+      'MES',
+      'OBSERVACIONES',
+      'RESULTADO',
+      'COBRADO POR',
+      ENCABEZADO_ID,
+    ],
+  },
 ]
+
+/** La pestaña donde viajan los pagos de la aplicación cuando la base no tiene una IMPUTADOS usable. */
+export const PESTANA_PAGOS_APP = 'APP PAGOS'
 
 const TITULOS = new Set(PESTANAS_DE_LA_APP.map((p) => p.titulo))
 

@@ -16,6 +16,7 @@ import { ahoraIso, interpretarNumero, limpiar } from '../importacion/normalizar'
 import { db } from '../db/base'
 import { anotarEvento } from './cola'
 import { repiteEncabezados } from '../importacion/encabezados'
+import { alDesaparecerDeLaHoja, alReaparecerEnLaHoja } from '../servicios/filas'
 import { columnaDelId, huellaDeFila, type ContextoHoja, type PestanaSincronizable } from './hoja'
 
 export interface ResultadoBajada {
@@ -225,6 +226,8 @@ function aplicarPestana(
       if (conocida.huella === huella && conocida.en_la_hoja === 1) continue
 
       resultado.filasCambiadas++
+      // Estaba marcada como fuera de la hoja y volvió: la deshicieron desde otra computadora.
+      if (conocida.en_la_hoja === 0) alReaparecerEnLaHoja(db(), id, pestana.tipo)
       const anteriores = JSON.parse(conocida.datos_json) as Record<string, string>
       const encabezados = pestana.layout?.mapeo.encabezados ?? []
       const nuevos: Record<string, string> = { ...anteriores }
@@ -251,12 +254,20 @@ function aplicarPestana(
       actualizarCruda.run(JSON.stringify(nuevos), huella, r + 1, pestana.sheetId, ahora, ahora, id)
     }
 
-    // Filas que estaban y ya no: quedan marcadas, nunca se borran.
+    // Filas que estaban y ya no: quedan marcadas, nunca se borran. Lo que sí cambia es lo que la
+    // fila representaba (la cuota sale de la planilla, la baja deshecha se olvida): ver filas.ts.
+    const desaparecidas: string[] = []
     for (const [id, conocida] of conocidas) {
       if (vistas.has(id) || conocida.en_la_hoja === 0) continue
       db().prepare('UPDATE filas_crudas SET en_la_hoja = 0, actualizado_en = ? WHERE fila_id = ?').run(ahora, id)
       resultado.filasQueYaNoEstan++
+      desaparecidas.push(id)
     }
+    alDesaparecerDeLaHoja(
+      db(),
+      desaparecidas.map((filaId) => ({ filaId, tipo: pestana.tipo })),
+      filasBloqueadas,
+    )
   })()
 }
 
