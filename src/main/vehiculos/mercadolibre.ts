@@ -108,6 +108,13 @@ export function crearProveedorMercadoLibre(credenciales: CredencialesMercadoLibr
   // marca justo antes de pedir las versiones de cada uno, así que cuando hace falta ya está acá.
   const nombresDeModelo = new Map<string, string>()
 
+  // Cuántas veces seguidas falló el pedido de la carrocería. Si la cuenta no tiene ese atributo, va a
+  // fallar en LOS TRES MIL modelos: son tres mil pedidos de más en una bajada que ya tarda veinte
+  // minutos. Después de unos cuantos seguidos se deja de preguntar. Un 500 suelto no cuenta: se
+  // reinicia con el primero que sale bien.
+  let fallasSeguidasDeCarroceria = 0
+  const TOLERANCIA_DE_CARROCERIA = 5
+
   const dominio = (tipo: TipoDeVehiculo): string => `${sitio}-${SUFIJO_DE_DOMINIO[tipo]}`
 
   async function pedir(url: string, opciones: RequestInit): Promise<Response> {
@@ -246,16 +253,19 @@ export function crearProveedorMercadoLibre(credenciales: CredencialesMercadoLibr
    * inventada llega hasta la póliza y ahí ya nadie sabe cuál revisar.
    */
   async function carroceria(tipo: TipoDeVehiculo, marcaId: string, modeloId: string): Promise<string | null> {
+    if (fallasSeguidasDeCarroceria >= TOLERANCIA_DE_CARROCERIA) return null
     try {
       const encontradas = await valores(tipo, 'VEHICLE_BODY_TYPE', [
         { id: 'BRAND', value_id: marcaId },
         { id: 'MODEL', value_id: modeloId },
       ])
+      fallasSeguidasDeCarroceria = 0
       return encontradas[0]?.nombre ?? null
     } catch (error) {
       // Una falla de red sí importa: es la misma que va a tirar el pedido siguiente y conviene que
-      // corte la bajada acá y no después de mil modelos.
+      // corte la bajada acá y no después de mil modelos. No cuenta como falla de la carrocería.
       if (error instanceof ErrorDeProveedor && error.esDeRed) throw error
+      fallasSeguidasDeCarroceria++
       return null
     }
   }

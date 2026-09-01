@@ -229,8 +229,10 @@ export function CatalogoVehiculos() {
             value={proveedor}
             onChange={(evento) => {
               setProveedor(evento.target.value as ProveedorDeCatalogo)
-              // Las credenciales de uno no sirven en el otro: se limpian los campos para que nadie
-              // guarde sin querer el App ID de Mercado Libre como usuario de InfoAuto.
+              // Las credenciales de uno no sirven en el otro: se limpian los tres campos para que
+              // nadie guarde sin querer el App ID de Mercado Libre como usuario de InfoAuto. Volver
+              // al proveedor anterior vuelve a mostrar lo guardado en cuanto se recarga la pantalla.
+              setUsuario('')
               setClave('')
               setAccessToken('')
               setPrueba(null)
