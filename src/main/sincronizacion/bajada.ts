@@ -12,11 +12,12 @@
 //    que les escribe el _ID en la hoja y sabe crear clientes, vehículos y pólizas.
 import type { Campo } from '../importacion/encabezados'
 import type { FuenteHoja } from '../importacion/fuente'
-import { ahoraIso, interpretarNumero, limpiar } from '../importacion/normalizar'
+import { ahoraIso, interpretarFecha, interpretarNumero, limpiar } from '../importacion/normalizar'
 import { db } from '../db/base'
 import { anotarEvento } from './cola'
 import { repiteEncabezados } from '../importacion/encabezados'
 import { alDesaparecerDeLaHoja, alReaparecerEnLaHoja } from '../servicios/filas'
+import { normalizarEstadoDeCobro } from '../servicios/pagos'
 import { columnaDelId, huellaDeFila, type ContextoHoja, type PestanaSincronizable } from './hoja'
 
 export interface ResultadoBajada {
@@ -40,6 +41,8 @@ interface DestinoDeBajada {
    * Cobranzas siguen mostrando el valor viejo.
    */
   derivadas?: (valor: string) => Record<string, unknown>
+  /** Cómo llevar lo que dice la hoja a lo que guarda la columna, cuando no es texto tal cual. */
+  normalizar?: (valor: string) => string
 }
 
 /** Dónde vive cada campo del modelo, por tipo de pestaña. */
@@ -87,11 +90,18 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
     observaciones: { tabla: 'siniestros', columna: 'observaciones' },
   },
   PAGOS: {
+    // La fecha cambia cuando se corrige un cobro, y sobre todo cuando un IMPUTADO pasa a PAGO: la
+    // fecha de la imputación se reemplaza por la del día que el cliente pagó, y la caja de ese día
+    // en las otras computadoras tiene que verlo.
+    fecha: { tabla: 'pagos', columna: 'fecha', derivadas: (valor) => ({ fecha_iso: interpretarFecha(valor, null).iso }) },
     importe: { tabla: 'pagos', columna: 'importe', derivadas: (valor) => ({ importe_monto: interpretarNumero(valor) }) },
     medio_pago: { tabla: 'pagos', columna: 'medio' },
     observaciones: { tabla: 'pagos', columna: 'observaciones' },
     // El RESULTADO de la rendición: lo tocan tanto la aplicación como la contadora en la hoja.
     resultado: { tabla: 'pagos', columna: 'resultado' },
+    // El estado del COBRO (PAGO / IMPUTADO): lo cambia la computadora que cobró, cuando el cliente
+    // termina pagando lo que estaba imputado. Se guarda normalizado: la columna no admite vacío.
+    cobro: { tabla: 'pagos', columna: 'estado_cobro', normalizar: (valor) => normalizarEstadoDeCobro(valor) },
   },
   // Los avisos de rechazo del débito. Lo único que cambia después de creado el aviso es en qué anda
   // (PENDIENTE → VISTO → RESUELTO) y la nota: eso lo toca la sucursal avisada, desde su computadora.
@@ -296,10 +306,11 @@ function aplicarCampo(pestana: PestanaSincronizable, filaId: string, campo: Camp
     | undefined
   if (!actual) return null
   const derivadas = destino.derivadas?.(valor) ?? {}
+  const guardado = destino.normalizar ? destino.normalizar(valor) : valor
   const asignaciones = [`${destino.columna} = @valor`, ...Object.keys(derivadas).map((c) => `${c} = @${c}`), 'actualizado_en = @ahora']
   db()
     .prepare(`UPDATE ${destino.tabla} SET ${asignaciones.join(', ')} WHERE fila_id = @fila_id`)
-    .run({ valor: valor || null, ...derivadas, ahora: ahoraIso(), fila_id: filaId })
+    .run({ valor: destino.normalizar ? guardado : valor || null, ...derivadas, ahora: ahoraIso(), fila_id: filaId })
   return actual.valor ?? ''
 }
 

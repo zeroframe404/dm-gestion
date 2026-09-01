@@ -439,6 +439,7 @@ const REPORTES: Reporte[] = [
       col('cobro', 'Cobró', 18),
       col('periodo', 'Mes que paga', 12),
       col('estado', 'Resultado', 13),
+      col('estadoCobro', 'Cobro', 16),
       col('observaciones', 'Observaciones', 30),
     ],
     estados: ['(pendiente)', 'IMPUTADO', 'OK', 'REVISAR', 'MAL'],
@@ -459,7 +460,13 @@ const REPORTES: Reporte[] = [
                 p.numero_poliza AS numeroPoliza, p.patente, p.importe_monto AS importe, p.medio,
                 COALESCE(NULLIF(TRIM(p.sucursal_cobro), ''), p.sucursal_texto) AS sucursal,
                 p.usuario_nombre AS cobro, COALESCE(p.periodo, substr(p.fecha_iso, 1, 7)) AS periodo,
-                COALESCE(NULLIF(TRIM(p.resultado), ''), '(pendiente)') AS estado, p.observaciones
+                COALESCE(NULLIF(TRIM(p.resultado), ''), '(pendiente)') AS estado,
+                CASE
+                  WHEN p.estado_cobro = 'IMPUTADO' THEN 'IMPUTADO (falta cobrar)'
+                  WHEN p.adelanto_modo IS NOT NULL THEN 'PAGO ADELANTADO'
+                  ELSE 'PAGO'
+                END AS estadoCobro,
+                p.observaciones
            FROM pagos p`,
         consulta,
         'p.fecha_iso DESC, p.id DESC',

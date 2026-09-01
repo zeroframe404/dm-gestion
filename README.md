@@ -566,6 +566,35 @@ Dos cosas que hacen falta saber:
   ésa. Los pagos de antes de la 12.2 que nunca salieron de su computadora se encolan solos la primera
   vez que arranca la sincronización (`subirPagosRezagados`, en `pagos.ts`).
 
+### Pago adelantado y cobro imputado (12.3)
+
+Las dos cosas que «Registrar pago» pregunta además de fecha, importe y medio (el mismo formulario en
+la Planilla del mes, en la ficha del cliente y en la Caja del día; ver `OpcionesDelPago.tsx`):
+
+- **Qué cuota se paga.** Lo normal es la de este mes. Si el cliente viene a pagar dos cuotas el mismo
+  mes, se elige «la de este mes y la del mes que viene» (o «sólo la del mes que viene», si ésta ya
+  estaba paga). El adelanto es otro pago en `pagos`, con `_ID` fijo `PAGO:ADELANTO:<fila>` (adelantar
+  dos veces corrige, no duplica), con el **período del mes que viene** (se rinde en el mes que paga y
+  en la hoja viaja con MES y año: «SEPTIEMBRE 2026») y con `adelanto_modo`:
+  - `ACREDITAR`: cuando **Cerrar mes** arme el mes siguiente, esa fila nace paga, con la fecha del cobro
+    en CUANDO PAGO, y el pago queda apuntándola (`cuota_fila_id`).
+  - `PENDIENTE`: la fila nace sin pagar y en violeta («Adelanto sin imputar»), con el contador
+    «Adelantos sin imputar» y un botón de calendario que la imputa a mano (`imputarAdelanto`). Hasta
+    entonces la fila **no** figura paga: es lo que pidió la agencia para controlar el general del mes.
+- **El estado del cobro: PAGO o IMPUTADO.** Con AGS en Dock Sud primero se le imputa la cuota a la
+  compañía (la paga la agencia) y el cliente transfiere después. Un pago `IMPUTADO` (`estado_cobro`)
+  **no** escribe CUANDO PAGO, no suma a la caja del día ni a las métricas, y la fila queda en violeta
+  («Imputado · falta cobrar»), en el contador «Imputados a cobrar» y en Mora con la marca. Cuando el
+  cliente paga se vuelve a registrar como «Pagó» sobre la misma fila (mismo `_ID`, mismo pago) y recién
+  ahí queda paga y suma en el día que pagó. El estado viaja por la columna **COBRO** de APP PAGOS, que
+  se escribe sólo cuando hay algo que decir (un IMPUTADO, o un IMPUTADO que pasó a PAGO): una APP
+  PAGOS armada antes de la 12.3 no la tiene, y así no avisa «columna faltante» por cada pago común.
+  Para que el estado llegue a las otras computadoras en una hoja vieja, agregarle a mano la columna
+  `COBRO` a APP PAGOS.
+
+La condición «esta cuota tiene un pago que la cubre» (mora, deudores, métricas, ficha del cliente)
+vive en un solo lugar, `PAGO_QUE_CUBRE_LA_CUOTA` en `pagos.ts`, y un IMPUTADO no cuenta.
+
 ### Comisiones
 
 Sólo para ADMIN y SUPER_ADMIN. El **porcentaje de comisión de cada compañía** se carga en

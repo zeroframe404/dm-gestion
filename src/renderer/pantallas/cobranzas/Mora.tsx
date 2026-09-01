@@ -104,7 +104,25 @@ export function Mora() {
           </button>
         ),
       },
-      { id: 'nombre', titulo: 'Cliente', ancho: 240, fija: true, celda: (fila) => <span className="truncate">{fila.nombre ?? '—'}</span> },
+      {
+        id: 'nombre',
+        titulo: 'Cliente',
+        ancho: 240,
+        fija: true,
+        celda: (fila) => (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{fila.nombre ?? '—'}</span>
+            {fila.imputada && (
+              <span
+                className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800"
+                title="La agencia ya le imputó la cuota a la compañía: lo que se persigue es el pago del cliente."
+              >
+                Imputado
+              </span>
+            )}
+          </span>
+        ),
+      },
       { id: 'telefono', titulo: 'Teléfono', ancho: 130, celda: (fila) => fila.telefono ?? <span className="text-slate-400">sin teléfono</span> },
       { id: 'cuota', titulo: 'Cuota', ancho: 110, alinear: 'derecha', celda: (fila) => (fila.cuotaMonto === null ? (fila.cuota ?? '—') : pesos(fila.cuotaMonto)) },
       { id: 'vencimiento', titulo: 'Venció el', ancho: 110, alinear: 'centro', celda: (fila) => fila.vencimiento },

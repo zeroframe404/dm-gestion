@@ -1,9 +1,10 @@
 // La caja del día: qué se cobró hoy en esta sucursal, con qué medio y quién lo cobró. Es la pantalla
 // que se mira al cerrar el mostrador, así que el total por medio de pago va arriba de todo.
 import { useCallback, useEffect, useState } from 'react'
-import type { CajaDelDia as DatosDeCaja } from '../../../shared/tipos'
+import type { CajaDelDia as DatosDeCaja, PagoRegistrado } from '../../../shared/tipos'
+import { nombreDePeriodo } from '../../../shared/semaforo'
 import { Icono } from '../../componentes/Icono'
-import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
+import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoPagoManual } from './DialogoPagoManual'
 import { numero, pesos } from './formato'
@@ -108,7 +109,8 @@ export function CajaDelDia() {
 
       <div className="flex flex-wrap gap-2">
         <Tarjeta etiqueta="Total del día" valor={pesos(datos.total)} destacada />
-        <Tarjeta etiqueta="Pagos" valor={numero(datos.pagos.length)} />
+        <Tarjeta etiqueta="Pagos" valor={numero(datos.pagos.length - datos.imputados)} />
+        {datos.imputados > 0 && <Tarjeta etiqueta="Imputados sin cobrar" valor={numero(datos.imputados)} nota="no suman al total" />}
         {datos.totalesPorMedio.map((total) => (
           <Tarjeta key={total.medio} etiqueta={total.medio} valor={pesos(total.total)} nota={`${numero(total.pagos)} pago(s)`} />
         ))}
@@ -138,12 +140,13 @@ export function CajaDelDia() {
               <th className={encabezado}>Medio</th>
               <th className={encabezado}>Sucursal</th>
               <th className={encabezado}>Cobró</th>
+              <th className={encabezado}>Cobro</th>
             </tr>
           </thead>
           <tbody>
             {datos.pagos.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-12 text-center text-slate-500">
+                <td colSpan={11} className="px-3 py-12 text-center text-slate-500">
                   {esHoy
                     ? 'Todavía no se registró ningún pago hoy. Se cargan desde acá o desde «Registrar pago» de la Cartera.'
                     : `Ese día no tiene pagos registrados${datos.sucursal ? ` en ${datos.sucursal}` : ''}.`}
@@ -165,6 +168,9 @@ export function CajaDelDia() {
                 <td className="px-3 py-2 text-slate-600">{pago.sucursal ?? '—'}</td>
                 <td className="px-3 py-2 text-slate-600">
                   {pago.usuarioNombre ?? <span className="text-slate-400">de la planilla</span>}
+                </td>
+                <td className="px-3 py-2">
+                  <EstadoDelCobro pago={pago} />
                 </td>
               </tr>
             ))}
@@ -188,6 +194,36 @@ export function CajaDelDia() {
       )}
     </div>
   )
+}
+
+/**
+ * Qué es el pago además de un pago: IMPUTADO (la agencia le pagó a la compañía y falta cobrarle al
+ * cliente: no suma) o ADELANTADO (la cuota del mes que viene, cobrada hoy).
+ */
+export function EstadoDelCobro({ pago }: { pago: PagoRegistrado }) {
+  if (pago.estadoCobro === 'IMPUTADO') {
+    return (
+      <span title="Se le imputó la cuota a la compañía y el cliente todavía no pagó: no suma a la caja.">
+        <Etiqueta tono="aviso">Imputado · falta cobrar</Etiqueta>
+      </span>
+    )
+  }
+  if (pago.adelantoModo) {
+    return (
+      <span
+        title={
+          pago.adelantoImputado
+            ? 'Pago adelantado, ya imputado a la cuota del mes que pagaba.'
+            : pago.adelantoModo === 'ACREDITAR'
+              ? 'Pago adelantado: se acredita solo cuando se arme el mes que paga.'
+              : 'Pago adelantado: queda pendiente de imputar cuando se arme el mes que paga.'
+        }
+      >
+        <Etiqueta tono="marca">Adelantado{pago.periodo ? ` · ${nombreDePeriodo(pago.periodo)}` : ''}</Etiqueta>
+      </span>
+    )
+  }
+  return <span className="text-xs text-slate-400">Pagó</span>
 }
 
 function Tarjeta({ etiqueta, valor, nota, destacada }: { etiqueta: string; valor: string; nota?: string; destacada?: boolean }) {

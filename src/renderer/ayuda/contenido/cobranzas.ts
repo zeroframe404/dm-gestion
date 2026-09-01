@@ -24,7 +24,8 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Registrar un pago y exportar el día',
         parrafos: [
-          '«Registrar pago» carga un cobro nuevo sin tener que ir a buscar la fila en la Cartera: se elige el cliente o la cuota, el importe, el medio de pago y la sucursal.',
+          '«Registrar pago» carga un cobro nuevo sin tener que ir a buscar la fila en la Cartera: se elige el cliente o la cuota, el importe, el medio de pago y la sucursal. Abajo están las mismas opciones que en la Cartera: el estado del cobro («Pagó» o «Imputado», para cuando se le paga a la compañía y el cliente transfiere después) y, si se eligió una cuota del mes, qué cuota se paga (la de este mes, la del mes que viene por adelantado, o las dos).',
+          'Un pago imputado se ve en la lista con la marca «Imputado · falta cobrar» y no suma al total del día: es plata que la agencia adelantó y que todavía tiene que entrar. Cuando el cliente paga, se registra de nuevo como «Pagó» sobre la misma cuota y recién ahí suma. Un pago adelantado se ve con la marca «Adelantado» y el mes que paga: suma hoy en la caja, pero se rinde en el mes que viene.',
           'Si el mostrador tiene la ticketeadora térmica configurada, al guardar el pago aparece un cartel que pregunta si imprimir el comprobante: «Imprimir» saca el ticket y «No imprimir» lo saltea, que es lo que conviene con las compañías que no lo piden. El pago queda registrado igual en los dos casos. Ese cartel se puede apagar (y volver a la impresión automática) en Administración → Impresora.',
           '«Exportar el día» genera un archivo con todos los pagos del día elegido, para guardar o imprimir. Si hay pagos sin un importe numérico cargado, aparece un aviso: esos pagos no suman al total.',
         ],

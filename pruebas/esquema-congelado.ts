@@ -30,4 +30,6 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   18: '4f9827fa2494bd1e',
   // La 19 suma a `vehiculos` lo que piden los riesgos que no son vehículos: dirección, titular, integrantes.
   19: 'c2907470739eee1e',
+  // La 20 suma a `pagos` el estado del cobro (PAGO / IMPUTADO) y el modo del pago adelantado.
+  20: '6530ee7a3b141017',
 }

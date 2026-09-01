@@ -1293,6 +1293,27 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE vehiculos ADD COLUMN integrantes TEXT;
     `,
   },
+  {
+    version: 20,
+    descripcion: 'Pagos adelantados (la cuota del mes que viene) y cobros imputados (se paga a la compañía antes de que el cliente transfiera)',
+    sql: `
+      -- Estado del COBRO, que no es el RESULTADO de la rendición (\`resultado\`, lo que dice la contadora).
+      --  - PAGO: el cliente pagó; es lo de siempre y lo que tiene todo lo que ya existía.
+      --  - IMPUTADO: la agencia le imputó la cuota a la compañía (la pagó ella) y el cliente todavía no
+      --    transfirió. Pasa con AGS en Dock Sud: primero se imputa, después el cliente manda la plata.
+      --    Mientras está en IMPUTADO la fila del mes sigue sin CUANDO PAGO y no suma a la caja.
+      ALTER TABLE pagos ADD COLUMN estado_cobro TEXT NOT NULL DEFAULT 'PAGO';
+
+      -- Un pago ADELANTADO es el de la cuota del mes que viene, cobrado hoy (dos cuotas el mismo mes).
+      -- Su \`periodo\` es el del mes que viene, así que la rendición lo rinde en ese mes. La columna dice
+      -- qué se hace con él cuando se arma el mes siguiente (el cierre de mes):
+      --  - ACREDITAR: la fila nueva nace paga, con la fecha del pago en CUANDO PAGO;
+      --  - PENDIENTE: la fila nace sin pagar y con el pago a la vista, para imputarlo a mano.
+      -- NULL es un pago común. Cuando el pago queda imputado a una fila, \`cuota_fila_id\` la apunta.
+      ALTER TABLE pagos ADD COLUMN adelanto_modo TEXT;
+      CREATE INDEX idx_pagos_adelanto ON pagos (poliza_id, periodo, adelanto_modo);
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

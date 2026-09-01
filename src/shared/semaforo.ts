@@ -4,7 +4,7 @@
 // La cobertura financiera son los días que la compañía sigue cubriendo al cliente después del
 // vencimiento (ATM 7, EQUIDAD 5, METROPOL 3, AGROSALTA 0…). Se configura en Administración → Compañías.
 
-export type ColorAlerta = 'verde' | 'azul' | 'amarillo' | 'naranja' | 'rojo' | 'neutro'
+export type ColorAlerta = 'verde' | 'azul' | 'amarillo' | 'naranja' | 'rojo' | 'neutro' | 'violeta'
 
 export interface Alerta {
   color: ColorAlerta
@@ -29,6 +29,13 @@ export interface DatosDeAlerta {
   formaPago: string | null
   /** Días de cobertura financiera de la compañía. */
   diasCobertura: number
+  /**
+   * true si la cuota está IMPUTADA: la agencia ya se la pagó a la compañía y falta que el cliente
+   * pague. La cobertura está, pero la plata no entró: es lo que hay que cobrar, no lo que hay que avisar.
+   */
+  imputada?: boolean
+  /** true si la fila tiene un pago adelantado esperando que alguien lo impute. */
+  adelantoPendiente?: boolean
 }
 
 export const DIAS_COBERTURA_POR_DEFECTO = 30
@@ -83,6 +90,7 @@ const SIN_ALERTA: Alerta = { color: 'neutro', etiqueta: '', detalle: 'Todavía f
 /**
  * Calcula el color de la fila. El orden importa:
  *  1. pagada             → verde
+ *  1b. adelanto sin imputar / imputada sin cobrar → violeta (hay un pago dando vueltas, no una deuda con la compañía)
  *  2. débito automático  → azul
  *  3. faltan 4 a 7 días  → amarillo
  *  4. faltan 1 a 3 días  → naranja
@@ -93,6 +101,24 @@ const SIN_ALERTA: Alerta = { color: 'neutro', etiqueta: '', detalle: 'Todavía f
 export function calcularAlerta(datos: DatosDeAlerta, hoy: string): Alerta {
   if (datos.pagada) {
     return { color: 'verde', etiqueta: 'Al día', detalle: 'La cuota de este mes está paga.', diasParaVencer: null, finCobertura: null }
+  }
+  if (datos.adelantoPendiente) {
+    return {
+      color: 'violeta',
+      etiqueta: 'Adelanto sin imputar',
+      detalle: 'Esta cuota se pagó por adelantado el mes pasado y todavía no se imputó a la fila: imputala con el botón de la fila.',
+      diasParaVencer: null,
+      finCobertura: null,
+    }
+  }
+  if (datos.imputada) {
+    return {
+      color: 'violeta',
+      etiqueta: 'Imputado · falta cobrar',
+      detalle: 'La cuota ya se imputó a la compañía (la pagó la agencia) y el cliente todavía no transfirió. Cuando pague, registrá el pago como «Pagó».',
+      diasParaVencer: null,
+      finCobertura: null,
+    }
   }
   if (esDebitoAutomatico(datos.formaPago)) {
     return { color: 'azul', etiqueta: 'Débito automático', detalle: `Se cobra solo por ${datos.formaPago}: no hay que avisar.`, diasParaVencer: null, finCobertura: null }
@@ -154,10 +180,11 @@ export const NOMBRE_COLOR: Record<ColorAlerta, string> = {
   naranja: 'Urgente',
   rojo: 'Vencido',
   neutro: 'Sin alerta',
+  violeta: 'Imputado / adelanto',
 }
 
 /** Orden en que se muestran los colores en los filtros y al ordenar por urgencia. */
-export const ORDEN_COLORES: ColorAlerta[] = ['rojo', 'naranja', 'amarillo', 'neutro', 'azul', 'verde']
+export const ORDEN_COLORES: ColorAlerta[] = ['rojo', 'naranja', 'amarillo', 'violeta', 'neutro', 'azul', 'verde']
 
 /** Fecha de hoy en 'AAAA-MM-DD', en hora local (la agencia trabaja en su huso). */
 export function hoyLocal(fecha = new Date()): string {

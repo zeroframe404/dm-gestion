@@ -199,7 +199,8 @@ function clientesConDeuda(clienteId: number | null): Set<number> {
   const conPagoRegistrado = new Set(
     (
       base
-        .prepare(`SELECT DISTINCT poliza_id FROM pagos WHERE periodo = @periodo AND poliza_id IS NOT NULL`)
+        // Un cobro IMPUTADO no cuenta: la agencia le pagó a la compañía, pero el cliente todavía debe.
+        .prepare(`SELECT DISTINCT poliza_id FROM pagos WHERE periodo = @periodo AND poliza_id IS NOT NULL AND COALESCE(estado_cobro, 'PAGO') <> 'IMPUTADO'`)
         .all({ periodo }) as Array<{ poliza_id: number }>
     ).map((f) => f.poliza_id),
   )

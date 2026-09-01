@@ -214,6 +214,11 @@ export interface Canales {
   /** Deja la fila como ENVIADO (y en «Avisados hoy») sin abrir WhatsApp. */
   'cartera:marcarAvisado': (filaId: string) => Resultado<FilaCartera>
   'cartera:registrarPago': (filaId: string, datos: DatosDePago) => Resultado<FilaCartera>
+  /**
+   * Imputa a la fila el pago adelantado que la esperaba (se cobró el mes anterior para este mes y
+   * quedó pendiente): la fila queda paga con la fecha de ese cobro.
+   */
+  'cartera:imputarAdelanto': (filaId: string) => Resultado<FilaCartera>
   'cartera:darDeBaja': (filaId: string, datos: DatosDeBaja) => Resultado<null>
   /** Deshace una baja recién hecha en la aplicación: la fila vuelve al mes del que salió. */
   'cartera:deshacerBaja': (bajaId: number) => Resultado<FilaBaja[]>

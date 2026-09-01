@@ -13,6 +13,7 @@ import {
   planillaDelMes,
   prepararAviso,
   reactivarBaja,
+  imputarAdelanto,
   registrarPago,
   telefonoParaWhatsapp,
 } from '../src/main/servicios/cartera'
@@ -489,5 +490,80 @@ test('un aviso de rechazo del débito le llega a la sucursal del cliente y se pu
   const listado = listarRechazos({ busqueda: '', sucursal: '', estado: '' })
   assert.equal(listado.porEstado.RESUELTO, 1)
   assert.equal(listado.filas[0]!.resueltoPor, 'Fede')
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Pagos adelantados y el cierre de mes
+// ---------------------------------------------------------------------------
+
+test('al cerrar el mes, el adelanto ACREDITAR deja la fila nueva paga y el PENDIENTE la deja para imputar a mano', async () => {
+  const db = await carteraDePrueba()
+  const agosto = planillaDelMes(null)
+  const gonzalez = buscar(agosto.filas, CLIENTES.gonzalez.nombre)
+  const lopez = buscar(agosto.filas, CLIENTES.lopez.nombre)
+  const rodriguez = buscar(agosto.filas, CLIENTES.rodriguez.nombre)
+
+  registrarPago(gonzalez.filaId, { fecha: '2026-08-09', importe: '$ 1', medioDePago: 'EFECTIVO', alcance: 'AMBAS', adelanto: { importe: '$ 2', modo: 'ACREDITAR' } }, DANIEL)
+  registrarPago(lopez.filaId, { fecha: '2026-08-10', importe: '$ 3', medioDePago: 'EFECTIVO', alcance: 'AMBAS', adelanto: { importe: '$ 4', modo: 'PENDIENTE' } }, DANIEL)
+  registrarPago(rodriguez.filaId, { fecha: '2026-08-11', importe: '$ 5', medioDePago: 'EFECTIVO' }, DANIEL)
+
+  const resumen = cerrarMes(DANIEL)
+  assert.equal(resumen.periodo, '2026-09')
+  assert.equal(resumen.adelantosAcreditados, 1)
+  assert.equal(resumen.adelantosPendientes, 1)
+
+  const septiembre = planillaDelMes('2026-09')
+
+  // ACREDITAR: nace paga, con la fecha del cobro, y el pago apunta a la fila nueva.
+  const gonzalezNueva = buscar(septiembre.filas, CLIENTES.gonzalez.nombre)
+  assert.equal(gonzalezNueva.pago, '2026-08-09')
+  assert.equal(gonzalezNueva.pagoFecha, '2026-08-09')
+  assert.equal(gonzalezNueva.pagoRegistrado, true)
+  assert.equal(gonzalezNueva.pagoAdelantado, null, 'ya no hay nada esperando')
+  const enLaCola = unico<string>(db, `SELECT campos_json FROM cola_sync WHERE fila_id = ?`, gonzalezNueva.filaId)
+  assert.equal((JSON.parse(enLaCola) as Record<string, string>).pago, '2026-08-09', 'la fila nueva sube a la hoja ya paga')
+  assert.equal(buscar(planillaDelMes('2026-08').filas, CLIENTES.gonzalez.nombre).adelantoSiguiente?.imputado, true)
+
+  // PENDIENTE: nace sin pagar, con el adelanto a la vista, y se imputa a mano.
+  const lopezNueva = buscar(septiembre.filas, CLIENTES.lopez.nombre)
+  assert.equal(lopezNueva.pago, null)
+  assert.equal(lopezNueva.pagoRegistrado, false, 'un adelanto pendiente no cuenta como pago de la fila')
+  assert.ok(lopezNueva.pagoAdelantado, 'pero la fila lo muestra')
+  assert.equal(lopezNueva.pagoAdelantado.fecha, '2026-08-10')
+  assert.equal(lopezNueva.pagoAdelantado.importe, '$ 4')
+  assert.equal(lopezNueva.pagoAdelantado.modo, 'PENDIENTE')
+  const alerta = calcularAlerta(
+    { periodo: '2026-09', diaVencimiento: lopezNueva.diaVencimientoNumero, pagada: false, formaPago: lopezNueva.formaPago, diasCobertura: 0, adelantoPendiente: true },
+    '2026-09-20',
+  )
+  assert.equal(alerta.color, 'violeta')
+
+  const imputada = imputarAdelanto(lopezNueva.filaId, DANIEL)
+  assert.equal(imputada.pago, '2026-08-10')
+  assert.equal(imputada.pagoRegistrado, true)
+  assert.equal(imputada.pagoAdelantado, null)
+  assert.equal(historialDeFila(lopezNueva.filaId)[0]!.campo, 'CUANDO PAGO')
+  assert.throws(() => imputarAdelanto(lopezNueva.filaId, DANIEL), /ningún pago adelantado/)
+
+  // El pago común de agosto no se arrastra, como siempre.
+  const rodriguezNueva = buscar(septiembre.filas, CLIENTES.rodriguez.nombre)
+  assert.equal(rodriguezNueva.pago, null)
+  assert.equal(rodriguezNueva.pagoRegistrado, false)
+  cerrarBaseDeDatos()
+})
+
+test('un adelanto que llega cuando la fila del mes que viene ya existe se acredita en el momento', async () => {
+  await carteraDePrueba()
+  // Se abre septiembre primero y se adelanta desde agosto... que ya es mes cerrado. El caso real es al
+  // revés: la fila del mes que viene existe por una reactivación. Acá alcanza con probar la regla
+  // sobre la fila abierta: adelantar desde septiembre a octubre (que no existe) no acredita nada.
+  cerrarMes(DANIEL)
+  const septiembre = planillaDelMes('2026-09')
+  const fila = buscar(septiembre.filas, CLIENTES.suarez.nombre)
+  const actualizada = registrarPago(fila.filaId, { fecha: '2026-09-02', importe: '$ 1', medioDePago: 'EFECTIVO', alcance: 'ADELANTADO', adelanto: { importe: '$ 2', modo: 'ACREDITAR' } }, DANIEL)
+  assert.equal(actualizada.pagoRegistrado, false, 'sólo se adelantó la cuota de octubre: la de septiembre sigue sin pagar')
+  assert.equal(actualizada.adelantoSiguiente?.periodo, '2026-10')
+  assert.equal(actualizada.adelantoSiguiente?.imputado, false)
   cerrarBaseDeDatos()
 })

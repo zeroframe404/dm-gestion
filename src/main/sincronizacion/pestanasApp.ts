@@ -134,6 +134,10 @@ export const PESTANAS_DE_LA_APP: PestanaDeLaApp[] = [
       'OBSERVACIONES',
       'RESULTADO',
       'COBRADO POR',
+      // PAGO o IMPUTADO (la agencia le pagó a la compañía y falta cobrarle al cliente). Se escribe sólo
+      // cuando hay algo que decir, así una APP PAGOS armada antes de esta columna no avisa «columna
+      // faltante» por cada pago común.
+      'COBRO',
       ENCABEZADO_ID,
     ],
   },

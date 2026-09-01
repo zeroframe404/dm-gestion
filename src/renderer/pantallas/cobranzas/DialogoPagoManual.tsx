@@ -7,6 +7,7 @@ import { nombreDePeriodo } from '../../../shared/semaforo'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Campo, Dialogo, Selector, cx } from '../../componentes/ui'
 import { pesos } from './formato'
+import { datosDeLasOpciones, opcionesParaFila, OpcionesDelPago, textoDeGuardar, type OpcionesElegidas } from './OpcionesDelPago'
 
 interface Props {
   fecha: string
@@ -30,6 +31,7 @@ export function DialogoPagoManual({ fecha, sucursales, sucursalPorDefecto, medio
   const [medio, setMedio] = useState(mediosDePago[0] ?? '')
   const [sucursal, setSucursal] = useState(sucursalPorDefecto)
   const [observaciones, setObservaciones] = useState('')
+  const [opciones, setOpciones] = useState<OpcionesElegidas>(opcionesParaFila(null))
 
   // Datos del pago suelto: se completan solos con lo que se sepa del cliente.
   const [nombre, setNombre] = useState('')
@@ -84,6 +86,8 @@ export function DialogoPagoManual({ fecha, sucursales, sucursalPorDefecto, medio
 
   const elegirCuota = (fila: FilaCartera | null) => {
     setCuotaElegida(fila)
+    // Las opciones se reinician con la cuota: el adelanto es de ESA cuota y viene con su importe.
+    setOpciones((previas) => ({ ...opcionesParaFila(fila), estadoCobro: previas.estadoCobro }))
     if (!fila) return
     setImporte(fila.cuota ?? '')
     setCompania(fila.compania ?? '')
@@ -122,10 +126,19 @@ export function DialogoPagoManual({ fecha, sucursales, sucursalPorDefecto, medio
       medioDePago: medio,
       sucursal,
       observaciones,
+      ...datosDeLasOpciones(opciones, cuotaElegida),
     })
     setGuardando(false)
-    if (resultado.ok) alGuardar(resultado.datos, `Pago registrado: ${nombre || 'sin nombre'}${importe ? ` · ${importe}` : ''}.`)
+    if (resultado.ok) alGuardar(resultado.datos, resumen())
     else setError(resultado.error)
+  }
+
+  const resumen = () => {
+    const quien = nombre || 'sin nombre'
+    if (opciones.estadoCobro === 'IMPUTADO') return `Cuota de ${quien} imputada: queda pendiente de cobrar y no suma a la caja.`
+    if (cuotaElegida && opciones.alcance === 'AMBAS') return `Pago registrado: ${quien}, esta cuota y la del mes que viene por adelantado.`
+    if (cuotaElegida && opciones.alcance === 'ADELANTADO') return `Pago adelantado registrado: ${quien}, la cuota del mes que viene.`
+    return `Pago registrado: ${quien}${importe ? ` · ${importe}` : ''}.`
   }
 
   return (
@@ -141,7 +154,7 @@ export function DialogoPagoManual({ fecha, sucursales, sucursalPorDefecto, medio
             Cancelar
           </Boton>
           <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando}>
-            Guardar pago
+            {textoDeGuardar(opciones, cuotaElegida)}
           </Boton>
         </>
       }
@@ -266,7 +279,14 @@ export function DialogoPagoManual({ fecha, sucursales, sucursalPorDefecto, medio
             etiqueta="Importe"
             value={importe}
             onChange={(evento) => setImporte(evento.target.value)}
-            ayuda={cuotaElegida?.cuotaMonto ? `La cuota es de ${pesos(cuotaElegida.cuotaMonto)}` : 'Como 24.500 o 24500,50.'}
+            disabled={cuotaElegida !== null && opciones.alcance === 'ADELANTADO'}
+            ayuda={
+              cuotaElegida !== null && opciones.alcance === 'ADELANTADO'
+                ? 'Sólo se cobra la cuota del mes que viene: el importe va abajo.'
+                : cuotaElegida?.cuotaMonto
+                  ? `La cuota es de ${pesos(cuotaElegida.cuotaMonto)}`
+                  : 'Como 24.500 o 24500,50.'
+            }
           />
           <Selector
             etiqueta="Medio de pago"
@@ -281,6 +301,8 @@ export function DialogoPagoManual({ fecha, sucursales, sucursalPorDefecto, medio
             opciones={sucursales.map((s) => ({ valor: s, texto: s }))}
           />
         </div>
+
+        {cliente && <OpcionesDelPago fila={cuotaElegida} opciones={opciones} alCambiar={setOpciones} disabled={guardando} />}
 
         {cuotaElegida === null && (
           <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">

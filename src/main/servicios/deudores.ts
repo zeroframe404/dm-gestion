@@ -24,6 +24,7 @@ import {
 import { db } from '../db/base'
 import { limpiar, normalizarTexto } from '../importacion/normalizar'
 import { aFila, periodosDisponibles, SELECT_PLANILLA, type FilaCruda } from './cartera'
+import { PAGO_QUE_CUBRE_LA_CUOTA } from './pagos'
 import { diasCoberturaPorCompania } from './companias'
 import { paraNombreDeArchivo } from './exportacion'
 import { sucursalesParaElegir } from './sucursales'
@@ -142,7 +143,7 @@ function relevar(filtros: FiltrosDeudores, hoy: string): Relevamiento {
        WHERE c.dada_de_baja = 0
          AND (c.pago IS NULL OR TRIM(c.pago) = '')
          AND COALESCE(p.activa, 1) = 1
-         AND NOT EXISTS (SELECT 1 FROM pagos pg WHERE pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo)
+         AND NOT ${PAGO_QUE_CUBRE_LA_CUOTA}
          AND (@periodo IS NULL OR c.periodo = @periodo)`,
     )
     .all({ periodo: filtros.periodo || null }) as FilaCruda[]

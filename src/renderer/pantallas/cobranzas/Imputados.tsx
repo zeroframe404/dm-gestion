@@ -13,6 +13,7 @@ import {
 } from '../../../shared/tipos'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
 import { usePermisos } from '../../contexto/Permisos'
+import { EstadoDelCobro } from './CajaDelDia'
 import { numero, pesos } from './formato'
 
 const CLASES_RESULTADO: Record<ResultadoImputacion, string> = {
@@ -121,6 +122,7 @@ export function Imputados() {
         {(['IMPUTADO', 'OK', 'REVISAR', 'MAL'] as const).map((resultado) => (
           <Contador key={resultado} etiqueta={NOMBRE_RESULTADO_IMPUTACION[resultado]} valor={datos.contadores[resultado]} />
         ))}
+        {datos.sinCobrar > 0 && <Contador etiqueta="Sin cobrar al cliente" valor={datos.sinCobrar} destacada />}
       </div>
 
       {datos.avisoDeSincronizacion && <Alerta tono="aviso">{datos.avisoDeSincronizacion}</Alerta>}
@@ -146,13 +148,14 @@ export function Imputados() {
               <th className={cx(encabezado, 'text-right')}>Importe</th>
               <th className={encabezado}>Medio</th>
               <th className={encabezado}>Origen</th>
+              <th className={encabezado}>Cobro</th>
               <th className={encabezado}>Resultado</th>
             </tr>
           </thead>
           <tbody>
             {datos.pagos.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-12 text-center text-slate-500">
+                <td colSpan={10} className="px-3 py-12 text-center text-slate-500">
                   No hay pagos de {nombreDePeriodo(datos.periodo)}
                   {datos.compania ? ` de ${datos.compania}` : ''}.
                 </td>
@@ -170,6 +173,9 @@ export function Imputados() {
                 </td>
                 <td className="px-3 py-2 text-slate-700">{pago.medio ?? <span className="text-slate-400">—</span>}</td>
                 <td className="px-3 py-2 text-xs text-slate-500">{pago.hechoEnLaApp ? (pago.usuarioNombre ?? 'DM Gestión') : 'de la planilla'}</td>
+                <td className="px-3 py-2">
+                  <EstadoDelCobro pago={pago} />
+                </td>
                 <td className="px-3 py-2">
                   <select
                     value={pago.resultado}

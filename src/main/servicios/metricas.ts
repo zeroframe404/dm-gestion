@@ -32,7 +32,7 @@ import type {
 import { db } from '../db/base'
 import { limpiar, normalizarTexto } from '../importacion/normalizar'
 import { catalogos, periodosDisponibles } from './cartera'
-import { SUCURSAL_DEL_PAGO } from './pagos'
+import { PAGO_QUE_CUBRE_LA_CUOTA, SUCURSAL_DEL_PAGO } from './pagos'
 
 /** Cuántos meses mira la evolución. */
 const MESES_DE_EVOLUCION = 12
@@ -125,7 +125,7 @@ function cuotasDelMes(periodo: string, sucursal: string): CuotaDelMes[] {
               COALESCE(NULLIF(TRIM(c.forma_pago), ''), p.forma_pago) AS forma_pago,
               (
                 (c.pago IS NOT NULL AND TRIM(c.pago) <> '')
-                OR EXISTS (SELECT 1 FROM pagos pg WHERE pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo)
+                OR ${PAGO_QUE_CUBRE_LA_CUOTA}
               ) AS pagada
          FROM cuotas_mes c
          LEFT JOIN clientes cl ON cl.id = c.cliente_id

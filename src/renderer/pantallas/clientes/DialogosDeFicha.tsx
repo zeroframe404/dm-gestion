@@ -14,6 +14,7 @@ import {
 } from '../../../shared/tipos'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Selector } from '../../componentes/ui'
+import { datosDeLasOpciones, opcionesParaFila, OpcionesDelPago, textoDeGuardar, type OpcionesElegidas } from '../cobranzas/OpcionesDelPago'
 
 // ---------------------------------------------------------------------------
 // Registrar pago
@@ -31,6 +32,7 @@ export function DialogoPagoDelCliente({ ficha, alCerrar, alPagar }: PropsPago) {
   const [fecha, setFecha] = useState('')
   const [importe, setImporte] = useState('')
   const [medio, setMedio] = useState('')
+  const [opciones, setOpciones] = useState<OpcionesElegidas>(opcionesParaFila(null))
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
 
@@ -57,12 +59,18 @@ export function DialogoPagoDelCliente({ ficha, alCerrar, alPagar }: PropsPago) {
     setElegida(fila)
     setImporte(fila.cuota ?? '')
     setMedio(fila.formaPago ?? datos.mediosDePago[0] ?? '')
+    setOpciones(opcionesParaFila(fila))
   }
 
   const guardar = async () => {
     if (!elegida) return
     setGuardando(true)
-    const resultado = await window.dm.cartera.registrarPago(elegida.filaId, { fecha, importe, medioDePago: medio })
+    const resultado = await window.dm.cartera.registrarPago(elegida.filaId, {
+      fecha,
+      importe,
+      medioDePago: medio,
+      ...datosDeLasOpciones(opciones, elegida),
+    })
     setGuardando(false)
     if (resultado.ok) alPagar(ficha.nombre)
     else setError(resultado.error)
@@ -76,7 +84,7 @@ export function DialogoPagoDelCliente({ ficha, alCerrar, alPagar }: PropsPago) {
       titulo="Registrar pago"
       descripcion={cuotas ? `${ficha.nombre} · cuotas de ${nombreDePeriodo(cuotas.periodo)}` : ficha.nombre}
       alCerrar={alCerrar}
-      ancho={elegida ? 'sm' : 'md'}
+      ancho="md"
       pie={
         <>
           <Boton onClick={alCerrar} disabled={guardando}>
@@ -84,7 +92,7 @@ export function DialogoPagoDelCliente({ ficha, alCerrar, alPagar }: PropsPago) {
           </Boton>
           {elegida && (
             <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando}>
-              Guardar pago
+              {textoDeGuardar(opciones, elegida)}
             </Boton>
           )}
         </>
@@ -141,18 +149,21 @@ export function DialogoPagoDelCliente({ ficha, alCerrar, alPagar }: PropsPago) {
             <Alerta tono="aviso">Esta cuota ya figura paga el {elegida.pago ?? elegida.pagoFecha}. Guardar la vuelve a registrar.</Alerta>
           )}
           <Campo etiqueta="Fecha del pago" type="date" value={fecha} onChange={(evento) => setFecha(evento.target.value)} />
-          <Campo
-            etiqueta="Importe"
-            value={importe}
-            onChange={(evento) => setImporte(evento.target.value)}
-            ayuda="Viene con la cuota del mes; cambialo si pagó otra cosa."
-          />
+          {opciones.alcance !== 'ADELANTADO' && (
+            <Campo
+              etiqueta="Importe"
+              value={importe}
+              onChange={(evento) => setImporte(evento.target.value)}
+              ayuda="Viene con la cuota del mes; cambialo si pagó otra cosa."
+            />
+          )}
           <Selector
             etiqueta="Medio de pago"
             value={medio}
             onChange={(evento) => setMedio(evento.target.value)}
             opciones={[{ valor: '', texto: '(sin especificar)' }, ...(cuotas?.mediosDePago ?? []).map((m) => ({ valor: m, texto: m }))]}
           />
+          <OpcionesDelPago fila={elegida} opciones={opciones} alCambiar={setOpciones} disabled={guardando} />
         </div>
       )}
     </Dialogo>
