@@ -192,6 +192,7 @@ import {
 } from './servicios/sincronizacion'
 import { eliminarRegistro, vistaPreviaDeEliminacion } from './servicios/eliminacion'
 import { ErrorDeNegocio } from './servicios/errores'
+import { estadoDelMesh } from './servicios/mesh'
 import { estadoDeLaBaseVps, migrarAlVps } from './servicios/migracionVps'
 import {
   abrirCarpetaInformes,
@@ -1160,6 +1161,14 @@ export function registrarIpc(): void {
   manejar('redes:publicar', async (pedido) => {
     const actor = exigirEdicion('marketing')
     return exito(await publicarEnRed(pedido, actor))
+  })
+
+  // El control remoto de las computadoras de la agencia. Mirar si está en línea lo puede hacer
+  // cualquiera que vea Administración; entrar a la consola pide su propia clave del otro lado, que es
+  // como tiene que ser para un acceso a todas las máquinas.
+  manejar('mesh:estado', async () => {
+    exigirVista('administracion')
+    return exito(await estadoDelMesh())
   })
 
   manejar('sistema:abrirEnlace', async (url) => {

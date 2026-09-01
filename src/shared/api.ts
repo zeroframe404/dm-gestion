@@ -257,6 +257,9 @@ export interface ApiDm {
   sistema: {
     abrirEnlace: Remota<'sistema:abrirEnlace'>
   }
+  mesh: {
+    estado: Remota<'mesh:estado'>
+  }
   importacion: {
     vistaPrevia: Remota<'importacion:vistaPrevia'>
     iniciar: Remota<'importacion:iniciar'>

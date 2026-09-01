@@ -275,6 +275,9 @@ const api: ApiDm = {
   sistema: {
     abrirEnlace: (url) => invocar('sistema:abrirEnlace', url),
   },
+  mesh: {
+    estado: () => invocar('mesh:estado'),
+  },
   app: {
     info: () => invocar('app:info'),
   },

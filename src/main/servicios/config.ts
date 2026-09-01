@@ -59,11 +59,17 @@ interface ConfigVehiculos {
   actualizadoEn: string
 }
 
+/** La consola del control remoto (MeshCentral). Sólo la URL; adentro se entra con usuario y clave. */
+interface ConfigMesh {
+  url?: string
+}
+
 interface Config {
   google?: ConfigGoogle
   vps?: ConfigVps
   meta?: ConfigMeta
   vehiculos?: ConfigVehiculos
+  mesh?: ConfigMesh
 }
 
 /**
@@ -79,6 +85,17 @@ export const URL_DE_REDIRECCION_DE_META = 'https://dmartinezseguros.com/meta/vue
 // puede pisarlos para pruebas o si algún día cambia el dominio.
 const VPS_URL_BASE = 'https://dmartinezseguros.com'
 const VPS_TOKEN = '8b8e041002f5125c317b463b551e6fd90fd6fad0ec827cac09e824d17ed3a5cb'
+
+// La consola con la que se atienden las computadoras de las sucursales sin ir hasta el local. Vive en
+// el mismo VPS, detrás de su subdominio. Va embebida por el mismo criterio que la URL del VPS, y
+// config.json la puede pisar para probar contra otra instalación.
+const MESH_URL = 'https://mesh.dmartinezseguros.com'
+
+export function urlDelMesh(): string {
+  const mesh = leerConfig().mesh
+  const escrita = typeof mesh?.url === 'string' ? mesh.url.trim() : ''
+  return escrita || MESH_URL
+}
 
 export function credencialesVps(): { urlBase: string; token: string } {
   const vps = leerConfig().vps

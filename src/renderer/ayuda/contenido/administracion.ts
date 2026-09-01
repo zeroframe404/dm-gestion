@@ -430,10 +430,19 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
-        titulo: 'Las credenciales',
+        titulo: 'El proveedor y sus credenciales',
         parrafos: [
-          'Son el usuario y la clave de la cuenta que la agencia tiene con el proveedor del catálogo. Se guardan sólo en esta computadora, en el archivo de configuración local: no viajan a la hoja ni a las otras sucursales, así que cada computadora que vaya a cargar pólizas necesita las suyas.',
-          'El botón «Probar la conexión» dice enseguida si el usuario y la clave son correctos, sin bajar nada.',
+          'Se elige uno de dos. InfoAuto es el catálogo clásico de las aseguradoras argentinas y pide usuario y clave. Mercado Libre es la API que se contrata desde el panel de desarrolladores de Mercado Pago y pide el App ID y la Clave secreta de la aplicación que se creó ahí; también acepta un Access Token pegado a mano, que es más rápido para probar pero vence —con App ID y Clave secreta el permiso se renueva solo.',
+          'Los códigos de marca y de modelo de un proveedor no tienen nada que ver con los del otro, así que cambiar de proveedor obliga a volver a bajar el catálogo. Y Mercado Libre publica por esta API los autos y camionetas únicamente: para motos hace falta InfoAuto.',
+          'El botón «Probar la conexión» dice enseguida si las credenciales son correctas, sin bajar nada.',
+        ],
+      },
+      {
+        titulo: 'Se cargan una vez, no una por computadora',
+        parrafos: [
+          'El superadministrador las carga y en el mismo movimiento viajan al servidor de la agencia; el resto de las computadoras las toma sola al abrir el programa. Antes había que ir máquina por máquina, y con que una quedara sin cargar esa persona atendía el mostrador sin los desplegables.',
+          'En el servidor se guardan cifradas. En cada computadora quedan en su archivo de configuración local, que no se sincroniza ni sale en los respaldos. La tarjeta «Las mismas credenciales en todas las computadoras» dice si esta máquina está al día, y tiene los botones para mandarlas o para traerlas a mano sin esperar al próximo arranque.',
+          'Si el servidor no contesta cuando se guardan, no se pierde nada: quedan bien guardadas en esta computadora y la pantalla ofrece el reintento.',
         ],
       },
       {
@@ -461,6 +470,47 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Categoría',
         explicacion: 'Qué clase de vehículo es (sedán, SUV, pick-up, furgón, camión…). La decide el catálogo y no se puede elegir a mano.',
+      },
+    ],
+  },
+
+  'administracion.controlremoto': {
+    clave: 'administracion.controlremoto',
+    titulo: 'Administración → Control remoto',
+    resumen: 'La consola con la que se entra a las computadoras de las sucursales sin ir hasta el local.',
+    secciones: [
+      {
+        titulo: 'Para qué es',
+        parrafos: [
+          'Es el jueves a la mañana, en Sarandí no anda la impresora de tickets y hay gente esperando. Desde esta consola se ve qué computadoras de la agencia están prendidas y se puede tomar el control de cualquiera de ellas para resolverlo en el momento, sin viajar y sin explicarle a nadie por teléfono dónde hacer clic.',
+          'La pantalla prueba la consola apenas se abre y dice si está en línea. Eso es la mitad de lo que sirve: si está caída, se sabe acá en dos segundos y no después de tres minutos mirando una pestaña del navegador en blanco.',
+        ],
+      },
+      {
+        titulo: 'Cómo se entra',
+        parrafos: [
+          'El botón «Abrir la consola» la abre en el navegador, no dentro de DM Gestión, y ahí pide su propio usuario y clave, que NO son los del programa. Es a propósito: desde esa consola se entra a todas las computadoras de la agencia, y ese acceso conviene que tenga su puerta aparte en vez de quedar abierto porque alguien dejó DM Gestión iniciado.',
+          '«Copiar la dirección» sirve para mandársela a alguien por mensaje, o para abrirla desde un celular.',
+        ],
+      },
+      {
+        titulo: 'Cuando dice que no contesta',
+        parrafos: [
+          'El servicio se reinicia solo, así que lo primero es «Probar de nuevo» al minuto. Si sigue igual, es algo del servidor y no se arregla desde el programa: hay que avisarle a quien administra el VPS.',
+          'Que la consola esté caída no afecta nada del trabajo diario: las pólizas, la cartera y la sincronización van por otro lado y siguen andando igual.',
+        ],
+      },
+      {
+        titulo: 'Las computadoras que aparecen',
+        parrafos: [
+          'Para que una máquina figure en la lista tiene que tener instalado el agente, que se baja de la misma consola y se instala una sola vez por computadora. Las que ya lo tenían vuelven a aparecer solas cuando el servidor está en línea: el agente reintenta hasta encontrarlo.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Agente',
+        explicacion: 'El programita que se instala una vez en cada computadora y es lo que la hace aparecer en la consola. Sin agente, esa máquina no se ve.',
       },
     ],
   },

@@ -2659,6 +2659,19 @@ export interface AdopcionDeCredencialesDeVehiculos extends EstadoDeCredencialesD
   detalle: string
 }
 
+/**
+ * La consola del control remoto de las computadoras de la agencia (MeshCentral).
+ *
+ * `enLinea` se mide de verdad, con un pedido: el valor de esto es enterarse de que está caída ANTES
+ * de abrir el navegador, no después.
+ */
+export interface EstadoDelMesh {
+  url: string
+  enLinea: boolean
+  detalle: string
+  tardanzaMs: number
+}
+
 export interface PruebaDelProveedor {
   ok: boolean
   detalle: string

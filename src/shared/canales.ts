@@ -77,6 +77,7 @@ import type {
   EstadoDeAjusteCompartido,
   EstadoDeCredencialesDeVehiculos,
   EstadoDelCatalogo,
+  EstadoDelMesh,
   GuardadoDeCredencialesDeVehiculos,
   LineaDeCatalogo,
   OpcionDeCatalogo,
@@ -507,6 +508,10 @@ export interface Canales {
   'redes:publicar': (pedido: PedidoDePublicacion) => Resultado<PanelDeRedes>
 
   'sistema:abrirEnlace': (url: string) => Resultado<null>
+
+  // --- Control remoto de las computadoras (MeshCentral) ---
+  /** Mide si la consola contesta. El link se abre después con 'sistema:abrirEnlace'. */
+  'mesh:estado': () => Resultado<EstadoDelMesh>
 
   'app:info': () => Resultado<InfoApp>
 
