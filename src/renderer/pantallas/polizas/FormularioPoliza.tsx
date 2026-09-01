@@ -2,19 +2,30 @@
 // se carga con el cliente en el teléfono, y un asistente por pasos obliga a ir y volver para corregir
 // una patente. Por eso también los desplegables dejan escribir: la hoja es texto libre y la persona
 // que carga sabe cuándo la compañía se llama distinto.
+//
+// Lo que se asegura no siempre es un auto. El bloque «Riesgo asegurado» arranca por el tipo —auto,
+// moto, bicicleta, accidente personal, hogar, integral de comercio, otros— y pide sólo lo que ese
+// riesgo necesita: el catálogo y la patente en un vehículo, la dirección en una casa, la gente
+// cubierta en un accidentes personales. Los datos de la póliza (compañía, número, cuota, vigencia)
+// son los mismos para todos y van en la columna de la derecha.
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import {
   MOTIVOS_DE_BAJA,
   NOMBRE_MOTIVO_BAJA,
+  NOMBRE_TIPO_RIESGO,
+  TIPOS_DE_RIESGO,
   type AvisoDeCobertura,
   type CatalogosDePoliza,
   type DatosDePoliza,
   type FilaCliente,
+  type IntegranteDePoliza,
   type MotivoDeBaja,
   type PolizaDeCliente,
+  type TipoDeRiesgo,
   type VehiculoDeCliente,
 } from '../../../shared/tipos'
 import { NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
+import { describirRiesgo, esVehiculo, tipoDeRiesgo } from '../../../shared/riesgos'
 import { DialogoRechazo } from '../../componentes/DialogoRechazo'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Icono } from '../../componentes/Icono'
@@ -68,19 +79,24 @@ const CAMPOS_VACIOS: CamposPoliza = {
 
 type VehiculoNuevo = NonNullable<DatosDePoliza['vehiculoNuevo']>
 
+/** Un riesgo nuevo en blanco. Arranca en AUTO porque es lo que más se carga; el tipo se cambia arriba. */
 const VEHICULO_VACIO: VehiculoNuevo = {
   patente: '',
   marca: '',
   modelo: '',
   linea: '',
   anio: '',
-  tipo: '',
+  tipo: 'AUTO',
   categoria: '',
   catalogoCodigo: '',
   motor: '',
   chasis: '',
   uso: '',
   color: '',
+  direccionRiesgo: '',
+  titularNombre: '',
+  titularDocumento: '',
+  integrantes: [],
 }
 
 /** Lo mínimo del cliente que hace falta mostrar arriba del formulario. */
@@ -247,13 +263,43 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
     setBusqueda('')
     setResultados([])
     setVehiculoId(null)
+    setVehiculoNuevo(VEHICULO_VACIO)
     setModoVehiculo('existente')
+  }
+
+  // --- El tipo de riesgo ------------------------------------------------------
+
+  const tipoRiesgo: TipoDeRiesgo = tipoDeRiesgo(vehiculoNuevo.tipo) ?? 'AUTO'
+
+  /**
+   * Cambiar el tipo es empezar el riesgo de nuevo: la patente de un auto no le sirve a una casa. Lo que
+   * sí se adelanta es la persona: en un hogar, un comercio, un accidentes personales o un «otros» el
+   * titular casi siempre es el cliente que paga, así que viene puesto y se corrige si no es él.
+   */
+  const elegirTipoDeRiesgo = (tipo: TipoDeRiesgo) => {
+    const titular = { titularNombre: cliente?.nombre ?? '', titularDocumento: cliente?.documento ?? '' }
+    if (tipo === 'ACCIDENTE PERSONAL') {
+      setVehiculoNuevo({ ...VEHICULO_VACIO, tipo, integrantes: [{ nombre: titular.titularNombre, documento: titular.titularDocumento }] })
+    } else if (tipo === 'HOGAR' || tipo === 'INTEGRAL DE COMERCIO' || tipo === 'OTRO') {
+      setVehiculoNuevo({ ...VEHICULO_VACIO, tipo, ...titular })
+    } else {
+      setVehiculoNuevo({ ...VEHICULO_VACIO, tipo })
+    }
   }
 
   // --- Validación de antigüedad, en vivo ------------------------------------
 
   const vehiculoElegido = vehiculos.find((candidato) => candidato.id === vehiculoId) ?? null
-  const anioVehiculo = modoVehiculo === 'nuevo' ? vehiculoNuevo.anio : (vehiculoElegido?.anio ?? '')
+  // Sólo los vehículos tienen año que validar: una casa o una bicicleta no van a la matriz de reglas.
+  const anioVehiculo =
+    modoVehiculo === 'nuevo'
+      ? esVehiculo(vehiculoNuevo.tipo)
+        ? vehiculoNuevo.anio
+        : ''
+      : vehiculoElegido && esVehiculo(vehiculoElegido.tipo)
+        ? (vehiculoElegido.anio ?? '')
+        : ''
+  const riesgoEsVehiculo = modoVehiculo === 'nuevo' ? esVehiculo(vehiculoNuevo.tipo) : vehiculoElegido ? esVehiculo(vehiculoElegido.tipo) : true
 
   useEffect(() => {
     const compania = campos.compania.trim()
@@ -335,9 +381,9 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
           </h2>
           <p className="truncate text-xs text-slate-500">
             {enEdicion
-              ? [poliza?.compania, poliza?.numero && `N.° ${poliza.numero}`, poliza?.patente].filter(Boolean).join(' · ') ||
+              ? [poliza?.compania, poliza?.numero && `N.° ${poliza.numero}`, poliza?.patente ?? poliza?.vehiculo].filter(Boolean).join(' · ') ||
                 'Sin datos cargados todavía'
-              : 'Elegí el cliente, el vehículo y los datos de la póliza. Se guarda todo junto.'}
+              : 'Elegí el cliente, qué se asegura (auto, moto, bicicleta, hogar, comercio…) y los datos de la póliza. Se guarda todo junto.'}
           </p>
         </div>
         {poliza && (
@@ -479,10 +525,10 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
             )}
           </Grupo>
 
-          {/* --- Vehículo --- */}
-          <Grupo titulo="Vehículo" icono="auto">
+          {/* --- Riesgo asegurado --- */}
+          <Grupo titulo="Riesgo asegurado" icono="escudo">
             <fieldset className="flex flex-col gap-3" disabled={!cliente}>
-              <legend className="sr-only">Vehículo de la póliza</legend>
+              <legend className="sr-only">Qué asegura la póliza</legend>
               <div className="flex flex-wrap gap-2">
                 <OpcionRadio
                   nombre="modoVehiculo"
@@ -503,45 +549,106 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
               {modoVehiculo === 'existente' ? (
                 <>
                   <Selector
-                    etiqueta="Vehículo del cliente"
+                    etiqueta="Riesgo del cliente"
                     value={vehiculoId === null ? '' : String(vehiculoId)}
                     onChange={(evento) => setVehiculoId(evento.target.value ? Number(evento.target.value) : null)}
                     opciones={[
-                      { valor: '', texto: sinVehiculos ? '(el cliente no tiene vehículos)' : '(elegí uno)' },
+                      { valor: '', texto: sinVehiculos ? '(el cliente no tiene nada cargado)' : '(elegí uno)' },
                       ...vehiculos.map((vehiculo) => ({
                         valor: String(vehiculo.id),
-                        texto:
-                          [vehiculo.patente, vehiculo.marca, vehiculo.modelo, vehiculo.anio].filter(Boolean).join(' · ') ||
-                          `Vehículo ${vehiculo.id}`,
+                        texto: describirRiesgo(vehiculo) || `Riesgo ${vehiculo.id}`,
                       })),
                     ]}
-                    ayuda="La antigüedad se valida con el año de este vehículo."
+                    ayuda={
+                      riesgoEsVehiculo
+                        ? 'La antigüedad se valida con el año de este vehículo.'
+                        : 'Un riesgo que no es un vehículo: no se le valida la antigüedad.'
+                    }
                   />
                   {enEdicion && vehiculoId === null && poliza && (poliza.patente || poliza.vehiculo) && (
                     <p className="text-xs text-slate-500">
                       La póliza figura con <strong className="font-semibold">{[poliza.patente, poliza.vehiculo].filter(Boolean).join(' ')}</strong>{' '}
-                      pero ese vehículo no quedó asociado al cliente en la importación. Elegilo de la lista o cargalo como nuevo.
+                      pero ese riesgo no quedó asociado al cliente en la importación. Elegilo de la lista o cargalo como nuevo.
                     </p>
                   )}
                 </>
               ) : (
                 <div className="flex flex-col gap-4">
-                  {/* Marca, modelo, línea, año y la categoría salen del catálogo. Lo único que se
-                      elige a mano es Auto o Moto: la categoría —pick-up, SUV, furgón— la decide el
-                      catálogo, porque de ella dependen la prima y qué coberturas se pueden emitir. */}
-                  <SelectorDeVehiculo valor={vehiculoNuevo} alCambiar={cambiarVehiculo} />
+                  <Selector
+                    etiqueta="Tipo de riesgo"
+                    value={tipoRiesgo}
+                    onChange={(evento) => elegirTipoDeRiesgo(evento.target.value as TipoDeRiesgo)}
+                    opciones={TIPOS_DE_RIESGO.map((candidato) => ({ valor: candidato, texto: NOMBRE_TIPO_RIESGO[candidato] }))}
+                    ayuda="Cada riesgo pide sólo lo que hace falta para saber qué se aseguró."
+                  />
 
-                  {/* Lo que no está en ningún catálogo: es de este auto en particular y no del modelo. */}
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    <Campo etiqueta="Patente" value={vehiculoNuevo.patente} onChange={(e) => cambiarVehiculo({ patente: e.target.value })} className="uppercase" />
-                    <Campo etiqueta="Uso" value={vehiculoNuevo.uso} onChange={(e) => cambiarVehiculo({ uso: e.target.value })} />
-                    <Campo etiqueta="Color" value={vehiculoNuevo.color} onChange={(e) => cambiarVehiculo({ color: e.target.value })} />
-                    <Campo etiqueta="Motor" value={vehiculoNuevo.motor} onChange={(e) => cambiarVehiculo({ motor: e.target.value })} />
-                    <Campo etiqueta="Chasis" value={vehiculoNuevo.chasis} onChange={(e) => cambiarVehiculo({ chasis: e.target.value })} />
-                  </div>
+                  {esVehiculo(tipoRiesgo) ? (
+                    <>
+                      {/* Marca, modelo, línea, año y la categoría salen del catálogo. Lo único que se
+                          elige a mano es Auto o Moto (arriba, como tipo de riesgo): la categoría
+                          —pick-up, SUV, furgón— la decide el catálogo, porque de ella dependen la
+                          prima y qué coberturas se pueden emitir. */}
+                      <SelectorDeVehiculo valor={vehiculoNuevo} alCambiar={cambiarVehiculo} sinTipo />
+
+                      {/* Lo que no está en ningún catálogo: es de este auto en particular y no del modelo. */}
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        <Campo etiqueta="Patente" value={vehiculoNuevo.patente} onChange={(e) => cambiarVehiculo({ patente: e.target.value })} className="uppercase" />
+                        <Campo etiqueta="Uso" value={vehiculoNuevo.uso} onChange={(e) => cambiarVehiculo({ uso: e.target.value })} />
+                        <Campo etiqueta="Color" value={vehiculoNuevo.color} onChange={(e) => cambiarVehiculo({ color: e.target.value })} />
+                        <Campo etiqueta="Motor" value={vehiculoNuevo.motor} onChange={(e) => cambiarVehiculo({ motor: e.target.value })} />
+                        <Campo etiqueta="Chasis" value={vehiculoNuevo.chasis} onChange={(e) => cambiarVehiculo({ chasis: e.target.value })} />
+                      </div>
+                    </>
+                  ) : tipoRiesgo === 'BICICLETA' ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Campo etiqueta="Marca" value={vehiculoNuevo.marca} onChange={(e) => cambiarVehiculo({ marca: e.target.value })} className="uppercase" />
+                      {/* El cuadro se guarda en la columna del chasis: es exactamente eso, el número grabado en el cuerpo. */}
+                      <Campo
+                        etiqueta="N.° de cuadro"
+                        value={vehiculoNuevo.chasis}
+                        onChange={(e) => cambiarVehiculo({ chasis: e.target.value })}
+                        className="uppercase"
+                        ayuda="El número grabado en el cuadro. Con la marca o el cuadro alcanza."
+                      />
+                    </div>
+                  ) : tipoRiesgo === 'ACCIDENTE PERSONAL' ? (
+                    <EditorDeIntegrantes integrantes={vehiculoNuevo.integrantes} alCambiar={(integrantes) => cambiarVehiculo({ integrantes })} />
+                  ) : tipoRiesgo === 'HOGAR' || tipoRiesgo === 'INTEGRAL DE COMERCIO' ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Campo
+                        etiqueta="Dirección del riesgo"
+                        value={vehiculoNuevo.direccionRiesgo}
+                        onChange={(e) => cambiarVehiculo({ direccionRiesgo: e.target.value })}
+                        placeholder="Calle, número, localidad"
+                        ayuda={tipoRiesgo === 'HOGAR' ? 'La dirección de la casa asegurada.' : 'La dirección del local asegurado.'}
+                      />
+                      <Campo
+                        etiqueta="A nombre de quién está"
+                        value={vehiculoNuevo.titularNombre}
+                        onChange={(e) => cambiarVehiculo({ titularNombre: e.target.value })}
+                        ayuda="Viene puesto el cliente; cambialo si la póliza está a nombre de otra persona."
+                      />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Campo
+                        etiqueta="Nombre de la persona"
+                        value={vehiculoNuevo.titularNombre}
+                        onChange={(e) => cambiarVehiculo({ titularNombre: e.target.value })}
+                        ayuda="A nombre de quién está el seguro."
+                      />
+                      <Campo
+                        etiqueta="DNI"
+                        value={vehiculoNuevo.titularDocumento}
+                        onChange={(e) => cambiarVehiculo({ titularDocumento: e.target.value })}
+                        inputMode="numeric"
+                        className="tabular-nums"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
-              {!cliente && <p className="text-xs text-slate-500">Elegí primero el cliente: los vehículos son suyos.</p>}
+              {!cliente && <p className="text-xs text-slate-500">Elegí primero el cliente: lo que se asegura es suyo.</p>}
             </fieldset>
           </Grupo>
         </div>
@@ -563,7 +670,7 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
                   list={idCoberturas}
                   value={campos.cobertura}
                   onChange={(evento) => cambiar({ cobertura: evento.target.value })}
-                  ayuda="Elegí una o escribí otra."
+                  ayuda={riesgoEsVehiculo ? 'Elegí una o escribí otra.' : 'Opcional en este riesgo: elegí una o escribí otra si la póliza la tiene.'}
                 />
               </div>
 
@@ -736,7 +843,7 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
  * Agrupador compacto. No se usa `Tarjeta` de ui.tsx porque su encabezado es grande y esta pantalla
  * tiene que entrar entera en una ventana: acá el título es un rótulo, no un titular.
  */
-function Grupo({ titulo, icono, children }: { titulo: string; icono: 'clientes' | 'auto' | 'polizas' | 'reloj'; children: ReactNode }) {
+function Grupo({ titulo, icono, children }: { titulo: string; icono: 'clientes' | 'escudo' | 'polizas' | 'reloj'; children: ReactNode }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-suave">
       <header className="flex items-center gap-2 border-b border-slate-200 px-4 py-2.5 text-slate-500">
@@ -783,6 +890,65 @@ function OpcionRadio({
       {texto}
       {detalle && <span className="text-xs font-normal text-slate-500">({detalle})</span>}
     </label>
+  )
+}
+
+/**
+ * Las personas cubiertas por un accidentes personales. Un seguro se contrata para una persona o para
+ * cinco, y de cada una hacen falta el nombre completo y el DNI; la primera fila es el titular. Se
+ * muestra siempre por lo menos una fila para que haya dónde escribir.
+ */
+function EditorDeIntegrantes({
+  integrantes,
+  alCambiar,
+}: {
+  integrantes: IntegranteDePoliza[]
+  alCambiar: (integrantes: IntegranteDePoliza[]) => void
+}) {
+  const filas = integrantes.length === 0 ? [{ nombre: '', documento: '' }] : integrantes
+  const cambiarFila = (indice: number, parte: Partial<IntegranteDePoliza>) =>
+    alCambiar(filas.map((fila, i) => (i === indice ? { ...fila, ...parte } : fila)))
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <p className="text-sm font-medium text-slate-700">Personas cubiertas</p>
+        <p className="text-xs text-slate-500">
+          La primera es el titular del seguro. Si se contrata para varias personas, agregá el nombre completo y el DNI de cada una.
+        </p>
+      </div>
+      {filas.map((integrante, indice) => (
+        <div key={indice} className="grid grid-cols-[minmax(0,1fr)_minmax(0,10rem)_auto] items-end gap-2">
+          <Campo
+            etiqueta={indice === 0 ? 'Titular' : `Integrante ${indice + 1}`}
+            value={integrante.nombre}
+            onChange={(e) => cambiarFila(indice, { nombre: e.target.value })}
+            placeholder="Nombre completo"
+          />
+          <Campo
+            etiqueta="DNI"
+            value={integrante.documento}
+            onChange={(e) => cambiarFila(indice, { documento: e.target.value })}
+            inputMode="numeric"
+            className="tabular-nums"
+          />
+          <Boton
+            tamano="sm"
+            variante="fantasma"
+            icono="cerrar"
+            onClick={() => alCambiar(filas.filter((_, i) => i !== indice))}
+            disabled={filas.length === 1}
+            title="Quitar a esta persona"
+            className="mb-1"
+          >
+            Quitar
+          </Boton>
+        </div>
+      ))}
+      <Boton tamano="sm" icono="mas" onClick={() => alCambiar([...filas, { nombre: '', documento: '' }])} className="self-start">
+        Agregar integrante
+      </Boton>
+    </div>
   )
 }
 

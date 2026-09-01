@@ -74,13 +74,15 @@ export const AYUDA_CLIENTES: Record<string, ContenidoDeAyuda> = {
   },
   'clientes.vehiculos': {
     clave: 'clientes.vehiculos',
-    titulo: 'Ficha del cliente → Vehículos',
-    resumen: 'Los autos, motos y demás vehículos del cliente, con patente, marca, modelo, año y cuántas pólizas tiene cada uno.',
+    titulo: 'Ficha del cliente → Vehículos y riesgos',
+    resumen:
+      'Todo lo que el cliente tiene asegurado: sus autos y motos con patente, marca, modelo y año, y también su casa, su comercio, su bicicleta o las personas de un accidentes personales, con cuántas pólizas tiene cada uno.',
     secciones: [
       {
-        titulo: 'Cómo se carga un vehículo',
+        titulo: 'Cómo se carga un vehículo o un riesgo',
         parrafos: [
-          'Esta pestaña es sólo para consultar: no hay ningún botón para agregar un vehículo suelto. Los vehículos se dan de alta junto con la póliza, así que si el cliente compró un auto nuevo, la forma de cargarlo es «Nueva póliza» desde el encabezado de la ficha: ahí se completa el vehículo con su patente al mismo tiempo que la póliza.',
+          'Esta pestaña es sólo para consultar: no hay ningún botón para agregar un vehículo suelto. Los vehículos y los demás riesgos se dan de alta junto con la póliza, así que si el cliente compró un auto nuevo o contrató un seguro de hogar, la forma de cargarlo es «Nueva póliza» desde el encabezado de la ficha: ahí se elige el tipo de riesgo y se completa con su patente, su dirección o sus integrantes al mismo tiempo que la póliza.',
+          'La columna «Detalle» muestra lo que distingue a los riesgos que no son vehículos: la dirección de la casa o del local, las personas cubiertas, o a nombre de quién está.',
         ],
       },
     ],

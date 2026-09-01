@@ -28,4 +28,6 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   17: '8c5b02d9800d56b1',
   // La 18 crea la caché del catálogo de vehículos y las columnas de línea y categoría.
   18: '4f9827fa2494bd1e',
+  // La 19 suma a `vehiculos` lo que piden los riesgos que no son vehículos: dirección, titular, integrantes.
+  19: 'c2907470739eee1e',
 }

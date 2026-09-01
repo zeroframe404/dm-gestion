@@ -13,6 +13,7 @@ import {
   pareceIso,
   validarAntiguedad,
 } from '../../shared/polizas'
+import { describirRiesgo, esVehiculo, leerIntegrantes, nombreDeTipoDeRiesgo, tipoDeRiesgo } from '../../shared/riesgos'
 import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
@@ -23,6 +24,7 @@ import {
   type DatosDePoliza,
   type EstadoPoliza,
   type FiltrosPolizas,
+  type IntegranteDePoliza,
   type ListadoPolizas,
   type MotivoDeBaja,
   type PolizaDeCliente,
@@ -80,7 +82,8 @@ const SELECT_POLIZAS = `
     COALESCE(p.observaciones, q.observaciones) AS observaciones,
     q.id AS cuota_id, q.fila_id AS cuota_fila_id, q.pestana AS cuota_pestana,
     q.cuota, q.dia_vencimiento,
-    p.vehiculo_id, v.marca, v.modelo, v.tipo AS tipo_vehiculo, v.anio,
+    p.vehiculo_id, v.marca, v.modelo, v.tipo AS tipo_vehiculo, v.anio, v.chasis,
+    v.direccion_riesgo, v.titular_nombre, v.titular_documento, v.integrantes,
     COALESCE(v.patente, q.patente) AS patente,
     p.cliente_id,
     COALESCE(cl.nombre, q.cliente_nombre) AS cliente_nombre,
@@ -127,6 +130,11 @@ interface FilaCrudaPoliza {
   modelo: string | null
   tipo_vehiculo: string | null
   anio: string | null
+  chasis: string | null
+  direccion_riesgo: string | null
+  titular_nombre: string | null
+  titular_documento: string | null
+  integrantes: string | null
   patente: string | null
   cliente_id: number
   cliente_nombre: string | null
@@ -137,10 +145,25 @@ interface FilaCrudaPoliza {
 }
 
 /**
- * Cómo se nombra el vehículo en una sola celda. La marca y el modelo son lo que la gente busca con la
- * vista; el tipo («AUTO», «MOTO») queda de respaldo para las filas viejas que sólo tienen eso.
+ * Cómo se nombra el riesgo en una sola celda. En un vehículo, la marca y el modelo son lo que la gente
+ * busca con la vista; el tipo («AUTO», «MOTO») queda de respaldo para las filas viejas que sólo tienen
+ * eso. En los demás riesgos (hogar, bicicleta, accidentes personales…) la línea la arma shared/riesgos,
+ * igual que en el formulario y en la ficha del cliente: «Hogar · MITRE 1234».
  */
 function describirVehiculo(fila: FilaCrudaPoliza): string | null {
+  if (!esVehiculo(fila.tipo_vehiculo)) {
+    return (
+      describirRiesgo({
+        tipo: fila.tipo_vehiculo,
+        marca: fila.marca,
+        chasis: fila.chasis,
+        direccionRiesgo: fila.direccion_riesgo,
+        titularNombre: fila.titular_nombre,
+        titularDocumento: fila.titular_documento,
+        integrantes: leerIntegrantes(fila.integrantes),
+      }) || null
+    )
+  }
   const descripcion = [limpiar(fila.marca), limpiar(fila.modelo)].filter(Boolean).join(' ')
   return descripcion || limpiar(fila.tipo_vehiculo) || null
 }
@@ -219,6 +242,7 @@ export function vehiculosDeCliente(clienteId: number): VehiculoDeCliente[] {
   const filas = db()
     .prepare(
       `SELECT v.id, v.patente, v.marca, v.modelo, v.linea, v.anio, v.anio_numero, v.tipo, v.categoria, v.motor, v.chasis, v.uso, v.color,
+              v.direccion_riesgo, v.titular_nombre, v.titular_documento, v.integrantes,
               (SELECT COUNT(*) FROM polizas p WHERE p.vehiculo_id = v.id) AS polizas
        FROM vehiculos v WHERE v.cliente_id = ? ORDER BY v.patente, v.marca, v.id`,
     )
@@ -236,6 +260,10 @@ export function vehiculosDeCliente(clienteId: number): VehiculoDeCliente[] {
     chasis: string | null
     uso: string | null
     color: string | null
+    direccion_riesgo: string | null
+    titular_nombre: string | null
+    titular_documento: string | null
+    integrantes: string | null
     polizas: number
   }>
   return filas.map((f) => ({
@@ -252,6 +280,10 @@ export function vehiculosDeCliente(clienteId: number): VehiculoDeCliente[] {
     chasis: f.chasis,
     uso: f.uso,
     color: f.color,
+    direccionRiesgo: f.direccion_riesgo,
+    titularNombre: f.titular_nombre,
+    titularDocumento: f.titular_documento,
+    integrantes: leerIntegrantes(f.integrantes),
     polizas: f.polizas,
   }))
 }
@@ -373,6 +405,26 @@ export function validarCobertura(compania: string, cobertura: string, anioVehicu
 }
 
 /**
+ * La cobertura es obligatoria en un vehículo (TERCEROS COMPLETO, TODO RIESGO…): es lo que después se
+ * cruza con la matriz de reglas. En una casa o un accidentes personales el nombre del riesgo ya dice
+ * qué se aseguró, y la planilla de siempre las cargaba sin cobertura, así que ahí se deja vacía.
+ */
+function exigirCoberturaDelVehiculo(vehiculo: VehiculoResuelto, validados: DatosValidados): void {
+  if (esVehiculo(vehiculo.tipo) && !validados.cobertura) {
+    throw new ErrorDeNegocio('Cargá la cobertura de la póliza (por ejemplo, TERCEROS COMPLETO o TODO RIESGO).')
+  }
+}
+
+/**
+ * La antigüedad se valida sólo en los vehículos: una casa no tiene modelo, y una regla de SANCOR para
+ * «HOGAR» que dijera «desde el modelo 2011» no querría decir nada.
+ */
+function avisoDeAntiguedad(vehiculo: VehiculoResuelto, validados: DatosValidados): AvisoDeCobertura {
+  if (!esVehiculo(vehiculo.tipo)) return { hayProblema: false, mensaje: '', regla: null }
+  return validarCobertura(validados.compania, validados.cobertura, vehiculo.anio)
+}
+
+/**
  * La advertencia frena el guardado salvo que un administrador la confirme. El pliego lo dice así: «se
  * puede continuar con confirmación de ADMIN», o sea que el empleado no puede levantarse el freno solo.
  */
@@ -437,7 +489,8 @@ function validarDatos(datos: DatosDePoliza): DatosValidados {
   const validados: DatosValidados = {
     clienteId: enteroPositivo(d.clienteId, 'El cliente'),
     compania: texto(d.compania, 'La compañía', 1, 120),
-    cobertura: texto(d.cobertura, 'La cobertura', 1, 120),
+    // Obligatoria sólo en los vehículos: se exige en `exigirCobertura`, cuando ya se sabe qué riesgo es.
+    cobertura: opcional(d.cobertura, 'La cobertura', 120),
     formaPago: opcional(d.formaPago, 'La forma de pago', 60),
     cuota: opcional(d.cuota, 'La cuota', 40),
     diaVencimiento: opcional(d.diaVencimiento, 'El día de vencimiento', 40),
@@ -510,19 +563,35 @@ function claveDeVehiculo(clienteId: number, patente: string, marca: string, mode
   return `CLI:${clienteId}|${normalizarTexto(marca)}|${normalizarTexto(modelo)}${distintivo ? `|${distintivo}` : ''}`
 }
 
+/**
+ * La clave de un riesgo que no es vehículo. Lo que lo distingue depende del tipo: la dirección en una
+ * casa o un local, el cuadro (o la marca) en una bicicleta, la gente cubierta en un accidentes
+ * personales, la persona en «otros». Siempre lleva el cliente y el tipo adelante: dos casas del mismo
+ * cliente con distinta dirección son dos riesgos, y la misma dirección cargada dos veces es uno solo.
+ */
+function claveDeRiesgo(clienteId: number, tipo: string, distintivo: string): string {
+  return `RIESGO:${clienteId}|${normalizarTexto(tipo)}|${distintivo}`
+}
+
 // ---------------------------------------------------------------------------
 // Resolución del vehículo
 // ---------------------------------------------------------------------------
 
 interface VehiculoResuelto {
   id: number | null
-  /** Datos del vehículo, para la fila del mes y para validar la antigüedad. */
+  /** Datos del riesgo, para la fila del mes y para validar la antigüedad. */
   patente: string
   marca: string
   modelo: string
   anio: string
   tipo: string
-  /** Lo que hay que insertar si el vehículo todavía no existe. Null si ya existía. */
+  motor: string
+  chasis: string
+  uso: string
+  color: string
+  /** El riesgo en una línea, para el historial de cambios: «Hogar · MITRE 1234», «FORD FIESTA AB123CD». */
+  descripcion: string
+  /** Lo que hay que insertar si el riesgo todavía no existe. Null si ya existía. */
   aCrear: Record<string, unknown> | null
 }
 
@@ -550,12 +619,22 @@ interface VehiculoGuardado {
   modelo: string | null
   anio: string | null
   tipo: string | null
+  motor: string | null
+  chasis: string | null
+  uso: string | null
+  color: string | null
+  direccion_riesgo: string | null
+  titular_nombre: string | null
+  titular_documento: string | null
+  integrantes: string | null
 }
 
+const SELECT_VEHICULO = `SELECT id, cliente_id, patente, marca, modelo, anio, tipo, motor, chasis, uso, color,
+                                direccion_riesgo, titular_nombre, titular_documento, integrantes
+                         FROM vehiculos`
+
 function leerVehiculo(id: number): VehiculoGuardado | undefined {
-  return db().prepare('SELECT id, cliente_id, patente, marca, modelo, anio, tipo FROM vehiculos WHERE id = ?').get(id) as
-    | VehiculoGuardado
-    | undefined
+  return db().prepare(`${SELECT_VEHICULO} WHERE id = ?`).get(id) as VehiculoGuardado | undefined
 }
 
 function comoResuelto(veh: VehiculoGuardado): VehiculoResuelto {
@@ -566,8 +645,41 @@ function comoResuelto(veh: VehiculoGuardado): VehiculoResuelto {
     modelo: limpiar(veh.modelo),
     anio: limpiar(veh.anio),
     tipo: limpiar(veh.tipo),
+    motor: limpiar(veh.motor),
+    chasis: limpiar(veh.chasis),
+    uso: limpiar(veh.uso),
+    color: limpiar(veh.color),
+    descripcion: describirRiesgo({
+      tipo: veh.tipo,
+      patente: veh.patente,
+      marca: veh.marca,
+      modelo: veh.modelo,
+      anio: veh.anio,
+      chasis: veh.chasis,
+      direccionRiesgo: veh.direccion_riesgo,
+      titularNombre: veh.titular_nombre,
+      titularDocumento: veh.titular_documento,
+      integrantes: leerIntegrantes(veh.integrantes),
+    }),
     aCrear: null,
   }
+}
+
+/** Los integrantes que manda la pantalla, revisados uno por uno: el renderer no es confiable. */
+function integrantesValidados(valor: unknown): IntegranteDePoliza[] {
+  if (valor === null || valor === undefined) return []
+  if (!Array.isArray(valor)) throw new ErrorDeNegocio('Los integrantes de la póliza no tienen el formato esperado.')
+  if (valor.length > 50) throw new ErrorDeNegocio('Una póliza no puede tener más de 50 integrantes.')
+  const lista: IntegranteDePoliza[] = []
+  for (const item of valor) {
+    const i = objeto(item, 'Un integrante de la póliza')
+    const nombre = opcional(i.nombre, 'El nombre del integrante', 120)
+    const documento = opcional(i.documento, 'El DNI del integrante', 20)
+    // Una fila que quedó en blanco en la pantalla no es un integrante: se ignora sin protestar.
+    if (!nombre && !documento) continue
+    lista.push({ nombre, documento })
+  }
+  return lista
 }
 
 /**
@@ -592,16 +704,18 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
 
   const nuevo = datos.vehiculoNuevo
   if (!nuevo) {
-    if (exigir) throw new ErrorDeNegocio('Elegí un vehículo del cliente o cargá uno nuevo.')
+    if (exigir) throw new ErrorDeNegocio('Elegí un riesgo del cliente (un vehículo, una casa…) o cargá uno nuevo.')
     const veh = actual === null ? undefined : leerVehiculo(actual)
-    return veh ? comoResuelto(veh) : { id: actual, patente: '', marca: '', modelo: '', anio: '', tipo: '', aCrear: null }
+    return veh
+      ? comoResuelto(veh)
+      : { id: actual, patente: '', marca: '', modelo: '', anio: '', tipo: '', motor: '', chasis: '', uso: '', color: '', descripcion: '', aCrear: null }
   }
-  const n = objeto(nuevo, 'Los datos del vehículo')
+  const n = objeto(nuevo, 'Los datos del riesgo')
+  const tipo = opcional(n.tipo, 'El tipo de riesgo', 60)
   const patente = opcional(n.patente, 'La patente', 20)
   const marca = opcional(n.marca, 'La marca', 60)
   const modelo = opcional(n.modelo, 'El modelo', 60)
   const anio = opcional(n.anio, 'El año del vehículo', 20)
-  const tipo = opcional(n.tipo, 'El tipo de vehículo', 60)
   // Lo que viene del catálogo. La categoría NO se valida contra una lista de la pantalla: llega tal
   // como la resolvió el catálogo o llega vacía, y el único que puede llenarla es 'vehiculos:resolver'.
   const linea = opcional(n.linea, 'La línea del vehículo', 120)
@@ -611,29 +725,61 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
   const chasis = opcional(n.chasis, 'El chasis', 60)
   const uso = opcional(n.uso, 'El uso', 60)
   const color = opcional(n.color, 'El color', 40)
-  if (!patente && !marca && !modelo) {
-    throw new ErrorDeNegocio('Del vehículo hace falta al menos la patente, o la marca y el modelo.')
+  const direccionRiesgo = opcional(n.direccionRiesgo, 'La dirección del riesgo', 200)
+  const titularNombre = opcional(n.titularNombre, 'El nombre del titular', 120)
+  const titularDocumento = opcional(n.titularDocumento, 'El DNI del titular', 20)
+  const integrantes = integrantesValidados(n.integrantes)
+
+  // Cada riesgo pide lo suyo. Un auto se reconoce por la patente (o la marca y el modelo); una casa,
+  // por su dirección; un accidentes personales, por la gente que cubre. Sin eso no hay qué asegurar.
+  const riesgo = tipoDeRiesgo(tipo)
+  const vehicular = esVehiculo(tipo)
+  let clave: string
+  if (vehicular) {
+    if (!patente && !marca && !modelo) {
+      throw new ErrorDeNegocio('Del vehículo hace falta al menos la patente, o la marca y el modelo.')
+    }
+    clave = claveDeVehiculo(cliente.id, patente, marca, modelo, motor, chasis)
+  } else if (riesgo === 'BICICLETA') {
+    if (!marca && !chasis) throw new ErrorDeNegocio('De la bicicleta hace falta al menos la marca o el número de cuadro.')
+    // La misma clave que arma el importador con la fila de la hoja (marca y chasis viajan a la
+    // planilla): así la bicicleta que vuelve de la hoja es la misma y no una segunda.
+    clave = claveDeVehiculo(cliente.id, '', marca, '', '', chasis)
+  } else if (riesgo === 'ACCIDENTE PERSONAL') {
+    if (integrantes.length === 0) throw new ErrorDeNegocio('Cargá al menos una persona cubierta, con su nombre completo y su DNI.')
+    clave = claveDeRiesgo(
+      cliente.id,
+      riesgo,
+      integrantes.map((i) => normalizarDocumento(i.documento) || normalizarTexto(i.nombre)).join(','),
+    )
+  } else if (riesgo === 'HOGAR' || riesgo === 'INTEGRAL DE COMERCIO') {
+    if (!direccionRiesgo) {
+      throw new ErrorDeNegocio(riesgo === 'HOGAR' ? 'Cargá la dirección de la casa asegurada.' : 'Cargá la dirección del comercio asegurado.')
+    }
+    clave = claveDeRiesgo(cliente.id, riesgo, normalizarTexto(direccionRiesgo))
+  } else {
+    // OTRO: lo único que se sabe es de quién es.
+    if (!titularNombre && !titularDocumento) throw new ErrorDeNegocio('Cargá el nombre o el DNI de la persona asegurada.')
+    clave = claveDeRiesgo(cliente.id, 'OTRO', normalizarDocumento(titularDocumento) || normalizarTexto(titularNombre))
   }
 
-  const clave = claveDeVehiculo(cliente.id, patente, marca, modelo, motor, chasis)
-  const existente = db().prepare('SELECT id, cliente_id, patente, marca, modelo, anio, tipo FROM vehiculos WHERE clave = ?').get(clave) as
-    | { id: number; cliente_id: number | null; patente: string | null; marca: string | null; modelo: string | null; anio: string | null; tipo: string | null }
-    | undefined
+  const existente = db().prepare(`${SELECT_VEHICULO} WHERE clave = ?`).get(clave) as VehiculoGuardado | undefined
   if (existente) {
     if (existente.cliente_id !== null && existente.cliente_id !== cliente.id) {
       throw new ErrorDeNegocio(
         `La patente ${patente || existente.patente} ya está cargada a nombre de otro cliente. Revisá la cartera antes de volver a usarla.`,
       )
     }
-    // Es un vehículo que este cliente ya tenía cargado: se reusa en vez de duplicarlo.
+    // Es un riesgo que este cliente ya tenía cargado: se reusa en vez de duplicarlo.
+    const resuelto = comoResuelto(existente)
     return {
-      id: existente.id,
-      patente: limpiar(existente.patente) || patente,
-      marca: limpiar(existente.marca) || marca,
-      modelo: limpiar(existente.modelo) || modelo,
-      anio: limpiar(existente.anio) || anio,
-      tipo: limpiar(existente.tipo) || tipo,
-      aCrear: null,
+      ...resuelto,
+      patente: resuelto.patente || patente,
+      marca: resuelto.marca || marca,
+      modelo: resuelto.modelo || modelo,
+      anio: resuelto.anio || anio,
+      tipo: resuelto.tipo || tipo,
+      chasis: resuelto.chasis || chasis,
     }
   }
 
@@ -644,6 +790,11 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
     modelo,
     anio,
     tipo,
+    motor,
+    chasis,
+    uso,
+    color,
+    descripcion: describirRiesgo({ tipo, patente, marca, modelo, anio, chasis, direccionRiesgo, titularNombre, titularDocumento, integrantes }),
     aCrear: {
       clave,
       patente: patente || null,
@@ -662,6 +813,10 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
       tipo: tipo || null,
       uso: uso || null,
       color: color || null,
+      direccion_riesgo: direccionRiesgo || null,
+      titular_nombre: titularNombre || null,
+      titular_documento: titularDocumento || null,
+      integrantes: integrantes.length > 0 ? JSON.stringify(integrantes) : null,
       cliente_id: cliente.id,
     },
   }
@@ -671,10 +826,12 @@ function crearVehiculo(aCrear: Record<string, unknown>, ahora: string): number {
   const fila = db()
     .prepare(
       `INSERT INTO vehiculos (clave, patente, patente_normalizada, marca, modelo, linea, anio, anio_numero, categoria,
-                              catalogo_proveedor, catalogo_codigo, motor, chasis, tipo, uso, color, cliente_id,
+                              catalogo_proveedor, catalogo_codigo, motor, chasis, tipo, uso, color,
+                              direccion_riesgo, titular_nombre, titular_documento, integrantes, cliente_id,
                               creado_en, actualizado_en)
        VALUES (@clave, @patente, @patente_normalizada, @marca, @modelo, @linea, @anio, @anio_numero, @categoria,
-               @catalogo_proveedor, @catalogo_codigo, @motor, @chasis, @tipo, @uso, @color, @cliente_id, @ahora, @ahora)
+               @catalogo_proveedor, @catalogo_codigo, @motor, @chasis, @tipo, @uso, @color,
+               @direccion_riesgo, @titular_nombre, @titular_documento, @integrantes, @cliente_id, @ahora, @ahora)
        RETURNING id`,
     )
     .get({ ...aCrear, ahora }) as { id: number }
@@ -703,6 +860,13 @@ function camposDeLaFilaNueva(
     modelo: vehiculo.modelo,
     anio: vehiculo.anio,
     tipo_vehiculo: vehiculo.tipo,
+    // La planilla tiene columna para estos cuatro; en una bicicleta el cuadro viaja en CHASIS. La
+    // dirección de una casa o los integrantes de un accidentes personales no tienen columna en la
+    // hoja: quedan en la base de esta computadora y se ven en la póliza y en la ficha del cliente.
+    motor: vehiculo.motor,
+    chasis: vehiculo.chasis,
+    uso: vehiculo.uso,
+    color: vehiculo.color,
     cobertura: datos.cobertura,
     cuota: datos.cuota,
     dia_vencimiento: datos.diaVencimiento,
@@ -718,8 +882,9 @@ export function crearPoliza(datos: DatosDePoliza, actor: SesionUsuario): PolizaD
   const validados = validarDatos(datos)
   const cliente = leerCliente(validados.clienteId)
   const vehiculo = resolverVehiculo(datos, cliente, null, true)
+  exigirCoberturaDelVehiculo(vehiculo, validados)
 
-  const aviso = validarCobertura(validados.compania, validados.cobertura, vehiculo.anio)
+  const aviso = avisoDeAntiguedad(vehiculo, validados)
   exigirCobertura(aviso, validados.confirmado, actor)
 
   // La póliza y su fila del mes comparten el _ID, igual que cuando vienen de la hoja: es una sola fila
@@ -761,7 +926,7 @@ export function crearPoliza(datos: DatosDePoliza, actor: SesionUsuario): PolizaD
         compania: validados.compania,
         numero: validados.numero || null,
         numero_normalizado: normalizarNumeroPoliza(validados.numero) || null,
-        cobertura: validados.cobertura,
+        cobertura: validados.cobertura || null,
         forma_pago: validados.formaPago || null,
         // El texto de la vigencia se guarda tal cual se escribió; la fecha va aparte, derivada.
         vigencia_desde: validados.vigenciaDesde || null,
@@ -949,8 +1114,9 @@ export function editarPoliza(polizaId: number, datos: DatosDePoliza, actor: Sesi
   }
   const cliente = leerCliente(fila.cliente_id)
   const vehiculo = resolverVehiculo(datos, cliente, fila.vehiculo_id, false)
+  exigirCoberturaDelVehiculo(vehiculo, validados)
 
-  const aviso = validarCobertura(validados.compania, validados.cobertura, vehiculo.anio)
+  const aviso = avisoDeAntiguedad(vehiculo, validados)
   exigirCobertura(aviso, validados.confirmado, actor)
 
   const anioBase = Number(hoyLocal().slice(0, 4))
@@ -984,9 +1150,13 @@ export function editarPoliza(polizaId: number, datos: DatosDePoliza, actor: Sesi
   const cambioDeVehiculo = vehiculo.aCrear !== null || vehiculo.id !== fila.vehiculo_id
   if (cambioDeVehiculo) {
     cambios.push({
-      etiqueta: 'VEHICULO',
-      anterior: [limpiar(fila.marca), limpiar(fila.modelo), limpiar(fila.patente)].filter(Boolean).join(' '),
-      nuevo: [vehiculo.marca, vehiculo.modelo, vehiculo.patente].filter(Boolean).join(' '),
+      etiqueta: esVehiculo(fila.tipo_vehiculo) && esVehiculo(vehiculo.tipo) ? 'VEHICULO' : 'RIESGO',
+      anterior: esVehiculo(fila.tipo_vehiculo)
+        ? [limpiar(fila.marca), limpiar(fila.modelo), limpiar(fila.patente)].filter(Boolean).join(' ')
+        : (describirVehiculo(fila) ?? ''),
+      nuevo: esVehiculo(vehiculo.tipo)
+        ? [vehiculo.marca, vehiculo.modelo, vehiculo.patente].filter(Boolean).join(' ')
+        : vehiculo.descripcion || nombreDeTipoDeRiesgo(vehiculo.tipo),
     })
     Object.assign(paraLaHoja, {
       patente: vehiculo.patente,
@@ -994,6 +1164,10 @@ export function editarPoliza(polizaId: number, datos: DatosDePoliza, actor: Sesi
       modelo: vehiculo.modelo,
       anio: vehiculo.anio,
       tipo_vehiculo: vehiculo.tipo,
+      motor: vehiculo.motor,
+      chasis: vehiculo.chasis,
+      uso: vehiculo.uso,
+      color: vehiculo.color,
     })
     if (fila.cuota_id !== null) enCuota.patente = vehiculo.patente || null
   }

@@ -949,6 +949,12 @@ export type ResultadoAltaCliente =
   | { creado: true; cliente: FichaCliente }
   | { creado: false; yaExiste: FilaCliente; motivo: string }
 
+/**
+ * Un riesgo asegurado del cliente. Nació como «el vehículo» y la tabla se sigue llamando `vehiculos`,
+ * pero desde que una póliza puede ser de hogar, de bicicleta o de accidentes personales acá entra todo
+ * lo que se asegura: `tipo` dice qué es (ver TIPOS_DE_RIESGO) y los campos de abajo se usan según el
+ * tipo. En un auto van la patente, la marca y el modelo; en una casa, la dirección del riesgo.
+ */
 export interface VehiculoDeCliente {
   id: number
   patente: string | null
@@ -962,9 +968,17 @@ export interface VehiculoDeCliente {
   /** La que decidió el catálogo. null en los que se cargaron a mano. */
   categoria: CategoriaDeVehiculo | null
   motor: string | null
+  /** En una bicicleta es el número de cuadro. */
   chasis: string | null
   uso: string | null
   color: string | null
+  /** Hogar e integral de comercio: la dirección de la casa o del local. */
+  direccionRiesgo: string | null
+  /** A nombre de quién está el riesgo (hogar, comercio, «otros»). */
+  titularNombre: string | null
+  titularDocumento: string | null
+  /** Accidentes personales: cada persona cubierta, con su DNI. */
+  integrantes: IntegranteDePoliza[]
   polizas: number
 }
 
@@ -1091,8 +1105,9 @@ export interface AvisoDeCobertura {
 
 export interface DatosDePoliza {
   clienteId: number
-  /** Vehículo existente del cliente, o null si se carga uno nuevo. */
+  /** Riesgo (vehículo, casa, bicicleta…) que el cliente ya tiene cargado, o null si se carga uno nuevo. */
   vehiculoId: number | null
+  /** El riesgo nuevo. Qué campos importan lo decide `tipo`: ver TIPOS_DE_RIESGO. */
   vehiculoNuevo: {
     patente: string
     marca: string
@@ -1100,15 +1115,24 @@ export interface DatosDePoliza {
     /** La versión, del catálogo. Vacío si se cargó a mano. */
     linea: string
     anio: string
+    /** Uno de TIPOS_DE_RIESGO. Vacío en los vehículos viejos cargados sin tipo. */
     tipo: string
     /** La decide el catálogo, no la pantalla. Vacío si se cargó a mano. */
     categoria: string
     /** El código del proveedor: distingue un vehículo identificado de uno tipeado. */
     catalogoCodigo: string
     motor: string
+    /** En una bicicleta, el número de cuadro. */
     chasis: string
     uso: string
     color: string
+    /** Hogar e integral de comercio: la dirección de la casa o del local. */
+    direccionRiesgo: string
+    /** A nombre de quién está (hogar, comercio, «otros»). */
+    titularNombre: string
+    titularDocumento: string
+    /** Accidentes personales: las personas cubiertas. */
+    integrantes: IntegranteDePoliza[]
   } | null
   compania: string
   cobertura: string
@@ -2487,6 +2511,31 @@ export type TipoDeVehiculo = (typeof TIPOS_DE_VEHICULO)[number]
 export const NOMBRE_TIPO_VEHICULO: Record<TipoDeVehiculo, string> = {
   AUTO: 'Auto',
   MOTO: 'Moto',
+}
+
+/**
+ * Qué se puede asegurar con una póliza. Los dos primeros son los vehículos de siempre (van al catálogo
+ * y a la validación de antigüedad); el resto son los riesgos que la agencia también vende y que hasta
+ * ahora no tenían dónde cargarse desde «Nueva póliza». Se guardan en `vehiculos.tipo`, en mayúsculas y
+ * con espacios, para que en la planilla se lean tal cual («HOGAR», «ACCIDENTE PERSONAL»).
+ */
+export const TIPOS_DE_RIESGO = ['AUTO', 'MOTO', 'BICICLETA', 'ACCIDENTE PERSONAL', 'HOGAR', 'INTEGRAL DE COMERCIO', 'OTRO'] as const
+export type TipoDeRiesgo = (typeof TIPOS_DE_RIESGO)[number]
+
+export const NOMBRE_TIPO_RIESGO: Record<TipoDeRiesgo, string> = {
+  AUTO: 'Auto',
+  MOTO: 'Moto',
+  BICICLETA: 'Bicicleta',
+  'ACCIDENTE PERSONAL': 'Accidente personal',
+  HOGAR: 'Hogar',
+  'INTEGRAL DE COMERCIO': 'Integral de comercio',
+  OTRO: 'Otros',
+}
+
+/** Una persona cubierta por una póliza de accidentes personales. */
+export interface IntegranteDePoliza {
+  nombre: string
+  documento: string
 }
 
 /**

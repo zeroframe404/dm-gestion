@@ -23,6 +23,7 @@ import { Icono, type NombreIcono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
+import { detalleDeRiesgo, esVehiculo, nombreDeTipoDeRiesgo } from '../../../shared/riesgos'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
 import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, conDireccion, recortar } from './CamposDeCliente'
@@ -33,7 +34,7 @@ type IdPestana = 'datos' | 'vehiculos' | 'polizas' | 'pagos' | 'siniestros' | 'n
 
 const PESTANAS: Array<{ id: IdPestana; nombre: string; icono: NombreIcono; ayuda: string }> = [
   { id: 'datos', nombre: 'Datos', icono: 'usuario', ayuda: 'clientes.datos' },
-  { id: 'vehiculos', nombre: 'Vehículos', icono: 'auto', ayuda: 'clientes.vehiculos' },
+  { id: 'vehiculos', nombre: 'Vehículos y riesgos', icono: 'auto', ayuda: 'clientes.vehiculos' },
   { id: 'polizas', nombre: 'Pólizas', icono: 'polizas', ayuda: 'clientes.polizas' },
   { id: 'pagos', nombre: 'Pagos', icono: 'billete', ayuda: 'clientes.pagos' },
   { id: 'siniestros', nombre: 'Siniestros', icono: 'siniestros', ayuda: 'clientes.siniestros' },
@@ -422,11 +423,17 @@ function PestanaDatos({
 // Vehículos
 // ---------------------------------------------------------------------------
 
+/**
+ * Los riesgos del cliente: los vehículos de siempre y, desde que la póliza puede ser de otra cosa,
+ * también la casa, el comercio, la bicicleta o las personas cubiertas. Las columnas de auto quedan
+ * vacías en una casa; lo que la distingue va en «Detalle», que es lo que arma shared/riesgos.
+ */
 function PestanaVehiculos({ ficha }: { ficha: FichaCliente }) {
   if (ficha.vehiculos.length === 0) {
     return (
-      <Vacio titulo="Este cliente no tiene vehículos cargados.">
-        Los vehículos se cargan junto con la póliza: usá «Nueva póliza» y ahí se da de alta el auto con su patente.
+      <Vacio titulo="Este cliente no tiene vehículos ni otros riesgos cargados.">
+        Se cargan junto con la póliza: usá «Nueva póliza» y ahí se da de alta el auto con su patente, la casa con su dirección o
+        las personas cubiertas por un accidentes personales.
       </Vacio>
     )
   }
@@ -436,24 +443,26 @@ function PestanaVehiculos({ ficha }: { ficha: FichaCliente }) {
       <table className="w-full text-sm">
         <thead className="bg-slate-50">
           <tr className="border-b border-slate-200">
+            <th className={TH}>Tipo</th>
             <th className={TH}>Patente</th>
             <th className={TH}>Marca</th>
             <th className={TH}>Modelo</th>
             <th className={TH}>Año</th>
-            <th className={TH}>Tipo</th>
+            <th className={TH}>Detalle</th>
             <th className={TH}>Motor</th>
-            <th className={TH}>Chasis</th>
+            <th className={TH}>Chasis / cuadro</th>
             <th className={cx(TH, 'text-center')}>Pólizas</th>
           </tr>
         </thead>
         <tbody>
           {ficha.vehiculos.map((vehiculo) => (
             <tr key={vehiculo.id} className="border-b border-slate-100 last:border-b-0">
+              <td className={TD}>{nombreDeTipoDeRiesgo(vehiculo.tipo) || '—'}</td>
               <td className={cx(TD, 'font-mono text-xs font-semibold text-slate-900')}>{vehiculo.patente ?? '—'}</td>
               <td className={TD}>{vehiculo.marca ?? '—'}</td>
               <td className={TD}>{vehiculo.modelo ?? '—'}</td>
               <td className={cx(TD, 'tabular-nums')}>{vehiculo.anio ?? '—'}</td>
-              <td className={TD}>{vehiculo.tipo ?? '—'}</td>
+              <td className={TD}>{esVehiculo(vehiculo.tipo) ? '—' : detalleDeRiesgo(vehiculo) || '—'}</td>
               <td className={cx(TD, 'font-mono text-xs')}>{vehiculo.motor ?? '—'}</td>
               <td className={cx(TD, 'font-mono text-xs')}>{vehiculo.chasis ?? '—'}</td>
               <td className={cx(TD, 'text-center tabular-nums')}>{vehiculo.polizas}</td>

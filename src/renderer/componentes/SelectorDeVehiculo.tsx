@@ -50,6 +50,11 @@ interface Props {
   valor: VehiculoElegido
   alCambiar: (parte: Partial<VehiculoElegido>) => void
   deshabilitado?: boolean
+  /**
+   * true cuando el tipo (auto o moto) ya se eligió afuera, en el desplegable de tipo de riesgo del
+   * formulario de la póliza: acá no se vuelve a preguntar, sólo se muestra la categoría.
+   */
+  sinTipo?: boolean
 }
 
 /** Los ids del catálogo mientras se está eligiendo. No se guardan: lo que se guarda son los nombres. */
@@ -61,7 +66,7 @@ interface Eleccion {
 
 const SIN_ELEGIR: Eleccion = { marcaId: '', modeloId: '', lineaId: '' }
 
-export function SelectorDeVehiculo({ valor, alCambiar, deshabilitado = false }: Props) {
+export function SelectorDeVehiculo({ valor, alCambiar, deshabilitado = false, sinTipo = false }: Props) {
   const [hayCatalogo, setHayCatalogo] = useState<boolean | null>(null)
   // «a mano» es el modo de siempre. Arranca en «catálogo» si hay algo bajado.
   const [aMano, setAMano] = useState(false)
@@ -90,6 +95,12 @@ export function SelectorDeVehiculo({ valor, alCambiar, deshabilitado = false }: 
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Si el tipo lo cambian desde afuera (de auto a moto en el desplegable del formulario), los ids del
+  // catálogo que se venían eligiendo son de otro catálogo: se empieza de nuevo.
+  useEffect(() => {
+    setEleccion(SIN_ELEGIR)
+  }, [tipo])
 
   // Marcas: cambian sólo con el tipo.
   useEffect(() => {
@@ -190,19 +201,22 @@ export function SelectorDeVehiculo({ valor, alCambiar, deshabilitado = false }: 
 
   return (
     <div className="flex flex-col gap-4">
-      {/* El tipo va siempre, en los dos modos: es lo único que no sale del catálogo. */}
+      {/* El tipo va siempre, en los dos modos: es lo único que no sale del catálogo. Salvo que ya se
+          haya elegido afuera, como tipo de riesgo de la póliza: entonces no se pregunta dos veces. */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Selector
-          etiqueta="Tipo de vehículo"
-          value={tipo}
-          disabled={deshabilitado}
-          onChange={(evento) => elegirTipo(evento.target.value)}
-          opciones={[
-            { valor: '', texto: 'Elegí…' },
-            ...TIPOS_DE_VEHICULO.map((candidato) => ({ valor: candidato, texto: NOMBRE_TIPO_VEHICULO[candidato] })),
-          ]}
-          ayuda="Es lo único que se elige a mano. El resto sale del catálogo."
-        />
+        {!sinTipo && (
+          <Selector
+            etiqueta="Tipo de vehículo"
+            value={tipo}
+            disabled={deshabilitado}
+            onChange={(evento) => elegirTipo(evento.target.value)}
+            opciones={[
+              { valor: '', texto: 'Elegí…' },
+              ...TIPOS_DE_VEHICULO.map((candidato) => ({ valor: candidato, texto: NOMBRE_TIPO_VEHICULO[candidato] })),
+            ]}
+            ayuda="Es lo único que se elige a mano. El resto sale del catálogo."
+          />
+        )}
 
         {/* La categoría, de sólo lectura. Ocupa un lugar fijo aunque esté vacía: si apareciera y
             desapareciera, el formulario saltaría a cada clic. */}

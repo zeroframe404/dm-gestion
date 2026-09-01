@@ -13,6 +13,7 @@ import {
   textoDeDireccion,
   type DireccionEstructurada,
 } from '../../shared/direccion'
+import { leerIntegrantes } from '../../shared/riesgos'
 import { esDebitoAutomatico, hoyLocal } from '../../shared/semaforo'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
@@ -601,7 +602,8 @@ function vehiculosDe(clienteId: number, polizas: PolizaDeCliente[]): VehiculoDeC
   }
   const filas = db()
     .prepare(
-      `SELECT id, patente, marca, modelo, linea, anio, anio_numero, tipo, categoria, motor, chasis, uso, color
+      `SELECT id, patente, marca, modelo, linea, anio, anio_numero, tipo, categoria, motor, chasis, uso, color,
+              direccion_riesgo, titular_nombre, titular_documento, integrantes
        FROM vehiculos WHERE cliente_id = ? ORDER BY id`,
     )
     .all(clienteId) as Array<{
@@ -618,6 +620,10 @@ function vehiculosDe(clienteId: number, polizas: PolizaDeCliente[]): VehiculoDeC
     chasis: string | null
     uso: string | null
     color: string | null
+    direccion_riesgo: string | null
+    titular_nombre: string | null
+    titular_documento: string | null
+    integrantes: string | null
   }>
   return filas.map((f) => ({
     id: f.id,
@@ -633,6 +639,10 @@ function vehiculosDe(clienteId: number, polizas: PolizaDeCliente[]): VehiculoDeC
     chasis: f.chasis,
     uso: f.uso,
     color: f.color,
+    direccionRiesgo: f.direccion_riesgo,
+    titularNombre: f.titular_nombre,
+    titularDocumento: f.titular_documento,
+    integrantes: leerIntegrantes(f.integrantes),
     // Cuántas pólizas de ESTE cliente tiene el vehículo: si lo vendió, la del comprador no es asunto suyo.
     polizas: porVehiculo.get(f.id) ?? 0,
   }))
