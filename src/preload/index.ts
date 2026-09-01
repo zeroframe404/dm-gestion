@@ -1,6 +1,6 @@
 // Precarga: expone al renderer una API mínima y tipada (`window.dm`) a través de contextBridge.
 // El renderer nunca toca ipcRenderer directamente ni tiene acceso a Node.
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, webFrame, type IpcRendererEvent } from 'electron'
 import type { ApiDm } from '../shared/api'
 import type { ArgumentosDe, DatosDeEvento, NombreCanal, NombreEvento, RespuestaDe } from '../shared/canales'
 
@@ -276,6 +276,14 @@ const api: ApiDm = {
   },
   sistema: {
     abrirEnlace: (url) => invocar('sistema:abrirEnlace', url),
+  },
+  // El zoom se aplica acá mismo: `webFrame` es del renderer y la precarga corre en su proceso.
+  // Se acota entre 50 % y 300 % para que un valor raro guardado en esta computadora no deje la
+  // ventana en un tamaño del que no se pueda salir con los botones. Los pasos que ofrece la interfaz
+  // van de 0,7 a 2 (`ESCALAS`, en src/renderer/vista.ts): si alguna vez se amplían, hay que ampliar
+  // también este acotado o el paso nuevo se recorta en silencio.
+  vista: {
+    fijarZoom: (escala) => webFrame.setZoomFactor(Math.min(3, Math.max(0.5, escala))),
   },
   mesh: {
     estado: () => invocar('mesh:estado'),

@@ -55,6 +55,13 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'Elegir qué columnas se ven',
+        parrafos: [
+          'La planilla tiene veintidós columnas y nadie las usa todas al mismo tiempo. Con el botón «Columnas», al lado de los filtros, se apagan las que no hacen falta: quedan tildadas las que se ven y se destildan las demás. Lo que elijas se guarda en esa computadora —no en tu usuario ni en la agencia—, así que la notebook del mostrador puede quedar con seis columnas y el monitor de la oficina con todas. «Mostrar todas» las vuelve a prender.',
+          'La columna «Nombre y apellido» es la primera y no se puede apagar: queda pegada a la izquierda y no se mueve mientras corrés la tabla para el costado. Es lo que evita perder de vista de quién es la fila cuando estás mirando la patente o la póliza, allá a la derecha.',
+        ],
+      },
+      {
         titulo: '«Se les termina la cobertura»',
         parrafos: [
           'Es la tarjeta que está al lado de «Avisados hoy». Cuenta las cuotas que ya vencieron sin pago pero que la compañía todavía sigue cubriendo por unos días: son las que hay que llamar ahora, porque cuando esos días se terminan el cliente queda sin seguro.',

@@ -10,6 +10,7 @@ import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
+import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
@@ -164,11 +165,13 @@ function ListadoDeClientes({
   const hayFiltros = Boolean(filtros.busqueda || filtros.sucursal || filtros.compania || filtros.estado)
 
   const columnas: Array<ColumnaTabla<FilaCliente>> = [
+    // El nombre queda pegado a la izquierda y no se puede apagar: es lo que identifica la fila.
     {
       id: 'nombre',
       titulo: 'Nombre y apellido',
       ancho: 280,
       fija: true,
+      siempre: true,
       celda: (fila) => (
         // Botón de verdad además de la fila clicable: así se llega con el teclado, que es como
         // trabaja quien tiene una mano en el teléfono.
@@ -220,6 +223,8 @@ function ListadoDeClientes({
         ),
     },
   ]
+
+  const { visibles, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('clientes', columnas)
 
   const resumen = datos?.resumen ?? RESUMEN_VACIO
 
@@ -307,6 +312,7 @@ function ListadoDeClientes({
             Limpiar
           </Boton>
         )}
+        <SelectorDeColumnas columnas={columnas} ocultas={ocultas} alAlternar={alternarColumna} alMostrarTodas={mostrarTodas} />
         <span className="ml-auto text-sm text-slate-500" role="status">
           {cargando && !datos ? (
             'Buscando…'
@@ -328,7 +334,7 @@ function ListadoDeClientes({
       ) : (
         <TablaVirtual
           filas={datos?.filas ?? []}
-          columnas={columnas}
+          columnas={visibles}
           claveDe={(fila) => String(fila.id)}
           alHacerClic={(fila) => alAbrirCliente(fila.id)}
           vacio={

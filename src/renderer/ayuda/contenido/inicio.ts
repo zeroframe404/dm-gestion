@@ -20,6 +20,14 @@ export const AYUDA_INICIO: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'Agrandar la pantalla y achicar el menú',
+        parrafos: [
+          'Arriba a la derecha, al lado del botón del sonido, están los controles de tamaño: «−» achica todo y «+» agranda todo (la letra, los botones, las tablas), y el número del medio vuelve al 100 %. También funcionan los atajos de siempre: Ctrl y «+», Ctrl y «−», Ctrl y «0» para volver al tamaño normal, y Ctrl con la rueda del mouse. Sirve para las dos puntas: en la notebook del mostrador se baja a 80 % y entran más columnas de la planilla; en el monitor grande de la oficina se sube a 125 % y se lee sin acercarse.',
+          'La barra lateral azul se puede achicar a una tira de iconos con la flecha que está arriba de todo, al lado del nombre. Los módulos siguen estando: pasando el mouse por encima aparece el nombre de cada uno. Es lugar que gana la pantalla, que es lo que más se agradece en la planilla del mes.',
+          'Las dos cosas se guardan en esa computadora y no en tu usuario: cada máquina se acuerda de cómo la dejaste, aunque entres con el mismo nombre en otra.',
+        ],
+      },
+      {
         titulo: 'El mapa de módulos',
         parrafos: [
           'Cada tarjeta representa un módulo de la aplicación (Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros, Cobranzas, Métricas, Reportes, Marketing y Tareas) con una descripción de una línea de qué hace. Hacer clic en cualquiera te lleva directo a ese módulo, es un acceso rápido más que la barra lateral. Un módulo que todavía no está disponible en esta versión aparece marcado «Próximamente».',

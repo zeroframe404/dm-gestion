@@ -109,6 +109,14 @@ const ATAJOS: Array<{ que: string; como: string }> = [
   { que: 'Cerrar una ventana', como: 'La tecla Escape cierra la que esté arriba de todo, sin perder lo que estabas cargando debajo.' },
   { que: 'Bajar cualquier listado', como: 'Reportes arma el archivo de Excel o el PDF de cualquier listado, con los filtros que le pongas.' },
   { que: 'Apagar los sonidos', como: 'El parlante de la barra de arriba. Es de esta computadora, no de tu usuario.' },
+  {
+    que: 'Agrandar o achicar todo',
+    como: 'Los botones «− 100 % +» de la barra de arriba, o Ctrl con «+», «−» y «0». La flecha de la barra azul la achica a una tira de iconos y deja más lugar para la tabla. Las dos cosas son de esta computadora.',
+  },
+  {
+    que: 'Elegir qué columnas ver',
+    como: 'El botón «Columnas», al lado de los filtros, apaga las que no uses. El nombre siempre queda a la izquierda.',
+  },
   { que: 'Saber qué versión tenés', como: 'Administración → Acerca de. Es lo primero que te van a preguntar si pedís ayuda.' },
 ]
 

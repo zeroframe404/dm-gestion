@@ -9,6 +9,7 @@ import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
+import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { FormularioPoliza } from './FormularioPoliza'
@@ -99,11 +100,13 @@ export function Polizas() {
 
   const columnas = useMemo<Array<ColumnaTabla<PolizaDeCliente>>>(
     () => [
+      // El cliente queda pegado a la izquierda y no se puede apagar: sin él, la fila no se sabe de quién es.
       {
         id: 'cliente',
         titulo: 'Cliente',
         ancho: 230,
         fija: true,
+        siempre: true,
         celda: (fila) => (
           <span className="truncate font-medium text-slate-900" title={fila.clienteNombre ?? undefined}>
             {fila.clienteNombre ?? '—'}
@@ -201,6 +204,8 @@ export function Polizas() {
     ],
     [hoy],
   )
+
+  const { visibles, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('polizas', columnas)
 
   if (vista.pantalla === 'formulario') {
     return (
@@ -304,6 +309,7 @@ export function Polizas() {
             Limpiar
           </Boton>
         )}
+        <SelectorDeColumnas columnas={columnas} ocultas={ocultas} alAlternar={alternarColumna} alMostrarTodas={mostrarTodas} />
         <span className="ml-auto text-sm text-slate-500 tabular-nums">
           {(datos?.filas.length ?? 0).toLocaleString('es-AR')} de {(datos?.total ?? 0).toLocaleString('es-AR')} pólizas
         </span>
@@ -314,7 +320,7 @@ export function Polizas() {
 
       <TablaVirtual
         filas={datos?.filas ?? []}
-        columnas={columnas}
+        columnas={visibles}
         claveDe={(fila) => String(fila.id)}
         alHacerClic={(fila) => setVista({ pantalla: 'formulario', polizaId: fila.id, clienteIdInicial: null })}
         vacio={

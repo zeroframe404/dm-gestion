@@ -1,14 +1,23 @@
 // Tabla virtualizada: dibuja sólo las filas que se ven. Con 2.300 filas y 20 columnas, pintar todo
 // deja la pantalla pegajosa; así siempre hay ~40 filas en el DOM y el desplazamiento va fluido.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import type { ColumnaElegible } from '../vista'
 import { cx } from './ui'
 
-export interface ColumnaTabla<T> {
-  id: string
-  titulo: string
+/**
+ * Hereda de `ColumnaElegible` el id, el título y `siempre`, que son lo que mira el desplegable de
+ * «Columnas» para poder apagarla. Acá se agrega lo que hace falta para dibujarla.
+ */
+export interface ColumnaTabla<T> extends ColumnaElegible {
   /** Ancho fijo en píxeles: hace falta para poder calcular el desplazamiento. */
   ancho: number
-  /** Se queda pegada a la izquierda al desplazar en horizontal. */
+  /**
+   * Se queda pegada a la izquierda al desplazar en horizontal.
+   *
+   * Las fijas se apilan en el orden en que están declaradas y tienen que ser las primeras: una fija
+   * declarada después de una suelta se dibujaría encima de otra. Hoy es una sola por tabla —el
+   * nombre—, que es justamente lo que se quiere leer sin soltar la barra horizontal.
+   */
   fija?: boolean
   alinear?: 'izquierda' | 'derecha' | 'centro'
   celda: (fila: T, indice: number) => ReactNode
@@ -94,7 +103,8 @@ export function TablaVirtual<T>({
               }}
               className={cx(
                 'flex shrink-0 items-center px-2 py-2 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500',
-                columna.fija && 'bg-slate-50',
+                // El borde marca dónde termina lo que queda quieto y dónde empieza lo que se corre.
+                columna.fija && 'border-r border-slate-200 bg-slate-50',
                 ALINEACION[columna.alinear ?? 'izquierda'],
               )}
               title={columna.titulo}
@@ -133,6 +143,7 @@ export function TablaVirtual<T>({
                         }}
                         className={cx(
                           'flex shrink-0 items-center px-2 text-sm text-slate-700',
+                          columna.fija && 'border-r border-slate-200',
                           columna.fija && (seleccionada ? 'bg-marino-50' : 'bg-white group-hover:bg-slate-50'),
                           ALINEACION[columna.alinear ?? 'izquierda'],
                         )}

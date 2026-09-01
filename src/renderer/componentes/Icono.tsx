@@ -369,6 +369,20 @@ const TRAZOS = {
       <path d="M12 4v12" />
     </>
   ),
+  menos: <path d="M5 12h14" />,
+  columnas: (
+    <>
+      <rect width="6" height="18" x="3" y="3" rx="1" />
+      <rect width="6" height="18" x="15" y="3" rx="1" />
+      <path d="M12 5v14" />
+    </>
+  ),
+  barraLateral: (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M9 3v18" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>
 
 export type NombreIcono = keyof typeof TRAZOS
