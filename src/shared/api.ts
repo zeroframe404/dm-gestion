@@ -259,6 +259,15 @@ export interface ApiDm {
   sistema: {
     abrirEnlace: Remota<'sistema:abrirEnlace'>
   }
+  /**
+   * Lo único de `window.dm` que NO pasa por IPC: el zoom lo resuelve la precarga en el mismo proceso
+   * del renderer, con `webFrame`. Mandarlo al proceso principal sería un viaje de ida y vuelta para
+   * algo que se toca con la rueda del mouse y tiene que responder en el acto.
+   */
+  vista: {
+    /** Escala de la ventana entera. 1 es el tamaño de siempre. */
+    fijarZoom: (escala: number) => void
+  }
   mesh: {
     estado: Remota<'mesh:estado'>
   }

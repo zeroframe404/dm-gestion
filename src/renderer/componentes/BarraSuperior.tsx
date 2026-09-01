@@ -6,6 +6,7 @@ import { useSesion, useUsuarioActual } from '../contexto/Sesion'
 import { BotonDeSonido } from './BotonDeSonido'
 import { CampanaDeRechazos } from './CampanaDeRechazos'
 import { CampanaDeTareas } from './CampanaDeTareas'
+import { ControlDeZoom } from './ControlDeZoom'
 import { IndicadorSync } from './IndicadorSync'
 import { Boton } from './ui'
 
@@ -40,9 +41,11 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-6">
-      <h1 className="font-display text-lg font-bold tracking-tight text-slate-900">{titulo}</h1>
+      {/* El título se recorta antes que empujar los controles fuera de la ventana: la barra es de alto
+          fijo y el `body` no scrollea, así que lo que se sale de acá no vuelve. */}
+      <h1 className="min-w-0 truncate font-display text-lg font-bold tracking-tight text-slate-900">{titulo}</h1>
 
-      <div className="ml-auto flex items-center gap-4">
+      <div className="ml-auto flex shrink-0 items-center gap-4">
         <IndicadorSync />
         {verRechazos && (
           <>
@@ -58,6 +61,8 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
         )}
         {/* Pegado a las campanas: es lo que se busca justo después de que sonó una y molestó. */}
         <BotonDeSonido />
+        {/* Al lado del sonido a propósito: las dos son preferencias de esta computadora y no del usuario. */}
+        <ControlDeZoom />
         <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
 
         <div className="flex items-center gap-3">

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { NOMBRE_RANGO_MORA, type FilaMora, type FiltrosMora, type ListadoMora, type RangoDeMora } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -69,11 +70,32 @@ export function Mora() {
 
   const columnas = useMemo<Array<ColumnaTabla<FilaMora>>>(
     () => [
+      // El cliente va primero y es la única fija: es de quien hay que acordarse mientras se corre la
+      // tabla para mirar la póliza o la patente. Las demás se apagan desde «Columnas».
+      {
+        id: 'nombre',
+        titulo: 'Cliente',
+        ancho: 240,
+        fija: true,
+        siempre: true,
+        celda: (fila) => (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{fila.nombre ?? '—'}</span>
+            {fila.imputada && (
+              <span
+                className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800"
+                title="La agencia ya le imputó la cuota a la compañía: lo que se persigue es el pago del cliente."
+              >
+                Imputado
+              </span>
+            )}
+          </span>
+        ),
+      },
       {
         id: 'atraso',
         titulo: 'Atraso',
         ancho: 118,
-        fija: true,
         celda: (fila) => (
           <span
             title={`Venció el ${fila.vencimiento}${fila.dentroDeCobertura && fila.finCobertura ? ` · la compañía cubre hasta el ${fila.finCobertura}` : ''}`}
@@ -87,7 +109,6 @@ export function Mora() {
         id: 'avisar',
         titulo: 'Avisar',
         ancho: 76,
-        fija: true,
         celda: (fila) => (
           <button
             type="button"
@@ -102,25 +123,6 @@ export function Mora() {
           >
             <Icono nombre="mensaje" tamano={14} />
           </button>
-        ),
-      },
-      {
-        id: 'nombre',
-        titulo: 'Cliente',
-        ancho: 240,
-        fija: true,
-        celda: (fila) => (
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate">{fila.nombre ?? '—'}</span>
-            {fila.imputada && (
-              <span
-                className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800"
-                title="La agencia ya le imputó la cuota a la compañía: lo que se persigue es el pago del cliente."
-              >
-                Imputado
-              </span>
-            )}
-          </span>
         ),
       },
       { id: 'telefono', titulo: 'Teléfono', ancho: 130, celda: (fila) => fila.telefono ?? <span className="text-slate-400">sin teléfono</span> },
@@ -146,6 +148,8 @@ export function Mora() {
     ],
     [avisando],
   )
+
+  const { visibles, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('mora', columnas)
 
   if (cargando && !datos) return <Cargando texto="Buscando la mora…" />
   if (!datos) return <div className="p-8">{error && <Alerta tono="error">{error}</Alerta>}</div>
@@ -211,6 +215,7 @@ export function Mora() {
             Limpiar
           </Boton>
         )}
+        <SelectorDeColumnas columnas={columnas} ocultas={ocultas} alAlternar={alternarColumna} alMostrarTodas={mostrarTodas} />
         <span className="ml-auto text-sm text-slate-500">
           {numero(datos.filas.length)} de {numero(datos.total)} cuotas
         </span>
@@ -221,7 +226,7 @@ export function Mora() {
 
       <TablaVirtual
         filas={datos.filas}
-        columnas={columnas}
+        columnas={visibles}
         claveDe={(fila) => fila.filaId}
         vacio={
           datos.total === 0

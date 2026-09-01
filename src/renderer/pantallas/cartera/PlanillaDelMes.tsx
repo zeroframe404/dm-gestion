@@ -14,6 +14,7 @@ import { mismaSucursal } from '../../../shared/sucursales'
 import type { CampoEditable, FilaCartera, PlanillaDelMes as DatosPlanilla } from '../../../shared/tipos'
 import { DialogoRechazo } from '../../componentes/DialogoRechazo'
 import { Icono } from '../../componentes/Icono'
+import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { Alerta as Aviso, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -370,12 +371,15 @@ export function PlanillaDelMes() {
     )
     const catalogos = datos?.catalogos
 
+    // El orden importa: la primera es la única fija, y es el nombre. Con veintidós columnas, correr
+    // la barra horizontal para mirar la patente dejaba la fila sin dueño; ahora el nombre queda
+    // pegado a la izquierda y el resto pasa por debajo. Las demás se pueden apagar desde «Columnas».
     return [
+      { id: 'nombre', titulo: 'Nombre y apellido', ancho: 240, fija: true, siempre: true, celda: celdaEditable('nombre') },
       {
         id: 'alerta',
         titulo: 'Alerta',
         ancho: 142,
-        fija: true,
         celda: ({ alerta }) => (
           <span
             title={alerta.detalle}
@@ -390,7 +394,6 @@ export function PlanillaDelMes() {
         id: 'acciones',
         titulo: 'Acciones',
         ancho: 200,
-        fija: true,
         celda: ({ fila }) => (
           <div className="flex items-center gap-0.5">
             {/* Sólo en la fila que tiene un pago adelantado esperando: imputarlo la deja paga. */}
@@ -427,8 +430,7 @@ export function PlanillaDelMes() {
           </div>
         ),
       },
-      { id: 'sucursal', titulo: 'Sucursal', ancho: 120, fija: true, celda: celdaEditable('sucursal', catalogos?.sucursales) },
-      { id: 'nombre', titulo: 'Nombre y apellido', ancho: 240, fija: true, celda: celdaEditable('nombre') },
+      { id: 'sucursal', titulo: 'Sucursal', ancho: 120, celda: celdaEditable('sucursal', catalogos?.sucursales) },
       { id: 'telefono', titulo: 'Teléfono', ancho: 130, celda: celdaEditable('telefono') },
       { id: 'documento', titulo: 'DNI/CUIT', ancho: 110, celda: celdaEditable('documento') },
       { id: 'vencimiento', titulo: 'Fecha de venc', ancho: 100, alinear: 'centro', celda: celdaEditable('diaVencimiento') },
@@ -448,7 +450,9 @@ export function PlanillaDelMes() {
       { id: 'hasta', titulo: 'Hasta', ancho: 100, celda: celdaEditable('vigenciaHasta') },
       { id: 'observaciones', titulo: 'Observaciones', ancho: 240, celda: celdaEditable('observaciones') },
     ]
-  }, [avisar, datos, editando, guardarCelda, marcarAvisado, soloLectura])
+  }, [avisar, datos, editando, guardarCelda, imputarAdelanto, marcarAvisado, soloLectura])
+
+  const { visibles, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('cartera', columnas)
 
   if (cargando && !datos) return <Cargando texto="Abriendo la planilla…" />
 
@@ -611,6 +615,7 @@ export function PlanillaDelMes() {
             Limpiar
           </Boton>
         )}
+        <SelectorDeColumnas columnas={columnas} ocultas={ocultas} alAlternar={alternarColumna} alMostrarTodas={mostrarTodas} />
         <span className="ml-auto text-sm text-slate-500">
           {filtradas.length.toLocaleString('es-AR')} de {contadores.total.toLocaleString('es-AR')} filas
         </span>
@@ -622,7 +627,7 @@ export function PlanillaDelMes() {
       <div className="flex min-h-0 flex-1 gap-3">
         <TablaVirtual
           filas={filtradas}
-          columnas={columnas}
+          columnas={visibles}
           claveDe={({ fila }) => fila.filaId}
           filaSeleccionada={seleccionada}
           alHacerClic={({ fila }) => setSeleccionada((previa) => (previa === fila.filaId ? null : fila.filaId))}

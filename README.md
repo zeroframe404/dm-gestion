@@ -12,7 +12,7 @@ hoja de Google dejó de ser la fuente de verdad. Ver «La base en el VPS (Fase 1
 ```bash
 npm install       # instala dependencias (better-sqlite3 trae binarios listos, no compila nada)
 npm run dev       # desarrollo con recarga automática (usuarios locales: sin DM_GESTION_TOKEN_DATOS no toca GitHub)
-npm run prueba    # 302 pruebas propias, sin tocar ninguna hoja real ni GitHub
+npm run prueba    # 520 pruebas propias, sin tocar ninguna hoja real ni GitHub
 npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
 npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador de GitHub
 npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
@@ -188,6 +188,67 @@ estructura de la real (`pruebas/hoja-de-prueba.ts`): planillas mensuales con las
 mes al otro, sus «BAJAS», y AMP, RIESGOS VARIOS, IMPUTADOS, SINIESTROS, CONTADOR, SEGUROS ACT y
 COBERTURA, con datos raros a propósito. También levanta un servidor local que simula la API de Google
 para probar el cliente sin salir a internet.
+
+## La vista: zoom, columnas y barra lateral
+
+Tres preferencias de **interfaz**, todas guardadas en el `localStorage` de **cada computadora** y no en
+el usuario ni en la base. Es a propósito: el mismo usuario entra en la notebook de 14" del mostrador y
+en el monitor grande de la oficina, y espera que cada máquina se acuerde de lo suyo. Es el mismo
+criterio que ya usaba el volumen de los avisos (`src/renderer/sonidos/index.ts`).
+
+La lógica pura —los pasos del zoom y qué columnas quedan a la vista— vive en `src/renderer/vista.ts`,
+sin tocar `window`, así que se prueba en Node (`pruebas/vista.prueba.ts`). El archivo de al lado,
+`src/renderer/preferencias.ts`, es el único que guarda y el único que aplica.
+
+### Zoom (`dm.vista.zoom`)
+
+Nueve pasos, de 70 % a 200 %, en el control «− 100 % +» de la barra superior. Además andan **Ctrl +**,
+**Ctrl −**, **Ctrl 0** y **Ctrl + rueda del mouse**.
+
+Lo hace el zoom de Chromium (`webFrame.setZoomFactor`, en la precarga) y **no** una transformación de
+CSS. La diferencia importa: los anchos de la tabla virtual están en píxeles y los diálogos se
+posicionan con `fixed`, así que escalar por CSS dejaría la planilla igual de ancha y los carteles fuera
+de lugar. Con el zoom del navegador entra todo, incluidas las barras de desplazamiento.
+
+Los atajos se manejan en el renderer (`ControlDeZoom.tsx`) y no con un menú de Electron porque la
+versión publicada arranca sin menú (`Menu.setApplicationMenu(null)` en `src/main/index.ts`), y sin menú
+Chromium se queda sin los Ctrl + / − / 0 de fábrica. La escala guardada se aplica en `main.tsx` antes
+de dibujar: si se aplicara desde un componente, la pantalla aparecería al 100 % y saltaría.
+
+`window.dm.vista` es lo único de la API de la precarga que **no** pasa por IPC. Mandarlo al proceso
+principal sería un viaje de ida y vuelta para algo que se toca con la rueda del mouse.
+
+### Columnas (`dm.vista.columnas.<tabla>`)
+
+El botón **«Columnas»** de Cartera, Clientes, Pólizas y Mora abre un desplegable con una casilla por
+columna. Lo que se apaga se guarda por tabla y por computadora.
+
+**La columna del nombre es la primera y la única fija** (`fija: true`, `siempre: true` en
+`ColumnaTabla`): queda pegada a la izquierda al correr la tabla en horizontal y no se puede apagar. La
+planilla del mes tenía cuatro columnas fijas —Alerta, Acciones, Sucursal y Nombre, 702 px— que se
+comían la pantalla antes de mostrar un solo dato; ahora la fija es una sola, de 240 px, y el resto pasa
+por debajo.
+
+Dos reglas que están probadas y conviene no perder:
+
+- Lo guardado se **sanea** contra las columnas que existen hoy. Si una versión le cambia el id a una
+  columna, o convierte en obligatoria una que alguien había escondido, lo viejo se descarta en vez de
+  esconder un fantasma.
+- Si de tanto apagar no quedara **ninguna** columna, se muestran todas. No se llega ahí tocando el
+  desplegable (el nombre no se apaga), pero sí editando el `localStorage` a mano: una tabla sin columnas
+  es una pantalla de la que no se sale más.
+
+En `TablaVirtual` las columnas fijas se apilan en el orden en que están declaradas y **tienen que ser
+las primeras**: una fija declarada después de una suelta se dibujaría encima de otra.
+
+**General Excel** no tiene este botón a propósito: esa pantalla imita una hoja de cálculo (columna A, B,
+C, cursor de celda, copiar un rango) y esconder columnas rompería justamente eso.
+
+### Barra lateral (`dm.vista.barraLateral`)
+
+La flecha de arriba de la barra azul la achica de 272 px a una tira de 64 px con sólo los iconos; el
+nombre de cada módulo queda en el `title`. Son dos columnas más de la planilla a la vista en la notebook
+del mostrador.
 
 ## Cartera (la planilla del mes)
 
