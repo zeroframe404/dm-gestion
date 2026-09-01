@@ -18,11 +18,15 @@ import { db } from '../db/base'
 import { carpetaDatos } from '../rutas'
 import {
   anotarErrorDeImpresion,
+  COPIAS_MAXIMAS,
   direccionDeSucursal,
   direccionesGuardadas,
+  establecerProximoNumeroDeTicket,
   guardarDirecciones,
   guardarImpresora,
   impresoraGuardada,
+  proximoNumeroDeTicket,
+  tomarNumeroDeTicket,
   ultimoErrorDeImpresion,
 } from './preferencias'
 import { listarSucursales } from './sucursales'
@@ -48,6 +52,8 @@ const AGENCIA = {
 
 /** Lo variable del comprobante: sale del pago, del cliente, de la póliza y de la sucursal que cobró. */
 export interface DatosDeTicket {
+  /** Número correlativo del comprobante, ya formateado ('N° 000123'). */
+  numero: string
   /** Dirección de la sucursal donde se cobró; encabeza el ticket. */
   direccion: string
   /** Día del pago, 'd/M/aaaa'. */
@@ -107,10 +113,18 @@ export async function configuracionDeImpresora(): Promise<ConfigImpresora> {
     preguntar: guardada.preguntar,
     impresora: guardada.impresora,
     anchoMm: guardada.anchoMm,
+    copias: guardada.copias,
+    proximoNumeroDeTicket: proximoNumeroDeTicket(),
     disponibles: nombres,
     predeterminada,
     ultimoError: ultimoErrorDeImpresion(),
   }
+}
+
+/** Corrige el correlativo desde Administración → Impresora (por ejemplo, después de cambiar el rollo). */
+export async function establecerNumeroDeTicket(numero: number): Promise<ConfigImpresora> {
+  establecerProximoNumeroDeTicket(numero)
+  return configuracionDeImpresora()
 }
 
 export async function guardarConfiguracionDeImpresora(datos: DatosDeImpresora): Promise<ConfigImpresora> {
@@ -196,6 +210,12 @@ export function guardarDireccionesDeTicket(
 // El ticket
 // ---------------------------------------------------------------------------
 
+/** Valida la cantidad de copias pedida desde el renderer; si no llega nada válido, se usa la guardada. */
+function comoCantidadDeCopias(pedida: number | undefined, porDefecto: number): number {
+  const numero = Math.trunc(Number(pedida))
+  return Number.isFinite(numero) && numero >= 1 && numero <= COPIAS_MAXIMAS ? numero : porDefecto
+}
+
 function escapar(valor: string): string {
   return valor.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
@@ -225,6 +245,7 @@ function htmlDelTicket(datos: DatosDeTicket, anchoMm: number): string {
   .encabezado .direccion { font-weight: bold; font-size: 10pt; }
   hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
   .cuando { display: flex; justify-content: space-between; gap: 2mm; font-size: 9pt; }
+  .numero { margin-top: .5mm; font-weight: bold; text-align: center; }
   .dato { padding: .3mm 0; word-break: break-word; }
   .vencimiento { margin-top: 2mm; font-weight: bold; text-align: center; }
   .pie { margin-top: 3mm; font-size: 7.5pt; }
@@ -236,6 +257,7 @@ function htmlDelTicket(datos: DatosDeTicket, anchoMm: number): string {
     <p>${escapar(AGENCIA.cuit)}</p>
     <p>${escapar(AGENCIA.inicioDeActividades)}</p>
   </div>
+  <p class="numero">${escapar(datos.numero)}</p>
   <hr>
   <div class="cuando"><span>FECHA: ${escapar(datos.fecha)}</span><span>HORA: ${escapar(datos.hora)}</span></div>
   <hr>
@@ -261,7 +283,7 @@ function altoEnMicrones(): number {
   return 140_000
 }
 
-async function imprimirHtml(html: string, deviceName: string, anchoMm: number): Promise<void> {
+async function imprimirHtml(html: string, deviceName: string, anchoMm: number, copias: number): Promise<void> {
   const carpeta = path.join(carpetaDatos(), 'tickets')
   mkdirSync(carpeta, { recursive: true })
   const ruta = path.join(carpeta, 'ticket.html')
@@ -297,6 +319,7 @@ async function imprimirHtml(html: string, deviceName: string, anchoMm: number): 
             printBackground: false,
             margins: { marginType: 'none' },
             pageSize: { width: Math.round(anchoMm * 1000), height: altoEnMicrones() },
+            copies: copias,
           },
           (exito, motivo) => terminar(exito ? undefined : new Error(motivo || 'La impresora rechazó el trabajo.')),
         )
@@ -312,12 +335,16 @@ async function imprimirHtml(html: string, deviceName: string, anchoMm: number): 
 /**
  * Imprime el ticket si hay una impresora configurada y activa. Nunca lanza: el cobro ya está hecho y
  * un problema de impresora no puede volverse un error del pago. El motivo queda guardado.
+ *
+ * `copias` es cuántas veces sale el mismo comprobante (1 o 2, para quien quiera un duplicado); sin
+ * mandarlo se usa lo guardado en Administración → Impresora.
  */
-export async function imprimirTicketSiCorresponde(datos: DatosDeTicket): Promise<boolean> {
+export async function imprimirTicketSiCorresponde(datos: DatosDeTicket, copias?: number): Promise<boolean> {
   const config = impresoraGuardada()
   if (!config.habilitada || !config.impresora) return false
+  const cantidad = comoCantidadDeCopias(copias, config.copias)
   try {
-    await imprimirHtml(htmlDelTicket(datos, config.anchoMm), config.impresora, config.anchoMm)
+    await imprimirHtml(htmlDelTicket(datos, config.anchoMm), config.impresora, config.anchoMm, cantidad)
     anotarErrorDeImpresion(null)
     return true
   } catch (error) {
@@ -455,28 +482,44 @@ export function pedidoDeTicket(pagoId: number): PedidoDeTicket | null {
     compania: pago.compania ?? '',
     poliza: pago.numero_poliza ?? '',
     importe: comoImporte(pago),
+    copiasPorDefecto: config.copias,
   }
 }
 
-/** Arma el ticket de un pago ya registrado y lo manda a imprimir. */
-export async function imprimirTicketDePago(pagoId: number): Promise<boolean> {
+/** 'N° 000123', como venía saliendo en el papel de la agencia. */
+function formatearNumeroDeTicket(numero: number): string {
+  return `N° ${String(numero).padStart(6, '0')}`
+}
+
+/**
+ * Arma el ticket de un pago ya registrado y lo manda a imprimir. El correlativo se toma acá, recién
+ * cuando el ticket se va a imprimir de verdad: si no hay impresora activa no se gasta un número al
+ * pedo.
+ */
+export async function imprimirTicketDePago(pagoId: number, copias?: number): Promise<boolean> {
   const pago = leerPago(pagoId)
   if (!pago) return false
+  const config = impresoraGuardada()
+  if (!config.habilitada || !config.impresora) return false
 
-  return imprimirTicketSiCorresponde({
-    direccion: direccionDeSucursal(pago.sucursal),
-    fecha: comoFechaCorta(diaDelPago(pago)),
-    hora: horaDeRegistro(pago.creado_en),
-    importe: comoImporte(pago),
-    periodo: comoPeriodo(pago.periodo, pago.periodo_texto),
-    titular: pago.cliente_nombre ?? '',
-    domicilio: pago.direccion ?? '',
-    compania: pago.compania ?? '',
-    patente: pago.patente ?? '',
-    poliza: pago.numero_poliza ?? '',
-    cobertura: pago.cobertura ?? '',
-    proximoVencimiento: proximoVencimiento(pago),
-  })
+  return imprimirTicketSiCorresponde(
+    {
+      numero: formatearNumeroDeTicket(tomarNumeroDeTicket()),
+      direccion: direccionDeSucursal(pago.sucursal),
+      fecha: comoFechaCorta(diaDelPago(pago)),
+      hora: horaDeRegistro(pago.creado_en),
+      importe: comoImporte(pago),
+      periodo: comoPeriodo(pago.periodo, pago.periodo_texto),
+      titular: pago.cliente_nombre ?? '',
+      domicilio: pago.direccion ?? '',
+      compania: pago.compania ?? '',
+      patente: pago.patente ?? '',
+      poliza: pago.numero_poliza ?? '',
+      cobertura: pago.cobertura ?? '',
+      proximoVencimiento: proximoVencimiento(pago),
+    },
+    copias,
+  )
 }
 
 /** El botón «Imprimir una prueba» de Administración → Impresora. */
@@ -488,6 +531,8 @@ export async function imprimirTicketDePrueba(sucursal: string): Promise<void> {
   const ahora = new Date()
   const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
   const datos: DatosDeTicket = {
+    // La prueba no gasta un número real: es sólo para ver que la impresora anda.
+    numero: 'PRUEBA',
     direccion: direccionDeSucursal(sucursal),
     fecha: comoFechaCorta(hoy),
     hora: horaDeRegistro(ahora.toISOString()),
@@ -502,7 +547,7 @@ export async function imprimirTicketDePrueba(sucursal: string): Promise<void> {
     proximoVencimiento: comoFechaLarga(fechaDeVencimiento(periodoSiguiente(hoy.slice(0, 7)), ahora.getDate()) ?? ''),
   }
   try {
-    await imprimirHtml(htmlDelTicket(datos, config.anchoMm), config.impresora, config.anchoMm)
+    await imprimirHtml(htmlDelTicket(datos, config.anchoMm), config.impresora, config.anchoMm, 1)
     anotarErrorDeImpresion(null)
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : String(error)

@@ -1638,6 +1638,10 @@ export interface ConfigImpresora {
   impresora: string | null
   /** Ancho del papel en milímetros (80 en las POS-80). */
   anchoMm: number
+  /** Cuántas copias del ticket salen por pago (1 o 2). Con «preguntar» activado se puede elegir en el momento. */
+  copias: number
+  /** El número que va a llevar el próximo ticket que se imprima. Sube solo; se puede corregir a mano. */
+  proximoNumeroDeTicket: number
   /** Impresoras que ve el sistema. Vacío si no se pudieron leer. */
   disponibles: string[]
   predeterminada: string | null
@@ -1650,6 +1654,7 @@ export interface DatosDeImpresora {
   preguntar: boolean
   impresora: string
   anchoMm: number
+  copias: number
 }
 
 /**
@@ -1673,6 +1678,8 @@ export interface PedidoDeTicket {
   compania: string
   poliza: string
   importe: string
+  /** Cuántas copias imprimir por defecto (lo que quedó guardado en Administración → Impresora). */
+  copiasPorDefecto: number
 }
 
 // ---------------------------------------------------------------------------

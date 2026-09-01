@@ -5,7 +5,7 @@
 // quien cobra es quien necesita apagarla, cambiarla o dejar de gastar papel sin esperar a nadie.
 import { useCallback, useEffect, useState } from 'react'
 import type { ConfigImpresora, DireccionDeSucursal } from '../../../shared/tipos'
-import { Alerta, Boton, Campo, Cargando, Selector, Tarjeta } from '../../componentes/ui'
+import { Alerta, Boton, Campo, Cargando, Selector, Tarjeta, cx } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
 export function Impresora() {
@@ -20,6 +20,7 @@ export function Impresora() {
   const [preguntar, setPreguntar] = useState(true)
   const [impresora, setImpresora] = useState('')
   const [anchoMm, setAnchoMm] = useState('80')
+  const [copias, setCopias] = useState(1)
 
   const aplicar = useCallback((config: ConfigImpresora) => {
     setEstado(config)
@@ -27,6 +28,7 @@ export function Impresora() {
     setPreguntar(config.preguntar)
     setImpresora(config.impresora ?? config.predeterminada ?? '')
     setAnchoMm(String(config.anchoMm))
+    setCopias(config.copias)
   }, [])
 
   const cargar = useCallback(async () => {
@@ -45,7 +47,7 @@ export function Impresora() {
     setGuardando(true)
     setError(null)
     setAviso(null)
-    const resultado = await window.dm.impresora.guardar({ habilitada, preguntar, impresora, anchoMm: Number(anchoMm) })
+    const resultado = await window.dm.impresora.guardar({ habilitada, preguntar, impresora, anchoMm: Number(anchoMm), copias })
     setGuardando(false)
     if (resultado.ok) {
       aplicar(resultado.datos)
@@ -82,7 +84,8 @@ export function Impresora() {
     habilitada !== estado.habilitada ||
     preguntar !== estado.preguntar ||
     impresora !== (estado.impresora ?? '') ||
-    Number(anchoMm) !== estado.anchoMm
+    Number(anchoMm) !== estado.anchoMm ||
+    copias !== estado.copias
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -176,11 +179,93 @@ export function Impresora() {
             ayuda="Una POS-80 usa 80 mm. Si el ticket sale cortado o muy angosto, ajustá este número."
             className="max-w-40"
           />
+
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Cantidad de tickets por pago</span>
+            <div className="flex max-w-64 gap-2">
+              {[1, 2].map((cantidad) => (
+                <button
+                  key={cantidad}
+                  type="button"
+                  onClick={() => setCopias(cantidad)}
+                  className={cx(
+                    'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+                    copias === cantidad ? 'border-marino-500 bg-marino-50 text-marino-900 ring-2 ring-marino-500/20' : 'border-slate-200 text-slate-700 hover:bg-slate-50',
+                  )}
+                >
+                  {cantidad} {cantidad === 1 ? 'ticket' : 'tickets'}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Con «preguntar antes de imprimir» activado, se puede elegir 1 o 2 en el momento; esto es lo que sale
+              marcado de entrada.
+            </p>
+          </div>
         </div>
       </Tarjeta>
 
+      <NumeracionDeTickets proximoNumero={estado.proximoNumeroDeTicket} alGuardar={(config) => setEstado(config)} />
+
       <DireccionesDelTicket />
     </div>
+  )
+}
+
+/**
+ * El número correlativo que va a llevar el próximo ticket. Sube solo con cada comprobante impreso; acá
+ * sólo se corrige a mano, por ejemplo después de cambiar el rollo o de una prueba de otra sucursal.
+ */
+function NumeracionDeTickets({ proximoNumero, alGuardar }: { proximoNumero: number; alGuardar: (config: ConfigImpresora) => void }) {
+  const [valor, setValor] = useState(String(proximoNumero))
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  useEffect(() => {
+    setValor(String(proximoNumero))
+  }, [proximoNumero])
+
+  const numero = Number(valor)
+  const hayCambios = Number.isInteger(numero) && numero >= 1 && numero !== proximoNumero
+
+  const guardar = async () => {
+    setGuardando(true)
+    setError(null)
+    setAviso(null)
+    const resultado = await window.dm.impresora.establecerNumeroDeTicket(numero)
+    setGuardando(false)
+    if (resultado.ok) {
+      alGuardar(resultado.datos)
+      setAviso('Listo: el próximo comprobante sale con ese número.')
+    } else {
+      setError(resultado.error)
+    }
+  }
+
+  return (
+    <Tarjeta
+      titulo="Numeración de tickets"
+      descripcion="Cada comprobante impreso lleva un número correlativo y suma uno para el siguiente. Corregilo sólo si hace falta."
+      acciones={
+        <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios}>
+          Guardar
+        </Boton>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {error && <Alerta tono="error">{error}</Alerta>}
+        {aviso && <Alerta tono="exito">{aviso}</Alerta>}
+        <Campo
+          etiqueta="Próximo número de ticket"
+          type="number"
+          min={1}
+          value={valor}
+          onChange={(evento) => setValor(evento.target.value)}
+          className="max-w-40"
+        />
+      </div>
+    </Tarjeta>
   )
 }
 

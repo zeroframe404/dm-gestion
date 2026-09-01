@@ -90,6 +90,7 @@ export interface ApiDm {
     guardar: Remota<'impresora:guardar'>
     prueba: Remota<'impresora:prueba'>
     imprimirPago: Remota<'impresora:imprimirPago'>
+    establecerNumeroDeTicket: Remota<'impresora:establecerNumeroDeTicket'>
     direcciones: Remota<'impresora:direcciones'>
     guardarDirecciones: Remota<'impresora:guardarDirecciones'>
     /** El cartel de «¿imprimo el comprobante?» después de registrar un pago. */

@@ -31,12 +31,19 @@ const CLAVE_ERROR_IMPRESION = 'impresora_ultimo_error'
 /** Ancho de papel de una POS-80, que es la que usa la agencia. */
 export const ANCHO_TICKET_POR_DEFECTO = 80
 
+/** Cuántas copias del ticket salen por pago. Es lo normal: casi nadie necesita el duplicado. */
+export const COPIAS_POR_DEFECTO = 1
+/** El duplicado es la única razón para pedir más de una copia (por ejemplo, una para el cliente y otra para la agencia). */
+export const COPIAS_MAXIMAS = 2
+
 export interface ImpresoraGuardada {
   habilitada: boolean
   /** Preguntar antes de cada ticket en vez de imprimirlo solo. */
   preguntar: boolean
   impresora: string | null
   anchoMm: number
+  /** Entre 1 y COPIAS_MAXIMAS. */
+  copias: number
 }
 
 const SIN_IMPRESORA: ImpresoraGuardada = {
@@ -44,6 +51,12 @@ const SIN_IMPRESORA: ImpresoraGuardada = {
   preguntar: true,
   impresora: null,
   anchoMm: ANCHO_TICKET_POR_DEFECTO,
+  copias: COPIAS_POR_DEFECTO,
+}
+
+function comoCantidadDeCopias(valor: unknown): number {
+  const numero = Math.trunc(Number(valor))
+  return Number.isFinite(numero) && numero >= 1 && numero <= COPIAS_MAXIMAS ? numero : COPIAS_POR_DEFECTO
 }
 
 export function impresoraGuardada(): ImpresoraGuardada {
@@ -58,6 +71,9 @@ export function impresoraGuardada(): ImpresoraGuardada {
       preguntar: datos.preguntar !== false,
       impresora: typeof datos.impresora === 'string' && datos.impresora ? datos.impresora : null,
       anchoMm: typeof datos.anchoMm === 'number' && datos.anchoMm >= 40 && datos.anchoMm <= 120 ? datos.anchoMm : ANCHO_TICKET_POR_DEFECTO,
+      // Configuraciones anteriores a que existieran las copias no traen la clave: una copia, como
+      // siempre salió.
+      copias: comoCantidadDeCopias(datos.copias),
     }
   } catch {
     return SIN_IMPRESORA
@@ -70,6 +86,10 @@ export function guardarImpresora(datos: DatosDeImpresora): ImpresoraGuardada {
   if (!Number.isFinite(ancho) || ancho < 40 || ancho > 120) {
     throw new ErrorDeNegocio('El ancho del papel tiene que estar entre 40 y 120 milímetros (una POS-80 usa 80).')
   }
+  const copias = Number(datos.copias)
+  if (!Number.isInteger(copias) || copias < 1 || copias > COPIAS_MAXIMAS) {
+    throw new ErrorDeNegocio(`La cantidad de tickets tiene que ser 1 o ${COPIAS_MAXIMAS}.`)
+  }
   if (datos.habilitada === true && !impresora) {
     throw new ErrorDeNegocio('Elegí la impresora térmica antes de activar el ticket.')
   }
@@ -78,9 +98,41 @@ export function guardarImpresora(datos: DatosDeImpresora): ImpresoraGuardada {
     preguntar: datos.preguntar === true,
     impresora: impresora || null,
     anchoMm: ancho,
+    copias,
   }
   guardar(CLAVE_IMPRESORA, JSON.stringify(nueva))
   return nueva
+}
+
+// ---------------------------------------------------------------------------
+// Numeración de los tickets
+// ---------------------------------------------------------------------------
+
+const CLAVE_CORRELATIVO_TICKET = 'impresora_correlativo_ticket'
+
+/** El número que va a llevar el próximo ticket, sin consumirlo. Arranca en 1. */
+export function proximoNumeroDeTicket(): number {
+  const numero = Number(leer(CLAVE_CORRELATIVO_TICKET))
+  return Number.isInteger(numero) && numero > 0 ? numero : 1
+}
+
+/**
+ * Toma el número para el ticket que se está por imprimir y deja guardado el siguiente. No hay
+ * `await` entre leer y guardar, así que dos pagos seguidos no se pueden llevar el mismo número.
+ */
+export function tomarNumeroDeTicket(): number {
+  const numero = proximoNumeroDeTicket()
+  guardar(CLAVE_CORRELATIVO_TICKET, String(numero + 1))
+  return numero
+}
+
+/** Para Administración → Impresora: corrige el correlativo, por ejemplo después de cambiar el rollo. */
+export function establecerProximoNumeroDeTicket(numero: number): number {
+  if (!Number.isInteger(numero) || numero < 1) {
+    throw new ErrorDeNegocio('El número de ticket tiene que ser un entero mayor o igual a 1.')
+  }
+  guardar(CLAVE_CORRELATIVO_TICKET, String(numero))
+  return numero
 }
 
 // ---------------------------------------------------------------------------
