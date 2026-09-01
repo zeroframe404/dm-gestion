@@ -1271,6 +1271,28 @@ export const MIGRACIONES: Migracion[] = [
       CREATE INDEX idx_vehiculos_catalogo ON vehiculos (catalogo_codigo);
     `,
   },
+  {
+    version: 19,
+    descripcion: 'Riesgos que no son vehículos: hogar, comercio, bicicleta, accidentes personales, otros',
+    sql: `
+      -- Una póliza no siempre asegura un auto. La tabla \`vehiculos\` pasa a guardar cualquier riesgo
+      -- asegurado (sigue con su nombre: cambiárselo tocaría cada consulta, cada baja y la importación) y
+      -- \`tipo\` dice qué es: AUTO y MOTO como hasta ahora, y desde acá también BICICLETA, ACCIDENTE
+      -- PERSONAL, HOGAR, INTEGRAL DE COMERCIO y OTRO (ver TIPOS_DE_RIESGO en shared/tipos.ts).
+      --
+      -- Lo que cada riesgo necesita y no tenía columna:
+      --  - la dirección de la casa o del local (hogar e integral de comercio);
+      --  - a nombre de quién está (hogar, comercio y «otros»: no siempre es el cliente que paga);
+      --  - las personas cubiertas por un accidentes personales, como JSON [{nombre, documento}], porque
+      --    un seguro se contrata para cinco personas y hacen falta el DNI y el nombre de cada una.
+      -- La bicicleta usa las columnas que ya estaban: la marca en \`marca\` y el número de cuadro en
+      -- \`chasis\`, que es lo que es.
+      ALTER TABLE vehiculos ADD COLUMN direccion_riesgo TEXT;
+      ALTER TABLE vehiculos ADD COLUMN titular_nombre TEXT;
+      ALTER TABLE vehiculos ADD COLUMN titular_documento TEXT;
+      ALTER TABLE vehiculos ADD COLUMN integrantes TEXT;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

@@ -18,6 +18,7 @@ import {
 } from '../src/main/servicios/polizas'
 import { editarRegla, matrizDeCobertura, crearRegla } from '../src/main/servicios/reglas'
 import { cuantasPendientes } from '../src/main/sincronizacion/cola'
+import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { hoyLocal } from '../src/shared/semaforo'
 import type { DatosDePoliza, FiltrosPolizas, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
@@ -50,6 +51,11 @@ const SIN_FILTROS: FiltrosPolizas = { busqueda: '', estado: '', compania: '', su
  * arma toda la cartera desde la planilla más nueva y sale entera activa.
  */
 async function carteraDePrueba(): Promise<BaseDeDatos> {
+  return (await carteraConHoja()).db
+}
+
+/** Lo mismo, pero devolviendo también la hoja: para las pruebas que suben algo y lo vuelven a importar. */
+async function carteraConHoja(): Promise<{ db: BaseDeDatos; hoja: HojaSimulada }> {
   cerrarBaseDeDatos()
   const registrar = console.log
   console.log = () => undefined
@@ -63,7 +69,7 @@ async function carteraDePrueba(): Promise<BaseDeDatos> {
   hoja.restaurarPestana(agosto)
   hoja.restaurarPestana(bajasAgosto)
   await importar(db, hoja)
-  return db
+  return { db, hoja }
 }
 
 function idDeCliente(nombre: string): number {
@@ -91,6 +97,10 @@ function datosBase(clienteId: number): DatosDePoliza {
       chasis: '',
       uso: 'PARTICULAR',
       color: 'BLANCO',
+      direccionRiesgo: '',
+      titularNombre: '',
+      titularDocumento: '',
+      integrantes: [],
     },
     compania: 'SANCOR',
     cobertura: 'TERCEROS COMPLETO',
@@ -275,6 +285,163 @@ test('un alta sin advertencias crea la póliza, su vehículo y la deja para subi
   assert.equal(creada.vigenciaHastaIso, '2027-09-01')
 
   assert.ok(cuantasPendientes() > pendientesAntes, 'la fila nueva queda encolada para la hoja')
+})
+
+// ---------------------------------------------------------------------------
+// Riesgos que no son vehículos: hogar, comercio, bicicleta, accidentes personales, otros
+// ---------------------------------------------------------------------------
+
+/** Lo mismo que `datosBase` pero con un riesgo de otro tipo en lugar del Falcon. */
+function datosDeRiesgo(clienteId: number, riesgo: Partial<NonNullable<DatosDePoliza['vehiculoNuevo']>>, numero: string): DatosDePoliza {
+  const base = datosBase(clienteId)
+  return {
+    ...base,
+    numero,
+    cobertura: '',
+    vehiculoNuevo: {
+      ...base.vehiculoNuevo!,
+      patente: '',
+      marca: '',
+      modelo: '',
+      anio: '',
+      uso: '',
+      color: '',
+      ...riesgo,
+    },
+  }
+}
+
+test('una póliza de hogar se carga con la dirección de la casa y sin cobertura ni antigüedad', async () => {
+  await carteraDePrueba()
+  const cliente = idDeCliente(CLIENTES.rodriguez.nombre)
+  // SANCOR + TERCEROS COMPLETO tiene regla de antigüedad cargada: una casa no puede caer en ella.
+  cargarReglaDeSancor()
+
+  const creada = crearPoliza(
+    datosDeRiesgo(cliente, { tipo: 'HOGAR', direccionRiesgo: 'Mitre 1234, Lanús', titularNombre: 'MARTA RODRIGUEZ' }, '7000001'),
+    DANIEL,
+  )
+
+  assert.equal(creada.patente, null, 'una casa no tiene patente')
+  assert.equal(creada.vehiculo, 'Hogar · Mitre 1234, Lanús', 'el riesgo se nombra por su dirección')
+  assert.equal(creada.cobertura, null, 'la cobertura es opcional cuando no es un vehículo')
+
+  const riesgo = vehiculosDeCliente(cliente).find((v) => v.tipo === 'HOGAR')
+  assert.ok(riesgo, 'la casa queda como riesgo del cliente')
+  assert.equal(riesgo.direccionRiesgo, 'Mitre 1234, Lanús')
+  assert.equal(riesgo.titularNombre, 'MARTA RODRIGUEZ')
+  assert.deepEqual(riesgo.integrantes, [])
+
+  // La misma dirección cargada otra vez en otra póliza es la misma casa, no una segunda.
+  crearPoliza(datosDeRiesgo(cliente, { tipo: 'HOGAR', direccionRiesgo: 'MITRE 1234 LANUS' }, '7000002'), DANIEL)
+  assert.equal(vehiculosDeCliente(cliente).filter((v) => v.tipo === 'HOGAR').length, 1)
+})
+
+test('sin dirección no hay hogar ni comercio que asegurar', async () => {
+  await carteraDePrueba()
+  const cliente = idDeCliente(CLIENTES.rodriguez.nombre)
+  assert.throws(() => crearPoliza(datosDeRiesgo(cliente, { tipo: 'HOGAR' }, '7000003'), DANIEL), /dirección de la casa/)
+  assert.throws(
+    () => crearPoliza(datosDeRiesgo(cliente, { tipo: 'INTEGRAL DE COMERCIO' }, '7000004'), DANIEL),
+    /dirección del comercio/,
+  )
+})
+
+test('un accidentes personales guarda a cada persona cubierta con su DNI', async () => {
+  await carteraDePrueba()
+  const cliente = idDeCliente(CLIENTES.rodriguez.nombre)
+
+  const integrantes = [
+    { nombre: 'MARTA RODRIGUEZ', documento: '20111222' },
+    { nombre: 'JUAN RODRIGUEZ', documento: '40111222' },
+    { nombre: 'ANA RODRIGUEZ', documento: '45111222' },
+    // Una fila que quedó en blanco en la pantalla no es una persona.
+    { nombre: '', documento: '' },
+  ]
+  const creada = crearPoliza(datosDeRiesgo(cliente, { tipo: 'ACCIDENTE PERSONAL', integrantes }, '7000005'), DANIEL)
+  assert.equal(creada.vehiculo, 'Accidente personal · MARTA RODRIGUEZ, JUAN RODRIGUEZ y 1 más')
+
+  const riesgo = vehiculosDeCliente(cliente).find((v) => v.tipo === 'ACCIDENTE PERSONAL')
+  assert.ok(riesgo)
+  assert.deepEqual(riesgo.integrantes, integrantes.slice(0, 3))
+
+  assert.throws(
+    () => crearPoliza(datosDeRiesgo(cliente, { tipo: 'ACCIDENTE PERSONAL', integrantes: [] }, '7000006'), DANIEL),
+    /al menos una persona/,
+  )
+})
+
+test('la bicicleta lleva la marca y el número de cuadro, y «otros» sólo la persona', async () => {
+  await carteraDePrueba()
+  const cliente = idDeCliente(CLIENTES.rodriguez.nombre)
+
+  const bici = crearPoliza(datosDeRiesgo(cliente, { tipo: 'BICICLETA', marca: 'TREK', chasis: 'WTU123' }, '7000007'), DANIEL)
+  assert.equal(bici.vehiculo, 'Bicicleta · TREK · cuadro WTU123')
+  assert.equal(vehiculosDeCliente(cliente).find((v) => v.tipo === 'BICICLETA')?.chasis, 'WTU123', 'el cuadro va en la columna del chasis')
+  assert.throws(() => crearPoliza(datosDeRiesgo(cliente, { tipo: 'BICICLETA' }, '7000008'), DANIEL), /marca o el número de cuadro/)
+
+  const otro = crearPoliza(datosDeRiesgo(cliente, { tipo: 'OTRO', titularNombre: 'PEDRO GOMEZ', titularDocumento: '30111222' }, '7000009'), DANIEL)
+  assert.equal(otro.vehiculo, 'Otros · PEDRO GOMEZ (30111222)')
+  assert.throws(() => crearPoliza(datosDeRiesgo(cliente, { tipo: 'OTRO' }, '7000010'), DANIEL), /nombre o el DNI/)
+})
+
+test('la casa sobrevive al viaje de ida y vuelta por la hoja, y en otra computadora al menos se sabe que es un hogar', async () => {
+  const { db, hoja } = await carteraConHoja()
+  const cliente = idDeCliente(CLIENTES.rodriguez.nombre)
+  const creada = crearPoliza(
+    datosDeRiesgo(cliente, { tipo: 'HOGAR', direccionRiesgo: 'Mitre 1234, Lanús', titularNombre: 'MARTA RODRIGUEZ' }, '7000011'),
+    DANIEL,
+  )
+  const riesgoId = creada.vehiculoId
+  assert.ok(riesgoId, 'la póliza nació con su casa')
+
+  // Sube a la hoja (la fila lleva TIPO = HOGAR y nada en patente, marca ni modelo) y se vuelve a bajar.
+  const motor = new MotorDeSincronizacion({ crearFuente: () => hoja, importar: () => importar(db, hoja).then(() => undefined) })
+  motor.encender()
+  try {
+    await motor.ciclarSubida()
+    await importar(db, hoja)
+  } finally {
+    motor.apagar()
+  }
+
+  const releida = verPoliza(creada.id)
+  assert.equal(releida.vehiculoId, riesgoId, 'la re-importación no le saca la casa a la póliza')
+  assert.equal(releida.vehiculo, 'Hogar · Mitre 1234, Lanús')
+  assert.equal(vehiculosDeCliente(cliente).find((v) => v.tipo === 'HOGAR')?.direccionRiesgo, 'Mitre 1234, Lanús')
+
+  // Otra computadora, que sólo tiene la hoja. La dirección no viaja (la planilla no tiene columna para
+  // eso) y la planilla de prueba tampoco tiene columna TIPO: la póliza llega, sin nada asegurado.
+  const otraBase = async () => {
+    cerrarBaseDeDatos()
+    const registrar = console.log
+    console.log = () => undefined
+    const otra = abrirBaseDeDatos(':memory:')
+    console.log = registrar
+    await importar(otra, hoja)
+    const enLaOtra = listarPolizas({ ...SIN_FILTROS, busqueda: '7000011' }).filas[0]
+    assert.ok(enLaOtra, 'la póliza llegó a la otra computadora')
+    assert.equal(enLaOtra.patente, null)
+    return enLaOtra
+  }
+  assert.equal((await otraBase()).vehiculo, null)
+
+  // Con una columna TIPO en la planilla (la hoja de la agencia la tiene), la otra computadora al menos
+  // sabe que es un hogar aunque no sepa la dirección.
+  const encabezados = hoja.encabezadosDe('AGOSTO')
+  const columnaPoliza = encabezados.findIndex((e) => /P[OÓ]LIZA/.test(e.trim().toUpperCase()))
+  const filaDeLaCasa = hoja.filasDe('AGOSTO').findIndex((f) => (f[columnaPoliza] ?? '').trim() === '7000011')
+  assert.ok(filaDeLaCasa > 0, 'la póliza de la casa está en la planilla del mes')
+  const columnaTipo = encabezados.length
+  hoja.editarCelda('AGOSTO', 1, columnaTipo, 'TIPO')
+  hoja.editarCelda('AGOSTO', filaDeLaCasa + 1, columnaTipo, 'HOGAR')
+  assert.equal((await otraBase()).vehiculo, 'Hogar')
+})
+
+test('en un vehículo la cobertura sigue siendo obligatoria', async () => {
+  await carteraDePrueba()
+  const cliente = idDeCliente(CLIENTES.rodriguez.nombre)
+  assert.throws(() => crearPoliza({ ...datosBase(cliente), cobertura: '' }, DANIEL), /Cargá la cobertura/)
 })
 
 test('el alta se puede hacer sobre un vehículo que el cliente ya tiene', async () => {

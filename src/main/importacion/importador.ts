@@ -9,6 +9,7 @@
 //  - Cada fila recibe un _ID estable en la hoja; re-importar no duplica nada.
 //  - Los datos raros se registran en el informe y NO frenan la importación.
 import type { BaseDeDatos } from '../db/base'
+import { esVehiculo } from '../../shared/riesgos'
 import { claveDeSucursal, sucursalCanonica, sucursalesEnTexto } from '../../shared/sucursales'
 import {
   NOMBRE_TIPO_PESTANA,
@@ -273,6 +274,10 @@ function prepararSentencias(db: BaseDeDatos) {
 
     clientePorClave: db.prepare('SELECT id FROM clientes WHERE clave = ?'),
     titularDeVehiculo: db.prepare('SELECT cliente_id FROM vehiculos WHERE clave = ?'),
+    /** El riesgo que ya tiene la póliza de esa fila, si es de este cliente. Ver `riesgoSinVehiculo`. */
+    riesgoDeLaFila: db.prepare(`
+      SELECT p.vehiculo_id, v.tipo FROM polizas p JOIN vehiculos v ON v.id = p.vehiculo_id
+      WHERE p.fila_id = @fila_id AND v.cliente_id = @cliente_id`),
 
     vehiculo: db.prepare(`
       INSERT INTO vehiculos (clave, patente, patente_normalizada, marca, modelo, anio, anio_numero, motor, chasis, tipo, uso, color,
@@ -1499,7 +1504,7 @@ class TrabajoDeImportacion {
   private guardarVehiculo(p: PestanaTrabajo, fila: Fila, ident: Identidad, clienteId: number, anio: number | null, resumen: ResumenPestana): number | null {
     const marca = fila.valor('marca')
     const modelo = fila.valor('modelo')
-    if (!ident.patenteNormalizada && !marca && !modelo) return null
+    if (!ident.patenteNormalizada && !marca && !modelo) return this.riesgoSinVehiculo(fila, clienteId, resumen)
     const anioTexto = fila.valor('anio')
 
     if (ident.patenteNormalizada) {
@@ -1546,6 +1551,48 @@ class TrabajoDeImportacion {
       uso: oNulo(fila.valor('uso')),
       color: oNulo(fila.valor('color')),
       suma_asegurada: oNulo(fila.valor('suma_asegurada')),
+      cliente_id: clienteId,
+      fila_id: fila.id,
+      ahora: this.ahora,
+    }) as { id: number }
+    this.contar(resumen, 'vehiculos')
+    return id
+  }
+
+  /**
+   * Una fila sin patente, marca ni modelo no describe un vehículo. Pero puede ser una póliza de hogar,
+   * de accidentes personales, de comercio o de «otros», cargada desde «Nueva póliza»: lo que la
+   * distingue —la dirección de la casa, las personas cubiertas— la planilla no tiene dónde guardarlo.
+   *
+   * Si en esta computadora la póliza de esa fila ya tiene un riesgo que no es vehículo, se conserva
+   * tal cual (antes la re-importación se lo borraba: `vehiculo_id` volvía NULL y la casa quedaba
+   * huérfana). No se mira el TIPO de la fila para eso, porque no todas las planillas tienen esa
+   * columna. Si no había ninguno —la fila la cargó otra computadora— y la planilla sí dice de qué tipo
+   * es, se crea uno pelado con el tipo, para que la póliza al menos diga «Hogar» y no nada.
+   */
+  private riesgoSinVehiculo(fila: Fila, clienteId: number, resumen: ResumenPestana): number | null {
+    const existente = this.sentencias.riesgoDeLaFila.get({ fila_id: fila.id, cliente_id: clienteId }) as
+      | { vehiculo_id: number; tipo: string | null }
+      | undefined
+    if (existente && !esVehiculo(existente.tipo)) return existente.vehiculo_id
+
+    const tipo = fila.valor('tipo_vehiculo')
+    if (!tipo || esVehiculo(tipo)) return null
+
+    const { id } = this.sentencias.vehiculo.get({
+      clave: `RIESGO:${clienteId}|${normalizarTexto(tipo)}|FILA:${fila.id}`,
+      patente: null,
+      patente_normalizada: null,
+      marca: null,
+      modelo: null,
+      anio: null,
+      anio_numero: null,
+      motor: null,
+      chasis: null,
+      tipo,
+      uso: null,
+      color: null,
+      suma_asegurada: null,
       cliente_id: clienteId,
       fila_id: fila.id,
       ahora: this.ahora,

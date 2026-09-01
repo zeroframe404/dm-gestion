@@ -410,10 +410,24 @@ cobrarle. Se tilda lo que haga falta y la lista se rehace sola:
   **estado**. El estado no está en ninguna columna de la hoja: se calcula con `activa` y la vigencia —
   ACTIVA, VENCIDA (la vigencia ya pasó) o BAJA (se dio de baja). Una póliza sin vigencia cargada sigue
   activa: no se puede afirmar que venció.
-- **Alta y edición en una sola pantalla**: cliente (buscador), vehículo (uno de los del cliente o uno
-  nuevo), compañía, cobertura, forma de pago, cuota, día de vencimiento, número de póliza o propuesta,
-  vigencia, AVISAR VTO y observaciones. Compañía, cobertura y forma de pago sugieren lo que ya se usa
-  pero dejan escribir cualquier cosa, como la planilla.
+- **Alta y edición en una sola pantalla**: cliente (buscador), riesgo asegurado (uno de los del cliente
+  o uno nuevo), compañía, cobertura, forma de pago, cuota, día de vencimiento, número de póliza o
+  propuesta, vigencia, AVISAR VTO y observaciones. Compañía, cobertura y forma de pago sugieren lo que
+  ya se usa pero dejan escribir cualquier cosa, como la planilla.
+- **El riesgo no siempre es un auto.** «Cargar uno nuevo» arranca por el tipo (`TIPOS_DE_RIESGO` en
+  `shared/tipos.ts`) y pide sólo lo que ese riesgo necesita:
+  - **Auto / Moto**: como siempre (catálogo, patente, uso, color, motor, chasis). Son los únicos que
+    van a la validación de antigüedad y los únicos con cobertura obligatoria.
+  - **Bicicleta**: marca y número de cuadro (se guarda en `vehiculos.chasis`).
+  - **Accidente personal**: las personas cubiertas, cada una con nombre completo y DNI (viene puesto el
+    cliente como titular y se agregan las demás). Se guardan como JSON en `vehiculos.integrantes`.
+  - **Hogar** e **Integral de comercio**: la dirección del riesgo (`direccion_riesgo`) y a nombre de
+    quién está (`titular_nombre`).
+  - **Otros**: nombre y DNI de la persona (`titular_nombre`, `titular_documento`).
+  Todo vive en la tabla `vehiculos` (migración 19), que pasó a ser «los riesgos del cliente»: `tipo`
+  dice qué es y `shared/riesgos.ts` lo nombra en una línea («Hogar · Mitre 1234») para el formulario,
+  la ficha del cliente y el listado. A la planilla del mes viajan las columnas que ya existen (TIPO,
+  MARCA, CHASIS…); la dirección y los integrantes no tienen columna en la hoja y quedan en la base.
 - **Advertencia de antigüedad**: apenas están cargados compañía, cobertura y año del vehículo se
   compara contra la matriz de reglas y, si el vehículo es más viejo de lo que esa compañía acepta,
   aparece el aviso en el momento (por ejemplo: «SANCOR no acepta TERCEROS COMPLETO para un vehículo

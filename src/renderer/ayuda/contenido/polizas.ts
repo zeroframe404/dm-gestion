@@ -24,14 +24,15 @@ export const AYUDA_POLIZAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Cargar o editar una póliza',
         parrafos: [
-          'Con «Nueva póliza» arrancás una en blanco; haciendo clic en una fila entrás a editar esa póliza. Primero se elige el cliente (buscándolo por nombre o DNI, o ya viene elegido si entraste desde la ficha de un cliente) y después el vehículo: uno de los que ya tiene cargados o uno nuevo, con patente, marca, modelo, año y el resto de los datos. Si el cliente no tiene ningún vehículo cargado, la pantalla pasa sola a «Cargar uno nuevo».',
-          'Después van los datos de la póliza en sí: compañía, cobertura, forma de pago, cuota, día de vencimiento de la cuota, número de póliza y de propuesta, y la vigencia (desde y hasta). Las fechas de vigencia se escriben tal como están en la planilla de siempre, porque conviven fechas escritas de formas distintas y no tiene sentido forzarlas todas al mismo molde. El campo «Avisar vto.» se completa con AVISAR cuando esa póliza tiene que entrar en los avisos de vencimiento; y en «Observaciones» se puede anotar, por ejemplo, «20% aumentar cuando se renueva», que es justo el texto que hace aparecer el aviso de aumento en la bandeja de Renovaciones.',
+          'Con «Nueva póliza» arrancás una en blanco; haciendo clic en una fila entrás a editar esa póliza. Primero se elige el cliente (buscándolo por nombre o DNI, o ya viene elegido si entraste desde la ficha de un cliente) y después el riesgo asegurado: uno de los que ya tiene cargados (sus autos, su casa, su bicicleta…) o uno nuevo. Si el cliente no tiene nada cargado, la pantalla pasa sola a «Cargar uno nuevo».',
+          'En «Cargar uno nuevo» lo primero es el tipo de riesgo. Auto y moto se cargan como siempre: marca, modelo, línea y año del catálogo (o a mano), patente, uso, color, motor y chasis. Bicicleta pide la marca y el número de cuadro. Accidente personal pide a cada persona cubierta: viene puesto el cliente como titular y con «Agregar integrante» se suman las demás, cada una con su nombre completo y su DNI. Hogar e integral de comercio piden la dirección del riesgo (la casa o el local) y a nombre de quién está la póliza. Otros pide sólo el nombre y el DNI de la persona asegurada.',
+          'Después van los datos de la póliza en sí, iguales para cualquier riesgo: compañía, cobertura (obligatoria en un vehículo, opcional en el resto), forma de pago, cuota, día de vencimiento de la cuota, número de póliza y de propuesta, y la vigencia (desde y hasta). Las fechas de vigencia se escriben tal como están en la planilla de siempre, porque conviven fechas escritas de formas distintas y no tiene sentido forzarlas todas al mismo molde. El campo «Avisar vto.» se completa con AVISAR cuando esa póliza tiene que entrar en los avisos de vencimiento; y en «Observaciones» se puede anotar, por ejemplo, «20% aumentar cuando se renueva», que es justo el texto que hace aparecer el aviso de aumento en la bandeja de Renovaciones.',
         ],
       },
       {
         titulo: 'El aviso de antigüedad',
         parrafos: [
-          'Mientras se completan la compañía, la cobertura y el año del vehículo, la pantalla avisa sola si esa compañía no acepta esa cobertura para un auto tan viejo (según lo que esté cargado en Cartera → Reglas de cobertura). Si no hay ninguna regla cargada para esa combinación, o el año del vehículo no se puede leer, no aparece ningún aviso: la ayuda es eso, una ayuda, nunca un impedimento por las dudas.',
+          'Mientras se completan la compañía, la cobertura y el año del vehículo, la pantalla avisa sola si esa compañía no acepta esa cobertura para un auto tan viejo (según lo que esté cargado en Cartera → Reglas de cobertura). Si no hay ninguna regla cargada para esa combinación, o el año del vehículo no se puede leer, no aparece ningún aviso: la ayuda es eso, una ayuda, nunca un impedimento por las dudas. El aviso es sólo para autos y motos: una casa, una bicicleta o un accidentes personales no tienen año que validar.',
           'Cuando el aviso sí aparece y es un problema real, un administrador o superadministrador puede tildar «Continuar igual» para guardar la póliza de todas formas (queda registrado que la confirmó esa persona); un empleado de mostrador ve el mismo aviso pero no puede destildarlo: tiene que pedirle a un administrador que la confirme.',
         ],
       },
@@ -63,6 +64,11 @@ export const AYUDA_POLIZAS: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Baja',
         explicacion: 'Alguien la dio de baja a propósito, con un motivo. Es el único estado que se elige a mano.',
+      },
+      {
+        termino: 'Riesgo asegurado',
+        explicacion:
+          'Lo que cubre la póliza: un auto o una moto, una bicicleta, las personas de un accidentes personales, una casa (hogar), un local (integral de comercio) u otra cosa. Cada uno pide sólo sus datos y queda cargado en la ficha del cliente, en la pestaña Vehículos y riesgos.',
       },
       {
         termino: 'Aviso de antigüedad',
