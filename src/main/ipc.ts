@@ -99,6 +99,7 @@ import {
 import {
   configuracionDeImpresora,
   direccionesDeTicket,
+  establecerNumeroDeTicket,
   guardarConfiguracionDeImpresora,
   guardarDireccionesDeTicket,
   imprimirTicketDePago,
@@ -554,9 +555,15 @@ export function registrarIpc(): void {
   manejar('impresora:guardarDirecciones', (direcciones) => exito(guardarDireccionesDeTicket(direcciones, miSucursalSiEsEmpleado())))
   // El «sí» del cartel que pregunta si imprimir: lo toca quien cobró, con los mismos permisos con los
   // que registró el pago. No lanza si la impresora falla: el motivo queda anotado y el pago ya está.
-  manejar('impresora:imprimirPago', async (pagoId) => {
+  manejar('impresora:imprimirPago', async (pagoId, copias) => {
     exigirEdicion('cartera', 'clientes', 'cobranzas')
-    return exito(await imprimirTicketDePago(enteroPositivo(pagoId, 'El pago')))
+    return exito(await imprimirTicketDePago(enteroPositivo(pagoId, 'El pago'), copias))
+  })
+  // Corregir el correlativo lo puede hacer cualquiera con sesión, igual que el resto de esta pantalla:
+  // es la numeración del papel que tiene esta PC delante.
+  manejar('impresora:establecerNumeroDeTicket', async (numero) => {
+    exigirSesion()
+    return exito(await establecerNumeroDeTicket(enteroPositivo(numero, 'El número de ticket')))
   })
 
   // Plantilla del aviso por WhatsApp: la lee cualquiera (sale en cada aviso), la edita Administración.

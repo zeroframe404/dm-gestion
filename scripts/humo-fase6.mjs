@@ -348,14 +348,14 @@ if (!impresora?.habilitada) {
 
 // Una impresora mal configurada NO puede romper el cobro: se comprueba con un nombre inventado.
 const ticketRoto = await evaluar(`(async () => {
-  const guardar = await window.dm.impresora.guardar({ habilitada: true, impresora: 'DM GESTION IMPRESORA INEXISTENTE', anchoMm: 80 })
+  const guardar = await window.dm.impresora.guardar({ habilitada: true, impresora: 'DM GESTION IMPRESORA INEXISTENTE', anchoMm: 80, copias: 1 })
   if (!guardar.ok) return { error: guardar.error }
   const planilla = await window.dm.cartera.planilla(null)
   const fila = planilla.datos.filas[3] ?? planilla.datos.filas[0]
   const pago = await window.dm.cartera.registrarPago(fila.filaId, { fecha: planilla.datos.hoy, importe: '1', medioDePago: 'EFECTIVO' })
   await new Promise((r) => setTimeout(r, 2500))
   const estado = await window.dm.impresora.estado()
-  await window.dm.impresora.guardar({ habilitada: false, impresora: '', anchoMm: 80 })
+  await window.dm.impresora.guardar({ habilitada: false, impresora: '', anchoMm: 80, copias: 1 })
   return { pagoOk: pago.ok, error: pago.ok ? null : pago.error, ultimoError: estado.ok ? estado.datos.ultimoError : null }
 })()`)
 anotar(

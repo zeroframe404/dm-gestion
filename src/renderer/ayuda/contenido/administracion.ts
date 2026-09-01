@@ -172,13 +172,20 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         titulo: 'Cómo se configura',
         parrafos: [
           'Se tilda «Imprimir un comprobante al registrar un pago», se elige la impresora de la lista que detecta esta computadora (o se escribe el nombre a mano si Windows no encuentra ninguna) y se confirma el ancho del papel, que en una POS-80 es 80 milímetros. «Guardar» aplica los cambios, y «Imprimir una prueba» manda un comprobante de prueba para confirmar que todo funciona antes de usarla con un cliente delante; ese botón sólo se habilita una vez guardados los cambios.',
+          '«Cantidad de tickets por pago» deja elegir si sale 1 comprobante o 2 (por ejemplo, uno para el cliente y otro para la agencia). Con «preguntar antes de imprimir» activado, esa cantidad es sólo lo que viene marcado de entrada en el cartel: ahí se puede cambiar a 1 o a 2 para ese pago en particular, sin tocar esta pantalla.',
         ],
       },
       {
         titulo: 'Preguntar antes de imprimir',
         parrafos: [
-          'El segundo tilde, «Preguntar antes de imprimir cada comprobante», hace que después de guardar el pago aparezca un cartel con el cliente, la compañía y el importe, y dos botones: «Imprimir» y «No imprimir». Sirve para las compañías que no piden ticket: se cierra el cartel y no se gasta papel. Viene activado, y funciona igual se cobre desde la planilla de Cartera, desde la ficha del cliente o desde la caja del día.',
+          'El segundo tilde, «Preguntar antes de imprimir cada comprobante», hace que después de guardar el pago aparezca un cartel con el cliente, la compañía y el importe, cuántos tickets salen, y dos botones: «Imprimir» y «No imprimir». Sirve para las compañías que no piden ticket: se cierra el cartel y no se gasta papel. Viene activado, y funciona igual se cobre desde la planilla de Cartera, desde la ficha del cliente o desde la caja del día.',
           'Destildarlo vuelve al comportamiento anterior: el comprobante sale solo, sin ningún cartel que interrumpa. Cerrar el cartel con la cruz o con Escape cuenta como «No imprimir»: no sale papel, y el pago queda registrado igual en los dos casos.',
+        ],
+      },
+      {
+        titulo: 'Numeración de tickets',
+        parrafos: [
+          'Cada comprobante impreso lleva un número correlativo («N° 000123») que sube solo, uno por pago: si se piden 2 tickets del mismo pago, las dos copias salen con el mismo número, porque son el mismo comprobante. La tarjeta «Numeración de tickets» muestra qué número le toca al próximo y deja corregirlo a mano, por ejemplo después de cambiar el rollo o de una prueba hecha por error con la numeración real.',
         ],
       },
       {

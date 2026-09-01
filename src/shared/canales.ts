@@ -265,11 +265,14 @@ export interface Canales {
   'impresora:direcciones': () => Resultado<DireccionDeSucursal[]>
   'impresora:guardarDirecciones': (direcciones: DireccionDeSucursal[]) => Resultado<DireccionDeSucursal[]>
   /**
-   * El «sí» del cartel que pregunta si imprimir. Lo usa quien cobra, no un administrador. Devuelve
-   * false si no había nada que imprimir (impresora apagada o el ticket falló: el motivo queda en
-   * Administración → Impresora).
+   * El «sí» del cartel que pregunta si imprimir. Lo usa quien cobra, no un administrador. `copias` es
+   * cuántos tickets sacar (1 o 2); sin mandarlo se usa lo guardado en Administración → Impresora.
+   * Devuelve false si no había nada que imprimir (impresora apagada o el ticket falló: el motivo queda
+   * en Administración → Impresora).
    */
-  'impresora:imprimirPago': (pagoId: number) => Resultado<boolean>
+  'impresora:imprimirPago': (pagoId: number, copias?: number) => Resultado<boolean>
+  /** Corrige el número del próximo ticket, por ejemplo después de cambiar el rollo. */
+  'impresora:establecerNumeroDeTicket': (numero: number) => Resultado<ConfigImpresora>
 
   'config:plantillaAviso': () => Resultado<PlantillaAviso>
   'config:guardarPlantillaAviso': (texto: string) => Resultado<PlantillaAviso>

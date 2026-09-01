@@ -7,10 +7,14 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos, db } from '../src/main/db/base'
 import {
   direccionDeSucursal,
   direccionesGuardadas,
+  establecerProximoNumeroDeTicket,
   guardarDirecciones,
   guardarImpresora,
   impresoraGuardada,
+  proximoNumeroDeTicket,
+  tomarNumeroDeTicket,
 } from '../src/main/servicios/preferencias'
+import { ErrorDeNegocio } from '../src/main/servicios/errores'
 
 function baseDePrueba(): void {
   cerrarBaseDeDatos()
@@ -52,11 +56,84 @@ test('una configuración guardada antes de que existiera la pregunta pasa a preg
 
 test('apagar la pregunta queda guardado: el ticket vuelve a salir solo', () => {
   baseDePrueba()
-  guardarImpresora({ habilitada: true, preguntar: false, impresora: 'POS-80', anchoMm: 80 })
+  guardarImpresora({ habilitada: true, preguntar: false, impresora: 'POS-80', anchoMm: 80, copias: 1 })
   assert.equal(impresoraGuardada().preguntar, false)
 
-  guardarImpresora({ habilitada: true, preguntar: true, impresora: 'POS-80', anchoMm: 80 })
+  guardarImpresora({ habilitada: true, preguntar: true, impresora: 'POS-80', anchoMm: 80, copias: 1 })
   assert.equal(impresoraGuardada().preguntar, true)
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Cantidad de copias
+// ---------------------------------------------------------------------------
+
+test('sin configurar nada, sale una sola copia', () => {
+  baseDePrueba()
+  assert.equal(impresoraGuardada().copias, 1)
+  cerrarBaseDeDatos()
+})
+
+test('una configuración guardada antes de que existieran las copias trae una sola', () => {
+  baseDePrueba()
+  guardarCrudo('impresora_ticket', JSON.stringify({ habilitada: true, preguntar: true, impresora: 'POS-80', anchoMm: 80 }))
+  assert.equal(impresoraGuardada().copias, 1)
+  cerrarBaseDeDatos()
+})
+
+test('se puede guardar 1 o 2 copias', () => {
+  baseDePrueba()
+  guardarImpresora({ habilitada: true, preguntar: true, impresora: 'POS-80', anchoMm: 80, copias: 2 })
+  assert.equal(impresoraGuardada().copias, 2)
+
+  guardarImpresora({ habilitada: true, preguntar: true, impresora: 'POS-80', anchoMm: 80, copias: 1 })
+  assert.equal(impresoraGuardada().copias, 1)
+  cerrarBaseDeDatos()
+})
+
+test('una cantidad de copias fuera de 1 o 2 se rechaza', () => {
+  baseDePrueba()
+  assert.throws(
+    () => guardarImpresora({ habilitada: true, preguntar: true, impresora: 'POS-80', anchoMm: 80, copias: 0 }),
+    ErrorDeNegocio,
+  )
+  assert.throws(
+    () => guardarImpresora({ habilitada: true, preguntar: true, impresora: 'POS-80', anchoMm: 80, copias: 3 }),
+    ErrorDeNegocio,
+  )
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Numeración de los tickets
+// ---------------------------------------------------------------------------
+
+test('el correlativo arranca en 1 y sube de a uno con cada ticket', () => {
+  baseDePrueba()
+  assert.equal(proximoNumeroDeTicket(), 1)
+  assert.equal(tomarNumeroDeTicket(), 1)
+  assert.equal(tomarNumeroDeTicket(), 2)
+  assert.equal(tomarNumeroDeTicket(), 3)
+  assert.equal(proximoNumeroDeTicket(), 4)
+  cerrarBaseDeDatos()
+})
+
+test('el correlativo se puede corregir a mano', () => {
+  baseDePrueba()
+  tomarNumeroDeTicket()
+  tomarNumeroDeTicket()
+  establecerProximoNumeroDeTicket(500)
+  assert.equal(proximoNumeroDeTicket(), 500)
+  assert.equal(tomarNumeroDeTicket(), 500)
+  assert.equal(proximoNumeroDeTicket(), 501)
+  cerrarBaseDeDatos()
+})
+
+test('el correlativo no admite un número inválido', () => {
+  baseDePrueba()
+  assert.throws(() => establecerProximoNumeroDeTicket(0), ErrorDeNegocio)
+  assert.throws(() => establecerProximoNumeroDeTicket(-5), ErrorDeNegocio)
+  assert.throws(() => establecerProximoNumeroDeTicket(1.5), ErrorDeNegocio)
   cerrarBaseDeDatos()
 })
 
