@@ -671,3 +671,137 @@ test('el CSV no deja que una celda de la hoja se abra como fórmula en Excel', a
   assert.match(archivo.contenido, /"'@raro"/)
   cerrarBaseDeDatos()
 })
+
+// ---------------------------------------------------------------------------
+// Cobro imputado: se le paga a la compañía y el cliente transfiere después
+// ---------------------------------------------------------------------------
+
+test('un cobro IMPUTADO no deja la fila paga ni suma a la caja; cuando el cliente paga, sí', async () => {
+  const db = await cobranzasDePrueba()
+  const fila = buscar(CLIENTES.rodriguez.nombre)
+
+  const imputada = registrarPago(fila.filaId, { fecha: DIA_DE_CAJA, importe: '$ 10.000', medioDePago: 'TRANSFERENCIA', estadoCobro: 'IMPUTADO' }, DANIEL)
+  assert.equal(imputada.pagoImputado, true)
+  assert.equal(imputada.pagoRegistrado, false, 'la fila no figura paga: el cliente todavía no pagó')
+  assert.equal(imputada.pago, null, 'CUANDO PAGO sigue vacío')
+  assert.equal(imputada.pagoFecha, null)
+
+  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  assert.equal(caja.pagos.length, 1, 'el pago se ve en la caja')
+  assert.equal(caja.pagos[0]!.estadoCobro, 'IMPUTADO')
+  assert.equal(caja.total, 0, 'pero no suma: la plata no entró')
+  assert.equal(caja.imputados, 1)
+  assert.equal(caja.totalesPorMedio.length, 0)
+  assert.match(csvDeLaCaja(DIA_DE_CAJA, '').contenido, /IMPUTADO \(falta cobrar\)/)
+
+  // En la rendición se cuenta como «sin cobrar», y en la mora sigue apareciendo con la marca.
+  assert.equal(imputados('2026-08', '').sinCobrar, 1)
+  const enMora = mora(SIN_FILTROS, HOY).filas.find((f) => f.filaId === fila.filaId)
+  assert.ok(enMora, 'la cuota vencida sigue en mora: lo que se persigue es el pago del cliente')
+  assert.equal(enMora.imputada, true)
+
+  // La cola lleva el COBRO a la hoja, y no toca CUANDO PAGO de la fila del mes.
+  const encolado = filas<{ pestana: string; campos_json: string }>(db, `SELECT pestana, campos_json FROM cola_sync WHERE fila_id = ?`, `PAGO:${fila.filaId}`)
+  assert.equal(encolado.length, 1)
+  assert.equal((JSON.parse(encolado[0]!.campos_json) as Record<string, string>).cobro, 'IMPUTADO')
+  assert.equal(filas(db, `SELECT 1 FROM cola_sync WHERE fila_id = ?`, fila.filaId).length, 0, 'la fila del mes no se encola: no cambió')
+
+  // El cliente paga: se registra de nuevo como PAGO sobre la misma fila.
+  const pagada = registrarPago(fila.filaId, { fecha: HOY, importe: '$ 10.000', medioDePago: 'TRANSFERENCIA', estadoCobro: 'PAGO' }, DANIEL)
+  assert.equal(pagada.pagoImputado, false)
+  assert.equal(pagada.pagoRegistrado, true)
+  assert.equal(pagada.pagoFecha, HOY)
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM pagos WHERE hecho_en_la_app = 1').get() as { n: number }).n, 1, 'es el mismo pago, corregido')
+  assert.equal(cajaDelDia(HOY, '').total, 10_000, 'ahora sí suma, en el día que pagó')
+  assert.equal(cajaDelDia(DIA_DE_CAJA, '').pagos.length, 0, 'y ya no está en el día de la imputación')
+  assert.equal(mora(SIN_FILTROS, HOY).filas.some((f) => f.filaId === fila.filaId), false)
+  const corregido = filas<{ campos_json: string }>(db, `SELECT campos_json FROM cola_sync WHERE fila_id = ?`, `PAGO:${fila.filaId}`)
+  assert.equal((JSON.parse(corregido[0]!.campos_json) as Record<string, string>).cobro, 'PAGO', 'la hoja se entera de que dejó de estar imputado')
+  cerrarBaseDeDatos()
+})
+
+test('el alta manual desde la caja también puede quedar como IMPUTADO', async () => {
+  await cobranzasDePrueba()
+  const fila = buscar(CLIENTES.suarez.nombre)
+  const resultado = registrarPagoManual(
+    {
+      cuotaFilaId: fila.filaId,
+      clienteId: fila.clienteId,
+      polizaId: fila.polizaId,
+      clienteNombre: fila.nombre ?? '',
+      documento: fila.documento ?? '',
+      compania: fila.compania ?? '',
+      numeroPoliza: fila.numeroPoliza ?? '',
+      patente: fila.patente ?? '',
+      fecha: DIA_DE_CAJA,
+      importe: '$ 21.840',
+      medioDePago: 'TRANSFERENCIA',
+      sucursal: 'Lanús',
+      observaciones: '',
+      estadoCobro: 'IMPUTADO',
+    },
+    DANIEL,
+  )
+  assert.equal(resultado.caja.imputados, 1)
+  assert.equal(resultado.caja.total, 0)
+  assert.equal(buscar(CLIENTES.suarez.nombre).pagoImputado, true)
+  assert.equal(buscar(CLIENTES.suarez.nombre).pagoRegistrado, false)
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Pago adelantado: dos cuotas el mismo mes
+// ---------------------------------------------------------------------------
+
+test('pagar las dos cuotas juntas cobra la de este mes y deja la del mes que viene guardada como adelanto', async () => {
+  const db = await cobranzasDePrueba()
+  const fila = buscar(CLIENTES.suarez.nombre)
+  const enAgostoAntes = imputados('2026-08', '').pagos.length
+  const pagosAntes = (db.prepare('SELECT COUNT(*) AS n FROM pagos').get() as { n: number }).n
+
+  const actualizada = registrarPago(
+    fila.filaId,
+    { fecha: DIA_DE_CAJA, importe: '$ 10.000', medioDePago: 'EFECTIVO', alcance: 'AMBAS', adelanto: { importe: '$ 10.500', modo: 'ACREDITAR' } },
+    DANIEL,
+  )
+  assert.equal(actualizada.pagoRegistrado, true)
+  assert.equal(actualizada.pagoFecha, DIA_DE_CAJA)
+  assert.ok(actualizada.adelantoSiguiente, 'la fila sabe que adelantó la que viene')
+  assert.equal(actualizada.adelantoSiguiente.periodo, '2026-09')
+  assert.equal(actualizada.adelantoSiguiente.importe, '$ 10.500')
+  assert.equal(actualizada.adelantoSiguiente.modo, 'ACREDITAR')
+  assert.equal(actualizada.adelantoSiguiente.imputado, false, 'todavía no existe la fila de septiembre')
+
+  // Las dos entran hoy en la caja.
+  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  assert.equal(caja.pagos.length, 2)
+  assert.equal(caja.total, 20_500)
+  const adelanto = caja.pagos.find((p) => p.adelantoModo !== null)
+  assert.ok(adelanto)
+  assert.equal(adelanto.periodo, '2026-09', 'el adelanto es del mes que viene')
+  assert.equal(adelanto.adelantoImputado, false)
+
+  // Y cada una se rinde en el mes que paga.
+  assert.equal(imputados('2026-08', '').pagos.length, enAgostoAntes + 1)
+  assert.equal(imputados('2026-09', '').pagos.length, 1)
+
+  // En la hoja el adelanto viaja con MES y año, para que ningún importador lo tome por el mes de este año.
+  const encolado = filas<{ campos_json: string }>(db, `SELECT campos_json FROM cola_sync WHERE fila_id = ?`, `PAGO:ADELANTO:${fila.filaId}`)
+  assert.equal(encolado.length, 1)
+  assert.equal((JSON.parse(encolado[0]!.campos_json) as Record<string, string>).mes, 'SEPTIEMBRE 2026')
+
+  // Volver a adelantar corrige, no duplica.
+  registrarPago(fila.filaId, { fecha: DIA_DE_CAJA, importe: '', medioDePago: 'EFECTIVO', alcance: 'ADELANTADO', adelanto: { importe: '$ 11.000', modo: 'PENDIENTE' } }, DANIEL)
+  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM pagos').get() as { n: number }).n, pagosAntes + 2)
+  assert.equal(buscar(CLIENTES.suarez.nombre).adelantoSiguiente?.importe, '$ 11.000')
+  assert.equal(buscar(CLIENTES.suarez.nombre).adelantoSiguiente?.modo, 'PENDIENTE')
+
+  // Sin modo no hay adelanto: se rechaza antes de cobrar nada.
+  const perez = buscar(CLIENTES.martinez.nombre)
+  assert.throws(
+    () => registrarPago(perez.filaId, { fecha: DIA_DE_CAJA, importe: '1', medioDePago: '', alcance: 'AMBAS', adelanto: { importe: '1', modo: 'x' as never } }, DANIEL),
+    /acreditarla al mes siguiente o dejarla pendiente/,
+  )
+  assert.equal(buscar(CLIENTES.martinez.nombre).pagoRegistrado, false, 'no quedó cobrada media operación')
+  cerrarBaseDeDatos()
+})

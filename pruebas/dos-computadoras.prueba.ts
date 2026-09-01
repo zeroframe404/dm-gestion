@@ -377,3 +377,37 @@ test('los administradores ven la caja y la rendición de todas las sucursales; u
 test('las computadoras de esta prueba quedan cerradas', () => {
   cerrarTodo()
 })
+
+test('un cobro IMPUTADO viaja por la columna COBRO de APP PAGOS, y en la otra computadora la fila tampoco figura paga', async () => {
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+  en(lanus1)
+  const gonzalez = exigirFila(CLIENTES.gonzalez.nombre)
+  registrarPago(gonzalez.filaId, { fecha: '2026-08-12', importe: '$ 24.420', medioDePago: 'TRANSFERENCIA', estadoCobro: 'IMPUTADO' }, MILAGROS)
+  await subirTodo(lanus1)
+  const idDelPago = `PAGO:${gonzalez.filaId}`
+  assert.equal(celda(hoja, PESTANA_PAGOS_APP, idDelPago, 'COBRO'), 'IMPUTADO')
+
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  const alla = exigirFila(CLIENTES.gonzalez.nombre)
+  assert.equal(alla.pagoImputado, true, 'la otra computadora sabe que está imputada')
+  assert.equal(alla.pagoRegistrado, false, 'y que el cliente todavía no pagó')
+  const caja = cajaDelDia('2026-08-12', 'Lanús')
+  assert.equal(caja.pagos.length, 1)
+  assert.equal(caja.pagos[0]!.estadoCobro, 'IMPUTADO')
+  assert.equal(caja.total, 0)
+
+  // El cliente paga en la primera: la segunda se entera de que dejó de estar imputado y la fila queda paga.
+  en(lanus1)
+  registrarPago(gonzalez.filaId, { fecha: '2026-08-14', importe: '$ 24.420', medioDePago: 'TRANSFERENCIA' }, MILAGROS)
+  await subirTodo(lanus1)
+  assert.equal(celda(hoja, PESTANA_PAGOS_APP, idDelPago, 'COBRO'), 'PAGO')
+
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  const pagada = exigirFila(CLIENTES.gonzalez.nombre)
+  assert.equal(pagada.pagoImputado, false)
+  assert.equal(pagada.pagoRegistrado, true)
+  assert.equal(cajaDelDia('2026-08-14', 'Lanús').total, 24420)
+  cerrarTodo()
+})

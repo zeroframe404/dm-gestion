@@ -4,7 +4,16 @@
 //
 // Vive aparte de cartera.ts porque lo usan los dos lados —la planilla del mes y el módulo Cobranzas—
 // y así no se importan entre ellos.
-import { RESULTADOS_DE_IMPUTACION, type PagoRegistrado, type ResultadoImputacion, type SesionUsuario } from '../../shared/tipos'
+import {
+  ESTADOS_DE_COBRO,
+  MODOS_DE_ADELANTO,
+  RESULTADOS_DE_IMPUTACION,
+  type EstadoDeCobro,
+  type ModoDeAdelanto,
+  type PagoRegistrado,
+  type ResultadoImputacion,
+  type SesionUsuario,
+} from '../../shared/tipos'
 import { db } from '../db/base'
 import { resolverCampo, type Campo } from '../importacion/encabezados'
 import { MESES } from '../importacion/pestanas'
@@ -44,6 +53,42 @@ export function normalizarResultado(valor: unknown): ResultadoImputacion {
   if (!texto) return ''
   if ((RESULTADOS_DE_IMPUTACION as readonly string[]).includes(texto)) return texto as ResultadoImputacion
   return SINONIMOS_DE_RESULTADO[texto] ?? ''
+}
+
+// ---------------------------------------------------------------------------
+// El estado del COBRO (PAGO / IMPUTADO) y el modo de un pago adelantado
+// ---------------------------------------------------------------------------
+
+/** Cómo se escribe en la columna COBRO de la hoja lo que la gente pone a mano. */
+const SINONIMOS_DE_COBRO: Record<string, EstadoDeCobro> = {
+  PAGO: 'PAGO',
+  PAGADO: 'PAGO',
+  PAGADA: 'PAGO',
+  COBRADO: 'PAGO',
+  COBRADA: 'PAGO',
+  IMPUTADO: 'IMPUTADO',
+  IMPUTADA: 'IMPUTADO',
+  'A COBRAR': 'IMPUTADO',
+  'FALTA COBRAR': 'IMPUTADO',
+  'SIN COBRAR': 'IMPUTADO',
+}
+
+/**
+ * Lleva a PAGO o IMPUTADO lo que haya guardado. Lo que no se reconoce (y el vacío, que es lo que traen
+ * todos los pagos de antes de la 12.3 y los de una hoja sin columna COBRO) es PAGO: es lo prudente,
+ * porque IMPUTADO deja la fila del mes sin pagar y fuera de la caja.
+ */
+export function normalizarEstadoDeCobro(valor: unknown): EstadoDeCobro {
+  const texto = normalizarTexto(valor)
+  if (!texto) return 'PAGO'
+  if ((ESTADOS_DE_COBRO as readonly string[]).includes(texto)) return texto as EstadoDeCobro
+  return SINONIMOS_DE_COBRO[texto] ?? 'PAGO'
+}
+
+/** El modo de un pago adelantado tal como está guardado, o null si no es un adelanto o no se reconoce. */
+export function normalizarModoDeAdelanto(valor: unknown): ModoDeAdelanto | null {
+  const texto = normalizarTexto(valor)
+  return (MODOS_DE_ADELANTO as readonly string[]).includes(texto) ? (texto as ModoDeAdelanto) : null
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +166,18 @@ export function nombreDeMesDelPeriodo(periodo: string | null): string {
   return MESES[Number(periodo.slice(5, 7)) - 1] ?? periodo
 }
 
+/**
+ * Lo que va en la columna MES de la hoja. Un pago común lleva el mes solo («AGOSTO»), como siempre
+ * lo escribió la agencia. Un pago ADELANTADO lleva también el año («ENERO 2027»): su mes es el que
+ * viene, y el importador deduce el año a partir de la fecha del pago, que para un adelanto de
+ * diciembre a enero sería el año equivocado.
+ */
+export function mesParaLaHoja(periodo: string | null, adelantado: boolean): string {
+  const mes = nombreDeMesDelPeriodo(periodo)
+  if (!adelantado || !periodo || !mes || mes === periodo) return mes
+  return `${mes} ${periodo.slice(0, 4)}`
+}
+
 // ---------------------------------------------------------------------------
 // Guardar un pago
 // ---------------------------------------------------------------------------
@@ -149,22 +206,31 @@ export interface PagoAGuardar {
   periodo: string | null
   observaciones: string | null
   resultado: ResultadoImputacion
+  /** PAGO (el cliente pagó) o IMPUTADO (se imputó a la compañía; el cliente paga después). */
+  estadoCobro: EstadoDeCobro
+  /** Sólo para un pago adelantado (la cuota del mes que viene): qué se hace con él al armar ese mes. */
+  adelantoModo: ModoDeAdelanto | null
 }
 
 const INSERTAR_PAGO = `
   INSERT INTO pagos (fila_id, pestana, cliente_id, poliza_id, fecha, fecha_iso, cliente_nombre, documento, compania,
                      numero_poliza, patente, sucursal_texto, importe, importe_monto, medio, periodo_texto, periodo,
                      observaciones, resultado, usuario_id, usuario_nombre, sucursal_cobro, cuota_fila_id,
-                     hecho_en_la_app, creado_en, actualizado_en)
+                     estado_cobro, adelanto_modo, hecho_en_la_app, creado_en, actualizado_en)
   VALUES (@fila_id, @pestana, @cliente_id, @poliza_id, @fecha, @fecha_iso, @cliente_nombre, @documento, @compania,
           @numero_poliza, @patente, @sucursal_texto, @importe, @importe_monto, @medio, @periodo_texto, @periodo,
           @observaciones, @resultado, @usuario_id, @usuario_nombre, @sucursal_cobro, @cuota_fila_id,
-          1, @ahora, @ahora)
+          @estado_cobro, @adelanto_modo, 1, @ahora, @ahora)
   ON CONFLICT(fila_id) DO UPDATE SET
     fecha = excluded.fecha, fecha_iso = excluded.fecha_iso, importe = excluded.importe,
     importe_monto = excluded.importe_monto, medio = excluded.medio, observaciones = excluded.observaciones,
     usuario_id = excluded.usuario_id, usuario_nombre = excluded.usuario_nombre,
     sucursal_cobro = excluded.sucursal_cobro,
+    -- El cobro se corrige entero: un IMPUTADO que el cliente terminó pagando pasa a PAGO, y un pago
+    -- adelantado que se vuelve a registrar puede cambiar de modo o quedar apuntando a su fila.
+    estado_cobro = excluded.estado_cobro, adelanto_modo = excluded.adelanto_modo,
+    cuota_fila_id = COALESCE(excluded.cuota_fila_id, pagos.cuota_fila_id),
+    periodo = excluded.periodo, periodo_texto = excluded.periodo_texto,
     -- La pestaña se reescribe: un pago que se registró cuando la hoja todavía no tenía IMPUTADOS
     -- pasa a apuntar a la pestaña en cuanto aparece, y con eso su RESULTADO vuelve a sincronizarse.
     pestana = excluded.pestana, actualizado_en = excluded.actualizado_en`
@@ -183,6 +249,7 @@ function camposParaLaHoja(
   conRendicion: boolean,
   hoja: HojaDeImputados,
   actor: SesionUsuario | null,
+  cobro: EstadoDeCobro | null,
 ): Record<string, string> {
   const campos: Record<string, string> = {
     fecha: datos.fecha,
@@ -194,7 +261,7 @@ function camposParaLaHoja(
     patente: datos.patente ?? '',
     importe: datos.importe ?? '',
     medio_pago: datos.medio ?? '',
-    mes: nombreDeMesDelPeriodo(datos.periodo),
+    mes: mesParaLaHoja(datos.periodo, datos.adelantoModo !== null),
   }
   if (conRendicion) {
     campos.observaciones = datos.observaciones ?? ''
@@ -203,6 +270,10 @@ function camposParaLaHoja(
   // Quién cobró viaja sólo por APP PAGOS, que tiene la columna: la IMPUTADOS de una agencia no la
   // tiene, y mandarla igual anotaría «columna faltante» en cada ciclo.
   if (hoja.esDeLaApp && actor) campos.usuario = actor.nombre
+  // El estado del cobro viaja sólo cuando hay algo que decir (un IMPUTADO, o un IMPUTADO que pasó a
+  // PAGO): la columna COBRO es nueva en APP PAGOS, y las hojas armadas antes no la tienen. Mandarla
+  // en cada pago común anotaría «columna faltante» en cada ciclo en todas ellas.
+  if (cobro !== null) campos.cobro = cobro
   return campos
 }
 
@@ -218,6 +289,9 @@ export function guardarPago(datos: PagoAGuardar, actor: SesionUsuario): number {
   const sucursalCobro = limpiar(datos.sucursalCobro) || actor.sucursal.nombre
   const conocida = db().prepare('SELECT pestana, en_la_hoja FROM filas_crudas WHERE fila_id = ?').get(datos.filaId) as
     | { pestana: string; en_la_hoja: number }
+    | undefined
+  const anterior = db().prepare('SELECT estado_cobro FROM pagos WHERE fila_id = ?').get(datos.filaId) as
+    | { estado_cobro: string | null }
     | undefined
   const ahora = ahoraIso()
 
@@ -247,10 +321,17 @@ export function guardarPago(datos: PagoAGuardar, actor: SesionUsuario): number {
       usuario_nombre: actor.nombre,
       sucursal_cobro: sucursalCobro,
       cuota_fila_id: datos.cuotaFilaId,
+      estado_cobro: datos.estadoCobro,
+      adelanto_modo: datos.adelantoModo,
       ahora,
     })
 
   const { id } = db().prepare('SELECT id FROM pagos WHERE fila_id = ?').get(datos.filaId) as { id: number }
+
+  // Qué decir de cobro en la hoja: el IMPUTADO siempre, y el PAGO sólo si deja de ser un IMPUTADO.
+  const cobroAnterior = anterior ? normalizarEstadoDeCobro(anterior.estado_cobro) : 'PAGO'
+  const cobro: EstadoDeCobro | null =
+    datos.estadoCobro === 'IMPUTADO' || cobroAnterior === 'IMPUTADO' ? datos.estadoCobro : null
 
   // Si la fila todavía no llegó a la hoja se vuelve a encolar como «crear»: la cola junta los dos
   // pedidos en uno solo, así no quedan dos filas ni un «actualizar» sobre algo que no existe.
@@ -263,7 +344,7 @@ export function guardarPago(datos: PagoAGuardar, actor: SesionUsuario): number {
       operacion: nueva ? 'crear' : 'actualizar',
       pestana: nueva ? hoja.pestana : (conocida?.pestana ?? hoja.pestana),
       filaId: datos.filaId,
-      campos: camposParaLaHoja(datos, sucursalCobro, nueva, hoja, actor),
+      campos: camposParaLaHoja(datos, sucursalCobro, nueva, hoja, actor, cobro),
     },
     actor,
   )
@@ -285,6 +366,8 @@ interface PagoParaLaHoja {
   observaciones: string | null
   resultado: string | null
   sucursal: string | null
+  estado_cobro: string | null
+  adelanto_modo: string | null
 }
 
 /** Dónde quedó encolado un pago: en qué pestaña y si se agrega entero o se actualiza. */
@@ -306,7 +389,8 @@ export function asegurarPagoEnLaHoja(pagoId: number, actor: SesionUsuario | null
   const pago = db()
     .prepare(
       `SELECT fila_id, pestana, fecha, cliente_nombre, documento, compania, numero_poliza, patente, importe, medio,
-              periodo, observaciones, resultado, COALESCE(sucursal_cobro, sucursal_texto) AS sucursal, usuario_nombre
+              periodo, observaciones, resultado, COALESCE(sucursal_cobro, sucursal_texto) AS sucursal, usuario_nombre,
+              estado_cobro, adelanto_modo
        FROM pagos WHERE id = ?`,
     )
     .get(pagoId) as (PagoParaLaHoja & { usuario_nombre: string | null }) | undefined
@@ -331,11 +415,12 @@ export function asegurarPagoEnLaHoja(pagoId: number, actor: SesionUsuario | null
     patente: pago.patente ?? '',
     importe: pago.importe ?? '',
     medio_pago: pago.medio ?? '',
-    mes: nombreDeMesDelPeriodo(pago.periodo),
+    mes: mesParaLaHoja(pago.periodo, normalizarModoDeAdelanto(pago.adelanto_modo) !== null),
     observaciones: pago.observaciones ?? '',
     resultado: normalizarResultado(pago.resultado),
   }
   if (hoja.esDeLaApp && pago.usuario_nombre) campos.usuario = pago.usuario_nombre
+  if (normalizarEstadoDeCobro(pago.estado_cobro) === 'IMPUTADO') campos.cobro = 'IMPUTADO'
   encolar({ operacion: 'crear', pestana: hoja.pestana, filaId: pago.fila_id, campos }, actor)
   return { operacion: 'crear', pestana: hoja.pestana }
 }
@@ -391,6 +476,9 @@ export interface PagoCrudo {
   usuario_nombre: string | null
   hecho_en_la_app: number
   creado_en: string
+  estado_cobro: string | null
+  adelanto_modo: string | null
+  cuota_fila_id: string | null
 }
 
 /**
@@ -415,10 +503,22 @@ export const SELECT_PAGOS = `
          p.documento, p.compania, p.numero_poliza, p.patente,
          ${SUCURSAL_DEL_PAGO} AS sucursal,
          p.importe, p.importe_monto, p.medio, COALESCE(p.periodo, substr(p.fecha_iso, 1, 7)) AS periodo,
-         p.resultado, p.observaciones, p.usuario_nombre, p.hecho_en_la_app, p.creado_en
+         p.resultado, p.observaciones, p.usuario_nombre, p.hecho_en_la_app, p.creado_en,
+         p.estado_cobro, p.adelanto_modo, p.cuota_fila_id
   FROM pagos p
   LEFT JOIN clientes cl ON cl.id = p.cliente_id
 `
+
+/**
+ * «Esta cuota tiene un pago que la cubre»: la condición que comparten la mora, los deudores y las
+ * métricas para no perseguir a quien ya pagó. Espera la planilla como `c`. Un cobro IMPUTADO no
+ * cuenta: la agencia le pagó a la compañía, pero el cliente todavía debe.
+ */
+export const PAGO_QUE_CUBRE_LA_CUOTA = `EXISTS (
+  SELECT 1 FROM pagos pg
+  WHERE (pg.cuota_fila_id = c.fila_id OR (pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo))
+    AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
+)`
 
 /** La hora del cobro sale de cuándo se registró; los pagos importados de la hoja no la tienen. */
 function horaDe(cruda: PagoCrudo): string | null {
@@ -451,5 +551,8 @@ export function aPagoRegistrado(cruda: PagoCrudo): PagoRegistrado {
     resultadoTexto: cruda.resultado,
     observaciones: cruda.observaciones,
     hechoEnLaApp: cruda.hecho_en_la_app === 1,
+    estadoCobro: normalizarEstadoDeCobro(cruda.estado_cobro),
+    adelantoModo: normalizarModoDeAdelanto(cruda.adelanto_modo),
+    adelantoImputado: cruda.adelanto_modo !== null && cruda.cuota_fila_id !== null,
   }
 }

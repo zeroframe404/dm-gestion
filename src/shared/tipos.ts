@@ -477,8 +477,23 @@ export interface FilaCartera {
   /** CUANDO PAGO tal cual está en la planilla, y su fecha interpretada. */
   pago: string | null
   pagoFecha: string | null
-  /** true si además hay un pago cargado desde la aplicación para esta póliza y este mes. */
+  /**
+   * true si además hay un pago cargado desde la aplicación para esta póliza y este mes. No cuenta un
+   * pago adelantado que quedó PENDIENTE de imputar (ver `pagoAdelantado`) ni un cobro IMPUTADO.
+   */
   pagoRegistrado: boolean
+  /**
+   * true si la cuota está IMPUTADA: la agencia ya la pagó a la compañía y el cliente todavía no
+   * transfirió. La fila no figura paga; falta cobrarla.
+   */
+  pagoImputado: boolean
+  /**
+   * El pago adelantado que espera a esta fila: se cobró el mes anterior para este mes y todavía no se
+   * imputó (quedó PENDIENTE, o la fila se creó después). null si no hay ninguno.
+   */
+  pagoAdelantado: PagoAdelantadoDeFila | null
+  /** Si desde esta fila se adelantó la cuota del mes siguiente, cuándo y cuánto. null si no. */
+  adelantoSiguiente: AdelantoSiguienteDeFila | null
 
   /** Datos que no entran en la tabla pero sí en el panel de detalle. */
   email: string | null
@@ -577,6 +592,69 @@ export interface DatosDePago {
   medioDePago: string
   /** Sucursal donde entró la plata. Vacío = la del usuario que está cobrando. */
   sucursal?: string
+  /**
+   * PAGO (el cliente pagó; es lo de siempre) o IMPUTADO (la agencia le imputó la cuota a la compañía
+   * y el cliente transfiere después). Vacío = PAGO.
+   */
+  estadoCobro?: EstadoDeCobro
+  /**
+   * Qué cuota se está cobrando: la de este mes (MES, lo normal), la del mes que viene por adelantado
+   * (ADELANTADO) o las dos juntas (AMBAS). Vacío = MES.
+   */
+  alcance?: AlcanceDelPago
+  /** El pago adelantado, cuando `alcance` lo incluye. */
+  adelanto?: DatosDeAdelanto
+}
+
+/** El estado del cobro de un pago: si el cliente ya pagó o si la agencia se lo imputó a la compañía. */
+export const ESTADOS_DE_COBRO = ['PAGO', 'IMPUTADO'] as const
+export type EstadoDeCobro = (typeof ESTADOS_DE_COBRO)[number]
+
+export const NOMBRE_ESTADO_DE_COBRO: Record<EstadoDeCobro, string> = {
+  PAGO: 'Pagó',
+  IMPUTADO: 'Imputado (falta cobrar)',
+}
+
+export const ALCANCES_DEL_PAGO = ['MES', 'ADELANTADO', 'AMBAS'] as const
+export type AlcanceDelPago = (typeof ALCANCES_DEL_PAGO)[number]
+
+/**
+ * Qué se hace con un pago adelantado cuando se arma el mes siguiente (el cierre de mes):
+ *  - ACREDITAR: la fila del mes nuevo nace paga, con la fecha del pago en CUANDO PAGO;
+ *  - PENDIENTE: la fila nace sin pagar y con el pago a la vista, para imputarlo a mano cuando se
+ *    controle el general del mes.
+ */
+export const MODOS_DE_ADELANTO = ['ACREDITAR', 'PENDIENTE'] as const
+export type ModoDeAdelanto = (typeof MODOS_DE_ADELANTO)[number]
+
+export const NOMBRE_MODO_DE_ADELANTO: Record<ModoDeAdelanto, string> = {
+  ACREDITAR: 'Acreditar al mes siguiente',
+  PENDIENTE: 'Dejar pendiente para imputar',
+}
+
+export interface DatosDeAdelanto {
+  /** Importe de la cuota adelantada. Vacío = la cuota de la fila. */
+  importe: string
+  modo: ModoDeAdelanto
+}
+
+/** Un pago adelantado que espera a una fila de la planilla (ver `FilaCartera.pagoAdelantado`). */
+export interface PagoAdelantadoDeFila {
+  pagoId: number
+  fecha: string | null
+  importe: string | null
+  medio: string | null
+  modo: ModoDeAdelanto
+}
+
+/** La cuota del mes siguiente adelantada desde una fila (ver `FilaCartera.adelantoSiguiente`). */
+export interface AdelantoSiguienteDeFila {
+  periodo: string
+  fecha: string | null
+  importe: string | null
+  modo: ModoDeAdelanto
+  /** true cuando ya se imputó a la fila del mes siguiente. */
+  imputado: boolean
 }
 
 export interface DatosDeBaja {
@@ -788,6 +866,10 @@ export const PLANTILLA_AVISO_POR_DEFECTO =
 export interface ResumenCierreDeMes {
   periodo: string
   filasCreadas: number
+  /** Pagos adelantados que se acreditaron solos: esas filas nacieron pagas. */
+  adelantosAcreditados: number
+  /** Pagos adelantados que quedaron a la vista en su fila, para imputarlos a mano. */
+  adelantosPendientes: number
 }
 
 export interface FilaRiesgoVario {
@@ -1455,6 +1537,12 @@ export interface PagoRegistrado {
   observaciones: string | null
   /** true si lo registró la aplicación; false si vino de la pestaña IMPUTADOS. */
   hechoEnLaApp: boolean
+  /** PAGO (el cliente pagó) o IMPUTADO (se imputó a la compañía y el cliente todavía no pagó). */
+  estadoCobro: EstadoDeCobro
+  /** Si es un pago adelantado (la cuota del mes que viene), qué se hace con él al armar ese mes; null si es un pago común. */
+  adelantoModo: ModoDeAdelanto | null
+  /** Para un pago adelantado: true cuando ya quedó imputado a la fila del mes que pagaba. */
+  adelantoImputado: boolean
 }
 
 export interface TotalPorMedio {
@@ -1480,6 +1568,8 @@ export interface CajaDelDia {
   total: number
   /** Cuántos pagos del día no tienen un importe numérico (no suman al total). */
   sinImporte: number
+  /** Cuántos pagos del día están IMPUTADOS y sin cobrar: se ven en la lista pero no suman al total. */
+  imputados: number
   hoy: string
 }
 
@@ -1499,6 +1589,11 @@ export interface DatosDePagoManual {
   medioDePago: string
   sucursal: string
   observaciones: string
+  /** PAGO o IMPUTADO; vacío = PAGO. */
+  estadoCobro?: EstadoDeCobro
+  /** Sólo con `cuotaFilaId`: qué cuota se paga (MES, ADELANTADO o AMBAS). Vacío = MES. */
+  alcance?: AlcanceDelPago
+  adelanto?: DatosDeAdelanto
 }
 
 export const RANGOS_DE_MORA = ['', '1-7', '8-30', '+30'] as const
@@ -1540,6 +1635,8 @@ export interface FilaMora {
   fechaEnvio: string | null
   /** false si la cuota es de un mes ya cerrado: se puede avisar, pero la fila no se toca. */
   mesAbierto: boolean
+  /** true si la cuota está IMPUTADA: la agencia ya se la pagó a la compañía y lo que falta es cobrarle al cliente. */
+  imputada: boolean
 }
 
 export interface FiltrosMora {
@@ -1598,6 +1695,8 @@ export interface RendicionImputados {
   total: number
   totalImporte: number
   pendientes: number
+  /** Cuántos de los pagos del mes están IMPUTADOS y todavía sin cobrar al cliente. */
+  sinCobrar: number
   /** Pagos de la hoja con la fecha ilegible y sin MES: no caen en ningún mes y no se rinden. */
   sinMes: number
   /**

@@ -61,6 +61,7 @@ import {
 import { clasificarPestanas, periodoDesdeTextoDeMes, revisarCoherenciaDePeriodos, type PestanaClasificada } from './pestanas'
 import { huellaDeFila } from '../sincronizacion/hoja'
 import { alDesaparecerDeLaHoja, alLlegarUnaBaja, cuotaDelMesDeLaBaja, filasConCambiosSinSubir } from '../servicios/filas'
+import { normalizarEstadoDeCobro } from '../servicios/pagos'
 
 export interface OpcionesImportacion {
   db: BaseDeDatos
@@ -460,10 +461,10 @@ function prepararSentencias(db: BaseDeDatos) {
     pago: db.prepare(`
       INSERT INTO pagos (fila_id, pestana, cliente_id, poliza_id, fecha, fecha_iso, cliente_nombre, documento, compania, numero_poliza,
                          patente, sucursal_texto, importe, importe_monto, medio, periodo_texto, periodo, observaciones, resultado,
-                         usuario_nombre, creado_en, actualizado_en)
+                         usuario_nombre, estado_cobro, creado_en, actualizado_en)
       VALUES (@fila_id, @pestana, @cliente_id, @poliza_id, @fecha, @fecha_iso, @cliente_nombre, @documento, @compania, @numero_poliza,
               @patente, @sucursal_texto, @importe, @importe_monto, @medio, @periodo_texto, @periodo, @observaciones, @resultado,
-              @usuario_nombre, @ahora, @ahora)
+              @usuario_nombre, @estado_cobro, @ahora, @ahora)
       ON CONFLICT(fila_id) DO UPDATE SET
         -- Quién cobró lo sabe la computadora que cobró (y la pestaña APP PAGOS, que lo escribe): la
         -- hoja no puede borrarlo.
@@ -478,6 +479,9 @@ function prepararSentencias(db: BaseDeDatos) {
         -- la rendición se lleva a mano en DM Gestión (así lo avisa la pantalla de Imputados) y una
         -- importación no puede borrarla.
         resultado = CASE WHEN @hay_columna_resultado = 1 THEN excluded.resultado ELSE pagos.resultado END,
+        -- Lo mismo con el estado del COBRO (PAGO / IMPUTADO): sin columna en la hoja, manda lo que
+        -- sabe esta computadora, que es la que cobró.
+        estado_cobro = CASE WHEN @hay_columna_cobro = 1 THEN excluded.estado_cobro ELSE pagos.estado_cobro END,
         actualizado_en = excluded.actualizado_en`),
 
     sucursales: db.prepare('SELECT id, nombre FROM sucursales'),
@@ -1894,6 +1898,9 @@ class TrabajoDeImportacion {
       hay_columna_resultado: fila.tieneColumna('resultado') ? 1 : 0,
       // «COBRADO POR» sólo lo trae APP PAGOS: es el nombre de quien cobró en la otra computadora.
       usuario_nombre: oNulo(fila.valor('usuario')),
+      // «COBRO» también: PAGO, o IMPUTADO cuando la agencia le pagó a la compañía y falta cobrarle al cliente.
+      estado_cobro: normalizarEstadoDeCobro(fila.valor('cobro')),
+      hay_columna_cobro: fila.tieneColumna('cobro') ? 1 : 0,
       ahora: this.ahora,
     })
     this.contar(resumen, 'pagos')

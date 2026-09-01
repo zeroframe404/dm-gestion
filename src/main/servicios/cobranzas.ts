@@ -28,6 +28,7 @@ import { ahoraIso, generarId, interpretarFecha, interpretarNumero, limpiar, norm
 import {
   aFila,
   catalogos,
+  idDelAdelantoDeLaCuota,
   idDelPagoDeLaCuota,
   periodosDisponibles,
   prepararAvisoDeCuota,
@@ -45,7 +46,9 @@ import {
   asegurarPagoEnLaHoja,
   guardarPago,
   hojaDeImputados,
+  normalizarEstadoDeCobro,
   normalizarResultado,
+  PAGO_QUE_CUBRE_LA_CUOTA,
   SELECT_PAGOS,
   type PagoCrudo,
 } from './pagos'
@@ -89,9 +92,14 @@ function sucursalesDeLaCaja(): string[] {
   return sucursalesParaElegir(deLosPagos)
 }
 
+/** Los pagos que son plata que entró: un IMPUTADO todavía no se cobró y no suma a la caja. */
+function cobrados(pagos: PagoRegistrado[]): PagoRegistrado[] {
+  return pagos.filter((pago) => pago.estadoCobro === 'PAGO')
+}
+
 function totalesPorMedio(pagos: PagoRegistrado[]): TotalPorMedio[] {
   const acumulado = new Map<string, TotalPorMedio>()
-  for (const pago of pagos) {
+  for (const pago of cobrados(pagos)) {
     const etiqueta = limpiar(pago.medio) || '(sin especificar)'
     const clave = normalizarTexto(etiqueta)
     const previo = acumulado.get(clave) ?? { medio: etiqueta, pagos: 0, total: 0 }
@@ -136,8 +144,9 @@ export function cajaDelDia(fechaPedida: string | null, sucursalPedida: string, a
     mediosDePago: catalogos().mediosDePago,
     pagos,
     totalesPorMedio: totalesPorMedio(pagos),
-    total: pagos.reduce((suma, pago) => suma + (pago.importeMonto ?? 0), 0),
-    sinImporte: pagos.filter((pago) => pago.importeMonto === null).length,
+    total: cobrados(pagos).reduce((suma, pago) => suma + (pago.importeMonto ?? 0), 0),
+    sinImporte: cobrados(pagos).filter((pago) => pago.importeMonto === null).length,
+    imputados: pagos.length - cobrados(pagos).length,
     hoy: hoyLocal(),
   }
 }
@@ -168,7 +177,7 @@ export function csvDeLaCaja(fechaPedida: string | null, sucursalPedida: string, 
   lineas.push(celda(`Caja del ${caja.fecha}${caja.sucursal ? ` · ${caja.sucursal}` : ' · todas las sucursales'}`))
   lineas.push('')
   lineas.push(
-    ['Hora', 'Cliente', 'DNI/CUIT', 'Compañía', 'Póliza', 'Patente', 'Importe', 'Medio', 'Sucursal', 'Cobró', 'Mes', 'Resultado']
+    ['Hora', 'Cliente', 'DNI/CUIT', 'Compañía', 'Póliza', 'Patente', 'Importe', 'Medio', 'Sucursal', 'Cobró', 'Mes', 'Resultado', 'Cobro']
       .map(celda)
       .join(';'),
   )
@@ -187,6 +196,7 @@ export function csvDeLaCaja(fechaPedida: string | null, sucursalPedida: string, 
         celda(pago.usuarioNombre),
         celda(pago.periodo),
         celda(pago.resultado),
+        celda(pago.estadoCobro === 'IMPUTADO' ? 'IMPUTADO (falta cobrar)' : pago.adelantoModo ? 'PAGO ADELANTADO' : 'PAGO'),
       ].join(';'),
     )
   }
@@ -195,7 +205,11 @@ export function csvDeLaCaja(fechaPedida: string | null, sucursalPedida: string, 
   for (const total of caja.totalesPorMedio) {
     lineas.push([celda(total.medio), String(total.pagos), comoImporte(total.total)].join(';'))
   }
-  lineas.push([celda('TOTAL'), String(caja.pagos.length), comoImporte(caja.total)].join(';'))
+  lineas.push([celda('TOTAL'), String(caja.pagos.length - caja.imputados), comoImporte(caja.total)].join(';'))
+  if (caja.imputados > 0) {
+    lineas.push('')
+    lineas.push(celda(`${caja.imputados} pago(s) imputado(s) a la compañía y todavía sin cobrar: no suman al total.`))
+  }
   if (caja.sinImporte > 0) {
     lineas.push('')
     lineas.push(celda(`${caja.sinImporte} pago(s) sin importe numérico: no suman al total.`))
@@ -229,8 +243,21 @@ export function registrarPagoManual(datos: DatosDePagoManual, actor: SesionUsuar
 
   const cuotaFilaId = limpiar(datos.cuotaFilaId)
   if (cuotaFilaId) {
-    registrarPago(cuotaFilaId, { fecha, importe: limpiar(datos.importe), medioDePago: limpiar(datos.medioDePago), sucursal }, actor)
-    const pagoId = idDelPagoDeLaCuota(cuotaFilaId)
+    registrarPago(
+      cuotaFilaId,
+      {
+        fecha,
+        importe: limpiar(datos.importe),
+        medioDePago: limpiar(datos.medioDePago),
+        sucursal,
+        estadoCobro: datos.estadoCobro,
+        alcance: datos.alcance,
+        adelanto: datos.adelanto,
+      },
+      actor,
+    )
+    // El ticket es del pago de este mes; si sólo se adelantó la cuota que viene, del adelanto.
+    const pagoId = (datos.alcance === 'ADELANTADO' ? idDelAdelantoDeLaCuota(cuotaFilaId) : idDelPagoDeLaCuota(cuotaFilaId)) ?? idDelAdelantoDeLaCuota(cuotaFilaId)
     if (pagoId === null) throw new ErrorDeNegocio('El pago se guardó pero no se pudo leer de vuelta. Actualizá la pantalla.')
     return { caja: cajaDelDia(interpretada.iso, sucursal, actor), pagoId }
   }
@@ -262,6 +289,8 @@ export function registrarPagoManual(datos: DatosDePagoManual, actor: SesionUsuar
       periodo: interpretada.iso.slice(0, 7),
       observaciones: limpiar(datos.observaciones) || null,
       resultado: '',
+      estadoCobro: normalizarEstadoDeCobro(datos.estadoCobro),
+      adelantoModo: null,
     },
     actor,
   )
@@ -328,6 +357,7 @@ function aFilaMora(fila: FilaCartera, hoy: string, periodoAbierto: string | null
     aviso: fila.aviso,
     fechaEnvio: fila.fechaEnvio,
     mesAbierto: periodoAbierto === null || fila.periodo === periodoAbierto,
+    imputada: fila.pagoImputado,
   }
 }
 
@@ -349,7 +379,7 @@ function filasEnMora(incluirDebito: boolean, hoy: string): FilaMora[] {
          AND (c.pago IS NULL OR TRIM(c.pago) = '')
          AND c.dia_vencimiento_numero IS NOT NULL
          AND COALESCE(p.activa, 1) = 1
-         AND NOT EXISTS (SELECT 1 FROM pagos pg WHERE pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo)`,
+         AND NOT ${PAGO_QUE_CUBRE_LA_CUOTA}`,
     )
     .all() as FilaCruda[]
 
@@ -460,6 +490,7 @@ export function imputados(periodoPedido: string | null, companiaPedida: string, 
     total: pagos.length,
     totalImporte: pagos.reduce((suma, pago) => suma + (pago.importeMonto ?? 0), 0),
     pendientes: contadores[''],
+    sinCobrar: pagos.filter((pago) => pago.estadoCobro === 'IMPUTADO').length,
     sinMes: pagosSinMes(),
     avisoDeSincronizacion: hojaDeImputados().aviso,
   }

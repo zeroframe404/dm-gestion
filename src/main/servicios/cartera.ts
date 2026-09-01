@@ -1,17 +1,23 @@
 // Cartera: la planilla del mes, sus acciones (avisar, registrar pago, dar de baja) y el cierre de mes.
 // Todo lo que se cambia acá queda anotado en el historial.
-import { hoyLocal, periodoDeHoy, periodoSiguiente } from '../../shared/semaforo'
+import { hoyLocal, nombreDePeriodo, periodoDeHoy, periodoSiguiente } from '../../shared/semaforo'
 import {
+  ALCANCES_DEL_PAGO,
+  ESTADOS_DE_COBRO,
+  MODOS_DE_ADELANTO,
   MOTIVOS_DE_BAJA,
   PLANTILLA_AVISO_POR_DEFECTO,
+  type AlcanceDelPago,
   type AvisoPreparado,
   type CampoEditable,
   type CuotasDelCliente,
   type CatalogosCartera,
   type DatosDeBaja,
   type DatosDePago,
+  type EstadoDeCobro,
   type FilaBaja,
   type FilaCartera,
+  type ModoDeAdelanto,
   type MotivoDeBaja,
   type PeriodoCartera,
   type PlanillaDelMes,
@@ -37,7 +43,7 @@ import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANA_APP, registrarFilaDeLaApp } from './filas'
-import { guardarPago, normalizarResultado } from './pagos'
+import { guardarPago, normalizarModoDeAdelanto, normalizarResultado } from './pagos'
 import { sucursalesParaElegir } from './sucursales'
 import { texto } from './validacion'
 
@@ -78,11 +84,38 @@ export const SELECT_PLANILLA = `
     COALESCE(c.numero_poliza, p.numero) AS numero_poliza, p.propuesta,
     p.vigencia_desde, p.vigencia_hasta, p.prima, p.productor, p.alta,
     COALESCE(p.activa, 1) AS poliza_activa,
-    EXISTS (SELECT 1 FROM pagos pg WHERE pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo) AS pago_registrado
+    -- Un pago cargado en la aplicación que deja la fila paga. No cuenta un cobro IMPUTADO (el cliente
+    -- todavía debe) ni un pago adelantado PENDIENTE que nadie imputó todavía a esta fila.
+    EXISTS (
+      SELECT 1 FROM pagos pg
+      WHERE (pg.cuota_fila_id = c.fila_id OR (pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo))
+        AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
+        -- COALESCE a propósito: con adelanto_modo NULL, «NOT (NULL AND ...)» es NULL y el pago desaparecería.
+        AND NOT (COALESCE(pg.adelanto_modo, '') = 'PENDIENTE' AND pg.cuota_fila_id IS NULL)
+    ) AS pago_registrado,
+    EXISTS (
+      SELECT 1 FROM pagos pg
+      WHERE (pg.cuota_fila_id = c.fila_id OR (pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo))
+        AND pg.estado_cobro = 'IMPUTADO'
+    ) AS pago_imputado,
+    pa.id AS pago_adelantado_id, pa.fecha AS pago_adelantado_fecha, pa.importe AS pago_adelantado_importe,
+    pa.medio AS pago_adelantado_medio, pa.adelanto_modo AS pago_adelantado_modo,
+    ps.periodo AS adelanto_siguiente_periodo, ps.fecha AS adelanto_siguiente_fecha,
+    ps.importe AS adelanto_siguiente_importe, ps.adelanto_modo AS adelanto_siguiente_modo,
+    (ps.cuota_fila_id IS NOT NULL) AS adelanto_siguiente_imputado
   FROM cuotas_mes c
   LEFT JOIN clientes cl ON cl.id = c.cliente_id
   LEFT JOIN polizas p ON p.id = c.poliza_id
   LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
+  -- El pago adelantado que espera a esta fila: se cobró antes de que existiera y todavía no se le imputó.
+  LEFT JOIN (
+    SELECT poliza_id, periodo, MAX(id) AS id FROM pagos
+    WHERE adelanto_modo IS NOT NULL AND cuota_fila_id IS NULL AND poliza_id IS NOT NULL
+    GROUP BY poliza_id, periodo
+  ) ad ON ad.poliza_id = c.poliza_id AND ad.periodo = c.periodo
+  LEFT JOIN pagos pa ON pa.id = ad.id
+  -- Y el adelanto que se cobró DESDE esta fila para el mes que viene (su _ID es fijo, ver idDeLaFilaDelAdelanto).
+  LEFT JOIN pagos ps ON ps.fila_id = 'PAGO:ADELANTO:' || c.fila_id
 `
 
 export interface FilaCruda {
@@ -131,6 +164,17 @@ export interface FilaCruda {
   alta: string | null
   poliza_activa: number
   pago_registrado: number
+  pago_imputado: number
+  pago_adelantado_id: number | null
+  pago_adelantado_fecha: string | null
+  pago_adelantado_importe: string | null
+  pago_adelantado_medio: string | null
+  pago_adelantado_modo: string | null
+  adelanto_siguiente_periodo: string | null
+  adelanto_siguiente_fecha: string | null
+  adelanto_siguiente_importe: string | null
+  adelanto_siguiente_modo: string | null
+  adelanto_siguiente_imputado: number | null
 }
 
 export function aFila(cruda: FilaCruda, dias: Record<string, number>): FilaCartera {
@@ -169,6 +213,9 @@ export function aFila(cruda: FilaCruda, dias: Record<string, number>): FilaCarte
     pago: cruda.pago,
     pagoFecha: cruda.pago_fecha,
     pagoRegistrado: cruda.pago_registrado === 1,
+    pagoImputado: cruda.pago_imputado === 1,
+    pagoAdelantado: pagoAdelantadoDe(cruda),
+    adelantoSiguiente: adelantoSiguienteDe(cruda),
     email: cruda.email,
     direccion: cruda.direccion,
     localidad: cruda.localidad,
@@ -181,6 +228,30 @@ export function aFila(cruda: FilaCruda, dias: Record<string, number>): FilaCarte
     alta: cruda.alta,
     polizaActiva: cruda.poliza_activa === 1,
     diasCobertura: dias[normalizada] ?? diasPorDefectoDe(cruda.compania ?? ''),
+  }
+}
+
+function pagoAdelantadoDe(cruda: FilaCruda): FilaCartera['pagoAdelantado'] {
+  const modo = normalizarModoDeAdelanto(cruda.pago_adelantado_modo)
+  if (cruda.pago_adelantado_id === null || !modo) return null
+  return {
+    pagoId: cruda.pago_adelantado_id,
+    fecha: cruda.pago_adelantado_fecha,
+    importe: cruda.pago_adelantado_importe,
+    medio: cruda.pago_adelantado_medio,
+    modo,
+  }
+}
+
+function adelantoSiguienteDe(cruda: FilaCruda): FilaCartera['adelantoSiguiente'] {
+  const modo = normalizarModoDeAdelanto(cruda.adelanto_siguiente_modo)
+  if (!cruda.adelanto_siguiente_periodo || !modo) return null
+  return {
+    periodo: cruda.adelanto_siguiente_periodo,
+    fecha: cruda.adelanto_siguiente_fecha,
+    importe: cruda.adelanto_siguiente_importe,
+    modo,
+    imputado: cruda.adelanto_siguiente_imputado === 1,
   }
 }
 
@@ -537,6 +608,14 @@ export function idDeLaFilaDelPago(cuotaFilaId: string): string {
   return `PAGO:${cuotaFilaId}`
 }
 
+/**
+ * El _ID del pago ADELANTADO que se cobra desde una fila: la cuota del mes que viene, pagada hoy. Es
+ * fijo por la misma razón: adelantarla dos veces corrige el adelanto en vez de cobrar dos veces.
+ */
+export function idDeLaFilaDelAdelanto(cuotaFilaId: string): string {
+  return `PAGO:ADELANTO:${cuotaFilaId}`
+}
+
 /** Id del pago ya registrado para esa cuota, o null. Lo usa el ticket, que se imprime después. */
 export function idDelPagoDeLaCuota(cuotaFilaId: string): number | null {
   const fila = db().prepare('SELECT id FROM pagos WHERE fila_id = ?').get(idDeLaFilaDelPago(cuotaFilaId)) as
@@ -545,6 +624,58 @@ export function idDelPagoDeLaCuota(cuotaFilaId: string): number | null {
   return fila?.id ?? null
 }
 
+/** Id del pago adelantado cobrado desde esa cuota, o null. */
+export function idDelAdelantoDeLaCuota(cuotaFilaId: string): number | null {
+  const fila = db().prepare('SELECT id FROM pagos WHERE fila_id = ?').get(idDeLaFilaDelAdelanto(cuotaFilaId)) as
+    | { id: number }
+    | undefined
+  return fila?.id ?? null
+}
+
+function exigirEstadoDeCobro(valor: unknown): EstadoDeCobro {
+  const estado = limpiar(valor) || 'PAGO'
+  if (!(ESTADOS_DE_COBRO as readonly string[]).includes(estado)) {
+    throw new ErrorDeNegocio('El estado del cobro tiene que ser «Pagó» o «Imputado».')
+  }
+  return estado as EstadoDeCobro
+}
+
+function exigirAlcance(valor: unknown): AlcanceDelPago {
+  const alcance = limpiar(valor) || 'MES'
+  if (!(ALCANCES_DEL_PAGO as readonly string[]).includes(alcance)) {
+    throw new ErrorDeNegocio('Elegí qué cuota se paga: la de este mes, la del mes que viene o las dos.')
+  }
+  return alcance as AlcanceDelPago
+}
+
+function exigirModoDeAdelanto(valor: unknown): ModoDeAdelanto {
+  const modo = limpiar(valor)
+  if (!(MODOS_DE_ADELANTO as readonly string[]).includes(modo)) {
+    throw new ErrorDeNegocio('Elegí qué hacer con la cuota adelantada: acreditarla al mes siguiente o dejarla pendiente para imputar.')
+  }
+  return modo as ModoDeAdelanto
+}
+
+/** Lo que tiene en común el cobro de una fila (este mes) y el adelanto de la que viene. */
+interface CobroDeFila {
+  fila: FilaCruda
+  fecha: string
+  fechaIso: string
+  medio: string
+  sucursal: string
+  estadoCobro: EstadoDeCobro
+}
+
+/**
+ * Registra el pago de una fila de la planilla del mes. Según `alcance`, cobra esta cuota (lo normal),
+ * la del mes que viene por adelantado, o las dos juntas: es el caso de quien viene a pagar dos cuotas
+ * el mismo mes.
+ *
+ * Con `estadoCobro` IMPUTADO la fila NO queda paga: la agencia le imputó la cuota a la compañía y el
+ * cliente todavía no transfirió (con AGS se hace así). El pago queda registrado con ese estado, a la
+ * vista en la planilla y en la caja pero sin sumar plata; cuando el cliente paga, se vuelve a
+ * registrar como «Pagó» y recién ahí la fila queda paga y la caja lo cuenta.
+ */
 export function registrarPago(filaId: string, datos: DatosDePago, actor: SesionUsuario): FilaCartera {
   const fila = buscarFila(texto(filaId, 'La fila', 1, 64))
   exigirMesAbierto(fila.periodo)
@@ -552,14 +683,32 @@ export function registrarPago(filaId: string, datos: DatosDePago, actor: SesionU
   const fecha = limpiar(datos.fecha) || hoyLocal()
   const fechaIso = interpretarFecha(fecha, Number(fila.periodo.slice(0, 4))).iso
   if (!fechaIso) throw new ErrorDeNegocio(`«${fecha}» no es una fecha válida. Usá el formato día/mes/año.`)
-  const importe = limpiar(datos.importe) || limpiar(fila.cuota)
   const medio = limpiar(datos.medioDePago)
+  const estadoCobro = exigirEstadoDeCobro(datos.estadoCobro)
+  const alcance = exigirAlcance(datos.alcance)
+  const cobro: CobroDeFila = { fila, fecha, fechaIso, medio, sucursal: limpiar(datos.sucursal) || actor.sucursal.nombre, estadoCobro }
 
+  // Lo del adelanto se valida ANTES de tocar nada: si falta el modo, no queda cobrada media operación.
+  const adelanto =
+    alcance === 'MES'
+      ? null
+      : { importe: limpiar(datos.adelanto?.importe) || limpiar(fila.cuota), modo: exigirModoDeAdelanto(datos.adelanto?.modo) }
+
+  if (alcance !== 'ADELANTADO') cobrarLaCuotaDelMes(cobro, limpiar(datos.importe) || limpiar(fila.cuota), actor)
+  if (adelanto) cobrarLaCuotaAdelantada(cobro, adelanto.importe, adelanto.modo, actor)
+  return devolverFila(fila.fila_id)
+}
+
+function cobrarLaCuotaDelMes(cobro: CobroDeFila, importe: string, actor: SesionUsuario): void {
+  const { fila, fecha, fechaIso, medio, estadoCobro } = cobro
   const ahora = ahoraIso()
   db().transaction(() => {
-    db()
-      .prepare(`UPDATE cuotas_mes SET pago = ?, pago_fecha = ?, actualizado_en = ? WHERE id = ?`)
-      .run(fecha, fechaIso, ahora, fila.cuota_id)
+    // Un IMPUTADO no escribe CUANDO PAGO: para la planilla (y para la hoja) la cuota sigue sin pagar.
+    if (estadoCobro === 'PAGO') {
+      db()
+        .prepare(`UPDATE cuotas_mes SET pago = ?, pago_fecha = ?, actualizado_en = ? WHERE id = ?`)
+        .run(fecha, fechaIso, ahora, fila.cuota_id)
+    }
     guardarPago(
       {
         filaId: idDeLaFilaDelPago(fila.fila_id),
@@ -572,7 +721,7 @@ export function registrarPago(filaId: string, datos: DatosDePago, actor: SesionU
         numeroPoliza: fila.numero_poliza,
         patente: fila.patente,
         sucursalCliente: fila.sucursal,
-        sucursalCobro: limpiar(datos.sucursal) || actor.sucursal.nombre,
+        sucursalCobro: cobro.sucursal,
         fecha,
         fechaIso,
         importe: importe || null,
@@ -580,13 +729,125 @@ export function registrarPago(filaId: string, datos: DatosDePago, actor: SesionU
         periodo: fila.periodo,
         observaciones: null,
         resultado: normalizarResultado(null),
+        estadoCobro,
+        adelantoModo: null,
       },
       actor,
     )
   })()
 
-  encolar({ operacion: 'actualizar', pestana: fila.pestana, filaId: fila.fila_id, campos: { pago: fecha } }, actor)
+  if (estadoCobro === 'PAGO') {
+    encolar({ operacion: 'actualizar', pestana: fila.pestana, filaId: fila.fila_id, campos: { pago: fecha } }, actor)
+  }
 
+  registrarCambio(actor, {
+    accion: 'pago',
+    tabla: 'cuotas_mes',
+    registroId: fila.cuota_id,
+    filaId: fila.fila_id,
+    campo: estadoCobro === 'IMPUTADO' ? 'IMPUTADO (falta cobrar)' : 'CUANDO PAGO',
+    valorAnterior: fila.pago,
+    valorNuevo: `${fecha}${importe ? ` · ${importe}` : ''}${medio ? ` · ${medio}` : ''}`,
+  })
+}
+
+/**
+ * La cuota del mes que viene, cobrada desde la fila de este mes. El pago se guarda con el período
+ * siguiente, así la rendición lo rinde en el mes que paga, y con el modo elegido:
+ *  - ACREDITAR: si la fila del mes que viene ya existe, queda paga ahora mismo; si no, nace paga
+ *    cuando se cierre el mes (ver `cerrarMes`).
+ *  - PENDIENTE: el pago queda a la vista en la fila del mes que viene, para imputarlo a mano cuando
+ *    se controle el general (ver `imputarAdelanto`).
+ */
+function cobrarLaCuotaAdelantada(cobro: CobroDeFila, importe: string, modo: ModoDeAdelanto, actor: SesionUsuario): void {
+  const { fila, fecha, fechaIso, medio, estadoCobro } = cobro
+  const periodo = periodoSiguiente(fila.periodo)
+  const filaDelMesQueViene = db()
+    .prepare(`SELECT id, fila_id, pestana FROM cuotas_mes WHERE poliza_id = ? AND periodo = ? AND dada_de_baja = 0 ORDER BY id LIMIT 1`)
+    .get(fila.poliza_id, periodo) as { id: number; fila_id: string; pestana: string } | undefined
+  const seAcreditaYa = modo === 'ACREDITAR' && estadoCobro === 'PAGO' && filaDelMesQueViene !== undefined
+
+  db().transaction(() => {
+    guardarPago(
+      {
+        filaId: idDeLaFilaDelAdelanto(fila.fila_id),
+        cuotaFilaId: seAcreditaYa ? filaDelMesQueViene!.fila_id : null,
+        clienteId: fila.cliente_id,
+        polizaId: fila.poliza_id,
+        clienteNombre: fila.nombre,
+        documento: fila.documento,
+        compania: fila.compania,
+        numeroPoliza: fila.numero_poliza,
+        patente: fila.patente,
+        sucursalCliente: fila.sucursal,
+        sucursalCobro: cobro.sucursal,
+        fecha,
+        fechaIso,
+        importe: importe || null,
+        medio: medio || null,
+        periodo,
+        observaciones: `Pago adelantado, cobrado en ${nombreDePeriodo(fila.periodo)}`,
+        resultado: normalizarResultado(null),
+        estadoCobro,
+        adelantoModo: modo,
+      },
+      actor,
+    )
+    if (seAcreditaYa) {
+      db()
+        .prepare(`UPDATE cuotas_mes SET pago = ?, pago_fecha = ?, actualizado_en = ? WHERE id = ?`)
+        .run(fecha, fechaIso, ahoraIso(), filaDelMesQueViene!.id)
+    }
+  })()
+
+  if (seAcreditaYa) {
+    encolar({ operacion: 'actualizar', pestana: filaDelMesQueViene!.pestana, filaId: filaDelMesQueViene!.fila_id, campos: { pago: fecha } }, actor)
+  }
+
+  registrarCambio(actor, {
+    accion: 'pago',
+    tabla: 'cuotas_mes',
+    registroId: fila.cuota_id,
+    filaId: fila.fila_id,
+    campo: 'PAGO ADELANTADO',
+    valorAnterior: null,
+    valorNuevo: `${nombreDePeriodo(periodo)} · ${fecha}${importe ? ` · ${importe}` : ''}${medio ? ` · ${medio}` : ''} · ${
+      seAcreditaYa ? 'acreditado' : modo === 'ACREDITAR' ? 'se acredita al armar el mes' : 'pendiente de imputar'
+    }${estadoCobro === 'IMPUTADO' ? ' · IMPUTADO (falta cobrar)' : ''}`,
+  })
+}
+
+/**
+ * Imputa a una fila el pago adelantado que la esperaba: la fila queda paga con la fecha en que se
+ * cobró el adelanto, y el pago pasa a apuntarla. Es el paso a mano de un adelanto PENDIENTE (o de uno
+ * ACREDITAR cuya fila apareció por otro camino que el cierre de mes, por ejemplo una reactivación).
+ */
+export function imputarAdelanto(filaId: string, actor: SesionUsuario): FilaCartera {
+  const fila = buscarFila(texto(filaId, 'La fila', 1, 64))
+  exigirMesAbierto(fila.periodo)
+  if (fila.pago_adelantado_id === null) {
+    throw new ErrorDeNegocio('Esta fila no tiene ningún pago adelantado esperando. Actualizá la pantalla.')
+  }
+  const pago = db()
+    .prepare('SELECT id, fecha, fecha_iso, importe, estado_cobro FROM pagos WHERE id = ?')
+    .get(fila.pago_adelantado_id) as { id: number; fecha: string | null; fecha_iso: string | null; importe: string | null; estado_cobro: string | null }
+  const fecha = limpiar(pago.fecha) || limpiar(pago.fecha_iso) || hoyLocal()
+  const fechaIso = limpiar(pago.fecha_iso) || interpretarFecha(fecha, Number(fila.periodo.slice(0, 4))).iso || hoyLocal()
+  const ahora = ahoraIso()
+
+  db().transaction(() => {
+    db().prepare('UPDATE pagos SET cuota_fila_id = ?, actualizado_en = ? WHERE id = ?').run(fila.fila_id, ahora, pago.id)
+    // Un adelanto IMPUTADO (todavía sin cobrar al cliente) se ata a la fila pero no la deja paga.
+    if (limpiar(pago.estado_cobro) !== 'IMPUTADO') {
+      db()
+        .prepare(`UPDATE cuotas_mes SET pago = ?, pago_fecha = ?, actualizado_en = ? WHERE id = ?`)
+        .run(fecha, fechaIso, ahora, fila.cuota_id)
+    }
+  })()
+
+  if (limpiar(pago.estado_cobro) !== 'IMPUTADO') {
+    encolar({ operacion: 'actualizar', pestana: fila.pestana, filaId: fila.fila_id, campos: { pago: fecha } }, actor)
+  }
   registrarCambio(actor, {
     accion: 'pago',
     tabla: 'cuotas_mes',
@@ -594,7 +855,7 @@ export function registrarPago(filaId: string, datos: DatosDePago, actor: SesionU
     filaId: fila.fila_id,
     campo: 'CUANDO PAGO',
     valorAnterior: fila.pago,
-    valorNuevo: `${fecha}${importe ? ` · ${importe}` : ''}${medio ? ` · ${medio}` : ''}`,
+    valorNuevo: `${fecha}${pago.importe ? ` · ${pago.importe}` : ''} (pago adelantado)`,
   })
   return devolverFila(fila.fila_id)
 }
@@ -1096,6 +1357,33 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
 
   const ahora = ahoraIso()
   const pestanaDelMesNuevo = nombreParaPestanaNueva(nombreDePestanaMensual(nuevo), nuevo)
+
+  // Los pagos adelantados que esperaban este mes: se cobraron en el mes que se cierra para el que se
+  // abre. Los ACREDITAR dejan la fila nueva paga; los PENDIENTE quedan a la vista para imputarlos a
+  // mano. Un adelanto IMPUTADO (todavía sin cobrar al cliente) se trata como pendiente: no deja paga
+  // ninguna fila.
+  const adelantos = new Map<number, { id: number; fecha: string; fechaIso: string | null; modo: ModoDeAdelanto }>()
+  const esperando = db()
+    .prepare(
+      `SELECT id, poliza_id, fecha, fecha_iso, adelanto_modo, estado_cobro FROM pagos
+       WHERE periodo = ? AND adelanto_modo IS NOT NULL AND cuota_fila_id IS NULL AND poliza_id IS NOT NULL
+       ORDER BY id`,
+    )
+    .all(nuevo) as Array<{ id: number; poliza_id: number; fecha: string | null; fecha_iso: string | null; adelanto_modo: string; estado_cobro: string | null }>
+  for (const pago of esperando) {
+    const modo = normalizarModoDeAdelanto(pago.adelanto_modo)
+    if (!modo) continue
+    adelantos.set(pago.poliza_id, {
+      id: pago.id,
+      fecha: limpiar(pago.fecha) || limpiar(pago.fecha_iso),
+      fechaIso: pago.fecha_iso,
+      modo: limpiar(pago.estado_cobro) === 'IMPUTADO' ? 'PENDIENTE' : modo,
+    })
+  }
+  let adelantosAcreditados = 0
+  let adelantosPendientes = 0
+  const atarAdelanto = db().prepare('UPDATE pagos SET cuota_fila_id = ?, actualizado_en = ? WHERE id = ?')
+
   const insertar = db().prepare(`
     INSERT INTO cuotas_mes (fila_id, periodo, pestana, poliza_id, cliente_id, cliente_nombre, documento, compania,
                             numero_poliza, patente, sucursal_texto, cuota, cuota_monto, dia_vencimiento,
@@ -1103,12 +1391,26 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
                             forma_pago, fecha_envio, avisar_vto, creada_en_la_app, dada_de_baja, creado_en, actualizado_en)
     VALUES (@fila_id, @periodo, @pestana, @poliza_id, @cliente_id, @cliente_nombre, @documento, @compania,
             @numero_poliza, @patente, @sucursal_texto, @cuota, @cuota_monto, @dia_vencimiento,
-            @dia_vencimiento_numero, @aviso, NULL, NULL, NULL, @observaciones,
+            @dia_vencimiento_numero, @aviso, NULL, @pago, @pago_fecha, @observaciones,
             @forma_pago, NULL, @avisar_vto, 1, 0, @ahora, @ahora)`)
 
   db().transaction(() => {
     for (const fila of origen) {
       const filaId = generarId()
+      const adelanto = adelantos.get(Number(fila.poliza_id))
+      // El adelanto ACREDITAR se ata a la fila nueva, que nace paga. El PENDIENTE queda suelto a
+      // propósito: es lo que hace que la fila lo muestre como «adelanto sin imputar» hasta que alguien
+      // lo impute a mano.
+      const acreditado = adelanto !== undefined && adelanto.modo === 'ACREDITAR' && adelanto.fecha !== '' ? adelanto : null
+      if (adelanto) {
+        if (acreditado) {
+          atarAdelanto.run(filaId, ahora, acreditado.id)
+          adelantosAcreditados++
+        } else {
+          adelantosPendientes++
+        }
+        adelantos.delete(Number(fila.poliza_id))
+      }
       insertar.run({
         fila_id: filaId,
         periodo: nuevo,
@@ -1129,6 +1431,8 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
         observaciones: fila.observaciones,
         forma_pago: fila.forma_pago,
         avisar_vto: fila.avisar_vto,
+        pago: acreditado ? acreditado.fecha : null,
+        pago_fecha: acreditado ? acreditado.fechaIso : null,
         ahora,
       })
       // La fila nueva se agrega al final de la pestaña del mes en la hoja. Se anota primero como fila
@@ -1151,6 +1455,8 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
             forma_pago: String(fila.forma_pago ?? ''),
             aviso: String(fila.aviso ?? ''),
             observaciones: String(fila.observaciones ?? ''),
+            // La fila que nace paga por un adelanto lleva la fecha del cobro en CUANDO PAGO.
+            ...(acreditado ? { pago: acreditado.fecha } : {}),
           },
         },
         actor,
@@ -1163,9 +1469,11 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
     tabla: 'cuotas_mes',
     campo: 'PERÍODO',
     valorAnterior: actual,
-    valorNuevo: `${nuevo} (${origen.length} pólizas)`,
+    valorNuevo: `${nuevo} (${origen.length} pólizas${adelantosAcreditados ? `, ${adelantosAcreditados} adelanto(s) acreditado(s)` : ''}${
+      adelantosPendientes ? `, ${adelantosPendientes} adelanto(s) por imputar` : ''
+    })`,
   })
-  return { periodo: nuevo, filasCreadas: origen.length }
+  return { periodo: nuevo, filasCreadas: origen.length, adelantosAcreditados, adelantosPendientes }
 }
 
 export { PLANTILLA_AVISO_POR_DEFECTO }

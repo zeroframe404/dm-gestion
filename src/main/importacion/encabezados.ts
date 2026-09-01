@@ -53,6 +53,9 @@ export type Campo =
   | 'importe'
   | 'medio_pago'
   | 'resultado'
+  // El estado del COBRO de un pago (PAGO / IMPUTADO): lo escribe la aplicación en APP PAGOS cuando
+  // hay algo que decir. No es el RESULTADO de la rendición.
+  | 'cobro'
   | 'detalle'
   | 'franquicia'
   | 'incluye'
@@ -124,6 +127,7 @@ const SINONIMOS: Record<Campo, string[]> = {
   medio_pago: ['MEDIO', 'MEDIOS', 'VIA', 'CANAL', 'FORMA', 'MEDIO DE COBRO', 'COMO PAGO', 'COMO PAGA', 'PAGO POR', 'PAGO CON'],
   // El RESULTADO de la rendición mensual: vacío, IMPUTADO, OK, REVISAR o MAL.
   resultado: ['RESULTADO', 'RESULTADOS', 'RTDO', 'ESTADO DE IMPUTACION', 'ESTADO IMPUTACION', 'IMPUTACION', 'IMPUTADO', 'CONCILIACION', 'CONCILIADO', 'RENDICION'],
+  cobro: ['COBRO', 'ESTADO DEL COBRO', 'ESTADO COBRO', 'COBRADO AL CLIENTE', 'COBRO AL CLIENTE'],
   detalle: ['DETALLE', 'CONCEPTO', 'DETALLES', 'CONCEPTOS', 'ITEM', 'DESCRIPCION DETALLE'],
   franquicia: ['FRANQUICIA', 'FRANQ', 'DEDUCIBLE', 'FRANQUICIAS'],
   incluye: ['INCLUYE', 'CUBRE', 'COBERTURAS INCLUIDAS', 'INCLUSIONES', 'QUE CUBRE', 'QUE INCLUYE', 'ALCANCE', 'INCLUIDO'],
@@ -216,6 +220,9 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
     SITUACION: 'resultado',
     // Quién cobró: la columna que escribe la aplicación en APP PAGOS.
     'COBRADO POR': 'usuario',
+    // Si el cliente pagó o si la agencia le imputó la cuota a la compañía y falta cobrarle: también
+    // la escribe la aplicación en APP PAGOS.
+    COBRO: 'cobro',
   },
   COBERTURA: {
     DESCRIPCION: 'detalle',
@@ -269,7 +276,7 @@ const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
   BAJAS: ['nombre', 'documento', 'telefono', 'sucursal', 'compania', 'numero_poliza', 'cobertura', 'patente', 'marca', 'modelo', 'motivo', 'fecha_baja', 'mes', 'observaciones', 'cuota', 'productor'],
   RIESGOS_VARIOS: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'sucursal', 'emision', 'tipo_riesgo', 'descripcion', 'compania', 'numero_poliza', 'prima', 'cuota', 'vigencia_desde', 'vigencia_hasta', 'forma_pago', 'dia_vencimiento', 'aviso', 'pago', 'observaciones', 'productor', 'estado', 'patente', 'marca', 'modelo'],
   SINIESTROS: ['fecha', 'fecha_carga', 'nombre', 'documento', 'telefono', 'sucursal', 'patente', 'marca', 'modelo', 'compania', 'numero_poliza', 'cobertura', 'numero_siniestro', 'descripcion', 'estado', 'importe', 'observaciones'],
-  PAGOS: ['fecha', 'nombre', 'documento', 'sucursal', 'compania', 'numero_poliza', 'patente', 'importe', 'medio_pago', 'mes', 'observaciones', 'cuota', 'resultado', 'usuario'],
+  PAGOS: ['fecha', 'nombre', 'documento', 'sucursal', 'compania', 'numero_poliza', 'patente', 'importe', 'medio_pago', 'mes', 'observaciones', 'cuota', 'resultado', 'usuario', 'cobro'],
   COBERTURA: ['compania', 'cobertura', 'incluye', 'franquicia', 'detalle', 'observaciones', 'prima'],
   CONTADOR: 'todos',
   SEGUROS_ACT: 'todos',

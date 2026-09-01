@@ -35,6 +35,7 @@ const CLASES_COLOR: Record<ColorAlerta, string> = {
   naranja: 'bg-orange-200 text-orange-900 border-orange-300',
   rojo: 'bg-red-100 text-red-800 border-red-200',
   neutro: 'bg-slate-100 text-slate-500 border-slate-200',
+  violeta: 'bg-violet-100 text-violet-900 border-violet-200',
 }
 
 const PUNTO_COLOR: Record<ColorAlerta, string> = {
@@ -44,6 +45,7 @@ const PUNTO_COLOR: Record<ColorAlerta, string> = {
   naranja: 'bg-orange-500',
   rojo: 'bg-red-500',
   neutro: 'bg-slate-300',
+  violeta: 'bg-violet-500',
 }
 
 function normalizar(valor: string | null | undefined): string {
@@ -77,7 +79,7 @@ function mensajeDeVacio(sucursal: string, sinSucursal: number, total: number): s
  * exactamente la misma condición con la que se contó, así el número del cartel y las filas que
  * quedan en la tabla no pueden discrepar.
  */
-type Contador = '' | 'vencenHoy' | 'vencidos' | 'avisadosHoy' | 'coberturaPorTerminar' | 'pagadosHoy'
+type Contador = '' | 'vencenHoy' | 'vencidos' | 'avisadosHoy' | 'coberturaPorTerminar' | 'pagadosHoy' | 'imputados' | 'adelantos'
 
 function estaPagada(fila: FilaCartera): boolean {
   return Boolean(fila.pagoFecha) || fila.pagoRegistrado
@@ -116,6 +118,12 @@ function entraEnElContador(entrada: FilaConAlerta, contador: Contador, hoy: stri
     }
     case 'pagadosHoy':
       return fila.pagoFecha === hoy
+    // Imputadas a la compañía y todavía sin cobrar al cliente: es plata que falta que entre.
+    case 'imputados':
+      return !estaPagada(fila) && fila.pagoImputado
+    // Con un pago adelantado esperando que alguien lo impute a la fila.
+    case 'adelantos':
+      return !estaPagada(fila) && fila.pagoAdelantado !== null
     default:
       return true
   }
@@ -184,6 +192,8 @@ export function PlanillaDelMes() {
           pagada: Boolean(fila.pagoFecha) || fila.pagoRegistrado,
           formaPago: fila.formaPago,
           diasCobertura: fila.diasCobertura,
+          imputada: fila.pagoImputado,
+          adelantoPendiente: fila.pagoAdelantado !== null,
         },
         datos.hoy,
       ),
@@ -234,14 +244,18 @@ export function PlanillaDelMes() {
     let avisadosHoy = 0
     let coberturaPorTerminar = 0
     let pagadosHoy = 0
+    let imputados = 0
+    let adelantos = 0
     for (const entrada of conAlerta) {
+      if (entraEnElContador(entrada, 'imputados', hoy)) imputados++
+      if (entraEnElContador(entrada, 'adelantos', hoy)) adelantos++
       if (entraEnElContador(entrada, 'vencenHoy', hoy)) vencenHoy++
       if (entraEnElContador(entrada, 'vencidos', hoy)) vencidos++
       if (entraEnElContador(entrada, 'avisadosHoy', hoy)) avisadosHoy++
       if (entraEnElContador(entrada, 'coberturaPorTerminar', hoy)) coberturaPorTerminar++
       if (entraEnElContador(entrada, 'pagadosHoy', hoy)) pagadosHoy++
     }
-    return { total: conAlerta.length, vencenHoy, vencidos, avisadosHoy, coberturaPorTerminar, pagadosHoy }
+    return { total: conAlerta.length, vencenHoy, vencidos, avisadosHoy, coberturaPorTerminar, pagadosHoy, imputados, adelantos }
   }, [conAlerta, datos])
 
   const filaSeleccionada = useMemo(
@@ -310,13 +324,34 @@ export function PlanillaDelMes() {
     setError(null)
     const resultado = await window.dm.cartera.cerrarMes()
     if (resultado.ok) {
-      setAviso(`Se abrió ${nombreDePeriodo(resultado.datos.periodo)} con ${resultado.datos.filasCreadas} pólizas.`)
+      const { adelantosAcreditados, adelantosPendientes } = resultado.datos
+      const adelantos = [
+        adelantosAcreditados > 0 ? `${adelantosAcreditados} nacieron pagas por pagos adelantados` : '',
+        adelantosPendientes > 0 ? `${adelantosPendientes} tienen un pago adelantado para imputar (mirá «Adelantos sin imputar»)` : '',
+      ].filter(Boolean)
+      setAviso(
+        `Se abrió ${nombreDePeriodo(resultado.datos.periodo)} con ${resultado.datos.filasCreadas} pólizas${adelantos.length ? `: ${adelantos.join(' y ')}` : ''}.`,
+      )
       await cargar(resultado.datos.periodo)
     } else {
       setError(resultado.error)
     }
     setCerrando(false)
   }, [cargar])
+
+  const imputarAdelanto = useCallback(
+    async (fila: FilaCartera) => {
+      setError(null)
+      const resultado = await window.dm.cartera.imputarAdelanto(fila.filaId)
+      if (!resultado.ok) {
+        setError(resultado.error)
+        return
+      }
+      reemplazar(resultado.datos)
+      setAviso(`Se imputó el pago adelantado de ${fila.nombre ?? 'la fila'}: la cuota queda paga.`)
+    },
+    [reemplazar],
+  )
 
   // --- Columnas -------------------------------------------------------------
 
@@ -354,10 +389,21 @@ export function PlanillaDelMes() {
       {
         id: 'acciones',
         titulo: 'Acciones',
-        ancho: 172,
+        ancho: 200,
         fija: true,
         celda: ({ fila }) => (
           <div className="flex items-center gap-0.5">
+            {/* Sólo en la fila que tiene un pago adelantado esperando: imputarlo la deja paga. */}
+            {fila.pagoAdelantado && !estaPagada(fila) && (
+              <BotonAccion
+                titulo={`Imputar el pago adelantado${fila.pagoAdelantado.fecha ? ` del ${fila.pagoAdelantado.fecha}` : ''}${
+                  fila.pagoAdelantado.importe ? ` (${fila.pagoAdelantado.importe})` : ''
+                }: la cuota queda paga`}
+                icono="calendario"
+                disabled={soloLectura}
+                onClick={() => void imputarAdelanto(fila)}
+              />
+            )}
             <BotonAccion titulo="Avisar por WhatsApp" icono="mensaje" disabled={soloLectura} onClick={() => void avisar(fila)} />
             <BotonAccion
               titulo="Marcar como avisado (sin abrir WhatsApp)"
@@ -501,6 +547,26 @@ export function PlanillaDelMes() {
           titulo="Pagaron hoy."
           alTocar={() => alternarContador('pagadosHoy')}
         />
+        {(contadores.imputados > 0 || filtros.contador === 'imputados') && (
+          <Contador
+            etiqueta="Imputados a cobrar"
+            valor={contadores.imputados}
+            tono="violeta"
+            activo={filtros.contador === 'imputados'}
+            titulo="La agencia ya les imputó la cuota a la compañía y el cliente todavía no pagó. Cuando pague, registrá el pago como «Pagó»."
+            alTocar={() => alternarContador('imputados')}
+          />
+        )}
+        {(contadores.adelantos > 0 || filtros.contador === 'adelantos') && (
+          <Contador
+            etiqueta="Adelantos sin imputar"
+            valor={contadores.adelantos}
+            tono="violeta"
+            activo={filtros.contador === 'adelantos'}
+            titulo="Pagaron esta cuota por adelantado el mes pasado y quedó pendiente de imputar. Imputala con el botón de la fila (el calendario) y la cuota queda paga."
+            alTocar={() => alternarContador('adelantos')}
+          />
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -583,10 +649,10 @@ export function PlanillaDelMes() {
         mediosDePago={datos.catalogos.mediosDePago}
         hoy={datos.hoy}
         alCerrar={() => setPagoDe(null)}
-        alGuardar={(fila) => {
+        alGuardar={(fila, resumen) => {
           reemplazar(fila)
           setPagoDe(null)
-          setAviso(`Pago registrado para ${fila.nombre ?? 'el cliente'}.`)
+          setAviso(resumen)
         }}
         alFallar={setError}
       />
@@ -645,7 +711,7 @@ function Contador({
 }: {
   etiqueta: string
   valor: number
-  tono?: 'neutro' | 'rojo' | 'naranja' | 'azul' | 'verde'
+  tono?: 'neutro' | 'rojo' | 'naranja' | 'azul' | 'verde' | 'violeta'
   titulo?: string
   activo: boolean
   alTocar: () => void
@@ -658,6 +724,7 @@ function Contador({
     naranja: activo ? 'border-orange-500 bg-orange-100 text-orange-900' : 'border-orange-200 bg-orange-50 text-orange-800 hover:border-orange-300',
     azul: activo ? 'border-sky-500 bg-sky-100 text-sky-900' : 'border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300',
     verde: activo ? 'border-green-500 bg-green-100 text-green-900' : 'border-green-200 bg-green-50 text-green-800 hover:border-green-300',
+    violeta: activo ? 'border-violet-500 bg-violet-100 text-violet-900' : 'border-violet-200 bg-violet-50 text-violet-800 hover:border-violet-300',
   }[tono]
   return (
     <button
@@ -718,7 +785,7 @@ function BotonAccion({
   peligro,
 }: {
   titulo: string
-  icono: 'mensaje' | 'ok' | 'billete' | 'cerrar' | 'alerta'
+  icono: 'mensaje' | 'ok' | 'billete' | 'cerrar' | 'alerta' | 'calendario'
   onClick: () => void
   disabled?: boolean
   peligro?: boolean

@@ -116,3 +116,17 @@ test('ayudas de período', () => {
   assert.equal(nombreDePeriodo('2026-08'), 'Agosto 2026')
   assert.match(hoyLocal(new Date(2026, 7, 21, 15, 30)), /^2026-08-21$/)
 })
+
+test('violeta: la cuota está imputada a la compañía o tiene un pago adelantado sin imputar', () => {
+  const base = { periodo: '2026-08', diaVencimiento: 11, formaPago: 'CUPONERA', diasCobertura: 0 }
+  const imputada = calcularAlerta({ ...base, pagada: false, imputada: true }, '2026-08-20')
+  assert.equal(imputada.color, 'violeta')
+  assert.match(imputada.etiqueta, /Imputado/)
+  const adelanto = calcularAlerta({ ...base, pagada: false, adelantoPendiente: true }, '2026-08-20')
+  assert.equal(adelanto.color, 'violeta')
+  assert.match(adelanto.etiqueta, /Adelanto/)
+  // Paga manda sobre todo: una fila paga es verde aunque le queden marcas.
+  assert.equal(calcularAlerta({ ...base, pagada: true, imputada: true }, '2026-08-20').color, 'verde')
+  // Y el débito automático no tapa un imputado: lo que falta es cobrar.
+  assert.equal(calcularAlerta({ ...base, formaPago: 'CBU', pagada: false, imputada: true }, '2026-08-20').color, 'violeta')
+})

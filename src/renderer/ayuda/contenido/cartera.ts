@@ -19,6 +19,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         parrafos: [
           'La columna «Alerta» es lo primero que se mira: un color por fila que dice qué tan urgente es esa cuota, calculado solo a partir del día de vencimiento y de si está paga.',
           'Verde es «al día» (ya está paga). Azul es débito automático: se cobra sola con tarjeta, CBU o débito, así que no hay que avisar ni perseguirla. Amarillo es «vence pronto» (entre 4 y 7 días, o recién vencida pero todavía dentro de la cobertura financiera de la compañía). Naranja es más urgente (1 a 3 días, o el último día de cobertura). Rojo es lo más grave: vence hoy sin pago, o ya venció y se terminó la cobertura de la compañía.',
+          'Violeta es «hay un pago dando vueltas»: o la cuota está imputada (la agencia ya se la pagó a la compañía y falta cobrársela al cliente), o tiene un pago adelantado del mes pasado esperando que alguien lo impute. En los dos casos la compañía ya está cubierta; lo que falta es un paso en la agencia.',
           'Pasando el mouse por la etiqueta de color se ve el detalle exacto (fecha de vencimiento y, si corresponde, hasta cuándo cubre la compañía).',
         ],
       },
@@ -28,7 +29,22 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
           'En la columna «Acciones» hay cinco botones chiquitos para cada fila: avisar por WhatsApp, marcar como avisado, registrar un pago, avisar un rechazo del débito y dar de baja.',
           '«Avisar» (el globito) abre WhatsApp con un mensaje ya armado para ese cliente y deja la fila marcada como avisada. «Avisado» (el tilde) hace lo mismo con la planilla —deja la fila en ENVIADO con la fecha de hoy y la suma a «Avisados hoy»— pero sin abrir WhatsApp: es para cuando ya se le avisó por otro lado, por teléfono, en el mostrador o desde el celular. No hace falta que el cliente tenga teléfono cargado.',
           '«Registrar pago» abre un formulario para cargar cómo y cuándo se pagó esa cuota, sin salir de la planilla. «Avisar rechazo del débito» (el triángulo) le manda un aviso a la sucursal que atiende al cliente para que lo llame y lo cobre a mano: es para cuando la compañía rebota el CBU o la tarjeta. «Dar de baja» saca la póliza de la cartera activa y la manda a Cartera → Bajas, pidiendo el motivo.',
-          'Las cinco acciones quedan deshabilitadas en un mes cerrado (sólo lectura).',
+          'Las cinco acciones quedan deshabilitadas en un mes cerrado (sólo lectura). En la fila que tiene un pago adelantado esperando aparece un sexto botón (el calendario): «Imputar el pago adelantado» deja la cuota paga con la fecha en que se cobró.',
+        ],
+      },
+      {
+        titulo: 'Pago adelantado: dos cuotas el mismo mes',
+        parrafos: [
+          'Cuando alguien viene a pagar la cuota de este mes y también la del mes que viene, en «Registrar pago» se elige «La de este mes y la del mes que viene» (o «Sólo la del mes que viene», si la de este mes ya estaba paga). El importe de la cuota adelantada viene cargado con la cuota de la fila y se puede cambiar. La plata entra hoy en la caja del día; en Imputados, ese pago se rinde en el mes que paga, no en el que se cobró.',
+          'De la cuota adelantada se elige qué hacer cuando se arme el mes siguiente con «Cerrar mes»: «Acreditarla al mes siguiente» hace que la fila nueva nazca paga, con la fecha del cobro en CUANDO PAGO; «Dejarla pendiente para imputar» hace que la fila nazca sin pagar y en violeta («Adelanto sin imputar»), para imputarla a mano cuando se controle el general del mes. El contador «Adelantos sin imputar» junta esas filas, y el botón del calendario de cada una las deja pagas.',
+          'Adelantar dos veces la misma cuota corrige el adelanto, no lo duplica: es el mismo pago.',
+        ],
+      },
+      {
+        titulo: 'Cobro imputado: se paga a la compañía y el cliente transfiere después',
+        parrafos: [
+          'Con algunas compañías (AGS, en Dock Sud) primero se imputa la cuota —la paga la agencia— y el cliente manda la plata después. Para eso, en «Registrar pago» el estado del cobro se marca como «Imputado» en vez de «Pagó». La fila NO queda paga: pasa a violeta («Imputado · falta cobrar»), suma en el contador «Imputados a cobrar» y sigue apareciendo en Mora con la marca «Imputado», porque lo que hay que perseguir es el pago del cliente. En la caja del día el pago se ve con la marca «Imputado · falta cobrar» y no suma al total.',
+          'Cuando el cliente paga, se vuelve a registrar el pago sobre la misma fila, esta vez como «Pagó»: recién ahí la fila queda paga, con la fecha de ese día, y la caja lo cuenta.',
         ],
       },
       {

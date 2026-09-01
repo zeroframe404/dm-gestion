@@ -15,7 +15,9 @@ import {
   darDeBaja,
   deshacerBaja,
   editarCelda,
+  idDelAdelantoDeLaCuota,
   idDelPagoDeLaCuota,
+  imputarAdelanto,
   marcarAvisado,
   planillaDelMes,
   prepararAviso,
@@ -422,9 +424,14 @@ export function registrarIpc(): void {
   // editar cualquiera de esos tres módulos.
   manejar('cartera:registrarPago', (filaId, datos) => {
     const fila = registrarPago(filaId, datos, exigirEdicion('cartera', 'clientes', 'cobranzas'))
-    resolverTicketDelPago(idDelPagoDeLaCuota(filaId))
+    // Un IMPUTADO no es plata que entró: no hay comprobante que imprimir todavía. Si sólo se adelantó
+    // la cuota que viene, el comprobante es el del adelanto.
+    if (datos.estadoCobro !== 'IMPUTADO') {
+      resolverTicketDelPago(datos.alcance === 'ADELANTADO' ? idDelAdelantoDeLaCuota(filaId) : idDelPagoDeLaCuota(filaId))
+    }
     return exito(fila)
   })
+  manejar('cartera:imputarAdelanto', (filaId) => exito(imputarAdelanto(filaId, exigirEdicion('cartera', 'clientes', 'cobranzas'))))
   manejar('cartera:darDeBaja', (filaId, datos) => exito(darDeBaja(filaId, datos, exigirEdicion('cartera'))))
   manejar('cartera:deshacerBaja', (bajaId) => {
     exigirEdicion('cartera')
@@ -504,7 +511,7 @@ export function registrarIpc(): void {
   manejar('cobranzas:caja', (fecha, sucursal) => exito(cajaDelDia(fecha, sucursal, exigirVista('cobranzas'))))
   manejar('cobranzas:registrarPagoManual', (datos) => {
     const resultado = registrarPagoManual(datos, exigirEdicion('cobranzas'))
-    resolverTicketDelPago(resultado.pagoId)
+    if (datos.estadoCobro !== 'IMPUTADO') resolverTicketDelPago(resultado.pagoId)
     return exito(resultado.caja)
   })
   manejar('cobranzas:exportarCaja', async (fecha, sucursal) => {
