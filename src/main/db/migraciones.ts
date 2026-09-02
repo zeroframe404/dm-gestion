@@ -1340,6 +1340,98 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE siniestro_adjuntos ADD COLUMN categoria_detalle TEXT;
     `,
   },
+  {
+    version: 22,
+    descripcion: 'Las listas de las compañías: organizadores, precios, grúas y cláusulas de cada cobertura',
+    sql: `
+      -- Las cuatro listas del módulo Compañías. Son de REFERENCIA: no describen una póliza de nadie,
+      -- describen lo que ofrece el mercado, y por eso ninguna tiene fila_id ni sale de la hoja. Las
+      -- carga a mano el superadministrador (como la matriz de coberturas) y se comparten con las demás
+      -- computadoras por el puente de ajustes del VPS, no por la planilla: en la planilla no hay
+      -- ninguna pestaña donde escribirlas.
+      --
+      -- \`clave\` es el nombre normalizado (mayúsculas, sin acentos ni signos) de lo que no puede
+      -- repetirse en cada lista. Está como UNIQUE y no como control en el código porque un duplicado
+      -- acá no da un error visible: da dos precios distintos para la misma compañía y quien atiende
+      -- lee el primero que encuentra.
+
+      -- A quién le pide precio el bróker. \`orden\` es en qué orden se le escribe: la lista se recorre
+      -- de arriba abajo mandando el mismo mensaje, y ese orden lo decide la agencia, no el alfabeto.
+      CREATE TABLE organizadores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clave TEXT NOT NULL UNIQUE,
+        nombre TEXT NOT NULL,
+        companias TEXT,
+        telefono TEXT,
+        email TEXT,
+        horario TEXT,
+        observaciones TEXT,
+        orden INTEGER NOT NULL DEFAULT 0,
+        activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+
+      -- El precio de lista de cada compañía para cada cobertura. La que más se mira es RESPONSABILIDAD
+      -- CIVIL, que es el piso con el que se compara todo, pero la tabla no la privilegia: la cobertura
+      -- es texto libre, igual que en las pólizas y en la matriz de reglas.
+      --
+      -- \`precio\` es REAL y no INTEGER porque una cuota puede tener centavos, y \`vigente_desde\` es el
+      -- día desde el que rige esa lista: sin eso, un precio viejo se ve idéntico a uno de hoy.
+      CREATE TABLE precios_companias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clave TEXT NOT NULL UNIQUE,
+        compania TEXT NOT NULL,
+        cobertura TEXT NOT NULL,
+        rama TEXT,
+        precio REAL NOT NULL,
+        vigente_desde TEXT,
+        observaciones TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+
+      CREATE INDEX idx_precios_compania ON precios_companias (compania);
+
+      -- Cuántos kilómetros de grúa da cada compañía en cada cobertura. \`kilometros\` en NULL es
+      -- ILIMITADA, que es un valor real y frecuente; la compañía que no tiene fila es la que todavía
+      -- no se cargó, y la pantalla las distingue.
+      CREATE TABLE gruas_companias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clave TEXT NOT NULL UNIQUE,
+        compania TEXT NOT NULL,
+        cobertura TEXT NOT NULL,
+        kilometros INTEGER,
+        auxilio TEXT,
+        observaciones TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+
+      CREATE INDEX idx_gruas_compania ON gruas_companias (compania);
+
+      -- Qué ampara cada cobertura, cláusula por cláusula. \`compania\` en NULL es la cláusula que vale
+      -- para todas: casi todas las coberturas se arman igual en el mercado y repetir la misma lista
+      -- catorce veces la haría imposible de mantener. Cargar la compañía es para la excepción.
+      --
+      -- \`ampara\` en 0 es una EXCLUSIÓN, y está en la misma tabla a propósito: en el mostrador la
+      -- pregunta que llega es «¿esto lo cubre?», y la respuesta útil incluye lo que no.
+      CREATE TABLE clausulas_coberturas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clave TEXT NOT NULL UNIQUE,
+        compania TEXT,
+        cobertura TEXT NOT NULL,
+        clausula TEXT NOT NULL,
+        ampara INTEGER NOT NULL DEFAULT 1 CHECK (ampara IN (0, 1)),
+        detalle TEXT,
+        orden INTEGER NOT NULL DEFAULT 0,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+
+      CREATE INDEX idx_clausulas_cobertura ON clausulas_coberturas (cobertura);
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

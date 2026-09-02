@@ -127,6 +127,7 @@ const NOMBRE_MODULO: Record<Area, string> = {
   reportes: 'Reportes',
   marketing: 'Marketing',
   tareas: 'Tareas',
+  companias: 'Compañías',
   administracion: 'Administración',
 }
 

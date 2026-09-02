@@ -14,6 +14,7 @@ import { useSesion } from './contexto/Sesion'
 import { buscarModulo, esAreaDePermisos, type IdModulo } from './modulos'
 import { Administracion } from './pantallas/administracion/Administracion'
 import { Cartera } from './pantallas/cartera/Cartera'
+import { Companias } from './pantallas/companias/Companias'
 import { Clientes } from './pantallas/clientes/Clientes'
 import { Cobranzas } from './pantallas/cobranzas/Cobranzas'
 import { GeneralExcel } from './pantallas/excel/GeneralExcel'
@@ -111,6 +112,8 @@ function Escritorio() {
     contenido = <Reportes />
   } else if (modulo.id === 'marketing') {
     contenido = <Marketing />
+  } else if (modulo.id === 'companias') {
+    contenido = <Companias />
   } else if (modulo.id === 'excel') {
     contenido = <GeneralExcel />
   } else if (modulo.id === 'administracion') {

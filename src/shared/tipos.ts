@@ -3206,3 +3206,175 @@ export interface AvisoDeSegmento {
   marcada: boolean
   avisados: number
 }
+
+// ---------------------------------------------------------------------------
+// Módulo Compañías: las listas de consulta del mostrador
+// ---------------------------------------------------------------------------
+//
+// Cinco listas que no describen a ningún cliente: describen lo que ofrece el mercado. Son las que se
+// miran mientras alguien espera del otro lado del teléfono, y por eso viven juntas y en su propio
+// módulo en lugar de repartidas entre Presupuestos y Cartera.
+//
+// Cuatro se cargan a mano (organizadores, precios, grúas y cláusulas) y la quinta —Antigüedad— no se
+// carga: se calcula sobre la matriz de reglas de cobertura que ya existe en Cartera. Duplicar esa
+// matriz habría dado dos verdades sobre lo mismo, y la que avisa al emitir una póliza es aquélla.
+
+/** Uno de los organizadores a los que el bróker le pide precio. */
+export interface Organizador {
+  id: number
+  nombre: string
+  /** Las compañías que cotiza, tal cual se escriben («ATM, Río Uruguay»). Vacío si no se aclaró. */
+  companias: string | null
+  /** El teléfono al que se le manda el mensaje. */
+  telefono: string | null
+  email: string | null
+  /** En qué horario contesta («Lunes a viernes de 9 a 17»). */
+  horario: string | null
+  observaciones: string | null
+  /** En qué orden se le escribe. Lo decide la agencia, no el alfabeto. */
+  orden: number
+  activo: boolean
+  /** El enlace de WhatsApp ya armado, o null si el teléfono no sirve para armarlo. */
+  whatsapp: string | null
+}
+
+export interface DatosDeOrganizador {
+  nombre: string
+  companias: string
+  telefono: string
+  email: string
+  horario: string
+  observaciones: string
+  activo: boolean
+}
+
+/** El precio de lista de una compañía para una cobertura. */
+export interface PrecioDeCompania {
+  id: number
+  compania: string
+  cobertura: string
+  /** A qué se le cotiza ese precio: AUTO, MOTO, PICK UP… Vacío = vale para cualquiera. */
+  rama: string | null
+  precio: number
+  /** Desde qué día rige esa lista ('AAAA-MM-DD'), o null si no se aclaró. */
+  vigenteDesde: string | null
+  observaciones: string | null
+}
+
+export interface DatosDePrecio {
+  compania: string
+  cobertura: string
+  rama: string
+  /** Llega como texto porque viene de un campo del formulario. */
+  precio: string
+  vigenteDesde: string
+  observaciones: string
+}
+
+/** Cuántos kilómetros de grúa da una compañía en una cobertura. */
+export interface GruaDeCompania {
+  id: number
+  compania: string
+  cobertura: string
+  /** null es ILIMITADA, no «sin cargar»: lo que no está cargado no tiene fila. */
+  kilometros: number | null
+  /** Qué más entra además del remolque: cambio de rueda, batería, cerrajería. */
+  auxilio: string | null
+  observaciones: string | null
+}
+
+export interface DatosDeGrua {
+  compania: string
+  cobertura: string
+  /** Vacío = ilimitada. Llega como texto porque viene de un campo del formulario. */
+  kilometros: string
+  auxilio: string
+  observaciones: string
+}
+
+/** Una cláusula de una cobertura: lo que ampara, o lo que deja afuera. */
+export interface ClausulaDeCobertura {
+  id: number
+  /** null = la cláusula vale para todas las compañías. */
+  compania: string | null
+  cobertura: string
+  clausula: string
+  /** false es una EXCLUSIÓN: en el mostrador la pregunta que llega incluye lo que no cubre. */
+  ampara: boolean
+  detalle: string | null
+  orden: number
+}
+
+export interface DatosDeClausula {
+  compania: string
+  cobertura: string
+  clausula: string
+  ampara: boolean
+  detalle: string
+}
+
+/** Lo que una compañía le ofrece a un vehículo de un año concreto, según la matriz de reglas. */
+export interface CoberturaSegunAntiguedad {
+  cobertura: string
+  /** true si ese modelo entra: la regla no pone límite o el año llega. */
+  entra: boolean
+  /** El modelo más viejo que acepta, o null si esa cobertura no tiene límite cargado. */
+  anioMinimo: number | null
+  /** El límite en el idioma del mostrador («desde el modelo 2011»). */
+  limite: string
+  franquicia: string | null
+  observaciones: string | null
+}
+
+export interface CompaniaSegunAntiguedad {
+  compania: string
+  acepta: CoberturaSegunAntiguedad[]
+  rechaza: CoberturaSegunAntiguedad[]
+}
+
+/** La consulta de antigüedad: se pide un año y se devuelve compañía por compañía. */
+export interface ConsultaDeAntiguedad {
+  /** El año que se consultó, ya interpretado. null si todavía no se pidió ninguno. */
+  anio: number | null
+  anioActual: number
+  /** Cuántos años tiene ese modelo. null si no hay año consultado. */
+  antiguedad: number | null
+  companias: CompaniaSegunAntiguedad[]
+  /** Compañías que están en la cartera y no tienen ninguna regla cargada: no se puede responder por ellas. */
+  sinReglas: string[]
+}
+
+/**
+ * Cómo están las listas en el servidor y si esta computadora tiene lo mismo.
+ *
+ * Las cuatro listas cargadas a mano viajan juntas por el puente de ajustes del VPS —el mismo por el
+ * que viajan las credenciales del catálogo de vehículos—, porque en la planilla no hay ninguna
+ * pestaña donde escribirlas. La regla es la de ese puente: la última publicación gana.
+ */
+export interface EstadoDeReferencias {
+  /** false = esta computadora no tiene puente con el VPS (desarrollo, o sin configurar). */
+  hayServidor: boolean
+  enElServidor: boolean
+  actualizadoEn: string | null
+  actualizadoPor: string | null
+  /** true si lo de esta computadora es idéntico a lo del servidor. */
+  alDia: boolean
+  /** true si acá se cargó algo que todavía no viajó a las demás computadoras. */
+  sinPublicar: boolean
+  error: string | null
+}
+
+/** Todo lo que la pantalla del módulo Compañías necesita para dibujarse de una sola llamada. */
+export interface ListasDeCompanias {
+  organizadores: Organizador[]
+  precios: PrecioDeCompania[]
+  gruas: GruaDeCompania[]
+  clausulas: ClausulaDeCobertura[]
+  /** Las compañías de la cartera, para no tipear el nombre a mano y que no queden dos formas de escribirlo. */
+  companias: string[]
+  /** Las coberturas que ya se usan en la cartera y en la matriz de reglas. */
+  coberturas: string[]
+  /** Sólo el SUPER_ADMIN carga estas listas, igual que la matriz de coberturas. */
+  puedeEditar: boolean
+  anioActual: number
+}

@@ -12,7 +12,7 @@ hoja de Google dejó de ser la fuente de verdad. Ver «La base en el VPS (Fase 1
 ```bash
 npm install       # instala dependencias (better-sqlite3 trae binarios listos, no compila nada)
 npm run dev       # desarrollo con recarga automática (usuarios locales: sin DM_GESTION_TOKEN_DATOS no toca GitHub)
-npm run prueba    # 523 pruebas propias, sin tocar ninguna hoja real ni GitHub
+npm run prueba    # 605 pruebas propias, sin tocar ninguna hoja real ni GitHub
 npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
 npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador de GitHub
 npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
@@ -1349,6 +1349,78 @@ edición y el acceso aunque se llame al canal a mano (incluida el alta de client
 permiso de Leads). Después asciende a esa usuaria a ADMIN con Administración en «sólo ver» y comprueba
 que las secciones del módulo se ven con los campos apagados. Al final deja los permisos y el rol como
 estaban, aunque algún paso haya fallado.
+
+## Compañías (las cinco listas del mostrador)
+
+Un módulo nuevo en la barra lateral, con las cinco cosas que hoy viven en un cuaderno, en una captura de
+WhatsApp o en la cabeza del que atiende hace diez años. **No es el catálogo de compañías de
+Administración**: aquél guarda los días de cobertura financiera y la comisión, que son cosas de la
+agencia. Esto es lo que ofrece cada compañía, y lo mira todo el equipo que atiende.
+
+| Pestaña | Qué contesta |
+| --- | --- |
+| **Organizadores** | A quién hay que escribirle para pedir precio, en el orden en que se le escribe. |
+| **Precios** | Cuánto sale cada cobertura en cada compañía, con la más barata arriba. |
+| **Antigüedad** | Se pone el año del vehículo y sale, compañía por compañía, qué le pueden vender. |
+| **Grúas** | Cuántos kilómetros de remolque da cada compañía en cada cobertura. |
+| **Cobertura** | Qué ampara cada cobertura y qué deja afuera, cláusula por cláusula. |
+
+### Cuatro se cargan a mano y la quinta se calcula
+
+**Antigüedad no tiene datos propios**: lee la matriz de `Cartera → Reglas de cobertura`, que es la misma
+que avisa al emitir una póliza. Es a propósito. Si esta pantalla tuviera su propia lista habría dos
+respuestas distintas para la misma pregunta, y la que frena una emisión sería la otra. Lo que hace es
+leerla al revés: allá se pregunta «¿esta compañía me toma este auto?» con la compañía ya elegida, acá
+«¿quién me toma este auto?» con el auto adelante, que es lo que se pregunta el que está cotizando.
+
+Cuando una compañía trabaja en la cartera y no tiene ninguna regla cargada, la pantalla **la nombra
+aparte** en vez de dejarla en silencio: que no aparezca no quiere decir que no tome el vehículo, quiere
+decir que nadie cargó todavía hasta qué modelo lo toma. Es la diferencia entre «no» y «no sé», y
+confundirlas hace perder una venta.
+
+Las otras cuatro (organizadores, precios, grúas y cláusulas) **las carga el superadministrador**, igual
+que la matriz de coberturas y por el mismo motivo: son la referencia contra la que se cotiza, y una
+lista de precios que cualquiera puede tocar deja de ser una referencia. El resto del equipo las
+consulta, y la pantalla lo dice en lugar de aparentar que está rota.
+
+### Tres distinciones que la pantalla se toma en serio
+
+- **Ilimitada no es sin cargar.** Una celda de grúa que dice «ilimitada» es una compañía que no pone
+  tope; una que dice «sin cargar» es una pregunta que nadie hizo todavía. Prometer un remolque que no
+  existe es peor que decir «dejame que averiguo».
+- **Un precio sin fecha es un precio que no sirve.** La columna «Rige desde» es la más importante de
+  Precios: un importe de hace cuatro meses se lee igual que uno de hoy. A los sesenta días la fila se
+  marca sola, y la que no tiene fecha también.
+- **Lo que no ampara está en la misma lista.** «Terceros completo no cubre el granizo» dicho en el
+  momento evita un siniestro rechazado seis meses después, así que las exclusiones se cargan al lado de
+  las coberturas y no en otro lado.
+
+### Cómo llegan a las otras computadoras
+
+Estas cuatro listas **no tienen pestaña en la planilla** donde escribirse (la que se le parece,
+COBERTURA, es un cuadro de resumen con celdas combinadas), así que no viajan con la sincronización de
+todos los días. Viajan por el **puente de ajustes del VPS**, el mismo por el que ya viajan las
+credenciales del catálogo de vehículos: el superadministrador toca «Publicar para todas» y el resto de
+las computadoras las adopta sola al arrancar. La barra de arriba del módulo dice en qué estado está.
+
+La adopción del arranque **no pisa lo que se cargó acá y todavía no se publicó**. Sin esa regla, los
+precios cargados una noche desaparecían a la mañana siguiente sin que nadie los hubiera borrado. Cuando
+las dos puntas difieren, la barra lo dice y la decisión es de una persona: publicar lo de acá, o traer
+lo de allá.
+
+### Probarlo
+
+```bash
+npm run prueba   # pruebas/referencias.prueba.ts
+```
+
+Cubre el orden de los organizadores y sus flechas; que el precio se acepte con coma o con punto y que
+el cero se rechace; que no haya dos filas para la misma compañía y cobertura aunque se escriban
+distinto; que la grúa vacía sea ilimitada; que la consulta de antigüedad separe lo que se le vende a
+ese modelo de lo que no y nombre aparte a las compañías sin reglas; que la huella con la que las
+computadoras se comparan no cambie si no cambian los datos; que adoptar reemplace y no mezcle; que una
+fila rota de lo publicado se saltee sola en vez de llevarse puesta la adopción entera; y que lo cargado
+y no publicado cuente como pendiente.
 
 ## Eliminar registros (sólo el superadministrador)
 

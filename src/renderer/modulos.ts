@@ -16,6 +16,7 @@ export type IdModulo =
   | 'reportes'
   | 'marketing'
   | 'tareas'
+  | 'companias'
   | 'excel'
   | 'administracion'
 
@@ -107,6 +108,13 @@ export const MODULOS: Modulo[] = [
     nombre: 'Tareas',
     icono: 'tareas',
     descripcion: 'Los pendientes del equipo: a quién le toca, para cuándo, con comentarios y documentos.',
+    disponible: true,
+  },
+  {
+    id: 'companias',
+    nombre: 'Compañías',
+    icono: 'escudo',
+    descripcion: 'Lo que ofrece cada compañía: organizadores, precios, antigüedad, grúas y qué ampara cada cobertura.',
     disponible: true,
   },
   {
