@@ -18,6 +18,7 @@ import { esDebitoAutomatico, hoyLocal } from '../../shared/semaforo'
 import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { ramaDeVehiculo } from '../../shared/ramas'
 import { mismaSucursal } from '../../shared/sucursales'
+import { estadoTextoDiferente, normalizarEstadoSiniestro } from '../../shared/siniestros'
 import {
   NOMBRE_ESTADO_TAREA,
   type DatosDeCliente,
@@ -692,7 +693,7 @@ function siniestrosDe(clienteId: number): SiniestroDeCliente[] {
               descripcion, estado, importe
        FROM siniestros
        WHERE cliente_id = @cliente OR poliza_id IN (SELECT id FROM polizas WHERE cliente_id = @cliente)
-       ORDER BY fecha_iso DESC, id DESC`,
+       ORDER BY COALESCE(fecha_iso, fecha) DESC, id DESC`,
     )
     .all({ cliente: clienteId }) as Array<{
     id: number
@@ -705,6 +706,9 @@ function siniestrosDe(clienteId: number): SiniestroDeCliente[] {
     estado: string | null
     importe: string | null
   }>
+  // El estado se lleva a uno de los cuatro, igual que en el módulo Siniestros: la ficha del cliente
+  // mostraba el texto crudo de la hoja, así que un trámite EN TRÁMITE o CERRADO acá aparecía como
+  // «ABIERTO», «PERITADO» o directamente «—». El original queda al lado cuando dice otra cosa.
   return filas.map((f) => ({
     id: f.id,
     fecha: f.fecha,
@@ -713,7 +717,8 @@ function siniestrosDe(clienteId: number): SiniestroDeCliente[] {
     numeroPoliza: f.numero_poliza,
     patente: f.patente,
     descripcion: f.descripcion,
-    estado: f.estado,
+    estado: normalizarEstadoSiniestro(f.estado),
+    estadoTexto: estadoTextoDiferente(f.estado) ? f.estado : null,
     importe: f.importe,
   }))
 }

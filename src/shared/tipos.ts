@@ -1152,7 +1152,10 @@ export interface SiniestroDeCliente {
   numeroPoliza: string | null
   patente: string | null
   descripcion: string | null
-  estado: string | null
+  /** Uno de los cuatro estados del trámite, el mismo que muestra el módulo Siniestros. */
+  estado: EstadoSiniestro
+  /** Lo que decía la hoja, cuando no es exactamente uno de los cuatro. Va al lado, entre paréntesis. */
+  estadoTexto: string | null
   importe: string | null
 }
 

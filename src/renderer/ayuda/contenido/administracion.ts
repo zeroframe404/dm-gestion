@@ -159,7 +159,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.impresora': {
     clave: 'administracion.impresora',
     titulo: 'Administración → Impresora',
-    resumen: 'La configuración de la ticketeadora térmica del mostrador y las direcciones que encabezan el comprobante. La abre cualquiera, con el rol que sea.',
+    resumen: 'La configuración de la ticketeadora térmica del mostrador y el encabezado —dirección y teléfono— del comprobante de cada sucursal. La abre cualquiera, con el rol que sea.',
     secciones: [
       {
         titulo: 'Para qué sirve',
@@ -185,14 +185,15 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Numeración de tickets',
         parrafos: [
-          'Cada comprobante impreso lleva un número correlativo («N° 000123») que sube solo, uno por pago: si se piden 2 tickets del mismo pago, las dos copias salen con el mismo número, porque son el mismo comprobante. La tarjeta «Numeración de tickets» muestra qué número le toca al próximo y deja corregirlo a mano, por ejemplo después de cambiar el rollo o de una prueba hecha por error con la numeración real.',
+          'Cada comprobante impreso lleva un número correlativo («N° 000123») que sube solo, uno por pago: si se piden 2 tickets del mismo pago, las dos copias salen con el mismo número, porque son el mismo comprobante. Salen una después de la otra, como dos impresiones separadas, para que la ticketeadora corte el papel entre las dos y no queden pegadas en la misma tira. La tarjeta «Numeración de tickets» muestra qué número le toca al próximo y deja corregirlo a mano, por ejemplo después de cambiar el rollo o de una prueba hecha por error con la numeración real.',
         ],
       },
       {
-        titulo: 'Las direcciones del ticket',
+        titulo: 'El encabezado del ticket',
         parrafos: [
           'El comprobante encabeza con la dirección y el teléfono de la sucursal donde se cobró; el resto del encabezado (provincia, CUIT e inicio de actividades) es el mismo para toda la agencia. Se cargan en la tarjeta «Encabezado del ticket», una fila por sucursal, y vienen puestas las tres direcciones de siempre —la de Dock Sud (Avellaneda), la de Sarandí y la de Lanús— con el teléfono de la agencia. Si un local atiende por otro número, se cambia ahí y sus comprobantes salen con ese.',
-          'Si mañana abre una sucursal nueva, se escribe su nombre en «Agregar una sucursal», se le carga la dirección y se guarda: desde el próximo ticket sale con la suya, sin tocar el programa.',
+          'Si mañana abre una sucursal nueva, se escribe su nombre en «Agregar una sucursal», se le cargan la dirección y el teléfono y se guarda: desde el próximo ticket salen los suyos, sin tocar el programa.',
+          'El encabezado se guarda en la computadora, no en la base compartida: es el de la impresora que esa PC tiene delante. Si la agencia cambia el teléfono de un local, hay que cargarlo en las computadoras de ese local; cambiarlo desde otra sucursal no alcanza. Un EMPLEADO ve y cambia solamente el de su mostrador.',
         ],
       },
       {

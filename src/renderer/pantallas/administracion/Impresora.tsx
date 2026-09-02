@@ -270,8 +270,8 @@ function NumeracionDeTickets({ proximoNumero, alGuardar }: { proximoNumero: numb
 }
 
 /**
- * El encabezado del ticket lleva la dirección de la sucursal donde se cobró. Se cargan acá, una por
- * sucursal, y se puede agregar la de una sucursal nueva sin tocar el programa.
+ * El encabezado del ticket lleva la dirección y el teléfono de la sucursal donde se cobró. Se cargan
+ * acá, una fila por sucursal, y se puede agregar la de una sucursal nueva sin tocar el programa.
  */
 function DireccionesDelTicket() {
   // A un empleado el proceso principal le manda UNA sola fila —la de su mostrador— y sólo le acepta

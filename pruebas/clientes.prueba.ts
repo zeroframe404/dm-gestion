@@ -435,7 +435,7 @@ test('desde la ficha se ven las cuotas del mes del cliente, que es lo que se pue
 })
 
 test('cargar un siniestro lo deja en la ficha y camino a la hoja', async () => {
-  await carteraDePrueba()
+  const db = await carteraDePrueba()
   const cliente = idDe(CLIENTES.gonzalez.nombre)
   const poliza = fichaDeCliente(cliente).polizas.find((p) => p.estado === 'ACTIVA')!
   const pendientesAntes = cuantasPendientes()
@@ -463,6 +463,18 @@ test('cargar un siniestro lo deja en la ficha y camino a la hoja', async () => {
 
   // Y también en la ficha, que es donde lo va a buscar la gente.
   assert.ok(fichaDeCliente(cliente).siniestros.some((s) => s.numeroSiniestro === 'S-9001'))
+
+  // Lo que se carga desde la aplicación ya entra con uno de los cuatro estados.
+  assert.equal(cargado.estado, 'CARGADO', 'DENUNCIADO es CARGADO')
+  assert.equal(cargado.estadoTexto, null, 'y no hay texto distinto que mostrar al lado')
+
+  // Lo que viene de la hoja, en cambio, se guarda tal como lo escribió la agencia. La ficha del
+  // cliente mostraba ESE texto crudo, así que un trámite EN TRÁMITE o CERRADO no figuraba nunca acá
+  // con su estado: ahora se lleva a uno de los cuatro y el original queda al lado.
+  db.prepare(`UPDATE siniestros SET estado = ? WHERE numero_siniestro = ?`).run('CERRADO 15/08', 'S-9001')
+  const enLaFicha = fichaDeCliente(cliente).siniestros.find((s) => s.numeroSiniestro === 'S-9001')!
+  assert.equal(enLaFicha.estado, 'CERRADO')
+  assert.equal(enLaFicha.estadoTexto, 'CERRADO 15/08')
 })
 
 test('un siniestro sin fecha o sin descripción no se guarda, y la póliza tiene que ser del cliente', async () => {

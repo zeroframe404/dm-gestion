@@ -230,7 +230,7 @@ export function guardarDireccionesDeTicket(
 
   const mia = identidadDeSucursal(soloLaSucursal)
   const propia = direcciones.find((fila) => identidadDeSucursal(fila.sucursal) === mia)
-  if (!propia) throw new ErrorDeNegocio('Sólo podés cambiar la dirección de tu sucursal.')
+  if (!propia) throw new ErrorDeNegocio('Sólo podés cambiar el encabezado de tu sucursal.')
   // Se reescribe la lista completa con lo que ya había y sólo la propia cambiada.
   const todas = direccionesDeTicket().map((fila) => (identidadDeSucursal(fila.sucursal) === mia ? comoFila(propia) : comoFila(fila)))
   if (!todas.some((fila) => identidadDeSucursal(fila.sucursal) === mia)) {

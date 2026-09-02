@@ -24,6 +24,7 @@ import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { detalleDeRiesgo, esVehiculo, nombreDeTipoDeRiesgo } from '../../../shared/riesgos'
+import { EtiquetaDeEstado } from '../siniestros/Siniestros'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
 import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, conDireccion, recortar } from './CamposDeCliente'
@@ -692,7 +693,10 @@ function PestanaSiniestros({ ficha, alAbrirSiniestro }: { ficha: FichaCliente; a
               <td className={TD}>{siniestro.compania ?? '—'}</td>
               <td className={cx(TD, 'font-mono text-xs')}>{siniestro.numeroPoliza ?? '—'}</td>
               <td className={cx(TD, 'font-mono text-xs font-semibold')}>{siniestro.patente ?? '—'}</td>
-              <td className={TD}>{siniestro.estado ?? '—'}</td>
+              <td className={TD}>
+                <EtiquetaDeEstado estado={siniestro.estado} />
+                {siniestro.estadoTexto && <span className="ml-1.5 text-xs text-slate-500">({siniestro.estadoTexto})</span>}
+              </td>
               <td className={cx(TD, 'tabular-nums')}>{siniestro.importe ?? '—'}</td>
               <td className={cx(TD, 'min-w-64 text-slate-600')}>{siniestro.descripcion ?? '—'}</td>
               <td className={TD}>

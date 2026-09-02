@@ -11,7 +11,7 @@ import { bajasDelMes, darDeBaja, deshacerBaja, planillaDelMes, registrarPago } f
 import { cajaDelDia, cambiarResultado, imputados } from '../src/main/servicios/cobranzas'
 import { PESTANA_APP } from '../src/main/servicios/filas'
 import { hojaDeImputados, subirPagosRezagados } from '../src/main/servicios/pagos'
-import { repararBajasDuplicadas, repararColaContraPestanaInexistente } from '../src/main/servicios/reparaciones'
+import { repararBajasDuplicadas, repararColaContraPestanaInexistente, repararCuotasDuplicadas } from '../src/main/servicios/reparaciones'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes } from '../src/main/sincronizacion/cola'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { PESTANA_PAGOS_APP } from '../src/main/sincronizacion/pestanasApp'
@@ -87,6 +87,32 @@ function cerrarTodo(): void {
 
 function fila(nombre: string): FilaCartera | undefined {
   return planillaDelMes(null).filas.find((f) => f.nombre === nombre)
+}
+
+/**
+ * Copia una fila de la planilla del mes con otro `_ID`, que es lo que deja la importación cuando el
+ * mismo renglón aparece dos veces en la hoja (una pestaña duplicada, o un copiar y pegar).
+ */
+function duplicarCuota(pc: Computadora, filaId: string, filaIdDeLaCopia: string): void {
+  const ahora = ahoraIso()
+  pc.db
+    .prepare(
+      `INSERT INTO cuotas_mes (fila_id, periodo, pestana, poliza_id, cliente_id, cliente_nombre, documento, compania,
+                               numero_poliza, patente, sucursal_texto, cuota, cuota_monto, dia_vencimiento,
+                               dia_vencimiento_numero, aviso, pago, pago_fecha, observaciones, forma_pago, creado_en, actualizado_en)
+       SELECT ?, periodo, pestana, poliza_id, cliente_id, cliente_nombre, documento, compania,
+              numero_poliza, patente, sucursal_texto, cuota, cuota_monto, dia_vencimiento,
+              dia_vencimiento_numero, aviso, pago, pago_fecha, observaciones, forma_pago, ?, ?
+         FROM cuotas_mes WHERE fila_id = ?`,
+    )
+    .run(filaIdDeLaCopia, ahora, ahora, filaId)
+  pc.db
+    .prepare(
+      `INSERT INTO filas_crudas (fila_id, pestana, tipo_pestana, periodo, numero_fila, datos_json, en_la_hoja, huella, creado_en, actualizado_en)
+       SELECT ?, pestana, tipo_pestana, periodo, numero_fila + 1000, '{}', 1, NULL, ?, ?
+         FROM filas_crudas WHERE fila_id = ?`,
+    )
+    .run(filaIdDeLaCopia, ahora, ahora, filaId)
 }
 
 function exigirFila(nombre: string): FilaCartera {
@@ -264,6 +290,66 @@ test('una baja que la base tiene repetida se queda con una sola, acá y en la ba
   await subirTodo(lanus2)
   assert.equal(hoja.filasDe('BAJAS AGOSTO').filter((f) => f.some((c) => (c ?? '').includes(CLIENTES.suarez.nombre))).length, 1, 'el renglón de más se borró de la base')
   assert.equal(repararBajasDuplicadas(), 0, 'la segunda pasada no tiene nada que hacer')
+  cerrarTodo()
+})
+
+test('una cuota que la base tiene repetida se queda con una sola: la planilla deja de salir duplicada', async () => {
+  const { hoja, lanus1 } = await dosComputadoras()
+  en(lanus1)
+  const suarez = exigirFila(CLIENTES.suarez.nombre)
+  const deSuarez = () => planillaDelMes('2026-08').filas.filter((f) => f.nombre === CLIENTES.suarez.nombre)
+
+  // La misma póliza dos veces en el mismo mes. Es lo que queda cuando en la hoja hay dos pestañas del
+  // mismo mes o cuando alguien copia y pega renglones: la importación le da un _ID nuevo al segundo
+  // —son renglones distintos, tiene que dárselo— y la planilla del mes muestra la fila repetida.
+  duplicarCuota(lanus1, suarez.filaId, 'zzzcopiaagosto')
+  assert.equal(deSuarez().length, 2, 'así se veía la planilla: cada fila dos veces')
+
+  assert.equal(repararCuotasDuplicadas(), 1)
+  assert.equal(deSuarez().length, 1, 'queda una sola')
+  assert.equal(deSuarez()[0]!.filaId, suarez.filaId, 'y es la que ya estaba, no la que inventó la copia')
+  assert.equal(repararCuotasDuplicadas(), 0, 'la segunda pasada no tiene nada que hacer')
+  assert.ok(hoja.titulos().length > 0)
+  cerrarTodo()
+})
+
+test('de dos cuotas repetidas queda la que tiene el cobro: no se pierde plata cobrada', async () => {
+  const { lanus1 } = await dosComputadoras()
+  en(lanus1)
+  const gonzalez = exigirFila(CLIENTES.gonzalez.nombre)
+  const deGonzalez = () => planillaDelMes('2026-08').filas.filter((f) => f.nombre === CLIENTES.gonzalez.nombre)
+
+  duplicarCuota(lanus1, gonzalez.filaId, 'copiacobrada1')
+  const copia = deGonzalez().find((f) => f.filaId !== gonzalez.filaId)!
+  // El cobro entró sobre la copia, que es lo que pasa cuando quien atiende ve las dos filas y toca
+  // cualquiera. La que tiene plata colgando es la que se queda, aunque sea la copia: de la otra no
+  // cuelga nada y sacarla no pierde nada.
+  registrarPago(copia.filaId, { fecha: '2026-08-10', importe: '$ 1.000', medioDePago: 'EFECTIVO' }, MILAGROS)
+
+  assert.equal(repararCuotasDuplicadas(), 1)
+  const quedaron = deGonzalez()
+  assert.equal(quedaron.length, 1, 'queda una sola')
+  assert.equal(quedaron[0]!.filaId, copia.filaId, 'y es la del cobro')
+  assert.ok(
+    cajaDelDia('2026-08-10', []).pagos.some((p) => p.clienteNombre === CLIENTES.gonzalez.nombre),
+    'el pago sigue en la caja del día',
+  )
+  cerrarTodo()
+})
+
+test('de dos cuotas repetidas sin nada colgando queda la de más arriba en la hoja', async () => {
+  const { lanus1 } = await dosComputadoras()
+  en(lanus1)
+  const perez = exigirFila(CLIENTES.perezAuto.nombre)
+  const dePerez = () => planillaDelMes('2026-08').filas.filter((f) => f.filaId === perez.filaId || f.filaId === 'aaacopiaperez')
+
+  // El _ID de la copia se elige a propósito más chico que el original: lo que decide no puede ser el
+  // orden alfabético del _ID, sino cuál de los dos renglones está antes en la hoja.
+  duplicarCuota(lanus1, perez.filaId, 'aaacopiaperez')
+  assert.equal(dePerez().length, 2)
+
+  assert.equal(repararCuotasDuplicadas(), 1)
+  assert.equal(dePerez()[0]!.filaId, perez.filaId, 'queda el renglón original, no el pegado debajo')
   cerrarTodo()
 })
 

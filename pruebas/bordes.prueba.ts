@@ -174,3 +174,63 @@ test('una pestaña nueva desconocida se informa en vez de ignorarse', async () =
 
   db.close()
 })
+
+// ---------------------------------------------------------------------------
+// Dos pestañas del mismo mes: la planilla salía duplicada entera
+// ---------------------------------------------------------------------------
+
+/** La hoja de prueba con una copia de AGOSTO puesta donde la deja Google: pegada a la derecha. */
+function conAgostoDuplicado(tituloDeLaCopia: string): HojaSimulada {
+  const pestanas = construirHojaDePrueba()
+  const posicion = pestanas.findIndex((p) => p.titulo === 'AGOSTO')
+  const agosto = pestanas[posicion]!
+  pestanas.splice(posicion + 1, 0, {
+    titulo: tituloDeLaCopia,
+    valores: agosto.valores.map((fila) => [...fila]),
+    columnas: agosto.columnas,
+  })
+  return new HojaSimulada(pestanas)
+}
+
+test('dos pestañas del mismo mes no duplican la planilla: se lee una sola', async () => {
+  const db = baseDePrueba()
+  // «AGOSTO» y «AGOSTO 2026» conviviendo: es lo que queda cuando se duplica la pestaña del mes para
+  // armar el siguiente y la copia se renombra con el año. Las dos resuelven a 2026-08.
+  const { informe } = await importar(db, conAgostoDuplicado('AGOSTO 2026'))
+
+  // Sólo una escribe cuotas: si escribieran las dos, cada póliza tendría dos filas del mismo mes y la
+  // planilla mostraría todo repetido, que es exactamente lo que se veía.
+  const cuotas = unico<number>(db, `SELECT COUNT(*) FROM cuotas_mes WHERE periodo = '2026-08'`)
+  const polizas = unico<number>(db, `SELECT COUNT(DISTINCT poliza_id) FROM cuotas_mes WHERE periodo = '2026-08' AND poliza_id IS NOT NULL`)
+  assert.equal(cuotas, polizas, 'una cuota por póliza en el mes, no dos')
+  assert.equal(unico<string>(db, `SELECT DISTINCT pestana FROM cuotas_mes WHERE periodo = '2026-08'`), 'AGOSTO', 'manda la de más a la izquierda')
+
+  // Los renglones de la copia no se pierden: quedan enteros en los datos crudos, así que borrar o
+  // renombrar la pestaña en Google alcanza para volver atrás.
+  assert.ok(unico<number>(db, `SELECT COUNT(*) FROM filas_crudas WHERE pestana = 'AGOSTO 2026'`) > 0)
+
+  const texto = [...informe.avisos, ...informe.problemas.map((p) => p.detalle)].join(' ')
+  assert.match(texto, /más de una planilla mensual para 2026-08/i, 'el informe lo dice')
+  assert.match(texto, /AGOSTO 2026/, 'y nombra la que se ignoró')
+
+  db.close()
+})
+
+test('la copia que aparece después no suma cuotas: manda la pestaña que ya tenía el mes', async () => {
+  // Primero la hoja sana, con la copia sacada: AGOSTO queda con sus cuotas y con sus _ID escritos.
+  const hoja = conAgostoDuplicado('AGOSTO 2026')
+  const copia = hoja.quitarPestana('AGOSTO 2026')
+  const db = baseDePrueba()
+  await importar(db, hoja)
+  const antes = unico<number>(db, `SELECT COUNT(*) FROM cuotas_mes WHERE periodo = '2026-08'`)
+  assert.ok(antes > 0)
+
+  // Y ahora aparece la copia en la misma hoja. La pestaña que ya tiene las cuotas del mes es la que
+  // sigue mandando, y los renglones de la copia no entran a la planilla.
+  hoja.restaurarPestana(copia)
+  await importar(db, hoja)
+  assert.equal(unico<number>(db, `SELECT COUNT(*) FROM cuotas_mes WHERE periodo = '2026-08'`), antes, 'no se sumaron cuotas repetidas')
+  assert.equal(unico<string>(db, `SELECT DISTINCT pestana FROM cuotas_mes WHERE periodo = '2026-08'`), 'AGOSTO')
+
+  db.close()
+})
