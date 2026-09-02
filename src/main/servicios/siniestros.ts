@@ -183,6 +183,8 @@ export function siniestrosDeCliente(clienteId: number): SiniestroDeCliente[] {
        ORDER BY COALESCE(s.fecha_iso, s.fecha) DESC, s.id DESC`,
     )
     .all({ cliente: clienteId }) as FilaCruda[]
+  // Mismo criterio que `siniestrosDe` en clientes.ts: la ficha del cliente muestra uno de los cuatro
+  // estados, no el texto crudo de la hoja. Los dos caminos llenan la misma tabla y tienen que coincidir.
   return filas.map((f) => ({
     id: f.id,
     fecha: f.fecha_iso ?? f.fecha,
@@ -191,7 +193,8 @@ export function siniestrosDeCliente(clienteId: number): SiniestroDeCliente[] {
     numeroPoliza: f.numero_poliza,
     patente: f.patente,
     descripcion: f.descripcion,
-    estado: f.estado,
+    estado: normalizarEstadoSiniestro(f.estado),
+    estadoTexto: estadoTextoDiferente(f.estado) ? f.estado : null,
     importe: f.importe,
   }))
 }

@@ -220,6 +220,12 @@ function prepararSentencias(db: BaseDeDatos) {
     /** En qué pestaña se registró un _ID: sirve para saber quién es el dueño cuando aparece repetido. */
     pestanaDeFila: db.prepare('SELECT pestana FROM filas_crudas WHERE fila_id = ?'),
 
+    /** En qué pestaña están hoy las cuotas de un mes: es la planilla que la agencia viene usando. */
+    pestanasDeLasCuotas: db.prepare(
+      `SELECT pestana, COUNT(*) AS filas, SUM(creada_en_la_app) AS de_la_app
+         FROM cuotas_mes WHERE periodo = ? GROUP BY pestana`,
+    ),
+
     // Primera vez que aparece el cliente en esta corrida: lo que dice la planilla más nueva manda.
     clienteCompleto: db.prepare(`
       INSERT INTO clientes (clave, documento, documento_normalizado, nombre, telefono, email, direccion, localidad,
@@ -526,6 +532,12 @@ class TrabajoDeImportacion {
   private hojaTitulo = ''
   private pestanas: PestanaTrabajo[] = []
   private masNueva: PestanaTrabajo | null = null
+  /**
+   * Planillas mensuales que NO definen su mes porque hay otra pestaña del mismo período (la copia de la
+   * pestaña que quedó en la hoja). Se leen igual y sus filas se guardan crudas, pero no escriben
+   * cuotas, clientes, vehículos ni pólizas: ver `descartarPlanillasRepetidas`.
+   */
+  private planillasRepetidas = new Set<string>()
   private periodoPorMes = new Map<number, string>()
   private layouts = new Map<string, Layout>()
 
@@ -662,6 +674,8 @@ class TrabajoDeImportacion {
     this.emitirProgreso('pestanas', 'Revisando los encabezados de cada pestaña…')
     await this.resolverLayouts()
 
+    this.descartarPlanillasRepetidas()
+
     this.masNueva = await this.elegirMasNuevaConDatos()
     if (!this.masNueva) {
       this.avisos.push('No se encontró ninguna planilla mensual (ENERO, FEBRERO, …): no se crean clientes, vehículos ni pólizas.')
@@ -686,12 +700,105 @@ class TrabajoDeImportacion {
   }
 
   /**
+   * UNA sola planilla por mes. Cuando en la hoja conviven dos pestañas del mismo período —la de siempre
+   * y una copia («SEPTIEMBRE» y «SEPTIEMBRE 2026», o «Copia de SEPTIEMBRE»)— las dos se importaban y la
+   * misma póliza terminaba con dos cuotas del mes: la planilla mostraba cada fila dos veces. No alcanza
+   * con emparejar los `_ID`, porque los renglones de la copia son renglones distintos y tienen que
+   * recibir identificadores propios; lo que hay que decidir es cuál de las dos pestañas ES la planilla.
+   *
+   * Queda la que ya tiene las cuotas de ese mes en esta base, que es la que la agencia viene usando; si
+   * ninguna las tiene todavía (primera importación), la de más a la izquierda, porque Google inserta la
+   * copia inmediatamente a la derecha del original. Las otras se siguen leyendo y guardando enteras en
+   * los datos crudos —no se pierde nada y basta con borrar o renombrar la pestaña en Google para volver
+   * atrás—, pero no escriben cuotas, clientes, vehículos ni pólizas.
+   */
+  private descartarPlanillasRepetidas(): void {
+    const porPeriodo = new Map<string, PestanaTrabajo[]>()
+    for (const p of this.pestanas) {
+      if (p.tipo !== 'MENSUAL' || !p.periodo) continue
+      porPeriodo.set(p.periodo, [...(porPeriodo.get(p.periodo) ?? []), p])
+    }
+
+    for (const [periodo, grupo] of porPeriodo) {
+      if (grupo.length < 2) continue
+      const cuotasPorPestana = new Map(
+        (this.sentencias.pestanasDeLasCuotas.all(periodo) as Array<{ pestana: string; filas: number; de_la_app: number | null }>).map((f) => [
+          f.pestana,
+          f,
+        ]),
+      )
+      // Primero la que abrió «Cerrar mes»: es la que la aplicación viene manteniendo, y de sus filas
+      // cuelgan los pagos y los adelantos del mes. Después, la que tiene más cuotas del mes. Y en un
+      // empate, la de más a la izquierda: Google inserta la copia inmediatamente a la derecha.
+      const deLaApp = (p: PestanaTrabajo) => cuotasPorPestana.get(p.titulo)?.de_la_app ?? 0
+      const cuantasTiene = (p: PestanaTrabajo) => cuotasPorPestana.get(p.titulo)?.filas ?? 0
+      const queda = [...grupo].sort((a, b) => deLaApp(b) - deLaApp(a) || cuantasTiene(b) - cuantasTiene(a) || a.indice - b.indice)[0]!
+      const descartadas = grupo.filter((p) => p !== queda)
+      for (const p of descartadas) this.planillasRepetidas.add(p.titulo)
+      const sacadas = this.sacarCuotasDeLasPlanillasDescartadas(periodo, descartadas.map((p) => p.titulo))
+      this.avisos.push(
+        `Hay más de una planilla mensual para ${periodo}: se toma «${queda.titulo}» y se ignoran ` +
+          `${descartadas.map((p) => `«${p.titulo}»`).join(', ')}, que quedan guardadas en los datos crudos. ` +
+          (sacadas > 0 ? `Se sacaron ${sacadas} cuotas que habían entrado por ahí y salían repetidas en la planilla del mes. ` : '') +
+          'Si la buena es otra, borrá o renombrá la que sobra en Google (sin el mes en el nombre) y volvé a importar.',
+      )
+      for (const p of descartadas) {
+        this.problema(
+          p.titulo,
+          null,
+          null,
+          'planilla mensual repetida',
+          `«${p.titulo}» es del mismo mes que «${queda.titulo}» (${periodo}); no se leyó como planilla del mes para no duplicar cada fila`,
+        )
+      }
+    }
+  }
+
+  /**
+   * Las cuotas que ya habían entrado por una planilla repetida. Como esa pestaña deja de leerse, sacarlas
+   * es durable: no vuelven en la próxima importación. Se saca sólo lo que no tiene nada colgando —ni un
+   * cobro, ni una baja, ni un aviso de rechazo, ni un adelanto— y lo que no tenga un cambio esperando
+   * subir; si algo de eso hay, la fila se deja y se ve repetida, que es preferible a perder un cobro.
+   */
+  private sacarCuotasDeLasPlanillasDescartadas(periodo: string, titulos: string[]): number {
+    if (titulos.length === 0) return 0
+    const marcas = titulos.map(() => '?').join(', ')
+    const candidatas = this.db
+      .prepare(
+        `SELECT c.fila_id FROM cuotas_mes c
+          WHERE c.periodo = ? AND c.pestana IN (${marcas})
+            -- La gemela tiene que estar en la planilla QUE QUEDA. Si la póliza sólo figura en las
+            -- pestañas descartadas, sacarla la dejaría sin cuota del mes: en ese caso no se toca.
+            AND EXISTS (
+              SELECT 1 FROM cuotas_mes o
+               WHERE o.periodo = c.periodo AND o.poliza_id = c.poliza_id AND o.fila_id <> c.fila_id
+                 AND o.pestana NOT IN (${marcas})
+            )
+            AND NOT EXISTS (SELECT 1 FROM pagos pg WHERE pg.cuota_fila_id = c.fila_id)
+            AND NOT EXISTS (SELECT 1 FROM pagos pa WHERE pa.fila_id = 'PAGO:ADELANTO:' || c.fila_id)
+            AND NOT EXISTS (SELECT 1 FROM bajas b WHERE b.cuota_fila_id = c.fila_id)
+            AND NOT EXISTS (SELECT 1 FROM rechazos_debito rd WHERE rd.cuota_fila_id = c.fila_id)`,
+      )
+      .all(periodo, ...titulos, ...titulos) as Array<{ fila_id: string }>
+
+    const borrar = this.db.prepare('DELETE FROM cuotas_mes WHERE fila_id = ?')
+    let sacadas = 0
+    this.db.transaction(() => {
+      for (const { fila_id } of candidatas) {
+        if (this.sinSubir.has(fila_id)) continue
+        sacadas += borrar.run(fila_id).changes
+      }
+    })()
+    return sacadas
+  }
+
+  /**
    * La planilla más nueva es la de mayor período QUE TENGA DATOS: una pestaña del mes próximo creada con
    * sólo los encabezados (o con encabezados irreconocibles) no puede definir la cartera ni inactivar pólizas.
    */
   private async elegirMasNuevaConDatos(): Promise<PestanaTrabajo | null> {
     const candidatas = this.pestanas
-      .filter((p) => p.tipo === 'MENSUAL' && p.periodo)
+      .filter((p) => p.tipo === 'MENSUAL' && p.periodo && !this.planillasRepetidas.has(p.titulo))
       .sort((a, b) => b.periodo!.localeCompare(a.periodo!) || b.indice - a.indice)
 
     const ocultas = candidatas.filter((p) => p.oculta)
@@ -1052,7 +1159,9 @@ class TrabajoDeImportacion {
           this.contar(resumen, 'filas_crudas')
           switch (p.tipo) {
             case 'MENSUAL':
-              this.guardarFilaMensual(p, fila, resumen)
+              // La copia de la pestaña del mes se guarda cruda y nada más: si escribiera cuotas, cada
+              // póliza quedaría dos veces en el mismo mes.
+              if (!this.planillasRepetidas.has(p.titulo)) this.guardarFilaMensual(p, fila, resumen)
               break
             case 'BAJAS':
               this.guardarBaja(p, fila, resumen)

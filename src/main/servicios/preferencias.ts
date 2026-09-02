@@ -157,19 +157,47 @@ const DIRECCIONES_INICIALES: Record<NombreDeSucursal, string> = {
   Daniel: '',
 }
 
-/** Lo guardado tal cual: nombre de sucursal → dirección. Sin las iniciales. */
-export function direccionesGuardadas(): Map<string, string> {
+/**
+ * El teléfono que venía impreso en el encabezado del ticket. Era uno solo para toda la agencia, así
+ * que arranca igual en las cuatro sucursales: quien atiende cada mostrador lo cambia por el celular
+ * de su local desde Administración → Impresora y el resto sigue como estaba.
+ */
+const TELEFONO_INICIAL = '11 4083-0416'
+
+const TELEFONOS_INICIALES: Record<NombreDeSucursal, string> = {
+  'Dock Sud': TELEFONO_INICIAL,
+  Lanús: TELEFONO_INICIAL,
+  Sarandí: TELEFONO_INICIAL,
+  Daniel: TELEFONO_INICIAL,
+}
+
+/** Lo que se guarda por sucursal para encabezar su ticket. */
+export interface EncabezadoGuardado {
+  direccion: string
+  /**
+   * null cuando la sucursal viene de una versión anterior, que guardaba sólo la dirección: ahí todavía
+   * no hay una decisión sobre el teléfono y vale el de fábrica. La cadena vacía sí es una decisión —
+   * alguien lo borró— y deja el ticket sin teléfono.
+   */
+  telefono: string | null
+}
+
+/** Lo guardado tal cual: nombre de sucursal → dirección y teléfono. Sin los iniciales. */
+export function direccionesGuardadas(): Map<string, EncabezadoGuardado> {
   const crudo = leer(CLAVE_DIRECCIONES)
   if (!crudo) return new Map()
   try {
     const datos = JSON.parse(crudo) as unknown
     if (!Array.isArray(datos)) return new Map()
-    const mapa = new Map<string, string>()
+    const mapa = new Map<string, EncabezadoGuardado>()
     for (const fila of datos) {
       if (typeof fila !== 'object' || fila === null) continue
-      const { sucursal, direccion } = fila as { sucursal?: unknown; direccion?: unknown }
+      const { sucursal, direccion, telefono } = fila as { sucursal?: unknown; direccion?: unknown; telefono?: unknown }
       if (typeof sucursal !== 'string' || !sucursal.trim()) continue
-      mapa.set(sucursal.trim(), typeof direccion === 'string' ? direccion.trim() : '')
+      mapa.set(sucursal.trim(), {
+        direccion: typeof direccion === 'string' ? direccion.trim() : '',
+        telefono: typeof telefono === 'string' ? telefono.trim() : null,
+      })
     }
     return mapa
   } catch {
@@ -177,10 +205,10 @@ export function direccionesGuardadas(): Map<string, string> {
   }
 }
 
-export function guardarDirecciones(direcciones: { sucursal: string; direccion: string }[]): void {
+export function guardarDirecciones(direcciones: { sucursal: string; direccion: string; telefono?: string | null }[]): void {
   // Se guardan también las vacías: borrar la dirección de una sucursal es una decisión, no un olvido,
   // y si no quedara guardada volvería la inicial en el siguiente ticket.
-  const limpias: { sucursal: string; direccion: string }[] = []
+  const limpias: { sucursal: string; direccion: string; telefono: string }[] = []
   const vistas = new Set<string>()
   for (const fila of direcciones) {
     const sucursal = (fila.sucursal ?? '').trim()
@@ -188,7 +216,13 @@ export function guardarDirecciones(direcciones: { sucursal: string; direccion: s
     const clave = claveDeSucursal(sucursal)
     if (vistas.has(clave)) continue
     vistas.add(clave)
-    limpias.push({ sucursal, direccion: (fila.direccion ?? '').trim().slice(0, 200) })
+    limpias.push({
+      sucursal,
+      direccion: (fila.direccion ?? '').trim().slice(0, 200),
+      // Sin teléfono en lo que llega —una pantalla vieja, o una llamada que sólo trae la dirección— se
+      // guarda el que ya estaba, para no borrarlo sin que nadie lo haya pedido.
+      telefono: (fila.telefono ?? telefonoDeSucursal(sucursal)).trim().slice(0, 60),
+    })
   }
   guardar(CLAVE_DIRECCIONES, JSON.stringify(limpias))
 }
@@ -197,16 +231,39 @@ export function guardarDirecciones(direcciones: { sucursal: string; direccion: s
 export function direccionDeSucursal(nombre: string | null | undefined): string {
   const buscado = claveDeSucursal(nombre ?? '')
   if (!buscado) return ''
-  for (const [sucursal, direccion] of direccionesGuardadas()) {
-    if (mismaSucursal(sucursal, nombre)) return direccion
+  for (const [sucursal, guardada] of direccionesGuardadas()) {
+    if (mismaSucursal(sucursal, nombre)) return guardada.direccion
   }
   return direccionInicial(nombre ?? '')
+}
+
+/**
+ * El teléfono que va en el encabezado del ticket de esa sucursal. Cae al de fábrica mientras nadie
+ * haya cargado uno propio, así que el ticket sigue saliendo igual que antes hasta que el mostrador
+ * decide cambiarlo.
+ */
+export function telefonoDeSucursal(nombre: string | null | undefined): string {
+  const buscado = claveDeSucursal(nombre ?? '')
+  if (!buscado) return ''
+  for (const [sucursal, guardada] of direccionesGuardadas()) {
+    if (mismaSucursal(sucursal, nombre)) return guardada.telefono ?? telefonoInicial(nombre ?? '')
+  }
+  return telefonoInicial(nombre ?? '')
 }
 
 /** La inicial de fábrica de una sucursal, para no perderla al listar las que nadie tocó. */
 export function direccionInicial(nombre: string): string {
   const sucursal = sucursalCanonica(nombre)
   return sucursal ? DIRECCIONES_INICIALES[sucursal] : ''
+}
+
+/**
+ * El teléfono de fábrica. Una sucursal que no está en el catálogo arranca sin ninguno: el de la
+ * agencia es el de los cuatro mostradores conocidos y no tiene por qué serlo de un local nuevo.
+ */
+export function telefonoInicial(nombre: string): string {
+  const sucursal = sucursalCanonica(nombre)
+  return sucursal ? TELEFONOS_INICIALES[sucursal] : ''
 }
 
 /**

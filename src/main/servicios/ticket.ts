@@ -8,8 +8,12 @@
 //
 // Con «preguntar antes de imprimir» activado el ticket no sale solo: el mostrador confirma primero
 // (hay compañías que no piden comprobante y el rollo se gasta igual). Eso lo arma `pedidoDeTicket`.
+//
+// Cuando salen dos comprobantes se mandan como DOS trabajos de impresión separados, uno después del
+// otro, y no como un trabajo de dos copias: la guillotina de la térmica corta al terminar cada
+// trabajo, así que un trabajo de dos copias devolvía los dos tickets pegados en la misma tira.
 import { BrowserWindow } from 'electron'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { claveDeSucursal, sucursalCanonica } from '../../shared/sucursales'
 import type { ConfigImpresora, DatosDeImpresora, DireccionDeSucursal, PedidoDeTicket } from '../../shared/tipos'
@@ -26,6 +30,8 @@ import {
   guardarImpresora,
   impresoraGuardada,
   proximoNumeroDeTicket,
+  telefonoDeSucursal,
+  telefonoInicial,
   tomarNumeroDeTicket,
   ultimoErrorDeImpresion,
 } from './preferencias'
@@ -37,11 +43,27 @@ import { enteroPositivo } from './validacion'
 const ESPERA_MAXIMA_MS = 20_000
 
 /**
+ * Lo que se espera entre un ticket y el siguiente. Sin esta pausa el spooler de Windows puede juntar
+ * los dos trabajos en uno solo —que es justamente lo que hacía que salieran pegados— y la guillotina
+ * corta una sola vez, al final.
+ */
+const PAUSA_ENTRE_TICKETS_MS = 400
+
+const esperar = (ms: number): Promise<void> => new Promise((seguir) => setTimeout(seguir, ms).unref?.())
+
+/**
+ * Dos cobros seguidos pueden estar imprimiendo a la vez. Cada impresión escribe su propio archivo:
+ * si compartieran uno, el segundo pisaría el HTML que el primero todavía no terminó de imprimir.
+ */
+let trabajosImpresos = 0
+
+/**
  * Lo fijo del comprobante: los datos de la agencia, que no cambian de una sucursal a otra ni de un
- * pago a otro. La dirección sí cambia por sucursal y se carga en Administración → Impresora.
+ * pago a otro. La dirección y el teléfono sí cambian por sucursal —cada local atiende por su propio
+ * celular— y se cargan en Administración → Impresora.
  */
 const AGENCIA = {
-  provinciaYTelefono: 'Pcia de Buenos Aires - Tel: 11 4083-0416',
+  provincia: 'Pcia de Buenos Aires',
   cuit: 'C.U.I.T  30-70839042-5',
   inicioDeActividades: 'Inicio de actividades 08-2005 N 0000015865',
   // La agencia trabaja automotor: no hay ramo cargado por póliza, así que la línea es fija.
@@ -56,6 +78,8 @@ export interface DatosDeTicket {
   numero: string
   /** Dirección de la sucursal donde se cobró; encabeza el ticket. */
   direccion: string
+  /** Teléfono de esa misma sucursal, debajo de la dirección. Vacío deja la línea con sólo la provincia. */
+  telefono: string
   /** Día del pago, 'd/M/aaaa'. */
   fecha: string
   /** Hora en que se registró, 'HH:mm'. */
@@ -143,9 +167,9 @@ function identidadDeSucursal(nombre: string): string {
 }
 
 /**
- * Una fila por sucursal de la agencia, con la dirección que encabeza su ticket. Al final van las
- * direcciones guardadas para nombres que ya no están en la lista: se ven y se pueden borrar, pero no
- * se pierden solas.
+ * Una fila por sucursal de la agencia, con la dirección y el teléfono que encabezan su ticket. Al
+ * final van las guardadas para nombres que ya no están en la lista: se ven y se pueden borrar, pero
+ * no se pierden solas.
  *
  * Con `soloLaSucursal` se devuelve una sola fila: la del mostrador de quien está mirando. Es lo que ve
  * un empleado, porque la impresora que tiene delante imprime esa dirección y ninguna otra; ver —y
@@ -156,14 +180,15 @@ export function direccionesDeTicket(soloLaSucursal?: string | null): DireccionDe
   const filas = listarSucursales().map((sucursal) => ({
     sucursal: sucursal.nombre,
     direccion: direccionDeSucursal(sucursal.nombre),
+    telefono: telefonoDeSucursal(sucursal.nombre),
     enLaLista: true,
   }))
   // Si no se cruzaran, la pantalla mostraría las dos y cada una con una dirección distinta para el
   // mismo mostrador.
   const conocidas = new Set(filas.map((fila) => identidadDeSucursal(fila.sucursal)))
-  for (const [sucursal, direccion] of direccionesGuardadas()) {
+  for (const [sucursal, guardada] of direccionesGuardadas()) {
     if (conocidas.has(identidadDeSucursal(sucursal))) continue
-    filas.push({ sucursal, direccion, enLaLista: false })
+    filas.push({ sucursal, direccion: guardada.direccion, telefono: guardada.telefono ?? telefonoInicial(sucursal), enLaLista: false })
   }
 
   if (soloLaSucursal === undefined || soloLaSucursal === null) return filas
@@ -171,11 +196,14 @@ export function direccionesDeTicket(soloLaSucursal?: string | null): DireccionDe
   const propias = filas.filter((fila) => identidadDeSucursal(fila.sucursal) === mia)
   // Una sucursal que todavía no tiene fila (recién creada, o con un nombre que no está en el catálogo)
   // igual tiene que poder cargar su dirección: se devuelve una fila vacía en vez de una lista vacía.
-  return propias.length > 0 ? propias : [{ sucursal: soloLaSucursal, direccion: '', enLaLista: false }]
+  return propias.length > 0
+    ? propias
+    : [{ sucursal: soloLaSucursal, direccion: '', telefono: telefonoInicial(soloLaSucursal), enLaLista: false }]
 }
 
 /**
- * Guarda las direcciones tal como quedaron en la pantalla. Una sucursal nueva se carga acá mismo.
+ * Guarda las direcciones y los teléfonos tal como quedaron en la pantalla. Una sucursal nueva se
+ * carga acá mismo.
  *
  * Con `soloLaSucursal` sólo se acepta la de ese mostrador y el resto se deja intacto: si se guardara
  * la lista entera, la pantalla recortada de un empleado —que recibió una sola fila— borraría las
@@ -187,20 +215,26 @@ export function guardarDireccionesDeTicket(
 ): DireccionDeSucursal[] {
   if (!Array.isArray(direcciones)) throw new ErrorDeNegocio('No llegó ninguna dirección para guardar.')
 
+  // Una pantalla vieja puede mandar filas sin teléfono: ahí no hay nada que decidir y se conserva el
+  // que ya estaba, en vez de borrarlo del encabezado sin que nadie lo haya pedido.
+  const comoFila = (fila: DireccionDeSucursal) => ({
+    sucursal: fila.sucursal,
+    direccion: fila.direccion,
+    telefono: typeof fila.telefono === 'string' ? fila.telefono : null,
+  })
+
   if (soloLaSucursal === undefined || soloLaSucursal === null) {
-    guardarDirecciones(direcciones.map((fila) => ({ sucursal: fila.sucursal, direccion: fila.direccion })))
+    guardarDirecciones(direcciones.map(comoFila))
     return direccionesDeTicket()
   }
 
   const mia = identidadDeSucursal(soloLaSucursal)
   const propia = direcciones.find((fila) => identidadDeSucursal(fila.sucursal) === mia)
-  if (!propia) throw new ErrorDeNegocio('Sólo podés cambiar la dirección de tu sucursal.')
+  if (!propia) throw new ErrorDeNegocio('Sólo podés cambiar el encabezado de tu sucursal.')
   // Se reescribe la lista completa con lo que ya había y sólo la propia cambiada.
-  const todas = direccionesDeTicket().map((fila) =>
-    identidadDeSucursal(fila.sucursal) === mia ? { sucursal: fila.sucursal, direccion: propia.direccion } : { sucursal: fila.sucursal, direccion: fila.direccion },
-  )
+  const todas = direccionesDeTicket().map((fila) => (identidadDeSucursal(fila.sucursal) === mia ? comoFila(propia) : comoFila(fila)))
   if (!todas.some((fila) => identidadDeSucursal(fila.sucursal) === mia)) {
-    todas.push({ sucursal: propia.sucursal, direccion: propia.direccion })
+    todas.push(comoFila(propia))
   }
   guardarDirecciones(todas)
   return direccionesDeTicket(soloLaSucursal)
@@ -230,8 +264,8 @@ function linea(etiqueta: string, valor: string): string {
  * propósito: en una térmica de 80 mm el texto sale nítido y una imagen depende del driver. Ancho en
  * milímetros para que el navegador lo componga a escala real.
  *
- * Fijo: los datos de la agencia (provincia y teléfono, CUIT, inicio de actividades), la sección/ramo y
- * las dos leyendas del pie. Variable: la dirección de la sucursal que cobró y todo lo del pago.
+ * Fijo: los datos de la agencia (provincia, CUIT, inicio de actividades), la sección/ramo y las dos
+ * leyendas del pie. Variable: la dirección y el teléfono de la sucursal que cobró y todo lo del pago.
  */
 function htmlDelTicket(datos: DatosDeTicket, anchoMm: number): string {
   const util = Math.max(anchoMm - 6, 30)
@@ -253,7 +287,7 @@ function htmlDelTicket(datos: DatosDeTicket, anchoMm: number): string {
 </style></head><body>
   <div class="encabezado">
     ${datos.direccion ? `<p class="direccion">${escapar(datos.direccion)}</p>` : ''}
-    <p>${escapar(AGENCIA.provinciaYTelefono)}</p>
+    <p>${escapar(datos.telefono ? `${AGENCIA.provincia} - Tel: ${datos.telefono}` : AGENCIA.provincia)}</p>
     <p>${escapar(AGENCIA.cuit)}</p>
     <p>${escapar(AGENCIA.inicioDeActividades)}</p>
   </div>
@@ -283,10 +317,56 @@ function altoEnMicrones(): number {
   return 140_000
 }
 
+/**
+ * UN trabajo de impresión con UN comprobante. Es a propósito que no use `copies`: la ticketeadora
+ * corta el papel cuando termina el trabajo, así que pedirle dos copias devuelve los dos tickets
+ * pegados. Dos tickets = dos llamadas a esta función, y entre una y otra la guillotina corta.
+ */
+async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anchoMm: number): Promise<void> {
+  await new Promise<void>((resolver, rechazar) => {
+    // `print` puede fallar de tres maneras: llamar al callback con error, tirar en el acto (un
+    // nombre de impresora que no existe) o no volver nunca. Las tres tienen que terminar acá, y una
+    // sola vez, o queda un temporizador vivo y la ventana oculta sin cerrar.
+    let terminado = false
+    const terminar = (error?: Error) => {
+      if (terminado) return
+      terminado = true
+      clearTimeout(reloj)
+      if (error) rechazar(error)
+      else resolver()
+    }
+    const reloj = setTimeout(() => terminar(new Error('La impresora no respondió a tiempo.')), ESPERA_MAXIMA_MS)
+    reloj.unref?.()
+    try {
+      ventana.webContents.print(
+        {
+          silent: true,
+          deviceName,
+          printBackground: false,
+          margins: { marginType: 'none' },
+          pageSize: { width: Math.round(anchoMm * 1000), height: altoEnMicrones() },
+          copies: 1,
+        },
+        (exito, motivo) => terminar(exito ? undefined : new Error(motivo || 'La impresora rechazó el trabajo.')),
+      )
+    } catch (error) {
+      terminar(error instanceof Error ? error : new Error(String(error)))
+    }
+  })
+}
+
+/**
+ * Manda el comprobante a la impresora tantas veces como copias se hayan pedido, de a un trabajo por
+ * vez y esperando a que cada uno termine. Si el segundo falla se levanta el error igual —el primero
+ * ya salió y el mostrador tiene que enterarse de que el duplicado no—, y la ventana oculta se cierra
+ * siempre.
+ */
 async function imprimirHtml(html: string, deviceName: string, anchoMm: number, copias: number): Promise<void> {
   const carpeta = path.join(carpetaDatos(), 'tickets')
   mkdirSync(carpeta, { recursive: true })
-  const ruta = path.join(carpeta, 'ticket.html')
+  // Un nombre por impresión: dos cobros seguidos pueden estar imprimiendo a la vez y el segundo no
+  // puede pisarle el HTML al primero mientras la impresora todavía lo está leyendo.
+  const ruta = path.join(carpeta, `ticket-${(trabajosImpresos = (trabajosImpresos + 1) % 1_000_000)}.html`)
   writeFileSync(ruta, html, 'utf8')
 
   const ventana = new BrowserWindow({
@@ -297,38 +377,20 @@ async function imprimirHtml(html: string, deviceName: string, anchoMm: number, c
   })
   try {
     await ventana.loadFile(ruta)
-    await new Promise<void>((resolver, rechazar) => {
-      // `print` puede fallar de tres maneras: llamar al callback con error, tirar en el acto (un
-      // nombre de impresora que no existe) o no volver nunca. Las tres tienen que terminar acá, y una
-      // sola vez, o queda un temporizador vivo y la ventana oculta sin cerrar.
-      let terminado = false
-      const terminar = (error?: Error) => {
-        if (terminado) return
-        terminado = true
-        clearTimeout(reloj)
-        if (error) rechazar(error)
-        else resolver()
-      }
-      const reloj = setTimeout(() => terminar(new Error('La impresora no respondió a tiempo.')), ESPERA_MAXIMA_MS)
-      reloj.unref?.()
-      try {
-        ventana.webContents.print(
-          {
-            silent: true,
-            deviceName,
-            printBackground: false,
-            margins: { marginType: 'none' },
-            pageSize: { width: Math.round(anchoMm * 1000), height: altoEnMicrones() },
-            copies: copias,
-          },
-          (exito, motivo) => terminar(exito ? undefined : new Error(motivo || 'La impresora rechazó el trabajo.')),
-        )
-      } catch (error) {
-        terminar(error instanceof Error ? error : new Error(String(error)))
-      }
-    })
+    for (let copia = 1; copia <= copias; copia++) {
+      // Entre un ticket y el siguiente se espera: sin la pausa el spooler puede juntar los dos
+      // trabajos y volveríamos a la tira sin corte del medio.
+      if (copia > 1) await esperar(PAUSA_ENTRE_TICKETS_MS)
+      await imprimirUnTrabajo(ventana, deviceName, anchoMm)
+    }
   } finally {
     if (!ventana.isDestroyed()) ventana.destroy()
+    // El HTML ya no hace falta: dejarlo sólo llena la carpeta de datos con un archivo por cobro.
+    try {
+      rmSync(ruta, { force: true })
+    } catch {
+      // Que no se pueda borrar el archivo no puede tumbar una impresión que ya salió.
+    }
   }
 }
 
@@ -506,6 +568,7 @@ export async function imprimirTicketDePago(pagoId: number, copias?: number): Pro
     {
       numero: formatearNumeroDeTicket(tomarNumeroDeTicket()),
       direccion: direccionDeSucursal(pago.sucursal),
+      telefono: telefonoDeSucursal(pago.sucursal),
       fecha: comoFechaCorta(diaDelPago(pago)),
       hora: horaDeRegistro(pago.creado_en),
       importe: comoImporte(pago),
@@ -534,6 +597,7 @@ export async function imprimirTicketDePrueba(sucursal: string): Promise<void> {
     // La prueba no gasta un número real: es sólo para ver que la impresora anda.
     numero: 'PRUEBA',
     direccion: direccionDeSucursal(sucursal),
+    telefono: telefonoDeSucursal(sucursal),
     fecha: comoFechaCorta(hoy),
     hora: horaDeRegistro(ahora.toISOString()),
     importe: '$1',

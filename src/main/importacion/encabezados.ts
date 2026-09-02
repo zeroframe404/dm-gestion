@@ -184,6 +184,17 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
     'FECHA DE CARGA': 'fecha_carga',
     'FECHA CARGA': 'fecha_carga',
     CARGA: 'fecha_carga',
+    // Cómo titula la agencia la columna del trámite. Van acá y no en la lista general porque en una
+    // planilla MENSUAL «TRÁMITE» o «GESTIÓN» no son el estado de nada: sin este ajuste, una pestaña
+    // SINIESTROS con la columna llamada de otra manera importaba todas las filas sin estado y las
+    // cuatro fichas quedaban en CARGADO.
+    'ESTADO DEL TRAMITE': 'estado',
+    'ESTADO TRAMITE': 'estado',
+    'ESTADO DEL SINIESTRO': 'estado',
+    'ESTADO SINIESTRO': 'estado',
+    TRAMITE: 'estado',
+    GESTION: 'estado',
+    SEGUIMIENTO: 'estado',
   },
   // AMP es la lista de ampliaciones pendientes: el nombre del cliente, qué se amplía y para cuándo.
   AMP: {
