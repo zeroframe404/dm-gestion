@@ -32,6 +32,81 @@
   --shadow-marca: 0 8px 20px rgba(24, 63, 117, 0.28);
 }
 
+/*
+ * Tema oscuro.
+ *
+ * Las pantallas están escritas con clases de color fijas (`bg-white`, `text-slate-900`, etc.) y son
+ * más de ochenta archivos: reescribirlas todas con variantes `dark:` es un trabajo aparte. Mientras
+ * tanto, esto redefine esas mismas clases cuando `<html data-theme="dark">` está puesto. Al no estar
+ * dentro de `@layer`, gana siempre sobre las utilidades de Tailwind (que sí están en una layer),
+ * pase lo que pase con la especificidad — no hace falta `!important`.
+ *
+ * La barra lateral (`bg-marino-950`) ya es oscura en los dos temas y no se toca acá.
+ */
+html[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+html[data-theme='dark'] .bg-white {
+  background-color: #101a2e;
+}
+html[data-theme='dark'] .bg-slate-50 {
+  background-color: #0a1120;
+}
+html[data-theme='dark'] .bg-slate-100 {
+  background-color: #182338;
+}
+html[data-theme='dark'] .bg-slate-200 {
+  background-color: #22304a;
+}
+html[data-theme='dark'] .hover\:bg-slate-50:hover {
+  background-color: #16223a;
+}
+html[data-theme='dark'] .hover\:bg-slate-100:hover {
+  background-color: #202e48;
+}
+
+html[data-theme='dark'] .text-slate-900 {
+  color: #e7edf7;
+}
+html[data-theme='dark'] .text-slate-800 {
+  color: #dbe3f0;
+}
+html[data-theme='dark'] .text-slate-700 {
+  color: #cbd5e6;
+}
+html[data-theme='dark'] .text-slate-600 {
+  color: #a7b4cb;
+}
+html[data-theme='dark'] .text-slate-500 {
+  color: #8695b0;
+}
+html[data-theme='dark'] .text-slate-400 {
+  color: #6b7994;
+}
+html[data-theme='dark'] .hover\:text-slate-900:hover {
+  color: #f4f7fb;
+}
+
+html[data-theme='dark'] .border-slate-100 {
+  border-color: #1c2840;
+}
+html[data-theme='dark'] .border-slate-200 {
+  border-color: #263a54;
+}
+html[data-theme='dark'] .border-slate-300 {
+  border-color: #344563;
+}
+html[data-theme='dark'] .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #1c2840;
+}
+html[data-theme='dark'] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #263a54;
+}
+html[data-theme='dark'] .ring-slate-200 {
+  --tw-ring-color: #263a54;
+}
+
 @layer base {
   html,
   body,

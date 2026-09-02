@@ -4,6 +4,7 @@ import { useAcceso } from '../contexto/Acceso'
 import { usePermisos } from '../contexto/Permisos'
 import { useSesion, useUsuarioActual } from '../contexto/Sesion'
 import { BotonDeSonido } from './BotonDeSonido'
+import { BotonDeTema } from './BotonDeTema'
 import { CampanaDeRechazos } from './CampanaDeRechazos'
 import { CampanaDeTareas } from './CampanaDeTareas'
 import { ControlDeZoom } from './ControlDeZoom'
@@ -61,7 +62,8 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
         )}
         {/* Pegado a las campanas: es lo que se busca justo después de que sonó una y molestó. */}
         <BotonDeSonido />
-        {/* Al lado del sonido a propósito: las dos son preferencias de esta computadora y no del usuario. */}
+        {/* Al lado del sonido a propósito: las tres son preferencias de esta computadora y no del usuario. */}
+        <BotonDeTema />
         <ControlDeZoom />
         <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
 

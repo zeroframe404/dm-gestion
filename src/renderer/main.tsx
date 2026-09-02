@@ -4,9 +4,14 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { ProveedorSesion } from './contexto/Sesion'
 import { precargarSonidos } from './sonidos'
+import { iniciarTema } from './tema'
 import { iniciarZoom } from './zoom'
 import './fuentes/fonts.css'
 import './estilos.css'
+
+// El tema se pone antes que nada: si se aplicara desde un componente, la pantalla aparecería en claro
+// y saltaría a oscuro delante de quien la está mirando.
+iniciarTema()
 
 // El zoom se pone antes de dibujar nada —si no, la pantalla aparece al 100 % y salta— y desde acá
 // quedan andando Ctrl + / − / 0 y Ctrl con la rueda en toda la aplicación, también en el ingreso.
