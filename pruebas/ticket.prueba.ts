@@ -12,6 +12,7 @@ import {
   guardarImpresora,
   impresoraGuardada,
   proximoNumeroDeTicket,
+  telefonoDeSucursal,
   tomarNumeroDeTicket,
 } from '../src/main/servicios/preferencias'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
@@ -187,5 +188,65 @@ test('una sucursal repetida o sin nombre no se guarda dos veces', () => {
   const guardadas = direccionesGuardadas()
   assert.equal(guardadas.size, 1)
   assert.equal(direccionDeSucursal('Lanús'), 'Centenario Uruguayo 1217')
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Teléfono del encabezado, uno por sucursal
+// ---------------------------------------------------------------------------
+
+test('sin cargar nada, las cuatro sucursales encabezan con el teléfono de la agencia', () => {
+  baseDePrueba()
+  assert.equal(telefonoDeSucursal('Avellaneda'), '11 4083-0416')
+  assert.equal(telefonoDeSucursal('Sarandí'), '11 4083-0416')
+  assert.equal(telefonoDeSucursal('Lanús'), '11 4083-0416')
+  assert.equal(telefonoDeSucursal('Daniel'), '11 4083-0416')
+  cerrarBaseDeDatos()
+})
+
+test('cada local puede tener su propio teléfono sin tocar el de las demás', () => {
+  baseDePrueba()
+  guardarDirecciones([
+    { sucursal: 'Sarandí', direccion: 'Av. Bartolomé Mitre 2588', telefono: '11 2222-3333' },
+    { sucursal: 'Lanús', direccion: 'Centenario Uruguayo 1217', telefono: '11 4444-5555' },
+  ])
+  assert.equal(telefonoDeSucursal('Sarandí'), '11 2222-3333')
+  assert.equal(telefonoDeSucursal('LANUS'), '11 4444-5555')
+  // La que nadie tocó sigue con el de la agencia.
+  assert.equal(telefonoDeSucursal('Avellaneda'), '11 4083-0416')
+  cerrarBaseDeDatos()
+})
+
+test('borrar el teléfono es una decisión: el ticket sale sin él', () => {
+  baseDePrueba()
+  guardarDirecciones([{ sucursal: 'Sarandí', direccion: 'Av. Bartolomé Mitre 2588', telefono: '' }])
+  assert.equal(telefonoDeSucursal('Sarandí'), '')
+  cerrarBaseDeDatos()
+})
+
+test('lo guardado por una versión sin teléfonos conserva el de la agencia', () => {
+  baseDePrueba()
+  // Así quedaban guardadas las direcciones antes de que el teléfono fuera por sucursal.
+  guardarCrudo('direcciones_ticket', JSON.stringify([{ sucursal: 'Sarandí', direccion: 'Belgrano 500' }]))
+  assert.equal(direccionDeSucursal('Sarandí'), 'Belgrano 500')
+  assert.equal(telefonoDeSucursal('Sarandí'), '11 4083-0416')
+  cerrarBaseDeDatos()
+})
+
+test('guardar una dirección sin mandar el teléfono no borra el que ya estaba', () => {
+  baseDePrueba()
+  guardarDirecciones([{ sucursal: 'Sarandí', direccion: 'Av. Bartolomé Mitre 2588', telefono: '11 2222-3333' }])
+  // Una pantalla vieja manda la fila sin teléfono: no hay decisión que guardar, se conserva el suyo.
+  guardarDirecciones([{ sucursal: 'Sarandí', direccion: 'Belgrano 500' }])
+  assert.equal(direccionDeSucursal('Sarandí'), 'Belgrano 500')
+  assert.equal(telefonoDeSucursal('Sarandí'), '11 2222-3333')
+  cerrarBaseDeDatos()
+})
+
+test('una sucursal fuera del catálogo arranca sin teléfono', () => {
+  baseDePrueba()
+  assert.equal(telefonoDeSucursal('Quilmes'), '')
+  guardarDirecciones([{ sucursal: 'Quilmes', direccion: 'Rivadavia 100', telefono: '11 9999-0000' }])
+  assert.equal(telefonoDeSucursal('Quilmes'), '11 9999-0000')
   cerrarBaseDeDatos()
 })

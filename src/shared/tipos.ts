@@ -1850,12 +1850,14 @@ export interface DatosDeImpresora {
 }
 
 /**
- * La dirección que encabeza el ticket, una por sucursal: el comprobante lo firma la sucursal donde se
- * cobró. Se cargan en Administración → Impresora y admiten sucursales nuevas.
+ * El encabezado del ticket, uno por sucursal: el comprobante lo firma la sucursal donde se cobró, con
+ * su dirección y su teléfono. Se cargan en Administración → Impresora y admiten sucursales nuevas.
  */
 export interface DireccionDeSucursal {
   sucursal: string
   direccion: string
+  /** Teléfono del local, debajo de la dirección. Vacío deja la línea con sólo la provincia. */
+  telefono: string
   /** false cuando la dirección quedó guardada para un nombre que ya no está en la lista de sucursales. */
   enLaLista: boolean
 }

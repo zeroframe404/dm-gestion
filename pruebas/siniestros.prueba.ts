@@ -111,6 +111,38 @@ test('lo que la hoja escribió durante años cae en uno de los cuatro estados', 
   assert.equal(normalizarEstadoSiniestro(null), 'CARGADO')
 })
 
+test('el estado se reconoce aunque la hoja le agregue el detalle al lado', () => {
+  // Nadie escribe el estado a secas: le pone la fecha, el perito o de quién se espera el papel. Mientras
+  // la comparación fue exacta, todo esto caía en CARGADO y los tres contadores marcaban cero.
+  assert.equal(normalizarEstadoSiniestro('CERRADO 15/08'), 'CERRADO')
+  assert.equal(normalizarEstadoSiniestro('CERRADO SIN PAGO'), 'CERRADO')
+  assert.equal(normalizarEstadoSiniestro('SE CERRO EL 3/9'), 'CERRADO')
+  assert.equal(normalizarEstadoSiniestro('FINALIZADA'), 'CERRADO')
+  assert.equal(normalizarEstadoSiniestro('COBRADA POR EL CLIENTE'), 'CERRADO')
+  assert.equal(normalizarEstadoSiniestro('RECHAZADA POR LA CIA'), 'CERRADO')
+
+  assert.equal(normalizarEstadoSiniestro('EN TRAMITE - PERITO'), 'EN TRÁMITE')
+  assert.equal(normalizarEstadoSiniestro('en tramite con la cia'), 'EN TRÁMITE')
+  assert.equal(normalizarEstadoSiniestro('TRAMITANDO'), 'EN TRÁMITE')
+
+  assert.equal(normalizarEstadoSiniestro('ESPERANDO DOCUMENTACION DEL CLIENTE'), 'ESPERANDO DOCUMENTACIÓN')
+  assert.equal(normalizarEstadoSiniestro('FALTA DOCUMENTACION DEL TERCERO'), 'ESPERANDO DOCUMENTACIÓN')
+  assert.equal(normalizarEstadoSiniestro('PENDIENTE DOCUMENTACION'), 'ESPERANDO DOCUMENTACIÓN', 'la frase larga le gana a DOCUMENTACION sola')
+})
+
+test('cuando el texto nombra dos estados manda el que está primero', () => {
+  // La agencia escribe el estado y después el detalle: «CERRADO FALTA DOCUMENTACIÓN» es un siniestro
+  // cerrado al que le faltó un papel, no uno esperando papeles.
+  assert.equal(normalizarEstadoSiniestro('CERRADO FALTA DOCUMENTACION'), 'CERRADO')
+  assert.equal(normalizarEstadoSiniestro('ESPERANDO DOCUMENTACION PARA CERRARLO'), 'ESPERANDO DOCUMENTACIÓN')
+})
+
+test('una palabra suelta parecida no alcanza para cambiar el estado', () => {
+  // La frase tiene que estar completa: si no, cualquier observación larga movería el trámite sola.
+  assert.equal(normalizarEstadoSiniestro('CHOQUE EN LA ESQUINA'), 'CARGADO')
+  assert.equal(normalizarEstadoSiniestro('LO LLAMAMOS Y NO ATIENDE'), 'CARGADO')
+})
+
 test('ROBO se reconoce como palabra, no como pedazo de otra', () => {
   assert.ok(mencionaRobo('ROBO DE RUEDAS'))
   assert.ok(mencionaRobo('le robaron el auto'))

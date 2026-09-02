@@ -300,14 +300,14 @@ function DireccionesDelTicket() {
 
   if (!filas) {
     return (
-      <Tarjeta titulo="Direcciones del ticket" descripcion="La dirección que encabeza el comprobante de cada sucursal.">
+      <Tarjeta titulo="Encabezado del ticket" descripcion="La dirección y el teléfono que encabezan el comprobante de cada sucursal.">
         {error ? <Alerta tono="error">{error}</Alerta> : <Cargando />}
       </Tarjeta>
     )
   }
 
-  const cambiar = (indice: number, direccion: string) => {
-    setFilas(filas.map((fila, i) => (i === indice ? { ...fila, direccion } : fila)))
+  const cambiar = (indice: number, cambios: Partial<DireccionDeSucursal>) => {
+    setFilas(filas.map((fila, i) => (i === indice ? { ...fila, ...cambios } : fila)))
   }
 
   const agregar = () => {
@@ -318,7 +318,7 @@ function DireccionesDelTicket() {
       return
     }
     setError(null)
-    setFilas([...filas, { sucursal, direccion: '', enLaLista: false }])
+    setFilas([...filas, { sucursal, direccion: '', telefono: '', enLaLista: false }])
     setNueva('')
   }
 
@@ -334,7 +334,7 @@ function DireccionesDelTicket() {
     setGuardando(false)
     if (resultado.ok) {
       aplicar(resultado.datos)
-      setAviso('Direcciones guardadas. Los próximos tickets salen con la nueva.')
+      setAviso('Encabezado guardado. Los próximos tickets salen con la dirección y el teléfono nuevos.')
     } else {
       setError(resultado.error)
     }
@@ -344,15 +344,15 @@ function DireccionesDelTicket() {
 
   return (
     <Tarjeta
-      titulo={soloLaMia ? 'Dirección del ticket de tu sucursal' : 'Direcciones del ticket'}
+      titulo={soloLaMia ? 'Encabezado del ticket de tu sucursal' : 'Encabezado del ticket'}
       descripcion={
         soloLaMia
-          ? `Los comprobantes que salgan de esta computadora encabezan con la dirección de ${usuario.sucursal.nombre}. El resto del encabezado (provincia, teléfono, CUIT e inicio de actividades) es igual para toda la agencia.`
-          : 'Cada comprobante encabeza con la dirección de la sucursal donde se cobró. El resto del encabezado (provincia, teléfono, CUIT e inicio de actividades) es igual para toda la agencia.'
+          ? `Los comprobantes que salgan de esta computadora encabezan con la dirección y el teléfono de ${usuario.sucursal.nombre}. El resto del encabezado (provincia, CUIT e inicio de actividades) es igual para toda la agencia.`
+          : 'Cada comprobante encabeza con la dirección y el teléfono de la sucursal donde se cobró. El resto del encabezado (provincia, CUIT e inicio de actividades) es igual para toda la agencia.'
       }
       acciones={
         <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios}>
-          Guardar direcciones
+          Guardar encabezado
         </Boton>
       }
     >
@@ -363,18 +363,32 @@ function DireccionesDelTicket() {
         {filas.length === 0 && <Alerta tono="info">Todavía no hay sucursales cargadas.</Alerta>}
 
         {filas.map((fila, indice) => (
-          <div key={`${fila.sucursal}-${indice}`}>
-            <Campo
-              etiqueta={fila.sucursal}
-              value={fila.direccion}
-              onChange={(evento) => cambiar(indice, evento.target.value)}
-              placeholder="Calle y número, localidad"
-              ayuda={fila.enLaLista ? undefined : 'Esta sucursal ya no está en la lista de la agencia.'}
-            />
+          <div key={`${fila.sucursal}-${indice}`} className="rounded-lg border border-slate-200 p-3">
+            <span className="mb-2 block text-sm font-semibold text-slate-800">{fila.sucursal}</span>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              <div className="sm:flex-1">
+                <Campo
+                  etiqueta="Dirección"
+                  value={fila.direccion}
+                  onChange={(evento) => cambiar(indice, { direccion: evento.target.value })}
+                  placeholder="Calle y número, localidad"
+                  ayuda={fila.enLaLista ? undefined : 'Esta sucursal ya no está en la lista de la agencia.'}
+                />
+              </div>
+              <div className="sm:w-64 sm:shrink-0">
+                <Campo
+                  etiqueta="Teléfono"
+                  value={fila.telefono}
+                  onChange={(evento) => cambiar(indice, { telefono: evento.target.value })}
+                  placeholder="11 4083-0416"
+                  ayuda="El celular de este local. Sale después de «Pcia de Buenos Aires»."
+                />
+              </div>
+            </div>
             {!fila.enLaLista && !soloLaMia && (
               <div className="mt-1.5 flex justify-end">
                 <Boton tamano="sm" variante="fantasma" icono="basura" onClick={() => quitar(indice)}>
-                  Quitar esta dirección
+                  Quitar esta sucursal
                 </Boton>
               </div>
             )}
