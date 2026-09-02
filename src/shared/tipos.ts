@@ -1548,6 +1548,34 @@ export interface CuotasDelCliente {
 export const ESTADOS_DE_SINIESTRO = ['CARGADO', 'EN TRÁMITE', 'ESPERANDO DOCUMENTACIÓN', 'CERRADO'] as const
 export type EstadoSiniestro = (typeof ESTADOS_DE_SINIESTRO)[number]
 
+/**
+ * Qué es cada documento que se adjunta a un siniestro. Es la lista que pide la compañía para armar el
+ * legajo, en el orden en que se junta: primero la denuncia y la cobertura, después las fotos y los
+ * papeles del conductor y del auto, y al final lo que aparece según el caso.
+ *
+ * «Otras documentaciones» pide además escribir cuál: un adjunto sin nombre propio dentro de un mes se
+ * vuelve un archivo que nadie sabe para qué está.
+ */
+export const CATEGORIAS_DE_ADJUNTO = [
+  'Denuncia',
+  'Certificado de cobertura',
+  'Fotos del siniestro',
+  'Registro de conducir',
+  'DNI',
+  'Cédula verde',
+  'Denuncia policial',
+  'Constancia médica',
+  'Otras documentaciones',
+] as const
+export type CategoriaDeAdjunto = (typeof CATEGORIAS_DE_ADJUNTO)[number]
+
+/** La categoría que exige aclarar de qué se trata. */
+export const CATEGORIA_DE_ADJUNTO_OTRAS: CategoriaDeAdjunto = 'Otras documentaciones'
+
+/** Si hubo terceros lesionados: vacío mientras no se sepa, y de ahí depende la constancia médica. */
+export const RESPUESTAS_DE_LESIONADOS = ['', 'NO', 'SI'] as const
+export type RespuestaDeLesionados = (typeof RESPUESTAS_DE_LESIONADOS)[number]
+
 export interface DatosDeSiniestro {
   clienteId: number
   /** Póliza a la que se imputa; null si todavía no se sabe. */
@@ -1873,6 +1901,16 @@ export interface FilaSiniestro {
   descripcion: string | null
   observaciones: string | null
   importe: string | null
+  /** Quién lleva el caso por lo legal, si hay alguien. Texto libre: estudio, nombre y teléfono. */
+  abogado: string | null
+  /** El otro auto: la compañía, el teléfono y la patente con los que se sigue el reclamo. */
+  terceroCompania: string | null
+  terceroTelefono: string | null
+  terceroPatente: string | null
+  /** '' mientras no se sepa, 'NO' o 'SI'. Un SI es lo que obliga a pedir la constancia médica. */
+  terceroLesionados: RespuestaDeLesionados
+  /** Quién se lesionó y a qué hospital fue. */
+  terceroLesionadosDetalle: string | null
   /** El estado del trámite, ya llevado a los cuatro de la lista. */
   estado: EstadoSiniestro
   /** El texto tal cual está guardado, si no es exactamente uno de los cuatro. */
@@ -1926,6 +1964,10 @@ export interface AdjuntoDeSiniestro {
   tamano: number
   creadoEn: string
   usuarioNombre: string
+  /** Qué es el documento. null en los que se adjuntaron antes de que existieran las categorías. */
+  categoria: CategoriaDeAdjunto | null
+  /** El «indicando cuál» de «Otras documentaciones». */
+  categoriaDetalle: string | null
   /** true si además se subió a la carpeta «Adjuntos DM» del Drive. */
   enDrive: boolean
   /** Por qué no se pudo subir a Drive, si es el caso. El archivo local está guardado igual. */

@@ -143,6 +143,7 @@ import {
   crearSiniestro,
   crearTareaDeSiniestro,
   editarSiniestro,
+  elegirCategoria,
   fichaDeSiniestro,
   listarSiniestros,
   rutaDelAdjunto,
@@ -690,10 +691,13 @@ export function registrarIpc(): void {
   manejar('siniestros:agregarObservacion', (siniestroId, textoDeLaObservacion) =>
     exito(agregarObservacion(siniestroId, textoDeLaObservacion, exigirEdicion('siniestros'))),
   )
-  manejar('siniestros:adjuntar', async (siniestroId, rutas) => {
+  manejar('siniestros:adjuntar', async (siniestroId, rutas, categoria, detalle) => {
     const actor = exigirEdicion('siniestros')
     const id = enteroPositivo(siniestroId, 'El siniestro')
-    if (rutas !== null && rutas !== undefined) return exito(await agregarAdjuntos(id, rutas, actor))
+    // La categoría se valida ANTES de abrir el diálogo: elegir seis fotos y recién ahí enterarse de que
+    // faltaba decir qué son sería hacer el trabajo dos veces.
+    elegirCategoria(categoria, detalle)
+    if (rutas !== null && rutas !== undefined) return exito(await agregarAdjuntos(id, rutas, categoria, detalle, actor))
     const ventana = ventanaActual()
     const opciones = {
       title: 'Elegí los documentos del siniestro',
@@ -707,7 +711,7 @@ export function registrarIpc(): void {
     const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
     // Cancelar el diálogo no es un error: se devuelve la ficha como estaba.
     if (elegido.canceled || elegido.filePaths.length === 0) return exito(fichaDeSiniestro(id))
-    return exito(await agregarAdjuntos(id, elegido.filePaths, actor))
+    return exito(await agregarAdjuntos(id, elegido.filePaths, categoria, detalle, actor))
   })
   manejar('siniestros:abrirAdjunto', async (adjuntoId) => {
     exigirVista('siniestros')

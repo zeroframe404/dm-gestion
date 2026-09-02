@@ -4,7 +4,15 @@
 // Es la pantalla donde se contesta «¿cómo viene lo de González?» sin llamar a nadie. Por eso la línea
 // de tiempo está en el medio y ocupa lugar: es el relato del trámite, no un campo de notas.
 import { useCallback, useEffect, useState } from 'react'
-import { ESTADOS_DE_SINIESTRO, type EstadoSiniestro, type FichaSiniestro as Ficha, type EstadoTarea } from '../../../shared/tipos'
+import {
+  CATEGORIAS_DE_ADJUNTO,
+  CATEGORIA_DE_ADJUNTO_OTRAS,
+  ESTADOS_DE_SINIESTRO,
+  type CategoriaDeAdjunto,
+  type EstadoSiniestro,
+  type FichaSiniestro as Ficha,
+  type EstadoTarea,
+} from '../../../shared/tipos'
 import { NOMBRE_ESTADO_TAREA } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
@@ -40,6 +48,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
   const [trabajando, setTrabajando] = useState(false)
   const [observacion, setObservacion] = useState('')
   const [tareaAbierta, setTareaAbierta] = useState(false)
+  const [adjuntarAbierto, setAdjuntarAbierto] = useState(false)
 
   // Sin permiso de edición la ficha se lee entera, pero no se toca nada: como estar guardando.
   const bloqueado = trabajando || !puedeEditar
@@ -124,23 +133,98 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* --- Columna izquierda: los datos de la hoja, editables --- */}
-        <Tarjeta titulo="Datos del siniestro" className="lg:col-span-1">
-          <dl className="flex flex-col gap-2.5 text-sm">
-            <Dato etiqueta="Sucursal" valor={s.sucursal} campo="sucursal" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
-            <Dato etiqueta="Fecha de carga" valor={s.fechaCarga} campo="fechaCarga" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
-            <Dato etiqueta="Fecha del siniestro" valor={s.fecha} campo="fecha" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
-            <Dato etiqueta="N.º de siniestro" valor={s.numeroSiniestro} campo="numeroSiniestro" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
-            <Dato etiqueta="Cobertura" valor={s.cobertura} campo="cobertura" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
-            <Dato etiqueta="Patente" valor={s.patente} campo="patente" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
-            <Dato etiqueta="Importe" valor={s.importe} campo="importe" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
-            <Dato etiqueta="Qué pasó" valor={s.descripcion} campo="descripcion" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Teléfono</dt>
-              <dd className="text-slate-800">{s.telefono ?? '—'}</dd>
-            </div>
-          </dl>
-        </Tarjeta>
+        {/* --- Columna izquierda: los datos de la hoja y los del tercero, editables --- */}
+        <div className="flex flex-col gap-4 lg:col-span-1">
+          <Tarjeta titulo="Datos del siniestro">
+            <dl className="flex flex-col gap-2.5 text-sm">
+              <Dato etiqueta="Sucursal" valor={s.sucursal} campo="sucursal" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+              <Dato etiqueta="Fecha de carga" valor={s.fechaCarga} campo="fechaCarga" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+              <Dato etiqueta="Fecha del siniestro" valor={s.fecha} campo="fecha" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+              <Dato etiqueta="N.º de siniestro" valor={s.numeroSiniestro} campo="numeroSiniestro" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+              <Dato etiqueta="Cobertura" valor={s.cobertura} campo="cobertura" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+              <Dato etiqueta="Patente" valor={s.patente} campo="patente" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+              <Dato etiqueta="Importe" valor={s.importe} campo="importe" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+              <Dato etiqueta="Qué pasó" valor={s.descripcion} campo="descripcion" siniestroId={s.id} soloLectura={!puedeEditar} alGuardar={hacer} />
+              <Dato
+                etiqueta="Abogado"
+                valor={s.abogado}
+                campo="abogado"
+                siniestroId={s.id}
+                soloLectura={!puedeEditar}
+                alGuardar={hacer}
+                ayuda="Estudio, nombre y teléfono de quien lleve lo legal."
+              />
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Teléfono</dt>
+                <dd className="text-slate-800">{s.telefono ?? '—'}</dd>
+              </div>
+            </dl>
+          </Tarjeta>
+
+          {/* --- El otro auto: con esto se reclama, y de los lesionados depende la constancia médica --- */}
+          <Tarjeta titulo="El tercero" descripcion="Con quién hay que hablar del otro lado, y si hubo heridos.">
+            <dl className="flex flex-col gap-2.5 text-sm">
+              <Dato
+                etiqueta="Compañía del tercero"
+                valor={s.terceroCompania}
+                campo="terceroCompania"
+                siniestroId={s.id}
+                soloLectura={!puedeEditar}
+                alGuardar={hacer}
+              />
+              <Dato
+                etiqueta="Teléfono del tercero"
+                valor={s.terceroTelefono}
+                campo="terceroTelefono"
+                siniestroId={s.id}
+                soloLectura={!puedeEditar}
+                alGuardar={hacer}
+              />
+              <Dato
+                etiqueta="Patente del tercero"
+                valor={s.terceroPatente}
+                campo="terceroPatente"
+                siniestroId={s.id}
+                soloLectura={!puedeEditar}
+                alGuardar={hacer}
+              />
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Terceros lesionados</dt>
+                <dd className="mt-0.5">
+                  <select
+                    value={s.terceroLesionados}
+                    disabled={bloqueado}
+                    aria-label="Terceros lesionados"
+                    onChange={(evento) => void hacer(() => window.dm.siniestros.editar(s.id, 'terceroLesionados', evento.target.value))}
+                    className={cx(
+                      'h-8 rounded-lg border px-2 text-sm font-semibold disabled:opacity-60',
+                      s.terceroLesionados === 'SI'
+                        ? 'border-red-300 bg-red-50 text-red-700'
+                        : s.terceroLesionados === 'NO'
+                          ? 'border-green-300 bg-green-50 text-green-700'
+                          : 'border-slate-300 bg-white text-slate-500',
+                    )}
+                  >
+                    <option value="">Todavía no se sabe</option>
+                    <option value="NO">No hubo lesionados</option>
+                    <option value="SI">Sí, hubo lesionados</option>
+                  </select>
+                </dd>
+              </div>
+              {s.terceroLesionados === 'SI' && (
+                <Dato
+                  etiqueta="Quién se lesionó"
+                  valor={s.terceroLesionadosDetalle}
+                  campo="terceroLesionadosDetalle"
+                  siniestroId={s.id}
+                  soloLectura={!puedeEditar}
+                  alGuardar={hacer}
+                  ayuda="Nombre y a qué hospital fue; hace falta para la constancia médica."
+                />
+              )}
+            </dl>
+          </Tarjeta>
+        </div>
 
         {/* --- Columna del medio: la línea de tiempo --- */}
         <Tarjeta
@@ -197,7 +281,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
           titulo="Documentos"
           descripcion={`Se guardan en ${ficha.carpetaDeAdjuntos} y, si hay conexión con Google, se suben además a la carpeta «Adjuntos DM» del Drive.`}
           acciones={
-            <Boton icono="clip" cargando={trabajando} disabled={!puedeEditar} onClick={() => void hacer(() => window.dm.siniestros.adjuntar(s.id, null))}>
+            <Boton icono="clip" cargando={trabajando} disabled={!puedeEditar} onClick={() => setAdjuntarAbierto(true)}>
               Adjuntar
             </Boton>
           }
@@ -220,6 +304,14 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
                       {adjunto.enDrive && ' · en Drive'}
                     </span>
                   </button>
+                  <span
+                    className={cx(
+                      'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                      adjunto.categoria ? 'bg-marino-50 text-marino-800' : 'bg-slate-100 text-slate-500',
+                    )}
+                  >
+                    {adjunto.categoria ? adjunto.categoriaDetalle ?? adjunto.categoria : 'Sin categoría'}
+                  </span>
                   {adjunto.errorDeDrive && (
                     <span className="shrink-0 text-xs text-amber-700" title={adjunto.errorDeDrive}>
                       sólo local
@@ -288,6 +380,17 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
         </Tarjeta>
       </div>
 
+      {adjuntarAbierto && (
+        <DialogoAdjuntar
+          siniestroId={s.id}
+          alCerrar={() => setAdjuntarAbierto(false)}
+          alAdjuntar={(nueva) => {
+            setFicha(nueva)
+            setAdjuntarAbierto(false)
+          }}
+        />
+      )}
+
       {tareaAbierta && (
         <DialogoTarea
           siniestroId={s.id}
@@ -311,6 +414,7 @@ function Dato({
   siniestroId,
   soloLectura,
   alGuardar,
+  ayuda,
 }: {
   etiqueta: string
   valor: string | null
@@ -318,6 +422,8 @@ function Dato({
   siniestroId: number
   soloLectura: boolean
   alGuardar: (accion: () => Promise<{ ok: true; datos: Ficha } | { ok: false; error: string }>) => Promise<boolean>
+  /** Una línea que explica qué se espera acá; sólo se muestra mientras el dato está vacío. */
+  ayuda?: string
 }) {
   const [editando, setEditando] = useState(false)
 
@@ -345,11 +451,86 @@ function Dato({
             title={soloLectura ? undefined : 'Doble clic para corregir'}
             className={cx('block rounded px-1 py-0.5 text-slate-800', !soloLectura && 'cursor-text hover:bg-slate-50')}
           >
-            {valor || <span className="text-slate-400">—</span>}
+            {valor || <span className="text-slate-400">{ayuda && !soloLectura ? ayuda : '—'}</span>}
           </span>
         )}
       </dd>
     </div>
+  )
+}
+
+/**
+ * Qué se está por adjuntar. Se pregunta ANTES de abrir el explorador de archivos: elegir las fotos y
+ * recién después tener que decir qué son sería hacer el trabajo dos veces, y la categoría vale para
+ * toda la tanda (las seis fotos del choque se eligen juntas y se guardan juntas).
+ */
+function DialogoAdjuntar({
+  siniestroId,
+  alCerrar,
+  alAdjuntar,
+}: {
+  siniestroId: number
+  alCerrar: () => void
+  alAdjuntar: (ficha: Ficha) => void
+}) {
+  const [categoria, setCategoria] = useState<CategoriaDeAdjunto>(CATEGORIAS_DE_ADJUNTO[0])
+  const [detalle, setDetalle] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [guardando, setGuardando] = useState(false)
+  const pideDetalle = categoria === CATEGORIA_DE_ADJUNTO_OTRAS
+
+  const adjuntar = async () => {
+    setGuardando(true)
+    setError(null)
+    const resultado = await window.dm.siniestros.adjuntar(siniestroId, null, categoria, detalle)
+    setGuardando(false)
+    if (resultado.ok) alAdjuntar(resultado.datos)
+    else setError(resultado.error)
+  }
+
+  return (
+    <Dialogo
+      abierto
+      titulo="Adjuntar documentos"
+      descripcion="Decí qué documento es y después elegí los archivos."
+      alCerrar={alCerrar}
+      pie={
+        <>
+          <Boton onClick={alCerrar} disabled={guardando}>
+            Cancelar
+          </Boton>
+          <Boton
+            variante="primario"
+            icono="clip"
+            onClick={() => void adjuntar()}
+            cargando={guardando}
+            disabled={pideDetalle && !detalle.trim()}
+          >
+            Elegir archivos…
+          </Boton>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {error && <Alerta tono="error">{error}</Alerta>}
+        <Selector
+          etiqueta="Qué documento es"
+          value={categoria}
+          onChange={(evento) => setCategoria(evento.target.value as CategoriaDeAdjunto)}
+          opciones={CATEGORIAS_DE_ADJUNTO.map((opcion) => ({ valor: opcion, texto: opcion }))}
+          ayuda="Vale para todos los archivos que elijas ahora."
+        />
+        {pideDetalle && (
+          <Campo
+            etiqueta="Indicá cuál"
+            value={detalle}
+            onChange={(evento) => setDetalle(evento.target.value)}
+            autoFocus
+            ayuda="Presupuesto del taller, telegrama, acta de la compañía…"
+          />
+        )}
+      </div>
+    </Dialogo>
   )
 }
 

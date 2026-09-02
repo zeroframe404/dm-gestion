@@ -139,7 +139,8 @@ const api: ApiDm = {
     cambiarEstado: (siniestroId, estado) => invocar('siniestros:cambiarEstado', siniestroId, estado),
     editar: (siniestroId, campo, valor) => invocar('siniestros:editar', siniestroId, campo, valor),
     agregarObservacion: (siniestroId, texto) => invocar('siniestros:agregarObservacion', siniestroId, texto),
-    adjuntar: (siniestroId, rutas) => invocar('siniestros:adjuntar', siniestroId, rutas),
+    adjuntar: (siniestroId, rutas, categoria, detalle) =>
+      invocar('siniestros:adjuntar', siniestroId, rutas, categoria, detalle),
     abrirAdjunto: (adjuntoId) => invocar('siniestros:abrirAdjunto', adjuntoId),
     borrarAdjunto: (adjuntoId) => invocar('siniestros:borrarAdjunto', adjuntoId),
     crearTarea: (datos) => invocar('siniestros:crearTarea', datos),
