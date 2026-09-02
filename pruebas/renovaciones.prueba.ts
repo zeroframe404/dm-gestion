@@ -290,7 +290,15 @@ test('una compañía se puede pasar a renovación manual (o sacar) desde Compañ
 test('la renovación propone un año más y la cuota anterior, y se puede editar', async () => {
   await escenario()
   const vence = enDias(15)
-  const original = cambiar(polizaDe(CLIENTES.gonzalez.poliza), { vigenciaHasta: vence.texto })
+  // La vigencia que empieza también se fija (no sólo la que termina): SANCOR no tiene meses de
+  // renovación cargados, así que sin esto el plazo se deduce de la vigencia vieja, y con la fecha del
+  // fixture (fija) más la fecha de hoy (real) el resultado puede caer justo en uno de los plazos
+  // habituales (3, 4, 6 ó 12 meses) sin querer. Con un «desde» a 200 días, la vigencia siempre da un
+  // plazo raro y la sugerencia cae en el año de siempre, que es lo que prueba este test.
+  const original = cambiar(polizaDe(CLIENTES.gonzalez.poliza), {
+    vigenciaDesde: enDias(-200).texto,
+    vigenciaHasta: vence.texto,
+  })
 
   // El diálogo trabaja con fechas 'AAAA-MM-DD' (es lo que entrega un selector de fecha); al guardar,
   // el servicio las vuelve a escribir como día/mes/año, que es el formato de la columna en la hoja.
