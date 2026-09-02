@@ -9,7 +9,7 @@ export const AYUDA_CLIENTES: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'El listado',
         parrafos: [
-          'Acá está cada persona dada de alta en la agencia, con su nombre, DNI o CUIT, teléfono, sucursal, cuántas pólizas activas y cuántos vehículos tiene, y si está al día o debe algo. El buscador de arriba encuentra por nombre, DNI, patente, número de póliza o teléfono: no hace falta escribirlo entero, con el apellido o los últimos números de la patente ya aparece. Los desplegables de «Sucursal» y «Compañía» acotan más todavía, y «Limpiar» los saca a todos de una vez.',
+          'Acá está cada persona dada de alta en la agencia, con su nombre, DNI o CUIT, teléfono, sucursal, cuántas pólizas activas y cuántos vehículos tiene, y si está al día o debe algo. El buscador de arriba encuentra por nombre, DNI, patente, número de póliza o teléfono: no hace falta escribirlo entero, con el apellido o los últimos números de la patente ya aparece. Los filtros de «Sucursal» y «Compañía» acotan más todavía, y cada uno deja tildar varias a la vez —Dock Sud y Daniel juntas, por ejemplo—; «Limpiar» los saca a todos de una vez.',
           'Tocar el nombre de cualquiera (o hacer clic en cualquier parte de la fila) abre su ficha completa. «Actualizar» vuelve a traer el listado por si alguien acaba de cargar algo desde otra computadora.',
         ],
       },

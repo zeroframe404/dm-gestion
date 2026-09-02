@@ -11,6 +11,9 @@
 // pago registrado desde la aplicación.
 import { comoTextoDeFecha } from '../../shared/polizas'
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal, nombreDePeriodo } from '../../shared/semaforo'
+import { mismoTexto } from '../importacion/normalizar'
+import { coincideAlguno, listaDeFiltro, numerosDeFiltro } from '../../shared/filtros'
+import { ramaDeVehiculo, ramasParaElegir } from '../../shared/ramas'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   DEUDORES_SIN_FILTROS,
@@ -37,39 +40,19 @@ import { construirXlsx, type ValorDeCelda } from './xlsx'
 /** Lo que llega del renderer no es confiable: se saca en limpio antes de tocar la base. */
 export function sanearFiltrosDeDeudores(bruto: unknown): FiltrosDeudores {
   const datos = (bruto ?? {}) as Partial<FiltrosDeudores>
-  const lista = (valores: unknown): string[] =>
-    Array.isArray(valores) ? [...new Set(valores.map((v) => limpiar(v)).filter((v) => v !== ''))] : []
-  const dias = Array.isArray(datos.dias)
-    ? [...new Set(datos.dias.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 1 && d <= 31))].sort((a, b) => a - b)
-    : []
+  // Los días del mes, acotados al 1-31: `numerosDeFiltro` ya los deja enteros, sin repetir y en orden.
+  const dias = numerosDeFiltro(datos.dias).filter((d) => d >= 1 && d <= 31)
   const periodo = limpiar(datos.periodo)
   return {
     ...DEUDORES_SIN_FILTROS,
     periodo: /^\d{4}-\d{2}$/.test(periodo) ? periodo : '',
-    sucursales: lista(datos.sucursales),
-    companias: lista(datos.companias),
-    formasDePago: lista(datos.formasDePago),
+    sucursales: listaDeFiltro(datos.sucursales),
+    companias: listaDeFiltro(datos.companias),
+    formasDePago: listaDeFiltro(datos.formasDePago),
+    ramas: listaDeFiltro(datos.ramas),
     dias,
     incluirDebito: datos.incluirDebito === true,
   }
-}
-
-/** Alguno de los valores tildados es el mismo texto que el de la fila (sin tildes ni mayúsculas). */
-function estaEntre(valor: string | null, tildados: string[]): boolean {
-  if (tildados.length === 0) return true
-  const normalizado = normalizarTexto(valor)
-  return tildados.some((tildado) => normalizarTexto(tildado) === normalizado)
-}
-
-/**
- * Lo mismo para la sucursal, que se compara con `mismaSucursal` y no con el texto pelado: los chips
- * los arma `sucursalesParaElegir`, que pliega «AVELLANEDA» y «DOCKSUD» dentro de «Dock Sud». Si acá se
- * comparara el texto, tildar «Dock Sud» dejaría afuera las cuotas viejas que dicen «Avellaneda» y no
- * quedaría ningún chip que las traiga: la fila sigue en la base y no hay forma de verla.
- */
-function esAlgunaDeLasSucursales(valor: string | null, tildadas: string[]): boolean {
-  if (tildadas.length === 0) return true
-  return tildadas.some((tildada) => mismaSucursal(valor, tildada))
 }
 
 function aDia(iso: string): number {
@@ -125,6 +108,7 @@ interface Relevamiento {
   sucursales: string[]
   companias: string[]
   formasDePago: string[]
+  ramas: string[]
 }
 
 /**
@@ -155,11 +139,20 @@ function relevar(filtros: FiltrosDeudores, hoy: string): Relevamiento {
     // Un pago registrado desde la aplicación puede no haber escrito todavía CUANDO PAGO en la fila.
     if (fila.pagoRegistrado) continue
     todas.push(fila)
-    if (!esAlgunaDeLasSucursales(fila.sucursal, filtros.sucursales)) continue
-    if (!estaEntre(fila.compania, filtros.companias)) continue
+    // La sucursal se compara con `mismaSucursal` y no con el texto pelado: los chips los arma
+    // `sucursalesParaElegir`, que pliega «AVELLANEDA» y «DOCKSUD» dentro de «Dock Sud». Comparando el
+    // texto, tildar «Dock Sud» dejaría afuera las cuotas viejas que dicen «Avellaneda» y no quedaría
+    // ningún chip que las traiga: la fila sigue en la base y no hay forma de verla.
+    if (!coincideAlguno(filtros.sucursales, fila.sucursal, mismaSucursal)) continue
+    if (!coincideAlguno(filtros.companias, fila.compania, mismoTexto)) continue
+    // La rama sale del tipo del vehículo y de la categoría del catálogo: ver src/shared/ramas.ts.
+    if (filtros.ramas.length > 0) {
+      const rama = ramaDeVehiculo(fila.vehiculo, fila.categoriaVehiculo)
+      if (!filtros.ramas.some((elegida) => (rama ? elegida === rama : mismoTexto(fila.vehiculo, elegida)))) continue
+    }
     if (filtros.formasDePago.length > 0) {
       // Lo tildado manda: pedir TARJETA es querer ver justamente las tarjetas que no entraron.
-      if (!estaEntre(fila.formaPago, filtros.formasDePago)) continue
+      if (!coincideAlguno(filtros.formasDePago, fila.formaPago, mismoTexto)) continue
     } else if (!filtros.incluirDebito && esDebitoAutomatico(fila.formaPago)) {
       continue
     }
@@ -173,6 +166,7 @@ function relevar(filtros: FiltrosDeudores, hoy: string): Relevamiento {
     sucursales: sucursalesParaElegir(todas.map((fila) => fila.sucursal)),
     companias: distintos(todas.map((fila) => fila.compania)),
     formasDePago: distintos(todas.map((fila) => fila.formaPago)),
+    ramas: ramasParaElegir(todas.map((fila) => fila.vehiculo)),
   }
 }
 
@@ -215,6 +209,7 @@ export function buscarDeudores(bruto: FiltrosDeudores, hoy = hoyLocal()): Listad
     sucursales: relevamiento.sucursales,
     companias: relevamiento.companias,
     formasDePago: relevamiento.formasDePago,
+    ramas: relevamiento.ramas,
     hoy,
   }
 }
@@ -257,6 +252,7 @@ function lineaDeFiltros(filtros: FiltrosDeudores): string {
   if (filtros.sucursales.length > 0) partes.push(`Sucursal: ${filtros.sucursales.join(', ')}`)
   if (filtros.companias.length > 0) partes.push(`Compañía: ${filtros.companias.join(', ')}`)
   if (filtros.formasDePago.length > 0) partes.push(`Forma de pago: ${filtros.formasDePago.join(', ')}`)
+  if (filtros.ramas.length > 0) partes.push(`Rama: ${filtros.ramas.join(', ')}`)
   if (filtros.dias.length > 0) partes.push(`Vencen el ${filtros.dias.join(', ')}`)
   if (filtros.formasDePago.length === 0 && !filtros.incluirDebito) partes.push('Sin las que se cobran solas')
   return partes.join(' · ')

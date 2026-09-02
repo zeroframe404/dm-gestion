@@ -18,6 +18,7 @@ import {
   type ListadoDeudores,
 } from '../../../shared/tipos'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
+import { NOMBRE_RAMA, type Rama } from '../../../shared/ramas'
 import { Alerta, Boton, Cargando, cx, Dialogo } from '../../componentes/ui'
 import { pesos } from '../cobranzas/formato'
 
@@ -220,12 +221,16 @@ export function DialogoDeudores({ abierto, alCerrar }: { abierto: boolean; alCer
             />
             Incluir las que se cobran solas
           </label>
-          {(filtros.sucursales.length > 0 || filtros.companias.length > 0 || porFormaDePago || filtros.dias.length > 0) && (
+          {(filtros.sucursales.length > 0 ||
+            filtros.companias.length > 0 ||
+            porFormaDePago ||
+            filtros.ramas.length > 0 ||
+            filtros.dias.length > 0) && (
             <Boton
               tamano="sm"
               variante="fantasma"
               icono="cerrar"
-              onClick={() => cambiar({ sucursales: [], companias: [], formasDePago: [], dias: [], incluirDebito: false })}
+              onClick={() => cambiar({ sucursales: [], companias: [], formasDePago: [], ramas: [], dias: [], incluirDebito: false })}
             >
               Limpiar filtros
             </Boton>
@@ -250,6 +255,15 @@ export function DialogoDeudores({ abierto, alCerrar }: { abierto: boolean; alCer
             opciones={datos?.formasDePago ?? []}
             elegidas={filtros.formasDePago}
             alAlternar={(valor) => cambiar((previos) => ({ formasDePago: alternar(previos.formasDePago, valor) }))}
+          />
+          {/* La rama sale del tipo del vehículo y de la categoría del catálogo: una pick up cargada
+              desde «Nueva póliza» entra en «Pick up» aunque su tipo diga AUTO. Ver src/shared/ramas.ts. */}
+          <GrupoDeChips
+            etiqueta="Rama"
+            opciones={datos?.ramas ?? []}
+            elegidas={filtros.ramas}
+            textoDe={(valor) => NOMBRE_RAMA[valor as Rama] ?? valor}
+            alAlternar={(valor) => cambiar((previos) => ({ ramas: alternar(previos.ramas, valor) }))}
           />
         </div>
 
@@ -343,11 +357,14 @@ function GrupoDeChips({
   etiqueta,
   opciones,
   elegidas,
+  textoDe,
   alAlternar,
 }: {
   etiqueta: string
   opciones: string[]
   elegidas: string[]
+  /** Cómo se lee la opción, cuando el valor guardado no es lo que se muestra («PICK UP» → «Pick up»). */
+  textoDe?: (opcion: string) => string
   alAlternar: (opcion: string) => void
 }) {
   return (
@@ -372,7 +389,7 @@ function GrupoDeChips({
                     : 'border-slate-300 bg-white text-slate-600 hover:border-marino-300 hover:bg-marino-50',
                 )}
               >
-                {opcion}
+                {textoDe ? textoDe(opcion) : opcion}
               </button>
             )
           })}

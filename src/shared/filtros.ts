@@ -49,6 +49,13 @@ export function numerosDeFiltro(valor: unknown): number[] {
   const crudos = Array.isArray(valor) ? valor : valor === null || valor === undefined || valor === '' ? [] : [valor]
   const vistos = new Set<number>()
   for (const crudo of crudos) {
+    // `Number(null)`, `Number('')` y `Number(false)` dan 0, y un 0 colado en la lista de responsables
+    // sería «el usuario 0». Sólo entran los números y los textos que son un número.
+    if (typeof crudo === 'number') {
+      if (Number.isInteger(crudo)) vistos.add(crudo)
+      continue
+    }
+    if (typeof crudo !== 'string' || crudo.trim() === '') continue
     const numero = Number(crudo)
     if (Number.isInteger(numero)) vistos.add(numero)
   }

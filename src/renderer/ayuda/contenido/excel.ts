@@ -17,7 +17,7 @@ export const AYUDA_EXCEL: Record<string, ContenidoDeAyuda> = {
         titulo: 'Cómo se usa',
         parrafos: [
           'Se mueve como cualquier planilla: las flechas mueven el cursor, Shift con las flechas selecciona un rango, Ctrl+C copia lo seleccionado. Lo copiado se pega tal cual en Excel o en Google Sheets, cada celda en su celda. También se puede arrastrar con el mouse para seleccionar.',
-          'Arriba están los filtros que entiende cada área: el mes, la sucursal, la compañía, el estado y el buscador. Son los mismos que en la pantalla del módulo. Abajo de todo, la barra dice en qué celda estás, cómo se llama esa columna y cuántas celdas tenés seleccionadas.',
+          'Arriba están los filtros que entiende cada área: el mes, la sucursal, la compañía, el estado y el buscador. Son los mismos que en la pantalla del módulo, y como allá dejan tildar varias opciones a la vez. Abajo de todo, la barra dice en qué celda estás, cómo se llama esa columna y cuántas celdas tenés seleccionadas.',
         ],
         lista: [
           'Flechas: moverse de celda en celda.',

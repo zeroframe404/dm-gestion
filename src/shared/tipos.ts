@@ -1364,6 +1364,8 @@ export interface FiltrosDeudores {
   sucursales: string[]
   companias: string[]
   formasDePago: string[]
+  /** Las siete de `src/shared/ramas.ts`, más lo que la base tenga fuera del catálogo. Vacío = todas. */
+  ramas: string[]
   /** Días del mes tildados (1 a 31), en cualquier orden. Vacío = todos los días. */
   dias: number[]
   /**
@@ -1379,6 +1381,7 @@ export const DEUDORES_SIN_FILTROS: FiltrosDeudores = {
   sucursales: [],
   companias: [],
   formasDePago: [],
+  ramas: [],
   dias: [],
   incluirDebito: false,
 }
@@ -1428,6 +1431,8 @@ export interface ListadoDeudores {
   sucursales: string[]
   companias: string[]
   formasDePago: string[]
+  /** Las opciones del filtro de rama: las siete de la agencia más lo que la base traiga aparte. */
+  ramas: string[]
   hoy: string
 }
 

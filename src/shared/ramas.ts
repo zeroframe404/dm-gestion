@@ -189,14 +189,18 @@ export function mismaRama(a: unknown, b: unknown): boolean {
  * fuera del catálogo sigue siendo elegible en vez de desaparecer del filtro.
  */
 export function ramasParaElegir(deLaBase: Iterable<string | null | undefined>): string[] {
-  const vistas = new Map<string, string>(RAMAS.map((rama) => [claveDeRama(rama), rama as string]))
+  const vistas = new Set<string>()
   const sueltas: string[] = []
   for (const valor of deLaBase) {
     const texto = (valor ?? '').trim()
     if (!texto) continue
+    // Los sinónimos se pliegan ANTES de comparar: un «CAMIONETA» de la hoja ya está en la lista bajo
+    // «PICK UP», y agregarlo aparte dejaría dos opciones para el mismo vehículo. Es exactamente lo que
+    // pasaba con «AVELLANEDA» y «Dock Sud» antes de que las sucursales fueran una lista cerrada.
+    if (ramaCanonica(texto)) continue
     const clave = claveDeRama(texto)
     if (!clave || vistas.has(clave)) continue
-    vistas.set(clave, texto)
+    vistas.add(clave)
     sueltas.push(texto)
   }
   return [...RAMAS, ...sueltas.sort((a, b) => a.localeCompare(b, 'es'))]

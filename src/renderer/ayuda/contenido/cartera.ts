@@ -50,7 +50,9 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Buscar y filtrar',
         parrafos: [
-          'El buscador de arriba encuentra por nombre, patente, número de póliza o DNI. Al lado hay desplegables para filtrar por sucursal, forma de pago, compañía, tipo de vehículo (auto, moto, pick up…) y color de alerta, y una casilla «Sólo con AVISAR VTO» para ver nada más que las filas marcadas para avisar antes del vencimiento.',
+          'El buscador de arriba encuentra por nombre, patente, número de póliza o DNI. Al lado hay filtros por sucursal, forma de pago, compañía, rama y color de alerta, y una casilla «Sólo con AVISAR VTO» para ver nada más que las filas marcadas para avisar antes del vencimiento.',
+          'Cada filtro deja elegir VARIAS opciones a la vez: se toca y se abre un panel con una casilla por opción. Tildando ATM y Metropol se ven las dos compañías juntas, y tildando Dock Sud y Daniel, los dos mostradores. El botón dice qué está filtrando («Compañía: ATM +1»), y sin tildar nada entran todas, que es lo mismo que no filtrar. Adentro del panel hay «Elegir todas» y «Limpiar», y cuando las opciones son muchas, un buscador.',
+          'La RAMA es cómo vende la agencia: auto, moto, pick up, camión, scooter, moto eléctrica y trailer. No hace falta que la celda VEHICULO diga la palabra exacta: una camioneta cargada desde «Nueva póliza» entra en «Pick up» aunque en la planilla figure como AUTO, porque la rama sale del vehículo y de la categoría que le puso el catálogo. Si la planilla trae un vehículo que no es de ninguna de las siete (un hogar, una bicicleta), queda listado aparte en el mismo filtro para poder encontrarlo igual.',
           'Las tarjetas de arriba (Total, Vencen hoy, Vencidos, Avisados hoy, Se les termina la cobertura, Pagados hoy) son contadores del día: se actualizan solos con lo que va pasando. Además funcionan como filtro: tocá una y la tabla queda sólo con esas filas; tocala de nuevo (o tocá Total) para volver a ver el mes entero. Los números siguen contando sobre todo el mes aunque haya un filtro puesto.',
         ],
       },

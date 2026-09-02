@@ -15,7 +15,7 @@ export const AYUDA_LEADS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Las tarjetas y sus filtros',
         parrafos: [
-          'Cada consulta es una tarjeta, no una fila de tabla: alcanza con mirarla para saber a quién le falta contestarle y qué quería. El buscador encuentra por nombre, teléfono o lo que se escribió que quería asegurar; los desplegables filtran por cómo llegó la consulta y por sucursal. La casilla «Mostrar cerradas» trae también las que ya se ganaron o se perdieron, que por defecto quedan afuera para no ensuciar la vista del día a día.',
+          'Cada consulta es una tarjeta, no una fila de tabla: alcanza con mirarla para saber a quién le falta contestarle y qué quería. El buscador encuentra por nombre, teléfono o lo que se escribió que quería asegurar; los filtros de cómo llegó la consulta y de sucursal dejan tildar varias opciones a la vez. La casilla «Mostrar cerradas» trae también las que ya se ganaron o se perdieron, que por defecto quedan afuera para no ensuciar la vista del día a día.',
           'El estado de cada tarjeta se puede cambiar ahí mismo, sin abrir nada: es lo primero que conviene actualizar apenas cambia algo en la charla.',
         ],
       },

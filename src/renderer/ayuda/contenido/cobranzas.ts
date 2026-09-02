@@ -10,7 +10,7 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
         titulo: 'Qué es esta pantalla',
         parrafos: [
           'Es la pantalla para mirar al cerrar el mostrador: todos los pagos de un día, en una sucursal, con hora, cliente, compañía, póliza, patente, importe, medio de pago y quién lo cobró. Por defecto se abre en el día de hoy y en la sucursal de quien inició sesión, y se puede cambiar el día con el selector de fecha.',
-          'Quién puede mirar las otras sucursales depende del rol: los administradores (SUPER_ADMIN y ADMIN) eligen cualquier sucursal en el desplegable, o «Todas» para verlas juntas; un empleado ve la caja de su propio mostrador y el desplegable queda fijo. Lo que cobra un compañero de la misma sucursal, en otra computadora, aparece en la caja en cuanto sincroniza (unos segundos con internet).',
+          'Quién puede mirar las otras sucursales depende del rol: los administradores (SUPER_ADMIN y ADMIN) tildan las sucursales que quieran —una, varias o ninguna, que son todas—; un empleado ve la caja de su propio mostrador y en vez del filtro se le muestra el nombre. Lo que cobra un compañero de la misma sucursal, en otra computadora, aparece en la caja en cuanto sincroniza (unos segundos con internet).',
           'Arriba de la tabla hay tarjetas con el total del día, la cantidad de pagos y un total por cada medio de pago (efectivo, tarjeta, transferencia, etc.), para saber de un vistazo cuánto entró y de qué forma.',
         ],
       },
@@ -53,14 +53,14 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Los tres rangos de atraso',
         parrafos: [
-          'Las tarjetas de arriba separan la mora en tres rangos según cuántos días de atraso tiene cada cuota: de 1 a 7 días, de 8 a 30, y más de 30. Tocando una tarjeta se filtra la lista a ese rango; volviendo a tocarla se quita el filtro. El rango de «más de 30 días» es el más urgente: cuanta más plata acumulada ahí, peor.',
+          'Las tarjetas de arriba separan la mora en tres rangos según cuántos días de atraso tiene cada cuota: de 1 a 7 días, de 8 a 30, y más de 30. Tocando una tarjeta se filtra la lista a ese rango, y se pueden tener varias tocadas a la vez (de 1 a 7 y más de 30, por ejemplo); volviendo a tocar una se la saca. El rango de «más de 30 días» es el más urgente: cuanta más plata acumulada ahí, peor.',
         ],
       },
       {
         titulo: 'Avisar y buscar',
         parrafos: [
           'Cada fila tiene su botón «Avisar» que abre WhatsApp con el mensaje de mora ya armado para ese cliente. Si la cuota es de un mes que ya se cerró, el aviso se manda igual, pero la planilla de ese mes no se toca (queda de sólo lectura); el aviso se anota en el historial del cliente de todas formas.',
-          'El buscador encuentra por nombre, DNI, póliza o patente; los desplegables filtran por sucursal y por compañía.',
+          'El buscador encuentra por nombre, DNI, póliza o patente; los filtros de sucursal, compañía y días de atraso dejan tildar varias opciones a la vez.',
         ],
       },
     ],
