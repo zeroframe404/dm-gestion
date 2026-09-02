@@ -12,6 +12,7 @@ import { escalaGuardada, sanearOcultas, type ColumnaElegible } from './vista'
 
 const CLAVE_ZOOM = 'dm.vista.zoom'
 const CLAVE_BARRA_LATERAL = 'dm.vista.barraLateral'
+const CLAVE_TEMA = 'dm.vista.tema'
 const PREFIJO_COLUMNAS = 'dm.vista.columnas.'
 
 function leer(clave: string): string | null {
@@ -69,6 +70,21 @@ export function barraLateralColapsada(): boolean {
 
 export function guardarBarraLateralColapsada(colapsada: boolean): void {
   escribir(CLAVE_BARRA_LATERAL, colapsada ? '1' : '0')
+}
+
+// ---------------------------------------------------------------------------
+// Tema (claro / oscuro)
+// ---------------------------------------------------------------------------
+
+export type Tema = 'claro' | 'oscuro'
+
+/** Sin nada guardado todavía se abre en claro: es el tema con el que se diseñó cada pantalla. */
+export function temaGuardado(): Tema {
+  return leer(CLAVE_TEMA) === 'oscuro' ? 'oscuro' : 'claro'
+}
+
+export function guardarTema(tema: Tema): void {
+  escribir(CLAVE_TEMA, tema)
 }
 
 // ---------------------------------------------------------------------------
