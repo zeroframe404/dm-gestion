@@ -153,6 +153,23 @@ export interface ApiDm {
     borrar: Remota<'reglas:borrar'>
     vigentes: Remota<'reglas:vigentes'>
   }
+  /** Módulo Compañías: las listas de consulta del mostrador. */
+  referencias: {
+    listas: Remota<'referencias:listas'>
+    antiguedad: Remota<'referencias:antiguedad'>
+    guardarOrganizador: Remota<'referencias:guardarOrganizador'>
+    borrarOrganizador: Remota<'referencias:borrarOrganizador'>
+    moverOrganizador: Remota<'referencias:moverOrganizador'>
+    guardarPrecio: Remota<'referencias:guardarPrecio'>
+    borrarPrecio: Remota<'referencias:borrarPrecio'>
+    guardarGrua: Remota<'referencias:guardarGrua'>
+    borrarGrua: Remota<'referencias:borrarGrua'>
+    guardarClausula: Remota<'referencias:guardarClausula'>
+    borrarClausula: Remota<'referencias:borrarClausula'>
+    estadoCompartido: Remota<'referencias:estadoCompartido'>
+    publicar: Remota<'referencias:publicar'>
+    adoptar: Remota<'referencias:adoptar'>
+  }
   renovaciones: {
     bandeja: Remota<'renovaciones:bandeja'>
     sugerencia: Remota<'renovaciones:sugerencia'>

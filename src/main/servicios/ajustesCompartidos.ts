@@ -18,6 +18,7 @@
 import type { EstadoDeAjusteCompartido } from '../../shared/tipos'
 import { adoptarCredencialesDeVehiculos, huellaDeVehiculos, valorCompartidoDeVehiculos } from './config'
 import { ErrorDeNegocio } from './errores'
+import { adoptarReferenciasDelVps } from './referenciasCompartidas'
 import { crearFuenteVps } from './sincronizacion'
 
 /** La clave del ajuste en el servidor. La lista blanca del VPS sólo conoce ésta. */
@@ -131,11 +132,20 @@ export async function adoptarVehiculosDelVps(): Promise<ResultadoDeAdopcion> {
  * abre igual con lo que ya tenía.
  */
 export function adoptarAjustesAlArrancar(): void {
+  // Cada ajuste va por su cuenta a propósito: que el VPS no tenga las listas de las compañías no
+  // puede dejar a esta computadora sin las credenciales del catálogo, ni al revés.
   void adoptarVehiculosDelVps()
     .then((resultado) => {
       if (resultado.adoptadas) console.log(`[ajustes] ${resultado.detalle}`)
     })
     .catch((error) => {
       console.error('[ajustes] No se pudieron traer las credenciales compartidas del VPS:', motivo(error))
+    })
+  void adoptarReferenciasDelVps()
+    .then((resultado) => {
+      if (resultado.adoptadas) console.log(`[ajustes] ${resultado.detalle}`)
+    })
+    .catch((error) => {
+      console.error('[ajustes] No se pudieron traer las listas de las compañías del VPS:', motivo(error))
     })
 }

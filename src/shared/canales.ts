@@ -4,6 +4,13 @@ import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion }
 import type { MatrizPermisos } from './permisos'
 import type {
   AceptacionDePresupuesto,
+  ConsultaDeAntiguedad,
+  DatosDeClausula,
+  DatosDeGrua,
+  DatosDeOrganizador,
+  DatosDePrecio,
+  EstadoDeReferencias,
+  ListasDeCompanias,
   AvisosDeTareas,
   DatosDeEdicionDeTarea,
   DatosDeLead,
@@ -381,6 +388,31 @@ export interface Canales {
   'reglas:borrar': (id: number) => Resultado<MatrizDeCobertura>
   /** Las reglas ya armadas, para avisar en la pantalla mientras se completa el formulario. */
   'reglas:vigentes': () => Resultado<ReglaDeCobertura[]>
+
+  // Módulo Compañías: las cinco listas de consulta del mostrador. Las mira todo el equipo que tenga
+  // el módulo; las carga sólo el SUPER_ADMIN, igual que la matriz de coberturas.
+  //
+  // Todas las que escriben devuelven las listas enteras: son cortas (decenas de filas, no miles) y
+  // devolverlas evita que la pantalla quede mostrando lo de antes después de guardar.
+  'referencias:listas': () => Resultado<ListasDeCompanias>
+  /** Qué le ofrece cada compañía a un vehículo de ese año, según la matriz de reglas de Cartera. */
+  'referencias:antiguedad': (anio: string) => Resultado<ConsultaDeAntiguedad>
+  'referencias:guardarOrganizador': (id: number | null, datos: DatosDeOrganizador) => Resultado<ListasDeCompanias>
+  'referencias:borrarOrganizador': (id: number) => Resultado<ListasDeCompanias>
+  /** Sube o baja un organizador en el orden en que se le escribe. */
+  'referencias:moverOrganizador': (id: number, direccion: 'arriba' | 'abajo') => Resultado<ListasDeCompanias>
+  'referencias:guardarPrecio': (id: number | null, datos: DatosDePrecio) => Resultado<ListasDeCompanias>
+  'referencias:borrarPrecio': (id: number) => Resultado<ListasDeCompanias>
+  'referencias:guardarGrua': (id: number | null, datos: DatosDeGrua) => Resultado<ListasDeCompanias>
+  'referencias:borrarGrua': (id: number) => Resultado<ListasDeCompanias>
+  'referencias:guardarClausula': (id: number | null, datos: DatosDeClausula) => Resultado<ListasDeCompanias>
+  'referencias:borrarClausula': (id: number) => Resultado<ListasDeCompanias>
+  /** Cómo están las listas en el servidor y si esta computadora tiene lo mismo. */
+  'referencias:estadoCompartido': () => Resultado<EstadoDeReferencias>
+  /** Manda las cuatro listas al VPS para que el resto de las computadoras las adopte. */
+  'referencias:publicar': () => Resultado<EstadoDeReferencias>
+  /** Trae del VPS lo que publicó el superadministrador y pisa lo de esta computadora. */
+  'referencias:adoptar': () => Resultado<{ adoptadas: boolean; detalle: string; listas: ListasDeCompanias }>
 
   // Renovaciones
   'renovaciones:bandeja': () => Resultado<BandejaRenovaciones>

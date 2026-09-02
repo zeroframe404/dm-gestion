@@ -34,4 +34,6 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   20: '6530ee7a3b141017',
   // La 21 suma a `siniestros` el abogado y los datos del tercero, y a `siniestro_adjuntos` su categoría.
   21: '5b6e250fc95c5b6e',
+  // La 22 crea las cuatro listas del módulo Compañías: organizadores, precios, grúas y cláusulas.
+  22: '4d113d5ecb27a9a4',
 }

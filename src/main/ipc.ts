@@ -133,6 +133,20 @@ import {
 } from './servicios/polizas'
 import { borrarRegla, crearRegla, editarRegla, matrizDeCobertura, reglasVigentes } from './servicios/reglas'
 import {
+  borrarClausula,
+  borrarGrua,
+  borrarOrganizador,
+  borrarPrecio,
+  consultarAntiguedad,
+  guardarClausula,
+  guardarGrua,
+  guardarOrganizador,
+  guardarPrecio,
+  listasDeCompanias,
+  moverOrganizador,
+} from './servicios/referencias'
+import { adoptarReferenciasDelVps, estadoCompartidoDeReferencias, publicarReferencias } from './servicios/referenciasCompartidas'
+import {
   agregarAdjuntos,
   agregarObservacion,
   altaDeSiniestro,
@@ -796,6 +810,68 @@ export function registrarIpc(): void {
   manejar('reglas:borrar', (id) => {
     exigirEdicion('cartera')
     return exito(borrarRegla(enteroPositivo(id, 'La regla'), exigirRol('SUPER_ADMIN')))
+  })
+
+  // Módulo Compañías: las cinco listas de consulta del mostrador. Se miran con el permiso del módulo
+  // y se cargan sólo con el del SUPER_ADMIN, igual que la matriz de coberturas: son la referencia
+  // contra la que se cotiza, y una lista que cualquiera puede tocar deja de serlo.
+  manejar('referencias:listas', () => exito(listasDeCompanias(exigirVista('companias'))))
+  manejar('referencias:antiguedad', (anio) => {
+    exigirVista('companias')
+    return exito(consultarAntiguedad(String(anio ?? '')))
+  })
+  manejar('referencias:guardarOrganizador', (id, datos) => {
+    exigirEdicion('companias')
+    return exito(guardarOrganizador(id === null ? null : enteroPositivo(id, 'El organizador'), datos, exigirRol('SUPER_ADMIN')))
+  })
+  manejar('referencias:borrarOrganizador', (id) => {
+    exigirEdicion('companias')
+    return exito(borrarOrganizador(enteroPositivo(id, 'El organizador'), exigirRol('SUPER_ADMIN')))
+  })
+  manejar('referencias:moverOrganizador', (id, direccion) => {
+    exigirEdicion('companias')
+    if (direccion !== 'arriba' && direccion !== 'abajo') throw new ErrorDeNegocio('No se entendió hacia dónde mover el organizador.')
+    return exito(moverOrganizador(enteroPositivo(id, 'El organizador'), direccion, exigirRol('SUPER_ADMIN')))
+  })
+  manejar('referencias:guardarPrecio', (id, datos) => {
+    exigirEdicion('companias')
+    return exito(guardarPrecio(id === null ? null : enteroPositivo(id, 'El precio'), datos, exigirRol('SUPER_ADMIN')))
+  })
+  manejar('referencias:borrarPrecio', (id) => {
+    exigirEdicion('companias')
+    return exito(borrarPrecio(enteroPositivo(id, 'El precio'), exigirRol('SUPER_ADMIN')))
+  })
+  manejar('referencias:guardarGrua', (id, datos) => {
+    exigirEdicion('companias')
+    return exito(guardarGrua(id === null ? null : enteroPositivo(id, 'La grúa'), datos, exigirRol('SUPER_ADMIN')))
+  })
+  manejar('referencias:borrarGrua', (id) => {
+    exigirEdicion('companias')
+    return exito(borrarGrua(enteroPositivo(id, 'La grúa'), exigirRol('SUPER_ADMIN')))
+  })
+  manejar('referencias:guardarClausula', (id, datos) => {
+    exigirEdicion('companias')
+    return exito(guardarClausula(id === null ? null : enteroPositivo(id, 'La cláusula'), datos, exigirRol('SUPER_ADMIN')))
+  })
+  manejar('referencias:borrarClausula', (id) => {
+    exigirEdicion('companias')
+    return exito(borrarClausula(enteroPositivo(id, 'La cláusula'), exigirRol('SUPER_ADMIN')))
+  })
+  // Publicar pisa las listas de las otras cuatro computadoras: es del SUPER_ADMIN, como cargarlas.
+  manejar('referencias:estadoCompartido', async () => {
+    exigirVista('companias')
+    return exito(await estadoCompartidoDeReferencias())
+  })
+  manejar('referencias:publicar', async () => {
+    exigirEdicion('companias')
+    const actor = exigirRol('SUPER_ADMIN')
+    return exito(await publicarReferencias(actor.nombre))
+  })
+  manejar('referencias:adoptar', async () => {
+    const actor = exigirVista('companias')
+    // Desde el botón sí se pisa lo local: es alguien eligiendo quedarse con lo del servidor.
+    const resultado = await adoptarReferenciasDelVps({ pisarLoLocal: true })
+    return exito({ ...resultado, listas: listasDeCompanias(actor) })
   })
 
   // Renovaciones: la bandeja la trabaja quien tenga el módulo, incluidos los empleados.

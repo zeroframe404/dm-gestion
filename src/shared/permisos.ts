@@ -27,6 +27,7 @@ export const AREAS = [
   'reportes',
   'marketing',
   'tareas',
+  'companias',
   'administracion',
 ] as const
 
@@ -62,7 +63,12 @@ export const DESCRIPCION_AREA: Record<Area, { nombre: string; detalle: string }>
   reportes: { nombre: 'Reportes', detalle: 'Exportar listados a Excel o PDF y la planilla clásica.' },
   marketing: { nombre: 'Marketing', detalle: 'Los segmentos de la cartera y las plantillas de WhatsApp.' },
   tareas: { nombre: 'Tareas', detalle: 'Los pendientes del equipo y la campana de avisos.' },
-  administracion: { nombre: 'Administración', detalle: 'Compañías, impresora, conexión con Google, importación y sincronización. Usuarios y Permisos son siempre sólo del superadministrador, y «Acerca de» la ve todo el mundo.' },
+  companias: {
+    nombre: 'Compañías',
+    detalle:
+      'Las listas de consulta del mostrador: organizadores, precios, antigüedad, grúas y qué ampara cada cobertura. Cargarlas sigue siendo sólo del superadministrador; este permiso decide quién las CONSULTA.',
+  },
+  administracion: { nombre: 'Administración', detalle: 'El catálogo de compañías (días de cobertura financiera y comisión), impresora, conexión con Google, importación y sincronización. Usuarios y Permisos son siempre sólo del superadministrador, y «Acerca de» la ve todo el mundo.' },
 }
 
 /** Qué nivel tiene cada rol en cada área. El SUPER_ADMIN no figura: tiene todo. */
