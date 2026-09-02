@@ -1675,9 +1675,11 @@ export interface FilaMora {
 
 export interface FiltrosMora {
   busqueda: string
-  sucursal: string
-  compania: string
-  rango: RangoDeMora
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
+  companias: string[]
+  /** Vacíos = todos los tramos de atraso. Los carteles de arriba siguen contando los tres por separado. */
+  rangos: Array<Exclude<RangoDeMora, ''>>
   /** El débito automático se cobra solo: por omisión no se lista. */
   incluirDebito: boolean
 }
@@ -2087,9 +2089,11 @@ export interface FilaLead {
 
 export interface FiltrosLeads {
   busqueda: string
+  /** '' = todos. Es una pestaña con su contador, no un desplegable: se elige uno. */
   estado: '' | EstadoLead
-  origen: '' | OrigenDeLead
-  sucursal: string
+  /** Vacíos = todos. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  origenes: OrigenDeLead[]
+  sucursales: string[]
   /** false = se esconden los GANADO y PERDIDO, que ya no son trabajo pendiente. */
   incluirCerrados: boolean
 }
@@ -2207,8 +2211,10 @@ export interface FilaPresupuesto {
 
 export interface FiltrosPresupuestos {
   busqueda: string
+  /** '' = todos. Es una pestaña con su contador, no un desplegable: se elige uno. */
   estado: '' | EstadoPresupuesto
-  sucursal: string
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
   /** false = sólo la última versión de cada presupuesto. */
   incluirVersiones: boolean
 }
@@ -2329,11 +2335,13 @@ export interface FilaTarea {
 
 export interface FiltrosTareas {
   busqueda: string
+  /** '' = todas. Es una pestaña con su contador, no un desplegable: se elige una. */
   estado: '' | EstadoTarea
-  prioridad: '' | PrioridadTarea
-  /** Id del responsable; 0 = todos, -1 = sin responsable. */
-  responsableId: number
-  sucursal: string
+  /** Vacíos = todos. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  prioridades: PrioridadTarea[]
+  /** Ids de los responsables; lista vacía = los de todos, y el -1 son las que no tienen responsable. */
+  responsableIds: number[]
+  sucursales: string[]
   /** true = sólo las que vencen hoy o ya vencieron. */
   soloVencidas: boolean
 }
@@ -2562,11 +2570,12 @@ export interface CatalogoDeReportes {
 }
 
 export interface FiltrosDeReporte {
-  /** 'AAAA-MM' o vacío. */
+  /** 'AAAA-MM' o vacío. Elige el mes del reporte, no filtra dentro. */
   periodo: string
-  sucursal: string
-  compania: string
-  estado: string
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
+  companias: string[]
+  estados: string[]
   busqueda: string
   /** 'AAAA-MM-DD' o vacío. */
   desde: string
@@ -2636,7 +2645,8 @@ export interface CatalogoDeExcel {
 export interface OpcionesPlanillaClasica {
   /** Meses elegidos, 'AAAA-MM'. Una pestaña por mes, más su pestaña de BAJAS. */
   periodos: string[]
-  sucursal: string
+  /** Vacías = todas. Con una o varias elegidas, el nombre del archivo las nombra. */
+  sucursales: string[]
 }
 
 // ---------------------------------------------------------------------------

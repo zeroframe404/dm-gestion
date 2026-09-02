@@ -348,7 +348,7 @@ const ENCABEZADOS_CLASICOS = [
 test('la Planilla clásica sale con las columnas y el orden de la hoja de siempre', async () => {
   await prepararBase()
 
-  const archivo = xlsxDePlanillaClasica({ periodos: [AGOSTO], sucursal: '' })
+  const archivo = xlsxDePlanillaClasica({ periodos: [AGOSTO], sucursales: [] })
   assert.match(archivo.nombre, /\.xlsx$/)
 
   const partes = leerZip(archivo.contenido)
@@ -390,7 +390,7 @@ test('la Planilla clásica sale con las columnas y el orden de la hoja de siempr
 test('la Planilla clásica de varios meses trae una pestaña por mes y su BAJAS', async () => {
   await prepararBase()
 
-  const partes = leerZip(xlsxDePlanillaClasica({ periodos: [JULIO, AGOSTO], sucursal: '' }).contenido)
+  const partes = leerZip(xlsxDePlanillaClasica({ periodos: [JULIO, AGOSTO], sucursales: [] }).contenido)
   const libro = partes.get('xl/workbook.xml')!
   assert.equal([...libro.matchAll(/<sheet /g)].length, 4, 'dos meses son cuatro pestañas')
   assert.match(libro, /name="JULIO"/)
@@ -401,7 +401,7 @@ test('la Planilla clásica de varios meses trae una pestaña por mes y su BAJAS'
 test('la Planilla clásica filtrada por sucursal trae sólo ese local', async () => {
   await prepararBase()
 
-  const partes = leerZip(xlsxDePlanillaClasica({ periodos: [AGOSTO], sucursal: 'Lanús' }).contenido)
+  const partes = leerZip(xlsxDePlanillaClasica({ periodos: [AGOSTO], sucursales: ['Lanús'] }).contenido)
   const mes = partes.get('xl/worksheets/sheet1.xml')!
   assert.equal([...mes.matchAll(/<row r="/g)].length - 1, 2, 'en Lanús hay dos pólizas')
 })
@@ -423,7 +423,7 @@ test('el escritor de Excel escapa lo que la hoja tiene escrito y no rompe el XML
 // Reportes
 // ---------------------------------------------------------------------------
 
-const FILTROS_VACIOS = { periodo: '', sucursal: '', compania: '', estado: '', busqueda: '', desde: '', hasta: '' }
+const FILTROS_VACIOS = { periodo: '', sucursales: [], companias: [], estados: [], busqueda: '', desde: '', hasta: '' }
 
 test('el catálogo de reportes ofrece los módulos con sus filtros y columnas', async () => {
   await prepararBase()
@@ -446,14 +446,14 @@ test('el reporte de la planilla del mes devuelve las filas del mes y respeta los
 
   const lanus = vistaPreviaDeReporte({
     reporteId: 'cartera',
-    filtros: { ...FILTROS_VACIOS, periodo: AGOSTO, sucursal: 'Lanús' },
+    filtros: { ...FILTROS_VACIOS, periodo: AGOSTO, sucursales: ['Lanús'] },
     columnas: [],
   })
   assert.equal(lanus.total, 2)
 
   const impagas = vistaPreviaDeReporte({
     reporteId: 'cartera',
-    filtros: { ...FILTROS_VACIOS, periodo: AGOSTO, estado: 'IMPAGA' },
+    filtros: { ...FILTROS_VACIOS, periodo: AGOSTO, estados: ['IMPAGA'] },
     columnas: [],
   })
   assert.equal(impagas.total, 3)

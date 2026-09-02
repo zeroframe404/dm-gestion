@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { NOMBRE_RANGO_MORA, type FilaMora, type FiltrosMora, type ListadoMora, type RangoDeMora } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
@@ -10,7 +11,7 @@ import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { numero, pesos } from './formato'
 
-const FILTROS_VACIOS: FiltrosMora = { busqueda: '', sucursal: '', compania: '', rango: '', incluirDebito: false }
+const FILTROS_VACIOS: FiltrosMora = { busqueda: '', sucursales: [], companias: [], rangos: [], incluirDebito: false }
 
 const CLASES_RANGO: Record<Exclude<RangoDeMora, ''>, string> = {
   '1-7': 'bg-amber-100 text-amber-900 border-amber-200',
@@ -154,7 +155,9 @@ export function Mora() {
   if (cargando && !datos) return <Cargando texto="Buscando la mora…" />
   if (!datos) return <div className="p-8">{error && <Alerta tono="error">{error}</Alerta>}</div>
 
-  const hayFiltros = Boolean(filtros.busqueda || filtros.sucursal || filtros.compania || filtros.rango || filtros.incluirDebito)
+  const hayFiltros = Boolean(
+    filtros.busqueda || filtros.sucursales.length || filtros.companias.length || filtros.rangos.length || filtros.incluirDebito,
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
@@ -165,10 +168,15 @@ export function Mora() {
           <button
             key={rango}
             type="button"
-            onClick={() => setFiltros((f) => ({ ...f, rango: f.rango === rango ? '' : rango }))}
+            // Los tres carteles y el desplegable «Días de atraso» son el mismo filtro: tocar un cartel
+            // suma o saca ese tramo de la lista, así se pueden mirar «1-7 y +30» juntos.
+            onClick={() =>
+              setFiltros((f) => ({ ...f, rangos: f.rangos.includes(rango) ? f.rangos.filter((r) => r !== rango) : [...f.rangos, rango] }))
+            }
+            aria-pressed={filtros.rangos.includes(rango)}
             className={cx(
               'rounded-lg border px-3 py-1.5 text-left transition-colors',
-              filtros.rango === rango ? CLASES_RANGO[rango] : 'border-slate-200 bg-white text-slate-900 hover:border-slate-300',
+              filtros.rangos.includes(rango) ? CLASES_RANGO[rango] : 'border-slate-200 bg-white text-slate-900 hover:border-slate-300',
             )}
           >
             <span className="block text-[11px] font-bold uppercase tracking-[0.12em] opacity-70">{NOMBRE_RANGO_MORA[rango]}</span>
@@ -187,20 +195,25 @@ export function Mora() {
             className="h-9 w-80 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400"
           />
         </div>
-        <Desplegable etiqueta="Sucursal" valor={filtros.sucursal} opciones={datos.sucursales} alCambiar={(v) => setFiltros((f) => ({ ...f, sucursal: v }))} />
-        <Desplegable etiqueta="Compañía" valor={filtros.compania} opciones={datos.companias} alCambiar={(v) => setFiltros((f) => ({ ...f, compania: v }))} />
-        <select
-          value={filtros.rango}
-          onChange={(evento) => setFiltros((f) => ({ ...f, rango: evento.target.value as RangoDeMora }))}
-          aria-label="Días de atraso"
-          className={cx('h-9 rounded-lg border bg-white px-2 text-sm', filtros.rango ? 'border-marino-400 font-semibold text-marino-800' : 'border-slate-300 text-slate-700')}
-        >
-          {(['', '1-7', '8-30', '+30'] as const).map((rango) => (
-            <option key={rango} value={rango}>
-              {NOMBRE_RANGO_MORA[rango]}
-            </option>
-          ))}
-        </select>
+        <FiltroMultiple
+          etiqueta="Sucursal"
+          valores={filtros.sucursales}
+          opciones={datos.sucursales}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, sucursales: v }))}
+        />
+        <FiltroMultiple
+          etiqueta="Compañía"
+          valores={filtros.companias}
+          opciones={datos.companias}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, companias: v }))}
+        />
+        <FiltroMultiple
+          etiqueta="Días de atraso"
+          valores={filtros.rangos}
+          opciones={(['1-7', '8-30', '+30'] as const).map((rango) => ({ valor: rango, texto: NOMBRE_RANGO_MORA[rango] }))}
+          plural="todos"
+          alCambiar={(v) => setFiltros((f) => ({ ...f, rangos: v as Array<Exclude<RangoDeMora, ''>> }))}
+        />
         <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
           <input
             type="checkbox"
@@ -250,30 +263,3 @@ function Contador({ etiqueta, valor, tono = 'neutro' }: { etiqueta: string; valo
   )
 }
 
-function Desplegable({
-  etiqueta,
-  valor,
-  opciones,
-  alCambiar,
-}: {
-  etiqueta: string
-  valor: string
-  opciones: string[]
-  alCambiar: (valor: string) => void
-}) {
-  return (
-    <select
-      value={valor}
-      onChange={(evento) => alCambiar(evento.target.value)}
-      aria-label={etiqueta}
-      className={cx('h-9 rounded-lg border bg-white px-2 text-sm', valor ? 'border-marino-400 font-semibold text-marino-800' : 'border-slate-300 text-slate-700')}
-    >
-      <option value="">{etiqueta}: todas</option>
-      {opciones.map((opcion) => (
-        <option key={opcion} value={opcion}>
-          {opcion}
-        </option>
-      ))}
-    </select>
-  )
-}

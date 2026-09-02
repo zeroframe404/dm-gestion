@@ -11,6 +11,7 @@ import {
   type FiltrosPresupuestos,
   type ListadoPresupuestos,
 } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
@@ -20,7 +21,7 @@ import { FichaPresupuesto } from './FichaPresupuesto'
 import { FormularioPresupuesto } from './FormularioPresupuesto'
 import { usePuedeEditar } from '../../contexto/Permisos'
 
-const FILTROS_VACIOS: FiltrosPresupuestos = { busqueda: '', estado: '', sucursal: '', incluirVersiones: false }
+const FILTROS_VACIOS: FiltrosPresupuestos = { busqueda: '', estado: '', sucursales: [], incluirVersiones: false }
 
 export const CLASES_ESTADO_PRESUPUESTO: Record<EstadoPresupuesto, string> = {
   BORRADOR: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -103,7 +104,6 @@ export function Presupuestos() {
   }
 
   const encabezado = 'px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 whitespace-nowrap'
-  const selector = 'h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
@@ -118,14 +118,7 @@ export function Presupuestos() {
           />
         </div>
 
-        <select value={filtros.sucursal} onChange={(e) => cambiar({ sucursal: e.target.value })} className={selector} aria-label="Sucursal">
-          <option value="">Todas las sucursales</option>
-          {datos.sucursales.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+<FiltroMultiple etiqueta="Sucursal" valores={filtros.sucursales} opciones={datos.sucursales} alCambiar={(v) => cambiar({ sucursales: v })} />
 
         <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
           <input

@@ -18,6 +18,7 @@ import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoNuevaTarea } from './DialogoNuevaTarea'
@@ -39,9 +40,9 @@ export function Tareas() {
   const [filtros, setFiltros] = useState<FiltrosTareas>({
     busqueda: '',
     estado: '',
-    prioridad: '',
-    responsableId: usuario.id,
-    sucursal: '',
+    prioridades: [],
+    responsableIds: [usuario.id],
+    sucursales: [],
     soloVencidas: false,
   })
   const [datos, setDatos] = useState<ListadoTareas | null>(null)
@@ -87,7 +88,6 @@ export function Tareas() {
     )
   }
 
-  const selector = 'h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800'
   const encabezado = 'px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 whitespace-nowrap'
 
   return (
@@ -103,46 +103,29 @@ export function Tareas() {
           />
         </div>
 
-        <select
-          value={filtros.responsableId}
-          onChange={(e) => cambiar({ responsableId: Number(e.target.value) })}
-          className={selector}
-          aria-label="Responsable"
-        >
-          <option value={0}>Las de todos</option>
-          <option value={usuario.id}>Las mías</option>
-          <option value={-1}>Sin responsable</option>
-          {datos.responsables
-            .filter((r) => r.id !== usuario.id)
-            .map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.nombre}
-              </option>
-            ))}
-        </select>
+        {/* El -1 es «sin responsable» y se puede tildar junto con personas: «las de Brenda y las que
+            no son de nadie» era, hasta ahora, mirar dos veces. */}
+        <FiltroMultiple
+          etiqueta="Responsable"
+          valores={filtros.responsableIds.map(String)}
+          opciones={[
+            { valor: String(usuario.id), texto: 'Las mías' },
+            { valor: '-1', texto: 'Sin responsable' },
+            ...datos.responsables.filter((r) => r.id !== usuario.id).map((r) => ({ valor: String(r.id), texto: r.nombre })),
+          ]}
+          plural="todos"
+          alCambiar={(v) => cambiar({ responsableIds: v.map(Number) })}
+        />
 
-        <select
-          value={filtros.prioridad}
-          onChange={(e) => cambiar({ prioridad: e.target.value as PrioridadTarea | '' })}
-          className={selector}
-          aria-label="Prioridad"
-        >
-          <option value="">Cualquier prioridad</option>
-          {PRIORIDADES_DE_TAREA.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
+        <FiltroMultiple
+          etiqueta="Prioridad"
+          valores={filtros.prioridades}
+          opciones={[...PRIORIDADES_DE_TAREA]}
+          plural="todas"
+          alCambiar={(v) => cambiar({ prioridades: v as PrioridadTarea[] })}
+        />
 
-        <select value={filtros.sucursal} onChange={(e) => cambiar({ sucursal: e.target.value })} className={selector} aria-label="Sucursal">
-          <option value="">Todas las sucursales</option>
-          {datos.sucursales.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <FiltroMultiple etiqueta="Sucursal" valores={filtros.sucursales} opciones={datos.sucursales} alCambiar={(v) => cambiar({ sucursales: v })} />
 
         <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
           <input type="checkbox" checked={filtros.soloVencidas} onChange={(e) => cambiar({ soloVencidas: e.target.checked })} className="h-4 w-4" />
@@ -210,8 +193,8 @@ export function Tareas() {
                 <td colSpan={8} className="px-3 py-12 text-center text-slate-500">
                   {datos.total === 0
                     ? 'Todavía no hay tareas. Se crean con «Nueva tarea» y también desde la ficha de un cliente, una póliza, un siniestro o una consulta.'
-                    : filtros.responsableId === usuario.id
-                      ? 'No tenés ninguna tarea con estos filtros. Probá con «Las de todos».'
+                    : filtros.responsableIds.length === 1 && filtros.responsableIds[0] === usuario.id
+                      ? 'No tenés ninguna tarea con estos filtros. Sacá «Las mías» del filtro de responsable para ver las de todos.'
                       : 'Ninguna tarea coincide con los filtros.'}
                 </td>
               </tr>

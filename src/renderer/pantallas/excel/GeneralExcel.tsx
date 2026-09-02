@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CatalogoDeExcel, FilasDeReporte, FiltrosDeReporte } from '../../../shared/tipos'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { Icono } from '../../componentes/Icono'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { VistaExcel } from '../../componentes/VistaExcel'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
@@ -19,9 +20,9 @@ import type { IdModulo } from '../../modulos'
 
 const FILTROS_VACIOS: FiltrosDeReporte = {
   periodo: '',
-  sucursal: '',
-  compania: '',
-  estado: '',
+  sucursales: [],
+  companias: [],
+  estados: [],
   busqueda: '',
   desde: '',
   hasta: '',
@@ -175,34 +176,29 @@ export function GeneralExcel() {
             </select>
           )}
           {usa('sucursal') && (
-            <select aria-label="Sucursal" value={filtros.sucursal} onChange={cambiar('sucursal')} className={CONTROL}>
-              <option value="">Todas las sucursales</option>
-              {catalogo.sucursales.map((sucursal) => (
-                <option key={sucursal} value={sucursal}>
-                  {sucursal}
-                </option>
-              ))}
-            </select>
+            <FiltroMultiple
+              etiqueta="Sucursal"
+              valores={filtros.sucursales}
+              opciones={catalogo.sucursales}
+              alCambiar={(v) => setFiltros((f) => ({ ...f, sucursales: v }))}
+            />
           )}
           {usa('compania') && (
-            <select aria-label="Compañía" value={filtros.compania} onChange={cambiar('compania')} className={CONTROL}>
-              <option value="">Todas las compañías</option>
-              {catalogo.companias.map((compania) => (
-                <option key={compania} value={compania}>
-                  {compania}
-                </option>
-              ))}
-            </select>
+            <FiltroMultiple
+              etiqueta="Compañía"
+              valores={filtros.companias}
+              opciones={catalogo.companias}
+              alCambiar={(v) => setFiltros((f) => ({ ...f, companias: v }))}
+            />
           )}
           {usa('estado') && (area?.estados.length ?? 0) > 0 && (
-            <select aria-label={area?.etiquetaDeEstado} value={filtros.estado} onChange={cambiar('estado')} className={CONTROL}>
-              <option value="">{area?.etiquetaDeEstado}: todo</option>
-              {area?.estados.map((estado) => (
-                <option key={estado} value={estado}>
-                  {estado}
-                </option>
-              ))}
-            </select>
+            <FiltroMultiple
+              etiqueta={area?.etiquetaDeEstado ?? 'Estado'}
+              valores={filtros.estados}
+              opciones={area?.estados ?? []}
+              plural="todos"
+              alCambiar={(v) => setFiltros((f) => ({ ...f, estados: v }))}
+            />
           )}
           {usa('fechas') && (
             <>

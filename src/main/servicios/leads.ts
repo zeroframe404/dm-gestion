@@ -10,6 +10,7 @@
 // está, la crea el motor en cuanto haya conexión y la fila sube sola.
 import { DIRECCION_VACIA } from '../../shared/direccion'
 import { hoyLocal } from '../../shared/semaforo'
+import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_LEAD,
@@ -145,12 +146,13 @@ export function filaDeLead(leadId: number): FilaLead {
 function normalizarFiltros(filtros: unknown): FiltrosLeads {
   const f = objeto(filtros, 'Los filtros')
   const estado = limpiar(f.estado).toUpperCase()
-  const origen = limpiar(f.origen).toUpperCase()
   return {
     busqueda: limpiar(f.busqueda).slice(0, 100),
     estado: (ESTADOS_DE_LEAD as readonly string[]).includes(estado) ? (estado as EstadoLead) : '',
-    origen: (ORIGENES_DE_LEAD as readonly string[]).includes(origen) ? (origen as OrigenDeLead) : '',
-    sucursal: limpiar(f.sucursal).slice(0, 80),
+    origenes: listaDeFiltro(f.origenes)
+      .map((o) => o.toUpperCase())
+      .filter((o): o is OrigenDeLead => (ORIGENES_DE_LEAD as readonly string[]).includes(o)),
+    sucursales: listaDeFiltro(f.sucursales).map((v) => v.slice(0, 80)),
     incluirCerrados: f.incluirCerrados === true,
   }
 }
@@ -179,16 +181,16 @@ export function listarLeads(filtros: unknown): ListadoLeads {
   // de lo que se está mirando, si no tocar uno vaciaría los demás.
   const sinEstado = todos.filter(
     (lead) =>
-      (!f.origen || lead.origen === f.origen) &&
-      (!f.sucursal || mismaSucursal(lead.sucursal, f.sucursal)) &&
+      (f.origenes.length === 0 || f.origenes.includes(lead.origen)) &&
+      coincideAlguno(f.sucursales, lead.sucursal, mismaSucursal) &&
       (f.incluirCerrados || !CERRADOS.includes(lead.estado) || lead.estado === f.estado) &&
       coincide(lead),
   )
 
   const porEstado = { NUEVO: 0, 'EN CHARLA': 0, COTIZADO: 0, GANADO: 0, PERDIDO: 0 } as Record<EstadoLead, number>
   for (const lead of todos) {
-    if (f.origen && lead.origen !== f.origen) continue
-    if (f.sucursal && !mismaSucursal(lead.sucursal, f.sucursal)) continue
+    if (f.origenes.length > 0 && !f.origenes.includes(lead.origen)) continue
+    if (!coincideAlguno(f.sucursales, lead.sucursal, mismaSucursal)) continue
     if (!coincide(lead)) continue
     porEstado[lead.estado]++
   }

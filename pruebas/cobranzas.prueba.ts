@@ -48,7 +48,7 @@ const BRENDA: SesionUsuario = {
   debeCambiarClave: false,
 }
 
-const SIN_FILTROS: FiltrosMora = { busqueda: '', sucursal: '', compania: '', rango: '', incluirDebito: false }
+const SIN_FILTROS: FiltrosMora = { busqueda: '', sucursales: [], companias: [], rangos: [], incluirDebito: false }
 
 async function cobranzasDePrueba(): Promise<BaseDeDatos> {
   cerrarBaseDeDatos()
@@ -255,7 +255,7 @@ test('los rangos de atraso reparten las cuotas en 1-7, 8-30 y +30 días', async 
   assert.ok(listado.porRango['+30'] > 0, 'las cuotas de los meses viejos pasan los 30 días')
 
   for (const rango of ['1-7', '8-30', '+30'] as const) {
-    const filtrado = mora({ ...SIN_FILTROS, rango }, HOY)
+    const filtrado = mora({ ...SIN_FILTROS, rangos: [rango] }, HOY)
     assert.equal(filtrado.filas.length, listado.porRango[rango])
     for (const fila of filtrado.filas) assert.equal(fila.rango, rango)
   }
@@ -278,7 +278,7 @@ test('los filtros de la mora acotan por sucursal y por compañía', async () => 
   await cobranzasDePrueba()
   const listado = mora(SIN_FILTROS, HOY)
   const compania = listado.companias[0]!
-  const porCompania = mora({ ...SIN_FILTROS, compania }, HOY)
+  const porCompania = mora({ ...SIN_FILTROS, companias: [compania] }, HOY)
   assert.ok(porCompania.filas.length > 0)
   for (const fila of porCompania.filas) assert.equal(fila.compania, compania)
 
@@ -286,7 +286,7 @@ test('los filtros de la mora acotan por sucursal y por compañía', async () => 
   // siempre las cuatro de la agencia, así que la primera de la lista puede no deber nada y el filtro
   // devolvería vacío —la prueba pasaría sin haber probado nada—.
   const sucursal = listado.filas.find((f) => f.sucursal)!.sucursal!
-  const porSucursal = mora({ ...SIN_FILTROS, sucursal }, HOY)
+  const porSucursal = mora({ ...SIN_FILTROS, sucursales: [sucursal] }, HOY)
   assert.ok(porSucursal.filas.length > 0, 'filtrar por una sucursal que sí debe trae sus cuotas')
   for (const fila of porSucursal.filas) assert.equal(fila.sucursal, sucursal)
 

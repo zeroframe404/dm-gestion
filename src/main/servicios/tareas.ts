@@ -10,6 +10,7 @@
 // se ve lo que falta hacer.
 import { aDia, diasEntre } from '../../shared/polizas'
 import { hoyLocal } from '../../shared/semaforo'
+import { coincideAlguno, listaDeFiltro, numerosDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_TAREA,
@@ -228,14 +229,16 @@ export function tareasDeVinculo(vinculo: VinculoABuscar): FilaTarea[] {
 function normalizarFiltros(filtros: unknown): FiltrosTareas {
   const f = objeto(filtros, 'Los filtros')
   const estado = limpiar(f.estado)
-  const prioridad = limpiar(f.prioridad).toUpperCase()
-  const responsable = Number(f.responsableId)
   return {
     busqueda: limpiar(f.busqueda).slice(0, 100),
     estado: (ESTADOS_DE_TAREA as readonly string[]).includes(estado) ? (estado as EstadoTarea) : '',
-    prioridad: (PRIORIDADES_DE_TAREA as readonly string[]).includes(prioridad) ? (prioridad as PrioridadTarea) : '',
-    responsableId: Number.isFinite(responsable) ? Math.trunc(responsable) : 0,
-    sucursal: limpiar(f.sucursal).slice(0, 80),
+    prioridades: listaDeFiltro(f.prioridades)
+      .map((p) => p.toUpperCase())
+      .filter((p): p is PrioridadTarea => (PRIORIDADES_DE_TAREA as readonly string[]).includes(p)),
+    // El 0 de antes («las de todos») ya no hace falta: la lista vacía es lo mismo, y dejarlo entrar
+    // haría que elegir a alguien y además «todos» no filtrara nada.
+    responsableIds: numerosDeFiltro(f.responsableIds).filter((id) => id !== 0),
+    sucursales: listaDeFiltro(f.sucursales).map((v) => v.slice(0, 80)),
     soloVencidas: f.soloVencidas === true,
   }
 }
@@ -258,9 +261,11 @@ export function listarTareas(filtros: unknown): ListadoTareas {
   // lo que se está mirando, si no tocar uno vaciaría los demás.
   const sinEstado = todas.filter(
     (t) =>
-      (!f.prioridad || t.prioridad === f.prioridad) &&
-      (f.responsableId === 0 || (f.responsableId === -1 ? t.responsableId === null : t.responsableId === f.responsableId)) &&
-      (!f.sucursal || mismaSucursal(t.sucursal, f.sucursal)) &&
+      (f.prioridades.length === 0 || f.prioridades.includes(t.prioridad)) &&
+      // El -1 son las que no tienen responsable: se puede pedir junto con personas («las de Brenda y
+      // las que no son de nadie»), que antes eran dos vueltas.
+      (f.responsableIds.length === 0 || f.responsableIds.includes(t.responsableId ?? -1)) &&
+      coincideAlguno(f.sucursales, t.sucursal, mismaSucursal) &&
       (!f.soloVencidas || t.vencida || t.venceHoy) &&
       coincide(t),
   )

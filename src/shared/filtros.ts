@@ -41,6 +41,21 @@ export function listaDeFiltro(valor: unknown): string[] {
 }
 
 /**
+ * Lo mismo para los filtros que eligen números (los ids de responsable de Tareas, los días del mes de
+ * Deudores): enteros, sin repetidos y en orden. Lo que no sea un entero se descarta en silencio, que es
+ * lo que ya hacía cada pantalla por su cuenta.
+ */
+export function numerosDeFiltro(valor: unknown): number[] {
+  const crudos = Array.isArray(valor) ? valor : valor === null || valor === undefined || valor === '' ? [] : [valor]
+  const vistos = new Set<number>()
+  for (const crudo of crudos) {
+    const numero = Number(crudo)
+    if (Number.isInteger(numero)) vistos.add(numero)
+  }
+  return [...vistos].sort((a, b) => a - b)
+}
+
+/**
  * true si los dos textos son el mismo una vez plegados. Es la comparación por defecto de los filtros
  * **del renderer**, donde cada pantalla ya tenía su `normalizar` que borra la puntuación entera.
  *

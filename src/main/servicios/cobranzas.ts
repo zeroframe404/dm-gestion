@@ -3,10 +3,11 @@
 // Los pagos son siempre los mismos: los que nacen de «Registrar pago» en la Cartera y los que se
 // cargan a mano acá. Esta pantalla los mira de tres maneras distintas —por día, por mes y por
 // compañía—, así que todo sale de la misma tabla `pagos` y de `pagos.ts`.
-import { listaDeFiltro } from '../../shared/filtros'
+import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
+  RANGOS_DE_MORA,
   RESULTADOS_DE_IMPUTACION,
   type AvisoDeMora,
   type CajaDelDia,
@@ -65,7 +66,7 @@ function exigirFecha(valor: string | null): string {
   return limpia
 }
 
-function mismaCosa(a: string | null, b: string | null): boolean {
+function mismaCosa(a: unknown, b: unknown): boolean {
   return normalizarTexto(a) === normalizarTexto(b)
 }
 
@@ -405,16 +406,19 @@ function coincideConLaBusqueda(fila: FilaMora, busqueda: string): boolean {
 export function mora(filtros: FiltrosMora, hoy = hoyLocal()): ListadoMora {
   const todas = filasEnMora(filtros.incluirDebito === true, hoy)
   const busqueda = normalizarTexto(filtros.busqueda).replace(/ /g, '')
-  const sucursal = limpiar(filtros.sucursal)
-  const compania = limpiar(filtros.compania)
+  const sucursales = listaDeFiltro(filtros.sucursales)
+  const companias = listaDeFiltro(filtros.companias)
 
   const sinRango = todas.filter(
     (fila) =>
       coincideConLaBusqueda(fila, busqueda) &&
-      (!sucursal || mismaSucursal(fila.sucursal, sucursal)) &&
-      (!compania || mismaCosa(fila.compania, compania)),
+      coincideAlguno(sucursales, fila.sucursal, mismaSucursal) &&
+      coincideAlguno(companias, fila.compania, mismaCosa),
   )
-  const filas = filtros.rango ? sinRango.filter((fila) => fila.rango === filtros.rango) : sinRango
+  const rangos = listaDeFiltro(filtros.rangos).filter((r): r is Exclude<RangoDeMora, ''> =>
+    (RANGOS_DE_MORA as readonly string[]).includes(r) && r !== '',
+  )
+  const filas = rangos.length > 0 ? sinRango.filter((fila) => rangos.includes(fila.rango)) : sinRango
 
   const porRango: Record<Exclude<RangoDeMora, ''>, number> = { '1-7': 0, '8-30': 0, '+30': 0 }
   for (const fila of sinRango) porRango[fila.rango]++

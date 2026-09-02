@@ -80,13 +80,13 @@ const LUCIA: SesionUsuario = {
   debeCambiarClave: false,
 }
 
-const SIN_FILTROS_DE_LEAD = { busqueda: '', estado: '' as const, origen: '' as const, sucursal: '', incluirCerrados: false }
+const SIN_FILTROS_DE_LEAD = { busqueda: '', estado: '' as const, origenes: [], sucursales: [], incluirCerrados: false }
 const SIN_FILTROS_DE_TAREA: FiltrosTareas = {
   busqueda: '',
   estado: '',
-  prioridad: '',
-  responsableId: 0,
-  sucursal: '',
+  prioridades: [],
+  responsableIds: [],
+  sucursales: [],
   soloVencidas: false,
 }
 
@@ -241,7 +241,7 @@ test('el listado filtra por estado, origen y texto, y esconde las cerradas', asy
   assert.equal(abiertas.porEstado.PERDIDO, 1, 'pero el contador la sigue contando')
 
   assert.equal(listarLeads({ ...SIN_FILTROS_DE_LEAD, incluirCerrados: true }).filas.length, 2)
-  assert.equal(listarLeads({ ...SIN_FILTROS_DE_LEAD, origen: 'REDES' }).filas.length, 1)
+  assert.equal(listarLeads({ ...SIN_FILTROS_DE_LEAD, origenes: ['REDES' as const] }).filas.length, 1)
   assert.equal(listarLeads({ ...SIN_FILTROS_DE_LEAD, busqueda: 'moto' }).filas.length, 1, 'busca por lo que quería asegurar')
   assert.equal(listarLeads({ ...SIN_FILTROS_DE_LEAD, busqueda: '2222' }).filas.length, 1, 'y por teléfono')
   assert.equal(listarLeads({ ...SIN_FILTROS_DE_LEAD, estado: 'PERDIDO' }).filas.length, 1, 'pidiendo el estado cerrado, aparece')
@@ -460,8 +460,8 @@ test('cambiar un presupuesto ya enviado crea la versión 2 y deja la anterior ta
   assert.equal(vieja.opciones[0]!.precio, '$ 47.900')
 
   // El listado muestra sólo la vigente, salvo que se pidan las anteriores.
-  assert.equal(listarPresupuestos({ busqueda: '', estado: '', sucursal: '', incluirVersiones: false }).filas.length, 1)
-  assert.equal(listarPresupuestos({ busqueda: '', estado: '', sucursal: '', incluirVersiones: true }).filas.length, 2)
+  assert.equal(listarPresupuestos({ busqueda: '', estado: '', sucursales: [], incluirVersiones: false }).filas.length, 1)
+  assert.equal(listarPresupuestos({ busqueda: '', estado: '', sucursales: [], incluirVersiones: true }).filas.length, 2)
 })
 
 test('editar un BORRADOR lo pisa, sin crear versiones nuevas', async () => {
@@ -623,9 +623,9 @@ test('los filtros de responsable, prioridad y vencidas acotan el listado', async
   crearTareaCompleta({ ...TAREA_VACIA, titulo: 'De Daniel', responsableId: DANIEL.id, prioridad: 'ALTA' }, DANIEL)
   crearTareaCompleta({ ...TAREA_VACIA, titulo: 'De nadie', responsableId: null }, DANIEL)
 
-  assert.equal(listarTareas({ ...SIN_FILTROS_DE_TAREA, responsableId: LUCIA.id }).filas.length, 1)
-  assert.equal(listarTareas({ ...SIN_FILTROS_DE_TAREA, responsableId: -1 }).filas.length, 1, '-1 son las que no tienen dueño')
-  assert.equal(listarTareas({ ...SIN_FILTROS_DE_TAREA, prioridad: 'ALTA' }).filas.length, 1)
+  assert.equal(listarTareas({ ...SIN_FILTROS_DE_TAREA, responsableIds: [LUCIA.id] }).filas.length, 1)
+  assert.equal(listarTareas({ ...SIN_FILTROS_DE_TAREA, responsableIds: [-1] }).filas.length, 1, '-1 son las que no tienen dueño')
+  assert.equal(listarTareas({ ...SIN_FILTROS_DE_TAREA, prioridades: ['ALTA'] }).filas.length, 1)
   assert.equal(listarTareas({ ...SIN_FILTROS_DE_TAREA, soloVencidas: true }).filas.length, 1, 'la que vence hoy')
   assert.equal(listarTareas({ ...SIN_FILTROS_DE_TAREA, busqueda: 'lucía' }).filas.length, 1, 'busca también por responsable')
 })
