@@ -1,6 +1,6 @@
-// «Buscar deudores»: el diálogo que arma la lista de a quién hay que cobrarle, acotada como se acota
-// en el mostrador —sucursal, compañía, forma de pago y los días del mes que se tilden— y lista para
-// exportar a Excel o a un .txt.
+// «Buscar clientes»: el diálogo que arma la lista de a quién hay que cobrarle, acotada como se acota
+// en el mostrador —Todos/Vencidos/Pagos arriba de todo, y después sucursal, compañía, forma de pago y
+// los días del mes que se tilden— y lista para exportar a Excel o a un .txt.
 //
 // Los días se tildan de a uno y en cualquier orden («los que vencen el 1, el 3 y el 5»), que es la
 // razón de ser de esta pantalla: eso no se puede pedir con un desplegable ni con un rango de fechas.
@@ -13,6 +13,7 @@ import { nombreDePeriodo } from '../../../shared/semaforo'
 import {
   DEUDORES_SIN_FILTROS,
   type FilaDeudor,
+  type FiltroEstadoDeDeuda,
   type FiltrosDeudores,
   type FormatoDeDeudores,
   type ListadoDeudores,
@@ -143,13 +144,15 @@ export function DialogoDeudores({ abierto, alCerrar }: { abierto: boolean; alCer
 
   const hayResultados = (datos?.filas.length ?? 0) > 0
   const porFormaDePago = filtros.formasDePago.length > 0
+  // «Pagos» ya pide justamente las que se cobran solas: el checkbox de abajo queda de más.
+  const incluidasPorOtroLado = porFormaDePago || filtros.estado === 'PAGOS'
 
   return (
     <Dialogo
       abierto={abierto}
       ancho="xl"
-      titulo="Buscar deudores"
-      descripcion="Tildá sucursal, compañía, forma de pago y los días del mes que quieras: aparecen las cuotas impagas que cumplen con todo eso, para llamar o para exportar."
+      titulo="Buscar clientes"
+      descripcion="Todos, Pagos o Vencidos, y encima sucursal, compañía, forma de pago y los días del mes que quieras: aparecen las cuotas impagas que cumplen con todo eso, para llamar o para exportar."
       alCerrar={alCerrar}
       pie={
         <div className="flex w-full flex-wrap items-center gap-2">
@@ -188,6 +191,7 @@ export function DialogoDeudores({ abierto, alCerrar }: { abierto: boolean; alCer
     >
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-3">
+          <ToggleDeEstado valor={filtros.estado} alCambiar={(v) => cambiar({ estado: v })} />
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <span className="font-medium">Mes</span>
             <select
@@ -205,23 +209,26 @@ export function DialogoDeudores({ abierto, alCerrar }: { abierto: boolean; alCer
             </select>
           </label>
           <label
-            className={cx('flex items-center gap-2 text-sm', porFormaDePago ? 'text-slate-400' : 'text-slate-700')}
+            className={cx('flex items-center gap-2 text-sm', incluidasPorOtroLado ? 'text-slate-400' : 'text-slate-700')}
             title={
               porFormaDePago
                 ? 'No hace falta: al tildar una forma de pago se busca exactamente ésa, se cobre sola o no.'
-                : 'Débito automático, CBU y tarjeta se cobran solos: por eso no cuentan como deuda salvo que se pidan.'
+                : filtros.estado === 'PAGOS'
+                  ? 'No hace falta: «Pagos» ya pide justamente las que se cobran solas.'
+                  : 'Débito automático, CBU y tarjeta se cobran solos: por eso no cuentan como deuda salvo que se pidan.'
             }
           >
             <input
               type="checkbox"
-              checked={porFormaDePago || filtros.incluirDebito}
-              disabled={porFormaDePago}
+              checked={incluidasPorOtroLado || filtros.incluirDebito}
+              disabled={incluidasPorOtroLado}
               onChange={(evento) => cambiar({ incluirDebito: evento.target.checked })}
               className="h-4 w-4 rounded border-slate-300 text-marino-700 focus:ring-marino-500/40"
             />
             Incluir las que se cobran solas
           </label>
-          {(filtros.sucursales.length > 0 ||
+          {(filtros.estado !== '' ||
+            filtros.sucursales.length > 0 ||
             filtros.companias.length > 0 ||
             porFormaDePago ||
             filtros.ramas.length > 0 ||
@@ -230,7 +237,7 @@ export function DialogoDeudores({ abierto, alCerrar }: { abierto: boolean; alCer
               tamano="sm"
               variante="fantasma"
               icono="cerrar"
-              onClick={() => cambiar({ sucursales: [], companias: [], formasDePago: [], ramas: [], dias: [], incluirDebito: false })}
+              onClick={() => cambiar({ estado: '', sucursales: [], companias: [], formasDePago: [], ramas: [], dias: [], incluirDebito: false })}
             >
               Limpiar filtros
             </Boton>
@@ -337,6 +344,46 @@ export function DialogoDeudores({ abierto, alCerrar }: { abierto: boolean; alCer
         )}
       </div>
     </Dialogo>
+  )
+}
+
+const OPCIONES_DE_ESTADO: Array<{ valor: FiltroEstadoDeDeuda; etiqueta: string; ayuda: string }> = [
+  { valor: '', etiqueta: 'Todos', ayuda: 'Todas las cuotas impagas, sin importar cómo se cobren.' },
+  {
+    valor: 'VENCIDOS',
+    etiqueta: 'Vencidos',
+    ayuda: 'Sólo las que ya pasaron su fecha de vencimiento.',
+  },
+  {
+    valor: 'PAGOS',
+    etiqueta: 'Pagos',
+    ayuda: 'Las que se cobran solas (débito, CBU, tarjeta, Mercado Pago): no hace falta llamarlas.',
+  },
+]
+
+/** TODOS | PAGOS | VENCIDOS: el filtro rápido de arriba de todo, uno tildado a la vez. */
+function ToggleDeEstado({ valor, alCambiar }: { valor: FiltroEstadoDeDeuda; alCambiar: (valor: FiltroEstadoDeDeuda) => void }) {
+  return (
+    <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1" role="group" aria-label="Estado de la deuda">
+      {OPCIONES_DE_ESTADO.map((opcion) => {
+        const elegido = valor === opcion.valor
+        return (
+          <button
+            key={opcion.valor || 'todos'}
+            type="button"
+            aria-pressed={elegido}
+            title={opcion.ayuda}
+            onClick={() => alCambiar(opcion.valor)}
+            className={cx(
+              'rounded-md px-3 py-1.5 text-sm font-semibold transition-colors',
+              elegido ? 'bg-marino-700 text-white shadow-marca' : 'text-slate-600 hover:bg-slate-100',
+            )}
+          >
+            {opcion.etiqueta}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

@@ -156,6 +156,36 @@ test('sucursal, compañía, forma de pago y días se combinan', async () => {
   assert.equal(nombres({ ...DEL_MES, sucursales: ['dock sud'] }).length, 1)
 })
 
+// ---------------------------------------------------------------------------
+// TODOS | PAGOS | VENCIDOS, el filtro rápido de arriba de todo
+// ---------------------------------------------------------------------------
+
+test('«pagos» trae justamente las que se cobran solas, pasando por encima de la exclusión de siempre', async () => {
+  await carteraDePrueba()
+  // Sin «pagos», Martínez (DEBITO) queda afuera por omisión. Con «pagos» es al revés: es lo único
+  // que tiene que aparecer, aunque no se haya tildado «incluir las que se cobran solas».
+  assert.deepEqual(nombres({ ...DEL_MES, estado: 'PAGOS' }), [CLIENTES.martinez.nombre])
+  // Y sigue pesando la sucursal, la compañía o los días si se combinan.
+  assert.equal(nombres({ ...DEL_MES, estado: 'PAGOS', sucursales: [CLIENTES.rodriguez.sucursal] }).length, 0)
+})
+
+test('«vencidos» deja afuera lo que todavía no llegó a su fecha', async () => {
+  await carteraDePrueba()
+  // Al 5 de agosto nadie venció todavía (Rodríguez el 10, Suárez el 15), pero las dos ya deben.
+  const antes = '2026-08-05'
+  assert.equal(buscarDeudores(DEL_MES, antes).filas.length, 2, 'las dos deben, vencidas o no')
+  assert.equal(buscarDeudores({ ...DEL_MES, estado: 'VENCIDOS' }, antes).filas.length, 0, 'ninguna venció todavía')
+
+  // Al 20 las dos ya vencieron: «vencidos» no saca a nadie.
+  assert.equal(buscarDeudores({ ...DEL_MES, estado: 'VENCIDOS' }, HOY).filas.length, 2)
+})
+
+test('un estado que no es ninguno de los tres se sanea a «todos»', async () => {
+  await carteraDePrueba()
+  const rareza = { ...DEL_MES, estado: 'CUALQUIERA' as unknown as FiltrosDeudores['estado'] }
+  assert.deepEqual(nombres(rareza), nombres(DEL_MES))
+})
+
 test('mirando todos los meses aparecen las deudas viejas, con su mes', async () => {
   await carteraDePrueba()
   const todos = buscarDeudores({ ...DEUDORES_SIN_FILTROS }, HOY)

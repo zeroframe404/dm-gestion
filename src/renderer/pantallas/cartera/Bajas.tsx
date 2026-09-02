@@ -16,11 +16,18 @@ import { NOMBRE_RAMA, ramaDeVehiculo, type Rama } from '../../../shared/ramas'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { ResultadoDeEliminacion } from '../../../shared/eliminacion'
-import { NOMBRE_MOTIVO_BAJA, type CatalogosCartera, type FilaBaja, type MotivoDeBaja, type PeriodoCartera } from '../../../shared/tipos'
+import {
+  NOMBRE_MOTIVO_BAJA,
+  type CambiosDeReactivacion,
+  type CatalogosCartera,
+  type FilaBaja,
+  type MotivoDeBaja,
+  type PeriodoCartera,
+} from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
-import { Alerta, Boton, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
+import { Alerta, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -204,6 +211,9 @@ export function Bajas() {
 
   const detalle = useMemo(() => filas.find((f) => f.id === seleccionada) ?? null, [filas, seleccionada])
 
+  // Para los mensajes: «todos los meses» cuando no hay uno elegido, o el nombre del que sí.
+  const etiquetaPeriodo = periodo === '' ? 'todos los meses' : periodo ? nombreDePeriodo(periodo) : 'este mes'
+
   const deshacer = async (baja: FilaBaja) => {
     setError(null)
     setAviso(null)
@@ -224,23 +234,25 @@ export function Bajas() {
     void cargar(periodo)
   }
 
-  const reactivar = async (baja: FilaBaja) => {
+  const reactivar = async (baja: FilaBaja, cambios: CambiosDeReactivacion) => {
     setError(null)
     setAviso(null)
     setReactivando(true)
-    const resultado = await window.dm.cartera.reactivarBaja(baja.id)
+    const resultado = await window.dm.cartera.reactivarBaja(baja.id, cambios)
     setReactivando(false)
     if (!resultado.ok) {
       setError(resultado.error)
       return
     }
-    setFilas(resultado.datos.bajas)
     setSeleccionada(null)
     setAReactivar(null)
+    // Se relee con el filtro de mes que está puesto (no el de la baja): mirando «Todos los meses» tiene
+    // que seguir viéndose todo, no achicarse al único mes de la baja que se acaba de reactivar.
+    void cargar(periodo)
     setAviso(
       `${resultado.datos.clienteNombre} volvió a estar vigente en ${nombreDePeriodo(resultado.datos.periodo)}. ` +
         (resultado.datos.filaNueva
-          ? 'Se le creó la fila del mes con los últimos datos que tenía: corregí la cuota y lo que haya cambiado en la planilla.'
+          ? 'Se le creó la fila del mes con los últimos datos que tenía.'
           : 'Su fila volvió a la planilla del mes.'),
     )
   }
@@ -261,6 +273,9 @@ export function Bajas() {
             }}
             className="ml-2 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800"
           >
+            {/* «Todos los meses» busca en cualquier baja, sin importar cuándo se fue: es lo que hace
+                falta para encontrar —y poder reactivar— a alguien que se dio de baja hace rato. */}
+            <option value="">Todos los meses</option>
             {periodos.map((p) => (
               <option key={p.periodo} value={p.periodo}>
                 {nombreDePeriodo(p.periodo)}
@@ -269,7 +284,9 @@ export function Bajas() {
           </select>
         </label>
         <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5">
-          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Bajas del mes</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+            {periodo === '' ? 'Bajas de todos los meses' : 'Bajas del mes'}
+          </span>
           <span className="ml-2 font-display text-lg font-extrabold tabular-nums text-slate-900">{filas.length.toLocaleString('es-AR')}</span>
         </div>
 
@@ -342,18 +359,19 @@ export function Bajas() {
                   <th className={encabezado}>Sucursal</th>
                   <th className={encabezado}>Motivo</th>
                   <th className={encabezado}>Fecha</th>
+                  {periodo === '' && <th className={encabezado}>Mes</th>}
                   <th className={encabezado} />
                 </tr>
               </thead>
               <tbody>
                 {visibles.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="px-3 py-10 text-center text-slate-500">
+                    <td colSpan={periodo === '' ? 13 : 12} className="px-3 py-10 text-center text-slate-500">
                       {filas.length === 0
-                        ? `No hay bajas cargadas en ${periodo ? nombreDePeriodo(periodo) : 'este mes'}.`
+                        ? `No hay bajas cargadas en ${etiquetaPeriodo}.`
                         : filtros.busqueda
-                          ? `Ninguna baja de ${periodo ? nombreDePeriodo(periodo) : 'este mes'} coincide con «${filtros.busqueda}» y los filtros elegidos.`
-                          : `Ninguna baja de ${periodo ? nombreDePeriodo(periodo) : 'este mes'} coincide con los filtros elegidos.`}
+                          ? `Ninguna baja de ${etiquetaPeriodo} coincide con «${filtros.busqueda}» y los filtros elegidos.`
+                          : `Ninguna baja de ${etiquetaPeriodo} coincide con los filtros elegidos.`}
                     </td>
                   </tr>
                 )}
@@ -381,6 +399,9 @@ export function Bajas() {
                       {baja.nota && <p className="text-xs text-slate-500">{baja.nota}</p>}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-slate-600">{baja.fechaBaja ?? '—'}</td>
+                    {periodo === '' && (
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-600">{baja.periodo ? nombreDePeriodo(baja.periodo) : '—'}</td>
+                    )}
                     <td className="px-3 py-2 text-right whitespace-nowrap" onClick={(evento) => evento.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2">
                         {esAdministrador && baja.puedeReactivarse ? (
@@ -416,9 +437,10 @@ export function Bajas() {
 
       <DialogoPonerVigente
         baja={aReactivar}
+        catalogos={catalogos}
         guardando={reactivando}
         alCerrar={() => setAReactivar(null)}
-        alConfirmar={() => aReactivar && void reactivar(aReactivar)}
+        alConfirmar={(cambios) => aReactivar && void reactivar(aReactivar, cambios)}
       />
     </div>
   )
@@ -513,32 +535,65 @@ function PanelDeBaja({
   )
 }
 
-/** Poner vigente toca la planilla de todos: se confirma, y se dice exactamente qué va a pasar. */
+const CAMPOS_VACIOS: CambiosDeReactivacion = {
+  compania: '',
+  numeroPoliza: '',
+  propuesta: '',
+  cuota: '',
+  diaVencimiento: '',
+  formaPago: '',
+}
+
+/**
+ * Poner vigente toca la planilla de todos: se confirma, y de paso se corrige lo que haya cambiado
+ * mientras el cliente no estaba —a veces vuelve con otra compañía, otra póliza o la cuota distinta—.
+ * Los campos arrancan con lo último que tenía la baja; dejarlos así es no cambiar nada.
+ */
 function DialogoPonerVigente({
   baja,
+  catalogos,
   guardando,
   alCerrar,
   alConfirmar,
 }: {
   baja: FilaBaja | null
+  catalogos: CatalogosCartera | null
   guardando: boolean
   alCerrar: () => void
-  alConfirmar: () => void
+  alConfirmar: (cambios: CambiosDeReactivacion) => void
 }) {
+  const [campos, setCampos] = useState<CambiosDeReactivacion>(CAMPOS_VACIOS)
+
+  // Arranca de nuevo con los datos de la baja cada vez que se abre (o se abre para otra distinta).
+  useEffect(() => {
+    if (!baja) return
+    setCampos({
+      compania: baja.compania ?? '',
+      numeroPoliza: baja.numeroPoliza ?? '',
+      propuesta: baja.propuesta ?? '',
+      cuota: baja.cuota ?? '',
+      diaVencimiento: baja.diaVencimiento ?? '',
+      formaPago: baja.formaPago ?? '',
+    })
+  }, [baja])
+
   if (!baja) return null
+
+  const cambiar = (cambio: Partial<CambiosDeReactivacion>) => setCampos((previos) => ({ ...previos, ...cambio }))
+
   return (
     <Dialogo
       abierto
       titulo="Poner vigente la póliza"
       descripcion={[baja.clienteNombre, baja.compania, baja.numeroPoliza, baja.patente].filter(Boolean).join(' · ')}
       alCerrar={alCerrar}
-      ancho="sm"
+      ancho="md"
       pie={
         <>
           <Boton onClick={alCerrar} disabled={guardando}>
             Cancelar
           </Boton>
-          <Boton variante="primario" icono="ok" onClick={alConfirmar} cargando={guardando}>
+          <Boton variante="primario" icono="ok" onClick={() => alConfirmar(campos)} cargando={guardando}>
             Poner vigente
           </Boton>
         </>
@@ -546,14 +601,70 @@ function DialogoPonerVigente({
     >
       <div className="flex flex-col gap-3 text-sm text-slate-700">
         <p>
-          La póliza vuelve a estar activa y se le pone su fila en la planilla del mes abierto, con los últimos datos que tenía. La baja
-          sale de esta lista y también de la pestaña BAJAS de la base.
+          La póliza vuelve a estar activa y se le pone su fila en la planilla del mes abierto. La baja sale de esta lista y también
+          de la pestaña BAJAS de la base.
         </p>
         <p className="text-slate-500">
-          Es para el cliente que se fue y volvió: no hace falta cargarlo de nuevo. Lo que haya cambiado —la cuota, la compañía, el
-          vehículo— se corrige después en la planilla o en la póliza.
+          Es para el cliente que se fue y volvió: no hace falta cargarlo de nuevo. Si vuelve con otra compañía, otra póliza o la
+          cuota distinta, corregilo acá antes de confirmar —si no, queda tal como estaba el día que se fue—.
         </p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <ConSugerencias
+            etiqueta="Compañía"
+            lista="reactivar-compania"
+            opciones={catalogos?.companias ?? []}
+            valor={campos.compania ?? ''}
+            alCambiar={(v) => cambiar({ compania: v })}
+          />
+          <ConSugerencias
+            etiqueta="Forma de pago"
+            lista="reactivar-forma-pago"
+            opciones={catalogos?.formasDePago ?? []}
+            valor={campos.formaPago ?? ''}
+            alCambiar={(v) => cambiar({ formaPago: v })}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Campo etiqueta="Póliza" value={campos.numeroPoliza ?? ''} onChange={(evento) => cambiar({ numeroPoliza: evento.target.value })} />
+          <Campo etiqueta="Propuesta" value={campos.propuesta ?? ''} onChange={(evento) => cambiar({ propuesta: evento.target.value })} />
+          <Campo etiqueta="Cuota" value={campos.cuota ?? ''} onChange={(evento) => cambiar({ cuota: evento.target.value })} />
+        </div>
+
+        <Campo
+          etiqueta="Fecha de vencimiento"
+          value={campos.diaVencimiento ?? ''}
+          onChange={(evento) => cambiar({ diaVencimiento: evento.target.value })}
+          ayuda="El día del mes que vence la cuota: 10, 25…"
+        />
       </div>
     </Dialogo>
+  )
+}
+
+/** Campo con desplegable de lo que ya se usa, pero que deja escribir cualquier cosa. */
+function ConSugerencias({
+  etiqueta,
+  lista,
+  opciones,
+  valor,
+  alCambiar,
+}: {
+  etiqueta: string
+  lista: string
+  opciones: string[]
+  valor: string
+  alCambiar: (valor: string) => void
+}) {
+  return (
+    <>
+      <Campo etiqueta={etiqueta} list={lista} value={valor} onChange={(evento) => alCambiar(evento.target.value)} />
+      <datalist id={lista}>
+        {opciones.map((opcion) => (
+          <option key={opcion} value={opcion} />
+        ))}
+      </datalist>
+    </>
   )
 }

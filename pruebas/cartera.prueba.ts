@@ -456,6 +456,75 @@ test('poner vigente una baja del mes abierto reusa su fila en vez de duplicarla'
   cerrarBaseDeDatos()
 })
 
+test('«poner vigente» con cambios corrige compañía, póliza, propuesta, cuota, vencimiento y forma de pago de una', async () => {
+  await carteraDePrueba()
+  const agosto = planillaDelMes(null)
+  const fila = buscar(agosto.filas, CLIENTES.lopez.nombre)
+  darDeBaja(fila.filaId, { motivo: 'ANULA POR DECISION DEL CLIENTE', nota: 'Se va a otra compañía' }, DANIEL)
+  const baja = bajasDelMes('2026-08').find((b) => b.numeroPoliza === CLIENTES.lopez.poliza)
+  assert.ok(baja)
+  cerrarMes(DANIEL)
+
+  const resultado = reactivarBaja(baja.id, DANIEL, {
+    compania: 'OTRA COMPAÑIA SA',
+    numeroPoliza: 'POL-NUEVA-1',
+    propuesta: 'PROP-9',
+    cuota: '5000',
+    diaVencimiento: '15',
+    formaPago: 'TARJETA',
+  })
+  assert.equal(resultado.filaNueva, true)
+
+  const vuelto = planillaDelMes(null).filas.find((f) => f.numeroPoliza === 'POL-NUEVA-1')
+  assert.ok(vuelto, 'la fila vuelve con la póliza nueva')
+  assert.equal(vuelto.compania, 'OTRA COMPAÑIA SA')
+  assert.equal(vuelto.propuesta, 'PROP-9')
+  assert.equal(vuelto.cuota, '5000')
+  assert.equal(vuelto.diaVencimiento, '15')
+  assert.equal(vuelto.formaPago, 'TARJETA')
+  cerrarBaseDeDatos()
+})
+
+test('«poner vigente» sin cambios deja todo tal como estaba en la baja', async () => {
+  await carteraDePrueba()
+  const agosto = planillaDelMes(null)
+  const fila = buscar(agosto.filas, CLIENTES.lopez.nombre)
+  darDeBaja(fila.filaId, { motivo: 'OTRO', nota: '' }, DANIEL)
+  const baja = bajasDelMes('2026-08').find((b) => b.numeroPoliza === CLIENTES.lopez.poliza)
+  assert.ok(baja)
+  cerrarMes(DANIEL)
+
+  reactivarBaja(baja.id, DANIEL, {})
+  const vuelto = planillaDelMes(null).filas.find((f) => f.numeroPoliza === CLIENTES.lopez.poliza)
+  assert.ok(vuelto)
+  assert.equal(vuelto.compania, CLIENTES.lopez.cia)
+  assert.equal(vuelto.cuota, fila.cuota)
+  cerrarBaseDeDatos()
+})
+
+test('las bajas de «todos los meses» juntan las de cualquier período en una sola lista', async () => {
+  await carteraDePrueba()
+  const agosto = planillaDelMes(null)
+  const lopez = buscar(agosto.filas, CLIENTES.lopez.nombre)
+  darDeBaja(lopez.filaId, { motivo: 'OTRO', nota: '' }, DANIEL)
+  cerrarMes(DANIEL)
+  // Sólo el mes abierto admite bajas nuevas: Suárez se da de baja ya en septiembre.
+  const septiembre = planillaDelMes(null)
+  const suarez = buscar(septiembre.filas, CLIENTES.suarez.nombre)
+  darDeBaja(suarez.filaId, { motivo: 'OTRO', nota: '' }, DANIEL)
+
+  const deAgosto = bajasDelMes('2026-08')
+  const deSeptiembre = bajasDelMes('2026-09')
+  const todas = bajasDelMes('')
+  assert.ok(deAgosto.some((b) => b.numeroPoliza === CLIENTES.lopez.poliza))
+  assert.ok(deSeptiembre.some((b) => b.numeroPoliza === CLIENTES.suarez.poliza))
+  // «Todos los meses» no se queda con uno solo: trae más que mirar cualquiera de los dos por separado.
+  assert.ok(todas.length > deAgosto.length && todas.length > deSeptiembre.length)
+  assert.ok(todas.some((b) => b.numeroPoliza === CLIENTES.lopez.poliza))
+  assert.ok(todas.some((b) => b.numeroPoliza === CLIENTES.suarez.poliza))
+  cerrarBaseDeDatos()
+})
+
 test('un aviso de rechazo del débito le llega a la sucursal del cliente y se puede resolver', async () => {
   await carteraDePrueba()
   const fila = buscar(planillaDelMes(null).filas, CLIENTES.gonzalez.nombre)

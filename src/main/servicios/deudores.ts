@@ -20,6 +20,7 @@ import {
   FORMATOS_DE_DEUDORES,
   type FilaCartera,
   type FilaDeudor,
+  type FiltroEstadoDeDeuda,
   type FiltrosDeudores,
   type FormatoDeDeudores,
   type ListadoDeudores,
@@ -43,9 +44,11 @@ export function sanearFiltrosDeDeudores(bruto: unknown): FiltrosDeudores {
   // Los días del mes, acotados al 1-31: `numerosDeFiltro` ya los deja enteros, sin repetir y en orden.
   const dias = numerosDeFiltro(datos.dias).filter((d) => d >= 1 && d <= 31)
   const periodo = limpiar(datos.periodo)
+  const estado = datos.estado
   return {
     ...DEUDORES_SIN_FILTROS,
     periodo: /^\d{4}-\d{2}$/.test(periodo) ? periodo : '',
+    estado: estado === 'PAGOS' || estado === 'VENCIDOS' ? estado : '',
     sucursales: listaDeFiltro(datos.sucursales),
     companias: listaDeFiltro(datos.companias),
     formasDePago: listaDeFiltro(datos.formasDePago),
@@ -58,6 +61,13 @@ export function sanearFiltrosDeDeudores(bruto: unknown): FiltrosDeudores {
 function aDia(iso: string): number {
   const [anio, mes, dia] = iso.split('-').map(Number)
   return Math.floor(Date.UTC(anio ?? 1970, (mes ?? 1) - 1, dia ?? 1) / 86_400_000)
+}
+
+/** El filtro rápido TODOS | PAGOS | VENCIDOS de arriba de todo. */
+function coincideEstado(estado: FiltroEstadoDeDeuda, fila: FilaDeudor): boolean {
+  if (estado === 'VENCIDOS') return fila.vencida
+  if (estado === 'PAGOS') return fila.seCobraSola
+  return true
 }
 
 function aFilaDeudor(fila: FilaCartera, hoy: string): FilaDeudor {
@@ -153,10 +163,13 @@ function relevar(filtros: FiltrosDeudores, hoy: string): Relevamiento {
     if (filtros.formasDePago.length > 0) {
       // Lo tildado manda: pedir TARJETA es querer ver justamente las tarjetas que no entraron.
       if (!coincideAlguno(filtros.formasDePago, fila.formaPago, mismoTexto)) continue
-    } else if (!filtros.incluirDebito && esDebitoAutomatico(fila.formaPago)) {
+      // «Pagos» manda igual: pedirlas es querer ver justamente las que se cobran solas.
+    } else if (filtros.estado !== 'PAGOS' && !filtros.incluirDebito && esDebitoAutomatico(fila.formaPago)) {
       continue
     }
-    filas.push(aFilaDeudor(fila, hoy))
+    const deudor = aFilaDeudor(fila, hoy)
+    if (!coincideEstado(filtros.estado, deudor)) continue
+    filas.push(deudor)
   }
 
   return {
@@ -249,6 +262,8 @@ function importe(valor: number): string {
 function lineaDeFiltros(filtros: FiltrosDeudores): string {
   const partes: string[] = []
   partes.push(filtros.periodo ? nombreDePeriodo(filtros.periodo) : 'Todos los meses')
+  if (filtros.estado === 'VENCIDOS') partes.push('Sólo vencidas')
+  else if (filtros.estado === 'PAGOS') partes.push('Sólo las que se cobran solas')
   if (filtros.sucursales.length > 0) partes.push(`Sucursal: ${filtros.sucursales.join(', ')}`)
   if (filtros.companias.length > 0) partes.push(`Compañía: ${filtros.companias.join(', ')}`)
   if (filtros.formasDePago.length > 0) partes.push(`Forma de pago: ${filtros.formasDePago.join(', ')}`)

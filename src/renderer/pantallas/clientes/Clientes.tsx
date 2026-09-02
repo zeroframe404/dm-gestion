@@ -263,8 +263,12 @@ function ListadoDeClientes({
           <Boton icono="cargando" onClick={() => void cargar(filtros)} disabled={cargando}>
             Actualizar
           </Boton>
-          <Boton icono="lupa" onClick={() => setDeudoresAbierto(true)} title="Buscar deudores por sucursal, compañía, forma de pago y día de vencimiento">
-            Buscar deudores
+          <Boton
+            icono="lupa"
+            onClick={() => setDeudoresAbierto(true)}
+            title="Buscar clientes por estado de la deuda, sucursal, compañía, forma de pago y día de vencimiento"
+          >
+            Buscar clientes
           </Boton>
           {puedeEditar && (
             <Boton variante="primario" icono="mas" onClick={() => setDialogoAbierto(true)}>

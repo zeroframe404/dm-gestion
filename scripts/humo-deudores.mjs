@@ -1,6 +1,6 @@
 // Prueba de humo del buscador de deudores (Clientes): abre la aplicación de verdad contra una carpeta
 // sembrada, recorre los estados del listado —activos sin deuda, activos con deuda y bajas—, abre
-// «Buscar deudores», tilda días sueltos y una forma de pago, y exporta el listado a .xlsx y a .txt.
+// «Buscar clientes», tilda días sueltos y una forma de pago, y exporta el listado a .xlsx y a .txt.
 //
 //   npm run sembrar -- <carpeta>
 //   npm run humo:deudores -- <carpeta>
@@ -182,8 +182,8 @@ const abierto = await evaluar(`(async () => {
   ${AYUDA}
   chips().find((b) => b.textContent.startsWith('Todos')).click()
   await new Promise((r) => setTimeout(r, 400))
-  const boton = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Buscar deudores')
-  if (!boton) return { error: 'no está el botón «Buscar deudores»' }
+  const boton = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Buscar clientes')
+  if (!boton) return { error: 'no está el botón «Buscar clientes»' }
   boton.click()
   if (!(await esperar(() => !!dialogo()))) return { error: 'no se abrió el diálogo' }
   await esperar(() => cuantasDeudas() >= 0)
@@ -197,7 +197,7 @@ const abierto = await evaluar(`(async () => {
     grupos: [...dialogo().querySelectorAll('legend')].map((l) => l.textContent.trim()),
   }
 })()`)
-anotar('«Buscar deudores» abre con el mes abierto y algo para cobrar', abierto?.deudas > 0, abierto?.error ?? `${abierto?.deudas} deuda(s) · ${abierto?.mes}`)
+anotar('«Buscar clientes» abre con el mes abierto y algo para cobrar', abierto?.deudas > 0, abierto?.error ?? `${abierto?.deudas} deuda(s) · ${abierto?.mes}`)
 anotar('Están los 31 días para tildar', abierto?.dias === 31, `${abierto?.dias} días`)
 anotar(
   'Y los tres filtros que pide el mostrador',
