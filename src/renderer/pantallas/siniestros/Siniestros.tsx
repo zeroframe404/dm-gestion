@@ -17,12 +17,13 @@ import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { DialogoAltaSiniestro } from './DialogoAltaSiniestro'
 import { FichaSiniestro } from './FichaSiniestro'
 import { usePuedeEditar } from '../../contexto/Permisos'
 
-const FILTROS_VACIOS: FiltrosSiniestros = { periodo: '', busqueda: '', sucursal: '', compania: '', estado: '', soloRobos: false }
+const FILTROS_VACIOS: FiltrosSiniestros = { periodo: '', busqueda: '', sucursales: [], companias: [], estado: '', soloRobos: false }
 
 /** Cada estado con su color: el trámite se lee de un vistazo, sin leer la palabra. */
 export const CLASES_ESTADO: Record<EstadoSiniestro, string> = {
@@ -108,23 +109,9 @@ export function Siniestros() {
           />
         </div>
 
-        <select value={filtros.sucursal} onChange={(e) => cambiar({ sucursal: e.target.value })} className={selector} aria-label="Sucursal">
-          <option value="">Todas las sucursales</option>
-          {datos.sucursales.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <FiltroMultiple etiqueta="Sucursal" valores={filtros.sucursales} opciones={datos.sucursales} alCambiar={(v) => cambiar({ sucursales: v })} />
 
-        <select value={filtros.compania} onChange={(e) => cambiar({ compania: e.target.value })} className={selector} aria-label="Compañía">
-          <option value="">Todas las compañías</option>
-          {datos.companias.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <FiltroMultiple etiqueta="Compañía" valores={filtros.companias} opciones={datos.companias} alCambiar={(v) => cambiar({ companias: v })} />
 
         <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
           <input type="checkbox" checked={filtros.soloRobos} onChange={(e) => cambiar({ soloRobos: e.target.checked })} className="h-4 w-4" />

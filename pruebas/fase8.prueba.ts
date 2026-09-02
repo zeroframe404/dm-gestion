@@ -283,7 +283,7 @@ test('«Convertir en cliente» crea el cliente con los datos del lead: no se tip
 test('convertir dos veces no duplica al cliente, y un DNI que ya existe se reusa', async () => {
   await escenario()
   // El DNI de un cliente que ya está en la cartera importada.
-  const yaExiste = listarClientes({ busqueda: '30111222', sucursal: '', compania: '', estado: '' }).filas[0]
+  const yaExiste = listarClientes({ busqueda: '30111222', sucursales: [], companias: [], estado: '' }).filas[0]
   assert.ok(yaExiste, 'la cartera de prueba tiene a Pérez')
 
   const ficha = crearLead({ ...LEAD_VACIO, nombre: 'Pérez de nuevo', documento: '30111222', origen: 'LOCAL' }, DANIEL)
@@ -294,7 +294,7 @@ test('convertir dos veces no duplica al cliente, y un DNI que ya existe se reusa
 
   const segunda = convertirLeadEnCliente(ficha.lead.id, DANIEL)
   assert.equal(segunda.clienteId, primera.clienteId, 'convertir de nuevo devuelve el mismo cliente')
-  assert.equal(listarClientes({ busqueda: '30111222', sucursal: '', compania: '', estado: '' }).filas.length, 1, 'no se duplicó nadie')
+  assert.equal(listarClientes({ busqueda: '30111222', sucursales: [], companias: [], estado: '' }).filas.length, 1, 'no se duplicó nadie')
 })
 
 test('las notas de la charla se acumulan y viajan a la columna NOTAS de la hoja', async () => {

@@ -40,7 +40,17 @@ export function listaDeFiltro(valor: unknown): string[] {
   return lista
 }
 
-/** true si los dos textos son el mismo una vez plegados. Es la comparación por defecto de los filtros. */
+/**
+ * true si los dos textos son el mismo una vez plegados. Es la comparación por defecto de los filtros
+ * **del renderer**, donde cada pantalla ya tenía su `normalizar` que borra la puntuación entera.
+ *
+ * En el proceso principal, en cambio, la comparación de siempre es `mismoTexto` de
+ * `src/main/importacion/normalizar.ts`, que deja un espacio donde estaba la puntuación en vez de
+ * borrarla: para ése «RIO URUGUAY» y «RIOURUGUAY» son dos compañías distintas, y para éste son la
+ * misma. La diferencia es chica pero real, así que **cada lado sigue usando el suyo**: pasarle a
+ * `coincideAlguno` el comparador que la pantalla o el servicio ya usaba es lo único que garantiza que
+ * elegir de a varios traiga exactamente las mismas filas que elegir de a uno.
+ */
 export function mismoTextoDeFiltro(a: unknown, b: unknown): boolean {
   return normalizarParaFiltro(a) === normalizarParaFiltro(b)
 }
@@ -58,15 +68,4 @@ export function coincideAlguno(
 ): boolean {
   if (!elegidos || elegidos.length === 0) return true
   return elegidos.some((elegido) => iguales(elegido, valor))
-}
-
-/**
- * Los `?` de un `IN (…)` de SQLite, uno por valor: `marcadoresDeFiltro(3)` da `'?, ?, ?'`.
- *
- * Se arma así y no interpolando los valores porque los valores vienen de la pantalla. Con la lista
- * vacía devuelve `''`: el que llama tiene que saltear la condición entera, porque `IN ()` no es SQL
- * válido —y además «sin nada elegido» es «todas», no «ninguna».
- */
-export function marcadoresDeFiltro(cantidad: number): string {
-  return new Array(Math.max(0, cantidad)).fill('?').join(', ')
 }

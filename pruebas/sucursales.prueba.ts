@@ -325,10 +325,10 @@ test('en Clientes, «Dock Sud» encuentra la ficha que la celda dejó escrita «
      VALUES ('doc:26999888', 'QUIROGA NATALIA', '26999888', 'Avellaneda', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
   ).run()
 
-  const listado = listarClientes({ busqueda: '', sucursal: '', compania: '', estado: '' })
+  const listado = listarClientes({ busqueda: '', sucursales: [], companias: [], estado: '' })
   assert.deepEqual(listado.sucursales, [...SUCURSALES], '«Avellaneda» no es una quinta opción')
 
-  const porDockSud = listarClientes({ busqueda: '', sucursal: 'Dock Sud', compania: '', estado: '' })
+  const porDockSud = listarClientes({ busqueda: '', sucursales: ['Dock Sud'], companias: [], estado: '' })
   assert.deepEqual(porDockSud.filas.map((f) => f.nombre), ['QUIROGA NATALIA'])
   cerrarBaseDeDatos()
 })

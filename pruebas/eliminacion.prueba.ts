@@ -43,7 +43,7 @@ const DANIEL: SesionUsuario = {
 const ANA: SesionUsuario = { ...DANIEL, id: 2, nombre: 'Ana Ruiz', usuario: 'ana', rol: 'ADMIN' }
 const MARIA: SesionUsuario = { ...DANIEL, id: 3, nombre: 'María Pérez', usuario: 'maria', rol: 'EMPLEADO' }
 
-const SIN_FILTROS: FiltrosClientes = { busqueda: '', sucursal: '', compania: '', estado: '' }
+const SIN_FILTROS: FiltrosClientes = { busqueda: '', sucursales: [], companias: [], estado: '' }
 
 const carpetasTemporales: string[] = []
 test.after(() => {

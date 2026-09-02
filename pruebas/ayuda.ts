@@ -140,7 +140,7 @@ export function desplegablesDeSucursal(hoy?: string): Array<[string, string[]]> 
   return [
     ['Cartera', catalogos().sucursales],
     ['Pólizas', catalogosDePoliza().sucursales],
-    ['Clientes', listarClientes({ busqueda: '', sucursal: '', compania: '', estado: '' }).sucursales],
+    ['Clientes', listarClientes({ busqueda: '', sucursales: [], companias: [], estado: '' }).sucursales],
     ['Caja del día', cajaDelDia(null, '').sucursales],
     ['Mora', mora({ busqueda: '', sucursal: '', compania: '', rango: '', incluirDebito: true }, hoy).sucursales],
     ['Deudores', buscarDeudores(DEUDORES_SIN_FILTROS, hoy).sucursales],

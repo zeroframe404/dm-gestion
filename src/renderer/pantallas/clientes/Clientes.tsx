@@ -6,6 +6,7 @@
 // virtualizadas, así que dejarlas montadas no cuesta nada.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FilaCliente, FiltroEstadoCliente, FiltrosClientes, ListadoClientes, ResumenDeClientes } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
@@ -18,7 +19,7 @@ import { DialogoDeudores } from './DialogoDeudores'
 import { DialogoNuevoCliente } from './DialogoNuevoCliente'
 import { FichaDelCliente } from './FichaCliente'
 
-const FILTROS_VACIOS: FiltrosClientes = { busqueda: '', sucursal: '', compania: '', estado: '' }
+const FILTROS_VACIOS: FiltrosClientes = { busqueda: '', sucursales: [], companias: [], estado: '' }
 
 /**
  * Las vistas de la cartera, en el orden en que se miran: primero cuántos hay, después quiénes están
@@ -162,7 +163,7 @@ function ListadoDeClientes({
     void cargar(filtros)
   }, [cargar, filtros, relecturas])
 
-  const hayFiltros = Boolean(filtros.busqueda || filtros.sucursal || filtros.compania || filtros.estado)
+  const hayFiltros = Boolean(filtros.busqueda || filtros.sucursales.length || filtros.companias.length || filtros.estado)
 
   const columnas: Array<ColumnaTabla<FilaCliente>> = [
     // El nombre queda pegado a la izquierda y no se puede apagar: es lo que identifica la fila.
@@ -287,17 +288,17 @@ function ListadoDeClientes({
             className="h-9 w-96 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-marino-500 focus:outline-none focus:ring-2 focus:ring-marino-500/25"
           />
         </div>
-        <FiltroDesplegable
+        <FiltroMultiple
           etiqueta="Sucursal"
-          valor={filtros.sucursal}
+          valores={filtros.sucursales}
           opciones={datos?.sucursales ?? []}
-          alCambiar={(valor) => setFiltros((previos) => ({ ...previos, sucursal: valor }))}
+          alCambiar={(v) => setFiltros((previos) => ({ ...previos, sucursales: v }))}
         />
-        <FiltroDesplegable
+        <FiltroMultiple
           etiqueta="Compañía"
-          valor={filtros.compania}
+          valores={filtros.companias}
           opciones={datos?.companias ?? []}
-          alCambiar={(valor) => setFiltros((previos) => ({ ...previos, compania: valor }))}
+          alCambiar={(v) => setFiltros((previos) => ({ ...previos, companias: v }))}
         />
         {hayFiltros && (
           <Boton
@@ -382,33 +383,3 @@ function ListadoDeClientes({
 // Piezas
 // ---------------------------------------------------------------------------
 
-function FiltroDesplegable({
-  etiqueta,
-  valor,
-  opciones,
-  alCambiar,
-}: {
-  etiqueta: string
-  valor: string
-  opciones: string[]
-  alCambiar: (valor: string) => void
-}) {
-  return (
-    <select
-      value={valor}
-      onChange={(evento) => alCambiar(evento.target.value)}
-      aria-label={etiqueta}
-      className={cx(
-        'h-9 max-w-52 rounded-lg border bg-white px-2 text-sm',
-        valor ? 'border-marino-400 font-semibold text-marino-800' : 'border-slate-300 text-slate-700',
-      )}
-    >
-      <option value="">{etiqueta}: todas</option>
-      {opciones.map((opcion) => (
-        <option key={opcion} value={opcion}>
-          {opcion}
-        </option>
-      ))}
-    </select>
-  )
-}

@@ -2,6 +2,9 @@
 // Este archivo no puede importar nada de Electron ni de Node: lo usan los tres lados.
 import type { DireccionEstructurada } from './direccion'
 import type { MatrizPermisos, PermisosDeUnRol } from './permisos'
+// Sólo el tipo: `ramas.ts` importa de acá `CategoriaDeVehiculo`, también sólo el tipo, así que las dos
+// flechas se borran al compilar y no queda ningún ciclo en tiempo de ejecución.
+import type { Rama } from './ramas'
 
 export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'EMPLEADO'] as const
 export type Rol = (typeof ROLES)[number]
@@ -975,7 +978,9 @@ export interface RespaldoGuardado {
 // Clientes, pólizas y renovaciones
 // ---------------------------------------------------------------------------
 
-export type EstadoPoliza = 'ACTIVA' | 'BAJA' | 'VENCIDA'
+/** Los tres estados posibles. La constante existe para poder validar lo que llega de la pantalla. */
+export const ESTADOS_DE_POLIZA = ['ACTIVA', 'VENCIDA', 'BAJA'] as const
+export type EstadoPoliza = (typeof ESTADOS_DE_POLIZA)[number]
 
 /**
  * Cómo está el cliente hoy:
@@ -1007,9 +1012,10 @@ export type FiltroEstadoCliente = '' | 'activos-sin-deuda' | 'activos-con-deuda'
 
 export interface FiltrosClientes {
   busqueda: string
-  sucursal: string
-  compania: string
-  /** '' = todos; el resto acota por cómo está el cliente y si debe. */
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
+  companias: string[]
+  /** '' = todos. Es un botón con su contador, no un desplegable: se elige uno. */
   estado: FiltroEstadoCliente
 }
 
@@ -1096,7 +1102,14 @@ export interface PolizaDeCliente {
   observaciones: string | null
   estado: EstadoPoliza
   vehiculoId: number | null
+  /** Cómo se nombra el riesgo en la lista: «FORD FIESTA» dice más que «AUTO». */
   vehiculo: string | null
+  /**
+   * La rama de la agencia («AUTO», «PICK UP»…), deducida del tipo del riesgo y de la categoría del
+   * catálogo, o null cuando el riesgo no es de ninguna de las siete (un hogar, una bicicleta). Se
+   * calcula en el servicio y no en la pantalla porque el tipo crudo no viaja: ver `src/shared/ramas.ts`.
+   */
+  rama: Rama | null
   patente: string | null
   clienteId: number
   clienteNombre: string | null
@@ -1170,10 +1183,14 @@ export interface FichaCliente {
 
 export interface FiltrosPolizas {
   busqueda: string
-  estado: '' | EstadoPoliza
-  compania: string
-  sucursal: string
-  cobertura: string
+  /** Vacíos = todos. Acá el estado SÍ es un desplegable más, así que también elige de a varios. */
+  estados: EstadoPoliza[]
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  companias: string[]
+  sucursales: string[]
+  coberturas: string[]
+  /** Las siete de `src/shared/ramas.ts`, más lo que la base tenga fuera del catálogo. */
+  ramas: string[]
 }
 
 /** Una regla de la matriz de coberturas: qué antigüedad de vehículo acepta cada compañía. */
@@ -1420,6 +1437,8 @@ export interface CatalogosDePoliza {
   formasDePago: string[]
   sucursales: string[]
   tiposDeVehiculo: string[]
+  /** Las opciones del filtro de rama: las siete de la agencia más lo que la base traiga aparte. */
+  ramas: string[]
 }
 
 export interface ListadoPolizas {
@@ -1838,11 +1857,13 @@ export interface FilaSiniestro {
 }
 
 export interface FiltrosSiniestros {
-  /** 'AAAA-MM' del mes de carga; '' = todos los meses. */
+  /** 'AAAA-MM' del mes de carga; '' = todos los meses. Elige el mes que se mira, no filtra dentro. */
   periodo: string
   busqueda: string
-  sucursal: string
-  compania: string
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
+  companias: string[]
+  /** '' = todos. Es una pestaña con su contador, no un desplegable: se elige uno. */
   estado: '' | EstadoSiniestro
   /** Sólo los que mencionan ROBO. */
   soloRobos: boolean

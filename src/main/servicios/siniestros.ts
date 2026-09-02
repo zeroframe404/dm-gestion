@@ -8,6 +8,7 @@
 // de tiempo para que quien mire la planilla vea lo mismo que quien mira la ficha.
 import { hoyLocal } from '../../shared/semaforo'
 import { estadoTextoDiferente, mencionaRobo, normalizarEstadoSiniestro } from '../../shared/siniestros'
+import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_SINIESTRO,
@@ -169,8 +170,8 @@ function normalizarFiltros(filtros: unknown): FiltrosSiniestros {
   return {
     periodo: /^\d{4}-\d{2}$/.test(limpiar(f.periodo)) ? limpiar(f.periodo) : '',
     busqueda: limpiar(f.busqueda).slice(0, 100),
-    sucursal: limpiar(f.sucursal).slice(0, 80),
-    compania: limpiar(f.compania).slice(0, 80),
+    sucursales: listaDeFiltro(f.sucursales).map((v) => v.slice(0, 80)),
+    companias: listaDeFiltro(f.companias).map((v) => v.slice(0, 80)),
     estado: (ESTADOS_DE_SINIESTRO as readonly string[]).includes(estado) ? (estado as EstadoSiniestro) : '',
     soloRobos: f.soloRobos === true,
   }
@@ -204,8 +205,8 @@ export function listarSiniestros(filtros: unknown): ListadoSiniestros {
   const sinEstado = todas.filter(
     ({ fila, cruda }) =>
       (!f.periodo || cruda.periodo === f.periodo) &&
-      (!f.sucursal || mismaSucursal(fila.sucursal, f.sucursal)) &&
-      (!f.compania || mismoTexto(fila.compania, f.compania)) &&
+      coincideAlguno(f.sucursales, fila.sucursal, mismaSucursal) &&
+      coincideAlguno(f.companias, fila.compania, mismoTexto) &&
       (!f.soloRobos || fila.esRobo) &&
       coincide(fila),
   )

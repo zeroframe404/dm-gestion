@@ -15,6 +15,8 @@ import {
 } from '../../shared/direccion'
 import { leerIntegrantes } from '../../shared/riesgos'
 import { esDebitoAutomatico, hoyLocal } from '../../shared/semaforo'
+import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
+import { ramaDeVehiculo } from '../../shared/ramas'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   NOMBRE_ESTADO_TAREA,
@@ -43,6 +45,7 @@ import {
   ahoraIso,
   generarId,
   limpiar,
+  mismoTexto,
   normalizarDocumento,
   normalizarNumeroPoliza,
   normalizarPatente,
@@ -368,8 +371,8 @@ function sucursalesDelListado(): string[] {
 
 interface FiltrosLimpios {
   termino: Termino
-  sucursal: string
-  compania: string
+  sucursales: string[]
+  companias: string[]
   estado: FiltroEstadoCliente
 }
 
@@ -380,12 +383,12 @@ function limpiarFiltros(filtros: FiltrosClientes): FiltrosLimpios {
   const estado = ESTADOS_DEL_FILTRO.includes(datos.estado as FiltroEstadoCliente) ? (datos.estado as FiltroEstadoCliente) : ''
   return {
     termino: interpretarBusqueda(datos.busqueda),
-    // La sucursal NO se pliega con `normalizarTexto`: se compara con `mismaSucursal`, que es la que
-    // sabe que «AVELLANEDA» es Dock Sud y que «DOCKSUD» sin espacio es el mismo mostrador. Es el mismo
-    // plegado con el que `sucursalesParaElegir` arma el desplegable: si acá se plegara distinto,
+    // Las sucursales NO se pliegan con `normalizarTexto`: se comparan con `mismaSucursal`, que es la
+    // que sabe que «AVELLANEDA» es Dock Sud y que «DOCKSUD» sin espacio es el mismo mostrador. Es el
+    // mismo plegado con el que `sucursalesParaElegir` arma el desplegable: si acá se plegara distinto,
     // habría opciones que no traen ninguna fila y filas que ninguna opción trae.
-    sucursal: limpiar(datos.sucursal),
-    compania: normalizarTexto(datos.compania),
+    sucursales: listaDeFiltro(datos.sucursales),
+    companias: listaDeFiltro(datos.companias),
     estado,
   }
 }
@@ -403,10 +406,11 @@ function filasFiltradas(filtros: FiltrosLimpios, datos: Agregados, limite: numbe
 
   const filas: FilaCliente[] = []
   for (const cruda of crudas) {
-    if (filtros.sucursal && !mismaSucursal(cruda.sucursal_texto, filtros.sucursal)) continue
-    if (filtros.compania) {
+    if (!coincideAlguno(filtros.sucursales, cruda.sucursal_texto, mismaSucursal)) continue
+    if (filtros.companias.length > 0) {
+      // Un cliente entra si ALGUNA de sus pólizas es de ALGUNA de las compañías elegidas.
       const suyas = datos.companias.get(cruda.id) ?? []
-      if (!suyas.some((compania) => normalizarTexto(compania) === filtros.compania)) continue
+      if (!suyas.some((compania) => coincideAlguno(filtros.companias, compania, mismoTexto))) continue
     }
     if (indice && !coincide(cruda, filtros.termino, indice.patentes.get(cruda.id) ?? [], indice.polizas.get(cruda.id) ?? [])) {
       continue
@@ -457,7 +461,7 @@ export function buscarClientes(busqueda: string, limite = 20): FilaCliente[] {
   const termino = interpretarBusqueda(busqueda)
   if (!termino.texto) return []
   const tope = Number.isInteger(limite) && limite > 0 ? Math.min(limite, 100) : 20
-  return filasFiltradas({ termino, sucursal: '', compania: '', estado: '' }, agregados(), tope)
+  return filasFiltradas({ termino, sucursales: [], companias: [], estado: '' }, agregados(), tope)
 }
 
 // ---------------------------------------------------------------------------
@@ -499,6 +503,7 @@ interface PolizaCruda {
   marca: string | null
   modelo: string | null
   tipo: string | null
+  categoria: string | null
 }
 
 /** Cómo se nombra el vehículo en las listas de pólizas: «FORD FIESTA» dice más que «AUTO». */
@@ -513,7 +518,7 @@ function polizasDe(cliente: ClienteCrudo, hoy: string): PolizaDeCliente[] {
     .prepare(
       `SELECT p.id, p.fila_id, p.numero, p.propuesta, p.compania, p.cobertura, p.forma_pago, p.avisar_vto,
               p.observaciones, p.vigencia_desde, p.vigencia_hasta, p.vigencia_hasta_iso, p.activa, p.vehiculo_id,
-              v.patente, v.marca, v.modelo, v.tipo
+              v.patente, v.marca, v.modelo, v.tipo, v.categoria
        FROM polizas p LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
        WHERE p.cliente_id = ?`,
     )
@@ -573,6 +578,7 @@ function polizasDe(cliente: ClienteCrudo, hoy: string): PolizaDeCliente[] {
       estado,
       vehiculoId: cruda.vehiculo_id,
       vehiculo: describirVehiculo(cruda),
+      rama: ramaDeVehiculo(cruda.tipo, cruda.categoria),
       patente: cruda.patente,
       clienteId: cliente.id,
       clienteNombre: cliente.nombre,
