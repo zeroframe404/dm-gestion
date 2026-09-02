@@ -15,12 +15,14 @@ import { registrarIpc } from './ipc'
 import { carpetaDatos, configurarCarpetaDatos, rutaBaseDeDatos } from './rutas'
 import { adoptarAjustesAlArrancar } from './servicios/ajustesCompartidos'
 import { configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
+import { credencialesVps } from './servicios/config'
 import { hayImportacionEnCurso, marcarImportacionesInterrumpidas } from './servicios/importacion'
 import { detenerSincronizacion } from './servicios/sincronizacion'
 import { detenerActualizaciones, iniciarActualizaciones } from './servicios/updater'
 import { AlmacenDeVinculo, configurarAlmacenDeRedes } from './redes/almacen'
 import { AlmacenDeCredencial } from './usuarios/credencial'
 import { AlmacenGitHub, REPO_DATOS, TOKEN_DATOS, TOKEN_DATOS_ANTERIOR } from './usuarios/github'
+import { AlmacenVps } from './usuarios/vps'
 
 /** En desarrollo, scripts/dev.mjs pasa la URL del servidor de Vite. */
 const URL_DESARROLLO = process.env.VITE_DEV_SERVER_URL
@@ -156,21 +158,65 @@ function crearVentana(): void {
 }
 
 /**
- * Base de usuarios compartida (Fase 11). El token y el repositorio son constantes del programa; en
- * desarrollo arranca en modo local salvo que se pida lo contrario por variable de entorno, para que
- * `npm run dev`, `sembrar` y los scripts de humo nunca toquen el repositorio de verdad.
- *   DM_GESTION_TOKEN_DATOS    token a usar (sólo desarrollo)
- *   DM_GESTION_GITHUB_API     URL base de la API (sólo desarrollo: simulador local o puerto cerrado = «sin internet»)
+ * El almacén de GitHub, si esta versión todavía lo tiene configurado.
+ *
+ * Desde la v12.4 no es la casa de la base de usuarios: es la SEMILLA de la mudanza al VPS y nada más
+ * (ver usuarios/vps.ts). Se conserva para que la primera computadora que abra el programa después de
+ * actualizar pueda copiar el usuarios.json que hoy está en el repositorio; cuando la agencia ya esté
+ * migrada, TOKEN_DATOS se puede vaciar y revocar el token.
+ */
+function almacenDeGitHub(enDesarrollo: boolean): AlmacenGitHub | null {
+  const tokens = enDesarrollo ? [process.env.DM_GESTION_TOKEN_DATOS ?? ''] : [TOKEN_DATOS, TOKEN_DATOS_ANTERIOR]
+  if (!tokens.some((t) => t.trim() !== '')) return null
+  return new AlmacenGitHub({
+    repo: REPO_DATOS,
+    tokens,
+    urlBase: enDesarrollo ? process.env.DM_GESTION_GITHUB_API : undefined,
+    archivo: enDesarrollo ? process.env.DM_GESTION_ARCHIVO_DATOS : undefined,
+  })
+}
+
+/**
+ * La base de usuarios en el VPS, que es donde vive desde la v12.4.
+ *
+ * En desarrollo NUNCA se toca el VPS real, igual que con la base del GENERAL DE CLIENTES: sólo se
+ * habla con un servidor si `DM_GESTION_VPS_URL` apunta a uno (el simulador). Así `npm run dev`,
+ * `sembrar` y los scripts de humo no pueden escribir la lista de usuarios de la agencia.
+ */
+function almacenDelVps(enDesarrollo: boolean, semilla: AlmacenGitHub | null): AlmacenVps | null {
+  const credenciales = enDesarrollo
+    ? process.env.DM_GESTION_VPS_URL
+      ? { urlBase: process.env.DM_GESTION_VPS_URL, token: process.env.DM_GESTION_VPS_TOKEN ?? 'prueba' }
+      : null
+    : credencialesVps()
+  if (!credenciales) return null
+  try {
+    return new AlmacenVps({ ...credenciales, semilla })
+  } catch (error) {
+    // Una URL mal escrita en el config.json no puede dejar el programa sin abrir: se anota y se sigue
+    // con lo que haya (GitHub durante la mudanza, o usuarios locales).
+    console.error('[usuarios] No se pudo preparar la base de usuarios del VPS:', detalleDelError(error))
+    return null
+  }
+}
+
+/**
+ * Base de usuarios compartida. Desde la v12.4 la casa es el VPS de la agencia y GitHub queda sólo como
+ * semilla de la mudanza; en desarrollo arranca en modo local salvo que se pida lo contrario por
+ * variable de entorno, para que `npm run dev`, `sembrar` y los scripts de humo nunca toquen nada real.
+ *   DM_GESTION_VPS_URL        servidor del puente (sólo desarrollo: el simulador)
+ *   DM_GESTION_VPS_TOKEN      token del puente (sólo desarrollo; por defecto el del simulador)
+ *   DM_GESTION_TOKEN_DATOS    token de GitHub para la semilla (sólo desarrollo)
+ *   DM_GESTION_GITHUB_API     URL base de la API de GitHub (sólo desarrollo: simulador local o puerto cerrado = «sin internet»)
  *   DM_GESTION_ARCHIVO_DATOS  otro archivo dentro del repo (sólo desarrollo: probar contra GitHub real sin tocar usuarios.json)
  */
 function prepararBaseDeUsuarios(): void {
   const enDesarrollo = !app.isPackaged
-  const tokens = enDesarrollo
-    ? [process.env.DM_GESTION_TOKEN_DATOS ?? '']
-    : [TOKEN_DATOS, TOKEN_DATOS_ANTERIOR]
-  const hayToken = tokens.some((t) => t.trim() !== '')
-  const urlBase = enDesarrollo ? process.env.DM_GESTION_GITHUB_API : undefined
-  const archivo = enDesarrollo ? process.env.DM_GESTION_ARCHIVO_DATOS : undefined
+  const github = almacenDeGitHub(enDesarrollo)
+  const vps = almacenDelVps(enDesarrollo, github)
+  // El VPS manda. GitHub sólo sigue siendo el almacén mientras el VPS no esté disponible en esta
+  // versión (desarrollo sin simulador), y en ese caso se comporta exactamente como antes.
+  const almacen = vps ?? github
 
   const cifrador = {
     disponible: () => safeStorage.isEncryptionAvailable(),
@@ -178,15 +224,16 @@ function prepararBaseDeUsuarios(): void {
     descifrar: (datos: Buffer) => safeStorage.decryptString(datos),
   }
   configurarBaseDeUsuarios({
-    almacen: hayToken ? new AlmacenGitHub({ repo: REPO_DATOS, tokens, urlBase, archivo }) : null,
+    almacen,
     credenciales: new AlmacenDeCredencial(path.join(carpetaDatos(), 'credencial.bin'), cifrador),
-    sinTokenEnProduccion: !enDesarrollo && !hayToken,
+    sinTokenEnProduccion: !enDesarrollo && !almacen,
     version: app.getVersion(),
   })
   // El vínculo con Meta usa el mismo cifrador: adentro va el token de la Página, que no vence y
   // publica en nombre de la agencia.
   configurarAlmacenDeRedes(new AlmacenDeVinculo(path.join(carpetaDatos(), 'redes.bin'), cifrador))
-  if (!hayToken) console.log(enDesarrollo ? '[usuarios] Desarrollo sin DM_GESTION_TOKEN_DATOS: usuarios locales.' : '[usuarios] Versión publicada sin TOKEN_DATOS: usuarios locales.')
+  if (almacen) console.log(`[usuarios] Base de usuarios: ${almacen.descripcion}.`)
+  else console.log(enDesarrollo ? '[usuarios] Desarrollo sin DM_GESTION_VPS_URL: usuarios locales.' : '[usuarios] Versión publicada sin servidor de usuarios: usuarios locales.')
 }
 
 function arrancar(): void {

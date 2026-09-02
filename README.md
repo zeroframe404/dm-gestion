@@ -11,10 +11,10 @@ hoja de Google dejó de ser la fuente de verdad. Ver «La base en el VPS (Fase 1
 
 ```bash
 npm install       # instala dependencias (better-sqlite3 trae binarios listos, no compila nada)
-npm run dev       # desarrollo con recarga automática (usuarios locales: sin DM_GESTION_TOKEN_DATOS no toca GitHub)
-npm run prueba    # 605 pruebas propias, sin tocar ninguna hoja real ni GitHub
+npm run dev       # desarrollo con recarga automática (usuarios locales: sin DM_GESTION_VPS_URL no toca ningún servidor)
+npm run prueba    # las pruebas propias, sin tocar ninguna base real ni GitHub
 npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
-npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador de GitHub
+npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador
 npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
 ```
 
@@ -23,7 +23,8 @@ npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un ar
 **En la computadora que inicializa la base compartida** (la primera, una sola vez): al arrancar se crea
 el usuario **daniel** con la contraseña **cambiar123** (rol SUPER_ADMIN) y la aplicación obliga a
 cambiarla al entrar. Después, desde Administración → Usuarios, el botón **Subir usuarios** publica
-los usuarios de esa computadora en GitHub (ver «Base de usuarios compartida» más abajo).
+los usuarios de esa computadora en el servidor de la agencia (ver «Base de usuarios compartida» más
+abajo).
 
 **En cualquier otra computadora**: la primera vez hace falta internet, porque el usuario y la
 contraseña se comprueban contra la base compartida. A partir de ahí, el último que ingresó con
@@ -173,8 +174,9 @@ Cómo funciona, en corto:
   sincronización, la cola, los conflictos y el importador corren tal cual, sólo cambió el transporte.
   Sin internet se sigue trabajando local y la cola espera, igual que siempre.
 - **La URL y el token van embebidos** (`src/main/servicios/config.ts`, mismo criterio que
-  `TOKEN_DATOS` y `UPDATE_TOKEN`): las PCs se actualizan y quedan conectadas sin configurar nada.
-  El token tiene que coincidir con el `DMG_SYNC_TOKEN` del `.env` del VPS.
+  `UPDATE_TOKEN`): las PCs se actualizan y quedan conectadas sin configurar nada. El token tiene que
+  coincidir con el `DMG_SYNC_TOKEN` del `.env` del VPS, y desde la v12.4 es también el que abre la base
+  de usuarios: es una sola puerta para todo lo compartido.
 - **Primero se actualizan TODAS las computadoras a la v12, después se migra.** Una PC que siga en
   1.0.x escribe en Google sin ningún aviso, y lo que cargue después de la migración no llega al VPS
   (habría que repetirlo a mano en una PC al día). El ciclo de actualización automática es de hasta
@@ -1213,94 +1215,131 @@ npm run publicar:parche                           # publica 1.0.1
 # aparece la barra de aviso; Reiniciar ahora deja la app en 1.0.1
 ```
 
-## Base de usuarios compartida (Fase 11)
+## Base de usuarios compartida (Fase 11, mudada al VPS en la v12.4)
 
-Los usuarios ya no viven en cada computadora: viven en **`usuarios.json` del repositorio privado
-`zeroframe404/dm-gestion-datos`** (una «microbase» leída y escrita con la API Contents de GitHub).
-Un usuario creado en una PC entra en todas; desactivarlo o cambiarle la contraseña vale para todas.
-Código: `src/main/usuarios/` (documento, cliente de GitHub, credencial cifrada, espejo local) y
-`src/main/servicios/baseDeUsuarios.ts` (la orquestación).
+Los usuarios ya no viven en cada computadora: viven en **el VPS de la agencia**, en el mismo servidor
+que el GENERAL DE CLIENTES y detrás del mismo puente `/api/dmg` (endpoints `GET`/`POST
+/api/dmg/usuarios`). Un usuario creado en una PC entra en todas; desactivarlo o cambiarle la
+contraseña vale para todas. Código: `src/main/usuarios/` (documento, cliente del VPS, cliente de
+GitHub, credencial cifrada, espejo local) y `src/main/servicios/baseDeUsuarios.ts` (la orquestación).
+
+### Por qué se mudó, y qué pasó con GitHub
+
+Hasta la v12.3 el documento era **`usuarios.json` del repositorio privado
+`zeroframe404/dm-gestion-datos`**, y para llegar a él cada computadora llevaba embebido en el `.exe` un
+token con permiso de **escritura** sobre ese repositorio. Andaba, pero repartía una credencial de
+GitHub por máquina para leer un archivo que desde la v12 ya podía viajar por el puente que lleva la
+cartera entera. Cinco computadoras con un token de escritura es una superficie que no hacía falta
+tener.
+
+`AlmacenGitHub` sigue en el código, pero como **semilla de la mudanza y nada más**: la primera
+computadora que abre el programa después de actualizar encuentra el VPS sin documento, lee el
+`usuarios.json` del repositorio y lo sube tal cual (`AlmacenVps.mudarDesdeLaSemilla`). De ahí en más
+manda el VPS y GitHub no se vuelve a tocar. Es automático a propósito: pedirle a alguien que apriete un
+botón de migración es pedirle que se acuerde de hacerlo **antes** de que otro intente ingresar.
+
+Cuando la agencia ya esté migrada (Acerca de → «Base de usuarios» dice «Compartida · VPS
+dmartinezseguros.com»), se vacía `TOKEN_DATOS` en `src/main/usuarios/github.ts`, se revoca el token en
+GitHub y se publica con `--sin-base-de-usuarios`. El repositorio `dm-gestion-datos` queda como copia
+histórica.
+
+**El `sha` ahora es una versión.** Lo único que cambia para el servicio de usuarios: en GitHub era el
+hash del blob y acá es el número de versión que devuelve el servidor. Sigue siendo opaco y sigue
+haciendo lo mismo —el candado optimista—, así que `baseDeUsuarios.ts` no se enteró de la mudanza.
+
+**En el servidor** (`Seguros_Daniel_Martinez`): tabla `dmg_usuarios`, una sola fila con el documento
+entero cifrado con AES-256-GCM (la misma llave que los ajustes compartidos: `DMG_AJUSTES_CLAVE`, o el
+`DMG_SYNC_TOKEN` si no está). Adentro hay hashes de bcrypt, que ya son hashes, pero es la lista de
+quién entra a la agencia y un `pg_dump` no tiene por qué llevarla en claro.
 
 ### Cómo funciona
 
-- **Con internet**, cada ingreso lee el archivo (con ETag: si no cambió, GitHub responde 304 y no gasta
-  cuota), refresca el espejo local y compara la contraseña contra el hash bcrypt del archivo.
+- **Con internet**, cada ingreso lee el documento del servidor, refresca el espejo local y compara la
+  contraseña contra el hash bcrypt del documento.
 - **Sin internet** entra sólo el **último usuario que ingresó con conexión en esa PC**, con la credencial
   cifrada (`credencial.bin`) y por 30 días. Los demás ven «Sin internet. En esta computadora sólo puede
-  ingresar «daniel»…». Con la sesión abierta, cada 2 minutos se intenta confirmar contra GitHub; al
+  ingresar «daniel»…». Con la sesión abierta, cada 2 minutos se intenta confirmar contra el servidor; al
   confirmarse desaparece «Ingresaste sin internet» de la barra. Si en el medio lo desactivaron o le
   cambiaron la contraseña desde otra PC, la sesión se cierra con un aviso.
 - **Administrar usuarios exige internet y una sesión confirmada**: crear, editar, desactivar y resetear
-  se escriben en GitHub con el candado optimista del `sha` (si otra PC escribió en el medio, se relee y
-  se vuelve a aplicar; si la escritura se cortó sin respuesta, se relee y se comprueba si quedó). Cada
-  escritura es un commit con quién, desde qué PC y con qué versión: el historial del repo es la auditoría.
+  se escriben en el servidor con el candado optimista de la versión (si otra PC escribió en el medio, se
+  relee y se vuelve a aplicar; si la escritura se cortó sin respuesta, se relee y se comprueba si quedó).
+  Cada escritura guarda su mensaje —quién, desde qué PC y con qué versión del programa—, el mismo texto
+  que antes iba al mensaje del commit.
 - **Un usuario nuevo** entra con la contraseña temporal que le puso el administrador y tiene que
   cambiarla con internet; hasta entonces no se guarda credencial para entrar sin conexión.
 - Si el archivo está roto o no tiene ningún superadministrador activo, **no se refleja** (el espejo
   anterior se conserva) y el ingreso cae a la credencial guardada con el error a la vista del SUPER_ADMIN.
 
-### Puesta en marcha (una sola vez, el dueño del repositorio)
+### Puesta en marcha
 
-1. El repositorio ya existe: `zeroframe404/dm-gestion-datos` (privado, con README). Si hubiera que
-   recrearlo: `gh repo create zeroframe404/dm-gestion-datos --private --add-readme`. **Tiene que ser un
-   repositorio aparte** del código: el token de acá escribe, y si escribiera en `dm-gestion` cualquier PC
-   con el programa podría empujar código o publicar una versión que después instalarían todas.
-2. Generar el token en https://github.com/settings/tokens?type=beta → *Only select repositories* →
-   `dm-gestion-datos` → Repository permissions → **Contents: Read and write**, nada más. Elegir el
-   vencimiento más largo que permita la pantalla y **anotarlo**; que no coincida con el de
-   `UPDATE_TOKEN` (`src/main/servicios/updater.ts`), así nunca vencen los dos el mismo mes.
-3. Pegarlo en `TOKEN_DATOS` de `src/main/usuarios/github.ts` y publicar (`npm run publicar:parche`).
-   `publicar.mjs` se niega a publicar con el token vacío.
-4. En la computadora que tiene los usuarios de verdad (hoy, la única instalada), abrir la versión nueva,
-   ingresar y en **Administración → Usuarios → Subir usuarios**. Eso crea `usuarios.json`. No se hace
-   solo a propósito: una PC recién instalada subiría la semilla `daniel/cambiar123` y pisaría a los de
-   verdad. Si la única cuenta es `daniel` con la contraseña inicial, primero hay que cambiarla.
-5. Comprobar: Usuarios dice «Los usuarios se guardan en la base compartida…», y Acerca de → «Base de
-   usuarios» dice «Compartida · GitHub zeroframe404/dm-gestion-datos — última comprobación recién».
-   Las demás PCs, al actualizarse, ingresan directo contra GitHub (su `daniel` local queda enganchado al
-   de la base; los usuarios locales que no estén en la base quedan desactivados, sin contraseña).
+En una agencia que ya venía con la base en GitHub **no hay nada que hacer**: la primera computadora que
+abra la v12.4 muda el documento sola. Lo único que hay que comprobar después es que Acerca de → «Base
+de usuarios» diga «Compartida · VPS dmartinezseguros.com».
 
-### Rotar el token (vence, o se filtró)
+En una instalación desde cero:
 
-El programa lee el vencimiento que informa GitHub y avisa en Usuarios y en Acerca de desde 30 días
-antes. Si vence sin rotarlo, todas las PCs pasan a «sin acceso a la base de usuarios»: sólo entra el
-último de cada PC, nadie administra y ninguna PC nueva puede ingresar.
+1. En el `.env` del VPS tiene que estar `DMG_SYNC_TOKEN` (el mismo del puente de la cartera) y conviene
+   fijar `DMG_AJUSTES_CLAVE`, que es la llave con la que se cifran el documento y los ajustes. Rotar el
+   `DMG_SYNC_TOKEN` sin haber fijado antes `DMG_AJUSTES_CLAVE` deja los dos ilegibles.
+2. Correr la migración de Prisma (`dmg_usuarios`).
+3. En la computadora que tiene los usuarios de verdad, abrir el programa, ingresar y en
+   **Administración → Usuarios → Subir usuarios**. Eso crea el documento. No se hace solo a propósito:
+   una PC recién instalada subiría la semilla `daniel/cambiar123` y pisaría a los de verdad. Si la única
+   cuenta es `daniel` con la contraseña inicial, primero hay que cambiarla.
+4. Comprobar: Usuarios dice «Los usuarios se guardan en la base compartida…», y Acerca de → «Base de
+   usuarios» dice «Compartida · VPS dmartinezseguros.com — última comprobación recién». Las demás PCs, al
+   actualizarse, ingresan directo contra el servidor (su `daniel` local queda enganchado al de la base;
+   los usuarios locales que no estén en la base quedan desactivados, sin contraseña).
 
-1. Generar el token nuevo (mismos permisos). En `github.ts`: el nuevo a `TOKEN_DATOS`, el viejo a
-   `TOKEN_DATOS_ANTERIOR`. Publicar.
-2. Esperar a que todas las PCs se actualicen (el historial de commits de `usuarios.json` muestra la
-   versión con la que escribe cada una).
-3. Revocar el viejo en GitHub y vaciar `TOKEN_DATOS_ANTERIOR` en la versión siguiente.
+### Rotar el token
+
+El token del puente es uno solo y ya existía: se cambia en `VPS_TOKEN` (`src/main/servicios/config.ts`)
+y en el `DMG_SYNC_TOKEN` del `.env` del servidor, y tienen que cambiar los dos a la vez. **Antes de
+rotarlo hay que fijar `DMG_AJUSTES_CLAVE`** con el valor viejo, o el documento de usuarios y los ajustes
+compartidos quedan cifrados con una llave que ya no se deriva de nada.
+
+El token de GitHub (`TOKEN_DATOS`) ya no se rota: cuando la agencia terminó de migrar se vacía y se
+revoca. Mientras tanto sólo lo usa la mudanza, y el programa no avisa más de su vencimiento porque el
+del puente no vence.
 
 ### Recuperación de emergencia
 
 - **El único superadministrador olvidó la contraseña**: `npm run clave-hash -- "contraseña nueva"`
-  imprime el hash; editar `usuarios.json` en github.com, pegar el hash en `claveHash` de ese usuario y
-  poner `debeCambiarClave: true`. Nunca borrar `usuarios.json`: si no existe, las PCs lo tratan como
-  «la base no está inicializada».
+  imprime el hash; hay que pegarlo en `claveHash` de ese usuario dentro del documento y poner
+  `debeCambiarClave: true`. Como en el VPS el documento está cifrado, se edita desde el servidor: bajarlo
+  con `GET /api/dmg/usuarios` (con el `DMG_SYNC_TOKEN` como Bearer), cambiar el hash y devolverlo con
+  `POST /api/dmg/usuarios` mandando el mismo `shaPrevio` que trajo la lectura. Nunca borrar la fila: si
+  no existe, las PCs lo tratan como «la base no está inicializada».
 - **Una PC no puede entrar sin internet** («la copia guardada no se pudo leer», se borró `sesion/`, se
   cambió la cuenta de Windows): hace falta un ingreso con internet, nada más.
 - **Probar la conexión** sin cerrar sesión: Acerca de → «Probar conexión».
 
 ### Qué NO protege esto (decisión de arquitectura, leer antes de confiar en los roles)
 
-El token viaja dentro del instalador, igual que `UPDATE_TOKEN`, y cualquiera que tenga el programa
-puede extraerlo y reescribir `usuarios.json` desde afuera (agregarse como SUPER_ADMIN, cambiar
+El token del puente viaja dentro del instalador, igual que `UPDATE_TOKEN`, y cualquiera que tenga el
+programa puede extraerlo y reescribir el documento desde afuera (agregarse como SUPER_ADMIN, cambiar
 contraseñas, bajar los hashes). **Los roles protegen contra errores, no contra un empleado
-malintencionado con el instalador.** Es el precio de una base sin servidor con una sola credencial
-compartida; la alternativa (una cuenta de GitHub por persona, o un servicio intermedio) cambia el
-alcance. Lo que sí se hace: el repositorio de datos está aparte del código, el token no tiene ningún
-otro permiso, cada escritura queda en el historial con quién/dónde/versión, las contraseñas sólo
-existen como bcrypt, y la sesión sin internet se arma desde la credencial cifrada y no desde la tabla
-local (que cualquiera podría editar con un cliente SQLite).
+malintencionado con el instalador.** Es el precio de una sola credencial compartida entre las cinco
+computadoras; la alternativa (una cuenta por persona contra el servidor) cambia el alcance.
+
+Lo que sí mejoró con la mudanza: ya no hay un token de **GitHub** con permiso de escritura repartido por
+máquina, así que el peor caso es reescribir el documento de usuarios y no tocar un repositorio. Y lo que
+se mantiene: el token del puente no sirve para nada más que el puente, cada escritura guarda
+quién/dónde/versión, las contraseñas sólo existen como bcrypt, el documento se guarda cifrado en el
+servidor, y la sesión sin internet se arma desde la credencial cifrada y no desde la tabla local (que
+cualquiera podría editar con un cliente SQLite).
 
 ### En desarrollo y en las pruebas
 
 `npm run dev`, `sembrar` y todos los `humo:*` arrancan en **modo local** (usuarios en la tabla, como
-antes) salvo que se defina `DM_GESTION_TOKEN_DATOS`; `DM_GESTION_GITHUB_API` apunta la API a un
-simulador local (o a un puerto cerrado, para «cortar internet») y `DM_GESTION_ARCHIVO_DATOS` usa otro
-archivo del repo (así `--real` no toca `usuarios.json`). Las tres variables sólo valen en desarrollo.
-El simulador de la API Contents está en `scripts/github-simulado.mjs` y lo usan las pruebas y el humo.
+antes) salvo que se defina `DM_GESTION_VPS_URL`, que es la misma variable con la que se apunta la
+cartera al simulador: nunca al VPS de verdad. `DM_GESTION_VPS_TOKEN` cambia el token (por defecto, el
+del simulador). Para la semilla de GitHub siguen valiendo `DM_GESTION_TOKEN_DATOS`,
+`DM_GESTION_GITHUB_API` (un simulador local, o un puerto cerrado para «cortar internet») y
+`DM_GESTION_ARCHIVO_DATOS` (otro archivo del repo, así `--real` no toca `usuarios.json`). Todas sólo
+valen en desarrollo. Los simuladores están en `scripts/vps-simulado.mjs` y `scripts/github-simulado.mjs`,
+y los usan las pruebas y el humo.
 
 ## Permisos por rol (Administración → Permisos)
 

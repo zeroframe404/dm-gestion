@@ -1,15 +1,21 @@
-// La base de usuarios compartida: GitHub como fuente de verdad, el espejo local para las claves
-// foráneas y una credencial cifrada por computadora para ingresar sin internet.
+// La base de usuarios compartida: el documento del servidor como fuente de verdad, el espejo local
+// para las claves foráneas y una credencial cifrada por computadora para ingresar sin internet.
 //
-// No importa Electron a propósito: index.ts le inyecta el almacén (GitHub o nada), el cifrador
-// (safeStorage) y la versión, y las pruebas le inyectan un almacén en memoria y un cifrador de mentira.
+// Desde la v12.4 el documento vive en el VPS de la agencia (`usuarios/vps.ts`). Antes vivía en un
+// repositorio privado de GitHub y cada máquina llevaba embebido un token con permiso de escritura
+// sobre él; ese almacén sigue existiendo, pero sólo como semilla de la mudanza. Este archivo no sabe
+// —ni tiene por qué— cuál de los dos le tocó: habla con `AlmacenRemoto` y nada más.
+//
+// No importa Electron a propósito: index.ts le inyecta el almacén (el del VPS, el de GitHub o nada),
+// el cifrador (safeStorage) y la versión, y las pruebas le inyectan un almacén en memoria y un
+// cifrador de mentira.
 //
 // Cómo se decide el camino de cada ingreso (ver ModoDeAcceso en shared/tipos.ts):
 //   - sin almacén                      → «local»: los usuarios de esta computadora, como siempre.
-//   - con almacén y sin usuarios.json  → «sin-inicializar»: todavía local; un SUPER_ADMIN los sube
+//   - con almacén y sin documento      → «sin-inicializar»: todavía local; un SUPER_ADMIN los sube
 //                                        desde Usuarios (nunca automático: una PC recién instalada
 //                                        subiría la semilla daniel/cambiar123 y pisaría a los de verdad).
-//   - con almacén y archivo            → se valida contra GitHub; si no se llega, con la credencial guardada.
+//   - con almacén y documento          → se valida contra el servidor; si no se llega, con la credencial guardada.
 import os from 'node:os'
 import type { MatrizPermisos } from '../../shared/permisos'
 import type { EstadoDeAcceso, EstadoDeUsuarios, ModoDeAcceso, Rol, SesionUsuario, Usuario } from '../../shared/tipos'
@@ -165,7 +171,23 @@ export function estaConfigurada(): boolean {
   return almacen !== null
 }
 
-/** true cuando esta computadora ya trabaja contra GitHub (hubo al menos una sincronización). */
+/**
+ * Cómo se llama, para los mensajes: «VPS dmartinezseguros.com» o «GitHub zeroframe404/dm-gestion-datos».
+ * Sin almacén no hay base compartida de la que hablar y se usa un nombre genérico.
+ */
+function nombreDelAlmacen(): string {
+  return almacen?.descripcion ?? 'la base de usuarios compartida'
+}
+
+/**
+ * El documento estaba y ya no está. Es un problema serio —nadie puede ingresar contra la base
+ * compartida— y el mensaje tiene que decir DÓNDE mirar, que ya no es siempre el mismo lugar.
+ */
+function mensajeDeDocumentoQueYaNoEsta(): string {
+  return `La base de usuarios ya no está en ${nombreDelAlmacen()}. Hay que restaurarla desde una copia.`
+}
+
+/** true cuando esta computadora ya trabaja contra la base compartida (hubo al menos una sincronización). */
 export function usaBaseCompartida(): boolean {
   return almacen !== null && modoPersistido() === 'github'
 }
@@ -243,7 +265,7 @@ async function leerRemoto(): Promise<Lectura> {
       }
       const documento = leerDocumento(lectura.texto)
       if (!tieneSuperAdminActivo(documento)) {
-        throw new ErrorDeNegocio('La base de usuarios compartida no tiene ningún superadministrador activo: hay que corregir usuarios.json en GitHub.')
+        throw new ErrorDeNegocio(`La base de usuarios compartida no tiene ningún superadministrador activo: hay que corregirla en ${nombreDelAlmacen()}.`)
       }
       ultimoDocumento = { documento, sha: lectura.sha }
       anotarLecturaBuena(comprobadoEn)
@@ -258,7 +280,7 @@ async function leerRemoto(): Promise<Lectura> {
         return { tipo: 'sin-internet', error: mensaje }
       }
       const mensaje = error instanceof ErrorDelAlmacen || error instanceof ErrorDeNegocio ? error.message : `No se pudo leer la base de usuarios: ${mensajeDe(error)}`
-      console.error('[usuarios] GitHub respondió con error:', mensaje)
+      console.error(`[usuarios] ${nombreDelAlmacen()} respondió con error:`, mensaje)
       cambiarEstado({ ultimaComprobacion: comprobadoEn, ultimoError: mensaje })
       return { tipo: 'error-remoto', error: mensaje }
     } finally {
@@ -306,7 +328,7 @@ export async function comprobarAcceso(): Promise<EstadoDeAcceso> {
     revalidarSesion(lectura.documento)
     cambiarEstado({ modo: reflejado ? 'en-linea' : 'error-remoto' })
   } else if (lectura.tipo === 'sin-archivo') {
-    cambiarEstado({ modo: modoPersistido() === 'github' ? 'error-remoto' : 'sin-inicializar', ultimoError: modoPersistido() === 'github' ? 'El archivo usuarios.json ya no está en GitHub. Hay que restaurarlo desde el historial del repositorio.' : null })
+    cambiarEstado({ modo: modoPersistido() === 'github' ? 'error-remoto' : 'sin-inicializar', ultimoError: modoPersistido() === 'github' ? mensajeDeDocumentoQueYaNoEsta() : null })
   } else {
     cambiarEstado({ modo: lectura.tipo })
   }
@@ -447,7 +469,7 @@ export async function ingresar(usuario: string, clave: string): Promise<SesionUs
 
   // GitHub no está disponible (sin internet, o respondió con error): la credencial guardada.
   const modo: ModoDeAcceso = lectura.tipo === 'sin-internet' ? 'sin-internet' : 'error-remoto'
-  const detalle = lectura.tipo === 'sin-archivo' ? 'El archivo usuarios.json ya no está en GitHub.' : lectura.error
+  const detalle = lectura.tipo === 'sin-archivo' ? mensajeDeDocumentoQueYaNoEsta() : lectura.error
   if (lectura.tipo === 'sin-archivo') cambiarEstado({ ultimoError: detalle })
   cambiarEstado({ modo })
   const sinInternet = modo === 'sin-internet'
@@ -619,7 +641,7 @@ async function mutarRemoto(mutacion: Mutacion): Promise<DocumentoUsuarios> {
     const lectura = await leerRemoto()
     if (lectura.tipo === 'sin-internet') throw new ErrorDeNegocio(MENSAJE_SIN_INTERNET_PARA_ADMINISTRAR)
     if (lectura.tipo === 'error-remoto') throw new ErrorDeNegocio(`No se pudo acceder a la base de usuarios: ${lectura.error}`)
-    if (lectura.tipo === 'sin-archivo') throw new ErrorDeNegocio('El archivo usuarios.json ya no está en GitHub. Hay que restaurarlo desde el historial del repositorio.')
+    if (lectura.tipo === 'sin-archivo') throw new ErrorDeNegocio(mensajeDeDocumentoQueYaNoEsta())
 
     const actorRemoto = buscarPorId(lectura.documento, actorRemotoId)
     if (!actorRemoto || !actorRemoto.activo) {

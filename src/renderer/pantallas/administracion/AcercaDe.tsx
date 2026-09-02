@@ -32,7 +32,7 @@ function textoDeAcceso(acceso: EstadoDeAcceso, esSuperAdmin: boolean): string {
       ? 'Sólo en esta computadora: esta versión del programa salió sin la base compartida configurada.'
       : 'Sólo en esta computadora (desarrollo, sin base compartida).'
   }
-  const donde = `Compartida · ${acceso.repo ?? 'GitHub'}`
+  const donde = `Compartida · ${acceso.repo ?? 'el servidor de la agencia'}`
   switch (acceso.modo) {
     case 'sin-inicializar':
       return `${donde} — todavía no inicializada. Un superadministrador tiene que subir los usuarios desde la pestaña Usuarios.`

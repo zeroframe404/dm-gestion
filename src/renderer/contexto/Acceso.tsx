@@ -1,4 +1,4 @@
-// Estado de la base de usuarios compartida (GitHub) tal como lo informa el proceso principal.
+// Estado de la base de usuarios compartida (el VPS de la agencia) tal como lo informa el proceso principal.
 // Lo usan el Login, la barra superior, Usuarios y Acerca de; todos ven el mismo estado y se enteran
 // de los cambios por el evento `auth:estadoDeAcceso`.
 import { useCallback, useEffect, useState } from 'react'
@@ -6,9 +6,9 @@ import type { EstadoDeAcceso } from '../../shared/tipos'
 
 interface Acceso {
   acceso: EstadoDeAcceso | null
-  /** true mientras se sale a GitHub (hasta 8 segundos). */
+  /** true mientras se sale al servidor (hasta 8 segundos). */
   comprobando: boolean
-  /** Sale a GitHub y refresca el estado. */
+  /** Sale al servidor y refresca el estado. */
   comprobar: () => Promise<EstadoDeAcceso | null>
 }
 

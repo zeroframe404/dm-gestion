@@ -112,7 +112,7 @@ export function Usuarios() {
         titulo="Usuarios"
         descripcion={
           estado?.origen === 'github' || estado?.origen === 'copia-local'
-            ? 'Los usuarios se guardan en la base compartida (GitHub): lo que cambiás acá vale para todas las computadoras.'
+            ? 'Los usuarios se guardan en la base compartida del servidor de la agencia: lo que cambiás acá vale para todas las computadoras.'
             : estado?.origen === 'sin-inicializar'
               ? 'Hasta que subas los usuarios a la base compartida, lo que creés acá se guarda sólo en esta computadora.'
               : 'Creá, editá y desactivá usuarios; reseteá contraseñas y asigná rol y sucursal.'
