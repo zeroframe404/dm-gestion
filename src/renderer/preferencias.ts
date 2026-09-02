@@ -8,6 +8,7 @@
 //
 // Ninguna de estas funciones puede romper una pantalla: si `localStorage` está bloqueado se trabaja
 // con los valores por defecto y listo. Es una preferencia, no un dato.
+import type { Tema } from './tema-valores'
 import { escalaGuardada, sanearOcultas, type ColumnaElegible } from './vista'
 
 const CLAVE_ZOOM = 'dm.vista.zoom'
@@ -76,7 +77,9 @@ export function guardarBarraLateralColapsada(colapsada: boolean): void {
 // Tema (claro / oscuro)
 // ---------------------------------------------------------------------------
 
-export type Tema = 'claro' | 'oscuro'
+// El tipo vive en `tema-valores.ts`, junto al valor que se escribe en el `<html>`; se re-exporta
+// desde acá porque el resto de la interfaz lo pide junto con el resto de las preferencias.
+export type { Tema }
 
 /** Sin nada guardado todavía se abre en claro: es el tema con el que se diseñó cada pantalla. */
 export function temaGuardado(): Tema {

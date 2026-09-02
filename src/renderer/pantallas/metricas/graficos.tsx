@@ -148,10 +148,10 @@ export function GraficoDeLinea({ puntos, titulo }: { puntos: PuntoDeSerie[]; tit
             x2={ANCHO - MARGEN.derecha}
             y1={y(tope * parte)}
             y2={y(tope * parte)}
-            stroke="#e2e8f0"
+            stroke="var(--grafico-rejilla)"
             strokeWidth="1"
           />
-          <text x={MARGEN.izquierda - 6} y={y(tope * parte) + 4} textAnchor="end" fontSize="11" fill="#94a3b8">
+          <text x={MARGEN.izquierda - 6} y={y(tope * parte) + 4} textAnchor="end" fontSize="11" fill="var(--grafico-eje)">
             {numero(Math.round(tope * parte))}
           </text>
         </g>
@@ -161,7 +161,7 @@ export function GraficoDeLinea({ puntos, titulo }: { puntos: PuntoDeSerie[]; tit
         <g key={punto.periodo}>
           <circle cx={x(i)} cy={y(punto.valor)} r="3.5" fill="#235ba8" />
           <title>{`${punto.periodo}: ${numero(punto.valor)}`}</title>
-          <text x={x(i)} y={ALTO - 8} textAnchor="middle" fontSize="11" fill="#64748b">
+          <text x={x(i)} y={ALTO - 8} textAnchor="middle" fontSize="11" fill="var(--grafico-rotulo)">
             {mesCorto(punto.periodo)}
           </text>
         </g>
@@ -207,10 +207,10 @@ export function GraficoDeBarras({ meses, titulo, nombrePrimera, nombreSegunda }:
               x2={ANCHO - MARGEN.derecha}
               y1={base - util.alto * parte}
               y2={base - util.alto * parte}
-              stroke="#e2e8f0"
+              stroke="var(--grafico-rejilla)"
               strokeWidth="1"
             />
-            <text x={MARGEN.izquierda - 6} y={base - util.alto * parte + 4} textAnchor="end" fontSize="11" fill="#94a3b8">
+            <text x={MARGEN.izquierda - 6} y={base - util.alto * parte + 4} textAnchor="end" fontSize="11" fill="var(--grafico-eje)">
               {numero(Math.round(tope * parte))}
             </text>
           </g>
@@ -225,7 +225,7 @@ export function GraficoDeBarras({ meses, titulo, nombrePrimera, nombreSegunda }:
               <rect x={centro + 1} y={base - alto(mes.segunda)} width={ancho} height={Math.max(alto(mes.segunda), 0)} fill="#dc2626" rx="2">
                 <title>{`${mes.periodo} · ${nombreSegunda}: ${numero(mes.segunda)}`}</title>
               </rect>
-              <text x={centro} y={ALTO - 8} textAnchor="middle" fontSize="11" fill="#64748b">
+              <text x={centro} y={ALTO - 8} textAnchor="middle" fontSize="11" fill="var(--grafico-rotulo)">
                 {mesCorto(mes.periodo)}
               </text>
             </g>
