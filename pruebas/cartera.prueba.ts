@@ -42,6 +42,8 @@ const DANIEL: SesionUsuario = {
   sucursal: { id: 1, nombre: 'Daniel' },
   debeCambiarClave: false,
 }
+const ANA: SesionUsuario = { ...DANIEL, id: 2, nombre: 'Ana Ruiz', usuario: 'ana', rol: 'ADMIN' }
+const MARIA: SesionUsuario = { ...DANIEL, id: 3, nombre: 'María Pérez', usuario: 'maria', rol: 'EMPLEADO' }
 
 /** Abre una base global (la que usan los servicios) con la hoja de prueba ya importada. */
 async function carteraDePrueba(): Promise<BaseDeDatos> {
@@ -52,6 +54,13 @@ async function carteraDePrueba(): Promise<BaseDeDatos> {
   console.log = registrar
   await importar(db, new HojaSimulada(construirHojaDePrueba()))
   return db
+}
+
+/** Los pagos y el historial guardan `usuario_id`: para escribir con ANA o MARIA hacen falta de verdad en la tabla. */
+function insertarUsuario(db: BaseDeDatos, actor: SesionUsuario): void {
+  db.prepare(
+    `INSERT INTO usuarios (id, nombre, usuario, clave_hash, rol, sucursal_id, activo, debe_cambiar_clave) VALUES (?, ?, ?, 'x', ?, ?, 1, 0)`,
+  ).run(actor.id, actor.nombre, actor.usuario, actor.rol, actor.sucursal.id)
 }
 
 function buscar(filas: FilaCartera[], nombre: string): FilaCartera {
@@ -84,7 +93,7 @@ test('la planilla abre en el mes más nuevo con todas sus filas', async () => {
   cerrarBaseDeDatos()
 })
 
-test('los meses anteriores se ven completos pero no se pueden tocar', async () => {
+test('los meses anteriores se ven completos pero un empleado no los puede tocar; un administrador sí', async () => {
   await carteraDePrueba()
   const enero = planillaDelMes('2026-01')
   assert.equal(enero.periodo, '2026-01')
@@ -92,9 +101,13 @@ test('los meses anteriores se ven completos pero no se pueden tocar', async () =
   assert.equal(enero.filas.length, 7)
 
   const fila = enero.filas[0]!
-  assert.throws(() => editarCelda(fila.filaId, 'cuota', '$ 1', DANIEL), /mes anterior/)
-  assert.throws(() => registrarPago(fila.filaId, { fecha: '2026-01-10', importe: '1', medioDePago: 'EFECTIVO' }, DANIEL), /mes anterior/)
-  assert.throws(() => darDeBaja(fila.filaId, { motivo: 'VENDIO', nota: '' }, DANIEL), /mes anterior/)
+  assert.throws(() => editarCelda(fila.filaId, 'cuota', '$ 1', MARIA), /mes anterior/)
+  assert.throws(() => registrarPago(fila.filaId, { fecha: '2026-01-10', importe: '1', medioDePago: 'EFECTIVO' }, MARIA), /mes anterior/)
+  assert.throws(() => darDeBaja(fila.filaId, { motivo: 'VENDIO', nota: '' }, MARIA), /mes anterior/)
+
+  // Un SUPER_ADMIN sigue pudiendo corregir un mes ya cerrado.
+  const corregida = editarCelda(fila.filaId, 'cuota', '$ 1', DANIEL)
+  assert.equal(corregida.cuota, '$ 1')
   cerrarBaseDeDatos()
 })
 
@@ -297,6 +310,27 @@ test('cerrar el mes abre el siguiente con las pólizas activas y sin los pagos d
   assert.equal(planillaDelMes('2026-08').soloLectura, true)
   // Y no se puede seguir abriendo meses hacia adelante sin que llegue el momento.
   assert.throws(() => cerrarMes(DANIEL), /Ya está abierto 2026-09/)
+  cerrarBaseDeDatos()
+})
+
+test('un mes cerrado sigue siendo de lectura y escritura para un administrador, y de sólo lectura para un empleado', async () => {
+  const db = await carteraDePrueba()
+  insertarUsuario(db, ANA)
+  insertarUsuario(db, MARIA)
+  const agosto = planillaDelMes(null)
+  const gonzalez = buscar(agosto.filas, CLIENTES.gonzalez.nombre)
+  cerrarMes(DANIEL)
+
+  // Para el SUPER_ADMIN y el ADMIN, agosto ya cerrado se ve como lectura y escritura.
+  assert.equal(planillaDelMes('2026-08', DANIEL).soloLectura, false)
+  assert.equal(planillaDelMes('2026-08', ANA).soloLectura, false)
+  assert.doesNotThrow(() => registrarPago(gonzalez.filaId, { fecha: '2026-08-09', importe: '$ 1', medioDePago: 'EFECTIVO' }, ANA))
+  assert.doesNotThrow(() => editarCelda(gonzalez.filaId, 'observaciones', 'corregido por administración', DANIEL))
+
+  // Para el EMPLEADO, agosto cerrado sigue siendo de sólo lectura.
+  assert.equal(planillaDelMes('2026-08', MARIA).soloLectura, true)
+  assert.throws(() => registrarPago(gonzalez.filaId, { fecha: '2026-08-09', importe: '$ 1', medioDePago: 'EFECTIVO' }, MARIA), /mes anterior/)
+  assert.throws(() => editarCelda(gonzalez.filaId, 'observaciones', 'no debería poder', MARIA), /mes anterior/)
   cerrarBaseDeDatos()
 })
 

@@ -429,8 +429,8 @@ export function registrarIpc(): void {
   // Cartera: la planilla del mes. La trabaja quien tenga permiso de edición en Cartera; cerrar el mes
   // y deshacer una baja siguen pidiendo además un administrador.
   manejar('cartera:planilla', (periodo) => {
-    exigirVista('cartera')
-    return exito(planillaDelMes(periodo))
+    const actor = exigirVista('cartera')
+    return exito(planillaDelMes(periodo, actor))
   })
   manejar('cartera:editarCelda', (filaId, campo, valor) => exito(editarCelda(filaId, campo, valor, exigirEdicion('cartera'))))
   manejar('cartera:prepararAviso', (filaId) => exito(prepararAviso(filaId, exigirEdicion('cartera'))))
