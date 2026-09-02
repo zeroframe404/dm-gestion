@@ -441,15 +441,33 @@ function prepararSentencias(db: BaseDeDatos) {
               @documento, @patente, @sucursal_texto,
               @compania, @numero_poliza, @cobertura, @numero_siniestro, @descripcion, @estado, @importe, @observaciones,
               @ahora, @ahora)
+      -- Una columna que la pestaña NO tiene llega siempre vacía, y pisar con eso borra lo que se cargó
+      -- desde la ficha. De ahí salía el «cargo la fecha y el número de siniestro y después no están»:
+      -- una pestaña SINIESTROS sin N° SINIESTRO o sin FECHA DE CARGA los dejaba en blanco en cada
+      -- importación, y encima esos mismos campos tampoco se pueden subir (la entrada de la cola queda
+      -- fallida porque no hay columna donde escribirlos), así que el dato no tenía dónde sobrevivir.
+      -- Mismo criterio que la SUCURSAL de acá al lado y que el RESUELTO de AMP: si la hoja no tiene
+      -- dónde decirlo, la hoja no puede desdecirlo.
       ON CONFLICT(fila_id) DO UPDATE SET
         pestana = excluded.pestana, cliente_id = COALESCE(excluded.cliente_id, siniestros.cliente_id),
-        poliza_id = COALESCE(excluded.poliza_id, siniestros.poliza_id), fecha = excluded.fecha,
-        fecha_iso = excluded.fecha_iso, fecha_carga = excluded.fecha_carga, fecha_carga_iso = excluded.fecha_carga_iso,
-        cliente_nombre = excluded.cliente_nombre, documento = excluded.documento, patente = excluded.patente,
-        sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE siniestros.sucursal_texto END, compania = excluded.compania, numero_poliza = excluded.numero_poliza,
-        cobertura = excluded.cobertura,
-        numero_siniestro = excluded.numero_siniestro, descripcion = excluded.descripcion, estado = excluded.estado, importe = excluded.importe,
-        observaciones = excluded.observaciones, actualizado_en = excluded.actualizado_en`),
+        poliza_id = COALESCE(excluded.poliza_id, siniestros.poliza_id),
+        fecha = CASE WHEN @hay_columna_fecha = 1 THEN excluded.fecha ELSE siniestros.fecha END,
+        fecha_iso = CASE WHEN @hay_columna_fecha = 1 THEN excluded.fecha_iso ELSE siniestros.fecha_iso END,
+        fecha_carga = CASE WHEN @hay_columna_fecha_carga = 1 THEN excluded.fecha_carga ELSE siniestros.fecha_carga END,
+        fecha_carga_iso = CASE WHEN @hay_columna_fecha_carga = 1 THEN excluded.fecha_carga_iso ELSE siniestros.fecha_carga_iso END,
+        cliente_nombre = CASE WHEN @hay_columna_nombre = 1 THEN excluded.cliente_nombre ELSE siniestros.cliente_nombre END,
+        documento = CASE WHEN @hay_columna_documento = 1 THEN excluded.documento ELSE siniestros.documento END,
+        patente = CASE WHEN @hay_columna_patente = 1 THEN excluded.patente ELSE siniestros.patente END,
+        sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE siniestros.sucursal_texto END,
+        compania = CASE WHEN @hay_columna_compania = 1 THEN excluded.compania ELSE siniestros.compania END,
+        numero_poliza = CASE WHEN @hay_columna_numero_poliza = 1 THEN excluded.numero_poliza ELSE siniestros.numero_poliza END,
+        cobertura = CASE WHEN @hay_columna_cobertura = 1 THEN excluded.cobertura ELSE siniestros.cobertura END,
+        numero_siniestro = CASE WHEN @hay_columna_numero_siniestro = 1 THEN excluded.numero_siniestro ELSE siniestros.numero_siniestro END,
+        descripcion = CASE WHEN @hay_columna_descripcion = 1 THEN excluded.descripcion ELSE siniestros.descripcion END,
+        estado = CASE WHEN @hay_columna_estado = 1 THEN excluded.estado ELSE siniestros.estado END,
+        importe = CASE WHEN @hay_columna_importe = 1 THEN excluded.importe ELSE siniestros.importe END,
+        observaciones = CASE WHEN @hay_columna_observaciones = 1 THEN excluded.observaciones ELSE siniestros.observaciones END,
+        actualizado_en = excluded.actualizado_en`),
 
     regla: db.prepare(`
       INSERT INTO reglas_cobertura (fila_id, pestana, compania, cobertura, incluye, franquicia, detalle, observaciones, creado_en, actualizado_en)
@@ -1809,6 +1827,20 @@ class TrabajoDeImportacion {
       estado: oNulo(fila.valor('estado')),
       importe: oNulo(fila.valor('importe')),
       observaciones: oNulo(fila.valor('observaciones')),
+      // Qué columnas tiene realmente esta pestaña: las que no están no pisan lo que ya hay guardado.
+      hay_columna_fecha: fila.tieneColumna('fecha') ? 1 : 0,
+      hay_columna_fecha_carga: fila.tieneColumna('fecha_carga') ? 1 : 0,
+      hay_columna_nombre: fila.tieneColumna('nombre') ? 1 : 0,
+      hay_columna_documento: fila.tieneColumna('documento') ? 1 : 0,
+      hay_columna_patente: fila.tieneColumna('patente') ? 1 : 0,
+      hay_columna_compania: fila.tieneColumna('compania') ? 1 : 0,
+      hay_columna_numero_poliza: fila.tieneColumna('numero_poliza') ? 1 : 0,
+      hay_columna_cobertura: fila.tieneColumna('cobertura') ? 1 : 0,
+      hay_columna_numero_siniestro: fila.tieneColumna('numero_siniestro') ? 1 : 0,
+      hay_columna_descripcion: fila.tieneColumna('descripcion') ? 1 : 0,
+      hay_columna_estado: fila.tieneColumna('estado') ? 1 : 0,
+      hay_columna_importe: fila.tieneColumna('importe') ? 1 : 0,
+      hay_columna_observaciones: fila.tieneColumna('observaciones') ? 1 : 0,
       ahora: this.ahora,
     })
     this.contar(resumen, 'siniestros')

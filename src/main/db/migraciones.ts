@@ -1314,6 +1314,32 @@ export const MIGRACIONES: Migracion[] = [
       CREATE INDEX idx_pagos_adelanto ON pagos (poliza_id, periodo, adelanto_modo);
     `,
   },
+  {
+    version: 21,
+    descripcion: 'El abogado y los datos del tercero del siniestro, y la categoría de cada documento adjunto',
+    sql: `
+      -- Lo que la ficha necesita para seguir un choque y la pestaña SINIESTROS de la hoja no tiene
+      -- columna donde guardar. Vive sólo en DM Gestión, como la línea de tiempo, los adjuntos y las
+      -- tareas: la hoja se entera por el resumen de observaciones, que sí viaja.
+      --
+      -- Son texto libre a propósito. En el mostrador la compañía del tercero llega como «Sancor, creo»
+      -- y el teléfono con el prefijo o sin él; obligar a un formato haría perder el dato en vez de
+      -- guardarlo. \`tercero_lesionados\` es lo único acotado (vacío, NO o SI) porque de eso depende que
+      -- el trámite lleve constancia médica, y el detalle —quién y a qué hospital fue— va al lado.
+      ALTER TABLE siniestros ADD COLUMN abogado TEXT;
+      ALTER TABLE siniestros ADD COLUMN tercero_compania TEXT;
+      ALTER TABLE siniestros ADD COLUMN tercero_telefono TEXT;
+      ALTER TABLE siniestros ADD COLUMN tercero_patente TEXT;
+      ALTER TABLE siniestros ADD COLUMN tercero_lesionados TEXT;
+      ALTER TABLE siniestros ADD COLUMN tercero_lesionados_detalle TEXT;
+
+      -- Qué es cada documento adjunto: denuncia, cédula verde, constancia médica… Los que ya estaban
+      -- quedan sin categoría y se muestran como «Sin categoría» hasta que alguien los ordene.
+      -- \`categoria_detalle\` es el «indicando cuál» de «Otras documentaciones».
+      ALTER TABLE siniestro_adjuntos ADD COLUMN categoria TEXT;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN categoria_detalle TEXT;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

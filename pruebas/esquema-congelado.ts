@@ -32,4 +32,6 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   19: 'c2907470739eee1e',
   // La 20 suma a `pagos` el estado del cobro (PAGO / IMPUTADO) y el modo del pago adelantado.
   20: '6530ee7a3b141017',
+  // La 21 suma a `siniestros` el abogado y los datos del tercero, y a `siniestro_adjuntos` su categoría.
+  21: '5b6e250fc95c5b6e',
 }

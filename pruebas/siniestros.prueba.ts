@@ -347,6 +347,106 @@ test('el número de siniestro se completa después, cuando lo da la compañía',
   cerrarBaseDeDatos()
 })
 
+/**
+ * El bug que reportó la agencia: se cargaba la fecha y el número de siniestro, y a la siguiente
+ * importación no estaban. La SINIESTROS de la hoja no tiene esas dos columnas, así que llegaban vacías
+ * y pisaban lo que se había cargado desde la ficha.
+ */
+test('reimportar no borra la fecha ni el número de siniestro cuando la hoja no tiene esas columnas', async () => {
+  const db = await baseImportada()
+  const id = listarSiniestros({ ...SIN_FILTROS, soloRobos: true }).filas[0]!.id
+
+  editarSiniestro(id, 'numeroSiniestro', 'S-2026-1111', DANIEL)
+  editarSiniestro(id, 'fechaCarga', '19/08/2026', DANIEL)
+  editarSiniestro(id, 'cobertura', 'TODO RIESGO', DANIEL)
+
+  // La pestaña de esta agencia se queda sin N° SINIESTRO, sin FECHA DE CARGA y sin COBERTURA.
+  const hoja = hojaActual!
+  const encabezados = hoja.encabezadosDe('SINIESTROS')
+  for (const buscado of ['N° SINIESTRO', 'FECHA DE CARGA', 'COBERTURA']) {
+    const columna = encabezados.indexOf(buscado)
+    assert.ok(columna >= 0, `la hoja de prueba tiene la columna ${buscado}`)
+    hoja.editarCelda('SINIESTROS', 1, columna, '')
+  }
+
+  await importar(db, hoja)
+
+  const despues = fichaDeSiniestro(id).siniestro
+  assert.equal(despues.numeroSiniestro, 'S-2026-1111', 'el número cargado a mano sobrevive a la importación')
+  assert.equal(despues.fechaCarga, '19/08/2026')
+  assert.equal(despues.fechaCargaIso, '2026-08-19', 'y la fecha derivada también')
+  assert.equal(despues.cobertura, 'TODO RIESGO')
+  // Lo que la hoja SÍ tiene columna para decir se sigue trayendo de la hoja, como siempre.
+  assert.ok(despues.descripcion, 'la descripción sigue llegando de la planilla')
+  cerrarBaseDeDatos()
+})
+
+test('una columna que la hoja sí tiene y quedó vacía a propósito sí borra el dato', async () => {
+  const db = await baseImportada()
+  const id = listarSiniestros({ ...SIN_FILTROS, soloRobos: true }).filas[0]!.id
+  editarSiniestro(id, 'importe', '150000', DANIEL)
+
+  // Alguien vació la celda IMPORTE en la planilla: eso es una decisión, no una columna que falta.
+  const hoja = hojaActual!
+  const columna = hoja.encabezadosDe('SINIESTROS').indexOf('IMPORTE')
+  const numeroDeFila = [...hoja.idsDe('SINIESTROS')].find(([, filaId]) => filaId === fichaDeSiniestro(id).siniestro.filaId)?.[0]
+  assert.ok(numeroDeFila, 'la fila del siniestro está en la hoja')
+  hoja.editarCelda('SINIESTROS', numeroDeFila, columna, '')
+
+  await importar(db, hoja)
+  assert.equal(fichaDeSiniestro(id).siniestro.importe, null, 'la planilla manda cuando tiene dónde decirlo')
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// El abogado y el tercero: viven sólo acá, y se cuentan en la línea de tiempo
+// ---------------------------------------------------------------------------
+
+test('el abogado y los datos del tercero se guardan y quedan contados en la línea de tiempo', async () => {
+  const db = await baseImportada()
+  const id = listarSiniestros({ ...SIN_FILTROS, soloRobos: true }).filas[0]!.id
+  const colaAntes = colaDeSiniestros(db).length
+
+  editarSiniestro(id, 'abogado', 'Dr. Suárez, 11-4455-6677', DANIEL)
+  editarSiniestro(id, 'terceroCompania', 'MERCANTIL ANDINA', DANIEL)
+  editarSiniestro(id, 'terceroTelefono', '11-2233-4455', DANIEL)
+  editarSiniestro(id, 'terceroPatente', 'AG321XY', DANIEL)
+  editarSiniestro(id, 'terceroLesionados', 'SI', DANIEL)
+  const ficha = editarSiniestro(id, 'terceroLesionadosDetalle', 'El acompañante, fue al Fiorito', DANIEL)
+
+  assert.equal(ficha.siniestro.abogado, 'Dr. Suárez, 11-4455-6677')
+  assert.equal(ficha.siniestro.terceroCompania, 'MERCANTIL ANDINA')
+  assert.equal(ficha.siniestro.terceroTelefono, '11-2233-4455')
+  assert.equal(ficha.siniestro.terceroPatente, 'AG321XY')
+  assert.equal(ficha.siniestro.terceroLesionados, 'SI')
+  assert.equal(ficha.siniestro.terceroLesionadosDetalle, 'El acompañante, fue al Fiorito')
+
+  // La hoja no tiene columnas para esto: no se le encola una edición que iba a quedar fallida…
+  const cola = colaDeSiniestros(db)
+  const campos = cola.flatMap((entrada) => Object.keys(JSON.parse(entrada.campos_json) as Record<string, string>))
+  assert.ok(!campos.includes('abogado'), 'no se le escribe a la hoja una columna que no tiene')
+  assert.ok(!campos.includes('tercero_compania'))
+  // …y en cambio se cuenta en la línea de tiempo, que es lo que sí viaja en OBSERVACIONES.
+  assert.ok(cola.length > colaAntes, 'el resumen de observaciones sí sale para la hoja')
+  const relato = ficha.observaciones.map((o) => o.texto)
+  assert.ok(relato.some((texto) => texto === 'Abogado: Dr. Suárez, 11-4455-6677'), relato.join(' | '))
+  assert.ok(relato.some((texto) => texto === 'Terceros lesionados: SI'))
+  assert.ok(relato.some((texto) => texto === 'Compañía del tercero: MERCANTIL ANDINA'))
+  assert.match(observacionesParaLaHoja(id), /Compañía del tercero/)
+  cerrarBaseDeDatos()
+})
+
+test('el tercero lesionado sólo acepta sí, no o todavía no se sabe', async () => {
+  await baseImportada()
+  const id = listarSiniestros({ ...SIN_FILTROS, soloRobos: true }).filas[0]!.id
+
+  assert.equal(editarSiniestro(id, 'terceroLesionados', 'sí', DANIEL).siniestro.terceroLesionados, 'SI')
+  assert.equal(editarSiniestro(id, 'terceroLesionados', 'No', DANIEL).siniestro.terceroLesionados, 'NO')
+  assert.equal(editarSiniestro(id, 'terceroLesionados', '', DANIEL).siniestro.terceroLesionados, '')
+  assert.throws(() => editarSiniestro(id, 'terceroLesionados', 'MAS O MENOS', DANIEL), /no es un valor posible/i)
+  cerrarBaseDeDatos()
+})
+
 test('los documentos se copian a la carpeta del siniestro y quedan en la línea de tiempo', async () => {
   await baseImportada()
   const carpeta = carpetaTemporal()
@@ -357,9 +457,10 @@ test('los documentos se copian a la carpeta del siniestro y quedan en la línea 
     const origen = path.join(carpetaTemporal(), 'denuncia policial.pdf')
     writeFileSync(origen, 'contenido de prueba')
 
-    const ficha = await agregarAdjuntos(id, [origen], DANIEL)
+    const ficha = await agregarAdjuntos(id, [origen], 'Denuncia policial', '', DANIEL)
     assert.equal(ficha.adjuntos.length, 1)
     assert.equal(ficha.adjuntos[0]!.nombre, 'denuncia policial.pdf')
+    assert.equal(ficha.adjuntos[0]!.categoria, 'Denuncia policial')
     assert.equal(ficha.adjuntos[0]!.usuarioNombre, DANIEL.nombre)
     assert.equal(ficha.adjuntos[0]!.enDrive, false, 'sin credenciales de Google la copia queda sólo local')
     assert.ok(ficha.adjuntos[0]!.tamano > 0)
@@ -372,7 +473,7 @@ test('los documentos se copian a la carpeta del siniestro y quedan en la línea 
     // Dos archivos con el mismo nombre no se pisan: el segundo queda como «(2)».
     const otro = path.join(carpetaTemporal(), 'denuncia policial.pdf')
     writeFileSync(otro, 'otra cosa')
-    const conDos = await agregarAdjuntos(id, [otro], DANIEL)
+    const conDos = await agregarAdjuntos(id, [otro], 'Denuncia policial', '', DANIEL)
     assert.equal(conDos.adjuntos.length, 2)
     assert.deepEqual(readdirSync(path.join(carpeta, String(id))).sort(), ['denuncia policial (2).pdf', 'denuncia policial.pdf'])
 
@@ -380,6 +481,36 @@ test('los documentos se copian a la carpeta del siniestro y quedan en la línea 
     const sinUno = borrarAdjunto(conDos.adjuntos[0]!.id, DANIEL)
     assert.equal(sinUno.adjuntos.length, 1)
     assert.equal(readdirSync(path.join(carpeta, String(id))).length, 1)
+  } finally {
+    usarCarpetaDeAdjuntosDePrueba(CARPETA_DE_ADJUNTOS)
+    cerrarBaseDeDatos()
+  }
+})
+
+test('cada documento dice qué es, y «Otras documentaciones» obliga a aclarar cuál', async () => {
+  await baseImportada()
+  const carpeta = carpetaTemporal()
+  usarCarpetaDeAdjuntosDePrueba(carpeta)
+  try {
+    const id = listarSiniestros({ ...SIN_FILTROS, soloRobos: true }).filas[0]!.id
+    const origen = path.join(carpetaTemporal(), 'frente del auto.jpg')
+    writeFileSync(origen, 'una foto')
+
+    const fotos = await agregarAdjuntos(id, [origen], 'Fotos del siniestro', '', DANIEL)
+    assert.equal(fotos.adjuntos[0]!.categoria, 'Fotos del siniestro')
+    assert.equal(fotos.adjuntos[0]!.categoriaDetalle, null)
+    assert.match(fotos.observaciones[0]!.texto, /\(Fotos del siniestro\)/, 'la categoría queda en la línea de tiempo')
+
+    // Sin categoría no se adjunta nada: una carpeta de archivos sin nombre propio no es un legajo.
+    await assert.rejects(() => agregarAdjuntos(id, [origen], '', '', DANIEL), /de qué documento se trata/i)
+    await assert.rejects(() => agregarAdjuntos(id, [origen], 'Recibo de sueldo', '', DANIEL), /de qué documento se trata/i)
+    await assert.rejects(() => agregarAdjuntos(id, [origen], 'Otras documentaciones', '   ', DANIEL), /indicá de qué documento/i)
+
+    const otras = await agregarAdjuntos(id, [origen], 'Otras documentaciones', 'Presupuesto del taller', DANIEL)
+    assert.equal(otras.adjuntos[0]!.categoria, 'Otras documentaciones')
+    assert.equal(otras.adjuntos[0]!.categoriaDetalle, 'Presupuesto del taller')
+    assert.match(otras.observaciones[0]!.texto, /Otras documentaciones: Presupuesto del taller/)
+    assert.equal(otras.adjuntos.length, 2, 'los dos rechazos no dejaron nada a medio guardar')
   } finally {
     usarCarpetaDeAdjuntosDePrueba(CARPETA_DE_ADJUNTOS)
     cerrarBaseDeDatos()

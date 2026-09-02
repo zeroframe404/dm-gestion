@@ -229,7 +229,7 @@ const seguimiento = await evaluar(`(async () => {
   if (!id) return { error: 'no se creó el siniestro' }
   const conObservacion = await window.dm.siniestros.agregarObservacion(id, 'Se pidió la denuncia policial al asegurado')
   if (!conObservacion.ok) return { error: conObservacion.error }
-  const conAdjunto = await window.dm.siniestros.adjuntar(id, [${JSON.stringify(ARCHIVO)}])
+  const conAdjunto = await window.dm.siniestros.adjuntar(id, [${JSON.stringify(ARCHIVO)}], 'Denuncia policial')
   if (!conAdjunto.ok) return { error: conAdjunto.error }
   const sesion = await window.dm.auth.sesion()
   const yo = sesion.ok ? sesion.datos?.nombre : null
@@ -237,7 +237,7 @@ const seguimiento = await evaluar(`(async () => {
   return {
     yo,
     observaciones: f.observaciones.map((o) => ({ texto: o.texto, usuario: o.usuarioNombre, cuando: o.creadoEn })),
-    adjuntos: f.adjuntos.map((a) => ({ nombre: a.nombre, usuario: a.usuarioNombre, tamano: a.tamano, enDrive: a.enDrive })),
+    adjuntos: f.adjuntos.map((a) => ({ nombre: a.nombre, usuario: a.usuarioNombre, tamano: a.tamano, enDrive: a.enDrive, categoria: a.categoria })),
     carpeta: f.carpetaDeAdjuntos,
   }
 })()`)
@@ -249,8 +249,12 @@ anotar(
 )
 const adjuntos = seguimiento?.adjuntos ?? []
 anotar(
-  'El adjunto queda con su nombre, su peso y el usuario que lo subió',
-  adjuntos.length === 1 && adjuntos[0].nombre === 'denuncia policial.pdf' && adjuntos[0].usuario === seguimiento?.yo && adjuntos[0].tamano > 0,
+  'El adjunto queda con su nombre, su peso, su categoría y el usuario que lo subió',
+  adjuntos.length === 1 &&
+    adjuntos[0].nombre === 'denuncia policial.pdf' &&
+    adjuntos[0].usuario === seguimiento?.yo &&
+    adjuntos[0].tamano > 0 &&
+    adjuntos[0].categoria === 'Denuncia policial',
   seguimiento?.error ?? JSON.stringify(adjuntos),
 )
 anotar(

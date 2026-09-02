@@ -34,6 +34,21 @@ export const AYUDA_SINIESTROS: Record<string, ContenidoDeAyuda> = {
           'Documentos guarda los archivos del siniestro (fotos, denuncia, presupuestos) con «Adjuntar»; quedan guardados en esta computadora y, si hay conexión con Google configurada, se suben además a una carpeta compartida en la nube (si esa subida falla por algún motivo, el archivo local queda igual y la ficha avisa «sólo local»). Tareas junta los pendientes de ese trámite (por ejemplo, «pedir el presupuesto del taller»), con su responsable y su estado, y «Nueva tarea» agrega uno sin salir de la ficha.',
         ],
       },
+      {
+        titulo: 'El abogado y los datos del tercero',
+        parrafos: [
+          'Debajo de los datos del siniestro está «Abogado»: un renglón libre para el estudio, el nombre y el teléfono de quien lleve lo legal, si hay alguien. Se corrige con doble clic, igual que el resto.',
+          'Al lado, la tarjeta «El tercero» junta lo que hace falta para reclamarle al otro auto: su compañía, un teléfono y la patente. «Terceros lesionados» es un desplegable de tres posiciones —«Todavía no se sabe», «No hubo lesionados» y «Sí, hubo lesionados»— porque de eso depende que el legajo lleve constancia médica; cuando se marca que sí, aparece un renglón más para anotar quién se lesionó y a qué hospital fue.',
+          'Estos datos no tienen columna en la planilla de siempre, así que viven en DM Gestión: cada vez que se cambia uno queda su renglón en la línea de tiempo, que es lo que sí viaja a la columna OBSERVACIONES y llega a las demás computadoras.',
+        ],
+      },
+      {
+        titulo: 'Adjuntar documentos por categoría',
+        parrafos: [
+          '«Adjuntar» pregunta primero de qué documento se trata y después abre el explorador de archivos. Las categorías son las que pide la compañía para armar el legajo: Denuncia, Certificado de cobertura, Fotos del siniestro, Registro de conducir, DNI, Cédula verde, Denuncia policial, Constancia médica y Otras documentaciones. La categoría elegida vale para todos los archivos de esa tanda, así que las seis fotos del choque se eligen juntas y quedan las seis como «Fotos del siniestro».',
+          '«Otras documentaciones» pide además escribir cuál (un presupuesto del taller, un telegrama, un acta de la compañía): un archivo sin nombre propio, dentro de un mes, es un archivo que nadie sabe para qué está. Cada documento muestra su categoría al costado en la lista, y los que se habían adjuntado antes de que existieran las categorías figuran como «Sin categoría».',
+        ],
+      },
     ],
     conceptos: [
       {
@@ -55,6 +70,16 @@ export const AYUDA_SINIESTROS: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Fecha de carga vs. fecha del siniestro',
         explicacion: 'La fecha del siniestro es cuándo ocurrió el hecho; la fecha de carga es cuándo se anotó en el sistema. El listado mensual agrupa por fecha de carga, igual que la planilla de siempre.',
+      },
+      {
+        termino: 'Terceros lesionados',
+        explicacion:
+          'Si hubo heridos en el otro auto. Queda en «Todavía no se sabe» hasta que alguien lo confirme, y un «Sí» es lo que obliga a pedir la constancia médica.',
+      },
+      {
+        termino: 'Categoría del documento',
+        explicacion:
+          'Qué es cada archivo adjunto (denuncia, cédula verde, constancia médica…). Se elige antes de subirlo y sirve para ver de un vistazo qué papel falta en el legajo.',
       },
       {
         termino: 'Línea de tiempo',

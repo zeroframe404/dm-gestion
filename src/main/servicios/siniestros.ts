@@ -3,17 +3,23 @@
 //
 // La pestaña SINIESTROS de la hoja SÍ es una tabla por fila (sus encabezados están en la fila 4 y el
 // importador ya la sabe leer), así que todo lo que se carga acá viaja allá como cualquier otra fila.
-// Lo que no tiene lugar en la hoja —la línea de tiempo, los adjuntos y las tareas— vive sólo en
-// DM Gestión: son tablas propias, y la columna OBSERVACIONES de la hoja recibe el resumen de la línea
-// de tiempo para que quien mire la planilla vea lo mismo que quien mira la ficha.
+// Lo que no tiene lugar en la hoja —la línea de tiempo, los adjuntos, las tareas, el abogado y los
+// datos del tercero— vive sólo en DM Gestión: son tablas y columnas propias, y la columna
+// OBSERVACIONES de la hoja recibe el resumen de la línea de tiempo para que quien mire la planilla vea
+// lo mismo que quien mira la ficha. Por eso cada cambio de esos campos deja su renglón en la línea de
+// tiempo: es la única forma que tienen de llegar a las otras computadoras.
 import { hoyLocal } from '../../shared/semaforo'
 import { estadoTextoDiferente, mencionaRobo, normalizarEstadoSiniestro } from '../../shared/siniestros'
 import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
+  CATEGORIAS_DE_ADJUNTO,
+  CATEGORIA_DE_ADJUNTO_OTRAS,
   ESTADOS_DE_SINIESTRO,
+  RESPUESTAS_DE_LESIONADOS,
   type AdjuntoDeSiniestro,
   type CandidatoDeSiniestro,
+  type CategoriaDeAdjunto,
   type DatosDeSiniestro,
   type DatosDeTareaDeSiniestro,
   type EstadoSiniestro,
@@ -23,6 +29,7 @@ import {
   type FiltrosSiniestros,
   type ListadoSiniestros,
   type ObservacionDeSiniestro,
+  type RespuestaDeLesionados,
   type SesionUsuario,
   type SiniestroDeCliente,
   type TareaDeCliente,
@@ -74,6 +81,8 @@ const SELECT_SINIESTRO = `
          COALESCE(s.documento, cl.documento) AS documento, cl.telefono,
          s.patente, s.fecha_carga, s.fecha_carga_iso, s.fecha, s.fecha_iso,
          s.numero_siniestro, s.descripcion, s.observaciones, s.importe, s.estado, s.creado_en_la_app,
+         s.abogado, s.tercero_compania, s.tercero_telefono, s.tercero_patente,
+         s.tercero_lesionados, s.tercero_lesionados_detalle,
          ${PERIODO} AS periodo,
          (SELECT COUNT(*) FROM siniestro_observaciones o WHERE o.siniestro_id = s.id) AS observaciones_cargadas,
          (SELECT COUNT(*) FROM siniestro_adjuntos a WHERE a.siniestro_id = s.id) AS adjuntos,
@@ -103,11 +112,28 @@ interface FilaCruda {
   observaciones: string | null
   importe: string | null
   estado: string | null
+  abogado: string | null
+  tercero_compania: string | null
+  tercero_telefono: string | null
+  tercero_patente: string | null
+  tercero_lesionados: string | null
+  tercero_lesionados_detalle: string | null
   creado_en_la_app: number
   periodo: string | null
   observaciones_cargadas: number
   adjuntos: number
   tareas_pendientes: number
+}
+
+/**
+ * Lleva a '' / 'NO' / 'SI' lo que haya guardado en la columna de lesionados. Cualquier otra cosa se lee
+ * como «todavía no se sabe»: es más honesto que afirmar que no hubo heridos.
+ */
+function normalizarLesionados(valor: string | null | undefined): RespuestaDeLesionados {
+  const texto = limpiar(valor).toUpperCase()
+  if (texto === 'SI' || texto === 'SÍ') return 'SI'
+  if (texto === 'NO') return 'NO'
+  return ''
 }
 
 function aFila(f: FilaCruda): FilaSiniestro {
@@ -131,6 +157,12 @@ function aFila(f: FilaCruda): FilaSiniestro {
     descripcion: f.descripcion,
     observaciones: f.observaciones,
     importe: f.importe,
+    abogado: f.abogado,
+    terceroCompania: f.tercero_compania,
+    terceroTelefono: f.tercero_telefono,
+    terceroPatente: f.tercero_patente,
+    terceroLesionados: normalizarLesionados(f.tercero_lesionados),
+    terceroLesionadosDetalle: f.tercero_lesionados_detalle,
     estado: normalizarEstadoSiniestro(f.estado),
     estadoTexto: estadoTextoDiferente(f.estado) ? f.estado : null,
     esRobo: mencionaRobo(f.descripcion, f.observaciones, f.numero_siniestro),
@@ -243,7 +275,7 @@ function adjuntosDe(siniestroId: number): AdjuntoDeSiniestro[] {
   return (
     db()
       .prepare(
-        `SELECT id, nombre, tamano, creado_en, usuario_nombre, drive_id, drive_error
+        `SELECT id, nombre, tamano, creado_en, usuario_nombre, drive_id, drive_error, categoria, categoria_detalle
          FROM siniestro_adjuntos WHERE siniestro_id = ? ORDER BY id DESC`,
       )
       .all(siniestroId) as Array<{
@@ -254,6 +286,8 @@ function adjuntosDe(siniestroId: number): AdjuntoDeSiniestro[] {
       usuario_nombre: string
       drive_id: string | null
       drive_error: string | null
+      categoria: string | null
+      categoria_detalle: string | null
     }>
   ).map((a) => ({
     id: a.id,
@@ -263,7 +297,15 @@ function adjuntosDe(siniestroId: number): AdjuntoDeSiniestro[] {
     usuarioNombre: a.usuario_nombre,
     enDrive: a.drive_id !== null,
     errorDeDrive: a.drive_error,
+    categoria: normalizarCategoria(a.categoria),
+    categoriaDetalle: a.categoria_detalle,
   }))
+}
+
+/** La categoría guardada, si sigue siendo una de la lista. Los adjuntos viejos no tienen ninguna. */
+function normalizarCategoria(valor: string | null | undefined): CategoriaDeAdjunto | null {
+  const texto = limpiar(valor)
+  return CATEGORIAS_DE_ADJUNTO.find((categoria) => categoria === texto) ?? null
 }
 
 function tareasDe(siniestroId: number): TareaDeCliente[] {
@@ -563,8 +605,17 @@ export function cambiarEstadoDeSiniestro(siniestroId: number, estado: unknown, a
   return fichaDeSiniestro(id)
 }
 
-/** Qué campos de la ficha se corrigen a mano y cómo se llaman en la hoja. */
-const CAMPOS_EDITABLES: Record<string, { columna: string; campoDeLaHoja: string; nombre: string; esFecha?: boolean }> = {
+/**
+ * Qué campos de la ficha se corrigen a mano y cómo se llaman en la hoja.
+ *
+ * `campoDeLaHoja` en null es un campo que la pestaña SINIESTROS no tiene dónde guardar: se queda en
+ * DM Gestión y no se encola (una entrada para una columna que no existe termina como fallida y no
+ * arregla nada). Lo que sí viaja de ellos es el renglón que dejan en la línea de tiempo.
+ */
+const CAMPOS_EDITABLES: Record<
+  string,
+  { columna: string; campoDeLaHoja: string | null; nombre: string; esFecha?: boolean; opciones?: readonly string[] }
+> = {
   numeroSiniestro: { columna: 'numero_siniestro', campoDeLaHoja: 'numero_siniestro', nombre: 'N° SINIESTRO' },
   descripcion: { columna: 'descripcion', campoDeLaHoja: 'descripcion', nombre: 'DESCRIPCION' },
   importe: { columna: 'importe', campoDeLaHoja: 'importe', nombre: 'IMPORTE' },
@@ -573,6 +624,17 @@ const CAMPOS_EDITABLES: Record<string, { columna: string; campoDeLaHoja: string;
   patente: { columna: 'patente', campoDeLaHoja: 'patente', nombre: 'PATENTE' },
   fecha: { columna: 'fecha', campoDeLaHoja: 'fecha', nombre: 'FECHA DEL SINIESTRO', esFecha: true },
   fechaCarga: { columna: 'fecha_carga', campoDeLaHoja: 'fecha_carga', nombre: 'FECHA DE CARGA', esFecha: true },
+  abogado: { columna: 'abogado', campoDeLaHoja: null, nombre: 'ABOGADO' },
+  terceroCompania: { columna: 'tercero_compania', campoDeLaHoja: null, nombre: 'COMPANIA DEL TERCERO' },
+  terceroTelefono: { columna: 'tercero_telefono', campoDeLaHoja: null, nombre: 'TELEFONO DEL TERCERO' },
+  terceroPatente: { columna: 'tercero_patente', campoDeLaHoja: null, nombre: 'PATENTE DEL TERCERO' },
+  terceroLesionados: {
+    columna: 'tercero_lesionados',
+    campoDeLaHoja: null,
+    nombre: 'TERCEROS LESIONADOS',
+    opciones: RESPUESTAS_DE_LESIONADOS,
+  },
+  terceroLesionadosDetalle: { columna: 'tercero_lesionados_detalle', campoDeLaHoja: null, nombre: 'QUIEN SE LESIONO' },
 }
 
 /**
@@ -585,7 +647,7 @@ export function editarSiniestro(siniestroId: number, campo: unknown, valor: unkn
   const destino = CAMPOS_EDITABLES[clave]
   if (!destino) throw new ErrorDeNegocio('Ese campo no se puede editar desde la ficha.')
   const fila = buscarSiniestro(id)
-  const nuevo = limpiar(valor).slice(0, 500)
+  const nuevo = destino.opciones ? elegirOpcion(destino.opciones, valor, destino.nombre) : limpiar(valor).slice(0, 500)
 
   const anterior = limpiar((fila as unknown as Record<string, unknown>)[destino.columna === 'sucursal_texto' ? 'sucursal' : destino.columna])
   if (nuevo === anterior) return fichaDeSiniestro(id)
@@ -602,7 +664,6 @@ export function editarSiniestro(siniestroId: number, campo: unknown, valor: unkn
     .prepare(`UPDATE siniestros SET ${asignaciones.join(', ')}, actualizado_en = @ahora WHERE id = @id`)
     .run({ valor: nuevo || null, ...derivadas, ahora: ahoraIso(), id })
 
-  sincronizar(id, { [destino.campoDeLaHoja]: nuevo }, actor)
   registrarCambio(actor, {
     accion: 'siniestro',
     tabla: 'siniestros',
@@ -612,7 +673,39 @@ export function editarSiniestro(siniestroId: number, campo: unknown, valor: unkn
     valorAnterior: anterior || null,
     valorNuevo: nuevo || null,
   })
+
+  if (destino.campoDeLaHoja) {
+    sincronizar(id, { [destino.campoDeLaHoja]: nuevo }, actor)
+  } else {
+    // El campo no tiene columna en la hoja: se anota en la línea de tiempo, que es lo que sí viaja.
+    anotarObservacion(id, `${nombreLegible(destino.nombre)}: ${nuevo || '(se borró)'}`, actor)
+  }
   return fichaDeSiniestro(id)
+}
+
+/** Un valor de una lista cerrada ('' , 'NO', 'SI'). Se acepta en cualquier capitalización y con tilde. */
+function elegirOpcion(opciones: readonly string[], valor: unknown, nombre: string): string {
+  const escrito = limpiar(valor)
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  const elegida = opciones.find((opcion) => opcion === escrito)
+  if (elegida === undefined) throw new ErrorDeNegocio(`«${limpiar(valor)}» no es un valor posible de ${nombreLegible(nombre)}.`)
+  return elegida
+}
+
+/** «COMPANIA DEL TERCERO» → «Compañía del tercero», para el renglón de la línea de tiempo. */
+const NOMBRES_LEGIBLES: Record<string, string> = {
+  ABOGADO: 'Abogado',
+  'COMPANIA DEL TERCERO': 'Compañía del tercero',
+  'TELEFONO DEL TERCERO': 'Teléfono del tercero',
+  'PATENTE DEL TERCERO': 'Patente del tercero',
+  'TERCEROS LESIONADOS': 'Terceros lesionados',
+  'QUIEN SE LESIONO': 'Quién se lesionó',
+}
+
+function nombreLegible(nombre: string): string {
+  return NOMBRES_LEGIBLES[nombre] ?? nombre
 }
 
 /** Largo máximo de lo que se manda a la columna OBSERVACIONES de la hoja: es una celda, no un libro. */
@@ -663,13 +756,44 @@ export function agregarObservacion(siniestroId: number, textoDeLaObservacion: un
 // --- Documentos ---
 
 /**
+ * Qué es lo que se está adjuntando. La categoría es obligatoria: un legajo de siniestro se arma con
+ * papeles que la compañía pide por nombre, y una carpeta con «IMG_2043.jpg» ocho veces no sirve para
+ * saber si falta la constancia médica o la cédula verde.
+ */
+export function elegirCategoria(categoria: unknown, detalle: unknown): { categoria: CategoriaDeAdjunto; detalle: string | null } {
+  const escrita = limpiar(categoria)
+  const elegida = CATEGORIAS_DE_ADJUNTO.find((opcion) => opcion === escrita)
+  if (!elegida) throw new ErrorDeNegocio('Elegí de qué documento se trata antes de adjuntarlo.')
+  if (elegida !== CATEGORIA_DE_ADJUNTO_OTRAS) return { categoria: elegida, detalle: null }
+  const cual = limpiar(detalle).slice(0, 120)
+  if (!cual) throw new ErrorDeNegocio('En «Otras documentaciones» indicá de qué documento se trata.')
+  return { categoria: elegida, detalle: cual }
+}
+
+/** Cómo se nombra el adjunto en la línea de tiempo y en el historial. */
+function nombreDeCategoria(categoria: CategoriaDeAdjunto, detalle: string | null): string {
+  return detalle ? `${categoria}: ${detalle}` : categoria
+}
+
+/**
  * Copia los archivos a la carpeta del siniestro y, si hay conexión con Google, sube además una copia al
  * Drive. Un fallo de Drive no pierde nada: el archivo local ya está y el motivo queda a la vista.
+ *
+ * Los archivos de una misma tanda comparten categoría: se eligen las seis fotos del choque juntas y se
+ * guardan las seis como «Fotos del siniestro», que es como se adjunta en el mostrador.
  */
-export async function agregarAdjuntos(siniestroId: number, rutas: unknown, actor: SesionUsuario): Promise<FichaSiniestro> {
+export async function agregarAdjuntos(
+  siniestroId: number,
+  rutas: unknown,
+  categoria: unknown,
+  categoriaDetalle: unknown,
+  actor: SesionUsuario,
+): Promise<FichaSiniestro> {
   const id = enteroPositivo(siniestroId, 'El siniestro')
   const fila = buscarSiniestro(id)
   if (!Array.isArray(rutas) || rutas.length === 0) throw new ErrorDeNegocio('No elegiste ningún archivo.')
+  const elegida = elegirCategoria(categoria, categoriaDetalle)
+  const etiqueta = nombreDeCategoria(elegida.categoria, elegida.detalle)
 
   const dameToken = dadorDeTokenDeGoogle()
   for (const ruta of rutas) {
@@ -678,10 +802,22 @@ export async function agregarAdjuntos(siniestroId: number, rutas: unknown, actor
     db()
       .prepare(
         `INSERT INTO siniestro_adjuntos (siniestro_id, nombre, archivo, tamano, drive_id, drive_error,
-                                         usuario_id, usuario_nombre, creado_en)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                         usuario_id, usuario_nombre, creado_en, categoria, categoria_detalle)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, copia.nombre, copia.archivo, copia.tamano, drive.driveId, drive.error, actor.id, actor.nombre, ahoraIso())
+      .run(
+        id,
+        copia.nombre,
+        copia.archivo,
+        copia.tamano,
+        drive.driveId,
+        drive.error,
+        actor.id,
+        actor.nombre,
+        ahoraIso(),
+        elegida.categoria,
+        elegida.detalle,
+      )
 
     registrarCambio(actor, {
       accion: 'siniestro',
@@ -690,9 +826,9 @@ export async function agregarAdjuntos(siniestroId: number, rutas: unknown, actor
       filaId: fila.fila_id,
       campo: 'ADJUNTO',
       valorAnterior: null,
-      valorNuevo: copia.nombre,
+      valorNuevo: `${etiqueta} · ${copia.nombre}`,
     })
-    anotarObservacion(id, `Se adjuntó «${copia.nombre}»`, actor)
+    anotarObservacion(id, `Se adjuntó «${copia.nombre}» (${etiqueta})`, actor)
   }
   return fichaDeSiniestro(id)
 }

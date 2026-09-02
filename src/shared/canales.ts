@@ -30,6 +30,7 @@ import type {
   DatosDeSiniestro,
   SiniestroDeCliente,
   CandidatoDeSiniestro,
+  CategoriaDeAdjunto,
   DatosDeRiesgo,
   DatosDeTareaDeSiniestro,
   EstadoSiniestro,
@@ -336,8 +337,16 @@ export interface Canales {
    * Adjunta documentos: copia los archivos a la carpeta del siniestro y sube una copia al Drive si se
    * puede. Con `rutas` en null abre el diálogo para elegirlos, que es lo que hace la pantalla; con una
    * lista adjunta ésas (lo usa la prueba de humo, que no puede tocar un diálogo del sistema).
+   *
+   * `categoria` dice qué documento es (denuncia, cédula verde, constancia médica…) y vale para toda la
+   * tanda. En «Otras documentaciones» hace falta además el `detalle`, que es el «indicando cuál».
    */
-  'siniestros:adjuntar': (siniestroId: number, rutas: string[] | null) => Resultado<FichaSiniestro>
+  'siniestros:adjuntar': (
+    siniestroId: number,
+    rutas: string[] | null,
+    categoria: CategoriaDeAdjunto,
+    detalle?: string,
+  ) => Resultado<FichaSiniestro>
   'siniestros:abrirAdjunto': (adjuntoId: number) => Resultado<null>
   /** Borrar un documento es definitivo: sólo ADMIN y SUPER_ADMIN. */
   'siniestros:borrarAdjunto': (adjuntoId: number) => Resultado<FichaSiniestro>
