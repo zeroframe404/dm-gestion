@@ -1389,6 +1389,34 @@ excepción: ve las cuatro, así que lo que tiene en pantalla es lo que manda.
 con los mismos datos en distinto orden darían huellas distintas y la pantalla diría «desactualizada»
 para siempre. Por lo mismo, las listas (compañías, direcciones) viajan ordenadas por una clave estable.
 
+## Reportar un error (Inicio → «Reportar error»)
+
+Cuando algo fallaba en un mostrador, lo que llegaba era un mensaje de WhatsApp que decía «no anda».
+Sin la pantalla, sin la versión, sin la sucursal y casi siempre sin la captura. Con eso no se reproduce
+nada, así que la primera respuesta era siempre la misma pregunta y el problema esperaba un día más.
+
+El botón está en Inicio, al lado de «Descargar el manual», y **lo usa cualquier rol**: hacerle pedir
+permiso a alguien para avisar de un error es la forma de no enterarse nunca. Abre un cuadro con el
+título, la descripción y hasta **cuatro capturas**, que se pegan con `Ctrl+V` —que es donde quedan al
+apretar Impr Pant— o se buscan con el explorador. El programa agrega solo quién reporta, desde qué
+sucursal, con qué versión y en qué sistema.
+
+**El programa nunca habla con GitHub.** Manda el reporte al VPS (`POST /api/dmg/incidencias`, con el
+token del puente que ya tenía) y **el servidor** abre el issue con un token que vive en su `.env`
+(`DMG_INCIDENCIAS_TOKEN`, permiso «Issues: Read and write» y ninguno más). Es la misma lección que dejó
+la base de usuarios: un token con permiso de escritura embebido en el `.exe` está en las cinco
+computadoras y cualquiera lo puede extraer.
+
+**Las capturas.** Un issue no sabe recibir archivos por API: lo único que entiende es un enlace. Se
+guardan en la tabla `dmg_incidencia_imagenes` del VPS y el cuerpo del issue las referencia por una URL
+de ese servidor. Esa URL es **pública** —quien lee el issue tiene que poder verlas sin credenciales del
+VPS— y lo que la protege es el nombre: un UUID v4, 122 bits al azar, sin forma de enumerar las de al
+lado. El endpoint que las sirve está en un router aparte (`/api/dmg-publico`) justamente para que la
+frontera se vea y no quede escondida entre los que sí piden token.
+
+Código: `src/main/servicios/soporte.ts` y `src/renderer/componentes/DialogoReportarError.tsx` de este
+lado; `server/src/modules/dmg/incidencias.service.ts` del otro.
+
 ## Permisos por rol (Administración → Permisos)
 
 Los tres roles siguen siendo los mismos (EMPLEADO, ADMIN, SUPER_ADMIN), pero ahora **qué ve y qué toca

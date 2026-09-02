@@ -28,6 +28,14 @@ export const AYUDA_INICIO: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'Reportar un error',
+        parrafos: [
+          'Al lado de «Descargar el manual» está el botón «Reportar error». Abre un cuadro con dos campos —qué falló, en una línea, y qué pasó, con más detalle— y la posibilidad de adjuntar hasta cuatro capturas de pantalla. Lo puede usar cualquiera, con el rol que sea: el que tiene el problema delante es el que lo puede contar.',
+          'Para la captura, el camino corto: apretás «Impr Pant» (que copia la pantalla) y después «Ctrl+V» adentro del cuadro. También está el botón «Buscar», por si la imagen ya está guardada en la computadora. Las capturas son opcionales, pero son lo que más ayuda: la mitad de los problemas se entienden mirando la pantalla y no leyendo la descripción.',
+          'El programa agrega solo tu nombre, tu sucursal, la versión que tenés instalada y la fecha. No hace falta que los escribas, y son justamente los datos que más se pedían de vuelta por teléfono. Al enviarlo, el reporte queda anotado con un número; si el problema te frena para trabajar, avisá además por teléfono, porque nadie está mirando la lista de reportes todo el día.',
+        ],
+      },
+      {
         titulo: 'El mapa de módulos',
         parrafos: [
           'Cada tarjeta representa un módulo de la aplicación (Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros, Cobranzas, Métricas, Reportes, Marketing y Tareas) con una descripción de una línea de qué hace. Hacer clic en cualquiera te lleva directo a ese módulo, es un acceso rápido más que la barra lateral. Un módulo que todavía no está disponible en esta versión aparece marcado «Próximamente».',

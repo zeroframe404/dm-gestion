@@ -303,6 +303,11 @@ const api: ApiDm = {
   vista: {
     fijarZoom: (escala) => webFrame.setZoomFactor(Math.min(3, Math.max(0.5, escala))),
   },
+  soporte: {
+    elegirImagenes: () => invocar('soporte:elegirImagenes'),
+    pegarImagen: () => invocar('soporte:pegarImagen'),
+    reportar: (reporte) => invocar('soporte:reportar', reporte),
+  },
   mesh: {
     estado: () => invocar('mesh:estado'),
   },

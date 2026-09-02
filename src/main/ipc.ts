@@ -216,6 +216,7 @@ import {
 import { eliminarRegistro, vistaPreviaDeEliminacion } from './servicios/eliminacion'
 import { ErrorDeNegocio } from './servicios/errores'
 import { estadoDelMesh } from './servicios/mesh'
+import { elegirImagenesDelReporte, enviarReporteDeError, imagenDelPortapapeles } from './servicios/soporte'
 import { estadoDeLaBaseVps, migrarAlVps } from './servicios/migracionVps'
 import {
   abrirCarpetaInformes,
@@ -1289,6 +1290,28 @@ export function registrarIpc(): void {
   manejar('mesh:estado', async () => {
     exigirSesion()
     return exito(await estadoDelMesh())
+  })
+
+  // «Reportar error» de Inicio. Lo usa cualquier rol y sin permiso sobre ningún módulo: el que tiene el
+  // problema delante es el que lo puede contar, y hacerle pedir permiso para avisar de un error sería
+  // exactamente la forma de no enterarse nunca.
+  manejar('soporte:elegirImagenes', async () => {
+    exigirSesion()
+    return exito(await elegirImagenesDelReporte(ventanaActual()))
+  })
+  manejar('soporte:pegarImagen', () => {
+    exigirSesion()
+    return exito(imagenDelPortapapeles())
+  })
+  manejar('soporte:reportar', async (reporte) => {
+    const actor = exigirSesion()
+    return exito(
+      await enviarReporteDeError(reporte, {
+        quien: actor.nombre,
+        sucursal: actor.sucursal.nombre,
+        version: app.getVersion(),
+      }),
+    )
   })
 
   manejar('sistema:abrirEnlace', async (url) => {

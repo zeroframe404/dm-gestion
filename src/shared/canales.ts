@@ -86,6 +86,9 @@ import type {
   EstadoDeCredencialesDeVehiculos,
   EstadoDelCatalogo,
   EstadoDelMesh,
+  ImagenDeReporte,
+  ReporteCreado,
+  ReporteDeError,
   GuardadoDeCredencialesDeVehiculos,
   LineaDeCatalogo,
   OpcionDeCatalogo,
@@ -565,6 +568,14 @@ export interface Canales {
   // --- Control remoto de las computadoras (MeshCentral) ---
   /** Mide si la consola contesta. El link se abre después con 'sistema:abrirEnlace'. */
   'mesh:estado': () => Resultado<EstadoDelMesh>
+
+  // --- Reportar un error (Inicio) ---
+  /** El explorador de archivos, varias a la vez. Cancelar devuelve la lista vacía. */
+  'soporte:elegirImagenes': () => Resultado<ImagenDeReporte[]>
+  /** La captura que está en el portapapeles (Impr Pant), guardada como archivo. null si no hay ninguna. */
+  'soporte:pegarImagen': () => Resultado<ImagenDeReporte | null>
+  /** Manda el reporte al VPS, que abre el issue. Devuelve su número y su dirección. */
+  'soporte:reportar': (reporte: ReporteDeError) => Resultado<ReporteCreado>
 
   'app:info': () => Resultado<InfoApp>
 

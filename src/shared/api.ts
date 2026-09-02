@@ -290,6 +290,12 @@ export interface ApiDm {
   mesh: {
     estado: Remota<'mesh:estado'>
   }
+  /** «Reportar error» de Inicio: el cuadro con el título, el texto y las capturas. */
+  soporte: {
+    elegirImagenes: Remota<'soporte:elegirImagenes'>
+    pegarImagen: Remota<'soporte:pegarImagen'>
+    reportar: Remota<'soporte:reportar'>
+  }
   importacion: {
     vistaPrevia: Remota<'importacion:vistaPrevia'>
     iniciar: Remota<'importacion:iniciar'>
