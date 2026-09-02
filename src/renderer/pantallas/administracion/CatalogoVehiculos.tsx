@@ -54,6 +54,7 @@ export function CatalogoVehiculos() {
   const [usuario, setUsuario] = useState('')
   const [clave, setClave] = useState('')
   const [accessToken, setAccessToken] = useState('')
+  const [urlFuente, setUrlFuente] = useState('')
   const [guardando, setGuardando] = useState(false)
   const [refrescando, setRefrescando] = useState(false)
   const [progreso, setProgreso] = useState<ProgresoDeCatalogo | null>(null)
@@ -67,6 +68,7 @@ export function CatalogoVehiculos() {
       setEstado(resultado.datos)
       setUsuario(resultado.datos.usuario)
       setProveedor(resultado.datos.proveedorId)
+      setUrlFuente(resultado.datos.urlFuente ?? '')
     } else {
       setError(resultado.error)
     }
@@ -87,8 +89,11 @@ export function CatalogoVehiculos() {
 
   const etiquetas = ETIQUETAS_DE_CREDENCIAL[proveedor]
   const esMercadoLibre = proveedor === 'MERCADO_LIBRE'
+  const esDnrpa = proveedor === 'DNRPA'
   // Con un Access Token pegado alcanza para que Mercado Libre conteste: ahí el App ID es opcional.
-  const puedeGuardar = usuario.trim() !== '' || (esMercadoLibre && (accessToken.trim() !== '' || estado?.tokenCargado === true))
+  // DNRPA no pide nada: elegirlo ya alcanza para guardar.
+  const puedeGuardar =
+    esDnrpa || usuario.trim() !== '' || (esMercadoLibre && (accessToken.trim() !== '' || estado?.tokenCargado === true))
 
   const guardar = async () => {
     setGuardando(true)
@@ -100,6 +105,7 @@ export function CatalogoVehiculos() {
       usuario,
       clave,
       accessToken: esMercadoLibre ? accessToken : '',
+      urlFuente: esDnrpa ? urlFuente : '',
     })
     setGuardando(false)
     if (resultado.ok) {
@@ -139,6 +145,7 @@ export function CatalogoVehiculos() {
       setCompartido(resultado.datos.compartido)
       setUsuario(resultado.datos.estado.usuario)
       setProveedor(resultado.datos.estado.proveedorId)
+      setUrlFuente(resultado.datos.estado.urlFuente ?? '')
       setAviso(resultado.datos.detalle)
     } else {
       setError(resultado.error)
@@ -156,6 +163,7 @@ export function CatalogoVehiculos() {
       setUsuario('')
       setClave('')
       setAccessToken('')
+      setUrlFuente('')
       setAviso(
         tambienDelServidor
           ? 'Se sacaron las credenciales de esta computadora y del servidor. Lo ya bajado sigue estando.'
@@ -235,6 +243,7 @@ export function CatalogoVehiculos() {
               setUsuario('')
               setClave('')
               setAccessToken('')
+              setUrlFuente('')
               setPrueba(null)
             }}
             disabled={!puedeEditar}
@@ -242,39 +251,60 @@ export function CatalogoVehiculos() {
             ayuda="Se usa uno solo. Los códigos de marca y de modelo de cada proveedor no tienen nada que ver entre sí, así que cambiar de proveedor obliga a volver a bajar el catálogo."
           />
 
-          <Campo
-            etiqueta={etiquetas.usuario}
-            value={usuario}
-            onChange={(evento) => setUsuario(evento.target.value)}
-            disabled={!puedeEditar}
-            ayuda={etiquetas.ayuda}
-            autoComplete="off"
-          />
-          <CampoClave
-            etiqueta={etiquetas.clave}
-            value={clave}
-            onChange={(evento) => setClave(evento.target.value)}
-            disabled={!puedeEditar}
-            placeholder={estado.configurado ? '•••••••• (dejala vacía para no cambiarla)' : ''}
-            autoComplete="off"
-          />
-
-          {esMercadoLibre && (
+          {esDnrpa ? (
             <>
-              <CampoClave
-                etiqueta="Access Token (opcional)"
-                value={accessToken}
-                onChange={(evento) => setAccessToken(evento.target.value)}
+              <Campo
+                etiqueta="URL de origen (avanzado, opcional)"
+                value={urlFuente}
+                onChange={(evento) => setUrlFuente(evento.target.value)}
                 disabled={!puedeEditar}
-                placeholder={estado.tokenCargado ? '•••••••• (hay uno cargado; dejalo vacío para no cambiarlo)' : 'APP_USR-…'}
-                ayuda="El que muestra Mercado Pago en «Credenciales de producción». Es el camino corto para probar, pero vence: con App ID y Clave secreta el permiso se renueva solo."
+                placeholder="Dejalo vacío para detectar sola la tabla vigente"
+                ayuda="El programa busca solo la tabla vigente en dnrpa.gov.ar. Usá esto sólo si la detección automática deja de encontrarla: pegá acá la URL directa del PDF."
                 autoComplete="off"
               />
               <Alerta tono="info">
-                Mercado Libre publica por esta API el catálogo de <strong>autos y camionetas</strong> únicamente: el de motos no
-                está disponible. Tampoco trae los años de fabricación ni el precio de lista, así que el año se elige de la
-                ventana de siempre. Para motos hace falta InfoAuto.
+                La DNRPA publica gratis, sin usuario ni clave, la Tabla de Valuación de Automotores y Motovehículos: cubre{' '}
+                <strong>autos y motos</strong>. No trae precio de lista —no se usa en el programa— y los años que ofrece son
+                los que muestra la tabla vigente para esa versión.
               </Alerta>
+            </>
+          ) : (
+            <>
+              <Campo
+                etiqueta={etiquetas.usuario}
+                value={usuario}
+                onChange={(evento) => setUsuario(evento.target.value)}
+                disabled={!puedeEditar}
+                ayuda={etiquetas.ayuda}
+                autoComplete="off"
+              />
+              <CampoClave
+                etiqueta={etiquetas.clave}
+                value={clave}
+                onChange={(evento) => setClave(evento.target.value)}
+                disabled={!puedeEditar}
+                placeholder={estado.configurado ? '•••••••• (dejala vacía para no cambiarla)' : ''}
+                autoComplete="off"
+              />
+
+              {esMercadoLibre && (
+                <>
+                  <CampoClave
+                    etiqueta="Access Token (opcional)"
+                    value={accessToken}
+                    onChange={(evento) => setAccessToken(evento.target.value)}
+                    disabled={!puedeEditar}
+                    placeholder={estado.tokenCargado ? '•••••••• (hay uno cargado; dejalo vacío para no cambiarlo)' : 'APP_USR-…'}
+                    ayuda="El que muestra Mercado Pago en «Credenciales de producción». Es el camino corto para probar, pero vence: con App ID y Clave secreta el permiso se renueva solo."
+                    autoComplete="off"
+                  />
+                  <Alerta tono="info">
+                    Mercado Libre publica por esta API el catálogo de <strong>autos y camionetas</strong> únicamente: el de motos
+                    no está disponible. Tampoco trae los años de fabricación ni el precio de lista, así que el año se elige de
+                    la ventana de siempre. Para motos hace falta InfoAuto o DNRPA.
+                  </Alerta>
+                </>
+              )}
             </>
           )}
 

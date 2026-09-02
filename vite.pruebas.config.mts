@@ -8,6 +8,13 @@ const externos = [
   'better-sqlite3',
   'bcryptjs',
   '@googleapis/sheets',
+  // pdfjs-dist (el adaptador de DNRPA) resuelve su propio require(import.meta.url) para el polyfill de
+  // Node; empaquetado por Vite ese import.meta.url deja de ser el real y la carga se rompe. Externo se
+  // deja tal cual se resuelve en node_modules, igual que en producción.
+  'pdfjs-dist',
+  // El adaptador de DNRPA hace `import()` de esta subruta puntual: el nombre del paquete solo no
+  // alcanza para que rolldown la deje afuera del bundle, hace falta la ruta exacta.
+  'pdfjs-dist/legacy/build/pdf.mjs',
   // `node:test` no está en `builtinModules` (Node sólo lo expone con el prefijo `node:`), así que hay que
   // nombrarlo aparte: si no, Vite lo reemplaza por el stub de navegador y el banco de pruebas no arranca.
   'node:test',

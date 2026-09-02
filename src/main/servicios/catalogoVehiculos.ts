@@ -24,6 +24,7 @@ import {
 } from '../../shared/tipos'
 import { db } from '../db/base'
 import { ahoraIso, limpiar, normalizarTexto } from '../importacion/normalizar'
+import { crearProveedorDnrpa } from '../vehiculos/dnrpa'
 import { crearProveedorInfoauto } from '../vehiculos/infoauto'
 import { crearProveedorMercadoLibre } from '../vehiculos/mercadolibre'
 import { ErrorDeProveedor, type ProveedorDeVehiculos } from '../vehiculos/proveedor'
@@ -47,6 +48,9 @@ function proveedor(): ProveedorDeVehiculos | null {
   if (proveedorDePrueba) return proveedorDePrueba
   const credenciales = credencialesDeVehiculos()
   if (!credenciales) return null
+  if (credenciales.proveedor === 'DNRPA') {
+    return crearProveedorDnrpa({ urlFuente: credenciales.urlFuente })
+  }
   if (credenciales.proveedor === 'MERCADO_LIBRE') {
     return crearProveedorMercadoLibre({
       appId: credenciales.usuario,
@@ -102,6 +106,7 @@ export function estadoDelCatalogo(): EstadoDelCatalogo {
     proveedorId: elegido,
     usuario: credenciales?.usuario ?? '',
     tokenCargado: Boolean(credenciales?.accessToken),
+    urlFuente: credenciales?.urlFuente ?? null,
     // Sin credenciales todavía no hay a quién preguntarle, y hay que decir algo: se muestran los dos
     // tipos, que es lo que la pantalla venía mostrando y lo que sirve Mercado Libre se corrige solo
     // en cuanto se guardan las credenciales.
