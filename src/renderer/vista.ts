@@ -39,6 +39,47 @@ export function escalaAnterior(actual: number): number {
   return ESCALAS[Math.max(indice - 1, 0)]!
 }
 
+/**
+ * Interpreta lo que quedó guardado en esta computadora. Cualquier cosa que no sea un número usable
+ * —vacío, texto, infinito, negativo— vuelve al tamaño de siempre.
+ *
+ * El caso del vacío no es teórico: `Number('')` es 0, y 0 acomodado al paso más cercano daría 70 %.
+ * Una preferencia a medio escribir no puede abrir la ventana chiquita.
+ */
+export function escalaGuardada(texto: string | null): number {
+  if (texto === null || texto.trim() === '') return ESCALA_NORMAL
+  const numero = Number(texto)
+  if (!Number.isFinite(numero) || numero <= 0) return ESCALA_NORMAL
+  return escalaMasCercana(numero)
+}
+
+/**
+ * Cuánto hay que juntar con la rueda para que valga un paso de zoom.
+ *
+ * Sin esto, un paso por evento: con el mouse está bien —una muesca es un evento de ~100 px— pero en el
+ * touchpad de la notebook, que es la máquina del caso, Chromium manda el pellizco como decenas de
+ * eventos de Ctrl + rueda de unos pocos píxeles cada uno. Un solo gesto recorría los nueve pasos y
+ * terminaba en el extremo.
+ */
+export const RUEDA_POR_PASO = 100
+
+/**
+ * Suma un evento de rueda a lo que venía juntado y dice si hay que moverse: 1 agranda, -1 achica, 0 no
+ * hace nada todavía. Cuando se mueve, el acumulado vuelve a cero, así una vuelta larga no deja resto
+ * para el gesto siguiente.
+ *
+ * `delta` viene de `WheelEvent.deltaY`: negativo es rueda hacia arriba, que es agrandar.
+ */
+export function acumularRueda(acumulado: number, delta: number): { acumulado: number; paso: -1 | 0 | 1 } {
+  if (!Number.isFinite(delta) || delta === 0) return { acumulado, paso: 0 }
+  // Cambiar de sentido arranca de cero: si no, achicar después de agrandar tiene que remontar primero
+  // todo lo que se había juntado para el otro lado.
+  const base = Math.sign(acumulado) === -Math.sign(delta) ? 0 : acumulado
+  const total = base + delta
+  if (Math.abs(total) < RUEDA_POR_PASO) return { acumulado: total, paso: 0 }
+  return { acumulado: 0, paso: total < 0 ? 1 : -1 }
+}
+
 /** «110 %», como se muestra en el botón del medio. */
 export function comoPorcentaje(escala: number): string {
   return `${Math.round(escala * 100)} %`
