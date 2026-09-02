@@ -43,6 +43,35 @@
  *
  * La barra lateral (`bg-marino-950`) ya es oscura en los dos temas y no se toca acá.
  */
+/*
+ * Los grises de los gráficos de Métricas. Están acá y no adentro del SVG porque un atributo
+ * `stroke="#e2e8f0"` escrito en el TSX no lo alcanza ninguna regla de tema: la rejilla quedaba
+ * blanca brillante sobre el fondo oscuro y los meses del eje, casi negros sobre casi negro. Las
+ * líneas y las barras con datos (azul, verde y rojo plenos) siguen escritas en el TSX: se leen bien
+ * en los dos temas.
+ */
+:root {
+  --grafico-rejilla: #e2e8f0;
+  --grafico-eje: #94a3b8;
+  --grafico-rotulo: #64748b;
+}
+
+html[data-theme='dark'] {
+  --grafico-rejilla: #24334d;
+  --grafico-eje: #7d8ca6;
+  --grafico-rotulo: #97a5be;
+}
+
+/*
+ * El tema claro no necesita redefinir ningún color —es con el que están escritas las pantallas—,
+ * pero sí necesita DECIRLO: sin `color-scheme`, una computadora con Windows en modo oscuro dibuja
+ * los desplegables, los calendarios y las barras de scroll del sistema en oscuro dentro de una
+ * pantalla blanca. El tema lo elige el programa, no el sistema.
+ */
+html[data-theme='light'] {
+  color-scheme: light;
+}
+
 html[data-theme='dark'] {
   color-scheme: dark;
 }
@@ -105,6 +134,289 @@ html[data-theme='dark'] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
 }
 html[data-theme='dark'] .ring-slate-200 {
   --tw-ring-color: #263a54;
+}
+
+/*
+ * Lo que faltaba para que el tema oscuro no quedara a medias. Salió de contar una por una las clases
+ * de color que usan las pantallas: las de arriba son las que más aparecen, éstas son las demás, y sin
+ * ellas quedaban renglones de texto casi negro sobre fondo casi negro, bordes que no se veían y
+ * campos de texto blancos en el medio de una pantalla oscura.
+ */
+
+/* El fondo y el color base de la página. No usan la CLASE `bg-slate-50`, sino el `@apply` de
+ * `@layer base` de más abajo, así que las reglas de las clases no los alcanzan. */
+html[data-theme='dark'] body {
+  background-color: #0a1120;
+  color: #a7b4cb;
+}
+
+html[data-theme='dark'] .bg-slate-300 {
+  background-color: #2c3d5c;
+}
+html[data-theme='dark'] .bg-slate-400 {
+  background-color: #3a4d70;
+}
+html[data-theme='dark'] .text-slate-300 {
+  color: #5c6a85;
+}
+html[data-theme='dark'] .border-slate-50 {
+  border-color: #16223a;
+}
+html[data-theme='dark'] .border-slate-400 {
+  border-color: #445a80;
+}
+
+/* Los estados: sin esto, pasar el mouse por una fila o por un botón lo volvía blanco. */
+html[data-theme='dark'] .hover\:bg-white:hover {
+  background-color: #16223a;
+}
+html[data-theme='dark'] .hover\:border-slate-300:hover {
+  border-color: #3a4d70;
+}
+html[data-theme='dark'] .hover\:border-slate-400:hover {
+  border-color: #4a5f85;
+}
+html[data-theme='dark'] .hover\:text-slate-600:hover {
+  color: #a7b4cb;
+}
+html[data-theme='dark'] .hover\:text-slate-700:hover {
+  color: #cbd5e6;
+}
+html[data-theme='dark'] .hover\:text-slate-800:hover {
+  color: #dbe3f0;
+}
+html[data-theme='dark'] .focus\:bg-slate-50:focus {
+  background-color: #16223a;
+}
+html[data-theme='dark'] .odd\:bg-slate-50:nth-child(odd) {
+  background-color: #0e1728;
+}
+html[data-theme='dark'] .group:hover .group-hover\:bg-slate-50 {
+  background-color: #16223a;
+}
+
+/* Deshabilitado: tiene que leerse apagado, no invisible. */
+html[data-theme='dark'] .disabled\:bg-slate-100:disabled {
+  background-color: #182338;
+}
+html[data-theme='dark'] .disabled\:text-slate-500:disabled {
+  color: #8695b0;
+}
+html[data-theme='dark'] .disabled\:text-slate-400:disabled {
+  color: #6b7994;
+}
+html[data-theme='dark'] .disabled\:text-slate-300:disabled {
+  color: #5c6a85;
+}
+
+/* El texto de ayuda de los campos vacíos. */
+html[data-theme='dark'] .placeholder\:text-slate-400::placeholder {
+  color: #6b7994;
+}
+html[data-theme='dark'] .placeholder\:text-slate-300::placeholder {
+  color: #5c6a85;
+}
+
+/*
+ * Los colores de marca y los del semáforo.
+ *
+ * Las pantallas usan una y otra vez el mismo par: un fondo pálido (`bg-marino-50`, `bg-red-50`,
+ * `bg-green-50`, `bg-amber-50`) con la tinta oscura del mismo color encima (`text-marino-900`,
+ * `text-red-700`…). Con sólo dar vuelta los grises, ese par quedaba peor que antes: el panel del
+ * cliente en «Nueva póliza», la vista previa del WhatsApp y todos los carteles de aviso seguían
+ * siendo bloques casi blancos, y encima con la tinta aclarada por las reglas de los grises. Así que
+ * el par se da vuelta entero: el fondo pálido pasa a ser oscuro teñido, y la tinta oscura pasa a ser
+ * clara teñida, respetando la misma escala (en claro, cuanto más alto el número más oscuro; acá,
+ * cuanto más alto el número más claro).
+ *
+ * Los colores PLENOS (`bg-red-500`, `bg-marino-700`, `bg-amber-400`, la barra lateral `bg-marino-950`)
+ * no se tocan: ya están pensados para llevar texto blanco encima y se leen igual en los dos temas.
+ */
+
+/* Azul de marca */
+html[data-theme='dark'] .bg-marino-50 {
+  background-color: #16233d;
+}
+html[data-theme='dark'] .bg-marino-100 {
+  background-color: #1a2942;
+}
+html[data-theme='dark'] .bg-marino-200 {
+  background-color: #1e2f4d;
+}
+html[data-theme='dark'] .hover\:bg-marino-50:hover {
+  background-color: #1b2a48;
+}
+html[data-theme='dark'] .text-marino-600 {
+  color: #7fa9e6;
+}
+html[data-theme='dark'] .text-marino-700 {
+  color: #93b8ef;
+}
+html[data-theme='dark'] .text-marino-800 {
+  color: #aecbf5;
+}
+html[data-theme='dark'] .text-marino-900 {
+  color: #c6dbf9;
+}
+html[data-theme='dark'] .hover\:text-marino-700:hover {
+  color: #aecbf5;
+}
+html[data-theme='dark'] .border-marino-200 {
+  border-color: #263c60;
+}
+html[data-theme='dark'] .border-marino-300 {
+  border-color: #2f4a75;
+}
+html[data-theme='dark'] .border-marino-400 {
+  border-color: #3a5a8c;
+}
+html[data-theme='dark'] .hover\:border-marino-300:hover {
+  border-color: #3a5a8c;
+}
+
+/* Rojo: vencido, rechazado, borrar */
+html[data-theme='dark'] .bg-red-50 {
+  background-color: #2a1418;
+}
+html[data-theme='dark'] .bg-red-100 {
+  background-color: #3a1a20;
+}
+html[data-theme='dark'] .hover\:bg-red-50:hover {
+  background-color: #33171c;
+}
+html[data-theme='dark'] .text-red-600 {
+  color: #f28b82;
+}
+html[data-theme='dark'] .text-red-700 {
+  color: #f6a09a;
+}
+html[data-theme='dark'] .text-red-800 {
+  color: #f9b4ae;
+}
+html[data-theme='dark'] .hover\:text-red-600:hover {
+  color: #ff9d95;
+}
+html[data-theme='dark'] .border-red-200 {
+  border-color: #5a2530;
+}
+html[data-theme='dark'] .border-red-300 {
+  border-color: #6d2c3a;
+}
+html[data-theme='dark'] .border-red-400 {
+  border-color: #833544;
+}
+html[data-theme='dark'] .hover\:border-red-300:hover {
+  border-color: #833544;
+}
+
+/* Verde: pago, al día */
+html[data-theme='dark'] .bg-green-50 {
+  background-color: #10261a;
+}
+html[data-theme='dark'] .bg-green-100 {
+  background-color: #16331f;
+}
+html[data-theme='dark'] .hover\:bg-green-50:hover {
+  background-color: #143020;
+}
+html[data-theme='dark'] .text-green-600 {
+  color: #6ed49a;
+}
+html[data-theme='dark'] .text-green-700 {
+  color: #86dfab;
+}
+html[data-theme='dark'] .text-green-800 {
+  color: #a3e8c0;
+}
+html[data-theme='dark'] .border-green-200 {
+  border-color: #1f4a30;
+}
+html[data-theme='dark'] .border-green-300 {
+  border-color: #276039;
+}
+
+/* Ámbar: por vencer, atención */
+html[data-theme='dark'] .bg-amber-50 {
+  background-color: #2b2008;
+}
+html[data-theme='dark'] .bg-amber-100 {
+  background-color: #392a0b;
+}
+html[data-theme='dark'] .text-amber-700 {
+  color: #f0c05a;
+}
+html[data-theme='dark'] .text-amber-800 {
+  color: #f4cd77;
+}
+html[data-theme='dark'] .text-amber-900 {
+  color: #f8d992;
+}
+html[data-theme='dark'] .border-amber-200 {
+  border-color: #5a4413;
+}
+html[data-theme='dark'] .border-amber-300 {
+  border-color: #6d5318;
+}
+
+/* Los pocos sueltos: violeta, celeste y naranja de algunas etiquetas */
+html[data-theme='dark'] .bg-violet-50 {
+  background-color: #1d1533;
+}
+html[data-theme='dark'] .bg-violet-100 {
+  background-color: #241a3d;
+}
+html[data-theme='dark'] .bg-sky-50 {
+  background-color: #0d2233;
+}
+html[data-theme='dark'] .bg-sky-100 {
+  background-color: #123044;
+}
+html[data-theme='dark'] .bg-orange-50 {
+  background-color: #2b1a0a;
+}
+html[data-theme='dark'] .bg-orange-100 {
+  background-color: #3a230d;
+}
+html[data-theme='dark'] .text-violet-800 {
+  color: #c4b1f0;
+}
+html[data-theme='dark'] .border-violet-200 {
+  border-color: #3a2a5e;
+}
+html[data-theme='dark'] .text-sky-800 {
+  color: #8ecbf0;
+}
+html[data-theme='dark'] .text-orange-900 {
+  color: #f6bd8a;
+}
+
+/*
+ * Las variantes con transparencia son OTRA clase, con otro nombre: `bg-slate-50/60` no la alcanza
+ * ninguna regla de `.bg-slate-50`. Son los encabezados pegajosos y los velos de los formularios, que
+ * sin esto quedaban como una banda blanca translúcida cruzando la pantalla oscura.
+ */
+html[data-theme='dark'] .bg-slate-50\/60 {
+  background-color: rgb(10 17 32 / 0.6);
+}
+html[data-theme='dark'] .bg-slate-50\/70 {
+  background-color: rgb(10 17 32 / 0.7);
+}
+html[data-theme='dark'] .bg-slate-50\/95 {
+  background-color: rgb(10 17 32 / 0.95);
+}
+html[data-theme='dark'] .hover\:bg-slate-50\/60:hover {
+  background-color: rgb(10 17 32 / 0.6);
+}
+html[data-theme='dark'] .hover\:bg-white\/70:hover {
+  background-color: rgb(22 34 58 / 0.7);
+}
+
+/* La barra de scroll, pensada para fondo claro, casi no se veía sobre el oscuro. */
+html[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.3);
+}
+html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.5);
 }
 
 @layer base {

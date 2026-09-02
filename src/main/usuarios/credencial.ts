@@ -83,7 +83,17 @@ export class AlmacenDeCredencial {
       }
     } catch (error) {
       console.error('[credencial] No se pudo leer la credencial guardada; se descarta:', error instanceof Error ? error.message : error)
-      this.borrar()
+      // `borrar()` también puede fallar (el archivo abierto por otro proceso, permisos), y este
+      // método corre durante el arranque: si dejara escapar esa excepción, el programa se quedaría
+      // sin abrir por una credencial que ya se había decidido tirar a la basura.
+      try {
+        this.borrar()
+      } catch (errorAlBorrar) {
+        console.error(
+          '[credencial] Tampoco se pudo borrar la credencial ilegible:',
+          errorAlBorrar instanceof Error ? errorAlBorrar.message : errorAlBorrar,
+        )
+      }
       return null
     }
   }

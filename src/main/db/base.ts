@@ -15,9 +15,20 @@ export type BaseDeDatos = Database.Database
 
 let instancia: BaseDeDatos | null = null
 
+/**
+ * Cuánto espera la apertura si otro proceso está escribiendo, antes de darse por vencida.
+ *
+ * Por defecto better-sqlite3 espera 5 segundos y después tira «database is locked». Cinco segundos
+ * alcanzan para una escritura normal, pero NO para el momento en que hacen falta: el de la
+ * actualización, con la versión anterior todavía terminando de cerrar —o colgada— sobre la misma
+ * base. Ahí, rendirse rápido significa que el programa nuevo no abre.
+ */
+const ESPERA_POR_LA_BASE_MS = 20_000
+
 export function abrirBaseDeDatos(ruta: string): BaseDeDatos {
-  const db = new Database(ruta)
+  const db = new Database(ruta, { timeout: ESPERA_POR_LA_BASE_MS })
   db.pragma('journal_mode = WAL')
+  db.pragma('busy_timeout = ' + ESPERA_POR_LA_BASE_MS)
   db.pragma('foreign_keys = ON')
   ejecutarMigraciones(db)
   // Red de seguridad contra bases que quedaron con columnas de menos porque una migración ya aplicada

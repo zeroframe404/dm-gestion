@@ -78,7 +78,7 @@ const PRIMEROS_PASOS: Array<{ titulo: string; texto: string }> = [
   {
     titulo: '2. Mirar la barra de arriba',
     texto:
-      'Arriba a la derecha están las dos campanas y el estado de la sincronización. La campana con el número son tus tareas; la del triángulo, los débitos que rebotaron en tu sucursal y hay que salir a cobrar. Cuando llega algo nuevo, además suena. El parlante de al lado apaga los sonidos en esta computadora si molestan.',
+      'Arriba a la derecha están las dos campanas y el estado de la sincronización. La campana con el número son tus tareas; la del triángulo, los débitos que rebotaron en tu sucursal y hay que salir a cobrar. Cuando llega algo nuevo, además suena. El parlante de al lado apaga los sonidos en esta computadora si molestan, y el sol (o la luna) cambia la pantalla entre clara y oscura: también es de esta computadora, así que cada una puede tener la suya.',
   },
   {
     titulo: '3. Empezar por Cartera',
@@ -109,6 +109,10 @@ const ATAJOS: Array<{ que: string; como: string }> = [
   { que: 'Cerrar una ventana', como: 'La tecla Escape cierra la que esté arriba de todo, sin perder lo que estabas cargando debajo.' },
   { que: 'Bajar cualquier listado', como: 'Reportes arma el archivo de Excel o el PDF de cualquier listado, con los filtros que le pongas.' },
   { que: 'Apagar los sonidos', como: 'El parlante de la barra de arriba. Es de esta computadora, no de tu usuario.' },
+  {
+    que: 'Poner la pantalla oscura',
+    como: 'El sol (o la luna) de la barra de arriba. Sirve para trabajar de noche o con poca luz, y queda guardado en esta computadora.',
+  },
   {
     que: 'Agrandar o achicar todo',
     como: 'Los botones «− 100 % +» de la barra de arriba, o Ctrl con «+», «−» y «0». La flecha de la barra azul la achica a una tira de iconos y deja más lugar para la tabla. Las dos cosas son de esta computadora.',
