@@ -28,7 +28,7 @@ import { editarCompania, listarCompanias } from '../src/main/servicios/companias
 import { listarRiesgos } from '../src/main/servicios/riesgos'
 import { historialDeFila } from '../src/main/servicios/historial'
 import { guardarPlantillaDeAviso } from '../src/main/servicios/plantillas'
-import { calcularAlerta } from '../src/shared/semaforo'
+import { calcularAlerta, periodoDeHoy, periodoSiguiente } from '../src/shared/semaforo'
 import type { FilaCartera, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
@@ -308,8 +308,18 @@ test('cerrar el mes abre el siguiente con las pólizas activas y sin los pagos d
 
   // Agosto queda como mes cerrado.
   assert.equal(planillaDelMes('2026-08').soloLectura, true)
-  // Y no se puede seguir abriendo meses hacia adelante sin que llegue el momento.
-  assert.throws(() => cerrarMes(DANIEL), /Ya está abierto 2026-09/)
+  // Y no se puede seguir abriendo meses hacia adelante sin que llegue el momento: se puede llegar hasta
+  // el mes que viene del calendario real, pero no más allá. Cuántas veces hay que cerrar para chocar con
+  // ese límite depende de la fecha en la que corra la prueba, así que se avanza hasta ahí en vez de
+  // asumir que septiembre ya es el límite.
+  const limite = periodoSiguiente(periodoDeHoy())
+  let actual = resumen.periodo
+  let vueltas = 0
+  while (periodoSiguiente(actual) <= limite) {
+    assert.ok(vueltas++ < 24, 'el límite del cierre de mes no debería tardar tanto en aparecer')
+    actual = cerrarMes(DANIEL).periodo
+  }
+  assert.throws(() => cerrarMes(DANIEL), new RegExp(`Ya está abierto ${actual}`))
   cerrarBaseDeDatos()
 })
 
