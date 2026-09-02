@@ -4,7 +4,9 @@
 // `nuevaPolizaPara`, desde la bandeja de renovaciones con `polizaId`).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DIAS_DE_RENOVACION, diasParaVencer, NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
-import type { EstadoPoliza, FiltrosPolizas, ListadoPolizas, PolizaDeCliente } from '../../../shared/tipos'
+import { NOMBRE_RAMA, type Rama } from '../../../shared/ramas'
+import { ESTADOS_DE_POLIZA, type EstadoPoliza, type FiltrosPolizas, type ListadoPolizas, type PolizaDeCliente } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
@@ -22,7 +24,7 @@ export const TONO_DE_ESTADO: Record<EstadoPoliza, 'exito' | 'aviso' | 'neutro'> 
   BAJA: 'neutro',
 }
 
-const FILTROS_VACIOS: FiltrosPolizas = { busqueda: '', estado: '', compania: '', sucursal: '', cobertura: '' }
+const FILTROS_VACIOS: FiltrosPolizas = { busqueda: '', estados: [], companias: [], sucursales: [], coberturas: [], ramas: [] }
 
 /** Qué se está mostrando. El formulario no es otra pantalla del menú: es un modo de ésta. */
 type Vista = { pantalla: 'listado' } | { pantalla: 'formulario'; polizaId: number | null; clienteIdInicial: number | null }
@@ -156,6 +158,14 @@ export function Polizas() {
           </span>
         ),
       },
+      // La rama no se guarda ni se edita: sale del tipo del riesgo y de la categoría del catálogo. Está
+      // para que se entienda por qué una póliza entra en «Pick up» cuando su vehículo dice «FORD RANGER».
+      {
+        id: 'rama',
+        titulo: 'Rama',
+        ancho: 110,
+        celda: (fila) => <span className="text-slate-600">{fila.rama ? NOMBRE_RAMA[fila.rama] : '—'}</span>,
+      },
       {
         id: 'cuota',
         titulo: 'Cuota',
@@ -229,7 +239,14 @@ export function Polizas() {
 
   if (cargando && !datos) return <Cargando texto="Abriendo las pólizas…" />
 
-  const hayFiltros = Boolean(filtros.busqueda || filtros.estado || filtros.compania || filtros.sucursal || filtros.cobertura)
+  const hayFiltros = Boolean(
+    filtros.busqueda ||
+      filtros.estados.length ||
+      filtros.companias.length ||
+      filtros.sucursales.length ||
+      filtros.coberturas.length ||
+      filtros.ramas.length,
+  )
   const catalogos = datos?.catalogos
 
   return (
@@ -271,30 +288,38 @@ export function Polizas() {
             className="h-9 w-96 rounded-lg border border-slate-300 bg-white pr-3 pl-8 text-sm text-slate-800 placeholder:text-slate-400"
           />
         </div>
-        <FiltroDesplegable
+        <FiltroMultiple
           etiqueta="Estado"
-          valor={filtros.estado}
-          opciones={['ACTIVA', 'VENCIDA', 'BAJA']}
+          valores={filtros.estados}
+          opciones={[...ESTADOS_DE_POLIZA]}
           textoDe={(valor) => NOMBRE_ESTADO_POLIZA[valor as EstadoPoliza]}
-          alCambiar={(valor) => setFiltros((f) => ({ ...f, estado: valor as FiltrosPolizas['estado'] }))}
+          plural="todos"
+          alCambiar={(v) => setFiltros((f) => ({ ...f, estados: v as EstadoPoliza[] }))}
         />
-        <FiltroDesplegable
+        <FiltroMultiple
           etiqueta="Compañía"
-          valor={filtros.compania}
+          valores={filtros.companias}
           opciones={catalogos?.companias ?? []}
-          alCambiar={(valor) => setFiltros((f) => ({ ...f, compania: valor }))}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, companias: v }))}
         />
-        <FiltroDesplegable
+        <FiltroMultiple
           etiqueta="Sucursal"
-          valor={filtros.sucursal}
+          valores={filtros.sucursales}
           opciones={catalogos?.sucursales ?? []}
-          alCambiar={(valor) => setFiltros((f) => ({ ...f, sucursal: valor }))}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, sucursales: v }))}
         />
-        <FiltroDesplegable
+        <FiltroMultiple
           etiqueta="Cobertura"
-          valor={filtros.cobertura}
+          valores={filtros.coberturas}
           opciones={catalogos?.coberturas ?? []}
-          alCambiar={(valor) => setFiltros((f) => ({ ...f, cobertura: valor }))}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, coberturas: v }))}
+        />
+        <FiltroMultiple
+          etiqueta="Rama"
+          valores={filtros.ramas}
+          opciones={catalogos?.ramas ?? []}
+          textoDe={(r) => NOMBRE_RAMA[r as Rama] ?? r}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, ramas: v }))}
         />
         {(hayFiltros || texto) && (
           <Boton
@@ -346,35 +371,3 @@ export function Polizas() {
 // ---------------------------------------------------------------------------
 
 /** Filtro de una sola línea: se pinta de azul cuando está aplicado, para verlo sin leerlo. */
-function FiltroDesplegable({
-  etiqueta,
-  valor,
-  opciones,
-  textoDe,
-  alCambiar,
-}: {
-  etiqueta: string
-  valor: string
-  opciones: string[]
-  textoDe?: (valor: string) => string
-  alCambiar: (valor: string) => void
-}) {
-  return (
-    <select
-      value={valor}
-      onChange={(evento) => alCambiar(evento.target.value)}
-      aria-label={etiqueta}
-      className={cx(
-        'h-9 max-w-52 rounded-lg border bg-white px-2 text-sm',
-        valor ? 'border-marino-400 font-semibold text-marino-800' : 'border-slate-300 text-slate-700',
-      )}
-    >
-      <option value="">{etiqueta}: todas</option>
-      {opciones.map((opcion) => (
-        <option key={opcion} value={opcion}>
-          {textoDe ? textoDe(opcion) : opcion}
-        </option>
-      ))}
-    </select>
-  )
-}

@@ -15,7 +15,8 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Cómo se arma un filtro',
         parrafos: [
-          'A la izquierda está la lista de segmentos guardados, y arriba de todo «Filtro nuevo» para empezar uno desde cero. Los filtros disponibles son Sucursal, Compañía, Forma de pago y Vencimiento (esta semana, este mes, o ya vencidas), más tres interruptores: «Sólo las impagas», «Sólo a las que todavía no se les avisó» y «Dejar afuera el débito automático» (a quien paga solo con débito no tiene sentido escribirle para que pague).',
+          'A la izquierda está la lista de segmentos guardados, y arriba de todo «Filtro nuevo» para empezar uno desde cero. Los filtros disponibles son Sucursal, Compañía, Forma de pago, Rama (auto, moto, pick up, camión, scooter, moto eléctrica y trailer) y Vencimiento (esta semana, este mes, o ya vencidas), más tres interruptores: «Sólo las impagas», «Sólo a las que todavía no se les avisó» y «Dejar afuera el débito automático» (a quien paga solo con débito no tiene sentido escribirle para que pague).',
+          'Los cuatro primeros dejan tildar varias opciones a la vez: «ATM y Metropol en Dock Sud y Daniel» es un solo segmento, no cuatro. Sin tildar nada, ese filtro no filtra. Y la Rama es la que deja mandarle una campaña a los de moto y a nadie más.',
           'Abajo del filtro elegís con qué mensaje se va a avisar, de los que están guardados en Marketing → Plantillas. Cuando estás conforme con el resultado, «Guardar como segmento» le pone nombre y lo deja disponible para la próxima vez. Si abriste uno guardado y le cambiaste algo, «Guardar cambios» lo actualiza.',
         ],
       },

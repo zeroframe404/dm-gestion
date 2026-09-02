@@ -31,7 +31,7 @@ const DANIEL: SesionUsuario = {
   debeCambiarClave: false,
 }
 
-const SIN_FILTROS: FiltrosPolizas = { busqueda: '', estado: '', compania: '', sucursal: '', cobertura: '' }
+const SIN_FILTROS: FiltrosPolizas = { busqueda: '', estados: [], companias: [], sucursales: [], coberturas: [], ramas: [] }
 
 let motorAnterior: MotorDeSincronizacion | null = null
 
@@ -384,7 +384,7 @@ test('renovar conservando el mismo número de póliza no choca contra la clave d
   assert.notEqual(vieja.estado, 'ACTIVA', 'la anterior queda histórica')
   assert.equal(vieja.numero, original.numero, 'y conserva su número: lo que cambia es la clave interna')
 
-  const activas = listarPolizas({ ...SIN_FILTROS, busqueda: original.numero ?? '', estado: 'ACTIVA' }).filas
+  const activas = listarPolizas({ ...SIN_FILTROS, busqueda: original.numero ?? '', estados: ['ACTIVA'] }).filas
   assert.equal(activas.length, 1, 'queda una sola póliza activa con ese número')
   assert.notEqual(activas[0]!.id, original.id, 'y es la nueva, no la vieja')
 })

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import type { EstadisticasDeCartera, FilaEstadistica } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
 import { numero, pesos } from '../cobranzas/formato'
 
@@ -14,17 +15,17 @@ export function Estadisticas() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const cargar = useCallback(async (periodo: string | null, sucursal: string) => {
+  const cargar = useCallback(async (periodo: string | null, sucursales: string[]) => {
     setCargando(true)
     setError(null)
-    const resultado = await window.dm.metricas.estadisticas(periodo, sucursal)
+    const resultado = await window.dm.metricas.estadisticas(periodo, sucursales)
     if (resultado.ok) setDatos(resultado.datos)
     else setError(resultado.error)
     setCargando(false)
   }, [])
 
   useEffect(() => {
-    void cargar(null, '')
+    void cargar(null, [])
   }, [cargar])
 
   if (cargando && !datos) return <Cargando texto="Calculando las estadísticas…" />
@@ -43,7 +44,7 @@ export function Estadisticas() {
       <div className="flex flex-wrap items-center gap-3">
         <label className="text-sm font-semibold text-slate-700">
           Mes
-          <select value={datos.periodo} onChange={(e) => void cargar(e.target.value, datos.sucursal)} className={`ml-2 ${seleccion}`}>
+          <select value={datos.periodo} onChange={(e) => void cargar(e.target.value, datos.sucursalesElegidas)} className={`ml-2 ${seleccion}`}>
             {datos.periodos.length === 0 && <option value={datos.periodo}>{nombreDePeriodo(datos.periodo)}</option>}
             {datos.periodos.map((periodo) => (
               <option key={periodo} value={periodo}>
@@ -52,17 +53,12 @@ export function Estadisticas() {
             ))}
           </select>
         </label>
-        <label className="text-sm font-semibold text-slate-700">
-          Sucursal
-          <select value={datos.sucursal} onChange={(e) => void cargar(datos.periodo, e.target.value)} className={`ml-2 ${seleccion}`}>
-            <option value="">Todas</option>
-            {datos.sucursales.map((sucursal) => (
-              <option key={sucursal} value={sucursal}>
-                {sucursal}
-              </option>
-            ))}
-          </select>
-        </label>
+        <FiltroMultiple
+          etiqueta="Sucursal"
+          valores={datos.sucursalesElegidas}
+          opciones={datos.sucursales}
+          alCambiar={(v) => void cargar(datos.periodo, v)}
+        />
         {cargando && <span className="text-xs text-slate-500">Actualizando…</span>}
       </div>
 

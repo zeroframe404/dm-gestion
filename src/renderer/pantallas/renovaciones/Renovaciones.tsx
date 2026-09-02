@@ -15,6 +15,7 @@ import {
   type FilaRenovacion,
   type SemanaDeRenovaciones,
 } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { Alerta as Aviso, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
@@ -28,9 +29,9 @@ import { DialogoNoRenueva, DialogoRenovar } from './DialogoRenovar'
 const ESTADOS_RESUELTOS: EstadoRenovacion[] = ['renovada', 'no renueva']
 
 interface Filtros {
-  /** '' = todos, 'sin' = sin responsable asignado, o el id del usuario en texto. */
-  responsable: string
-  estado: '' | EstadoRenovacion
+  /** Vacía = todos; 'sin' son las que no tienen responsable y el resto son ids de usuario en texto. */
+  responsables: string[]
+  estados: EstadoRenovacion[]
   ocultarResueltas: boolean
   /**
    * 'manual' (lo normal) deja sólo las compañías que la agencia renueva a mano —Agrosalta cada 4
@@ -40,7 +41,7 @@ interface Filtros {
   renovacion: 'manual' | 'todas'
 }
 
-const FILTROS_VACIOS: Filtros = { responsable: '', estado: '', ocultarResueltas: false, renovacion: 'manual' }
+const FILTROS_VACIOS: Filtros = { responsables: [], estados: [], ocultarResueltas: false, renovacion: 'manual' }
 
 /** Una póliza puede entrar más de una vez si tiene vigencias distintas: la clave es la póliza y su vencimiento. */
 function claveDeFila(fila: FilaRenovacion): string {
@@ -127,9 +128,11 @@ export function Renovaciones() {
     const pasa = (fila: FilaRenovacion) => {
       if (filtros.renovacion === 'manual' && !fila.renovacionManual) return false
       if (filtros.ocultarResueltas && ESTADOS_RESUELTOS.includes(fila.estado)) return false
-      if (filtros.estado && fila.estado !== filtros.estado) return false
-      if (filtros.responsable === 'sin' && fila.responsableId !== null) return false
-      if (filtros.responsable && filtros.responsable !== 'sin' && String(fila.responsableId ?? '') !== filtros.responsable) return false
+      if (filtros.estados.length > 0 && !filtros.estados.includes(fila.estado)) return false
+      // El 'sin' se puede tildar junto con personas: «las de Brenda y las que no son de nadie».
+      if (filtros.responsables.length > 0 && !filtros.responsables.includes(fila.responsableId === null ? 'sin' : String(fila.responsableId))) {
+        return false
+      }
       return true
     }
     return bandeja.semanas
@@ -138,7 +141,7 @@ export function Renovaciones() {
   }, [bandeja, filtros])
 
   const visibles = useMemo(() => semanasVisibles.reduce((suma, semana) => suma + semana.filas.length, 0), [semanasVisibles])
-  const hayFiltros = filtros.responsable !== '' || filtros.estado !== '' || filtros.ocultarResueltas || filtros.renovacion !== 'manual'
+  const hayFiltros = filtros.responsables.length > 0 || filtros.estados.length > 0 || filtros.ocultarResueltas || filtros.renovacion !== 'manual'
 
   if (cargando && !bandeja) return <Cargando texto="Buscando lo que vence…" />
 
@@ -183,20 +186,22 @@ export function Renovaciones() {
           <option value="manual">Sólo las que se renuevan a mano</option>
           <option value="todas">Todas las compañías</option>
         </select>
-        <FiltroDesplegable
+        <FiltroMultiple
           etiqueta="Responsable"
-          valor={filtros.responsable}
+          valores={filtros.responsables}
           opciones={[
             { valor: 'sin', texto: 'Sin responsable' },
             ...(bandeja?.responsables ?? []).map((r) => ({ valor: String(r.id), texto: r.nombre })),
           ]}
-          alCambiar={(valor) => setFiltros((f) => ({ ...f, responsable: valor }))}
+          plural="todos"
+          alCambiar={(v) => setFiltros((f) => ({ ...f, responsables: v }))}
         />
-        <FiltroDesplegable
+        <FiltroMultiple
           etiqueta="Estado"
-          valor={filtros.estado}
+          valores={filtros.estados}
           opciones={ESTADOS_DE_RENOVACION.map((e) => ({ valor: e, texto: NOMBRE_ESTADO_RENOVACION[e] }))}
-          alCambiar={(valor) => setFiltros((f) => ({ ...f, estado: valor as '' | EstadoRenovacion }))}
+          plural="todos"
+          alCambiar={(v) => setFiltros((f) => ({ ...f, estados: v as EstadoRenovacion[] }))}
         />
         <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
           <input
@@ -652,33 +657,3 @@ function Contador({
   )
 }
 
-function FiltroDesplegable({
-  etiqueta,
-  valor,
-  opciones,
-  alCambiar,
-}: {
-  etiqueta: string
-  valor: string
-  opciones: Array<{ valor: string; texto: string }>
-  alCambiar: (valor: string) => void
-}) {
-  return (
-    <select
-      value={valor}
-      onChange={(evento) => alCambiar(evento.target.value)}
-      aria-label={etiqueta}
-      className={cx(
-        'h-9 rounded-lg border bg-white px-2 text-sm',
-        valor ? 'border-marino-400 font-semibold text-marino-800' : 'border-slate-300 text-slate-700',
-      )}
-    >
-      <option value="">{etiqueta}: todos</option>
-      {opciones.map((opcion) => (
-        <option key={opcion.valor} value={opcion.valor}>
-          {opcion.texto}
-        </option>
-      ))}
-    </select>
-  )
-}

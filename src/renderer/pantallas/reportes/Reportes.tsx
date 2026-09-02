@@ -15,10 +15,11 @@ import type {
   FormatoDeReporte,
   VistaPreviaDeReporte,
 } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Boton, Cargando, cx, Tarjeta } from '../../componentes/ui'
 import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 
-const FILTROS_VACIOS: FiltrosDeReporte = { periodo: '', sucursal: '', compania: '', estado: '', busqueda: '', desde: '', hasta: '' }
+const FILTROS_VACIOS: FiltrosDeReporte = { periodo: '', sucursales: [], companias: [], estados: [], busqueda: '', desde: '', hasta: '' }
 
 type IdSeccion = 'exportaciones' | 'clasica'
 
@@ -312,6 +313,7 @@ interface PropsFiltros {
 
 function FiltrosDelReporte({ reporte, catalogo, filtros, alCambiar }: PropsFiltros) {
   const cambiar = (campo: keyof FiltrosDeReporte, valor: string) => alCambiar({ ...filtros, [campo]: valor })
+  const cambiarLista = (campo: 'sucursales' | 'companias' | 'estados', valores: string[]) => alCambiar({ ...filtros, [campo]: valores })
   const control = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800'
   const etiqueta = 'block text-xs font-semibold text-slate-600'
 
@@ -343,43 +345,41 @@ function FiltrosDelReporte({ reporte, catalogo, filtros, alCambiar }: PropsFiltr
         </>
       )}
       {reporte.filtros.includes('sucursal') && (
-        <label className={etiqueta}>
+        <div className={etiqueta}>
           Sucursal
-          <select value={filtros.sucursal} onChange={(e) => cambiar('sucursal', e.target.value)} className={`mt-1 ${control}`}>
-            <option value="">Todas</option>
-            {catalogo.sucursales.map((sucursal) => (
-              <option key={sucursal} value={sucursal}>
-                {sucursal}
-              </option>
-            ))}
-          </select>
-        </label>
+          <FiltroMultiple
+            etiqueta="Sucursal"
+            valores={filtros.sucursales}
+            opciones={catalogo.sucursales}
+            alCambiar={(v) => cambiarLista('sucursales', v)}
+            className="mt-1"
+          />
+        </div>
       )}
       {reporte.filtros.includes('compania') && (
-        <label className={etiqueta}>
+        <div className={etiqueta}>
           Compañía
-          <select value={filtros.compania} onChange={(e) => cambiar('compania', e.target.value)} className={`mt-1 ${control}`}>
-            <option value="">Todas</option>
-            {catalogo.companias.map((compania) => (
-              <option key={compania} value={compania}>
-                {compania}
-              </option>
-            ))}
-          </select>
-        </label>
+          <FiltroMultiple
+            etiqueta="Compañía"
+            valores={filtros.companias}
+            opciones={catalogo.companias}
+            alCambiar={(v) => cambiarLista('companias', v)}
+            className="mt-1"
+          />
+        </div>
       )}
       {reporte.filtros.includes('estado') && reporte.estados.length > 0 && (
-        <label className={etiqueta}>
+        <div className={etiqueta}>
           {reporte.etiquetaDeEstado}
-          <select value={filtros.estado} onChange={(e) => cambiar('estado', e.target.value)} className={`mt-1 ${control}`}>
-            <option value="">Todos</option>
-            {reporte.estados.map((estado) => (
-              <option key={estado} value={estado}>
-                {estado}
-              </option>
-            ))}
-          </select>
-        </label>
+          <FiltroMultiple
+            etiqueta={reporte.etiquetaDeEstado}
+            valores={filtros.estados}
+            opciones={reporte.estados}
+            plural="todos"
+            alCambiar={(v) => cambiarLista('estados', v)}
+            className="mt-1"
+          />
+        </div>
       )}
       {reporte.filtros.includes('busqueda') && (
         <label className={etiqueta}>
@@ -403,7 +403,7 @@ function FiltrosDelReporte({ reporte, catalogo, filtros, alCambiar }: PropsFiltr
 
 function PlanillaClasica({ catalogo }: { catalogo: CatalogoDeReportes }) {
   const [elegidos, setElegidos] = useState<string[]>(catalogo.periodos.slice(0, 1))
-  const [sucursal, setSucursal] = useState('')
+  const [sucursales, setSucursales] = useState<string[]>([])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -412,7 +412,7 @@ function PlanillaClasica({ catalogo }: { catalogo: CatalogoDeReportes }) {
     setGuardando(true)
     setError(null)
     setAviso(null)
-    const resultado = await window.dm.reportes.planillaClasica({ periodos: elegidos, sucursal }, null)
+    const resultado = await window.dm.reportes.planillaClasica({ periodos: elegidos, sucursales }, null)
     if (!resultado.ok) setError(resultado.error)
     else if (resultado.datos.ruta) setAviso(`Guardado en ${resultado.datos.ruta}`)
     setGuardando(false)
@@ -458,24 +458,19 @@ function PlanillaClasica({ catalogo }: { catalogo: CatalogoDeReportes }) {
             )}
           </fieldset>
 
-          <label className="block text-xs font-semibold text-slate-600">
+          <div className="block text-xs font-semibold text-slate-600">
             Sucursal
-            <select
-              value={sucursal}
-              onChange={(e) => setSucursal(e.target.value)}
-              className="mt-1 h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800"
-            >
-              <option value="">Todas</option>
-              {catalogo.sucursales.map((nombre) => (
-                <option key={nombre} value={nombre}>
-                  {nombre}
-                </option>
-              ))}
-            </select>
+            <FiltroMultiple
+              etiqueta="Sucursal"
+              valores={sucursales}
+              opciones={catalogo.sucursales}
+              alCambiar={setSucursales}
+              className="mt-1"
+            />
             <span className="mt-2 block text-xs leading-relaxed font-normal text-slate-500">
-              Con una sucursal elegida la planilla sale con las filas de ese local nada más, y el nombre del archivo lo dice.
+              Con sucursales elegidas la planilla sale con las filas de esos locales nada más, y el nombre del archivo las dice.
             </span>
-          </label>
+          </div>
         </div>
       </Tarjeta>
 

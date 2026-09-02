@@ -43,7 +43,7 @@ const EMPLEADA: SesionUsuario = {
   debeCambiarClave: false,
 }
 
-const SIN_FILTROS: FiltrosPolizas = { busqueda: '', estado: '', compania: '', sucursal: '', cobertura: '' }
+const SIN_FILTROS: FiltrosPolizas = { busqueda: '', estados: [], companias: [], sucursales: [], coberturas: [], ramas: [] }
 
 /**
  * Dos importaciones, como pasa mes a mes: primero la hoja hasta JULIO y después con AGOSTO. Es lo único
@@ -154,15 +154,15 @@ test('los filtros del listado acotan por estado, compañía y búsqueda', async 
   await carteraDePrueba()
   const todas = listarPolizas(SIN_FILTROS)
 
-  const activas = listarPolizas({ ...SIN_FILTROS, estado: 'ACTIVA' })
+  const activas = listarPolizas({ ...SIN_FILTROS, estados: ['ACTIVA'] })
   assert.ok(activas.filas.every((f) => f.estado === 'ACTIVA'))
   assert.ok(activas.filas.length < todas.filas.length, 'la de Fernández quedó afuera')
 
-  const deBaja = listarPolizas({ ...SIN_FILTROS, estado: 'BAJA' })
+  const deBaja = listarPolizas({ ...SIN_FILTROS, estados: ['BAJA'] })
   assert.equal(deBaja.filas.length, 1)
   assert.equal(deBaja.filas[0]!.numero, CLIENTES.fernandez.poliza)
 
-  const sancor = listarPolizas({ ...SIN_FILTROS, compania: 'SANCOR' })
+  const sancor = listarPolizas({ ...SIN_FILTROS, companias: ['SANCOR'] })
   assert.ok(sancor.filas.length > 0 && sancor.filas.every((f) => f.compania === 'SANCOR'))
 
   assert.equal(listarPolizas({ ...SIN_FILTROS, busqueda: CLIENTES.suarez.poliza }).filas.length, 1, 'por número de póliza')
@@ -547,11 +547,11 @@ test('los filtros encuentran aunque el catálogo tenga tildes y la hoja no', asy
   const catalogos = catalogosDePoliza()
   assert.ok(catalogos.sucursales.includes('Lanús'), 'el catálogo trae el nombre oficial, con tilde')
 
-  const conTilde = listarPolizas({ ...SIN_FILTROS, sucursal: 'Lanús' })
+  const conTilde = listarPolizas({ ...SIN_FILTROS, sucursales: ['Lanús'] })
   assert.ok(conTilde.filas.length > 0, 'elegir «Lanús» del desplegable tiene que encontrar las de LANUS')
   assert.deepEqual(
     conTilde.filas.map((f) => f.id).sort(),
-    listarPolizas({ ...SIN_FILTROS, sucursal: 'LANUS' }).filas.map((f) => f.id).sort(),
+    listarPolizas({ ...SIN_FILTROS, sucursales: ['LANUS'] }).filas.map((f) => f.id).sort(),
     'con tilde y sin tilde dan lo mismo',
   )
 
@@ -560,11 +560,11 @@ test('los filtros encuentran aunque el catálogo tenga tildes y la hoja no', asy
   // aunque una no tenga ni una póliza todavía (es lo que pasó con Sarandí recién abierta). Lo que se
   // prueba acá es que el filtro engancha con el texto de la hoja, no que toda opción tenga filas.
   for (const sucursal of catalogos.sucursales) {
-    const cantidad = listarPolizas({ ...SIN_FILTROS, sucursal }).filas.length
+    const cantidad = listarPolizas({ ...SIN_FILTROS, sucursales: [sucursal] }).filas.length
     assert.ok(cantidad > 0, `el filtro de sucursal «${sucursal}» no encontró ninguna póliza`)
   }
   for (const compania of catalogos.companias) {
-    const cantidad = listarPolizas({ ...SIN_FILTROS, compania }).filas.length
+    const cantidad = listarPolizas({ ...SIN_FILTROS, companias: [compania] }).filas.length
     assert.ok(cantidad > 0, `el filtro de compañía «${compania}» no encontró ninguna póliza`)
   }
 })

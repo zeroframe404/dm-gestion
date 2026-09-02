@@ -109,7 +109,7 @@ function baseConDosGrafias(): BaseDeDatos {
 
 test('el desplegable de sucursal no repite la misma sucursal escrita de dos formas', () => {
   baseConDosGrafias()
-  const listado = listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true })
+  const listado = listarLeads({ busqueda: '', estado: '', origenes: [], sucursales: [], incluirCerrados: true })
 
   // El desplegable ofrece siempre las cuatro del catálogo (una sucursal recién abierta no tiene ni un
   // lead y tiene que poder elegirse igual), así que lo que se cuenta acá no es el largo de la lista
@@ -122,7 +122,7 @@ test('el desplegable de sucursal no repite la misma sucursal escrita de dos form
 test('filtrar por sucursal encuentra las dos grafías, se elija la que se elija', () => {
   baseConDosGrafias()
   for (const elegida of ['LANUS', 'Lanús', 'lanus ']) {
-    const listado = listarLeads({ busqueda: '', estado: '', origen: '', sucursal: elegida, incluirCerrados: true })
+    const listado = listarLeads({ busqueda: '', estado: '', origenes: [], sucursales: [elegida], incluirCerrados: true })
     assert.equal(listado.filas.length, 2, `elegir «${elegida}» trae las dos consultas de Lanús`)
     assert.equal(listado.porEstado.NUEVO, 2, 'los contadores cuentan lo mismo que el listado')
   }
@@ -131,7 +131,7 @@ test('filtrar por sucursal encuentra las dos grafías, se elija la que se elija'
 
 test('filtrar por otra sucursal sigue devolviendo vacío', () => {
   baseConDosGrafias()
-  const listado = listarLeads({ busqueda: '', estado: '', origen: '', sucursal: 'Dock Sud', incluirCerrados: true })
+  const listado = listarLeads({ busqueda: '', estado: '', origenes: [], sucursales: ['Dock Sud'], incluirCerrados: true })
 
   assert.equal(listado.filas.length, 0, 'normalizar no puede volver iguales a dos sucursales distintas')
   cerrarBaseDeDatos()
@@ -210,7 +210,7 @@ function baseConUnCobroImportado(): BaseDeDatos {
 test('un cobro importado cae en la sucursal de su cliente, no en «ninguna»', () => {
   baseConUnCobroImportado()
 
-  const sinFiltro = cajaDelDia('2026-08-12', '')
+  const sinFiltro = cajaDelDia('2026-08-12', [])
   assert.equal(sinFiltro.pagos.length, 1, 'sin filtrar, el cobro está')
   assert.equal(sinFiltro.pagos[0]!.sucursal, 'LANUS', 'la sucursal sale del cliente cuando el cobro no la trae')
   cerrarBaseDeDatos()
@@ -220,11 +220,11 @@ test('la caja del día filtrada por Lanús encuentra ese cobro', () => {
   baseConUnCobroImportado()
 
   // Es lo que ve quien entra en la sucursal: la caja abre ya filtrada por la sucursal del usuario.
-  const enLanus = cajaDelDia('2026-08-12', 'Lanús')
+  const enLanus = cajaDelDia('2026-08-12', ['Lanús'])
   assert.equal(enLanus.pagos.length, 1, 'elegir «Lanús» del desplegable tiene que encontrar el cobro de LANUS')
   assert.equal(enLanus.total, 15000, 'y el total de la caja lo incluye')
 
-  const enDockSud = cajaDelDia('2026-08-12', 'Dock Sud')
+  const enDockSud = cajaDelDia('2026-08-12', ['Dock Sud'])
   assert.equal(enDockSud.pagos.length, 0, 'y no se cuela en la caja de otra sucursal')
   cerrarBaseDeDatos()
 })

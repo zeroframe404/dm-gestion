@@ -170,7 +170,7 @@ const numeros = await evaluar(`(async () => {
     countif[clave] = (countif[clave] ?? 0) + 1
   }
 
-  const tablero = await window.dm.metricas.tablero({ periodo, sucursal: '' })
+  const tablero = await window.dm.metricas.tablero({ periodo, sucursales: [] })
   if (!tablero.ok) return { error: tablero.error }
   const t = tablero.datos
 
@@ -181,7 +181,7 @@ const numeros = await evaluar(`(async () => {
     if (Math.abs(dice - cantidad) > 1) diferencias.push(clave + ': tablero ' + dice + ' vs hoja ' + cantidad)
   }
 
-  const tabla = await window.dm.metricas.estadisticas(periodo, '')
+  const tabla = await window.dm.metricas.estadisticas(periodo, [])
 
   return {
     periodo,
@@ -218,11 +218,11 @@ anotar('Estadísticas da el mismo total que Métricas', numeros?.tablaTotal === 
 const exportado = await evaluar(`(async () => {
   const planilla = await window.dm.cartera.planilla(null)
   if (!planilla.ok) return { error: planilla.error }
-  const guardado = await window.dm.reportes.planillaClasica({ periodos: [planilla.datos.periodo], sucursal: '' }, ${JSON.stringify(PLANILLA)})
+  const guardado = await window.dm.reportes.planillaClasica({ periodos: [planilla.datos.periodo], sucursales: [] }, ${JSON.stringify(PLANILLA)})
   if (!guardado.ok) return { error: guardado.error }
 
   // Y de paso, un reporte normal del centro de exportación.
-  const pedido = { reporteId: 'cartera', filtros: { periodo: planilla.datos.periodo, sucursal: '', compania: '', estado: '', busqueda: '', desde: '', hasta: '' }, columnas: [] }
+  const pedido = { reporteId: 'cartera', filtros: { periodo: planilla.datos.periodo, sucursales: [], companias: [], estados: [], busqueda: '', desde: '', hasta: '' }, columnas: [] }
   const vista = await window.dm.reportes.vistaPrevia(pedido)
   const reporte = await window.dm.reportes.exportar(pedido, 'xlsx', ${JSON.stringify(REPORTE)})
   const catalogo = await window.dm.reportes.catalogo()
@@ -356,7 +356,7 @@ const segmento = await evaluar(`(async () => {
     if (forma) usadas[forma] = (usadas[forma] ?? 0) + 1
   }
   const formaPago = Object.keys(usadas).sort((a, b) => usadas[b] - usadas[a])[0] ?? ''
-  const filtros = { sucursal: '', compania: '', formaPago, vence: '', soloImpagas: true, soloSinAvisar: false, excluirDebito: false }
+  const filtros = { sucursales: [], companias: [], formasDePago: [formaPago], ramas: [], vence: '', soloImpagas: true, soloSinAvisar: false, excluirDebito: false }
 
   // Lo mismo, a mano, sobre la planilla del mes: es contra esto que se compara.
   const enCartera = planilla.datos.filas.filter(
@@ -390,7 +390,7 @@ const segmento = await evaluar(`(async () => {
     suelto: suelto.datos.total,
     guardado: guardado.datos.total,
     reabierto: reabierto.ok ? reabierto.datos.total : -1,
-    mismosFiltros: reabierto.ok ? reabierto.datos.filtros.formaPago === formaPago && reabierto.datos.filtros.soloImpagas === true : false,
+    mismosFiltros: reabierto.ok ? reabierto.datos.filtros.formasDePago[0] === formaPago && reabierto.datos.filtros.soloImpagas === true : false,
     plantillas: suelto.datos.plantillas.length,
     avisados,
     mensaje,

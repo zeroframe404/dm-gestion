@@ -48,7 +48,7 @@ const BRENDA: SesionUsuario = {
   debeCambiarClave: false,
 }
 
-const SIN_FILTROS: FiltrosMora = { busqueda: '', sucursal: '', compania: '', rango: '', incluirDebito: false }
+const SIN_FILTROS: FiltrosMora = { busqueda: '', sucursales: [], companias: [], rangos: [], incluirDebito: false }
 
 async function cobranzasDePrueba(): Promise<BaseDeDatos> {
   cerrarBaseDeDatos()
@@ -91,7 +91,7 @@ test('tres pagos del día suman bien por medio de pago', async () => {
   registrarPago(buscar(CLIENTES.perezAuto.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 5.500,50', medioDePago: 'EFECTIVO' }, DANIEL)
   registrarPago(buscar(CLIENTES.rodriguez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 20.000', medioDePago: 'TRANSFERENCIA' }, DANIEL)
 
-  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  const caja = cajaDelDia(DIA_DE_CAJA, [])
   assert.equal(caja.fecha, DIA_DE_CAJA)
   assert.equal(caja.pagos.length, 3)
   assert.equal(caja.total, 35_500.5)
@@ -109,7 +109,7 @@ test('cada pago de la caja dice la hora, quién cobró y en qué sucursal', asyn
   await cobranzasDePrueba()
   registrarPago(buscar(CLIENTES.gonzalez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 10.000', medioDePago: 'EFECTIVO' }, BRENDA)
 
-  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  const caja = cajaDelDia(DIA_DE_CAJA, [])
   const pago = caja.pagos[0]!
   assert.equal(pago.clienteNombre, CLIENTES.gonzalez.nombre)
   assert.equal(pago.numeroPoliza, CLIENTES.gonzalez.poliza)
@@ -119,8 +119,8 @@ test('cada pago de la caja dice la hora, quién cobró y en qué sucursal', asyn
   assert.equal(pago.hechoEnLaApp, true)
 
   // Y filtrando por otra sucursal ese pago no aparece.
-  assert.equal(cajaDelDia(DIA_DE_CAJA, 'Lanús').pagos.length, 0)
-  assert.equal(cajaDelDia(DIA_DE_CAJA, 'Dock Sud').pagos.length, 1)
+  assert.equal(cajaDelDia(DIA_DE_CAJA, ['Lanús']).pagos.length, 0)
+  assert.equal(cajaDelDia(DIA_DE_CAJA, ['Dock Sud']).pagos.length, 1)
   cerrarBaseDeDatos()
 })
 
@@ -151,7 +151,7 @@ test('el alta manual sobre una cuota del mes deja la fila paga y no duplica el p
 
   // La misma cuota cobrada de nuevo corrige el pago; no aparece dos veces en la caja.
   registrarPago(fila.filaId, { fecha: DIA_DE_CAJA, importe: '$ 22.000', medioDePago: 'EFECTIVO' }, DANIEL)
-  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  const caja = cajaDelDia(DIA_DE_CAJA, [])
   assert.equal(caja.pagos.length, 1)
   assert.equal(caja.total, 22_000)
   assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM pagos WHERE hecho_en_la_app = 1`).get() as { n: number }).n, 1)
@@ -209,7 +209,7 @@ test('«Exportar el día» arma un CSV con los pagos y los totales por medio', a
   registrarPago(buscar(CLIENTES.gonzalez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 10.000', medioDePago: 'EFECTIVO' }, DANIEL)
   registrarPago(buscar(CLIENTES.rodriguez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 20.000', medioDePago: 'TRANSFERENCIA' }, DANIEL)
 
-  const archivo = csvDeLaCaja(DIA_DE_CAJA, '')
+  const archivo = csvDeLaCaja(DIA_DE_CAJA, [])
   assert.equal(archivo.nombre, `caja-${DIA_DE_CAJA}.csv`)
   // El BOM del principio es lo que hace que Excel lo abra en UTF-8.
   assert.ok(archivo.contenido.startsWith('﻿'))
@@ -255,7 +255,7 @@ test('los rangos de atraso reparten las cuotas en 1-7, 8-30 y +30 días', async 
   assert.ok(listado.porRango['+30'] > 0, 'las cuotas de los meses viejos pasan los 30 días')
 
   for (const rango of ['1-7', '8-30', '+30'] as const) {
-    const filtrado = mora({ ...SIN_FILTROS, rango }, HOY)
+    const filtrado = mora({ ...SIN_FILTROS, rangos: [rango] }, HOY)
     assert.equal(filtrado.filas.length, listado.porRango[rango])
     for (const fila of filtrado.filas) assert.equal(fila.rango, rango)
   }
@@ -278,7 +278,7 @@ test('los filtros de la mora acotan por sucursal y por compañía', async () => 
   await cobranzasDePrueba()
   const listado = mora(SIN_FILTROS, HOY)
   const compania = listado.companias[0]!
-  const porCompania = mora({ ...SIN_FILTROS, compania }, HOY)
+  const porCompania = mora({ ...SIN_FILTROS, companias: [compania] }, HOY)
   assert.ok(porCompania.filas.length > 0)
   for (const fila of porCompania.filas) assert.equal(fila.compania, compania)
 
@@ -286,7 +286,7 @@ test('los filtros de la mora acotan por sucursal y por compañía', async () => 
   // siempre las cuatro de la agencia, así que la primera de la lista puede no deber nada y el filtro
   // devolvería vacío —la prueba pasaría sin haber probado nada—.
   const sucursal = listado.filas.find((f) => f.sucursal)!.sucursal!
-  const porSucursal = mora({ ...SIN_FILTROS, sucursal }, HOY)
+  const porSucursal = mora({ ...SIN_FILTROS, sucursales: [sucursal] }, HOY)
   assert.ok(porSucursal.filas.length > 0, 'filtrar por una sucursal que sí debe trae sus cuotas')
   for (const fila of porSucursal.filas) assert.equal(fila.sucursal, sucursal)
 
@@ -329,7 +329,7 @@ test('«Avisar» desde la mora arma el WhatsApp y sólo marca la fila si el mes 
 
 test('la rendición trae los pagos del mes con su RESULTADO, normalizado', async () => {
   await cobranzasDePrueba()
-  const rendicion = imputados('2026-08', '')
+  const rendicion = imputados('2026-08', [])
 
   assert.equal(rendicion.periodo, '2026-08')
   assert.equal(rendicion.pagos.length, 3, 'los tres pagos de la pestaña IMPUTADOS')
@@ -345,7 +345,7 @@ test('la rendición trae los pagos del mes con su RESULTADO, normalizado', async
   assert.equal(rendicion.contadores.REVISAR, 1)
 
   // El filtro por compañía deja sólo las de esa compañía.
-  const soloSancor = imputados('2026-08', 'SANCOR')
+  const soloSancor = imputados('2026-08', ['SANCOR'])
   assert.equal(soloSancor.pagos.length, 2)
   for (const pago of soloSancor.pagos) assert.equal(pago.compania, 'SANCOR')
   cerrarBaseDeDatos()
@@ -353,10 +353,10 @@ test('la rendición trae los pagos del mes con su RESULTADO, normalizado', async
 
 test('marcar RESULTADO=IMPUTADO lo guarda y lo manda a la hoja', async () => {
   const db = await cobranzasDePrueba()
-  const rendicion = imputados('2026-08', '')
+  const rendicion = imputados('2026-08', [])
   const pendiente = rendicion.pagos.find((p) => p.resultado === '')!
 
-  const despues = cambiarResultado(pendiente.id, 'IMPUTADO', '', DANIEL)
+  const despues = cambiarResultado(pendiente.id, 'IMPUTADO', [], DANIEL)
   assert.equal(despues.pendientes, 0)
   assert.equal(despues.contadores.IMPUTADO, 2)
   assert.equal(despues.pagos.find((p) => p.id === pendiente.id)?.resultado, 'IMPUTADO')
@@ -374,7 +374,7 @@ test('marcar RESULTADO=IMPUTADO lo guarda y lo manda a la hoja', async () => {
   assert.equal(historial[0]!.usuarioNombre, 'Daniel Martínez')
 
   // Volver a marcar lo mismo no encola nada nuevo.
-  cambiarResultado(pendiente.id, 'IMPUTADO', '', DANIEL)
+  cambiarResultado(pendiente.id, 'IMPUTADO', [], DANIEL)
   assert.equal(colaDeImputados(db).filter((e) => e.fila_id === pendiente.filaId).length, 1)
   cerrarBaseDeDatos()
 })
@@ -384,7 +384,7 @@ test('un pago cobrado en la aplicación se suma a la rendición y viaja a la hoj
   const fila = buscar(CLIENTES.suarez.nombre)
   registrarPago(fila.filaId, { fecha: DIA_DE_CAJA, importe: '$ 28.000', medioDePago: 'EFECTIVO' }, DANIEL)
 
-  const rendicion = imputados('2026-08', '')
+  const rendicion = imputados('2026-08', [])
   const nuevo = rendicion.pagos.find((p) => p.numeroPoliza === CLIENTES.suarez.poliza)
   assert.ok(nuevo, 'el cobro del mostrador tiene que aparecer en la rendición')
   assert.equal(nuevo.hechoEnLaApp, true)
@@ -439,13 +439,13 @@ test('sin una pestaña IMPUTADOS que sirva, los pagos y el resultado viajan por 
   assert.equal(hoja.tieneColumnaResultado, true)
   assert.equal(hoja.aviso, null, 'ya no hay nada que avisar: los pagos no se quedan sólo en esta computadora')
 
-  const rendicion = imputados('2026-08', '')
+  const rendicion = imputados('2026-08', [])
   assert.equal(rendicion.avisoDeSincronizacion, null)
 
   // Un pago que vino de la hoja vieja (nunca estuvo en APP PAGOS): al imputarlo se agrega entero allá,
   // con el resultado adentro.
   const pendiente = rendicion.pagos.find((p) => p.resultado === '')!
-  const despues = cambiarResultado(pendiente.id, 'OK', '', DANIEL)
+  const despues = cambiarResultado(pendiente.id, 'OK', [], DANIEL)
   assert.equal(despues.pagos.find((p) => p.id === pendiente.id)?.resultado, 'OK')
   const encolada = filas<{ operacion: string; pestana: string; campos_json: string }>(
     db,
@@ -580,16 +580,16 @@ test('sin columna RESULTADO en la hoja, reimportar no borra la rendición hecha 
   const hoja = hojaSinColumnaResultado()
   await importar(db, hoja)
 
-  const rendicion = imputados('2026-08', '')
+  const rendicion = imputados('2026-08', [])
   assert.match(rendicion.avisoDeSincronizacion ?? '', /no tiene columna RESULTADO/)
   const pago = rendicion.pagos[0]!
-  cambiarResultado(pago.id, 'IMPUTADO', '', DANIEL)
-  assert.equal(imputados('2026-08', '').pagos.find((p) => p.id === pago.id)?.resultado, 'IMPUTADO')
+  cambiarResultado(pago.id, 'IMPUTADO', [], DANIEL)
+  assert.equal(imputados('2026-08', []).pagos.find((p) => p.id === pago.id)?.resultado, 'IMPUTADO')
 
   // La importación completa vuelve a correr (la dispara sola la bajada al ver filas nuevas): lo que
   // se cargó a mano tiene que seguir ahí, porque la hoja no tiene de dónde traerlo.
   await importar(db, hoja)
-  assert.equal(imputados('2026-08', '').pagos.find((p) => p.id === pago.id)?.resultado, 'IMPUTADO')
+  assert.equal(imputados('2026-08', []).pagos.find((p) => p.id === pago.id)?.resultado, 'IMPUTADO')
   cerrarBaseDeDatos()
 })
 
@@ -639,8 +639,8 @@ test('un pago cobrado sin pestaña IMPUTADOS va a APP PAGOS, y se queda ahí aun
   db.prepare(`UPDATE cola_sync SET estado = 'listo'`).run()
   db.prepare(`UPDATE filas_crudas SET en_la_hoja = 1 WHERE tipo_pestana = 'PAGOS' AND numero_fila > 0`).run()
   assert.equal(hojaDeImputados().pestana, 'IMPUTADOS')
-  const pago = imputados('2026-08', '').pagos.find((p) => p.numeroPoliza === CLIENTES.suarez.poliza)!
-  cambiarResultado(pago.id, 'IMPUTADO', '', DANIEL)
+  const pago = imputados('2026-08', []).pagos.find((p) => p.numeroPoliza === CLIENTES.suarez.poliza)!
+  cambiarResultado(pago.id, 'IMPUTADO', [], DANIEL)
   const actualizada = filas<{ operacion: string; pestana: string }>(db, `SELECT operacion, pestana FROM cola_sync WHERE estado = 'pendiente' AND fila_id = ?`, `PAGO:${fila.filaId}`)
   assert.deepEqual(actualizada, [{ operacion: 'actualizar', pestana: 'APP PAGOS' }])
   cerrarBaseDeDatos()
@@ -666,7 +666,7 @@ test('el CSV no deja que una celda de la hoja se abra como fórmula en Excel', a
     },
     DANIEL,
   )
-  const archivo = csvDeLaCaja(DIA_DE_CAJA, '')
+  const archivo = csvDeLaCaja(DIA_DE_CAJA, [])
   assert.match(archivo.contenido, /"'=SUMA\(A1:A9\)"/)
   assert.match(archivo.contenido, /"'@raro"/)
   cerrarBaseDeDatos()
@@ -686,16 +686,16 @@ test('un cobro IMPUTADO no deja la fila paga ni suma a la caja; cuando el client
   assert.equal(imputada.pago, null, 'CUANDO PAGO sigue vacío')
   assert.equal(imputada.pagoFecha, null)
 
-  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  const caja = cajaDelDia(DIA_DE_CAJA, [])
   assert.equal(caja.pagos.length, 1, 'el pago se ve en la caja')
   assert.equal(caja.pagos[0]!.estadoCobro, 'IMPUTADO')
   assert.equal(caja.total, 0, 'pero no suma: la plata no entró')
   assert.equal(caja.imputados, 1)
   assert.equal(caja.totalesPorMedio.length, 0)
-  assert.match(csvDeLaCaja(DIA_DE_CAJA, '').contenido, /IMPUTADO \(falta cobrar\)/)
+  assert.match(csvDeLaCaja(DIA_DE_CAJA, []).contenido, /IMPUTADO \(falta cobrar\)/)
 
   // En la rendición se cuenta como «sin cobrar», y en la mora sigue apareciendo con la marca.
-  assert.equal(imputados('2026-08', '').sinCobrar, 1)
+  assert.equal(imputados('2026-08', []).sinCobrar, 1)
   const enMora = mora(SIN_FILTROS, HOY).filas.find((f) => f.filaId === fila.filaId)
   assert.ok(enMora, 'la cuota vencida sigue en mora: lo que se persigue es el pago del cliente')
   assert.equal(enMora.imputada, true)
@@ -712,8 +712,8 @@ test('un cobro IMPUTADO no deja la fila paga ni suma a la caja; cuando el client
   assert.equal(pagada.pagoRegistrado, true)
   assert.equal(pagada.pagoFecha, HOY)
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM pagos WHERE hecho_en_la_app = 1').get() as { n: number }).n, 1, 'es el mismo pago, corregido')
-  assert.equal(cajaDelDia(HOY, '').total, 10_000, 'ahora sí suma, en el día que pagó')
-  assert.equal(cajaDelDia(DIA_DE_CAJA, '').pagos.length, 0, 'y ya no está en el día de la imputación')
+  assert.equal(cajaDelDia(HOY, []).total, 10_000, 'ahora sí suma, en el día que pagó')
+  assert.equal(cajaDelDia(DIA_DE_CAJA, []).pagos.length, 0, 'y ya no está en el día de la imputación')
   assert.equal(mora(SIN_FILTROS, HOY).filas.some((f) => f.filaId === fila.filaId), false)
   const corregido = filas<{ campos_json: string }>(db, `SELECT campos_json FROM cola_sync WHERE fila_id = ?`, `PAGO:${fila.filaId}`)
   assert.equal((JSON.parse(corregido[0]!.campos_json) as Record<string, string>).cobro, 'PAGO', 'la hoja se entera de que dejó de estar imputado')
@@ -756,7 +756,7 @@ test('el alta manual desde la caja también puede quedar como IMPUTADO', async (
 test('pagar las dos cuotas juntas cobra la de este mes y deja la del mes que viene guardada como adelanto', async () => {
   const db = await cobranzasDePrueba()
   const fila = buscar(CLIENTES.suarez.nombre)
-  const enAgostoAntes = imputados('2026-08', '').pagos.length
+  const enAgostoAntes = imputados('2026-08', []).pagos.length
   const pagosAntes = (db.prepare('SELECT COUNT(*) AS n FROM pagos').get() as { n: number }).n
 
   const actualizada = registrarPago(
@@ -773,7 +773,7 @@ test('pagar las dos cuotas juntas cobra la de este mes y deja la del mes que vie
   assert.equal(actualizada.adelantoSiguiente.imputado, false, 'todavía no existe la fila de septiembre')
 
   // Las dos entran hoy en la caja.
-  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  const caja = cajaDelDia(DIA_DE_CAJA, [])
   assert.equal(caja.pagos.length, 2)
   assert.equal(caja.total, 20_500)
   const adelanto = caja.pagos.find((p) => p.adelantoModo !== null)
@@ -782,8 +782,8 @@ test('pagar las dos cuotas juntas cobra la de este mes y deja la del mes que vie
   assert.equal(adelanto.adelantoImputado, false)
 
   // Y cada una se rinde en el mes que paga.
-  assert.equal(imputados('2026-08', '').pagos.length, enAgostoAntes + 1)
-  assert.equal(imputados('2026-09', '').pagos.length, 1)
+  assert.equal(imputados('2026-08', []).pagos.length, enAgostoAntes + 1)
+  assert.equal(imputados('2026-09', []).pagos.length, 1)
 
   // En la hoja el adelanto viaja con MES y año, para que ningún importador lo tome por el mes de este año.
   const encolado = filas<{ campos_json: string }>(db, `SELECT campos_json FROM cola_sync WHERE fila_id = ?`, `PAGO:ADELANTO:${fila.filaId}`)

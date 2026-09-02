@@ -248,16 +248,16 @@ export interface Canales {
   'companias:editar': (id: number, datos: DatosDeCompania) => Resultado<Compania>
 
   // Cobranzas: la caja del día, la mora, la rendición de imputados y las comisiones.
-  'cobranzas:caja': (fecha: string | null, sucursal: string) => Resultado<CajaDelDia>
+  'cobranzas:caja': (fecha: string | null, sucursales: string[]) => Resultado<CajaDelDia>
   /** Alta manual de un pago. Con `cuotaFilaId` paga una fila de la planilla del mes. */
   'cobranzas:registrarPagoManual': (datos: DatosDePagoManual) => Resultado<CajaDelDia>
   /** Abre el diálogo «Guardar como» con el día en CSV. Devuelve la ruta o null si se canceló. */
-  'cobranzas:exportarCaja': (fecha: string | null, sucursal: string) => Resultado<{ ruta: string | null }>
+  'cobranzas:exportarCaja': (fecha: string | null, sucursales: string[]) => Resultado<{ ruta: string | null }>
   'cobranzas:mora': (filtros: FiltrosMora) => Resultado<ListadoMora>
   /** El mismo WhatsApp de la planilla, también para cuotas de meses ya cerrados. */
   'cobranzas:avisarMora': (filaId: string) => Resultado<AvisoDeMora>
-  'cobranzas:imputados': (periodo: string | null, compania: string) => Resultado<RendicionImputados>
-  'cobranzas:cambiarResultado': (pagoId: number, resultado: ResultadoImputacion, compania: string) => Resultado<RendicionImputados>
+  'cobranzas:imputados': (periodo: string | null, companias: string[]) => Resultado<RendicionImputados>
+  'cobranzas:cambiarResultado': (pagoId: number, resultado: ResultadoImputacion, companias: string[]) => Resultado<RendicionImputados>
   /** Sólo ADMIN y SUPER_ADMIN. */
   'cobranzas:comisiones': (periodo: string | null) => Resultado<ResumenComisiones>
 
@@ -423,7 +423,7 @@ export interface Canales {
 
   // Métricas: el tablero con filtros globales y su versión tabular (Cartera → Estadísticas).
   'metricas:tablero': (filtros: FiltrosMetricas) => Resultado<TableroMetricas>
-  'metricas:estadisticas': (periodo: string | null, sucursal: string) => Resultado<EstadisticasDeCartera>
+  'metricas:estadisticas': (periodo: string | null, sucursales: string[]) => Resultado<EstadisticasDeCartera>
 
   // Reportes: el centro de exportación.
   'reportes:catalogo': () => Resultado<CatalogoDeReportes>

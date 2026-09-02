@@ -2,6 +2,9 @@
 // Este archivo no puede importar nada de Electron ni de Node: lo usan los tres lados.
 import type { DireccionEstructurada } from './direccion'
 import type { MatrizPermisos, PermisosDeUnRol } from './permisos'
+// Sólo el tipo: `ramas.ts` importa de acá `CategoriaDeVehiculo`, también sólo el tipo, así que las dos
+// flechas se borran al compilar y no queda ningún ciclo en tiempo de ejecución.
+import type { Rama } from './ramas'
 
 export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'EMPLEADO'] as const
 export type Rol = (typeof ROLES)[number]
@@ -461,6 +464,12 @@ export interface FilaCartera {
   fechaEnvio: string | null
   avisarVto: string | null
   vehiculo: string | null
+  /**
+   * La categoría que le puso el catálogo de vehículos («PICKUP», «SUV»…), o null cuando el vehículo se
+   * tipeó a mano y nadie la sabe. No se muestra: sirve para deducir la RAMA de la fila, porque una pick
+   * up cargada desde «Nueva póliza» queda con `vehiculo = 'AUTO'` y la rama sólo se ve acá.
+   */
+  categoriaVehiculo: CategoriaDeVehiculo | null
   marca: string | null
   modelo: string | null
   patente: string | null
@@ -552,6 +561,12 @@ export interface CatalogosCartera {
   companias: string[]
   coberturas: string[]
   tiposDeVehiculo: string[]
+  /**
+   * Las siete ramas de la agencia más lo que la base tenga y el catálogo no conozca. Ver
+   * `src/shared/ramas.ts`: la lista cerrada está SIEMPRE completa, aunque el mes que se mira no tenga
+   * ninguna moto, para que el desplegable diga lo mismo en las cinco computadoras.
+   */
+  ramas: string[]
   mediosDePago: string[]
 }
 
@@ -695,6 +710,8 @@ export interface FilaBaja {
   cobertura: string | null
   patente: string | null
   vehiculo: string | null
+  /** Ver `FilaCartera.categoriaVehiculo`: la usa el filtro de rama de la pantalla de Bajas. */
+  categoriaVehiculo: CategoriaDeVehiculo | null
   marca: string | null
   modelo: string | null
   anio: string | null
@@ -815,8 +832,9 @@ export interface DatosDeRechazo {
 
 export interface FiltrosRechazos {
   busqueda: string
-  sucursal: string
-  /** '' = todos los estados. */
+  /** Vacío = todas. Se comparan con `mismaSucursal`, que pliega «AVELLANEDA» dentro de «Dock Sud». */
+  sucursales: string[]
+  /** '' = todos los estados. Es una pestaña con su contador, no un desplegable: se elige uno. */
   estado: '' | EstadoDeRechazo
 }
 
@@ -960,7 +978,9 @@ export interface RespaldoGuardado {
 // Clientes, pólizas y renovaciones
 // ---------------------------------------------------------------------------
 
-export type EstadoPoliza = 'ACTIVA' | 'BAJA' | 'VENCIDA'
+/** Los tres estados posibles. La constante existe para poder validar lo que llega de la pantalla. */
+export const ESTADOS_DE_POLIZA = ['ACTIVA', 'VENCIDA', 'BAJA'] as const
+export type EstadoPoliza = (typeof ESTADOS_DE_POLIZA)[number]
 
 /**
  * Cómo está el cliente hoy:
@@ -992,9 +1012,10 @@ export type FiltroEstadoCliente = '' | 'activos-sin-deuda' | 'activos-con-deuda'
 
 export interface FiltrosClientes {
   busqueda: string
-  sucursal: string
-  compania: string
-  /** '' = todos; el resto acota por cómo está el cliente y si debe. */
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
+  companias: string[]
+  /** '' = todos. Es un botón con su contador, no un desplegable: se elige uno. */
   estado: FiltroEstadoCliente
 }
 
@@ -1081,7 +1102,14 @@ export interface PolizaDeCliente {
   observaciones: string | null
   estado: EstadoPoliza
   vehiculoId: number | null
+  /** Cómo se nombra el riesgo en la lista: «FORD FIESTA» dice más que «AUTO». */
   vehiculo: string | null
+  /**
+   * La rama de la agencia («AUTO», «PICK UP»…), deducida del tipo del riesgo y de la categoría del
+   * catálogo, o null cuando el riesgo no es de ninguna de las siete (un hogar, una bicicleta). Se
+   * calcula en el servicio y no en la pantalla porque el tipo crudo no viaja: ver `src/shared/ramas.ts`.
+   */
+  rama: Rama | null
   patente: string | null
   clienteId: number
   clienteNombre: string | null
@@ -1155,10 +1183,14 @@ export interface FichaCliente {
 
 export interface FiltrosPolizas {
   busqueda: string
-  estado: '' | EstadoPoliza
-  compania: string
-  sucursal: string
-  cobertura: string
+  /** Vacíos = todos. Acá el estado SÍ es un desplegable más, así que también elige de a varios. */
+  estados: EstadoPoliza[]
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  companias: string[]
+  sucursales: string[]
+  coberturas: string[]
+  /** Las siete de `src/shared/ramas.ts`, más lo que la base tenga fuera del catálogo. */
+  ramas: string[]
 }
 
 /** Una regla de la matriz de coberturas: qué antigüedad de vehículo acepta cada compañía. */
@@ -1332,6 +1364,8 @@ export interface FiltrosDeudores {
   sucursales: string[]
   companias: string[]
   formasDePago: string[]
+  /** Las siete de `src/shared/ramas.ts`, más lo que la base tenga fuera del catálogo. Vacío = todas. */
+  ramas: string[]
   /** Días del mes tildados (1 a 31), en cualquier orden. Vacío = todos los días. */
   dias: number[]
   /**
@@ -1347,6 +1381,7 @@ export const DEUDORES_SIN_FILTROS: FiltrosDeudores = {
   sucursales: [],
   companias: [],
   formasDePago: [],
+  ramas: [],
   dias: [],
   incluirDebito: false,
 }
@@ -1396,6 +1431,8 @@ export interface ListadoDeudores {
   sucursales: string[]
   companias: string[]
   formasDePago: string[]
+  /** Las opciones del filtro de rama: las siete de la agencia más lo que la base traiga aparte. */
+  ramas: string[]
   hoy: string
 }
 
@@ -1405,6 +1442,8 @@ export interface CatalogosDePoliza {
   formasDePago: string[]
   sucursales: string[]
   tiposDeVehiculo: string[]
+  /** Las opciones del filtro de rama: las siete de la agencia más lo que la base traiga aparte. */
+  ramas: string[]
 }
 
 export interface ListadoPolizas {
@@ -1554,12 +1593,13 @@ export interface TotalPorMedio {
 export interface CajaDelDia {
   /** Día que se está mirando, 'AAAA-MM-DD'. */
   fecha: string
-  /** Sucursal filtrada; '' = todas. */
-  sucursal: string
+  /** Sucursales filtradas, ya escritas como el catálogo; vacías = todas. */
+  sucursalesElegidas: string[]
+  /** Las que este usuario puede mirar: son las opciones del desplegable. */
   sucursales: string[]
   /**
    * true cuando la sucursal no se puede cambiar: un empleado ve la caja de su mostrador y nada más.
-   * Los administradores eligen cualquiera (o «Todas»).
+   * Los administradores eligen las que quieran (o ninguna, que son todas).
    */
   sucursalFija: boolean
   mediosDePago: string[]
@@ -1641,9 +1681,11 @@ export interface FilaMora {
 
 export interface FiltrosMora {
   busqueda: string
-  sucursal: string
-  compania: string
-  rango: RangoDeMora
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
+  companias: string[]
+  /** Vacíos = todos los tramos de atraso. Los carteles de arriba siguen contando los tres por separado. */
+  rangos: Array<Exclude<RangoDeMora, ''>>
   /** El débito automático se cobra solo: por omisión no se lista. */
   incluirDebito: boolean
 }
@@ -1683,11 +1725,12 @@ export const NOMBRE_RESULTADO_IMPUTACION: Record<ResultadoImputacion, string> = 
 
 export interface RendicionImputados {
   periodo: string
-  /** Compañía filtrada; '' = todas. */
-  compania: string
+  /** Compañías filtradas, ya plegadas contra las que existen; lista vacía = todas. */
+  companiasElegidas: string[]
   /** Sucursal a la que está acotada la rendición ('' = todas): la del mostrador cuando pregunta un empleado. */
   sucursal: string
   periodos: string[]
+  /** Todas las compañías que aparecen en el mes: son las opciones del desplegable. */
   companias: string[]
   pagos: PagoRegistrado[]
   /** Cuántos pagos hay de cada resultado (la clave '' son los pendientes). */
@@ -1822,11 +1865,13 @@ export interface FilaSiniestro {
 }
 
 export interface FiltrosSiniestros {
-  /** 'AAAA-MM' del mes de carga; '' = todos los meses. */
+  /** 'AAAA-MM' del mes de carga; '' = todos los meses. Elige el mes que se mira, no filtra dentro. */
   periodo: string
   busqueda: string
-  sucursal: string
-  compania: string
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
+  companias: string[]
+  /** '' = todos. Es una pestaña con su contador, no un desplegable: se elige uno. */
   estado: '' | EstadoSiniestro
   /** Sólo los que mencionan ROBO. */
   soloRobos: boolean
@@ -2050,9 +2095,11 @@ export interface FilaLead {
 
 export interface FiltrosLeads {
   busqueda: string
+  /** '' = todos. Es una pestaña con su contador, no un desplegable: se elige uno. */
   estado: '' | EstadoLead
-  origen: '' | OrigenDeLead
-  sucursal: string
+  /** Vacíos = todos. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  origenes: OrigenDeLead[]
+  sucursales: string[]
   /** false = se esconden los GANADO y PERDIDO, que ya no son trabajo pendiente. */
   incluirCerrados: boolean
 }
@@ -2170,8 +2217,10 @@ export interface FilaPresupuesto {
 
 export interface FiltrosPresupuestos {
   busqueda: string
+  /** '' = todos. Es una pestaña con su contador, no un desplegable: se elige uno. */
   estado: '' | EstadoPresupuesto
-  sucursal: string
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
   /** false = sólo la última versión de cada presupuesto. */
   incluirVersiones: boolean
 }
@@ -2292,11 +2341,13 @@ export interface FilaTarea {
 
 export interface FiltrosTareas {
   busqueda: string
+  /** '' = todas. Es una pestaña con su contador, no un desplegable: se elige una. */
   estado: '' | EstadoTarea
-  prioridad: '' | PrioridadTarea
-  /** Id del responsable; 0 = todos, -1 = sin responsable. */
-  responsableId: number
-  sucursal: string
+  /** Vacíos = todos. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  prioridades: PrioridadTarea[]
+  /** Ids de los responsables; lista vacía = los de todos, y el -1 son las que no tienen responsable. */
+  responsableIds: number[]
+  sucursales: string[]
   /** true = sólo las que vencen hoy o ya vencieron. */
   soloVencidas: boolean
 }
@@ -2390,8 +2441,8 @@ export interface TareaCompletada {
 
 /** Filtros globales del tablero: una sucursal (o todas) y un mes. */
 export interface FiltrosMetricas {
-  /** '' = todas las sucursales. */
-  sucursal: string
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
   /** 'AAAA-MM'; null = el mes abierto de la cartera. */
   periodo: string | null
 }
@@ -2439,7 +2490,9 @@ export interface CobranzaDelMes {
 export interface TableroMetricas {
   periodo: string
   periodos: string[]
-  sucursal: string
+  /** Las sucursales filtradas, ya escritas como el catálogo. Vacías = el tablero es de toda la agencia. */
+  sucursalesElegidas: string[]
+  /** Todas las del catálogo: son las opciones del desplegable. */
   sucursales: string[]
 
   activos: number
@@ -2476,7 +2529,9 @@ export interface FilaEstadistica {
 export interface EstadisticasDeCartera {
   periodo: string
   periodos: string[]
-  sucursal: string
+  /** Las sucursales filtradas, ya escritas como el catálogo. Vacías = son las de toda la agencia. */
+  sucursalesElegidas: string[]
+  /** Todas las del catálogo: son las opciones del desplegable. */
   sucursales: string[]
   porCompania: FilaEstadistica[]
   porSucursal: FilaEstadistica[]
@@ -2525,11 +2580,12 @@ export interface CatalogoDeReportes {
 }
 
 export interface FiltrosDeReporte {
-  /** 'AAAA-MM' o vacío. */
+  /** 'AAAA-MM' o vacío. Elige el mes del reporte, no filtra dentro. */
   periodo: string
-  sucursal: string
-  compania: string
-  estado: string
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
+  companias: string[]
+  estados: string[]
   busqueda: string
   /** 'AAAA-MM-DD' o vacío. */
   desde: string
@@ -2599,7 +2655,8 @@ export interface CatalogoDeExcel {
 export interface OpcionesPlanillaClasica {
   /** Meses elegidos, 'AAAA-MM'. Una pestaña por mes, más su pestaña de BAJAS. */
   periodos: string[]
-  sucursal: string
+  /** Vacías = todas. Con una o varias elegidas, el nombre del archivo las nombra. */
+  sucursales: string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -2984,9 +3041,12 @@ export type VentanaDeVencimiento = (typeof VENTANAS_DE_VENCIMIENTO)[number]
 
 /** El filtro guardado de un segmento. Es lo que se recalcula cada vez que se abre. */
 export interface FiltrosDeSegmento {
-  sucursal: string
-  compania: string
-  formaPago: string
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
+  companias: string[]
+  formasDePago: string[]
+  /** Las siete de `src/shared/ramas.ts`, más lo que la base tenga fuera del catálogo. */
+  ramas: string[]
   vence: VentanaDeVencimiento
   /** Sólo las cuotas que no figuran pagas. */
   soloImpagas: boolean
@@ -2997,9 +3057,10 @@ export interface FiltrosDeSegmento {
 }
 
 export const SEGMENTO_SIN_FILTROS: FiltrosDeSegmento = {
-  sucursal: '',
-  compania: '',
-  formaPago: '',
+  sucursales: [],
+  companias: [],
+  formasDePago: [],
+  ramas: [],
   vence: '',
   soloImpagas: true,
   soloSinAvisar: false,
@@ -3066,6 +3127,8 @@ export interface ResultadoDeSegmento {
   sucursales: string[]
   companias: string[]
   formasDePago: string[]
+  /** Las opciones del filtro de rama: las siete de la agencia más lo que la base traiga aparte. */
+  ramas: string[]
   hoy: string
 }
 

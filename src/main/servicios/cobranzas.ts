@@ -3,9 +3,11 @@
 // Los pagos son siempre los mismos: los que nacen de «Registrar pago» en la Cartera y los que se
 // cargan a mano acá. Esta pantalla los mira de tres maneras distintas —por día, por mes y por
 // compañía—, así que todo sale de la misma tabla `pagos` y de `pagos.ts`.
+import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
+  RANGOS_DE_MORA,
   RESULTADOS_DE_IMPUTACION,
   type AvisoDeMora,
   type CajaDelDia,
@@ -64,7 +66,7 @@ function exigirFecha(valor: string | null): string {
   return limpia
 }
 
-function mismaCosa(a: string | null, b: string | null): boolean {
+function mismaCosa(a: unknown, b: unknown): boolean {
   return normalizarTexto(a) === normalizarTexto(b)
 }
 
@@ -125,21 +127,33 @@ export function sucursalObligadaDe(actor: SesionUsuario | null | undefined): str
   return actor.sucursal.nombre
 }
 
-export function cajaDelDia(fechaPedida: string | null, sucursalPedida: string, actor?: SesionUsuario | null): CajaDelDia {
+export function cajaDelDia(fechaPedida: string | null, sucursalesPedidas: string[], actor?: SesionUsuario | null): CajaDelDia {
   const fecha = exigirFecha(fechaPedida)
   const obligada = sucursalObligadaDe(actor)
   const todas = sucursalesDeLaCaja()
-  const sucursales = obligada ? todas.filter((s) => mismaSucursal(s, obligada)) : todas
-  // Con sucursal obligada, la pedida no cuenta: se mira la del mostrador y nada más.
-  const sucursal = sucursales.find((s) => mismaSucursal(s, obligada || sucursalPedida)) ?? (obligada || '')
+  const disponibles = obligada ? todas.filter((s) => mismaSucursal(s, obligada)) : todas
+  // Con sucursal obligada, lo pedido no cuenta: se mira la del mostrador y nada más.
+  //
+  // El `?? obligada` es a propósito y no sobra. Hoy `sucursalesDeLaCaja()` pasa por
+  // `sucursalesParaElegir`, que siembra siempre las cuatro de la agencia, así que `disponibles` nunca
+  // queda vacía para un mostrador de verdad. Pero si algún día dejara de sembrarlas —o si a alguien le
+  // quedara cargada una sucursal fuera del catálogo—, `disponibles` sería `[]`, y acá una lista vacía
+  // quiere decir «todas»: el empleado vería la caja de TODAS las sucursales. Este filtro tiene que
+  // fallar cerrado, nunca abierto, y no puede depender de que otra función siga sembrando el catálogo.
+  const sucursales = obligada
+    ? [disponibles[0] ?? obligada]
+    : listaDeFiltro(sucursalesPedidas).flatMap((pedida) => {
+        const encontrada = disponibles.find((s) => mismaSucursal(s, pedida))
+        return encontrada ? [encontrada] : []
+      })
 
   const crudas = db().prepare(`${SELECT_PAGOS} WHERE p.fecha_iso = ? ORDER BY p.creado_en, p.id`).all(fecha) as PagoCrudo[]
-  const pagos = crudas.map(aPagoRegistrado).filter((pago) => !sucursal || mismaSucursal(pago.sucursal, sucursal))
+  const pagos = crudas.map(aPagoRegistrado).filter((pago) => coincideAlguno(sucursales, pago.sucursal, mismaSucursal))
 
   return {
     fecha,
-    sucursal,
-    sucursales,
+    sucursalesElegidas: sucursales,
+    sucursales: disponibles,
     sucursalFija: obligada !== '',
     mediosDePago: catalogos().mediosDePago,
     pagos,
@@ -171,10 +185,14 @@ function celda(valor: string | number | null): string {
  * El día en CSV, con punto y coma de separador y BOM: así se abre de un doble clic en el Excel de la
  * agencia, sin pasar por el asistente de importación.
  */
-export function csvDeLaCaja(fechaPedida: string | null, sucursalPedida: string, actor?: SesionUsuario | null): { nombre: string; contenido: string } {
-  const caja = cajaDelDia(fechaPedida, sucursalPedida, actor)
+export function csvDeLaCaja(
+  fechaPedida: string | null,
+  sucursalesPedidas: string[],
+  actor?: SesionUsuario | null,
+): { nombre: string; contenido: string } {
+  const caja = cajaDelDia(fechaPedida, sucursalesPedidas, actor)
   const lineas: string[] = []
-  lineas.push(celda(`Caja del ${caja.fecha}${caja.sucursal ? ` · ${caja.sucursal}` : ' · todas las sucursales'}`))
+  lineas.push(celda(`Caja del ${caja.fecha}${caja.sucursalesElegidas.length > 0 ? ` · ${caja.sucursalesElegidas.join(', ')}` : ' · todas las sucursales'}`))
   lineas.push('')
   lineas.push(
     ['Hora', 'Cliente', 'DNI/CUIT', 'Compañía', 'Póliza', 'Patente', 'Importe', 'Medio', 'Sucursal', 'Cobró', 'Mes', 'Resultado', 'Cobro']
@@ -215,7 +233,7 @@ export function csvDeLaCaja(fechaPedida: string | null, sucursalPedida: string, 
     lineas.push(celda(`${caja.sinImporte} pago(s) sin importe numérico: no suman al total.`))
   }
 
-  const sufijo = caja.sucursal ? `-${caja.sucursal.replace(/[^\p{L}\p{N}]+/gu, '-')}` : ''
+  const sufijo = caja.sucursalesElegidas.length > 0 ? `-${caja.sucursalesElegidas.join('-').replace(/[^\p{L}\p{N}]+/gu, '-')}` : ''
   // El BOM del principio es lo que le dice a Excel que el archivo está en UTF-8.
   return { nombre: `caja-${caja.fecha}${sufijo}.csv`, contenido: `﻿${lineas.join('\r\n')}\r\n` }
 }
@@ -259,7 +277,7 @@ export function registrarPagoManual(datos: DatosDePagoManual, actor: SesionUsuar
     // El ticket es del pago de este mes; si sólo se adelantó la cuota que viene, del adelanto.
     const pagoId = (datos.alcance === 'ADELANTADO' ? idDelAdelantoDeLaCuota(cuotaFilaId) : idDelPagoDeLaCuota(cuotaFilaId)) ?? idDelAdelantoDeLaCuota(cuotaFilaId)
     if (pagoId === null) throw new ErrorDeNegocio('El pago se guardó pero no se pudo leer de vuelta. Actualizá la pantalla.')
-    return { caja: cajaDelDia(interpretada.iso, sucursal, actor), pagoId }
+    return { caja: cajaDelDia(interpretada.iso, sucursal ? [sucursal] : [], actor), pagoId }
   }
 
   const nombre = texto(datos.clienteNombre, 'El nombre del cliente', 2, 200)
@@ -304,7 +322,7 @@ export function registrarPagoManual(datos: DatosDePagoManual, actor: SesionUsuar
     valorAnterior: null,
     valorNuevo: `${nombre} · ${importe}${medio ? ` · ${medio}` : ''} (${fecha})`,
   })
-  return { caja: cajaDelDia(interpretada.iso, sucursal, actor), pagoId }
+  return { caja: cajaDelDia(interpretada.iso, sucursal ? [sucursal] : [], actor), pagoId }
 }
 
 // ---------------------------------------------------------------------------
@@ -404,16 +422,19 @@ function coincideConLaBusqueda(fila: FilaMora, busqueda: string): boolean {
 export function mora(filtros: FiltrosMora, hoy = hoyLocal()): ListadoMora {
   const todas = filasEnMora(filtros.incluirDebito === true, hoy)
   const busqueda = normalizarTexto(filtros.busqueda).replace(/ /g, '')
-  const sucursal = limpiar(filtros.sucursal)
-  const compania = limpiar(filtros.compania)
+  const sucursales = listaDeFiltro(filtros.sucursales)
+  const companias = listaDeFiltro(filtros.companias)
 
   const sinRango = todas.filter(
     (fila) =>
       coincideConLaBusqueda(fila, busqueda) &&
-      (!sucursal || mismaSucursal(fila.sucursal, sucursal)) &&
-      (!compania || mismaCosa(fila.compania, compania)),
+      coincideAlguno(sucursales, fila.sucursal, mismaSucursal) &&
+      coincideAlguno(companias, fila.compania, mismaCosa),
   )
-  const filas = filtros.rango ? sinRango.filter((fila) => fila.rango === filtros.rango) : sinRango
+  const rangos = listaDeFiltro(filtros.rangos).filter((r): r is Exclude<RangoDeMora, ''> =>
+    (RANGOS_DE_MORA as readonly string[]).includes(r) && r !== '',
+  )
+  const filas = rangos.length > 0 ? sinRango.filter((fila) => rangos.includes(fila.rango)) : sinRango
 
   const porRango: Record<Exclude<RangoDeMora, ''>, number> = { '1-7': 0, '8-30': 0, '+30': 0 }
   for (const fila of sinRango) porRango[fila.rango]++
@@ -458,8 +479,9 @@ function periodosConPagos(): string[] {
   return filas.map((f) => f.periodo)
 }
 
-export function imputados(periodoPedido: string | null, companiaPedida: string, actor?: SesionUsuario | null): RendicionImputados {
+export function imputados(periodoPedido: string | null, companiasPedidas: string[], actor?: SesionUsuario | null): RendicionImputados {
   const periodos = periodosConPagos()
+  const pedidas = listaDeFiltro(companiasPedidas)
   const pedido = limpiar(periodoPedido)
   const periodo = pedido && FORMATO_PERIODO.test(pedido) ? pedido : (periodos[0] ?? periodoDeHoy())
   const sucursal = sucursalObligadaDe(actor)
@@ -470,21 +492,24 @@ export function imputados(periodoPedido: string | null, companiaPedida: string, 
   // Un empleado rinde lo que cobró su mostrador; las otras sucursales no son de su incumbencia.
   const todos = crudas.map(aPagoRegistrado).filter((pago) => !sucursal || mismaSucursal(pago.sucursal, sucursal))
 
-  const companias = distintos(todos.map((pago) => pago.compania))
-  const compania = companias.find((c) => mismaCosa(c, companiaPedida)) ?? ''
-  const pagos = compania ? todos.filter((pago) => mismaCosa(pago.compania, compania)) : todos
+  const companiasDisponibles = distintos(todos.map((pago) => pago.compania))
+  // Se devuelven las compañías tal como las escribe el mes, no como llegaron del filtro: así el
+  // desplegable se ve elegido aunque en la pantalla anterior estuvieran escritas de otra forma. Una
+  // que este mes no tiene ningún pago se cae sola, que es lo mismo que hacía la versión de un valor.
+  const companias = companiasDisponibles.filter((c) => pedidas.some((pedida) => mismaCosa(c, pedida)))
+  const pagos = companias.length > 0 ? todos.filter((pago) => companias.some((c) => mismaCosa(pago.compania, c))) : todos
 
   const contadores = Object.fromEntries(RESULTADOS_DE_IMPUTACION.map((r) => [r, 0])) as Record<ResultadoImputacion, number>
   for (const pago of pagos) contadores[pago.resultado]++
 
   return {
     periodo,
-    compania,
+    companiasElegidas: companias,
     sucursal,
     // Sin ningún pago cargado la lista queda vacía a propósito: es lo que la pantalla mira para
     // explicar que la rendición todavía no tiene nada.
     periodos: periodos.length === 0 || periodos.includes(periodo) ? periodos : [periodo, ...periodos],
-    companias,
+    companias: companiasDisponibles,
     pagos,
     contadores,
     total: pagos.length,
@@ -516,7 +541,7 @@ function pagosSinMes(): number {
 export function cambiarResultado(
   pagoId: number,
   resultado: ResultadoImputacion,
-  companiaDelFiltro: string,
+  companiasDelFiltro: string[],
   actor: SesionUsuario,
 ): RendicionImputados {
   const identificador = enteroPositivo(pagoId, 'El pago')
@@ -553,7 +578,7 @@ export function cambiarResultado(
       valorNuevo: resultado || null,
     })
   }
-  return imputados(pago.periodo, companiaDelFiltro, actor)
+  return imputados(pago.periodo, listaDeFiltro(companiasDelFiltro), actor)
 }
 
 // ---------------------------------------------------------------------------

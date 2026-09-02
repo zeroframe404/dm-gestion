@@ -186,7 +186,7 @@ anotar('Tiene «Exportar el día» y el alta manual de un pago', caja?.tieneExpo
 
 // La suma de los tres pagos, comprobada contra el proceso principal.
 const suma = await evaluar(`(async () => {
-  const r = await window.dm.cobranzas.caja(null, '')
+  const r = await window.dm.cobranzas.caja(null, [])
   if (!r.ok) return { error: r.error }
   const porMedio = Object.fromEntries(r.datos.totalesPorMedio.map((t) => [t.medio, t.total]))
   return { total: r.datos.total, porMedio, pagos: r.datos.pagos.length }
@@ -206,7 +206,7 @@ const mora = await evaluar(`(async () => {
   const cargo = await esperar(() => /Cuotas vencidas/i.test(document.body.innerText))
   if (!cargo) return { error: 'no cargó la mora' }
   const texto = document.body.innerText
-  const listado = await window.dm.cobranzas.mora({ busqueda: '', sucursal: '', compania: '', rango: '', incluirDebito: false })
+  const listado = await window.dm.cobranzas.mora({ busqueda: '', sucursales: [], companias: [], rangos: [], incluirDebito: false })
   if (!listado.ok) return { error: listado.error }
   const hoy = listado.datos.hoy
   return {
@@ -256,7 +256,7 @@ const imputados = await evaluar(`(async () => {
     await new Promise((r) => setTimeout(r, 1200))
     marcados.push(true)
   }
-  const rendicion = await window.dm.cobranzas.imputados(null, '')
+  const rendicion = await window.dm.cobranzas.imputados(null, [])
   return {
     marcados: marcados.length,
     imputados: rendicion.ok ? rendicion.datos.contadores.IMPUTADO : 0,

@@ -13,10 +13,13 @@ import {
   pareceIso,
   validarAntiguedad,
 } from '../../shared/polizas'
+import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
+import { ramaDeVehiculo, ramasParaElegir } from '../../shared/ramas'
 import { describirRiesgo, esVehiculo, leerIntegrantes, nombreDeTipoDeRiesgo, tipoDeRiesgo } from '../../shared/riesgos'
 import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
+  ESTADOS_DE_POLIZA,
   MOTIVOS_DE_BAJA,
   type AvisoDeCobertura,
   type CatalogosDePoliza,
@@ -42,6 +45,7 @@ import {
   interpretarFecha,
   interpretarNumero,
   limpiar,
+  mismoTexto,
   normalizarDocumento,
   normalizarNumeroPoliza,
   normalizarPatente,
@@ -82,7 +86,7 @@ const SELECT_POLIZAS = `
     COALESCE(p.observaciones, q.observaciones) AS observaciones,
     q.id AS cuota_id, q.fila_id AS cuota_fila_id, q.pestana AS cuota_pestana,
     q.cuota, q.dia_vencimiento,
-    p.vehiculo_id, v.marca, v.modelo, v.tipo AS tipo_vehiculo, v.anio, v.chasis,
+    p.vehiculo_id, v.marca, v.modelo, v.tipo AS tipo_vehiculo, v.categoria AS categoria_vehiculo, v.anio, v.chasis,
     v.direccion_riesgo, v.titular_nombre, v.titular_documento, v.integrantes,
     COALESCE(v.patente, q.patente) AS patente,
     p.cliente_id,
@@ -129,6 +133,7 @@ interface FilaCrudaPoliza {
   marca: string | null
   modelo: string | null
   tipo_vehiculo: string | null
+  categoria_vehiculo: string | null
   anio: string | null
   chasis: string | null
   direccion_riesgo: string | null
@@ -187,6 +192,7 @@ function aPoliza(fila: FilaCrudaPoliza, hoy: string): PolizaDeCliente {
     estado: estadoDePoliza(fila.activa === 1, fila.vigencia_hasta_iso, hoy),
     vehiculoId: fila.vehiculo_id,
     vehiculo: describirVehiculo(fila),
+    rama: ramaDeVehiculo(fila.tipo_vehiculo, fila.categoria_vehiculo),
     patente: fila.patente,
     clienteId: fila.cliente_id,
     clienteNombre: fila.cliente_nombre,
@@ -341,6 +347,9 @@ export function catalogosDePoliza(): CatalogosDePoliza {
     // el filtro del listado y que la Cartera.
     sucursales: sucursalesParaElegir(valoresDistintos('SELECT DISTINCT sucursal_texto AS valor FROM clientes')),
     tiposDeVehiculo: valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos'),
+    // Las siete de la agencia siempre, más lo que la base tenga fuera del catálogo: es el mismo trato
+    // que reciben las sucursales, y por lo mismo —una opción que no está no se puede pedir.
+    ramas: ramasParaElegir(valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos')),
   }
 }
 
@@ -351,10 +360,11 @@ export function catalogosDePoliza(): CatalogosDePoliza {
 export function listarPolizas(filtros: FiltrosPolizas): ListadoPolizas {
   const f = objeto(filtros, 'Los filtros')
   const busqueda = normalizarTexto(f.busqueda)
-  const estado = typeof f.estado === 'string' ? f.estado : ''
-  const compania = limpiar(f.compania)
-  const sucursal = limpiar(f.sucursal)
-  const cobertura = limpiar(f.cobertura)
+  const estados = listaDeFiltro(f.estados).filter((e): e is EstadoPoliza => (ESTADOS_DE_POLIZA as readonly string[]).includes(e))
+  const companias = listaDeFiltro(f.companias)
+  const sucursales = listaDeFiltro(f.sucursales)
+  const coberturas = listaDeFiltro(f.coberturas)
+  const ramas = listaDeFiltro(f.ramas)
   const hoy = hoyLocal()
 
   // Todos los filtros se resuelven en memoria, con `normalizarTexto`. En SQL no se puede: `UPPER()` de
@@ -362,22 +372,28 @@ export function listarPolizas(filtros: FiltrosPolizas): ListadoPolizas {
   // hoja escribió «LANUS» y el listado salía vacío sin explicar por qué. El catálogo mezcla el nombre
   // oficial de la sucursal con el texto crudo de la planilla, así que el desajuste es el caso normal,
   // no la excepción. Son ~2.400 filas: filtrarlas acá no se nota.
-  const compare = (valor: string | null, buscado: string) => !buscado || normalizarTexto(valor) === normalizarTexto(buscado)
-
   const crudas = db()
     .prepare(`${SELECT_POLIZAS} ORDER BY cliente_nombre COLLATE NOCASE, p.id`)
     .all({ periodo: periodoAbierto() }) as FilaCrudaPoliza[]
 
   const filas = crudas
-    .filter((fila) => compare(fila.compania, compania))
-    .filter((fila) => compare(fila.cobertura, cobertura))
-    // La sucursal no pasa por `compare`: la compara `mismaSucursal`, que además de las tildes sabe
-    // que «AVELLANEDA» y «DOCKSUD» son Dock Sud. Es el mismo plegado con el que `sucursalesParaElegir`
-    // arma el desplegable de arriba, así que toda opción trae sus filas y toda fila tiene su opción.
-    .filter((fila) => !sucursal || mismaSucursal(fila.sucursal, sucursal))
+    .filter((fila) => coincideAlguno(companias, fila.compania, mismoTexto))
+    .filter((fila) => coincideAlguno(coberturas, fila.cobertura, mismoTexto))
+    // La sucursal no se compara con el texto pelado: la compara `mismaSucursal`, que además de las
+    // tildes sabe que «AVELLANEDA» y «DOCKSUD» son Dock Sud. Es el mismo plegado con el que
+    // `sucursalesParaElegir` arma el desplegable de arriba, así que toda opción trae sus filas y toda
+    // fila tiene su opción.
+    .filter((fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal))
+    // La rama se compara contra la ya deducida (tipo + categoría del catálogo). Lo que queda fuera del
+    // catálogo se compara contra el tipo crudo, que es como sigue estando en el desplegable.
+    .filter((fila) => {
+      if (ramas.length === 0) return true
+      const rama = ramaDeVehiculo(fila.tipo_vehiculo, fila.categoria_vehiculo)
+      return ramas.some((elegida) => (rama ? elegida === rama : mismoTexto(elegida, fila.tipo_vehiculo)))
+    })
     .filter((fila) => coincideLaBusqueda(fila, busqueda))
     .map((fila) => aPoliza(fila, hoy))
-    .filter((poliza) => estado === '' || poliza.estado === (estado as EstadoPoliza))
+    .filter((poliza) => estados.length === 0 || estados.includes(poliza.estado))
 
   const total = (db().prepare('SELECT COUNT(*) AS n FROM polizas').get() as { n: number }).n
   return { filas, total, catalogos: catalogosDePoliza(), hoy }

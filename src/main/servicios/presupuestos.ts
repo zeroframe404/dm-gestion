@@ -23,6 +23,7 @@ import {
   type SesionUsuario,
 } from '../../shared/tipos'
 import { hoyLocal } from '../../shared/semaforo'
+import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import { db } from '../db/base'
 import { ahoraIso, generarId, interpretarNumero, limpiar, normalizarPatente, normalizarTexto } from '../importacion/normalizar'
@@ -172,7 +173,7 @@ function normalizarFiltros(filtros: unknown): FiltrosPresupuestos {
   return {
     busqueda: limpiar(f.busqueda).slice(0, 100),
     estado: (ESTADOS_DE_PRESUPUESTO as readonly string[]).includes(estado) ? (estado as EstadoPresupuesto) : '',
-    sucursal: limpiar(f.sucursal).slice(0, 80),
+    sucursales: listaDeFiltro(f.sucursales).map((v) => v.slice(0, 80)),
     incluirVersiones: f.incluirVersiones === true,
   }
 }
@@ -193,7 +194,7 @@ export function listarPresupuestos(filtros: unknown): ListadoPresupuestos {
   }
 
   const visibles = todos.filter(
-    (p) => (f.incluirVersiones || p.vigente) && (!f.sucursal || mismaSucursal(p.sucursal, f.sucursal)) && coincide(p),
+    (p) => (f.incluirVersiones || p.vigente) && coincideAlguno(f.sucursales, p.sucursal, mismaSucursal) && coincide(p),
   )
 
   const porEstado = { BORRADOR: 0, ENVIADO: 0, ACEPTADO: 0, RECHAZADO: 0 } as Record<EstadoPresupuesto, number>

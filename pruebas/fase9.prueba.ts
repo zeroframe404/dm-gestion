@@ -106,7 +106,7 @@ test('los seguros activos por compañía coinciden con los COUNTIF de la hoja', 
   await prepararBase()
 
   const esperado = countifPorCompania('AGOSTO')
-  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
+  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursales: [] }, true)
 
   const total = [...esperado.values()].reduce((suma, n) => suma + n, 0)
   assert.equal(tablero.activos, total, 'el total de activos tiene que ser el de las filas de la pestaña')
@@ -127,8 +127,8 @@ test('los seguros activos por compañía coinciden con los COUNTIF de la hoja', 
 test('el filtro de sucursal recorta el tablero sin romper los porcentajes', async () => {
   await prepararBase()
 
-  const completo = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
-  const lanus = tableroDeMetricas({ periodo: AGOSTO, sucursal: 'Lanús' }, true)
+  const completo = tableroDeMetricas({ periodo: AGOSTO, sucursales: [] }, true)
+  const lanus = tableroDeMetricas({ periodo: AGOSTO, sucursales: ['Lanús'] }, true)
 
   // En AGOSTO Lanús tiene las dos pólizas de Pérez (el auto y la moto).
   assert.equal(lanus.activos, 2)
@@ -140,14 +140,14 @@ test('el filtro de sucursal recorta el tablero sin romper los porcentajes', asyn
 test('altas, bajas y evolución cuentan lo mismo que comparar dos pestañas a mano', async () => {
   await prepararBase()
 
-  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
+  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursales: [] }, true)
 
   // En AGOSTO entró Suárez (no estaba en JULIO) y no se fue nadie: la baja de Fernández es de JULIO.
   assert.equal(tablero.hayMesAnterior, true)
   assert.equal(tablero.altas, 1, 'la única alta de agosto es Suárez')
   assert.equal(tablero.bajas, 0, 'BAJAS AGOSTO está vacía')
 
-  const julio = tableroDeMetricas({ periodo: JULIO, sucursal: '' }, true)
+  const julio = tableroDeMetricas({ periodo: JULIO, sucursales: [] }, true)
   assert.equal(julio.bajas, 1, 'en julio se dio de baja Fernández')
   assert.equal(julio.bajasPorMotivo[0]!.motivo, 'SE PASO A OTRO PRODUCTOR')
 
@@ -166,7 +166,7 @@ test('altas, bajas y evolución cuentan lo mismo que comparar dos pestañas a ma
 test('la cobranza del mes separa lo cobrado de lo pendiente', async () => {
   await prepararBase()
 
-  const { cobranza } = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
+  const { cobranza } = tableroDeMetricas({ periodo: AGOSTO, sucursales: [] }, true)
 
   // Tres filas de AGOSTO están sin pagar (Martínez, Suárez y Rodríguez); las otras cuatro, pagas.
   assert.equal(cobranza.cuotasPendientes, 3)
@@ -231,8 +231,8 @@ test('las filas de «General Excel» son las mismas que las de la vista previa, 
 test('a un empleado los números de la agencia no le llegan: viajan en null, no en cero', async () => {
   await prepararBase()
 
-  const conNumeros = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
-  const sinNumeros = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, false)
+  const conNumeros = tableroDeMetricas({ periodo: AGOSTO, sucursales: [] }, true)
+  const sinNumeros = tableroDeMetricas({ periodo: AGOSTO, sucursales: [] }, false)
 
   // Lo agregado de plata no viaja. En null y no en cero a propósito: un cero se lee «no se cobró
   // nada», que sería mentira, y además haría que la pantalla dibujara una tarjeta con $ 0.
@@ -253,18 +253,18 @@ test('a un empleado los números de la agencia no le llegan: viajan en null, no 
   assert.deepEqual(sinNumeros.activosPorCompania, conNumeros.activosPorCompania)
 
   // Y lo mismo en la versión en tabla, incluido el total: que el total no sume nulls y dé cero.
-  const tabla = estadisticasDeCartera(AGOSTO, '', false)
+  const tabla = estadisticasDeCartera(AGOSTO, [], false)
   assert.equal(tabla.totales.cobrado, null)
   assert.ok(tabla.porCompania.length > 0)
   assert.ok(tabla.porCompania.every((fila) => fila.cobrado === null))
-  assert.equal(tabla.totales.activos, estadisticasDeCartera(AGOSTO, '', true).totales.activos)
-  assert.ok((estadisticasDeCartera(AGOSTO, '', true).totales.cobrado ?? 0) > 0, 'con permiso el total sí tiene que venir')
+  assert.equal(tabla.totales.activos, estadisticasDeCartera(AGOSTO, [], true).totales.activos)
+  assert.ok((estadisticasDeCartera(AGOSTO, [], true).totales.cobrado ?? 0) > 0, 'con permiso el total sí tiene que venir')
 })
 
 test('los siniestros abiertos dejan afuera los cerrados', async () => {
   await prepararBase()
 
-  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
+  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursales: [] }, true)
   // De los tres de la hoja, uno está CERRADO: quedan el de granizo y el robo.
   assert.equal(tablero.siniestrosAbiertos, 2)
   assert.equal(
@@ -276,8 +276,8 @@ test('los siniestros abiertos dejan afuera los cerrados', async () => {
 test('Estadísticas dice lo mismo que Métricas, en tabla', async () => {
   await prepararBase()
 
-  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursal: '' }, true)
-  const tabla = estadisticasDeCartera(AGOSTO, '', true)
+  const tablero = tableroDeMetricas({ periodo: AGOSTO, sucursales: [] }, true)
+  const tabla = estadisticasDeCartera(AGOSTO, [], true)
 
   assert.equal(tabla.totales.activos, tablero.activos)
   assert.equal(tabla.totales.altas, tablero.altas)
@@ -348,7 +348,7 @@ const ENCABEZADOS_CLASICOS = [
 test('la Planilla clásica sale con las columnas y el orden de la hoja de siempre', async () => {
   await prepararBase()
 
-  const archivo = xlsxDePlanillaClasica({ periodos: [AGOSTO], sucursal: '' })
+  const archivo = xlsxDePlanillaClasica({ periodos: [AGOSTO], sucursales: [] })
   assert.match(archivo.nombre, /\.xlsx$/)
 
   const partes = leerZip(archivo.contenido)
@@ -390,7 +390,7 @@ test('la Planilla clásica sale con las columnas y el orden de la hoja de siempr
 test('la Planilla clásica de varios meses trae una pestaña por mes y su BAJAS', async () => {
   await prepararBase()
 
-  const partes = leerZip(xlsxDePlanillaClasica({ periodos: [JULIO, AGOSTO], sucursal: '' }).contenido)
+  const partes = leerZip(xlsxDePlanillaClasica({ periodos: [JULIO, AGOSTO], sucursales: [] }).contenido)
   const libro = partes.get('xl/workbook.xml')!
   assert.equal([...libro.matchAll(/<sheet /g)].length, 4, 'dos meses son cuatro pestañas')
   assert.match(libro, /name="JULIO"/)
@@ -401,7 +401,7 @@ test('la Planilla clásica de varios meses trae una pestaña por mes y su BAJAS'
 test('la Planilla clásica filtrada por sucursal trae sólo ese local', async () => {
   await prepararBase()
 
-  const partes = leerZip(xlsxDePlanillaClasica({ periodos: [AGOSTO], sucursal: 'Lanús' }).contenido)
+  const partes = leerZip(xlsxDePlanillaClasica({ periodos: [AGOSTO], sucursales: ['Lanús'] }).contenido)
   const mes = partes.get('xl/worksheets/sheet1.xml')!
   assert.equal([...mes.matchAll(/<row r="/g)].length - 1, 2, 'en Lanús hay dos pólizas')
 })
@@ -423,7 +423,7 @@ test('el escritor de Excel escapa lo que la hoja tiene escrito y no rompe el XML
 // Reportes
 // ---------------------------------------------------------------------------
 
-const FILTROS_VACIOS = { periodo: '', sucursal: '', compania: '', estado: '', busqueda: '', desde: '', hasta: '' }
+const FILTROS_VACIOS = { periodo: '', sucursales: [], companias: [], estados: [], busqueda: '', desde: '', hasta: '' }
 
 test('el catálogo de reportes ofrece los módulos con sus filtros y columnas', async () => {
   await prepararBase()
@@ -446,14 +446,14 @@ test('el reporte de la planilla del mes devuelve las filas del mes y respeta los
 
   const lanus = vistaPreviaDeReporte({
     reporteId: 'cartera',
-    filtros: { ...FILTROS_VACIOS, periodo: AGOSTO, sucursal: 'Lanús' },
+    filtros: { ...FILTROS_VACIOS, periodo: AGOSTO, sucursales: ['Lanús'] },
     columnas: [],
   })
   assert.equal(lanus.total, 2)
 
   const impagas = vistaPreviaDeReporte({
     reporteId: 'cartera',
-    filtros: { ...FILTROS_VACIOS, periodo: AGOSTO, estado: 'IMPAGA' },
+    filtros: { ...FILTROS_VACIOS, periodo: AGOSTO, estados: ['IMPAGA'] },
     columnas: [],
   })
   assert.equal(impagas.total, 3)
@@ -582,9 +582,11 @@ test('las plantillas se crean, se editan y la del aviso no se puede borrar', asy
 /** El filtro equivalente aplicado a mano sobre la planilla del mes, que es contra lo que se compara. */
 function equivalenteEnCartera(filtros: FiltrosDeSegmento): number {
   return planillaDelMes(AGOSTO).filas.filter((fila) => {
-    if (filtros.sucursal && normalizarTexto(fila.sucursal) !== normalizarTexto(filtros.sucursal)) return false
-    if (filtros.compania && normalizarTexto(fila.compania) !== normalizarTexto(filtros.compania)) return false
-    if (filtros.formaPago && normalizarTexto(fila.formaPago) !== normalizarTexto(filtros.formaPago)) return false
+    const alguna = (elegidos: string[], valor: string | null) =>
+      elegidos.length === 0 || elegidos.some((elegido) => normalizarTexto(valor) === normalizarTexto(elegido))
+    if (!alguna(filtros.sucursales, fila.sucursal)) return false
+    if (!alguna(filtros.companias, fila.compania)) return false
+    if (!alguna(filtros.formasDePago, fila.formaPago)) return false
     if (filtros.soloImpagas && ((fila.pago ?? '').trim() !== '' || fila.pagoRegistrado)) return false
     return true
   }).length
@@ -593,7 +595,7 @@ function equivalenteEnCartera(filtros: FiltrosDeSegmento): number {
 test('un segmento guardado devuelve lo mismo que el filtro equivalente en Cartera', async () => {
   await prepararBase()
 
-  const filtros: FiltrosDeSegmento = { ...SEGMENTO_SIN_FILTROS, formaPago: 'CUPONERA', soloImpagas: true, excluirDebito: true }
+  const filtros: FiltrosDeSegmento = { ...SEGMENTO_SIN_FILTROS, formasDePago: ['CUPONERA'], soloImpagas: true, excluirDebito: true }
 
   const suelto = resultadoDeSegmento(null, filtros, '', HOY)
   assert.equal(suelto.periodo, AGOSTO, 'el segmento trabaja sobre el mes abierto')
@@ -658,7 +660,7 @@ test('avisar en un segmento usa su plantilla, marca la fila y mueve el contador'
   const plantillas = crearPlantilla({ nombre: 'Recordatorio corto', descripcion: '', texto: '{nombre}, vence el {vencimiento}.' })
   const clave = plantillas.find((p) => p.nombre === 'Recordatorio corto')!.clave
 
-  const filtros: FiltrosDeSegmento = { ...SEGMENTO_SIN_FILTROS, formaPago: 'TRANSFERENCIA', soloImpagas: true }
+  const filtros: FiltrosDeSegmento = { ...SEGMENTO_SIN_FILTROS, formasDePago: ['TRANSFERENCIA'], soloImpagas: true }
   const antes = resultadoDeSegmento(null, filtros, clave, HOY)
   assert.equal(antes.total, 1, 'la única por transferencia impaga es Suárez')
   assert.equal(antes.plantillaClave, clave)

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { CajaDelDia as DatosDeCaja, PagoRegistrado } from '../../../shared/tipos'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { Icono } from '../../componentes/Icono'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoPagoManual } from './DialogoPagoManual'
@@ -20,13 +21,13 @@ export function CajaDelDia() {
   const [abrirPago, setAbrirPago] = useState(false)
   const [exportando, setExportando] = useState(false)
 
-  const cargar = useCallback(async (fecha: string | null, sucursal: string) => {
+  const cargar = useCallback(async (fecha: string | null, sucursales: string[]) => {
     setCargando(true)
     setError(null)
     // El aviso es de una acción puntual («pago registrado», «el día se guardó en…»): al cambiar de
     // día o de sucursal ya no habla de lo que se está mirando.
     setAviso(null)
-    const resultado = await window.dm.cobranzas.caja(fecha, sucursal)
+    const resultado = await window.dm.cobranzas.caja(fecha, sucursales)
     if (resultado.ok) setDatos(resultado.datos)
     else setError(resultado.error)
     setCargando(false)
@@ -34,14 +35,14 @@ export function CajaDelDia() {
 
   // La primera vez se abre en el día de hoy y en la sucursal de quien entró: es el caso normal.
   useEffect(() => {
-    void cargar(null, usuario.sucursal.nombre)
+    void cargar(null, [usuario.sucursal.nombre])
   }, [cargar, usuario.sucursal.nombre])
 
   const exportar = async () => {
     if (!datos) return
     setExportando(true)
     setError(null)
-    const resultado = await window.dm.cobranzas.exportarCaja(datos.fecha, datos.sucursal)
+    const resultado = await window.dm.cobranzas.exportarCaja(datos.fecha, datos.sucursalesElegidas)
     setExportando(false)
     if (!resultado.ok) setError(resultado.error)
     else if (resultado.datos.ruta) setAviso(`El día se guardó en ${resultado.datos.ruta}`)
@@ -62,29 +63,28 @@ export function CajaDelDia() {
             type="date"
             value={datos.fecha}
             max={datos.hoy}
-            onChange={(evento) => void cargar(evento.target.value || datos.hoy, datos.sucursal)}
+            onChange={(evento) => void cargar(evento.target.value || datos.hoy, datos.sucursalesElegidas)}
             className="ml-2 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800"
           />
         </label>
-        <label className="text-sm font-semibold text-slate-700">
-          Sucursal
-          {/* Un empleado ve la caja de su mostrador y nada más: el desplegable queda fijo. Las otras
-              sucursales las mira quien administra la agencia (SUPER_ADMIN y ADMIN). */}
-          <select
-            value={datos.sucursal}
-            onChange={(evento) => void cargar(datos.fecha, evento.target.value)}
-            disabled={datos.sucursalFija}
-            title={datos.sucursalFija ? 'Las cajas de las otras sucursales las ven los administradores.' : undefined}
-            className="ml-2 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800 disabled:bg-slate-100 disabled:text-slate-500"
+        {/* Un empleado ve la caja de su mostrador y nada más: en vez del desplegable se le muestra el
+            nombre, que es la verdad de lo que está mirando. Las otras sucursales las mira quien
+            administra la agencia (SUPER_ADMIN y ADMIN), y puede elegir varias a la vez. */}
+        {datos.sucursalFija ? (
+          <span
+            className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-slate-100 px-3 text-sm font-semibold text-slate-600"
+            title="Las cajas de las otras sucursales las ven los administradores."
           >
-            {!datos.sucursalFija && <option value="">Todas</option>}
-            {datos.sucursales.map((sucursal) => (
-              <option key={sucursal} value={sucursal}>
-                {sucursal}
-              </option>
-            ))}
-          </select>
-        </label>
+            Sucursal: {datos.sucursalesElegidas.join(', ') || '—'}
+          </span>
+        ) : (
+          <FiltroMultiple
+            etiqueta="Sucursal"
+            valores={datos.sucursalesElegidas}
+            opciones={datos.sucursales}
+            alCambiar={(v) => void cargar(datos.fecha, v)}
+          />
+        )}
         {!esHoy && (
           <span className="inline-flex h-9 items-center gap-1.5 rounded-full border border-slate-300 bg-slate-100 px-2.5 text-xs font-semibold text-slate-600">
             <Icono nombre="reloj" tamano={13} />
@@ -93,7 +93,7 @@ export function CajaDelDia() {
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <Boton icono="cargando" onClick={() => void cargar(datos.fecha, datos.sucursal)} disabled={cargando}>
+          <Boton icono="cargando" onClick={() => void cargar(datos.fecha, datos.sucursalesElegidas)} disabled={cargando}>
             Actualizar
           </Boton>
           <Boton icono="descargar" onClick={() => void exportar()} cargando={exportando} disabled={datos.pagos.length === 0}>
@@ -149,7 +149,7 @@ export function CajaDelDia() {
                 <td colSpan={11} className="px-3 py-12 text-center text-slate-500">
                   {esHoy
                     ? 'Todavía no se registró ningún pago hoy. Se cargan desde acá o desde «Registrar pago» de la Cartera.'
-                    : `Ese día no tiene pagos registrados${datos.sucursal ? ` en ${datos.sucursal}` : ''}.`}
+                    : `Ese día no tiene pagos registrados${datos.sucursalesElegidas.length > 0 ? ` en ${datos.sucursalesElegidas.join(', ')}` : ''}.`}
                 </td>
               </tr>
             )}
@@ -182,7 +182,7 @@ export function CajaDelDia() {
         <DialogoPagoManual
           fecha={datos.fecha}
           sucursales={datos.sucursales}
-          sucursalPorDefecto={datos.sucursal || usuario.sucursal.nombre}
+          sucursalPorDefecto={datos.sucursalesElegidas[0] ?? usuario.sucursal.nombre}
           mediosDePago={datos.mediosDePago}
           alCerrar={() => setAbrirPago(false)}
           alGuardar={(caja, resumen) => {

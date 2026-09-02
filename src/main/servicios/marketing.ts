@@ -9,6 +9,8 @@
 // un clic por persona, exactamente igual que el botón «Avisar» de la Cartera: lo que aporta el
 // segmento es no tener que buscar a quién le toca.
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal } from '../../shared/semaforo'
+import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
+import { ramaDeVehiculo } from '../../shared/ramas'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   CLAVE_AVISO_DE_VENCIMIENTO,
@@ -35,7 +37,7 @@ import { enteroPositivo, texto } from './validacion'
 /** Cuántos días mira «vence esta semana». */
 const DIAS_DE_LA_SEMANA = 7
 
-function mismaCosa(a: string | null, b: string): boolean {
+function mismaCosa(a: unknown, b: unknown): boolean {
   return normalizarTexto(a) === normalizarTexto(b)
 }
 
@@ -62,12 +64,17 @@ function finDelMes(iso: string): string {
  * versión vieja no puede romper la pantalla.
  */
 export function sanearFiltrosDeSegmento(bruto: unknown): FiltrosDeSegmento {
-  const datos = (bruto ?? {}) as Partial<FiltrosDeSegmento>
+  const datos = (bruto ?? {}) as Partial<FiltrosDeSegmento> & { sucursal?: unknown; compania?: unknown; formaPago?: unknown }
   const vence = VENTANAS_DE_VENCIMIENTO.includes(datos.vence as VentanaDeVencimiento) ? (datos.vence as VentanaDeVencimiento) : ''
   return {
-    sucursal: limpiar(datos.sucursal),
-    compania: limpiar(datos.compania),
-    formaPago: limpiar(datos.formaPago),
+    // Se leen las DOS formas a propósito. Los segmentos guardados antes de que los filtros eligieran
+    // de a varios tienen `"sucursal": "Dock Sud"` en su `filtros_json`, y si acá se leyera sólo la
+    // clave nueva se quedarían sin filtro: el segmento seguiría abriéndose, pero el WhatsApp saldría
+    // para la cartera entera en vez de para un mostrador. Eso no se puede arreglar después.
+    sucursales: listaDeFiltro(datos.sucursales ?? datos.sucursal),
+    companias: listaDeFiltro(datos.companias ?? datos.compania),
+    formasDePago: listaDeFiltro(datos.formasDePago ?? datos.formaPago),
+    ramas: listaDeFiltro(datos.ramas),
     vence,
     soloImpagas: datos.soloImpagas !== false,
     soloSinAvisar: datos.soloSinAvisar === true,
@@ -78,9 +85,15 @@ export function sanearFiltrosDeSegmento(bruto: unknown): FiltrosDeSegmento {
 function coincide(fila: FilaCartera, vencimiento: string | null, filtros: FiltrosDeSegmento, hoy: string): boolean {
   // La sucursal, con `mismaSucursal`: el desplegable del segmento sale de `catalogos().sucursales`,
   // que pliega «AVELLANEDA» dentro de «Dock Sud», y el aviso tiene que salir para esas cuotas también.
-  if (filtros.sucursal && !mismaSucursal(fila.sucursal, filtros.sucursal)) return false
-  if (filtros.compania && !mismaCosa(fila.compania, filtros.compania)) return false
-  if (filtros.formaPago && !mismaCosa(fila.formaPago, filtros.formaPago)) return false
+  if (!coincideAlguno(filtros.sucursales, fila.sucursal, mismaSucursal)) return false
+  if (!coincideAlguno(filtros.companias, fila.compania, mismaCosa)) return false
+  if (!coincideAlguno(filtros.formasDePago, fila.formaPago, mismaCosa)) return false
+  // La rama, deducida del tipo del vehículo y de la categoría del catálogo: es lo que deja mandarle
+  // una campaña a los de moto y a nadie más. Ver `src/shared/ramas.ts`.
+  if (filtros.ramas.length > 0) {
+    const rama = ramaDeVehiculo(fila.vehiculo, fila.categoriaVehiculo)
+    if (!filtros.ramas.some((elegida) => (rama ? elegida === rama : mismaCosa(fila.vehiculo, elegida)))) return false
+  }
   if (filtros.excluirDebito && esDebitoAutomatico(fila.formaPago)) return false
   if (filtros.soloImpagas && (limpiar(fila.pago) !== '' || fila.pagoRegistrado)) return false
   if (filtros.soloSinAvisar && estaAvisada(fila)) return false
@@ -232,6 +245,7 @@ export function resultadoDeSegmento(
     sucursales: catalogo.sucursales,
     companias: catalogo.companias,
     formasDePago: catalogo.formasDePago,
+    ramas: catalogo.ramas,
     hoy,
   }
 }

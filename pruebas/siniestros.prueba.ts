@@ -44,7 +44,7 @@ const DANIEL: SesionUsuario = {
   debeCambiarClave: false,
 }
 
-const SIN_FILTROS: FiltrosSiniestros = { periodo: '', busqueda: '', sucursal: '', compania: '', estado: '', soloRobos: false }
+const SIN_FILTROS: FiltrosSiniestros = { periodo: '', busqueda: '', sucursales: [], companias: [], estado: '', soloRobos: false }
 
 /** Carpetas temporales de adjuntos que hay que limpiar al terminar. */
 const temporales: string[] = []
@@ -156,7 +156,7 @@ test('los filtros acotan por mes, estado, sucursal y robos, y los contadores aco
 
   assert.equal(listarSiniestros({ ...SIN_FILTROS, periodo: '2026-08' }).filas.length, 1)
   assert.equal(listarSiniestros({ ...SIN_FILTROS, estado: 'CERRADO' }).filas.length, 1)
-  assert.equal(listarSiniestros({ ...SIN_FILTROS, sucursal: 'LANUS' }).filas.length, 1)
+  assert.equal(listarSiniestros({ ...SIN_FILTROS, sucursales: ['LANUS'] }).filas.length, 1)
   assert.equal(listarSiniestros({ ...SIN_FILTROS, soloRobos: true }).filas.length, 1)
   assert.equal(listarSiniestros({ ...SIN_FILTROS, busqueda: CLIENTES.gonzalez.patente }).filas.length, 1)
   assert.equal(listarSiniestros({ ...SIN_FILTROS, busqueda: 'GRANIZO' }).filas.length, 1)

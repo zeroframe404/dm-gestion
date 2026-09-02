@@ -43,7 +43,7 @@ const DANIEL: SesionUsuario = {
 const ANA: SesionUsuario = { ...DANIEL, id: 2, nombre: 'Ana Ruiz', usuario: 'ana', rol: 'ADMIN' }
 const MARIA: SesionUsuario = { ...DANIEL, id: 3, nombre: 'María Pérez', usuario: 'maria', rol: 'EMPLEADO' }
 
-const SIN_FILTROS: FiltrosClientes = { busqueda: '', sucursal: '', compania: '', estado: '' }
+const SIN_FILTROS: FiltrosClientes = { busqueda: '', sucursales: [], companias: [], estado: '' }
 
 const carpetasTemporales: string[] = []
 test.after(() => {
@@ -433,7 +433,7 @@ test('borrar un aviso de rechazo del débito', async () => {
   const base = await carteraDePrueba()
   const poliza = unico<number>(base, 'SELECT id FROM polizas WHERE activa = 1 LIMIT 1')
   avisarRechazo(poliza, { motivo: 'SIN FONDOS', nota: 'rebotó', sucursal: '' }, DANIEL)
-  const rechazo = listarRechazos({ busqueda: '', sucursal: '', estado: '' }).filas[0]
+  const rechazo = listarRechazos({ busqueda: '', sucursales: [], estado: '' }).filas[0]
   assert.ok(rechazo, 'quedó el aviso')
 
   const vista = vistaPreviaDeEliminacion('rechazo', rechazo.id, DANIEL)

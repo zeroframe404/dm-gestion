@@ -11,6 +11,7 @@
 // la agencia «LANUS», «Lanús» y «lanus » son el mismo local y SQLite no sabe eso.
 import { hoyLocal, nombreDePeriodo, periodoDeHoy } from '../../shared/semaforo'
 import { normalizarEstadoSiniestro } from '../../shared/siniestros'
+import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import type { Area } from '../../shared/permisos'
 import {
@@ -52,9 +53,9 @@ const FORMATO_PERIODO = /^\d{4}-\d{2}$/
 
 export const FILTROS_DE_REPORTE_VACIOS: FiltrosDeReporte = {
   periodo: '',
-  sucursal: '',
-  compania: '',
-  estado: '',
+  sucursales: [],
+  companias: [],
+  estados: [],
   busqueda: '',
   desde: '',
   hasta: '',
@@ -114,8 +115,8 @@ function periodoElegido(filtros: FiltrosDeReporte): string {
   return periodosDisponibles()[0]?.periodo ?? periodoDeHoy()
 }
 
-function mismaCosa(a: ValorDeCelda | undefined, b: string): boolean {
-  return normalizarTexto(a === null || a === undefined ? '' : String(a)) === normalizarTexto(b)
+function mismaCosa(a: unknown, b: unknown): boolean {
+  return normalizarTexto(a === null || a === undefined ? '' : String(a)) === normalizarTexto(b === null || b === undefined ? '' : String(b))
 }
 
 // ---------------------------------------------------------------------------
@@ -505,9 +506,9 @@ const REPORTES: Reporte[] = [
       // sucursal, compañía y búsqueda: no puede haber dos definiciones de «está en mora».
       mora({
         busqueda: filtros.busqueda,
-        sucursal: filtros.sucursal,
-        compania: filtros.compania,
-        rango: '',
+        sucursales: filtros.sucursales,
+        companias: filtros.companias,
+        rangos: [],
         incluirDebito: false,
       }).filas.map((fila) => ({
         nombre: fila.nombre,
@@ -702,9 +703,9 @@ function buscarReporte(id: string): Reporte {
 // ---------------------------------------------------------------------------
 
 function filtrarEnMemoria(reporte: Reporte, filas: FilaDeReporte[], filtros: FiltrosDeReporte): FilaDeReporte[] {
-  const sucursal = limpiar(filtros.sucursal)
-  const compania = limpiar(filtros.compania)
-  const estado = limpiar(filtros.estado)
+  const sucursales = listaDeFiltro(filtros.sucursales)
+  const companias = listaDeFiltro(filtros.companias)
+  const estados = listaDeFiltro(filtros.estados)
   const busqueda = normalizarTexto(filtros.busqueda).replace(/ /g, '')
 
   return filas.filter((fila) => {
@@ -712,9 +713,9 @@ function filtrarEnMemoria(reporte: Reporte, filas: FilaDeReporte[], filtros: Fil
     // sucursal sale de `catalogos().sucursales`, que pliega «AVELLANEDA» y «DOCKSUD» dentro de «Dock
     // Sud». Comparar el texto pelado dejaría esas filas afuera del reporte sin ninguna opción que las
     // traiga, que es justo lo que un reporte no puede hacer.
-    if (sucursal && reporte.campoSucursal && !mismaSucursal(fila[reporte.campoSucursal], sucursal)) return false
-    if (compania && reporte.campoCompania && !mismaCosa(fila[reporte.campoCompania], compania)) return false
-    if (estado && reporte.campoEstado && !mismaCosa(fila[reporte.campoEstado], estado)) return false
+    if (reporte.campoSucursal && !coincideAlguno(sucursales, fila[reporte.campoSucursal], mismaSucursal)) return false
+    if (reporte.campoCompania && !coincideAlguno(companias, fila[reporte.campoCompania], mismaCosa)) return false
+    if (reporte.campoEstado && !coincideAlguno(estados, fila[reporte.campoEstado], mismaCosa)) return false
     if (busqueda && reporte.busca.length > 0) {
       const coincide = reporte.busca.some((campo) => {
         const valor = fila[campo]
@@ -761,9 +762,14 @@ function descripcionDeFiltros(reporte: Reporte, filtros: FiltrosDeReporte): stri
     else if (desde) partes.push(`desde el ${desde}`)
     else if (hasta) partes.push(`hasta el ${hasta}`)
   }
-  if (limpiar(filtros.sucursal)) partes.push(limpiar(filtros.sucursal))
-  if (limpiar(filtros.compania)) partes.push(limpiar(filtros.compania))
-  if (limpiar(filtros.estado)) partes.push(`${reporte.etiquetaDeEstado}: ${limpiar(filtros.estado)}`)
+  // Con varias elegidas se enumeran: el título del reporte tiene que decir con qué salió, porque es
+  // lo único que queda cuando el .xlsx se manda por mail o se imprime.
+  const sucursales = listaDeFiltro(filtros.sucursales)
+  const companias = listaDeFiltro(filtros.companias)
+  const estados = listaDeFiltro(filtros.estados)
+  if (sucursales.length > 0) partes.push(sucursales.join(', '))
+  if (companias.length > 0) partes.push(companias.join(', '))
+  if (estados.length > 0) partes.push(`${reporte.etiquetaDeEstado}: ${estados.join(', ')}`)
   if (limpiar(filtros.busqueda)) partes.push(`«${limpiar(filtros.busqueda)}»`)
   return partes.join(' · ')
 }
@@ -1017,7 +1023,7 @@ const COLUMNAS_CLASICAS_DE_BAJAS: Array<{ titulo: string; campo: string; ancho: 
   { titulo: 'OBSERVACIONES', campo: 'observaciones', ancho: 34 },
 ]
 
-function filasClasicasDelMes(periodo: string, sucursal: string): FilaDeReporte[] {
+function filasClasicasDelMes(periodo: string, sucursales: string[]): FilaDeReporte[] {
   const filas = db()
     .prepare(
       `SELECT COALESCE(NULLIF(TRIM(c.cliente_nombre), ''), cl.nombre) AS nombre,
@@ -1043,10 +1049,10 @@ function filasClasicasDelMes(periodo: string, sucursal: string): FilaDeReporte[]
         ORDER BY c.dia_vencimiento_numero, nombre`,
     )
     .all(periodo) as FilaDeReporte[]
-  return sucursal ? filas.filter((fila) => mismaSucursal(fila.sucursal, sucursal)) : filas
+  return filas.filter((fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal))
 }
 
-function filasClasicasDeBajas(periodo: string, sucursal: string): FilaDeReporte[] {
+function filasClasicasDeBajas(periodo: string, sucursales: string[]): FilaDeReporte[] {
   const filas = db()
     .prepare(
       `SELECT b.cliente_nombre AS nombre, b.documento, b.compania, b.numero_poliza AS numeroPoliza, b.patente,
@@ -1059,7 +1065,7 @@ function filasClasicasDeBajas(periodo: string, sucursal: string): FilaDeReporte[
         ORDER BY nombre`,
     )
     .all(periodo) as FilaDeReporte[]
-  return sucursal ? filas.filter((fila) => mismaSucursal(fila.sucursal, sucursal)) : filas
+  return filas.filter((fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal))
 }
 
 /**
@@ -1074,7 +1080,7 @@ export function xlsxDePlanillaClasica(opciones: OpcionesPlanillaClasica): { nomb
   if (periodos.length === 0) {
     throw new ErrorDeNegocio('Todavía no hay ninguna planilla cargada: importá la hoja de Google antes de exportarla.')
   }
-  const sucursal = limpiar(opciones?.sucursal)
+  const sucursales = listaDeFiltro(opciones?.sucursales)
   // Si se piden meses de más de un año, el nombre de la pestaña lleva el año: si no, dos «AGOSTO».
   const variosAnios = new Set(periodos.map((periodo) => periodo.slice(0, 4))).size > 1
   const nombreDelMes = (periodo: string) =>
@@ -1087,7 +1093,7 @@ export function xlsxDePlanillaClasica(opciones: OpcionesPlanillaClasica): { nomb
       titulo: null,
       encabezados: COLUMNAS_CLASICAS.map((columna) => columna.titulo),
       anchos: COLUMNAS_CLASICAS.map((columna) => columna.ancho),
-      filas: filasClasicasDelMes(periodo, sucursal).map((fila) => COLUMNAS_CLASICAS.map((columna) => fila[columna.campo] ?? null)),
+      filas: filasClasicasDelMes(periodo, sucursales).map((fila) => COLUMNAS_CLASICAS.map((columna) => fila[columna.campo] ?? null)),
     })
     hojas.push({
       // La pestaña de bajas se llama como en la hoja si ya existe allá; si no, «BAJAS <MES>».
@@ -1095,13 +1101,13 @@ export function xlsxDePlanillaClasica(opciones: OpcionesPlanillaClasica): { nomb
       titulo: null,
       encabezados: COLUMNAS_CLASICAS_DE_BAJAS.map((columna) => columna.titulo),
       anchos: COLUMNAS_CLASICAS_DE_BAJAS.map((columna) => columna.ancho),
-      filas: filasClasicasDeBajas(periodo, sucursal).map((fila) =>
+      filas: filasClasicasDeBajas(periodo, sucursales).map((fila) =>
         COLUMNAS_CLASICAS_DE_BAJAS.map((columna) => fila[columna.campo] ?? null),
       ),
     })
   }
 
-  const sufijo = sucursal ? ` - ${sucursal}` : ''
+  const sufijo = sucursales.length > 0 ? ` - ${sucursales.join(', ')}` : ''
   const rango = periodos.length === 1 ? nombreDePeriodo(periodos[0]!) : `${periodos[0]} a ${periodos[periodos.length - 1]}`
   return {
     nombre: `${paraNombreDeArchivo(`Planilla clasica ${rango}${sufijo}`)}.xlsx`,

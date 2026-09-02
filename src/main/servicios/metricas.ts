@@ -17,6 +17,7 @@
 //  3. BAJAS de un mes = las filas de la pestaña de BAJAS de ese mes, con su MOTIVO.
 import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { normalizarEstadoSiniestro } from '../../shared/siniestros'
+import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import type {
   BajaPorMotivo,
@@ -115,7 +116,7 @@ interface CuotaDelMes {
  * Las filas de la planilla de un mes, ya filtradas por sucursal. Una sola consulta por mes: todo lo
  * demás (activos, altas, pendiente) sale de acá sin volver a la base.
  */
-function cuotasDelMes(periodo: string, sucursal: string): CuotaDelMes[] {
+function cuotasDelMes(periodo: string, sucursales: string[]): CuotaDelMes[] {
   const filas = db()
     .prepare(
       `SELECT ${IDENTIDAD_DE_LA_CUOTA} AS identidad,
@@ -143,7 +144,7 @@ function cuotasDelMes(periodo: string, sucursal: string): CuotaDelMes[] {
   }>
 
   return filas
-    .filter((fila) => !sucursal || mismaSucursal(fila.sucursal, sucursal))
+    .filter((fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal))
     .map((fila) => ({
       identidad: fila.identidad,
       compania: fila.compania,
@@ -156,8 +157,8 @@ function cuotasDelMes(periodo: string, sucursal: string): CuotaDelMes[] {
 }
 
 /** Sólo las identidades de un mes: es lo único que hace falta para contar las altas del siguiente. */
-function identidadesDelMes(periodo: string, sucursal: string): Set<string> {
-  return new Set(cuotasDelMes(periodo, sucursal).map((cuota) => cuota.identidad))
+function identidadesDelMes(periodo: string, sucursales: string[]): Set<string> {
+  return new Set(cuotasDelMes(periodo, sucursales).map((cuota) => cuota.identidad))
 }
 
 interface BajaDelMes {
@@ -166,7 +167,7 @@ interface BajaDelMes {
   sucursal: string | null
 }
 
-function bajasDelMes(periodo: string, sucursal: string): BajaDelMes[] {
+function bajasDelMes(periodo: string, sucursales: string[]): BajaDelMes[] {
   const filas = db()
     .prepare(
       `SELECT b.motivo, b.compania, COALESCE(NULLIF(TRIM(b.sucursal_texto), ''), cl.sucursal_texto) AS sucursal
@@ -175,7 +176,7 @@ function bajasDelMes(periodo: string, sucursal: string): BajaDelMes[] {
         WHERE b.periodo = ?`,
     )
     .all(periodo) as BajaDelMes[]
-  return filas.filter((fila) => !sucursal || mismaSucursal(fila.sucursal, sucursal))
+  return filas.filter((fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal))
 }
 
 interface PagoDelMes {
@@ -185,7 +186,7 @@ interface PagoDelMes {
   importe: number | null
 }
 
-function pagosDelMes(periodo: string, sucursal: string): PagoDelMes[] {
+function pagosDelMes(periodo: string, sucursales: string[]): PagoDelMes[] {
   const filas = db()
     .prepare(
       `SELECT p.compania, ${SUCURSAL_DEL_PAGO} AS sucursal, p.medio, p.importe_monto AS importe
@@ -193,7 +194,7 @@ function pagosDelMes(periodo: string, sucursal: string): PagoDelMes[] {
         WHERE ${PERIODO_DEL_PAGO} = ?`,
     )
     .all(periodo) as PagoDelMes[]
-  return filas.filter((fila) => !sucursal || mismaSucursal(fila.sucursal, sucursal))
+  return filas.filter((fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal))
 }
 
 // ---------------------------------------------------------------------------
@@ -237,20 +238,20 @@ function cobranzaDelMes(cuotas: CuotaDelMes[], pagos: PagoDelMes[], conNumeros: 
  * Los doce meses que terminan en el elegido, tomados de los que realmente tienen planilla cargada. Si
  * la agencia importó ocho meses, la evolución muestra ocho: no se inventan meses en cero.
  */
-function evolucion(periodo: string, sucursal: string, disponibles: string[], conNumeros: boolean): MesDeEvolucion[] {
+function evolucion(periodo: string, sucursales: string[], disponibles: string[], conNumeros: boolean): MesDeEvolucion[] {
   const hasta = disponibles.filter((candidato) => candidato <= periodo).slice(0, MESES_DE_EVOLUCION)
   const meses = [...hasta].sort()
   const filas: MesDeEvolucion[] = []
   for (const mes of meses) {
-    const cuotas = cuotasDelMes(mes, sucursal)
-    const anteriores = identidadesDelMes(periodoAnterior(mes), sucursal)
+    const cuotas = cuotasDelMes(mes, sucursales)
+    const anteriores = identidadesDelMes(periodoAnterior(mes), sucursales)
     const altas = anteriores.size === 0 ? 0 : cuotas.filter((cuota) => !anteriores.has(cuota.identidad)).length
     filas.push({
       periodo: mes,
       activos: cuotas.length,
       altas,
-      bajas: bajasDelMes(mes, sucursal).length,
-      cobrado: conNumeros ? pagosDelMes(mes, sucursal).reduce((suma, pago) => suma + (pago.importe ?? 0), 0) : null,
+      bajas: bajasDelMes(mes, sucursales).length,
+      cobrado: conNumeros ? pagosDelMes(mes, sucursales).reduce((suma, pago) => suma + (pago.importe ?? 0), 0) : null,
     })
   }
   return filas
@@ -264,7 +265,7 @@ function evolucion(periodo: string, sucursal: string, disponibles: string[], con
  * Los siniestros que todavía no están cerrados, hoy. No se filtran por mes a propósito: un siniestro
  * de marzo que sigue abierto en agosto es un problema de agosto.
  */
-function siniestrosAbiertos(sucursal: string): { total: number; porCompania: PorcionMetrica[] } {
+function siniestrosAbiertos(sucursales: string[]): { total: number; porCompania: PorcionMetrica[] } {
   const filas = db()
     .prepare(
       `SELECT s.compania, s.estado, COALESCE(NULLIF(TRIM(s.sucursal_texto), ''), cl.sucursal_texto) AS sucursal
@@ -273,7 +274,7 @@ function siniestrosAbiertos(sucursal: string): { total: number; porCompania: Por
     .all() as Array<{ compania: string | null; estado: string | null; sucursal: string | null }>
 
   const abiertos = filas.filter(
-    (fila) => (!sucursal || mismaSucursal(fila.sucursal, sucursal)) && normalizarEstadoSiniestro(fila.estado) !== 'CERRADO',
+    (fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal) && normalizarEstadoSiniestro(fila.estado) !== 'CERRADO',
   )
   const conteo = new Map<string, { etiqueta: string; cantidad: number }>()
   for (const fila of abiertos) sumarUno(conteo, fila.compania, '(sin compañía)')
@@ -292,12 +293,18 @@ function siniestrosAbiertos(sucursal: string): { total: number; porCompania: Por
 export function tableroDeMetricas(filtros: FiltrosMetricas, conNumeros: boolean): TableroMetricas {
   const disponibles = periodosDisponibles().map((p) => p.periodo)
   const periodo = resolverPeriodo(filtros?.periodo, disponibles)
-  const sucursales = catalogos().sucursales
-  const sucursal = sucursales.find((s) => mismaSucursal(s, filtros?.sucursal ?? '')) ?? ''
+  const disponiblesDeSucursal = catalogos().sucursales
+  // Se devuelven como las escribe el catálogo, no como llegaron: así el desplegable se ve elegido
+  // aunque la pantalla anterior las tuviera escritas de otra forma. Es lo mismo que hacía la versión
+  // de un valor, sólo que ahora con la lista entera.
+  const sucursales = listaDeFiltro(filtros?.sucursales).flatMap((pedida) => {
+    const encontrada = disponiblesDeSucursal.find((s) => mismaSucursal(s, pedida))
+    return encontrada ? [encontrada] : []
+  })
 
-  const cuotas = cuotasDelMes(periodo, sucursal)
+  const cuotas = cuotasDelMes(periodo, sucursales)
   const anterior = periodoAnterior(periodo)
-  const identidadesAnteriores = identidadesDelMes(anterior, sucursal)
+  const identidadesAnteriores = identidadesDelMes(anterior, sucursales)
   const hayMesAnterior = identidadesAnteriores.size > 0
 
   const porCompania = new Map<string, { etiqueta: string; cantidad: number }>()
@@ -307,20 +314,20 @@ export function tableroDeMetricas(filtros: FiltrosMetricas, conNumeros: boolean)
     sumarUno(porSucursal, cuota.sucursal, '(sin sucursal)')
   }
 
-  const bajas = bajasDelMes(periodo, sucursal)
+  const bajas = bajasDelMes(periodo, sucursales)
   const motivos = new Map<string, { etiqueta: string; cantidad: number }>()
   for (const baja of bajas) sumarUno(motivos, baja.motivo, '(sin motivo)')
   const bajasPorMotivo: BajaPorMotivo[] = [...motivos.values()]
     .map((fila) => ({ motivo: fila.etiqueta, cantidad: fila.cantidad }))
     .sort((a, b) => b.cantidad - a.cantidad || a.motivo.localeCompare(b.motivo, 'es'))
 
-  const siniestros = siniestrosAbiertos(sucursal)
+  const siniestros = siniestrosAbiertos(sucursales)
 
   return {
     periodo,
     periodos: disponibles.includes(periodo) ? disponibles : [periodo, ...disponibles],
-    sucursal,
-    sucursales,
+    sucursalesElegidas: sucursales,
+    sucursales: disponiblesDeSucursal,
 
     activos: cuotas.length,
     activosPorCompania: aPorciones(porCompania, cuotas.length),
@@ -331,8 +338,8 @@ export function tableroDeMetricas(filtros: FiltrosMetricas, conNumeros: boolean)
     bajasPorMotivo,
     hayMesAnterior,
 
-    evolucion: evolucion(periodo, sucursal, disponibles, conNumeros),
-    cobranza: cobranzaDelMes(cuotas, pagosDelMes(periodo, sucursal), conNumeros),
+    evolucion: evolucion(periodo, sucursales, disponibles, conNumeros),
+    cobranza: cobranzaDelMes(cuotas, pagosDelMes(periodo, sucursales), conNumeros),
 
     siniestrosAbiertos: siniestros.total,
     siniestrosPorCompania: siniestros.porCompania,
@@ -378,16 +385,19 @@ function ordenar(mapa: Map<string, Acumulador>, conNumeros: boolean): FilaEstadi
  */
 export function estadisticasDeCartera(
   periodoPedido: string | null,
-  sucursalPedida: string,
+  sucursalesPedidas: string[],
   conNumeros: boolean,
 ): EstadisticasDeCartera {
   const disponibles = periodosDisponibles().map((p) => p.periodo)
   const periodo = resolverPeriodo(periodoPedido, disponibles)
-  const sucursales = catalogos().sucursales
-  const sucursal = sucursales.find((s) => mismaSucursal(s, sucursalPedida)) ?? ''
+  const disponiblesDeSucursal = catalogos().sucursales
+  const sucursales = listaDeFiltro(sucursalesPedidas).flatMap((pedida) => {
+    const encontrada = disponiblesDeSucursal.find((s) => mismaSucursal(s, pedida))
+    return encontrada ? [encontrada] : []
+  })
 
-  const cuotas = cuotasDelMes(periodo, sucursal)
-  const identidadesAnteriores = identidadesDelMes(periodoAnterior(periodo), sucursal)
+  const cuotas = cuotasDelMes(periodo, sucursales)
+  const identidadesAnteriores = identidadesDelMes(periodoAnterior(periodo), sucursales)
   const hayMesAnterior = identidadesAnteriores.size > 0
 
   const companias = new Map<string, Acumulador>()
@@ -399,11 +409,11 @@ export function estadisticasDeCartera(
       if (esAlta) fila.altas++
     }
   }
-  for (const baja of bajasDelMes(periodo, sucursal)) {
+  for (const baja of bajasDelMes(periodo, sucursales)) {
     tomar(companias, baja.compania, '(sin compañía)').bajas++
     tomar(sucursalesMapa, baja.sucursal, '(sin sucursal)').bajas++
   }
-  for (const pago of pagosDelMes(periodo, sucursal)) {
+  for (const pago of pagosDelMes(periodo, sucursales)) {
     for (const fila of [tomar(companias, pago.compania, '(sin compañía)'), tomar(sucursalesMapa, pago.sucursal, '(sin sucursal)')]) {
       fila.pagos++
       fila.cobrado += pago.importe ?? 0
@@ -417,8 +427,8 @@ export function estadisticasDeCartera(
   return {
     periodo,
     periodos: disponibles.includes(periodo) ? disponibles : [periodo, ...disponibles],
-    sucursal,
-    sucursales,
+    sucursalesElegidas: sucursales,
+    sucursales: disponiblesDeSucursal,
     porCompania,
     porSucursal: ordenar(sucursalesMapa, conNumeros),
     // El total sale de las filas por compañía: cada cuota, baja y pago cae en una sola.

@@ -18,12 +18,13 @@ import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { DialogoLead } from './DialogoLead'
 import { FichaLead } from './FichaLead'
 import { usePuedeEditar } from '../../contexto/Permisos'
 
-const FILTROS_VACIOS: FiltrosLeads = { busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: false }
+const FILTROS_VACIOS: FiltrosLeads = { busqueda: '', estado: '', origenes: [], sucursales: [], incluirCerrados: false }
 
 /** El embudo con su color: se lee de un vistazo en qué está cada consulta. */
 export const CLASES_ESTADO_LEAD: Record<EstadoLead, string> = {
@@ -82,7 +83,6 @@ export function Leads() {
     )
   }
 
-  const selector = 'h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800'
   const abiertas = datos.porEstado.NUEVO + datos.porEstado['EN CHARLA'] + datos.porEstado.COTIZADO
 
   return (
@@ -98,28 +98,15 @@ export function Leads() {
           />
         </div>
 
-        <select
-          value={filtros.origen}
-          onChange={(e) => cambiar({ origen: e.target.value as OrigenDeLead | '' })}
-          className={selector}
-          aria-label="Cómo llegó"
-        >
-          <option value="">Todos los orígenes</option>
-          {ORIGENES_DE_LEAD.map((origen) => (
-            <option key={origen} value={origen}>
-              {NOMBRE_ORIGEN_LEAD[origen]}
-            </option>
-          ))}
-        </select>
+        <FiltroMultiple
+          etiqueta="Cómo llegó"
+          valores={filtros.origenes}
+          opciones={ORIGENES_DE_LEAD.map((origen) => ({ valor: origen, texto: NOMBRE_ORIGEN_LEAD[origen] }))}
+          plural="todos"
+          alCambiar={(v) => cambiar({ origenes: v as OrigenDeLead[] })}
+        />
 
-        <select value={filtros.sucursal} onChange={(e) => cambiar({ sucursal: e.target.value })} className={selector} aria-label="Sucursal">
-          <option value="">Todas las sucursales</option>
-          {datos.sucursales.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <FiltroMultiple etiqueta="Sucursal" valores={filtros.sucursales} opciones={datos.sucursales} alCambiar={(v) => cambiar({ sucursales: v })} />
 
         <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
           <input

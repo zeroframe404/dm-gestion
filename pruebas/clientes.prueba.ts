@@ -33,7 +33,7 @@ const DANIEL: SesionUsuario = {
   debeCambiarClave: false,
 }
 
-const SIN_FILTROS: FiltrosClientes = { busqueda: '', sucursal: '', compania: '', estado: '' }
+const SIN_FILTROS: FiltrosClientes = { busqueda: '', sucursales: [], companias: [], estado: '' }
 
 /** Los datos editables sacados de la ficha, igual que hace la pantalla. */
 function datosDe(ficha: FichaCliente): DatosDeCliente {
@@ -129,14 +129,14 @@ test('los filtros de sucursal, compañía y deuda acotan el listado', async () =
   await carteraDePrueba()
   const todos = listarClientes(SIN_FILTROS)
 
-  const deLanus = listarClientes({ ...SIN_FILTROS, sucursal: 'LANUS' })
+  const deLanus = listarClientes({ ...SIN_FILTROS, sucursales: ['LANUS'] })
   assert.ok(deLanus.filas.length > 0 && deLanus.filas.length < todos.filas.length)
   assert.ok(
     deLanus.filas.every((f) => f.sucursal === 'Lanús'),
     'todas las filas filtradas son de esa sucursal',
   )
 
-  const deSancor = listarClientes({ ...SIN_FILTROS, compania: 'SANCOR' })
+  const deSancor = listarClientes({ ...SIN_FILTROS, companias: ['SANCOR'] })
   assert.ok(deSancor.filas.every((f) => f.companias.includes('SANCOR')))
 
   const conDeuda = listarClientes({ ...SIN_FILTROS, estado: 'activos-con-deuda' })

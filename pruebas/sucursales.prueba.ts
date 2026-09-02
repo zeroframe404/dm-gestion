@@ -230,8 +230,8 @@ test('una sucursal que no es del catálogo pero está en los datos no se pierde 
   ).run()
 
   const esperado = [...SUCURSALES, 'BRENDA']
-  assert.deepEqual(listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true }).sucursales, esperado)
-  assert.deepEqual(listarTareas({ busqueda: '', estado: '', prioridad: '', sucursal: '', responsableId: 0 }).sucursales, esperado)
+  assert.deepEqual(listarLeads({ busqueda: '', estado: '', origenes: [], sucursales: [], incluirCerrados: true }).sucursales, esperado)
+  assert.deepEqual(listarTareas({ busqueda: '', estado: '', prioridades: [], sucursales: [], responsableIds: [] }).sucursales, esperado)
 
   // La ficha de la tarea tenía el problema al revés: ofrecía sólo el catálogo, así que abrir esta
   // tarea y guardarla la mudaba de sucursal sin que nadie lo pidiera.
@@ -257,7 +257,7 @@ test('«AVELLANEDA» en los datos no se suma como quinta opción al lado de «Do
 
   // Es el mismo mostrador escrito de otra forma: dos opciones para el mismo local esconderían una las
   // filas de la otra, que es de donde salió toda esta historia.
-  assert.deepEqual(listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true }).sucursales, [...SUCURSALES])
+  assert.deepEqual(listarLeads({ busqueda: '', estado: '', origenes: [], sucursales: [], incluirCerrados: true }).sucursales, [...SUCURSALES])
   cerrarBaseDeDatos()
 })
 
@@ -275,7 +275,7 @@ test('«AVELLANEDA» en los datos no se suma como quinta opción al lado de «Do
 
 /** Los leads de la base, con la sucursal como está escrita en cada uno. */
 function leadsPorSucursal(sucursal: string): string[] {
-  return listarLeads({ busqueda: '', estado: '', origen: '', sucursal, incluirCerrados: true }).filas.map((l) => l.nombre)
+  return listarLeads({ busqueda: '', estado: '', origenes: [], sucursales: [sucursal], incluirCerrados: true }).filas.map((l) => l.nombre)
 }
 
 test('elegir «Dock Sud» trae también las filas que dicen «AVELLANEDA» o «DOCKSUD»', () => {
@@ -293,7 +293,7 @@ test('elegir «Dock Sud» trae también las filas que dicen «AVELLANEDA» o «D
   alta('QUIROGA NATALIA', 'BRENDA')
 
   // Cuatro grafías distintas y una sola opción para las tres primeras: son el mismo mostrador.
-  assert.deepEqual(listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true }).sucursales, [
+  assert.deepEqual(listarLeads({ busqueda: '', estado: '', origenes: [], sucursales: [], incluirCerrados: true }).sucursales, [
     ...SUCURSALES,
     'BRENDA',
   ])
@@ -308,7 +308,7 @@ test('elegir «Dock Sud» trae también las filas que dicen «AVELLANEDA» o «D
 
   // Ninguna consulta se pierde: entre todas las opciones que ofrece el desplegable están las cuatro.
   const alcanzadas = new Set(
-    listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true }).sucursales.flatMap((s) =>
+    listarLeads({ busqueda: '', estado: '', origenes: [], sucursales: [], incluirCerrados: true }).sucursales.flatMap((s) =>
       leadsPorSucursal(s),
     ),
   )
@@ -325,10 +325,10 @@ test('en Clientes, «Dock Sud» encuentra la ficha que la celda dejó escrita «
      VALUES ('doc:26999888', 'QUIROGA NATALIA', '26999888', 'Avellaneda', '2026-08-01T10:00:00', '2026-08-01T10:00:00')`,
   ).run()
 
-  const listado = listarClientes({ busqueda: '', sucursal: '', compania: '', estado: '' })
+  const listado = listarClientes({ busqueda: '', sucursales: [], companias: [], estado: '' })
   assert.deepEqual(listado.sucursales, [...SUCURSALES], '«Avellaneda» no es una quinta opción')
 
-  const porDockSud = listarClientes({ busqueda: '', sucursal: 'Dock Sud', compania: '', estado: '' })
+  const porDockSud = listarClientes({ busqueda: '', sucursales: ['Dock Sud'], companias: [], estado: '' })
   assert.deepEqual(porDockSud.filas.map((f) => f.nombre), ['QUIROGA NATALIA'])
   cerrarBaseDeDatos()
 })
@@ -352,7 +352,7 @@ test('la ficha de la consulta ofrece las mismas sucursales que el listado', () =
   // «Editar la consulta» de la ficha es el mismo diálogo que «Nueva consulta» del listado. Antes la
   // ficha le pasaba nada más que la sucursal del lead, así que una consulta anotada en Lanús que en
   // realidad era de Sarandí no se podía corregir desde donde se la estaba mirando.
-  assert.deepEqual(fichaDeLead(leadId).sucursales, listarLeads({ busqueda: '', estado: '', origen: '', sucursal: '', incluirCerrados: true }).sucursales)
+  assert.deepEqual(fichaDeLead(leadId).sucursales, listarLeads({ busqueda: '', estado: '', origenes: [], sucursales: [], incluirCerrados: true }).sucursales)
   assert.deepEqual(fichaDeLead(leadId).sucursales, [...SUCURSALES])
   cerrarBaseDeDatos()
 })
@@ -364,7 +364,7 @@ test('«Anotar tarea» desde Renovaciones ofrece las mismas sucursales que Tarea
   // renovación no tenía sucursal cargada, la única opción era la de quien entró.
   assert.deepEqual(
     bandejaDeRenovaciones().sucursales,
-    listarTareas({ busqueda: '', estado: '', prioridad: '', sucursal: '', responsableId: 0 }).sucursales,
+    listarTareas({ busqueda: '', estado: '', prioridades: [], sucursales: [], responsableIds: [] }).sucursales,
   )
   assert.deepEqual(bandejaDeRenovaciones().sucursales, [...SUCURSALES])
   cerrarBaseDeDatos()

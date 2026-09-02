@@ -10,9 +10,12 @@ import {
   type Alerta,
   type ColorAlerta,
 } from '../../../shared/semaforo'
+import { coincideAlguno, mismoTextoDeFiltro } from '../../../shared/filtros'
+import { NOMBRE_RAMA, ramaDeVehiculo, type Rama } from '../../../shared/ramas'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { CampoEditable, FilaCartera, PlanillaDelMes as DatosPlanilla } from '../../../shared/tipos'
 import { DialogoRechazo } from '../../componentes/DialogoRechazo'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { Alerta as Aviso, Boton, Cargando, cx } from '../../componentes/ui'
@@ -23,10 +26,12 @@ import { DialogoPago } from './DialogoPago'
 import { PanelDetalle } from './PanelDetalle'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 
-/** Fila con su alerta ya calculada: se calcula una vez por render, no por celda. */
+/** Fila con su alerta y su rama ya calculadas: se calculan una vez por render, no por celda. */
 interface FilaConAlerta {
   fila: FilaCartera
   alerta: Alerta
+  /** La rama que le corresponde («PICK UP», «MOTO»…), o null cuando el riesgo no es de ninguna de las siete. */
+  rama: Rama | null
 }
 
 const CLASES_COLOR: Record<ColorAlerta, string> = {
@@ -62,12 +67,13 @@ function normalizar(valor: string | null | undefined): string {
  * sucursal cargada devuelve cero SIEMPRE, y como el desplegable se arma con el catálogo —que está en
  * todas las computadoras— parece que el filtro tendría que andar. Acá se dice de dónde sale el vacío.
  */
-function mensajeDeVacio(sucursal: string, sinSucursal: number, total: number): string {
+function mensajeDeVacio(sucursales: readonly string[], sinSucursal: number, total: number): string {
   const base = 'Ninguna fila coincide con los filtros.'
-  if (!sucursal || total === 0 || sinSucursal === 0) return base
+  if (sucursales.length === 0 || total === 0 || sinSucursal === 0) return base
+  const elegidas = sucursales.length === 1 ? `«${sucursales[0]}»` : `«${sucursales.join('», «')}»`
   if (sinSucursal === total) {
     return (
-      `Ninguna fila de este mes tiene la sucursal cargada, así que filtrar por «${sucursal}» no puede traer nada. ` +
+      `Ninguna fila de este mes tiene la sucursal cargada, así que filtrar por ${elegidas} no puede traer nada. ` +
       'Suele pasar cuando la planilla que importó esta computadora no trae la columna LOCAL: miralo en ' +
       'Administración → Reimportar la base, en «Columnas reconocidas por pestaña».'
     )
@@ -130,18 +136,33 @@ function entraEnElContador(entrada: FilaConAlerta, contador: Contador, hoy: stri
   }
 }
 
+/**
+ * Cada desplegable guarda una LISTA, no un valor: la agencia mira «ATM y Metropol» de una sentada, o
+ * «Dock Sud, Daniel y Sarandí» juntas, y antes había que elegir uno, mirar, volver y elegir el otro.
+ * La lista vacía es «todas» —es lo mismo que decía el `''` de antes—, así que un filtro sin nada
+ * elegido sigue sin filtrar nada.
+ */
 interface Filtros {
   busqueda: string
-  sucursal: string
-  formaPago: string
-  compania: string
-  vehiculo: string
-  color: string
+  sucursales: string[]
+  formasDePago: string[]
+  companias: string[]
+  ramas: string[]
+  colores: string[]
   soloAvisarVto: boolean
   contador: Contador
 }
 
-const FILTROS_VACIOS: Filtros = { busqueda: '', sucursal: '', formaPago: '', compania: '', vehiculo: '', color: '', soloAvisarVto: false, contador: '' }
+const FILTROS_VACIOS: Filtros = {
+  busqueda: '',
+  sucursales: [],
+  formasDePago: [],
+  companias: [],
+  ramas: [],
+  colores: [],
+  soloAvisarVto: false,
+  contador: '',
+}
 
 export function PlanillaDelMes() {
   const usuario = useUsuarioActual()
@@ -186,6 +207,10 @@ export function PlanillaDelMes() {
     if (!datos) return []
     return datos.filas.map((fila) => ({
       fila,
+      // La rama sale del tipo del vehículo y, cuando ese tipo es genérico, de la categoría que le puso
+      // el catálogo: una pick up cargada desde «Nueva póliza» queda con tipo AUTO y sin este paso el
+      // filtro «Pick up» no la encontraría nunca. Ver src/shared/ramas.ts.
+      rama: ramaDeVehiculo(fila.vehiculo, fila.categoriaVehiculo),
       alerta: calcularAlerta(
         {
           periodo: fila.periodo,
@@ -205,7 +230,7 @@ export function PlanillaDelMes() {
     const busqueda = normalizar(filtros.busqueda)
     const hoy = datos?.hoy ?? ''
     return conAlerta.filter((entrada) => {
-      const { fila, alerta } = entrada
+      const { fila, alerta, rama } = entrada
       if (!entraEnElContador(entrada, filtros.contador, hoy)) return false
       if (busqueda) {
         const enTexto =
@@ -218,11 +243,14 @@ export function PlanillaDelMes() {
       // La sucursal, con `mismaSucursal`: es el mismo plegado con el que el servicio arma el
       // desplegable, que mete «AVELLANEDA» y «DOCKSUD» dentro de «Dock Sud». Comparando el texto
       // pelado, esa opción no traía las filas que la celda dejó escritas de la otra forma.
-      if (filtros.sucursal && !mismaSucursal(fila.sucursal, filtros.sucursal)) return false
-      if (filtros.formaPago && normalizar(fila.formaPago) !== normalizar(filtros.formaPago)) return false
-      if (filtros.compania && normalizar(fila.compania) !== normalizar(filtros.compania)) return false
-      if (filtros.vehiculo && normalizar(fila.vehiculo) !== normalizar(filtros.vehiculo)) return false
-      if (filtros.color && alerta.color !== filtros.color) return false
+      if (!coincideAlguno(filtros.sucursales, fila.sucursal, mismaSucursal)) return false
+      if (!coincideAlguno(filtros.formasDePago, fila.formaPago)) return false
+      if (!coincideAlguno(filtros.companias, fila.compania)) return false
+      // La rama se compara contra la ya calculada, no contra el texto de la celda: así «CAMIONETA» y
+      // «PICK UP» entran las dos por la misma opción. Lo que quedó fuera del catálogo se compara por
+      // el texto crudo, que es como sigue estando en el desplegable.
+      if (filtros.ramas.length > 0 && !filtros.ramas.some((elegida) => (rama ? elegida === rama : mismoTextoDeFiltro(elegida, fila.vehiculo)))) return false
+      if (filtros.colores.length > 0 && !filtros.colores.includes(alerta.color)) return false
       if (filtros.soloAvisarVto && normalizar(fila.avisarVto) !== 'AVISAR') return false
       return true
     })
@@ -438,6 +466,14 @@ export function PlanillaDelMes() {
       { id: 'formaPago', titulo: 'Forma de pago', ancho: 130, celda: celdaEditable('formaPago', catalogos?.formasDePago) },
       { id: 'aviso', titulo: 'OB. avisos', ancho: 150, celda: celdaEditable('aviso') },
       { id: 'vehiculo', titulo: 'Vehículo', ancho: 90, celda: celdaEditable('vehiculo', catalogos?.tiposDeVehiculo) },
+      // La rama NO se edita: sale sola del vehículo y de la categoría del catálogo. Está para que se
+      // entienda por qué una fila entra en «Pick up» cuando su celda de vehículo dice «AUTO».
+      {
+        id: 'rama',
+        titulo: 'Rama',
+        ancho: 110,
+        celda: ({ rama, fila }) => <span className="text-slate-600">{rama ? NOMBRE_RAMA[rama] : (fila.vehiculo ?? '—')}</span>,
+      },
       { id: 'marca', titulo: 'Marca', ancho: 120, celda: celdaEditable('marca') },
       { id: 'modelo', titulo: 'Modelo', ancho: 200, celda: celdaEditable('modelo') },
       { id: 'patente', titulo: 'Patente', ancho: 100, celda: celdaEditable('patente') },
@@ -583,16 +619,38 @@ export function PlanillaDelMes() {
             className="h-9 w-80 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400"
           />
         </div>
-        <FiltroDesplegable etiqueta="Sucursal" valor={filtros.sucursal} opciones={datos.catalogos.sucursales} alCambiar={(v) => setFiltros((f) => ({ ...f, sucursal: v }))} />
-        <FiltroDesplegable etiqueta="Forma de pago" valor={filtros.formaPago} opciones={datos.catalogos.formasDePago} alCambiar={(v) => setFiltros((f) => ({ ...f, formaPago: v }))} />
-        <FiltroDesplegable etiqueta="Compañía" valor={filtros.compania} opciones={datos.catalogos.companias} alCambiar={(v) => setFiltros((f) => ({ ...f, compania: v }))} />
-        <FiltroDesplegable etiqueta="Vehículo" valor={filtros.vehiculo} opciones={datos.catalogos.tiposDeVehiculo} alCambiar={(v) => setFiltros((f) => ({ ...f, vehiculo: v }))} />
-        <FiltroDesplegable
+        <FiltroMultiple
+          etiqueta="Sucursal"
+          valores={filtros.sucursales}
+          opciones={datos.catalogos.sucursales}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, sucursales: v }))}
+        />
+        <FiltroMultiple
+          etiqueta="Forma de pago"
+          valores={filtros.formasDePago}
+          opciones={datos.catalogos.formasDePago}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, formasDePago: v }))}
+        />
+        <FiltroMultiple
+          etiqueta="Compañía"
+          valores={filtros.companias}
+          opciones={datos.catalogos.companias}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, companias: v }))}
+        />
+        <FiltroMultiple
+          etiqueta="Rama"
+          valores={filtros.ramas}
+          opciones={datos.catalogos.ramas}
+          textoDe={(r) => NOMBRE_RAMA[r as Rama] ?? r}
+          plural="todas"
+          alCambiar={(v) => setFiltros((f) => ({ ...f, ramas: v }))}
+        />
+        <FiltroMultiple
           etiqueta="Alerta"
-          valor={filtros.color}
+          valores={filtros.colores}
           opciones={ORDEN_COLORES.map((c) => c)}
           textoDe={(c) => NOMBRE_COLOR[c as ColorAlerta]}
-          alCambiar={(v) => setFiltros((f) => ({ ...f, color: v }))}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, colores: v }))}
         />
         <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
           <input
@@ -604,11 +662,11 @@ export function PlanillaDelMes() {
           Sólo con AVISAR VTO
         </label>
         {(filtros.busqueda ||
-          filtros.sucursal ||
-          filtros.formaPago ||
-          filtros.compania ||
-          filtros.vehiculo ||
-          filtros.color ||
+          filtros.sucursales.length > 0 ||
+          filtros.formasDePago.length > 0 ||
+          filtros.companias.length > 0 ||
+          filtros.ramas.length > 0 ||
+          filtros.colores.length > 0 ||
           filtros.soloAvisarVto ||
           filtros.contador) && (
           <Boton tamano="sm" variante="fantasma" icono="cerrar" onClick={() => setFiltros(FILTROS_VACIOS)}>
@@ -631,7 +689,7 @@ export function PlanillaDelMes() {
           claveDe={({ fila }) => fila.filaId}
           filaSeleccionada={seleccionada}
           alHacerClic={({ fila }) => setSeleccionada((previa) => (previa === fila.filaId ? null : fila.filaId))}
-          vacio={mensajeDeVacio(filtros.sucursal, sinSucursal, contadores.total)}
+          vacio={mensajeDeVacio(filtros.sucursales, sinSucursal, contadores.total)}
         />
         {filaSeleccionada && (
           <PanelDetalle
@@ -746,39 +804,6 @@ function Contador({
       <span className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-70">{etiqueta}</span>
       <span className="ml-2 font-display text-lg font-extrabold tabular-nums">{valor.toLocaleString('es-AR')}</span>
     </button>
-  )
-}
-
-function FiltroDesplegable({
-  etiqueta,
-  valor,
-  opciones,
-  textoDe,
-  alCambiar,
-}: {
-  etiqueta: string
-  valor: string
-  opciones: string[]
-  textoDe?: (valor: string) => string
-  alCambiar: (valor: string) => void
-}) {
-  return (
-    <select
-      value={valor}
-      onChange={(evento) => alCambiar(evento.target.value)}
-      aria-label={etiqueta}
-      className={cx(
-        'h-9 rounded-lg border bg-white px-2 text-sm',
-        valor ? 'border-marino-400 font-semibold text-marino-800' : 'border-slate-300 text-slate-700',
-      )}
-    >
-      <option value="">{etiqueta}: todas</option>
-      {opciones.map((opcion) => (
-        <option key={opcion} value={opcion}>
-          {textoDe ? textoDe(opcion) : opcion}
-        </option>
-      ))}
-    </select>
   )
 }
 

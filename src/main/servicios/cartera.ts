@@ -1,5 +1,6 @@
 // Cartera: la planilla del mes, sus acciones (avisar, registrar pago, dar de baja) y el cierre de mes.
 // Todo lo que se cambia acá queda anotado en el historial.
+import { ramasParaElegir } from '../../shared/ramas'
 import { hoyLocal, nombreDePeriodo, periodoDeHoy, periodoSiguiente } from '../../shared/semaforo'
 import {
   ALCANCES_DEL_PAGO,
@@ -10,6 +11,7 @@ import {
   type AlcanceDelPago,
   type AvisoPreparado,
   type CampoEditable,
+  type CategoriaDeVehiculo,
   type CuotasDelCliente,
   type CatalogosCartera,
   type DatosDeBaja,
@@ -78,7 +80,8 @@ export const SELECT_PLANILLA = `
     c.dia_vencimiento, c.dia_vencimiento_numero, c.cuota, c.cuota_monto,
     COALESCE(c.forma_pago, p.forma_pago) AS forma_pago,
     c.aviso, c.fecha_envio, c.avisar_vto, c.pago, c.pago_fecha, c.observaciones,
-    v.tipo AS vehiculo, v.marca, v.modelo, COALESCE(c.patente, v.patente) AS patente,
+    v.tipo AS vehiculo, v.categoria AS categoria_vehiculo,
+    v.marca, v.modelo, COALESCE(c.patente, v.patente) AS patente,
     v.anio, v.motor, v.chasis, v.uso, v.color,
     p.cobertura, COALESCE(c.compania, p.compania) AS compania,
     COALESCE(c.numero_poliza, p.numero) AS numero_poliza, p.propuesta,
@@ -145,6 +148,7 @@ export interface FilaCruda {
   pago_fecha: string | null
   observaciones: string | null
   vehiculo: string | null
+  categoria_vehiculo: string | null
   marca: string | null
   modelo: string | null
   patente: string | null
@@ -199,6 +203,7 @@ export function aFila(cruda: FilaCruda, dias: Record<string, number>): FilaCarte
     fechaEnvio: cruda.fecha_envio,
     avisarVto: cruda.avisar_vto,
     vehiculo: cruda.vehiculo,
+    categoriaVehiculo: (cruda.categoria_vehiculo as CategoriaDeVehiculo | null) ?? null,
     marca: cruda.marca,
     modelo: cruda.modelo,
     patente: cruda.patente,
@@ -289,6 +294,11 @@ export function catalogos(): CatalogosCartera {
     companias: valoresDistintos('SELECT nombre AS valor FROM companias WHERE activa = 1'),
     coberturas: valoresDistintos('SELECT DISTINCT cobertura AS valor FROM polizas WHERE activa = 1'),
     tiposDeVehiculo: valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos'),
+    // La rama la arma `ramasParaElegir` y no el `combinar` de acá, por lo mismo que las sucursales:
+    // las siete de la agencia tienen que estar siempre, aunque el mes que se está mirando no tenga
+    // ninguna moto eléctrica, y las que la base trae fuera del catálogo se listan igual para que
+    // ninguna fila quede sin manera de encontrarse.
+    ramas: ramasParaElegir(valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos')),
     mediosDePago: combinar(MEDIOS_DE_PAGO, valoresDistintos('SELECT DISTINCT medio AS valor FROM pagos')),
   }
 }
@@ -1199,6 +1209,7 @@ const SELECT_BAJAS = `
          COALESCE(b.cobertura, p.cobertura) AS cobertura,
          COALESCE(b.patente, q.patente, v.patente) AS patente,
          COALESCE(b.tipo_vehiculo, v.tipo) AS tipo_vehiculo,
+         v.categoria AS categoria_vehiculo,
          COALESCE(b.marca, v.marca) AS marca,
          COALESCE(b.modelo, v.modelo) AS modelo,
          COALESCE(b.anio, v.anio) AS anio,
@@ -1246,6 +1257,7 @@ interface BajaCruda {
   cobertura: string | null
   patente: string | null
   tipo_vehiculo: string | null
+  categoria_vehiculo: string | null
   marca: string | null
   modelo: string | null
   anio: string | null
@@ -1282,6 +1294,7 @@ function aBaja(f: BajaCruda): FilaBaja {
     cobertura: f.cobertura,
     patente: f.patente,
     vehiculo: f.tipo_vehiculo,
+    categoriaVehiculo: (f.categoria_vehiculo as CategoriaDeVehiculo | null) ?? null,
     marca: f.marca,
     modelo: f.modelo,
     anio: f.anio,

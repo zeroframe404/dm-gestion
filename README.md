@@ -56,6 +56,70 @@ Un texto que no sea ninguna de las cuatro **no crea una sucursal nueva**:
 La comparación se hace **en JavaScript, nunca en el SQL**: `UPPER()` y `COLLATE NOCASE` de SQLite sólo
 tocan el ASCII, así que `UPPER('Lanús')` devuelve `'LANúS'` y no empata con el `LANUS` de la planilla.
 
+## Las ramas
+
+Son **siete y sólo siete**, y la lista vive en un único lugar: `src/shared/ramas.ts`. Es cómo vende la
+agencia, y es lo que ofrece el filtro «Rama» de la Planilla del mes, Bajas, Pólizas, Deudores y
+Segmentos.
+
+| Rama | Cómo puede venir escrita |
+| --- | --- |
+| **AUTO** | `AUTO`, `AUTOMOVIL`, `SEDAN`, `HATCHBACK`, `COUPE`, `CABRIOLET`, `RURAL`, `MONOVOLUMEN`, `SUV` |
+| **MOTO** | `MOTO`, `MOTOCICLETA`, `MOTOVEHICULO` |
+| **PICK UP** | `PICK UP`, `PICKUP`, `CAMIONETA`, `DOBLE CABINA` |
+| **CAMION** | `CAMION`, `CHASIS`, `TRACTOR`, `VOLCADOR` |
+| **SCOOTER** | `SCOOTER`, `CICLOMOTOR` |
+| **MOTO ELÉCTRICA** | `MOTO ELÉCTRICA`, `MOTO ELECTRICA` (sin tilde), `MOTO E`, `ELECTRICA` |
+| **TRAILER** | `TRAILER`, `ACOPLADO`, `REMOLQUE`, `CASA RODANTE` |
+
+**No es lo mismo que la CATEGORÍA.** La categoría (`CATEGORIAS_DE_VEHICULO`, en `tipos.ts`) la decide
+el catálogo de vehículos y tiene quince valores de carrocería (SEDAN, HATCHBACK, SUV, FURGON, MICRO…).
+La rama es cómo vende el mostrador, y son estas siete. Una es de la base, la otra es de la agencia.
+
+La rama de una fila se deduce en dos pasos, y el orden importa:
+
+1. **Gana el tipo del riesgo** cuando ya nombra una rama concreta. Es lo que escribió la agencia en la
+   hoja (`PICK UP`, `TRAILER`, `MOTO ELECTRICA`) y nadie la conoce mejor que ella.
+2. **Afina la categoría** cuando el tipo es genérico. Una pick up cargada desde «Nueva póliza» sale del
+   catálogo con `tipo = 'AUTO'` y `categoria = 'PICKUP'`: sin este paso el filtro «Pick up»
+   encontraría sólo las que vinieron tipeadas de la hoja, y devolvería cero para la mitad de la
+   cartera sin ninguna explicación.
+
+Afinar **nunca cruza familias**: un AUTO puede terminar en PICK UP o CAMION, y una MOTO en SCOOTER,
+pero una categoría de moto no convierte a un auto en scooter aunque el dato venga mezclado.
+
+Un vehículo que no es de ninguna de las siete —un `HOGAR`, una `BICICLETA`, un `FURGON`— **no crea una
+rama nueva**: se guarda tal cual y el desplegable lo lista aparte, abajo de las siete, para que esa
+fila siga teniendo una opción que la traiga. Los sinónimos, en cambio, se pliegan antes de armar la
+lista: la base puede tener `CAMIONETA` y el desplegable ofrece «PICK UP» y nada más.
+
+La comparación se hace **en JavaScript, nunca en el SQL**, por lo mismo que las sucursales.
+
+## Los filtros eligen de a varias
+
+Todos los desplegables de filtro de la aplicación guardan una **lista**, no un valor: «Compañías: ATM y
+Metropol», «Sucursal: Dock Sud y Daniel». El contrato está en `src/shared/filtros.ts` y es uno solo
+para las dos puntas:
+
+- **La lista vacía es «todas»**, que es exactamente lo que quería decir el `''` de antes.
+- `listaDeFiltro` acepta también un texto suelto, así que un `filtros_json` guardado con la forma
+  vieja —o una computadora a medio actualizar— no se queda sin filtro en silencio.
+- El control es `FiltroMultiple` (`src/renderer/componentes/`), un botón con panel de casillas. No es
+  un `<select multiple>`: ése se maneja con Ctrl, no dice cuántas hay elegidas y no entra en una barra
+  de una línea.
+
+Lo que **no** elige de a varios, y por qué:
+
+- **Los contadores y las pestañas** (Vencen hoy, el estado del cliente, el estado del siniestro): cada
+  uno muestra su número, y elegir de a varios haría que el cartel y la tabla dijeran cosas distintas.
+- **El selector de mes**: elige qué planilla se está mirando, no filtra dentro de ella.
+- **El «Vencimiento» de un segmento de Marketing** (vencidas / esta semana / este mes): es un horizonte
+  y sus opciones se contienen unas a otras —«esta semana» está adentro de «este mes»—, así que tildar
+  dos no acota nada, sólo confunde.
+
+En los resultados que viajan por IPC, `sucursales` y `companias` son **siempre las opciones** del
+desplegable; lo elegido se llama `sucursalesElegidas` y `companiasElegidas`.
+
 ## Datos locales
 
 Todo queda en la carpeta `%APPDATA%/dm-gestion/`:
