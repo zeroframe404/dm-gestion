@@ -26,9 +26,9 @@ export const AYUDA_CLIENTES: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
-        titulo: 'Buscar deudores',
+        titulo: 'Buscar clientes',
         parrafos: [
-          'Es una búsqueda aparte, más fina que el listado general: se abre con el botón «Buscar deudores» y arma una lista de morosos filtrando por sucursal, compañía, forma de pago y hasta por el día del mes en que vence la cuota (por ejemplo, «todos los que vencen el día 10»). Sirve para armar una tanda de llamados o de avisos bien puntual, y la lista se puede exportar a un archivo.',
+          'Es una búsqueda aparte, más fina que el listado general: se abre con el botón «Buscar clientes» y arma una lista de cuotas impagas. Arriba de todo, «Todos | Vencidos | Pagos» separa de un toque a los que ya pasaron su fecha de vencimiento de los que se cobran solos (débito, CBU, tarjeta, Mercado Pago) y no hace falta llamar. Después se puede seguir acotando por sucursal, compañía, forma de pago y hasta por el día del mes en que vence la cuota (por ejemplo, «todos los que vencen el día 10»). Sirve para armar una tanda de llamados o de avisos bien puntual, y la lista se puede exportar a un archivo.',
         ],
       },
       {

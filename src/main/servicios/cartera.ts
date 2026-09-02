@@ -10,6 +10,7 @@ import {
   PLANTILLA_AVISO_POR_DEFECTO,
   type AlcanceDelPago,
   type AvisoPreparado,
+  type CambiosDeReactivacion,
   type CampoEditable,
   type CategoriaDeVehiculo,
   type CuotasDelCliente,
@@ -1055,8 +1056,14 @@ export function deshacerBaja(bajaId: number, actor: SesionUsuario): FilaBaja[] {
  *
  * Sirve también para las bajas importadas de la hoja —que son la mayoría de las viejas— y por eso lo
  * único que se exige es saber de qué póliza es la baja.
+ *
+ * `cambios` corrige de una vez lo que haya cambiado mientras el cliente no estaba —otra compañía, otra
+ * póliza, la cuota que ya quedó distinta—, así no hace falta ir después a buscar la fila en la planilla.
+ * Se aplica con `editarCelda`, la misma función que usa la planilla para editar una celda: así corre por
+ * las mismas dos tablas (la póliza y la fila del mes), encola el cambio hacia la hoja y queda en el
+ * historial como cualquier otra edición.
  */
-export function reactivarBaja(bajaId: number, actor: SesionUsuario): ResultadoDeReactivacion {
+export function reactivarBaja(bajaId: number, actor: SesionUsuario, cambios?: CambiosDeReactivacion): ResultadoDeReactivacion {
   const baja = db().prepare(`${SELECT_BAJAS} WHERE b.id = ?`).get(bajaId) as BajaCruda | undefined
   if (!baja) throw new ErrorDeNegocio('No se encontró esa baja.')
   if (baja.poliza_id === null) {
@@ -1154,6 +1161,24 @@ export function reactivarBaja(bajaId: number, actor: SesionUsuario): ResultadoDe
     valorAnterior: baja.motivo,
     valorNuevo: `vuelve a ${periodoAbierto}`,
   })
+
+  // Lo que haya cambiado mientras el cliente no estaba se corrige de una: misma función que la planilla,
+  // fila por fila, así queda cada campo en su tabla, encolado hacia la hoja y en el historial.
+  const filaReactivada = yaEstaEnElMes?.fila_id ?? cuotaDelMes?.fila_id ?? filaNuevaId
+  if (cambios && filaReactivada) {
+    const CAMPOS_DE_REACTIVACION: Array<[keyof CambiosDeReactivacion, CampoEditable]> = [
+      ['compania', 'compania'],
+      ['numeroPoliza', 'numeroPoliza'],
+      ['propuesta', 'propuesta'],
+      ['cuota', 'cuota'],
+      ['diaVencimiento', 'diaVencimiento'],
+      ['formaPago', 'formaPago'],
+    ]
+    for (const [clave, campo] of CAMPOS_DE_REACTIVACION) {
+      const valor = cambios[clave]
+      if (valor !== undefined) editarCelda(filaReactivada, campo, valor, actor)
+    }
+  }
 
   return {
     bajas: bajasDelMes(baja.periodo),
@@ -1323,14 +1348,20 @@ function aBaja(f: BajaCruda): FilaBaja {
   }
 }
 
+/** `periodo` puntual, `null` las bajas sin mes (viejas, de antes de que se guardara) y `''` todas juntas. */
 export function bajasDelMes(periodo: string | null): FilaBaja[] {
-  const filas = db()
-    .prepare(
-      `${SELECT_BAJAS}
-       WHERE b.periodo IS ? OR (? IS NULL AND b.periodo IS NULL)
-       ORDER BY b.hecha_en_la_app DESC, cliente_nombre`,
-    )
-    .all(periodo, periodo) as BajaCruda[]
+  const filas =
+    periodo === ''
+      ? (db()
+          .prepare(`${SELECT_BAJAS} ORDER BY b.hecha_en_la_app DESC, cliente_nombre`)
+          .all() as BajaCruda[])
+      : (db()
+          .prepare(
+            `${SELECT_BAJAS}
+             WHERE b.periodo IS ? OR (? IS NULL AND b.periodo IS NULL)
+             ORDER BY b.hecha_en_la_app DESC, cliente_nombre`,
+          )
+          .all(periodo, periodo) as BajaCruda[])
   return filas.map(aBaja)
 }
 

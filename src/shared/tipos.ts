@@ -742,6 +742,19 @@ export interface FilaBaja {
   puedeReactivarse: boolean
 }
 
+/**
+ * Lo que se puede corregir al poner vigente una baja: el cliente que se fue y vuelve, capaz con otra
+ * compañía, otra póliza o otra cuota. Vacío u omitido deja el dato tal como estaba en la baja.
+ */
+export interface CambiosDeReactivacion {
+  compania?: string
+  numeroPoliza?: string
+  propuesta?: string
+  cuota?: string
+  diaVencimiento?: string
+  formaPago?: string
+}
+
 /** Lo que devuelve «Poner vigente»: la baja volvió a la cartera y en qué mes quedó su fila. */
 export interface ResultadoDeReactivacion {
   bajas: FilaBaja[]
@@ -1352,14 +1365,22 @@ export interface ListadoClientes {
   companias: string[]
 }
 
-// --- Buscador de deudores (Clientes → «Buscar deudores») ---
+// --- Buscador de deudores (Clientes → «Buscar clientes») ---
 
 export const FORMATOS_DE_DEUDORES = ['xlsx', 'txt'] as const
 export type FormatoDeDeudores = (typeof FORMATOS_DE_DEUDORES)[number]
 
+/**
+ * El filtro rápido de arriba de todo: '' (TODOS) no acota nada, 'VENCIDOS' se queda con las que ya
+ * pasaron su fecha de vencimiento y 'PAGOS' con las que se cobran solas (débito, CBU, tarjeta, Mercado
+ * Pago) —no hay que llamarlas, se resuelven sin que nadie haga nada—.
+ */
+export type FiltroEstadoDeDeuda = '' | 'PAGOS' | 'VENCIDOS'
+
 export interface FiltrosDeudores {
   /** 'AAAA-MM' para un mes; '' para mirar todos los meses que tenga la cartera. */
   periodo: string
+  estado: FiltroEstadoDeDeuda
   /** Vacío = todas. Se comparan normalizadas (sin tildes ni mayúsculas). */
   sucursales: string[]
   companias: string[]
@@ -1378,6 +1399,7 @@ export interface FiltrosDeudores {
 
 export const DEUDORES_SIN_FILTROS: FiltrosDeudores = {
   periodo: '',
+  estado: '',
   sucursales: [],
   companias: [],
   formasDePago: [],

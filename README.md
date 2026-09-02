@@ -392,8 +392,11 @@ calculado solo y las acciones de un clic.
   EUROAMÉRICA 7, GALENO 7, EQUIDAD 5, METROPOL 3), contados desde la fecha de vencimiento. Las pagas y
   las de débito automático no entran: el semáforo no les calcula fin de cobertura.
 - **Bajas** (`Cartera → Bajas`): la lista del mes con su propio buscador (nombre, patente, póliza, DNI,
-  compañía, sucursal o teléfono). Dar de baja **no borra nada**: el cliente, el vehículo y la póliza
-  siguen en la base (la póliza pasa a `activa = 0` y la fila del mes a `dada_de_baja = 1`).
+  compañía, sucursal o teléfono). El selector de mes tiene una opción **«Todos los meses»** que junta
+  las bajas de cualquier período en una sola lista: es lo que hace falta para encontrar —y reactivar—
+  a alguien que se fue hace rato, sin tener que ir mes por mes. Dar de baja **no borra nada**: el
+  cliente, el vehículo y la póliza siguen en la base (la póliza pasa a `activa = 0` y la fila del mes
+  a `dada_de_baja = 1`).
   - **La baja guarda la foto completa de la fila**, no sólo nombre, DNI, compañía, póliza, patente,
     sucursal y motivo: también teléfono, email, dirección, localidad, vehículo entero (marca, modelo,
     año, motor, chasis, uso, color), cobertura, propuesta, prima, productor, vigencias, alta, cuota,
@@ -406,9 +409,13 @@ calculado solo y las acciones de un clic.
   - **«Poner vigente»** (ADMIN/SUPER_ADMIN) devuelve la póliza a la cartera sin cargarla de nuevo: es
     el cliente que se fue en julio y vuelve en septiembre. Reactiva la póliza, reusa su fila del mes
     abierto si la tiene o le crea una con los últimos datos que tenía, y saca el renglón de la pestaña
-    BAJAS de la hoja. Sirve también para las bajas de la hoja, siempre que la baja esté enlazada a una
-    póliza (`bajas.poliza_id`); si no lo está —alguien que se fue antes de la planilla más nueva, de
-    quien no quedó ninguna póliza cargada— el botón no aparece y el servicio lo explica.
+    BAJAS de la hoja. El diálogo deja corregir de una vez **compañía, póliza, propuesta, cuota, fecha
+    de vencimiento y forma de pago** —lo que haya cambiado mientras el cliente no estaba—; dejar los
+    campos como están es no tocar nada. Cada campo se aplica con `editarCelda`, la misma función que
+    usa la planilla para editar una celda. Sirve también para las bajas de la hoja, siempre que la
+    baja esté enlazada a una póliza (`bajas.poliza_id`); si no lo está —alguien que se fue antes de la
+    planilla más nueva, de quien no quedó ninguna póliza cargada— el botón no aparece y el servicio lo
+    explica.
   - **«Deshacer»** es otra cosa y sigue igual: el «me equivoqué» del momento, sólo para las bajas
     hechas en la app, que devuelve la fila al mes del que salió.
 - **Meses anteriores**: se ven completos pero de sólo lectura. **Cerrar mes** (ADMIN/SUPER_ADMIN) crea el
@@ -520,11 +527,13 @@ Tres módulos nuevos en la barra lateral, más la subpestaña **Cartera → Regl
 - **«Baja»** es haber tenido pólizas y no tener ninguna activa. El que nunca tuvo ninguna no es una
   baja: figura como «Sin pólizas».
 
-#### Buscar deudores
+#### Buscar clientes
 
-El botón **«Buscar deudores»** del listado abre la ventana que arma la lista de a quién hay que
+El botón **«Buscar clientes»** del listado abre la ventana que arma la lista de a quién hay que
 cobrarle. Se tilda lo que haga falta y la lista se rehace sola:
 
+- **Todos | Vencidos | Pagos**, arriba de todo: un toque que separa a las que ya pasaron su fecha de
+  vencimiento de las que se cobran solas (débito, CBU, tarjeta, Mercado Pago) y no hay que llamar.
 - **Mes**: arranca en el mes abierto (el que se está cobrando) y se puede mirar cualquier mes anterior
   o **todos los meses** juntos, que es donde aparecen las deudas viejas.
 - **Sucursal**, **compañía** y **forma de pago**: se tildan de a varias. Sin tildar ninguna entran
@@ -646,7 +655,7 @@ como cualquier otro.
 ```bash
 npm run sembrar -- <carpeta>       # arma una carpeta de datos con la hoja simulada ya importada
 npm run humo:fase5 -- <carpeta>    # abre la app de verdad y recorre los cuatro criterios (24 pasos)
-npm run humo:deudores -- <carpeta> # los estados del listado y «Buscar deudores», con exportación (18 pasos)
+npm run humo:deudores -- <carpeta> # los estados del listado y «Buscar clientes», con exportación (18 pasos)
 ```
 
 `sembrar` importa **dos veces** (primero hasta julio, después con agosto) porque es lo que pasa mes a

@@ -96,6 +96,7 @@ import type {
   ResultadoImputacion,
   ResumenComisiones,
   CambioDeClave,
+  CambiosDeReactivacion,
   CampoEditable,
   Compania,
   DatosDeBaja,
@@ -225,8 +226,11 @@ export interface Canales {
   /**
    * «Poner vigente»: la póliza vuelve a la cartera en el mes abierto, sin cargarla de nuevo. Sirve
    * también para las bajas importadas de la hoja (el cliente que se fue en julio y vuelve en septiembre).
+   * `cambios` corrige compañía, póliza/propuesta, cuota, fecha de venc y forma de pago al mismo tiempo:
+   * es el caso del cliente que vuelve con otra compañía o con la cuota ya distinta.
    */
-  'cartera:reactivarBaja': (bajaId: number) => Resultado<ResultadoDeReactivacion>
+  'cartera:reactivarBaja': (bajaId: number, cambios?: CambiosDeReactivacion) => Resultado<ResultadoDeReactivacion>
+  /** `periodo`: un mes puntual, `null` las bajas sin mes y `''` TODAS las bajas de cualquier mes. */
   'cartera:bajas': (periodo: string | null) => Resultado<FilaBaja[]>
   'cartera:cerrarMes': () => Resultado<ResumenCierreDeMes>
   'cartera:historialDeFila': (filaId: string) => Resultado<EntradaHistorial[]>

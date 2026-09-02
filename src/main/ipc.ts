@@ -439,9 +439,9 @@ export function registrarIpc(): void {
   })
   // «Poner vigente» devuelve una póliza a la cartera. Como el cierre de mes y como deshacer una baja,
   // mueve la planilla de todos: pide administrador además del permiso de edición.
-  manejar('cartera:reactivarBaja', (bajaId) => {
+  manejar('cartera:reactivarBaja', (bajaId, cambios) => {
     exigirEdicion('cartera')
-    return exito(reactivarBaja(enteroPositivo(bajaId, 'La baja'), exigirRol('SUPER_ADMIN', 'ADMIN')))
+    return exito(reactivarBaja(enteroPositivo(bajaId, 'La baja'), exigirRol('SUPER_ADMIN', 'ADMIN'), cambios))
   })
   manejar('cartera:bajas', (periodo) => {
     exigirVista('cartera')
