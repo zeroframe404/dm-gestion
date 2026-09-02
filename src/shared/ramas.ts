@@ -13,6 +13,7 @@
 // la decide el catálogo de vehículos y tiene quince valores de carrocería (SEDAN, HATCHBACK, SUV…);
 // la rama es cómo vende la agencia, y son estas siete. Una es de la base, la otra es del mostrador.
 
+import { esVehiculo } from './riesgos'
 import type { CategoriaDeVehiculo } from './tipos'
 
 /** Las únicas ramas que existen, en el orden en que se ofrecen. */
@@ -91,7 +92,8 @@ const SINONIMOS: Record<string, Rama> = {
   'MOTO ELECTRICA': 'MOTO ELÉCTRICA',
   'MOTOS ELECTRICAS': 'MOTO ELÉCTRICA',
   'MOTO E': 'MOTO ELÉCTRICA',
-  ELECTRICA: 'MOTO ELÉCTRICA',
+  // «ELECTRICA» a secas NO está, y es a propósito: un auto eléctrico escrito así terminaría siendo
+  // una moto eléctrica. La palabra sola no dice de qué vehículo se habla.
   // Trailer
   TRAILERS: 'TRAILER',
   TRAILA: 'TRAILER',
@@ -166,6 +168,11 @@ const FAMILIA: Record<Rama, 'auto' | 'moto' | 'otro'> = {
 export function ramaDeVehiculo(tipo: unknown, categoria?: CategoriaDeVehiculo | string | null): Rama | null {
   const porTipo = ramaCanonica(tipo)
   if (porTipo && porTipo !== 'AUTO' && porTipo !== 'MOTO') return porTipo
+
+  // Un riesgo que NO es un vehículo se va sin rama, aunque tenga una categoría cargada. La fila de un
+  // HOGAR o de una BICICLETA puede arrastrar la `categoria` del vehículo que esa póliza tenía antes:
+  // sin este corte, afinar la convertía en una pick up y el filtro «Pick up» traía casas.
+  if (!esVehiculo(tipo === null || tipo === undefined ? null : String(tipo))) return null
 
   const afinada = ramaDeCategoria(categoria)
   if (afinada && (porTipo === null || FAMILIA[afinada] === FAMILIA[porTipo])) return afinada

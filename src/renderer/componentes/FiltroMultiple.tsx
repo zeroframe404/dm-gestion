@@ -74,15 +74,33 @@ export function FiltroMultiple({
 
   const lista = useMemo(() => normalizarOpciones(opciones, textoDe), [opciones, textoDe])
 
+  /**
+   * Lo tildado que todavía no volvió del padre.
+   *
+   * En Imputados, Métricas, Estadísticas y la Caja del día, tocar el filtro dispara una consulta al
+   * proceso principal: `valores` no cambia hasta que la respuesta vuelve. Sin esto, tildar dos
+   * compañías seguidas calculaba las dos sobre la misma lista vieja y la segunda borraba a la primera
+   * —justo en las pantallas donde uno más quiere tildar varias de una—.
+   *
+   * `desde` guarda cómo estaban las props cuando se tildó: mientras sigan iguales, mandan las de acá;
+   * en cuanto el padre contesta (con lo nuestro o con otra cosa), vuelven a mandar las props.
+   */
+  const [enVuelo, setEnVuelo] = useState<{ desde: string; valores: string[] } | null>(null)
+  const claveDeLasProps = valores.join('\u0000')
+  const elegidosAhora = useMemo(
+    () => (enVuelo && enVuelo.desde === claveDeLasProps ? enVuelo.valores : [...valores]),
+    [claveDeLasProps, enVuelo, valores],
+  )
+
   // Lo elegido que YA NO está entre las opciones se sigue mostrando: la planilla de otro mes puede no
   // tener la compañía que quedó elegida, y borrarla sola dejaría la tabla filtrada por algo que el
   // botón no nombra. Igual que las cuatro sucursales, que están siempre aunque el mes no las tenga.
-  const elegidas = useMemo(() => new Set(valores), [valores])
+  const elegidas = useMemo(() => new Set(elegidosAhora), [elegidosAhora])
   const conHuerfanas = useMemo(() => {
     const conocidos = new Set(lista.map((o) => o.valor))
-    const sueltas = valores.filter((v) => !conocidos.has(v)).map((v) => ({ valor: v, texto: textoDe ? textoDe(v) : v }))
+    const sueltas = elegidosAhora.filter((v) => !conocidos.has(v)).map((v) => ({ valor: v, texto: textoDe ? textoDe(v) : v }))
     return [...lista, ...sueltas]
-  }, [lista, textoDe, valores])
+  }, [elegidosAhora, lista, textoDe])
 
   const visibles = useMemo(() => {
     const texto = normalizar(busqueda)
@@ -116,31 +134,40 @@ export function FiltroMultiple({
     if (!abierto) setBusqueda('')
   }, [abierto])
 
+  /** Manda el cambio y se lo guarda como «en vuelo» hasta que el padre lo devuelva. */
+  const mandar = useCallback(
+    (siguientes: string[]) => {
+      setEnVuelo({ desde: claveDeLasProps, valores: siguientes })
+      alCambiar(siguientes)
+    },
+    [alCambiar, claveDeLasProps],
+  )
+
   const alternar = useCallback(
     (valor: string) => {
       const siguientes = elegidas.has(valor)
-        ? valores.filter((v) => v !== valor)
+        ? elegidosAhora.filter((v) => v !== valor)
         : // En el orden de las opciones, no en el de los clics: así «ATM y Metropol» se lee igual sin
           // importar cuál se tocó primero.
           conHuerfanas.map((o) => o.valor).filter((v) => v === valor || elegidas.has(v))
-      alCambiar([...siguientes])
+      mandar([...siguientes])
     },
-    [alCambiar, conHuerfanas, elegidas, valores],
+    [conHuerfanas, elegidas, elegidosAhora, mandar],
   )
 
   const resumen = useMemo(() => {
-    if (valores.length === 0) return `${etiqueta}: ${plural}`
-    const primera = conHuerfanas.find((o) => o.valor === valores[0])
-    const texto = primera?.texto ?? valores[0] ?? ''
-    return valores.length === 1 ? `${etiqueta}: ${texto}` : `${etiqueta}: ${texto} +${valores.length - 1}`
-  }, [conHuerfanas, etiqueta, plural, valores])
+    if (elegidosAhora.length === 0) return `${etiqueta}: ${plural}`
+    const primera = conHuerfanas.find((o) => o.valor === elegidosAhora[0])
+    const texto = primera?.texto ?? elegidosAhora[0] ?? ''
+    return elegidosAhora.length === 1 ? `${etiqueta}: ${texto}` : `${etiqueta}: ${texto} +${elegidosAhora.length - 1}`
+  }, [conHuerfanas, elegidosAhora, etiqueta, plural])
 
   /** El botón se corta cuando el nombre es largo; el globo dice todo lo que está filtrando. */
   const detalle = useMemo(() => {
-    if (valores.length === 0) return `${etiqueta}: sin filtrar (${plural})`
-    const textos = valores.map((v) => conHuerfanas.find((o) => o.valor === v)?.texto ?? v)
+    if (elegidosAhora.length === 0) return `${etiqueta}: sin filtrar (${plural})`
+    const textos = elegidosAhora.map((v) => conHuerfanas.find((o) => o.valor === v)?.texto ?? v)
     return `${etiqueta}: ${textos.join(', ')}`
-  }, [conHuerfanas, etiqueta, plural, valores])
+  }, [conHuerfanas, elegidosAhora, etiqueta, plural])
 
   const hayBuscador = conHuerfanas.length >= buscarDesde
 
@@ -182,7 +209,7 @@ export function FiltroMultiple({
         className={cx(
           'inline-flex h-9 max-w-56 items-center gap-1.5 rounded-lg border bg-white px-2.5 text-sm transition-colors',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40',
-          valores.length > 0
+          elegidosAhora.length > 0
             ? 'border-marino-400 font-semibold text-marino-800 hover:bg-marino-50'
             : 'border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50',
         )}
@@ -199,7 +226,7 @@ export function FiltroMultiple({
           <header className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
             <p className="font-display text-sm font-bold tracking-tight text-slate-900">{etiqueta}</p>
             <span className="ml-auto text-[11px] tabular-nums text-slate-500">
-              {valores.length === 0 ? plural : `${valores.length} de ${conHuerfanas.length}`}
+              {elegidosAhora.length === 0 ? plural : `${elegidosAhora.length} de ${conHuerfanas.length}`}
             </span>
           </header>
 
@@ -244,15 +271,15 @@ export function FiltroMultiple({
           <footer className="flex items-center gap-3 border-t border-slate-100 px-3 py-2">
             <button
               type="button"
-              onClick={() => alCambiar(visibles.map((o) => o.valor))}
+              onClick={() => mandar(visibles.map((o) => o.valor))}
               className="text-xs font-semibold text-marino-700 hover:underline"
             >
               {busqueda ? 'Elegir las que se ven' : 'Elegir todas'}
             </button>
             <button
               type="button"
-              onClick={() => alCambiar([])}
-              disabled={valores.length === 0}
+              onClick={() => mandar([])}
+              disabled={elegidosAhora.length === 0}
               className="ml-auto text-xs font-semibold text-slate-600 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline"
             >
               Limpiar

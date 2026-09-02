@@ -108,10 +108,14 @@ para las dos puntas:
   un `<select multiple>`: ése se maneja con Ctrl, no dice cuántas hay elegidas y no entra en una barra
   de una línea.
 
-Lo que **no** eligen de a varios son los contadores y las pestañas (Vencen hoy, el estado del cliente,
-el estado del siniestro): cada uno muestra su número y elegir de a varios haría que el cartel y la
-tabla dijeran cosas distintas. El selector de **mes** tampoco: elige qué planilla se está mirando, no
-filtra dentro de ella.
+Lo que **no** elige de a varios, y por qué:
+
+- **Los contadores y las pestañas** (Vencen hoy, el estado del cliente, el estado del siniestro): cada
+  uno muestra su número, y elegir de a varios haría que el cartel y la tabla dijeran cosas distintas.
+- **El selector de mes**: elige qué planilla se está mirando, no filtra dentro de ella.
+- **El «Vencimiento» de un segmento de Marketing** (vencidas / esta semana / este mes): es un horizonte
+  y sus opciones se contienen unas a otras —«esta semana» está adentro de «este mes»—, así que tildar
+  dos no acota nada, sólo confunde.
 
 En los resultados que viajan por IPC, `sucursales` y `companias` son **siempre las opciones** del
 desplegable; lo elegido se llama `sucursalesElegidas` y `companiasElegidas`.

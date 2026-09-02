@@ -1,6 +1,6 @@
 // Cartera: la planilla del mes, sus acciones (avisar, registrar pago, dar de baja) y el cierre de mes.
 // Todo lo que se cambia acá queda anotado en el historial.
-import { ramaCanonica, ramasParaElegir } from '../../shared/ramas'
+import { ramasParaElegir } from '../../shared/ramas'
 import { hoyLocal, nombreDePeriodo, periodoDeHoy, periodoSiguiente } from '../../shared/semaforo'
 import {
   ALCANCES_DEL_PAGO,
@@ -298,10 +298,7 @@ export function catalogos(): CatalogosCartera {
     // las siete de la agencia tienen que estar siempre, aunque el mes que se está mirando no tenga
     // ninguna moto eléctrica, y las que la base trae fuera del catálogo se listan igual para que
     // ninguna fila quede sin manera de encontrarse.
-    ramas: ramasParaElegir([
-      ...valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos'),
-      ...valoresDistintos('SELECT DISTINCT categoria AS valor FROM vehiculos').filter((c) => ramaCanonica(c) !== null),
-    ]),
+    ramas: ramasParaElegir(valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos')),
     mediosDePago: combinar(MEDIOS_DE_PAGO, valoresDistintos('SELECT DISTINCT medio AS valor FROM pagos')),
   }
 }

@@ -14,7 +14,7 @@ import {
   validarAntiguedad,
 } from '../../shared/polizas'
 import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
-import { ramaCanonica, ramaDeVehiculo, ramasParaElegir } from '../../shared/ramas'
+import { ramaDeVehiculo, ramasParaElegir } from '../../shared/ramas'
 import { describirRiesgo, esVehiculo, leerIntegrantes, nombreDeTipoDeRiesgo, tipoDeRiesgo } from '../../shared/riesgos'
 import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { mismaSucursal } from '../../shared/sucursales'
@@ -349,10 +349,7 @@ export function catalogosDePoliza(): CatalogosDePoliza {
     tiposDeVehiculo: valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos'),
     // Las siete de la agencia siempre, más lo que la base tenga fuera del catálogo: es el mismo trato
     // que reciben las sucursales, y por lo mismo —una opción que no está no se puede pedir.
-    ramas: ramasParaElegir([
-      ...valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos'),
-      ...valoresDistintos('SELECT DISTINCT categoria AS valor FROM vehiculos').filter((c) => ramaCanonica(c) !== null),
-    ]),
+    ramas: ramasParaElegir(valoresDistintos('SELECT DISTINCT tipo AS valor FROM vehiculos')),
   }
 }
 

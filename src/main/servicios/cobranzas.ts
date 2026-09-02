@@ -132,10 +132,16 @@ export function cajaDelDia(fechaPedida: string | null, sucursalesPedidas: string
   const obligada = sucursalObligadaDe(actor)
   const todas = sucursalesDeLaCaja()
   const disponibles = obligada ? todas.filter((s) => mismaSucursal(s, obligada)) : todas
-  // Con sucursal obligada, lo pedido no cuenta: se mira la del mostrador y nada más. Sin ella, se
-  // devuelven las elegidas escritas como el catálogo, y lo que no esté entre las disponibles se cae.
+  // Con sucursal obligada, lo pedido no cuenta: se mira la del mostrador y nada más.
+  //
+  // El `?? obligada` es a propósito y no sobra. Hoy `sucursalesDeLaCaja()` pasa por
+  // `sucursalesParaElegir`, que siembra siempre las cuatro de la agencia, así que `disponibles` nunca
+  // queda vacía para un mostrador de verdad. Pero si algún día dejara de sembrarlas —o si a alguien le
+  // quedara cargada una sucursal fuera del catálogo—, `disponibles` sería `[]`, y acá una lista vacía
+  // quiere decir «todas»: el empleado vería la caja de TODAS las sucursales. Este filtro tiene que
+  // fallar cerrado, nunca abierto, y no puede depender de que otra función siga sembrando el catálogo.
   const sucursales = obligada
-    ? disponibles
+    ? [disponibles[0] ?? obligada]
     : listaDeFiltro(sucursalesPedidas).flatMap((pedida) => {
         const encontrada = disponibles.find((s) => mismaSucursal(s, pedida))
         return encontrada ? [encontrada] : []

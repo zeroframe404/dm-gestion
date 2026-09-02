@@ -67,7 +67,7 @@ test('las formas de escribir cada rama caen todas en la misma', () => {
   for (const escrito of ['MOTO', 'motos', 'MOTOCICLETA', 'motovehiculo']) {
     assert.equal(ramaCanonica(escrito), 'MOTO', `«${escrito}» es MOTO`)
   }
-  for (const escrito of ['MOTO ELÉCTRICA', 'MOTO ELECTRICA', 'moto e', 'ELECTRICA']) {
+  for (const escrito of ['MOTO ELÉCTRICA', 'MOTO ELECTRICA', 'moto e']) {
     assert.equal(ramaCanonica(escrito), 'MOTO ELÉCTRICA', `«${escrito}» es MOTO ELÉCTRICA`)
   }
   for (const escrito of ['TRAILER', 'trailers', 'ACOPLADO', 'remolque', 'casa rodante']) {
@@ -133,12 +133,28 @@ test('las categorías que no son una rama de la agencia dejan el tipo como está
   assert.equal(ramaDeVehiculo('MOTO', 'CUATRICICLO'), 'MOTO')
 })
 
-test('un riesgo que no es un vehículo no tiene rama', () => {
+test('un riesgo que no es un vehículo no tiene rama, ni siquiera con una categoría cargada', () => {
   assert.equal(ramaDeVehiculo('HOGAR', null), null)
   assert.equal(ramaDeVehiculo('BICICLETA', null), null)
   assert.equal(ramaDeVehiculo(null, null), null)
-  // Sin tipo pero con una categoría que sí es una rama, se la queda: es el único dato que hay.
+
+  // Y sobre todo: la fila de un hogar puede arrastrar la `categoria` del vehículo que esa póliza tenía
+  // antes. Afinando sin mirar el tipo, esa casa entraba en «Pick up» y el filtro traía hogares.
+  assert.equal(ramaDeVehiculo('HOGAR', 'PICKUP'), null)
+  assert.equal(ramaDeVehiculo('BICICLETA', 'SCOOTER'), null)
+  assert.equal(ramaDeVehiculo('ACCIDENTE PERSONAL', 'CAMION'), null)
+
+  // Sin tipo, en cambio, la categoría es el único dato que hay y se la queda.
   assert.equal(ramaDeVehiculo(null, 'PICKUP'), 'PICK UP')
+})
+
+test('«ELECTRICA» a secas no convierte nada en moto eléctrica', () => {
+  // La palabra sola no dice de qué vehículo se habla: un auto eléctrico escrito así terminaba siendo
+  // una moto. Con las dos palabras, con tilde o sin ella, sí.
+  assert.equal(ramaCanonica('ELECTRICA'), null)
+  assert.equal(ramaCanonica('MOTO ELECTRICA'), 'MOTO ELÉCTRICA')
+  assert.equal(ramaCanonica('MOTO ELÉCTRICA'), 'MOTO ELÉCTRICA')
+  assert.equal(ramaCanonica('MOTO E'), 'MOTO ELÉCTRICA')
 })
 
 // ---------------------------------------------------------------------------

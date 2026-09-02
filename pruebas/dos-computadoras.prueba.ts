@@ -362,6 +362,16 @@ test('los administradores ven la caja y la rendición de todas las sucursales; u
     assert.equal(cajaDelDia('2026-08-12', ['Lanús'], admin).pagos.length, 1)
   }
 
+  // Un mostrador que todavía no cobró nada ese día tiene que ver una caja VACÍA, no la de las demás.
+  // Parece obvio y no lo es: desde que el filtro de sucursal es una lista, «ninguna elegida» quiere
+  // decir «todas», así que un filtro obligado que se quedara sin valor mostraría de más en vez de de
+  // menos. Éste tiene que fallar cerrado.
+  const deSarandi = cajaDelDia('2026-08-12', ['Dock Sud'], { ...DAIANA, sucursal: { id: 4, nombre: 'Sarandí' } })
+  assert.equal(deSarandi.sucursalFija, true)
+  assert.deepEqual(deSarandi.sucursalesElegidas, ['Sarandí'], 'se filtra por el mostrador de quien pregunta')
+  assert.deepEqual(deSarandi.pagos, [], 'Sarandí no cobró nada ese día: la caja está vacía, no llena de las otras')
+  assert.equal(deSarandi.total, 0)
+
   // Lo mismo en Imputados: la empleada rinde lo de su mostrador y no puede tocar lo de otro.
   const rendicion = imputados('2026-08', [], DAIANA)
   assert.equal(rendicion.sucursal, 'Lanús')

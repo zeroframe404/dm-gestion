@@ -165,7 +165,7 @@ for (const [estado, filtro] of [
     await esperar(() => !/Buscando clientes/.test(document.body.innerText))
     const enPantalla = Number((document.body.innerText.match(/([\\d.]+) clientes? de/) ?? [])[1]?.replace(/\\./g, '') ?? -1)
     // Y lo mismo por el canal, que es la fuente de la verdad.
-    const porCanal = await window.dm.clientes.listar({ busqueda: '', sucursal: '', compania: '', estado: ${JSON.stringify(filtro)} })
+    const porCanal = await window.dm.clientes.listar({ busqueda: '', sucursales: [], companias: [], estado: ${JSON.stringify(filtro)} })
     return { dice, enPantalla, canal: porCanal.ok ? porCanal.datos.filas.length : -1, marcado: boton.getAttribute('aria-pressed') === 'true' }
   })()`)
   anotar(
@@ -278,7 +278,7 @@ anotar(
 const exportado = await evaluar(`(async () => {
   ${AYUDA}
   const mes = dialogo().querySelector('select').value
-  const filtros = { periodo: mes, sucursales: [], companias: [], formasDePago: [], dias: [], incluirDebito: false }
+  const filtros = { periodo: mes, sucursales: [], companias: [], formasDePago: [], ramas: [], dias: [], incluirDebito: false }
   const listado = await window.dm.clientes.deudores(filtros)
   const xlsx = await window.dm.clientes.exportarDeudores(filtros, 'xlsx', ${JSON.stringify(XLSX)})
   const txt = await window.dm.clientes.exportarDeudores(filtros, 'txt', ${JSON.stringify(TXT)})

@@ -179,7 +179,7 @@ anotar('La palabra ROBO aparece destacada en rojo', robo?.hay === true && robo?.
 // 3. Criterio 1: cargar un siniestro buscando por patente
 // ---------------------------------------------------------------------------
 const alta = await evaluar(`(async () => {
-  const polizas = await window.dm.polizas.listar({ busqueda: '', estado: 'ACTIVA', compania: '', sucursal: '', cobertura: '' })
+  const polizas = await window.dm.polizas.listar({ busqueda: '', estados: ['ACTIVA'], companias: [], sucursales: [], coberturas: [], ramas: [] })
   if (!polizas.ok) return { error: polizas.error }
   const conPatente = polizas.datos.filas.find((p) => p.patente && p.patente.length > 3)
   if (!conPatente) return { error: 'la carpeta sembrada no tiene ninguna póliza con patente' }
