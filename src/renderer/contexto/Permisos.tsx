@@ -3,7 +3,7 @@
 // Igual que la sesión: la verdad vive en el proceso principal, que vuelve a controlar cada llamado.
 // Acá sólo se refleja, para no ofrecer botones que después van a fallar. Se actualiza sola cuando un
 // superadministrador cambia la matriz (evento `permisos:cambiaron`, que llega también cuando el cambio
-// se hizo en otra computadora y bajó de GitHub).
+// se hizo en otra computadora y bajó del servidor).
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { alcanza, type Area, type Nivel } from '../../shared/permisos'
 import type { MisPermisos } from '../../shared/tipos'
@@ -47,7 +47,7 @@ export function ProveedorPermisos({ children }: { children: ReactNode }) {
     const dejarDeEscuchar = window.dm.permisos.alCambiar((nuevos) => {
       if (vigente) setPermisos(nuevos)
     })
-    // Al confirmarse la sesión contra GitHub el rol puede haber cambiado, y con él los permisos.
+    // Al confirmarse la sesión contra la base compartida el rol puede haber cambiado, y con él los permisos.
     const dejarDeEscucharSesion = window.dm.auth.alActualizarSesion(pedir)
     return () => {
       vigente = false

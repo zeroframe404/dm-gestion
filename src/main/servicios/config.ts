@@ -37,6 +37,13 @@ interface ConfigVps {
 interface ConfigMeta {
   appId: string
   appSecret: string
+  /**
+   * La dirección a la que Facebook vuelve después de autorizar. Vacío o ausente = la de fábrica
+   * (`URL_DE_REDIRECCION_DE_META`). Se puede cargar porque el día que cambie el dominio de la agencia
+   * hay que poder corregirla sin publicar una versión nueva, y porque tiene que ser EXACTAMENTE la
+   * misma en las cinco computadoras: por eso viaja con el resto del ajuste.
+   */
+  urlDeRedireccion?: string
   actualizadoEn: string
 }
 
@@ -82,8 +89,17 @@ interface Config {
  * —el programa atrapa el intento y lo cancela—, así que no hace falta que exista: sólo tiene que ser
  * EXACTAMENTE la misma que está registrada en el panel de Meta, y ese es el error de configuración
  * número uno. Por eso la pantalla la muestra con un botón para copiarla.
+ *
+ * Ésta es la de fábrica; la que vale la devuelve `urlDeVueltaDeMeta()`, porque desde la v12.4 se puede
+ * cargar y viaja al resto de las computadoras junto con la app.
  */
 export const URL_DE_REDIRECCION_DE_META = 'https://dmartinezseguros.com/meta/vuelta'
+
+/** La dirección de vuelta vigente: la cargada, o la de fábrica mientras nadie haya cargado otra. */
+export function urlDeVueltaDeMeta(): string {
+  const escrita = leerConfig().meta?.urlDeRedireccion
+  return typeof escrita === 'string' && escrita.trim() ? escrita.trim() : URL_DE_REDIRECCION_DE_META
+}
 
 // La base del GENERAL DE CLIENTES vive en el VPS de la agencia desde la v12. La URL y el token van
 // embebidos (mismo criterio que TOKEN_DATOS y UPDATE_TOKEN: el repositorio es privado) y config.json
@@ -174,7 +190,7 @@ export function estadoMeta(): EstadoDeMeta {
     configurada: Boolean(meta?.appId && meta.appSecret),
     // El App ID se muestra —está a la vista en cualquier posteo— y el App Secret no sale nunca de acá.
     appId: meta?.appId ?? '',
-    urlDeRedireccion: URL_DE_REDIRECCION_DE_META,
+    urlDeRedireccion: urlDeVueltaDeMeta(),
     rutaDeConfig: rutaSegura(),
     actualizadoEn: meta?.actualizadoEn ?? null,
   }
@@ -388,8 +404,95 @@ export function guardarMeta(datos: unknown): EstadoDeMeta {
   const appSecret = escrito || config.meta?.appSecret || ''
   if (!appSecret) throw new ErrorDeNegocio('Falta la clave secreta de la app (App Secret).')
 
-  escribirConfig({ ...config, meta: { appId, appSecret, actualizadoEn: new Date().toISOString() } })
+  // La dirección de vuelta: vacía deja la de fábrica, que es lo que quiere el 99 % de las veces.
+  const vuelta = typeof d.urlDeRedireccion === 'string' ? d.urlDeRedireccion.trim() : ''
+  if (vuelta && !/^https:\/\//i.test(vuelta)) {
+    throw new ErrorDeNegocio('La dirección de vuelta de Meta tiene que empezar con https://; es la que se registra en el panel de la app.')
+  }
+
+  escribirConfig({
+    ...config,
+    meta: {
+      appId,
+      appSecret,
+      ...(vuelta ? { urlDeRedireccion: vuelta } : {}),
+      actualizadoEn: new Date().toISOString(),
+    },
+  })
   return estadoMeta()
+}
+
+// ---------------------------------------------------------------------------
+// Lo que viaja al resto de las computadoras
+//
+// Tres de estos ajustes se cargaban máquina por máquina y con eso alcanzaba para que una sucursal
+// trabajara distinto que las otras sin que nadie se enterara: la que no tenía Google no subía los
+// adjuntos de los siniestros, la que no tenía la app de Meta no podía publicar, y la que tenía otra
+// dirección de vuelta fallaba el login de Facebook con un mensaje que no explica nada. Desde la v12.4
+// los carga el superadministrador una vez y el resto los adopta (ver ajustesCompartidos.ts).
+//
+// En los tres, el ORDEN DE LAS CLAVES está escrito a mano y no se toca: la huella con la que el
+// servidor y cada computadora se comparan es el hash del JSON, así que dos objetos con los mismos
+// datos en distinto orden darían huellas distintas y la pantalla diría «desactualizada» para siempre.
+// ---------------------------------------------------------------------------
+
+/** Lo que viaja de la conexión con Google. Sin cuenta o sin hoja no hay nada que compartir. */
+export function valorCompartidoDeGoogle(): { cuentaServicio: Record<string, unknown>; urlHoja: string } | null {
+  const google = leerConfig().google
+  if (!google?.cuentaServicio || !google.urlHoja) return null
+  return { cuentaServicio: google.cuentaServicio as Record<string, unknown>, urlHoja: google.urlHoja }
+}
+
+/**
+ * Escribe la conexión con Google tal cual vino del servidor, sin las validaciones de la pantalla: lo
+ * que bajó ya lo validó quien lo cargó, y volver a pasarlo por «el JSON vacío conserva el anterior»
+ * tendría el efecto contrario al que se busca.
+ */
+export function adoptarGoogle(valor: unknown): boolean {
+  if (!valor || typeof valor !== 'object') return false
+  const v = valor as { cuentaServicio?: unknown; urlHoja?: unknown }
+  if (!v.cuentaServicio || typeof v.cuentaServicio !== 'object' || Array.isArray(v.cuentaServicio)) return false
+  const urlHoja = typeof v.urlHoja === 'string' ? v.urlHoja.trim() : ''
+  if (!urlHoja) return false
+  const cuenta = v.cuentaServicio as CuentaServicio
+  // La misma comprobación mínima que hace la pantalla: sin `client_email` y `private_key` no se puede
+  // firmar nada, y adoptarla dejaría a esta computadora peor de lo que estaba.
+  if (typeof cuenta.client_email !== 'string' || typeof cuenta.private_key !== 'string') return false
+
+  const config = leerConfig()
+  config.google = { cuentaServicio: cuenta, urlHoja, actualizadoEn: new Date().toISOString() }
+  escribirConfig(config)
+  return true
+}
+
+/**
+ * Lo que viaja de la app de Meta. `urlDeRedireccion` va SIEMPRE, con la de fábrica cuando no se cargó
+ * ninguna: es el dato que tiene que ser idéntico en las cinco computadoras y en el panel de Meta, así
+ * que mandarlo explícito es justamente el punto.
+ */
+export function valorCompartidoDeMeta(): { appId: string; appSecret: string; urlDeRedireccion: string } | null {
+  const meta = leerConfig().meta
+  if (!meta?.appId || !meta.appSecret) return null
+  return { appId: meta.appId, appSecret: meta.appSecret, urlDeRedireccion: urlDeVueltaDeMeta() }
+}
+
+export function adoptarMeta(valor: unknown): boolean {
+  if (!valor || typeof valor !== 'object') return false
+  const v = valor as { appId?: unknown; appSecret?: unknown; urlDeRedireccion?: unknown }
+  const appId = typeof v.appId === 'string' ? v.appId.trim() : ''
+  const appSecret = typeof v.appSecret === 'string' ? v.appSecret.trim() : ''
+  if (!appId || !appSecret) return false
+  const vuelta = typeof v.urlDeRedireccion === 'string' ? v.urlDeRedireccion.trim() : ''
+
+  const config = leerConfig()
+  config.meta = {
+    appId,
+    appSecret,
+    ...(vuelta && vuelta !== URL_DE_REDIRECCION_DE_META ? { urlDeRedireccion: vuelta } : {}),
+    actualizadoEn: new Date().toISOString(),
+  }
+  escribirConfig(config)
+  return true
 }
 
 /** Saca la app de Meta de esta computadora. El vínculo con la Página se borra aparte. */

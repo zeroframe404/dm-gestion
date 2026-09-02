@@ -238,6 +238,7 @@ const api: ApiDm = {
     avisos: () => invocar('tareas:avisos'),
     marcarVistos: () => invocar('tareas:marcarVistos'),
     alCompletarse: (escuchar) => suscribir('tareas:completada', escuchar),
+    alCambiarDeAfuera: (escuchar) => suscribir('tareas:cambiaron', escuchar),
   },
   metricas: {
     tablero: (filtros) => invocar('metricas:tablero', filtros),
@@ -301,6 +302,11 @@ const api: ApiDm = {
   // también este acotado o el paso nuevo se recorta en silencio.
   vista: {
     fijarZoom: (escala) => webFrame.setZoomFactor(Math.min(3, Math.max(0.5, escala))),
+  },
+  soporte: {
+    elegirImagenes: () => invocar('soporte:elegirImagenes'),
+    pegarImagen: () => invocar('soporte:pegarImagen'),
+    reportar: (reporte) => invocar('soporte:reportar', reporte),
   },
   mesh: {
     estado: () => invocar('mesh:estado'),

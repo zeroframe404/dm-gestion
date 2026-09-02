@@ -124,6 +124,28 @@ test('todo fondo pálido que usan las pantallas tiene su regla en el tema oscuro
   )
 })
 
+test('los fondos pálidos CON TRANSPARENCIA también tienen su regla', () => {
+  // El agujero que dejó la prueba de arriba y que llegó a las computadoras de la agencia: en el aviso
+  // de Google Drive la ruta del config.json va adentro de un `<code class="bg-amber-100/70">`. La
+  // variante con transparencia es OTRA clase —`.bg-amber-100\/70`— y ninguna regla de `.bg-amber-100`
+  // la alcanza, así que el chip se quedaba con el ámbar clarito del tema claro mientras la letra
+  // (`text-amber-800`, ya dada vuelta) pasaba a ser amarilla: amarillo sobre amarillo, ilegible.
+  //
+  // Como el `\b` de la prueba anterior corta justo antes de la barra, ahí el caso pasaba desapercibido:
+  // se veía `bg-amber-100`, que sí tiene regla. Por eso ésta busca la clase ENTERA, con su `/NN`.
+  const sinRegla = [
+    ...contar(/\bbg-(marino|cielo|slate|red|green|amber|violet|sky|orange|white|black)-(?:50|100)\/\d{1,3}\b/g).keys(),
+  ]
+    .filter((clase) => !tieneReglaOscura(clase))
+    .sort()
+
+  assert.deepEqual(
+    sinRegla,
+    [],
+    `estos fondos translúcidos no tienen regla en el tema oscuro y van a quedar como una banda clara: ${sinRegla.join(', ')}`,
+  )
+})
+
 test('toda la tinta oscura que usan las pantallas tiene su regla en el tema oscuro', () => {
   // La tinta de `600` para arriba es la que va sobre los fondos pálidos de arriba: si no se aclara,
   // queda casi negra sobre casi negro. Desde tres usos: con uno o dos suele ser un detalle suelto.

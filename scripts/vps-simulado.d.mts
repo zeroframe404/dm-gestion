@@ -16,7 +16,26 @@ export class VpsSimulado {
   errorFijo: { estado: number; mensaje: string } | null
   colgar: boolean
   intercambios: Array<{ metodo: string | undefined; ruta: string; autorizacion: string | null }>
-  llamadas: Record<'estructura' | 'leer' | 'celdas' | 'agregar' | 'borrar' | 'pestanas' | 'tramos' | 'estado', number>
+  llamadas: Record<
+    | 'estructura'
+    | 'leer'
+    | 'celdas'
+    | 'agregar'
+    | 'borrar'
+    | 'pestanas'
+    | 'tramos'
+    | 'estado'
+    | 'ajusteLeido'
+    | 'ajusteConsultado'
+    | 'ajusteGuardado'
+    | 'usuariosLeidos'
+    | 'usuariosGuardados',
+    number
+  >
+  /** La base de usuarios de la agencia, tal como quedó en el servidor. */
+  usuarios: { texto: string; version: number; actualizadoEn: string; actualizadoPor: string | null; mensaje: string | null } | null
+  /** Los mensajes con los que se guardó la base de usuarios, en orden. */
+  mensajesDeUsuarios: string[]
   escuchar(puerto?: number): Promise<string>
   cerrar(): Promise<void>
   /** Lee los valores actuales de una pestaña (para asserts). */

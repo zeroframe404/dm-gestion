@@ -40,7 +40,7 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
       setUsuario(null)
       setMotivoCierre(motivo)
     })
-    // Al confirmar la sesión contra GitHub el rol, el nombre o la sucursal pueden haber cambiado.
+    // Al confirmar la sesión contra la base compartida el rol, el nombre o la sucursal pueden haber cambiado.
     const dejarDeEscucharCambios = window.dm.auth.alActualizarSesion((nueva) => {
       if (vigente) setUsuario((actual) => (actual ? nueva : actual))
     })

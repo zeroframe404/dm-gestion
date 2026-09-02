@@ -49,7 +49,7 @@ import {
   urlPublicaDeLaFoto,
 } from '../redes/meta'
 import { pedirCodigoDeMeta } from '../redes/oauth'
-import { URL_DE_REDIRECCION_DE_META, credencialesMeta } from './config'
+import { credencialesMeta, urlDeVueltaDeMeta } from './config'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto as validarTexto } from './validacion'
 
@@ -150,8 +150,11 @@ export async function vincularConMeta(padre: BrowserWindow | null, actor: Sesion
   }
   const { appId, appSecret } = exigirCredenciales()
 
-  const codigo = await pedirCodigoDeMeta(appId, URL_DE_REDIRECCION_DE_META, padre)
-  const tokenCorto = await tokenDesdeElCodigo(appId, appSecret, URL_DE_REDIRECCION_DE_META, codigo)
+  // La misma dirección que muestra la pantalla y que viajó con el ajuste: si acá se usara otra, el
+  // login de Facebook fallaría con un mensaje que no explica nada.
+  const vuelta = urlDeVueltaDeMeta()
+  const codigo = await pedirCodigoDeMeta(appId, vuelta, padre)
+  const tokenCorto = await tokenDesdeElCodigo(appId, appSecret, vuelta, codigo)
   // Sin este paso el token de Página que sale después vencería a las dos horas.
   const tokenLargo = await tokenDeLargaDuracion(appId, appSecret, tokenCorto)
   const paginas = await paginasDelUsuario(tokenLargo)

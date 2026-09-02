@@ -175,7 +175,7 @@ export function Permisos() {
       <p className="flex items-center gap-2 text-xs text-slate-500">
         <Icono nombre="candado" tamano={13} />
         {estado.origen === 'compartida'
-          ? 'Los permisos viajan en la misma base de usuarios que está en GitHub, así que valen igual en todas las computadoras.'
+          ? 'Los permisos viajan en la misma base de usuarios que está en el servidor de la agencia, así que valen igual en todas las computadoras.'
           : 'Los permisos están guardados en esta computadora.'}
         {estado.actualizadoEn && ` Última actualización: ${haceCuanto(estado.actualizadoEn)}.`}
         {soloLectura && ' Sólo el superadministrador puede cambiarlos.'}

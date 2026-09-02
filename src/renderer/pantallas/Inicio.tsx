@@ -5,8 +5,9 @@
 // mañana en vez de mirar un papelito.
 import { useEffect, useState } from 'react'
 import { NOMBRE_ROL, type FilaTarea } from '../../shared/tipos'
+import { DialogoReportarError } from '../componentes/DialogoReportarError'
 import { Icono } from '../componentes/Icono'
-import { Etiqueta, cx } from '../componentes/ui'
+import { Boton, Etiqueta, cx } from '../componentes/ui'
 import { BotonAyuda } from '../componentes/Ayuda'
 import { BotonManual } from '../componentes/BotonManual'
 import { useNavegacion } from '../contexto/Navegacion'
@@ -17,6 +18,7 @@ import { esAreaDePermisos, MODULOS, type IdModulo } from '../modulos'
 export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
   const usuario = useUsuarioActual()
   const { puedeVer } = usePermisos()
+  const [reportando, setReportando] = useState(false)
   // El mapa de módulos muestra sólo los que esta persona puede abrir: ofrecer un atajo a una pantalla
   // que después dice «no tenés permiso» no le sirve a nadie.
   const modulosDeTrabajo = MODULOS.filter(
@@ -36,11 +38,17 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/75">
           Estás trabajando en la sucursal {usuario.sucursal.nombre} como {NOMBRE_ROL[usuario.rol].toLowerCase()}.
         </p>
-        {/* Acá y no enterrado en Administración: quien recién empieza mira esta pantalla. */}
-        <div className="mt-4">
+        {/* Acá y no enterrado en Administración: quien recién empieza mira esta pantalla. Y al lado, el
+            botón para avisar de un error: cuando algo no anda, ésta es la pantalla a la que se vuelve. */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <BotonManual />
+          <Boton icono="alerta" onClick={() => setReportando(true)}>
+            Reportar error
+          </Boton>
         </div>
       </section>
+
+      <DialogoReportarError abierto={reportando} alCerrar={() => setReportando(false)} />
 
       <MisTareas />
 
@@ -89,6 +97,9 @@ function MisTareas() {
       else setTareas([])
     }
     void traer()
+    // Inicio es la pantalla que queda abierta cuando nadie está haciendo nada: si le asignan una tarea
+    // desde otra sucursal, tiene que aparecer sola.
+    return window.dm.tareas.alCambiarDeAfuera(() => void traer())
   }, [verTareas])
 
   // Mientras carga no se reserva lugar: si no hay nada pendiente, esta sección no existe y el mapa de

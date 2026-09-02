@@ -4,38 +4,25 @@
 // Son dos cosas distintas a propósito: tener ocho tareas abiertas es normal y no tiene que gritar,
 // que te acaben de asignar una sí.
 //
-// Se refresca sola cada dos minutos. No hay evento del proceso principal para esto: una tarea la
-// asigna otra persona desde otra computadora y llega por la sincronización, así que preguntar cada
-// tanto es lo único que puede enterarse.
+// Los avisos salen del contexto de tareas, que es el mismo que dibuja el círculo rojo del módulo en la
+// barra lateral: los dos tienen que decir el mismo número. Ahí está también el cuándo se vuelve a
+// preguntar —el carril rápido de la sincronización avisa cuando bajan tareas de otra computadora, y
+// cada dos minutos hay una consulta de respaldo—, así que acá no hay ningún reloj.
 //
 // Cuando aparece una tarea que antes no estaba, además suena la campana: la aplicación pasa el día
 // de fondo y un punto rojo que nadie mira no avisa nada.
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AvisosDeTareas } from '../../shared/tipos'
+import { useEffect, useRef, useState } from 'react'
 import { useNavegacion } from '../contexto/Navegacion'
+import { useAvisosDeTareas } from '../contexto/Tareas'
 import { useAvisoNuevo } from '../sonidos/useAvisoNuevo'
 import { Icono } from './Icono'
 import { cx } from './ui'
 
-/** Cada cuánto se vuelve a preguntar. Dos minutos alcanza: no es un chat. */
-const CADA_CUANTO_MS = 2 * 60_000
-
 export function CampanaDeTareas() {
   const { ir } = useNavegacion()
-  const [avisos, setAvisos] = useState<AvisosDeTareas | null>(null)
+  const { avisos, pendientes, marcarVistos } = useAvisosDeTareas()
   const [abierta, setAbierta] = useState(false)
   const contenedor = useRef<HTMLDivElement | null>(null)
-
-  const traer = useCallback(async () => {
-    const resultado = await window.dm.tareas.avisos()
-    if (resultado.ok) setAvisos(resultado.datos)
-  }, [])
-
-  useEffect(() => {
-    void traer()
-    const reloj = setInterval(() => void traer(), CADA_CUANTO_MS)
-    return () => clearInterval(reloj)
-  }, [traer])
 
   // Suenan las que todavía no vi, no las que están a la vista en el desplegable: `filas` son las ocho
   // primeras de TODO lo abierto, así que sonar por eso daría un aviso cada vez que se completa una y
@@ -65,13 +52,9 @@ export function CampanaDeTareas() {
     const siguiente = !abierta
     setAbierta(siguiente)
     // Abrirla cuenta como enterarse: se apaga el punto de lo que está a la vista.
-    if (siguiente) {
-      const resultado = await window.dm.tareas.marcarVistos()
-      if (resultado.ok) setAvisos(resultado.datos)
-    }
+    if (siguiente) await marcarVistos()
   }
 
-  const pendientes = avisos?.pendientes ?? 0
   const hayNovedad = (avisos?.nuevas ?? 0) > 0 || (avisos?.venceHoy ?? 0) > 0 || (avisos?.vencidas ?? 0) > 0
 
   return (

@@ -5,6 +5,7 @@ import type { Compania, DatosDeCompania } from '../../shared/tipos'
 import { db } from '../db/base'
 import { ahoraIso, normalizarTexto } from '../importacion/normalizar'
 import { ErrorDeNegocio } from './errores'
+import { guardarPlantillaDeAviso, plantillaDeAviso } from './plantillas'
 import { enteroPositivo, texto } from './validacion'
 
 /**
@@ -192,4 +193,107 @@ export function editarCompania(id: number, datos: DatosDeCompania): Compania {
   const actualizada = listarCompanias().find((c) => c.id === identificador)
   if (!actualizada) throw new ErrorDeNegocio('No se encontró esa compañía.')
   return actualizada
+}
+
+// ---------------------------------------------------------------------------
+// Lo que viaja al resto de las computadoras
+// ---------------------------------------------------------------------------
+
+/**
+ * El catálogo de compañías, listo para publicar.
+ *
+ * Por qué viaja. Los días de cobertura financiera son los que pintan de amarillo o de naranja la fila
+ * que el mostrador tiene delante, y los meses de renovación deciden qué pólizas entran en la bandeja.
+ * Cargados máquina por máquina, dos sucursales podían ver la misma póliza de dos colores distintos y
+ * discutir cuál tenía razón. Ahora los toca un administrador y valen para todas.
+ *
+ * Qué NO viaja: el `id` (es de cada base) ni la cantidad de pólizas (se cuenta en cada una). El nombre
+ * normalizado es la clave con la que se cruzan las dos puntas, y por eso las filas van ordenadas por
+ * él: la huella es el hash del JSON y tiene que salir igual en las cinco computadoras.
+ */
+export function valorCompartidoDeCompanias(): {
+  version: number
+  companias: Array<{
+    nombre: string
+    nombreNormalizado: string
+    diasCoberturaFinanciera: number
+    comisionPorcentaje: number
+    mesesRenovacion: number | null
+    activa: boolean
+  }>
+  plantillaAviso: string
+} | null {
+  const filas = db()
+    .prepare(
+      `SELECT nombre, nombre_normalizado AS normalizado, dias_cobertura_financiera AS dias,
+              comision_porcentaje AS comision, meses_renovacion AS meses, activa
+       FROM companias ORDER BY nombre_normalizado`,
+    )
+    .all() as Array<{ nombre: string; normalizado: string; dias: number; comision: number; meses: number | null; activa: number }>
+  if (filas.length === 0) return null
+  return {
+    version: 1,
+    companias: filas.map((f) => ({
+      nombre: f.nombre,
+      nombreNormalizado: f.normalizado,
+      diasCoberturaFinanciera: f.dias,
+      comisionPorcentaje: f.comision,
+      mesesRenovacion: f.meses,
+      activa: f.activa === 1,
+    })),
+    plantillaAviso: plantillaDeAviso(),
+  }
+}
+
+/**
+ * Adopta el catálogo que publicó un administrador.
+ *
+ * Se cruza por `nombreNormalizado`, que es único en la tabla: una compañía que acá todavía no existía
+ * se da de alta, y una que existe se actualiza. Las que hay acá y no vinieron NO se tocan: pueden ser
+ * de una póliza que esta sucursal cargó hoy y todavía no viajó, y borrarlas dejaría esas filas sin
+ * días de cobertura. `sincronizarCompanias()` ya se encarga de que aparezcan solas.
+ */
+export function adoptarCompanias(valor: unknown): boolean {
+  if (!valor || typeof valor !== 'object') return false
+  const v = valor as { version?: unknown; companias?: unknown; plantillaAviso?: unknown }
+  // Una versión más nueva no se adopta a medias: esta computadora no sabe qué significa.
+  if (v.version !== undefined && v.version !== 1) return false
+  if (!Array.isArray(v.companias)) return false
+
+  const insertar = db().prepare(
+    `INSERT INTO companias (nombre, nombre_normalizado, dias_cobertura_financiera, comision_porcentaje,
+                            meses_renovacion, activa, creado_en, actualizado_en)
+     VALUES (@nombre, @normalizado, @dias, @comision, @meses, @activa, @ahora, @ahora)
+     ON CONFLICT(nombre_normalizado) DO UPDATE SET
+       nombre = excluded.nombre,
+       dias_cobertura_financiera = excluded.dias_cobertura_financiera,
+       comision_porcentaje = excluded.comision_porcentaje,
+       meses_renovacion = excluded.meses_renovacion,
+       activa = excluded.activa,
+       actualizado_en = excluded.actualizado_en`,
+  )
+  const ahora = ahoraIso()
+  let escritas = 0
+  db().transaction(() => {
+    for (const cruda of v.companias as unknown[]) {
+      if (!cruda || typeof cruda !== 'object') continue
+      const c = cruda as Record<string, unknown>
+      const nombre = typeof c.nombre === 'string' ? c.nombre.trim() : ''
+      if (!nombre) continue
+      const normalizado = typeof c.nombreNormalizado === 'string' && c.nombreNormalizado.trim() ? c.nombreNormalizado.trim() : normalizarTexto(nombre)
+      const dias = Number(c.diasCoberturaFinanciera)
+      const comision = Number(c.comisionPorcentaje)
+      const meses = c.mesesRenovacion === null || c.mesesRenovacion === undefined ? null : Number(c.mesesRenovacion)
+      // Una fila con un número imposible se saltea sola en vez de llevarse puesta la adopción entera.
+      if (!Number.isInteger(dias) || dias < 0 || dias > 365) continue
+      if (!Number.isFinite(comision) || comision < 0 || comision > 100) continue
+      if (meses !== null && (!Number.isInteger(meses) || meses < 1 || meses > 60)) continue
+      insertar.run({ nombre, normalizado, dias, comision, meses, activa: c.activa === false ? 0 : 1, ahora })
+      escritas++
+    }
+    if (typeof v.plantillaAviso === 'string' && v.plantillaAviso.trim()) {
+      guardarPlantillaDeAviso(v.plantillaAviso)
+    }
+  })()
+  return escritas > 0
 }

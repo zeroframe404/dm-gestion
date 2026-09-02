@@ -117,6 +117,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         titulo: 'Quién ve y quién toca esta pantalla',
         parrafos: [
           'La mira todo el equipo, con el rol que sea: los días de cobertura de cada compañía son los que explican por qué la fila que tenés delante está amarilla y no roja, y saber si una compañía renueva sola o a mano es la mitad de una llamada. Cambiar los números sigue siendo cosa de administradores, porque un cambio acá repinta la planilla de todas las sucursales.',
+          'Y las repinta de verdad: lo que se guarda acá sale para todas las computadoras de la agencia apenas se guarda, junto con el mensaje del aviso. Antes había que cargarlo máquina por máquina, y dos sucursales podían ver la misma póliza de dos colores distintos y discutir cuál tenía razón.',
         ],
       },
       {
@@ -193,7 +194,8 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         parrafos: [
           'El comprobante encabeza con la dirección y el teléfono de la sucursal donde se cobró; el resto del encabezado (provincia, CUIT e inicio de actividades) es el mismo para toda la agencia. Se cargan en la tarjeta «Encabezado del ticket», una fila por sucursal, y vienen puestas las tres direcciones de siempre —la de Dock Sud (Avellaneda), la de Sarandí y la de Lanús— con el teléfono de la agencia. Si un local atiende por otro número, se cambia ahí y sus comprobantes salen con ese.',
           'Si mañana abre una sucursal nueva, se escribe su nombre en «Agregar una sucursal», se le cargan la dirección y el teléfono y se guarda: desde el próximo ticket salen los suyos, sin tocar el programa.',
-          'El encabezado se guarda en la computadora, no en la base compartida: es el de la impresora que esa PC tiene delante. Si la agencia cambia el teléfono de un local, hay que cargarlo en las computadoras de ese local; cambiarlo desde otra sucursal no alcanza. Un EMPLEADO ve y cambia solamente el de su mostrador.',
+          'Cada uno ve y cambia el encabezado de la sucursal en la que está asignado y ninguna otra: la impresora que tiene delante imprime esa dirección y ninguna más, y poder tocar la de Lanús desde Dock Sud sólo sirve para romper el ticket de un mostrador en el que uno no está. Vale igual para un administrador; el superadministrador es la única excepción y las ve todas.',
+          'Lo que se guarda acá vale para TODAS las computadoras de la agencia. Antes el encabezado era de cada máquina, así que cambiar el teléfono de un local significaba cargarlo en cada una de sus computadoras, y con que una quedara vieja salían comprobantes con un número que ya no atiende nadie. Ahora se corrige una vez y el resto lo adopta al abrir el programa. Al guardar sólo viaja el renglón de tu sucursal: el de las otras queda como lo dejaron ellas.',
         ],
       },
       {
@@ -244,7 +246,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.google': {
     clave: 'administracion.google',
     titulo: 'Administración → Google Drive',
-    resumen: 'La credencial de Google que queda sólo para Drive: los respaldos diarios y los adjuntos de siniestros. La base vive en el VPS.',
+    resumen: 'La credencial de Google que queda sólo para Drive: los respaldos diarios y los adjuntos de siniestros. La carga el superadministrador una vez y la adoptan todas las computadoras.',
     secciones: [
       {
         titulo: 'Qué es esta pantalla',
@@ -259,9 +261,10 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
-        titulo: 'Dónde queda guardado',
+        titulo: 'Dónde queda guardado y quién lo carga',
         parrafos: [
-          'Estos datos se guardan únicamente en esta computadora, nunca viajan a ningún otro lado ni se comparten con las demás sucursales. Alcanza con tenerla configurada en las computadoras que hacen los respaldos o cargan adjuntos de siniestros.',
+          'La carga el superadministrador, una sola vez: lo que se guarda acá viaja al servidor de la agencia —cifrado— y el resto de las computadoras lo adopta al abrir el programa. Hasta la versión 12.3 había que cargarla máquina por máquina, y con que una quedara sin configurar esa sucursal no subía los adjuntos de sus siniestros y nadie se enteraba hasta que hacían falta.',
+          'La clave privada nunca vuelve a esta pantalla y nunca se copia al repositorio ni a la base de la cartera. El aviso de arriba dice si esta computadora tiene lo mismo que el servidor.',
         ],
       },
     ],
@@ -388,13 +391,13 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.redessociales': {
     clave: 'administracion.redessociales',
     titulo: 'Administración → Redes sociales',
-    resumen: 'La app de Meta que el programa usa para publicar en Facebook e Instagram. Se carga una vez por computadora.',
+    resumen: 'La app de Meta que el programa usa para publicar en Facebook e Instagram. La carga el superadministrador una vez y la adoptan todas las computadoras.',
     secciones: [
       {
         titulo: 'Qué es esto',
         parrafos: [
           'Para que el programa pueda publicar en la página de Facebook de la agencia y en su Instagram, Meta exige que exista una «app» a nombre de la agencia. Se crea una sola vez en developers.facebook.com y de ahí salen dos datos: el App ID (un número) y el App Secret (una clave). Los dos se cargan acá.',
-          'Se guardan sólo en esta computadora, en el archivo de configuración local. No viajan a la hoja, ni a la base compartida, ni a las otras sucursales: cada computadora que vaya a publicar los tiene que tener cargados. Es el mismo criterio que la cuenta de Google.',
+          'Los carga el superadministrador una sola vez: viajan al servidor de la agencia —cifrados— y el resto de las computadoras los adopta al abrir el programa. Antes había que cargarlos en cada máquina que fuera a publicar. Es el mismo criterio que la cuenta de Google.',
         ],
       },
       {
@@ -402,6 +405,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         parrafos: [
           'Es lo que más falla. En el panel de Meta, en «Facebook Login → Configuración», hay que pegar exactamente la dirección que muestra esta pantalla, en «URI de redireccionamiento de OAuth válidos». Si no coincide letra por letra, Facebook rechaza el ingreso con un error que no explica nada. El botón «Copiar» la deja lista para pegar.',
           'El programa nunca abre esa dirección: atrapa el intento y lo cancela. No hace falta que la página exista.',
+          'Se puede cambiar, por si algún día cambia el dominio de la agencia, y viaja junto con la app: las cinco computadoras usan la misma. Con que una tuviera otra, el login de Facebook fallaría ahí y en ningún otro lado, que es exactamente el problema que esto evita.',
         ],
       },
       {

@@ -83,6 +83,11 @@ export interface EstadoConexionGoogle {
   projectId: string | null
   urlHoja: string | null
   actualizadoEn: string | null
+  /**
+   * Cómo está esta conexión en el servidor, para que la pantalla pueda decir si el resto de las
+   * computadoras tiene lo mismo. `null` = todavía no se consultó (o no hay servidor en esta versión).
+   */
+  compartido?: EstadoDeAjusteCompartido | null
 }
 
 // ---------------------------------------------------------------------------
@@ -2897,6 +2902,35 @@ export const ETIQUETAS_DE_CREDENCIAL: Record<ProveedorDeCatalogo, { usuario: str
  * adopta al arrancar. `alDia` compara huellas: sirve para decir «esta PC tiene lo mismo que el
  * servidor» sin volver a bajar el secreto.
  */
+// ---------------------------------------------------------------------------
+// Reportar un error (Inicio → «Reportar error»)
+// ---------------------------------------------------------------------------
+
+/** Una captura elegida o pegada, tal como la muestra el cuadro antes de mandarla. */
+export interface ImagenDeReporte {
+  /** Dónde está el archivo en esta computadora. Es lo que se manda de vuelta al enviar. */
+  ruta: string
+  nombre: string
+  tipo: string
+  tamano: number
+  /** Miniatura en `data:` para dibujarla en el cuadro. Vacía si no se pudo generar. */
+  vistaPrevia: string
+}
+
+export interface ReporteDeError {
+  titulo: string
+  cuerpo: string
+  /** Las capturas elegidas, por ruta. Vacío o ausente = un reporte sin imágenes, que es lo normal. */
+  rutasDeImagenes?: string[]
+}
+
+/** El issue que quedó creado. La URL es la que se le ofrece abrir a quien reportó. */
+export interface ReporteCreado {
+  numero: number
+  url: string
+  imagenesSubidas: number
+}
+
 export interface EstadoDeAjusteCompartido {
   /** true si el VPS tiene credenciales guardadas para compartir. */
   enElServidor: boolean
@@ -3005,11 +3039,15 @@ export interface EstadoDeMeta {
   /** Dónde se guarda, para poder decirlo en la pantalla. */
   rutaDeConfig: string
   actualizadoEn: string | null
+  /** Cómo está la app en el servidor: si el resto de las computadoras tiene la misma. */
+  compartido?: EstadoDeAjusteCompartido | null
 }
 
 export interface DatosDeMeta {
   appId: string
   appSecret: string
+  /** Vacía deja la de fábrica. Tiene que ser la MISMA que está registrada en el panel de Meta. */
+  urlDeRedireccion?: string
 }
 
 /** Una Página para elegir, cuando la persona administra más de una. */

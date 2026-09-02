@@ -220,6 +220,8 @@ export interface ApiDm {
     marcarVistos: Remota<'tareas:marcarVistos'>
     /** Alguien terminó una tarea: suena el aviso y las pantallas abiertas se refrescan. */
     alCompletarse: Suscripcion<'tareas:completada'>
+    /** La sincronización trajo tareas de otra computadora: hay que volver a preguntar. */
+    alCambiarDeAfuera: Suscripcion<'tareas:cambiaron'>
   }
   metricas: {
     tablero: Remota<'metricas:tablero'>
@@ -287,6 +289,12 @@ export interface ApiDm {
   }
   mesh: {
     estado: Remota<'mesh:estado'>
+  }
+  /** «Reportar error» de Inicio: el cuadro con el título, el texto y las capturas. */
+  soporte: {
+    elegirImagenes: Remota<'soporte:elegirImagenes'>
+    pegarImagen: Remota<'soporte:pegarImagen'>
+    reportar: Remota<'soporte:reportar'>
   }
   importacion: {
     vistaPrevia: Remota<'importacion:vistaPrevia'>

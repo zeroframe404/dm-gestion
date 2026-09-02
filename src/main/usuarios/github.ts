@@ -1,5 +1,10 @@
 // El archivo de usuarios en un repositorio privado de GitHub, leído y escrito con la API «Contents».
 //
+// DESDE LA v12.4 ESTA YA NO ES LA CASA DE LA BASE DE USUARIOS: vive en el VPS de la agencia (ver
+// `vps.ts`). Este almacén queda como SEMILLA de la mudanza —la primera computadora que abre el
+// programa después de actualizar copia de acá al servidor— y se puede retirar entero cuando la agencia
+// esté migrada: vaciar TOKEN_DATOS, revocar el token en GitHub y publicar con --sin-base-de-usuarios.
+//
 // Es una base de datos mínima: un solo archivo JSON. GitHub devuelve el contenido con un `sha` y
 // exige ese mismo sha para sobreescribirlo; si otra computadora escribió en el medio responde 409 y
 // el servicio relee y vuelve a aplicar el cambio. No hace falta ninguna librería: `fetch` viene con Node.

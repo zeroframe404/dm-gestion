@@ -1,11 +1,12 @@
 // Módulo Administración: Usuarios y Permisos (sólo SUPER_ADMIN), la base y Google Drive (SUPER_ADMIN y
-// ADMIN, y con permiso sobre el módulo), y Compañías, Impresora, Sincronizar y Acerca de, que las ve
-// todo el mundo.
+// ADMIN, y con permiso sobre el módulo), y Compañías, Impresora, Sincronizar, Control remoto y Acerca
+// de, que las ve todo el mundo.
 //
-// Las cuatro que ve todo el mundo son las que se necesitan con gente en el mostrador y sin tiempo de
+// Las cinco que ve todo el mundo son las que se necesitan con gente en el mostrador y sin tiempo de
 // llamar a nadie: cuánto cubre una compañía después del vencimiento, la ticketeadora que tiene esta PC
-// delante, forzar una sincronización cuando falta algo que cargó otra sucursal, y la versión del
-// programa. Ninguna configura nada que afecte a las demás computadoras.
+// delante, forzar una sincronización cuando falta algo que cargó otra sucursal, la consola con la que
+// se atiende una computadora que no anda, y la versión del programa. Ninguna configura nada que afecte
+// a las demás computadoras.
 import { useMemo, useState } from 'react'
 import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 import { usePermisos } from '../../contexto/Permisos'
@@ -73,11 +74,12 @@ export function Administracion() {
       lista.push({ id: 'google', nombre: 'Google Drive', icono: 'nube', ayuda: 'administracion.google' })
       lista.push({ id: 'redessociales', nombre: 'Redes sociales', icono: 'instagram', ayuda: 'administracion.redessociales' })
       lista.push({ id: 'vehiculos', nombre: 'Catálogo de vehículos', icono: 'auto', ayuda: 'administracion.vehiculos' })
-      // El control remoto de las computadoras de las sucursales. Va acá, junto al resto de lo que es
-      // de toda la agencia y no de esta máquina, y es lo que se necesita cuando en otra sucursal hay
-      // algo que no anda y hay gente esperando en el mostrador.
-      lista.push({ id: 'controlremoto', nombre: 'Control remoto', icono: 'cuadricula', ayuda: 'administracion.controlremoto' })
     }
+    // El control remoto lo ve CUALQUIER rol. Es la pantalla que hace falta justo cuando en una
+    // sucursal hay algo que no anda y hay gente esperando en el mostrador: pedirle a un administrador
+    // que pase la dirección no protege nada —la consola pide su propia clave del otro lado— y lo único
+    // que agrega es la espera.
+    lista.push({ id: 'controlremoto', nombre: 'Control remoto', icono: 'cuadricula', ayuda: 'administracion.controlremoto' })
     lista.push({ id: 'acerca', nombre: 'Acerca de', icono: 'info', ayuda: 'administracion.acerca' })
     return lista
   }, [puedeVer, usuario.rol])

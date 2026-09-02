@@ -11,6 +11,7 @@ import { Alerta } from './componentes/ui'
 import { ProveedorNavegacion, useNavegacion } from './contexto/Navegacion'
 import { ProveedorPermisos, usePermisos } from './contexto/Permisos'
 import { useSesion } from './contexto/Sesion'
+import { ProveedorTareas } from './contexto/Tareas'
 import { buscarModulo, esAreaDePermisos, type IdModulo } from './modulos'
 import { Administracion } from './pantallas/administracion/Administracion'
 import { Cartera } from './pantallas/cartera/Cartera'
@@ -40,7 +41,10 @@ export function App() {
   return (
     <ProveedorPermisos>
       <ProveedorNavegacion>
-        <ConPermisosCargados />
+        {/* Adentro de los permisos: lo que se pregunta depende de a qué módulos entra esta persona. */}
+        <ProveedorTareas>
+          <ConPermisosCargados />
+        </ProveedorTareas>
       </ProveedorNavegacion>
     </ProveedorPermisos>
   )

@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 
 /** Las mismas claves que acepta el servidor real: es una lista blanca, no un almacén libre. */
-const CLAVES_DE_AJUSTE = new Set(['vehiculos'])
+const CLAVES_DE_AJUSTE = new Set(['vehiculos', 'referencias', 'google', 'meta', 'ticket', 'companias'])
 
 const TOKEN_POR_DEFECTO = 'prueba'
 
@@ -38,9 +38,14 @@ export class VpsSimulado {
     this.llamadas = {
       estructura: 0, leer: 0, celdas: 0, agregar: 0, borrar: 0, pestanas: 0, tramos: 0, estado: 0,
       ajusteLeido: 0, ajusteConsultado: 0, ajusteGuardado: 0,
+      usuariosLeidos: 0, usuariosGuardados: 0,
     }
+    /** Los mensajes con los que se guardó la base de usuarios: lo que antes era el mensaje del commit. */
+    this.mensajesDeUsuarios = []
     /** Los ajustes compartidos, por clave. */
     this.ajustes = new Map()
+    /** La base de usuarios de la agencia: el documento entero y su versión (el candado optimista). */
+    this.usuarios = null
 
     for (const pestana of opciones.pestanas ?? []) {
       this.cargarPestanaDirecto(pestana)
@@ -302,6 +307,43 @@ export class VpsSimulado {
       let filas = 0
       for (const pestana of this.pestanas) filas += pestana.filas.size
       return responder(200, { ok: true, pestanas: this.pestanas.length, filas })
+    }
+    // La base de usuarios de la agencia, que desde la v12.4 vive acá y no en GitHub. El servidor real
+    // la guarda cifrada; acá alcanza con el texto en memoria, porque lo que las pruebas miran es el
+    // contrato y el candado de la versión.
+    if (ruta === '/api/dmg/usuarios' || ruta === '/api/dmg/usuarios/estado') {
+      if (metodo === 'GET') {
+        this.llamadas.usuariosLeidos++
+        if (!this.usuarios) return responder(200, { documento: null })
+        const ficha = {
+          sha: String(this.usuarios.version),
+          actualizadoEn: this.usuarios.actualizadoEn,
+          actualizadoPor: this.usuarios.actualizadoPor,
+        }
+        return responder(200, { documento: ruta.endsWith('/estado') ? ficha : { ...ficha, texto: this.usuarios.texto } })
+      }
+      if (metodo === 'POST' && ruta === '/api/dmg/usuarios') {
+        const texto = typeof json?.texto === 'string' ? json.texto : ''
+        if (!texto.trim()) return responder(400, { error: 'La base de usuarios que se quiso guardar viene vacía.' })
+        const previo = typeof json?.shaPrevio === 'string' && json.shaPrevio !== '' ? json.shaPrevio : null
+        const versionActual = this.usuarios ? String(this.usuarios.version) : null
+        if (previo !== versionActual) {
+          return responder(409, {
+            error: 'La base de usuarios cambió mientras se guardaba: hay que releerla y volver a aplicar el cambio.',
+          })
+        }
+        this.llamadas.usuariosGuardados++
+        const version = (this.usuarios?.version ?? 0) + 1
+        this.usuarios = {
+          texto,
+          version,
+          actualizadoEn: new Date().toISOString(),
+          actualizadoPor: typeof json?.actualizadoPor === 'string' ? json.actualizadoPor : null,
+          mensaje: typeof json?.mensaje === 'string' ? json.mensaje : null,
+        }
+        this.mensajesDeUsuarios.push(this.usuarios.mensaje ?? '')
+        return responder(200, { sha: String(version) })
+      }
     }
     // Ajustes compartidos: la credencial que el superadministrador carga una vez y el resto de las
     // computadoras adopta. El servidor real las guarda cifradas; acá alcanza con guardarlas en

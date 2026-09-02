@@ -45,9 +45,12 @@ function estaViejo(iso: string | null): boolean {
 }
 
 export function CatalogoVehiculos() {
-  const puedeEditar = usePuedeEditar('administracion')
   const usuarioActual = useUsuarioActual()
   const esSuperAdmin = usuarioActual.rol === 'SUPER_ADMIN'
+  // Las credenciales las carga SÓLO el superadministrador. Antes un administrador podía cargarlas en
+  // su computadora sin publicarlas, y eso era exactamente el problema que se quería sacar: una máquina
+  // con credenciales distintas a las de las otras cuatro, sin que nadie se entere.
+  const puedeEditar = usePuedeEditar('administracion') && esSuperAdmin
   const [estado, setEstado] = useState<EstadoDelCatalogo | null>(null)
   const [compartido, setCompartido] = useState<EstadoDeAjusteCompartido | null>(null)
   const [proveedor, setProveedor] = useState<ProveedorDeCatalogo>('INFOAUTO')

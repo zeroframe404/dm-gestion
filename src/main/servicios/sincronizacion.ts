@@ -107,6 +107,9 @@ export function obtenerMotor(): MotorDeSincronizacion {
       crearFuente,
       importar: importarTodo,
       alCambiarEstado: (estado) => emitir('sincronizacion:estado', estado),
+      // El carril rápido de las tareas: cuando trae algo, la campana y el contador de la barra lateral
+      // se enteran en el momento en vez de esperar a su propio reloj.
+      alCambiarLasTareas: () => emitir('tareas:cambiaron', null),
     })
   }
   return motor

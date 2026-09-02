@@ -11,10 +11,10 @@ hoja de Google dejó de ser la fuente de verdad. Ver «La base en el VPS (Fase 1
 
 ```bash
 npm install       # instala dependencias (better-sqlite3 trae binarios listos, no compila nada)
-npm run dev       # desarrollo con recarga automática (usuarios locales: sin DM_GESTION_TOKEN_DATOS no toca GitHub)
-npm run prueba    # 605 pruebas propias, sin tocar ninguna hoja real ni GitHub
+npm run dev       # desarrollo con recarga automática (usuarios locales: sin DM_GESTION_VPS_URL no toca ningún servidor)
+npm run prueba    # las pruebas propias, sin tocar ninguna base real ni GitHub
 npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
-npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador de GitHub
+npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador
 npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
 ```
 
@@ -23,7 +23,8 @@ npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un ar
 **En la computadora que inicializa la base compartida** (la primera, una sola vez): al arrancar se crea
 el usuario **daniel** con la contraseña **cambiar123** (rol SUPER_ADMIN) y la aplicación obliga a
 cambiarla al entrar. Después, desde Administración → Usuarios, el botón **Subir usuarios** publica
-los usuarios de esa computadora en GitHub (ver «Base de usuarios compartida» más abajo).
+los usuarios de esa computadora en el servidor de la agencia (ver «Base de usuarios compartida» más
+abajo).
 
 **En cualquier otra computadora**: la primera vez hace falta internet, porque el usuario y la
 contraseña se comprueban contra la base compartida. A partir de ahí, el último que ingresó con
@@ -173,8 +174,9 @@ Cómo funciona, en corto:
   sincronización, la cola, los conflictos y el importador corren tal cual, sólo cambió el transporte.
   Sin internet se sigue trabajando local y la cola espera, igual que siempre.
 - **La URL y el token van embebidos** (`src/main/servicios/config.ts`, mismo criterio que
-  `TOKEN_DATOS` y `UPDATE_TOKEN`): las PCs se actualizan y quedan conectadas sin configurar nada.
-  El token tiene que coincidir con el `DMG_SYNC_TOKEN` del `.env` del VPS.
+  `UPDATE_TOKEN`): las PCs se actualizan y quedan conectadas sin configurar nada. El token tiene que
+  coincidir con el `DMG_SYNC_TOKEN` del `.env` del VPS, y desde la v12.4 es también el que abre la base
+  de usuarios: es una sola puerta para todo lo compartido.
 - **Primero se actualizan TODAS las computadoras a la v12, después se migra.** Una PC que siga en
   1.0.x escribe en Google sin ningún aviso, y lo que cargue después de la migración no llega al VPS
   (habría que repetirlo a mano en una PC al día). El ciclo de actualización automática es de hasta
@@ -312,8 +314,16 @@ principal sería un viaje de ida y vuelta para algo que se toca con la rueda del
 
 ### Columnas (`dm.vista.columnas.<tabla>`)
 
-El botón **«Columnas»** de Cartera, Clientes, Pólizas y Mora abre un desplegable con una casilla por
-columna. Lo que se apaga se guarda por tabla y por computadora.
+El botón **«Columnas»** abre un desplegable con una casilla por columna. Lo que se apaga se guarda por
+tabla y por computadora. Está en Cartera, Clientes, Pólizas y Mora —que dibujan la tabla con
+`TablaVirtual`— y también en Cobranzas → Caja del día, Siniestros, Renovaciones y Presupuestos, que
+tienen su `<table>` escrita a mano: ahí el desplegable usa el mismo `useColumnasElegidas` y cada `<th>`
+y cada `<td>` se dibuja según las columnas que quedaron a la vista (claves `cobranzas-caja`,
+`siniestros`, `renovaciones` y `presupuestos`).
+
+En todas, la columna que dice de quién es la fila —el asegurado, el cliente— va con `siempre: true` y
+no se puede apagar, igual que la última de Renovaciones y Siniestros, que es donde están los botones
+que cierran el trámite y la marca de que la fila se abre.
 
 **La columna del nombre es la primera y la única fija** (`fija: true`, `siempre: true` en
 `ColumnaTabla`): queda pegada a la izquierda al correr la tabla en horizontal y no se puede apagar. La
@@ -448,7 +458,7 @@ WhatsApp suelto y se perdía.
 - **Cómo cruza de una computadora a otra.** Cada sucursal tiene su propia base local, así que el aviso
   viaja por la hoja de Google en la pestaña **APP RECHAZOS**. Es la única de las pestañas que escribe la
   aplicación que además **se lee de vuelta a su tabla** (`guardarRechazo` en `importacion/importador.ts`):
-  las otras tres (APP LEADS, APP PRESUPUESTOS, APP TAREAS) son de ida nada más, para poder mirarlas
+  APP TAREAS también se lee de vuelta (ver **Tareas**); APP LEADS y APP PRESUPUESTOS son de ida nada más, para poder mirarlas
   desde Google. Además es la única pestaña de la app que entra en el **ciclo de bajada de todos los
   días** (`pestanasDeTodosLosDias` en `sincronizacion/motor.ts`): un aviso que tardara hasta la próxima
   bajada completa en aparecer no serviría para llamar a nadie. Lo que la sucursal avisada cambia
@@ -948,8 +958,21 @@ siniestro); acá está el módulo propio.
 - **La campana** de la barra superior enciende un punto cuando te asignan algo que todavía no viste o
   cuando algo vence hoy; el número que se ve al lado es lo pendiente. Son dos cosas distintas a
   propósito: tener ocho tareas abiertas es normal y no tiene que gritar, que te acaben de asignar una
-  sí. Abrirla cuenta como enterarse. Se refresca sola cada dos minutos, porque una tarea puede
-  asignarla otra persona desde otra computadora y llega por la sincronización.
+  sí. Abrirla cuenta como enterarse.
+- **El círculo rojo del menú**: el módulo «Tareas» de la barra lateral lleva un globito rojo con el
+  número de pendientes en blanco. Con la barra achicada a iconos va pegado al icono, arriba a la
+  derecha; con la barra ancha, al final del renglón. Sale del mismo contexto que la campana
+  (`contexto/Tareas.tsx`), así que los dos números no se pueden contradecir, y lo que dice el círculo
+  también va en el `title` y en el `aria-label`, porque un lector de pantalla no ve un globito.
+- **Se asignan entre cualquiera**: la lista de responsables son todos los usuarios activos, sin mirar el
+  rol. Un empleado le puede anotar una tarea al superadministrador y al revés; lo único que se rechaza
+  es un responsable que no existe o que está dado de baja.
+- **Llegan en el momento**: además de la bajada de los cinco minutos, el motor tiene un **carril rápido**
+  que cada 30 segundos baja una sola pestaña, APP TAREAS (`ciclarTareas` en `sincronizacion/motor.ts`).
+  Cuando trae algo emite `tareas:cambiaron`, y con ese aviso se vuelven a pedir la campana, el círculo
+  del menú, el listado del módulo y las tareas de Inicio, sin esperar a ningún reloj. El carril rápido
+  no toca la marca de «última bajada» ni dispara la importación completa: es una pestaña sola, no la
+  bajada de la aplicación.
 - La que uno se pone a sí mismo **no** enciende su propia campana.
 
 ### Las pestañas nuevas de la hoja
@@ -963,13 +986,16 @@ primera vez que hay algo que subir a alguna de ellas**.
   llenarse de pestañas vacías.
 - Se crean **al final**, nunca en el medio: el orden de las pestañas es lo que usa el importador para
   deducir el año de las planillas mensuales que no lo dicen en el título.
-- Las tres primeras van en un solo sentido (la aplicación escribe, la hoja mira). Sus filas quedan
+- APP LEADS y APP PRESUPUESTOS van en un solo sentido (la aplicación escribe, la hoja mira). Sus filas quedan
   anotadas como conocidas igual que las de cualquier otro módulo, así que volver a importar no las
   duplica ni dispara una importación completa.
 - **«APP RECHAZOS» y «APP PAGOS» van en los dos sentidos**: se leen de vuelta (a `rechazos_debito` y a
   `pagos`) y entran en el ciclo de bajada de todos los días, porque son el camino por el que un aviso o
   un pago cargado en una sucursal llega a la computadora de la otra. Ver **Rechazos del débito
   automático** y **Cobranzas e Imputados**, más arriba.
+- **«APP TAREAS» también se lee de vuelta** desde la v12.4: entra en el ciclo de todos los días y además
+  tiene el carril rápido de 30 segundos, que es lo que hace que una tarea asignada desde otra sucursal
+  aparezca en el momento. Ver **Tareas**, más arriba.
 - Las tareas de la Fase 5 —creadas antes de que la pestaña existiera— se quedan sin subir: no se inventa
   historia en la hoja.
 
@@ -1189,94 +1215,207 @@ npm run publicar:parche                           # publica 1.0.1
 # aparece la barra de aviso; Reiniciar ahora deja la app en 1.0.1
 ```
 
-## Base de usuarios compartida (Fase 11)
+## Base de usuarios compartida (Fase 11, mudada al VPS en la v12.4)
 
-Los usuarios ya no viven en cada computadora: viven en **`usuarios.json` del repositorio privado
-`zeroframe404/dm-gestion-datos`** (una «microbase» leída y escrita con la API Contents de GitHub).
-Un usuario creado en una PC entra en todas; desactivarlo o cambiarle la contraseña vale para todas.
-Código: `src/main/usuarios/` (documento, cliente de GitHub, credencial cifrada, espejo local) y
-`src/main/servicios/baseDeUsuarios.ts` (la orquestación).
+Los usuarios ya no viven en cada computadora: viven en **el VPS de la agencia**, en el mismo servidor
+que el GENERAL DE CLIENTES y detrás del mismo puente `/api/dmg` (endpoints `GET`/`POST
+/api/dmg/usuarios`). Un usuario creado en una PC entra en todas; desactivarlo o cambiarle la
+contraseña vale para todas. Código: `src/main/usuarios/` (documento, cliente del VPS, cliente de
+GitHub, credencial cifrada, espejo local) y `src/main/servicios/baseDeUsuarios.ts` (la orquestación).
+
+### Por qué se mudó, y qué pasó con GitHub
+
+Hasta la v12.3 el documento era **`usuarios.json` del repositorio privado
+`zeroframe404/dm-gestion-datos`**, y para llegar a él cada computadora llevaba embebido en el `.exe` un
+token con permiso de **escritura** sobre ese repositorio. Andaba, pero repartía una credencial de
+GitHub por máquina para leer un archivo que desde la v12 ya podía viajar por el puente que lleva la
+cartera entera. Cinco computadoras con un token de escritura es una superficie que no hacía falta
+tener.
+
+`AlmacenGitHub` sigue en el código, pero como **semilla de la mudanza y nada más**: la primera
+computadora que abre el programa después de actualizar encuentra el VPS sin documento, lee el
+`usuarios.json` del repositorio y lo sube tal cual (`AlmacenVps.mudarDesdeLaSemilla`). De ahí en más
+manda el VPS y GitHub no se vuelve a tocar. Es automático a propósito: pedirle a alguien que apriete un
+botón de migración es pedirle que se acuerde de hacerlo **antes** de que otro intente ingresar.
+
+Cuando la agencia ya esté migrada (Acerca de → «Base de usuarios» dice «Compartida · VPS
+dmartinezseguros.com»), se vacía `TOKEN_DATOS` en `src/main/usuarios/github.ts`, se revoca el token en
+GitHub y se publica con `--sin-base-de-usuarios`. El repositorio `dm-gestion-datos` queda como copia
+histórica.
+
+**El `sha` ahora es una versión.** Lo único que cambia para el servicio de usuarios: en GitHub era el
+hash del blob y acá es el número de versión que devuelve el servidor. Sigue siendo opaco y sigue
+haciendo lo mismo —el candado optimista—, así que `baseDeUsuarios.ts` no se enteró de la mudanza.
+
+**En el servidor** (`Seguros_Daniel_Martinez`): tabla `dmg_usuarios`, una sola fila con el documento
+entero cifrado con AES-256-GCM (la misma llave que los ajustes compartidos: `DMG_AJUSTES_CLAVE`, o el
+`DMG_SYNC_TOKEN` si no está). Adentro hay hashes de bcrypt, que ya son hashes, pero es la lista de
+quién entra a la agencia y un `pg_dump` no tiene por qué llevarla en claro.
 
 ### Cómo funciona
 
-- **Con internet**, cada ingreso lee el archivo (con ETag: si no cambió, GitHub responde 304 y no gasta
-  cuota), refresca el espejo local y compara la contraseña contra el hash bcrypt del archivo.
+- **Con internet**, cada ingreso lee el documento del servidor, refresca el espejo local y compara la
+  contraseña contra el hash bcrypt del documento.
 - **Sin internet** entra sólo el **último usuario que ingresó con conexión en esa PC**, con la credencial
   cifrada (`credencial.bin`) y por 30 días. Los demás ven «Sin internet. En esta computadora sólo puede
-  ingresar «daniel»…». Con la sesión abierta, cada 2 minutos se intenta confirmar contra GitHub; al
+  ingresar «daniel»…». Con la sesión abierta, cada 2 minutos se intenta confirmar contra el servidor; al
   confirmarse desaparece «Ingresaste sin internet» de la barra. Si en el medio lo desactivaron o le
   cambiaron la contraseña desde otra PC, la sesión se cierra con un aviso.
 - **Administrar usuarios exige internet y una sesión confirmada**: crear, editar, desactivar y resetear
-  se escriben en GitHub con el candado optimista del `sha` (si otra PC escribió en el medio, se relee y
-  se vuelve a aplicar; si la escritura se cortó sin respuesta, se relee y se comprueba si quedó). Cada
-  escritura es un commit con quién, desde qué PC y con qué versión: el historial del repo es la auditoría.
+  se escriben en el servidor con el candado optimista de la versión (si otra PC escribió en el medio, se
+  relee y se vuelve a aplicar; si la escritura se cortó sin respuesta, se relee y se comprueba si quedó).
+  Cada escritura guarda su mensaje —quién, desde qué PC y con qué versión del programa—, el mismo texto
+  que antes iba al mensaje del commit.
 - **Un usuario nuevo** entra con la contraseña temporal que le puso el administrador y tiene que
   cambiarla con internet; hasta entonces no se guarda credencial para entrar sin conexión.
 - Si el archivo está roto o no tiene ningún superadministrador activo, **no se refleja** (el espejo
   anterior se conserva) y el ingreso cae a la credencial guardada con el error a la vista del SUPER_ADMIN.
 
-### Puesta en marcha (una sola vez, el dueño del repositorio)
+### Puesta en marcha
 
-1. El repositorio ya existe: `zeroframe404/dm-gestion-datos` (privado, con README). Si hubiera que
-   recrearlo: `gh repo create zeroframe404/dm-gestion-datos --private --add-readme`. **Tiene que ser un
-   repositorio aparte** del código: el token de acá escribe, y si escribiera en `dm-gestion` cualquier PC
-   con el programa podría empujar código o publicar una versión que después instalarían todas.
-2. Generar el token en https://github.com/settings/tokens?type=beta → *Only select repositories* →
-   `dm-gestion-datos` → Repository permissions → **Contents: Read and write**, nada más. Elegir el
-   vencimiento más largo que permita la pantalla y **anotarlo**; que no coincida con el de
-   `UPDATE_TOKEN` (`src/main/servicios/updater.ts`), así nunca vencen los dos el mismo mes.
-3. Pegarlo en `TOKEN_DATOS` de `src/main/usuarios/github.ts` y publicar (`npm run publicar:parche`).
-   `publicar.mjs` se niega a publicar con el token vacío.
-4. En la computadora que tiene los usuarios de verdad (hoy, la única instalada), abrir la versión nueva,
-   ingresar y en **Administración → Usuarios → Subir usuarios**. Eso crea `usuarios.json`. No se hace
-   solo a propósito: una PC recién instalada subiría la semilla `daniel/cambiar123` y pisaría a los de
-   verdad. Si la única cuenta es `daniel` con la contraseña inicial, primero hay que cambiarla.
-5. Comprobar: Usuarios dice «Los usuarios se guardan en la base compartida…», y Acerca de → «Base de
-   usuarios» dice «Compartida · GitHub zeroframe404/dm-gestion-datos — última comprobación recién».
-   Las demás PCs, al actualizarse, ingresan directo contra GitHub (su `daniel` local queda enganchado al
-   de la base; los usuarios locales que no estén en la base quedan desactivados, sin contraseña).
+En una agencia que ya venía con la base en GitHub **no hay nada que hacer**: la primera computadora que
+abra la v12.4 muda el documento sola. Lo único que hay que comprobar después es que Acerca de → «Base
+de usuarios» diga «Compartida · VPS dmartinezseguros.com».
 
-### Rotar el token (vence, o se filtró)
+En una instalación desde cero:
 
-El programa lee el vencimiento que informa GitHub y avisa en Usuarios y en Acerca de desde 30 días
-antes. Si vence sin rotarlo, todas las PCs pasan a «sin acceso a la base de usuarios»: sólo entra el
-último de cada PC, nadie administra y ninguna PC nueva puede ingresar.
+1. En el `.env` del VPS tiene que estar `DMG_SYNC_TOKEN` (el mismo del puente de la cartera) y conviene
+   fijar `DMG_AJUSTES_CLAVE`, que es la llave con la que se cifran el documento y los ajustes. Rotar el
+   `DMG_SYNC_TOKEN` sin haber fijado antes `DMG_AJUSTES_CLAVE` deja los dos ilegibles.
+2. Correr la migración de Prisma (`dmg_usuarios`).
+3. En la computadora que tiene los usuarios de verdad, abrir el programa, ingresar y en
+   **Administración → Usuarios → Subir usuarios**. Eso crea el documento. No se hace solo a propósito:
+   una PC recién instalada subiría la semilla `daniel/cambiar123` y pisaría a los de verdad. Si la única
+   cuenta es `daniel` con la contraseña inicial, primero hay que cambiarla.
+4. Comprobar: Usuarios dice «Los usuarios se guardan en la base compartida…», y Acerca de → «Base de
+   usuarios» dice «Compartida · VPS dmartinezseguros.com — última comprobación recién». Las demás PCs, al
+   actualizarse, ingresan directo contra el servidor (su `daniel` local queda enganchado al de la base;
+   los usuarios locales que no estén en la base quedan desactivados, sin contraseña).
 
-1. Generar el token nuevo (mismos permisos). En `github.ts`: el nuevo a `TOKEN_DATOS`, el viejo a
-   `TOKEN_DATOS_ANTERIOR`. Publicar.
-2. Esperar a que todas las PCs se actualicen (el historial de commits de `usuarios.json` muestra la
-   versión con la que escribe cada una).
-3. Revocar el viejo en GitHub y vaciar `TOKEN_DATOS_ANTERIOR` en la versión siguiente.
+### Rotar el token
+
+El token del puente es uno solo y ya existía: se cambia en `VPS_TOKEN` (`src/main/servicios/config.ts`)
+y en el `DMG_SYNC_TOKEN` del `.env` del servidor, y tienen que cambiar los dos a la vez. **Antes de
+rotarlo hay que fijar `DMG_AJUSTES_CLAVE`** con el valor viejo, o el documento de usuarios y los ajustes
+compartidos quedan cifrados con una llave que ya no se deriva de nada.
+
+El token de GitHub (`TOKEN_DATOS`) ya no se rota: cuando la agencia terminó de migrar se vacía y se
+revoca. Mientras tanto sólo lo usa la mudanza, y el programa no avisa más de su vencimiento porque el
+del puente no vence.
 
 ### Recuperación de emergencia
 
 - **El único superadministrador olvidó la contraseña**: `npm run clave-hash -- "contraseña nueva"`
-  imprime el hash; editar `usuarios.json` en github.com, pegar el hash en `claveHash` de ese usuario y
-  poner `debeCambiarClave: true`. Nunca borrar `usuarios.json`: si no existe, las PCs lo tratan como
-  «la base no está inicializada».
+  imprime el hash; hay que pegarlo en `claveHash` de ese usuario dentro del documento y poner
+  `debeCambiarClave: true`. Como en el VPS el documento está cifrado, se edita desde el servidor: bajarlo
+  con `GET /api/dmg/usuarios` (con el `DMG_SYNC_TOKEN` como Bearer), cambiar el hash y devolverlo con
+  `POST /api/dmg/usuarios` mandando el mismo `shaPrevio` que trajo la lectura. Nunca borrar la fila: si
+  no existe, las PCs lo tratan como «la base no está inicializada».
 - **Una PC no puede entrar sin internet** («la copia guardada no se pudo leer», se borró `sesion/`, se
   cambió la cuenta de Windows): hace falta un ingreso con internet, nada más.
 - **Probar la conexión** sin cerrar sesión: Acerca de → «Probar conexión».
 
 ### Qué NO protege esto (decisión de arquitectura, leer antes de confiar en los roles)
 
-El token viaja dentro del instalador, igual que `UPDATE_TOKEN`, y cualquiera que tenga el programa
-puede extraerlo y reescribir `usuarios.json` desde afuera (agregarse como SUPER_ADMIN, cambiar
+El token del puente viaja dentro del instalador, igual que `UPDATE_TOKEN`, y cualquiera que tenga el
+programa puede extraerlo y reescribir el documento desde afuera (agregarse como SUPER_ADMIN, cambiar
 contraseñas, bajar los hashes). **Los roles protegen contra errores, no contra un empleado
-malintencionado con el instalador.** Es el precio de una base sin servidor con una sola credencial
-compartida; la alternativa (una cuenta de GitHub por persona, o un servicio intermedio) cambia el
-alcance. Lo que sí se hace: el repositorio de datos está aparte del código, el token no tiene ningún
-otro permiso, cada escritura queda en el historial con quién/dónde/versión, las contraseñas sólo
-existen como bcrypt, y la sesión sin internet se arma desde la credencial cifrada y no desde la tabla
-local (que cualquiera podría editar con un cliente SQLite).
+malintencionado con el instalador.** Es el precio de una sola credencial compartida entre las cinco
+computadoras; la alternativa (una cuenta por persona contra el servidor) cambia el alcance.
+
+Lo que sí mejoró con la mudanza: ya no hay un token de **GitHub** con permiso de escritura repartido por
+máquina, así que el peor caso es reescribir el documento de usuarios y no tocar un repositorio. Y lo que
+se mantiene: el token del puente no sirve para nada más que el puente, cada escritura guarda
+quién/dónde/versión, las contraseñas sólo existen como bcrypt, el documento se guarda cifrado en el
+servidor, y la sesión sin internet se arma desde la credencial cifrada y no desde la tabla local (que
+cualquiera podría editar con un cliente SQLite).
 
 ### En desarrollo y en las pruebas
 
 `npm run dev`, `sembrar` y todos los `humo:*` arrancan en **modo local** (usuarios en la tabla, como
-antes) salvo que se defina `DM_GESTION_TOKEN_DATOS`; `DM_GESTION_GITHUB_API` apunta la API a un
-simulador local (o a un puerto cerrado, para «cortar internet») y `DM_GESTION_ARCHIVO_DATOS` usa otro
-archivo del repo (así `--real` no toca `usuarios.json`). Las tres variables sólo valen en desarrollo.
-El simulador de la API Contents está en `scripts/github-simulado.mjs` y lo usan las pruebas y el humo.
+antes) salvo que se defina `DM_GESTION_VPS_URL`, que es la misma variable con la que se apunta la
+cartera al simulador: nunca al VPS de verdad. `DM_GESTION_VPS_TOKEN` cambia el token (por defecto, el
+del simulador). Para la semilla de GitHub siguen valiendo `DM_GESTION_TOKEN_DATOS`,
+`DM_GESTION_GITHUB_API` (un simulador local, o un puerto cerrado para «cortar internet») y
+`DM_GESTION_ARCHIVO_DATOS` (otro archivo del repo, así `--real` no toca `usuarios.json`). Todas sólo
+valen en desarrollo. Los simuladores están en `scripts/vps-simulado.mjs` y `scripts/github-simulado.mjs`,
+y los usan las pruebas y el humo.
+
+## Lo que se carga una vez y lo tienen todas (los ajustes compartidos)
+
+Hasta la v12.3, la configuración de los servicios externos vivía en el `config.json` de cada
+computadora y el encabezado del ticket en la base local de cada una. Eso significaba ir máquina por
+máquina, y con que **una** quedara sin cargar esa sucursal trabajaba distinto sin que nadie se
+enterara: la que no tenía la cuenta de Google no subía los adjuntos de los siniestros, la que no tenía
+la app de Meta no podía publicar, la que tenía otra dirección de vuelta fallaba el login de Facebook
+con un mensaje que no explica nada, y la que tenía el teléfono viejo imprimía comprobantes con un
+número que ya no atiende nadie.
+
+Desde la v12.4 todo eso viaja por el **puente de ajustes del VPS** (`src/main/servicios/ajustesCompartidos.ts`):
+se carga una vez, el servidor lo guarda cifrado y el resto de las computadoras lo adopta sola al
+arrancar.
+
+| Qué | Dónde se carga | Quién lo carga |
+| --- | --- | --- |
+| Catálogo de vehículos (InfoAuto, Mercado Libre, DNRPA) | Administración → Catálogo de vehículos | Superadministrador |
+| Conexión con Google (Drive: respaldos y adjuntos) | Administración → Google Drive | Superadministrador |
+| App de Meta y **la dirección de vuelta** | Administración → Redes sociales | Superadministrador |
+| Catálogo de compañías y la plantilla del aviso | Administración → Compañías | Administrador o superadministrador |
+| Encabezado del ticket (dirección y teléfono) | Administración → Impresora | Cualquier rol, **el de su sucursal** |
+| Las cuatro listas del módulo Compañías | Compañías → «Publicar para todas» | Superadministrador |
+
+Tres reglas que ordenan todo esto:
+
+1. **Guardar es guardar para todas.** No hay un segundo botón de «publicar» (salvo en el módulo
+   Compañías, donde las listas son largas y se cargan de a poco): apretar «Guardar» escribe acá y sale
+   para el servidor en el mismo movimiento.
+2. **Que el servidor no conteste no deshace el guardado.** Lo local quedó bien escrito; el motivo
+   vuelve en `compartido.error` y la pantalla lo muestra con el aviso de que el resto todavía no se
+   enteró. Se reintenta guardando de nuevo.
+3. **La adopción del arranque no pisa lo que se cargó acá y no llegó a viajar.** Cada computadora
+   recuerda la huella de lo último que sincronizó (`ajuste_sincronizado_<clave>` en `configuracion`); si
+   lo que tiene hoy no es esa huella, hay un cambio local sin publicar y el arranque lo respeta. Sin esa
+   regla, el teléfono corregido con el servidor caído desaparecía a la mañana siguiente.
+
+**El encabezado del ticket tiene una vuelta más.** Es el único que escriben todos, y cada uno ve sólo el
+renglón de su sucursal. Si Lanús publicara la lista entera tal como la tiene guardada, mandaría también
+su copia de la dirección de Dock Sud —que puede ser vieja— y borraría la corrección que Dock Sud hizo
+esta mañana. Así que al publicar se lee lo que hay en el servidor y se le reemplaza **sólo** el renglón
+de la sucursal de quien está guardando (`publicarEncabezadoDelTicket`). El superadministrador es la
+excepción: ve las cuatro, así que lo que tiene en pantalla es lo que manda.
+
+**La huella.** El servidor y cada computadora se comparan por el SHA-256 del JSON del valor, así que el
+**orden de las claves importa** y por eso está escrito a mano en cada `valorCompartidoDe…`: dos objetos
+con los mismos datos en distinto orden darían huellas distintas y la pantalla diría «desactualizada»
+para siempre. Por lo mismo, las listas (compañías, direcciones) viajan ordenadas por una clave estable.
+
+## Reportar un error (Inicio → «Reportar error»)
+
+Cuando algo fallaba en un mostrador, lo que llegaba era un mensaje de WhatsApp que decía «no anda».
+Sin la pantalla, sin la versión, sin la sucursal y casi siempre sin la captura. Con eso no se reproduce
+nada, así que la primera respuesta era siempre la misma pregunta y el problema esperaba un día más.
+
+El botón está en Inicio, al lado de «Descargar el manual», y **lo usa cualquier rol**: hacerle pedir
+permiso a alguien para avisar de un error es la forma de no enterarse nunca. Abre un cuadro con el
+título, la descripción y hasta **cuatro capturas**, que se pegan con `Ctrl+V` —que es donde quedan al
+apretar Impr Pant— o se buscan con el explorador. El programa agrega solo quién reporta, desde qué
+sucursal, con qué versión y en qué sistema.
+
+**El programa nunca habla con GitHub.** Manda el reporte al VPS (`POST /api/dmg/incidencias`, con el
+token del puente que ya tenía) y **el servidor** abre el issue con un token que vive en su `.env`
+(`DMG_INCIDENCIAS_TOKEN`, permiso «Issues: Read and write» y ninguno más). Es la misma lección que dejó
+la base de usuarios: un token con permiso de escritura embebido en el `.exe` está en las cinco
+computadoras y cualquiera lo puede extraer.
+
+**Las capturas.** Un issue no sabe recibir archivos por API: lo único que entiende es un enlace. Se
+guardan en la tabla `dmg_incidencia_imagenes` del VPS y el cuerpo del issue las referencia por una URL
+de ese servidor. Esa URL es **pública** —quien lee el issue tiene que poder verlas sin credenciales del
+VPS— y lo que la protege es el nombre: un UUID v4, 122 bits al azar, sin forma de enumerar las de al
+lado. El endpoint que las sirve está en un router aparte (`/api/dmg-publico`) justamente para que la
+frontera se vea y no quede escondida entre los que sí piden token.
+
+Código: `src/main/servicios/soporte.ts` y `src/renderer/componentes/DialogoReportarError.tsx` de este
+lado; `server/src/modules/dmg/incidencias.service.ts` del otro.
 
 ## Permisos por rol (Administración → Permisos)
 

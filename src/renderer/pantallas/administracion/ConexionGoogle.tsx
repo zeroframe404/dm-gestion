@@ -1,13 +1,19 @@
 // Google Drive: JSON de la cuenta de servicio (para respaldos y adjuntos) y URL de la hoja de cálculo.
-// Se guardan en %APPDATA%/dm-gestion/config.json; la clave privada nunca vuelve al renderer.
+// Se guardan en %APPDATA%/dm-gestion/config.json —la clave privada nunca vuelve al renderer— y desde la
+// v12.4 viajan al VPS para que el resto de las computadoras las adopte: una sucursal sin la cuenta no
+// subía los adjuntos de los siniestros y nadie se enteraba hasta que hacían falta.
 import { useEffect, useState, type FormEvent } from 'react'
 import type { EstadoConexionGoogle } from '../../../shared/tipos'
+import { EstadoCompartido } from '../../componentes/EstadoCompartido'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Tarjeta } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
+import { useUsuarioActual } from '../../contexto/Sesion'
 
 export function ConexionGoogle() {
-  // Con Administración en «sólo ver» se ve con qué cuenta está conectado, pero no se cambia.
-  const puedeEditar = usePuedeEditar('administracion')
+  // La MIRAN los administradores; la CARGA sólo el superadministrador, porque lo que se guarda acá
+  // pisa la cuenta de las otras cuatro computadoras. Con Administración en «sólo ver», ni eso.
+  const usuario = useUsuarioActual()
+  const puedeEditar = usePuedeEditar('administracion') && usuario.rol === 'SUPER_ADMIN'
   const [estado, setEstado] = useState<EstadoConexionGoogle | null>(null)
   const [rutaConfig, setRutaConfig] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -44,7 +50,11 @@ export function ConexionGoogle() {
     if (resultado.ok) {
       setEstado(resultado.datos)
       setJson('')
-      setAviso('La conexión con Google se guardó correctamente.')
+      setAviso(
+        resultado.datos.compartido?.error
+          ? 'La conexión se guardó en esta computadora. Al resto no se pudo mandar: mirá el aviso de acá abajo.'
+          : 'La conexión con Google se guardó y salió para el resto de las computadoras.',
+      )
     } else {
       setError(resultado.error)
     }
@@ -100,15 +110,30 @@ export function ConexionGoogle() {
               ayuda="Acordate de compartir la hoja con el correo de la cuenta de servicio."
             />
 
-            <Alerta tono="aviso">
-              Estos datos se guardan únicamente en esta computadora
+            <EstadoCompartido
+              estado={estado?.compartido}
+              nombre="la conexión con Google"
+              comoSeCarga="La carga el superadministrador una sola vez y el resto la adopta al abrir el programa."
+            />
+
+            <Alerta tono="info">
+              La clave privada se guarda cifrada en el servidor y, en esta computadora,
               {rutaConfig ? (
                 <>
-                  , en <code className="rounded bg-amber-100/70 px-1 font-mono text-xs">{rutaConfig}</code>
+                  {' '}
+                  en <code className="rounded bg-amber-100/70 px-1 font-mono text-xs">{rutaConfig}</code>
                 </>
-              ) : null}
-              . Nunca se copian al repositorio ni a la base de datos.
+              ) : (
+                ' en el archivo de configuración'
+              )}
+              . Nunca se copia al repositorio ni a la base de datos, y nunca vuelve a esta pantalla.
             </Alerta>
+
+            {!puedeEditar && usuario.rol !== 'SUPER_ADMIN' && (
+              <Alerta tono="info">
+                La conexión con Google la carga el superadministrador: lo que se guarda acá vale para las cinco computadoras.
+              </Alerta>
+            )}
 
             {error && <Alerta tono="error">{error}</Alerta>}
             {aviso && <Alerta tono="exito">{aviso}</Alerta>}

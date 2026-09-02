@@ -86,6 +86,9 @@ import type {
   EstadoDeCredencialesDeVehiculos,
   EstadoDelCatalogo,
   EstadoDelMesh,
+  ImagenDeReporte,
+  ReporteCreado,
+  ReporteDeError,
   GuardadoDeCredencialesDeVehiculos,
   LineaDeCatalogo,
   OpcionDeCatalogo,
@@ -566,6 +569,14 @@ export interface Canales {
   /** Mide si la consola contesta. El link se abre después con 'sistema:abrirEnlace'. */
   'mesh:estado': () => Resultado<EstadoDelMesh>
 
+  // --- Reportar un error (Inicio) ---
+  /** El explorador de archivos, varias a la vez. Cancelar devuelve la lista vacía. */
+  'soporte:elegirImagenes': () => Resultado<ImagenDeReporte[]>
+  /** La captura que está en el portapapeles (Impr Pant), guardada como archivo. null si no hay ninguna. */
+  'soporte:pegarImagen': () => Resultado<ImagenDeReporte | null>
+  /** Manda el reporte al VPS, que abre el issue. Devuelve su número y su dirección. */
+  'soporte:reportar': (reporte: ReporteDeError) => Resultado<ReporteCreado>
+
   'app:info': () => Resultado<InfoApp>
 
   // Actualizaciones: chequeo automático (al abrir y cada 4 horas) más el botón manual de Acerca de.
@@ -595,6 +606,12 @@ export interface Eventos {
   'vehiculos:progreso': ProgresoDeCatalogo
   /** Una tarea se dio por terminada: el renderer hace sonar el aviso y refresca lo que tenga a la vista. */
   'tareas:completada': TareaCompletada
+  /**
+   * El carril rápido de la sincronización bajó tareas nuevas o cambiadas de otra computadora. No lleva
+   * datos: es un «volvé a preguntar» para la campana, el contador de la barra lateral y el listado, que
+   * si no tendrían que esperar a su propio reloj para enterarse.
+   */
+  'tareas:cambiaron': null
 }
 
 export type NombreCanal = keyof Canales

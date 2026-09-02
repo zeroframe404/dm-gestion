@@ -411,6 +411,29 @@ html[data-theme='dark'] .hover\:bg-white\/70:hover {
   background-color: rgb(22 34 58 / 0.7);
 }
 
+/*
+ * Los mismos teñidos, con transparencia. El caso que lo destapó: el aviso «estos datos se guardan
+ * únicamente en esta computadora» de Google Drive lleva la ruta del config.json adentro de un
+ * `<code class="bg-amber-100/70">`. La regla de `.bg-amber-100` no lo alcanza, así que el chip se
+ * quedaba con el ámbar clarito del tema claro mientras la letra —`text-amber-800`, ya dada vuelta—
+ * pasaba a ser amarilla: amarillo sobre amarillo, la ruta ilegible.
+ */
+html[data-theme='dark'] .bg-amber-50\/60 {
+  background-color: rgb(43 32 8 / 0.6);
+}
+html[data-theme='dark'] .bg-amber-50\/70 {
+  background-color: rgb(43 32 8 / 0.7);
+}
+html[data-theme='dark'] .bg-amber-100\/70 {
+  background-color: rgb(57 42 11 / 0.7);
+}
+html[data-theme='dark'] .bg-marino-50\/40 {
+  background-color: rgb(22 35 61 / 0.4);
+}
+html[data-theme='dark'] .bg-violet-50\/60 {
+  background-color: rgb(29 21 51 / 0.6);
+}
+
 /* La barra de scroll, pensada para fondo claro, casi no se veía sobre el oscuro. */
 html[data-theme='dark'] ::-webkit-scrollbar-thumb {
   background-color: rgba(148, 163, 184, 0.3);

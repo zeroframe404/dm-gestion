@@ -1,15 +1,31 @@
 // La caja del día: qué se cobró hoy en esta sucursal, con qué medio y quién lo cobró. Es la pantalla
 // que se mira al cerrar el mostrador, así que el total por medio de pago va arriba de todo.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CajaDelDia as DatosDeCaja, PagoRegistrado } from '../../../shared/tipos'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { Icono } from '../../componentes/Icono'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoPagoManual } from './DialogoPagoManual'
 import { numero, pesos } from './formato'
 import { usePuedeEditar } from '../../contexto/Permisos'
+
+/** Las que se pueden apagar con «Columnas». El cliente no: sin él el renglón no se sabe de quién es. */
+const COLUMNAS: Array<{ id: string; titulo: string; siempre?: boolean }> = [
+  { id: 'hora', titulo: 'Hora' },
+  { id: 'cliente', titulo: 'Cliente', siempre: true },
+  { id: 'documento', titulo: 'DNI/CUIT' },
+  { id: 'compania', titulo: 'Compañía' },
+  { id: 'poliza', titulo: 'Póliza' },
+  { id: 'patente', titulo: 'Patente' },
+  { id: 'importe', titulo: 'Importe' },
+  { id: 'medio', titulo: 'Medio' },
+  { id: 'sucursal', titulo: 'Sucursal' },
+  { id: 'cobro_usuario', titulo: 'Cobró' },
+  { id: 'cobro_estado', titulo: 'Cobro' },
+]
 
 export function CajaDelDia() {
   const puedeEditar = usePuedeEditar('cobranzas')
@@ -20,6 +36,8 @@ export function CajaDelDia() {
   const [aviso, setAviso] = useState<string | null>(null)
   const [abrirPago, setAbrirPago] = useState(false)
   const [exportando, setExportando] = useState(false)
+  const { visibles, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('cobranzas-caja', COLUMNAS)
+  const ve = useMemo(() => new Set(visibles.map((columna) => columna.id)), [visibles])
 
   const cargar = useCallback(async (fecha: string | null, sucursales: string[]) => {
     setCargando(true)
@@ -93,6 +111,7 @@ export function CajaDelDia() {
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          <SelectorDeColumnas columnas={COLUMNAS} ocultas={ocultas} alAlternar={alternarColumna} alMostrarTodas={mostrarTodas} />
           <Boton icono="cargando" onClick={() => void cargar(datos.fecha, datos.sucursalesElegidas)} disabled={cargando}>
             Actualizar
           </Boton>
@@ -130,23 +149,17 @@ export function CajaDelDia() {
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-slate-50">
             <tr className="border-b border-slate-200">
-              <th className={encabezado}>Hora</th>
-              <th className={encabezado}>Cliente</th>
-              <th className={encabezado}>DNI/CUIT</th>
-              <th className={encabezado}>Compañía</th>
-              <th className={encabezado}>Póliza</th>
-              <th className={encabezado}>Patente</th>
-              <th className={cx(encabezado, 'text-right')}>Importe</th>
-              <th className={encabezado}>Medio</th>
-              <th className={encabezado}>Sucursal</th>
-              <th className={encabezado}>Cobró</th>
-              <th className={encabezado}>Cobro</th>
+              {visibles.map((columna) => (
+                <th key={columna.id} className={cx(encabezado, columna.id === 'importe' && 'text-right')}>
+                  {columna.titulo}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {datos.pagos.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-3 py-12 text-center text-slate-500">
+                <td colSpan={visibles.length} className="px-3 py-12 text-center text-slate-500">
                   {esHoy
                     ? 'Todavía no se registró ningún pago hoy. Se cargan desde acá o desde «Registrar pago» de la Cartera.'
                     : `Ese día no tiene pagos registrados${datos.sucursalesElegidas.length > 0 ? ` en ${datos.sucursalesElegidas.join(', ')}` : ''}.`}
@@ -155,23 +168,31 @@ export function CajaDelDia() {
             )}
             {datos.pagos.map((pago) => (
               <tr key={pago.id} className="border-b border-slate-100 last:border-b-0">
-                <td className="px-3 py-2 tabular-nums whitespace-nowrap text-slate-600">{pago.hora ?? '—'}</td>
-                <td className="px-3 py-2 font-medium text-slate-900">{pago.clienteNombre ?? '—'}</td>
-                <td className="px-3 py-2 text-slate-600">{pago.documento ?? '—'}</td>
-                <td className="px-3 py-2 text-slate-600">{pago.compania ?? '—'}</td>
-                <td className="px-3 py-2 font-mono text-xs text-slate-600">{pago.numeroPoliza ?? '—'}</td>
-                <td className="px-3 py-2 font-mono text-xs text-slate-600">{pago.patente ?? '—'}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-900">
-                  {pago.importeMonto === null ? (pago.importe ?? '—') : pesos(pago.importeMonto)}
-                </td>
-                <td className="px-3 py-2 text-slate-700">{pago.medio ?? <span className="text-slate-400">sin especificar</span>}</td>
-                <td className="px-3 py-2 text-slate-600">{pago.sucursal ?? '—'}</td>
-                <td className="px-3 py-2 text-slate-600">
-                  {pago.usuarioNombre ?? <span className="text-slate-400">de la planilla</span>}
-                </td>
-                <td className="px-3 py-2">
-                  <EstadoDelCobro pago={pago} />
-                </td>
+                {ve.has('hora') && <td className="px-3 py-2 tabular-nums whitespace-nowrap text-slate-600">{pago.hora ?? '—'}</td>}
+                {ve.has('cliente') && <td className="px-3 py-2 font-medium text-slate-900">{pago.clienteNombre ?? '—'}</td>}
+                {ve.has('documento') && <td className="px-3 py-2 text-slate-600">{pago.documento ?? '—'}</td>}
+                {ve.has('compania') && <td className="px-3 py-2 text-slate-600">{pago.compania ?? '—'}</td>}
+                {ve.has('poliza') && <td className="px-3 py-2 font-mono text-xs text-slate-600">{pago.numeroPoliza ?? '—'}</td>}
+                {ve.has('patente') && <td className="px-3 py-2 font-mono text-xs text-slate-600">{pago.patente ?? '—'}</td>}
+                {ve.has('importe') && (
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-900">
+                    {pago.importeMonto === null ? (pago.importe ?? '—') : pesos(pago.importeMonto)}
+                  </td>
+                )}
+                {ve.has('medio') && (
+                  <td className="px-3 py-2 text-slate-700">{pago.medio ?? <span className="text-slate-400">sin especificar</span>}</td>
+                )}
+                {ve.has('sucursal') && <td className="px-3 py-2 text-slate-600">{pago.sucursal ?? '—'}</td>}
+                {ve.has('cobro_usuario') && (
+                  <td className="px-3 py-2 text-slate-600">
+                    {pago.usuarioNombre ?? <span className="text-slate-400">de la planilla</span>}
+                  </td>
+                )}
+                {ve.has('cobro_estado') && (
+                  <td className="px-3 py-2">
+                    <EstadoDelCobro pago={pago} />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

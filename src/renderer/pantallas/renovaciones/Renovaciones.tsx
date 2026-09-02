@@ -20,6 +20,7 @@ import { Icono } from '../../componentes/Icono'
 import { Alerta as Aviso, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
+import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos } from '../../contexto/Permisos'
 import { DialogoNuevaTarea } from '../tareas/DialogoNuevaTarea'
@@ -43,6 +44,24 @@ interface Filtros {
 
 const FILTROS_VACIOS: Filtros = { responsables: [], estados: [], ocultarResueltas: false, renovacion: 'manual' }
 
+/**
+ * Las que se pueden apagar con «Columnas». El cliente no —sin él la fila no se sabe de quién es— ni la
+ * última, que es donde están «Renovar», «no renueva» y la tarea: esconderla dejaría la bandeja sin
+ * forma de cerrar un trámite.
+ */
+const COLUMNAS: Array<{ id: string; titulo: string; siempre?: boolean }> = [
+  { id: 'cliente', titulo: 'Cliente', siempre: true },
+  { id: 'compania', titulo: 'Compañía' },
+  { id: 'poliza', titulo: 'Póliza' },
+  { id: 'vehiculo', titulo: 'Vehículo' },
+  { id: 'cuota', titulo: 'Cuota' },
+  { id: 'hasta', titulo: 'Hasta' },
+  { id: 'responsable', titulo: 'Responsable' },
+  { id: 'estado', titulo: 'Estado' },
+  { id: 'nota', titulo: 'Nota' },
+  { id: 'acciones', titulo: 'Acciones', siempre: true },
+]
+
 /** Una póliza puede entrar más de una vez si tiene vigencias distintas: la clave es la póliza y su vencimiento. */
 function claveDeFila(fila: FilaRenovacion): string {
   return `${fila.polizaId}|${fila.venceEl}`
@@ -58,6 +77,8 @@ export function Renovaciones() {
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VACIOS)
   // Qué semanas están abiertas. Sin decisión tomada manda el valor por defecto: sólo la primera.
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>({})
+  const { visibles: columnasALaVista, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('renovaciones', COLUMNAS)
+  const ve = useMemo(() => new Set(columnasALaVista.map((columna) => columna.id)), [columnasALaVista])
   const [guardando, setGuardando] = useState<string | null>(null)
   const [renovarA, setRenovarA] = useState<FilaRenovacion | null>(null)
   const [noRenuevaA, setNoRenuevaA] = useState<FilaRenovacion | null>(null)
@@ -165,6 +186,7 @@ export function Renovaciones() {
         />
         <Contador etiqueta="Sin empezar" valor={contadores.pendientes} tono="ambar" titulo="Todavía están en «Pendiente»." />
         <div className="ml-auto flex items-center gap-2">
+          <SelectorDeColumnas columnas={COLUMNAS} ocultas={ocultas} alAlternar={alternarColumna} alMostrarTodas={mostrarTodas} />
           <Boton icono="cargando" onClick={() => void cargar()} disabled={cargando}>
             Actualizar
           </Boton>
@@ -258,6 +280,8 @@ export function Renovaciones() {
               key={semana.desde}
               semana={semana}
               abierta={abiertas[semana.desde] ?? indice === 0}
+              columnas={columnasALaVista}
+              ve={ve}
               guardando={guardando}
               responsables={bandeja?.responsables ?? []}
               alPlegar={() =>
@@ -326,6 +350,9 @@ const ENCABEZADO = 'px-2.5 py-2 text-left text-[11px] font-bold uppercase tracki
 interface PropsSemana {
   semana: SemanaDeRenovaciones
   abierta: boolean
+  /** Las columnas a la vista, en orden: la fila de encabezados sale de acá. */
+  columnas: Array<{ id: string; titulo: string }>
+  ve: Set<string>
   guardando: string | null
   responsables: Array<{ id: number; nombre: string }>
   alPlegar: () => void
@@ -339,6 +366,8 @@ interface PropsSemana {
 function BloqueSemana({
   semana,
   abierta,
+  columnas,
+  ve,
   guardando,
   responsables,
   alPlegar,
@@ -382,16 +411,11 @@ function BloqueSemana({
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
               <tr className="border-b border-slate-200">
-                <th className={ENCABEZADO}>Cliente</th>
-                <th className={ENCABEZADO}>Compañía</th>
-                <th className={ENCABEZADO}>Póliza</th>
-                <th className={ENCABEZADO}>Vehículo</th>
-                <th className={cx(ENCABEZADO, 'text-right')}>Cuota</th>
-                <th className={ENCABEZADO}>Hasta</th>
-                <th className={ENCABEZADO}>Responsable</th>
-                <th className={ENCABEZADO}>Estado</th>
-                <th className={ENCABEZADO}>Nota</th>
-                <th className={ENCABEZADO} />
+                {columnas.map((columna) => (
+                  <th key={columna.id} className={cx(ENCABEZADO, columna.id === 'cuota' && 'text-right')}>
+                    {columna.id === 'acciones' ? null : columna.titulo}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -399,6 +423,7 @@ function BloqueSemana({
                 <FilaDeRenovacion
                   key={claveDeFila(fila)}
                   fila={fila}
+                  ve={ve}
                   guardando={guardando === claveDeFila(fila)}
                   responsables={responsables}
                   alVerCliente={alVerCliente}
@@ -429,6 +454,7 @@ const CLASES_ESTADO: Record<EstadoRenovacion, string> = {
 
 interface PropsFila {
   fila: FilaRenovacion
+  ve: Set<string>
   guardando: boolean
   responsables: Array<{ id: number; nombre: string }>
   alVerCliente: (clienteId: number) => void
@@ -438,7 +464,7 @@ interface PropsFila {
   alCrearTarea: (fila: FilaRenovacion) => void
 }
 
-function FilaDeRenovacion({ fila, guardando, responsables, alVerCliente, alActualizar, alRenovar, alNoRenovar, alCrearTarea }: PropsFila) {
+function FilaDeRenovacion({ fila, ve, guardando, responsables, alVerCliente, alActualizar, alRenovar, alNoRenovar, alCrearTarea }: PropsFila) {
   const { puedeEditar } = usePermisos()
   const porcentaje = porcentajeDeAumento(fila.observaciones)
   const resuelta = ESTADOS_RESUELTOS.includes(fila.estado)
@@ -449,124 +475,142 @@ function FilaDeRenovacion({ fila, guardando, responsables, alVerCliente, alActua
 
   return (
     <tr className={cx('border-b border-slate-100 last:border-b-0 align-top', resuelta && 'bg-slate-50/70', guardando && 'opacity-60')}>
-      <td className="px-2.5 py-2">
-        <button
-          type="button"
-          onClick={() => alVerCliente(fila.clienteId)}
-          title="Abrir la ficha del cliente"
-          className="max-w-[15rem] truncate text-left font-semibold text-marino-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40"
-        >
-          {fila.clienteNombre ?? 'Sin nombre'}
-        </button>
-        {(fila.sucursal || fila.telefono) && (
-          <p className="truncate text-xs text-slate-500">{[fila.sucursal, fila.telefono].filter(Boolean).join(' · ')}</p>
-        )}
-      </td>
-      <td className="px-2.5 py-2 whitespace-nowrap text-slate-700">
-        {fila.compania ?? '—'}
-        {fila.cobertura && <p className="truncate text-xs text-slate-500">{fila.cobertura}</p>}
-        <p className="text-xs text-slate-500">
-          {fila.mesesDeRenovacion === null ? (
-            <span title="Esta compañía renueva sola: no hace falta hacer nada.">Renueva sola</span>
-          ) : (
-            <span title="Cada cuánto renueva esta compañía. Se cambia en Administración → Compañías.">
-              Cada {fila.mesesDeRenovacion} {fila.mesesDeRenovacion === 1 ? 'mes' : 'meses'}
+      {ve.has('cliente') && (
+        <td className="px-2.5 py-2">
+          <button
+            type="button"
+            onClick={() => alVerCliente(fila.clienteId)}
+            title="Abrir la ficha del cliente"
+            className="max-w-[15rem] truncate text-left font-semibold text-marino-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40"
+          >
+            {fila.clienteNombre ?? 'Sin nombre'}
+          </button>
+          {(fila.sucursal || fila.telefono) && (
+            <p className="truncate text-xs text-slate-500">{[fila.sucursal, fila.telefono].filter(Boolean).join(' · ')}</p>
+          )}
+        </td>
+      )}
+      {ve.has('compania') && (
+        <td className="px-2.5 py-2 whitespace-nowrap text-slate-700">
+          {fila.compania ?? '—'}
+          {fila.cobertura && <p className="truncate text-xs text-slate-500">{fila.cobertura}</p>}
+          <p className="text-xs text-slate-500">
+            {fila.mesesDeRenovacion === null ? (
+              <span title="Esta compañía renueva sola: no hace falta hacer nada.">Renueva sola</span>
+            ) : (
+              <span title="Cada cuánto renueva esta compañía. Se cambia en Administración → Compañías.">
+                Cada {fila.mesesDeRenovacion} {fila.mesesDeRenovacion === 1 ? 'mes' : 'meses'}
+              </span>
+            )}
+          </p>
+        </td>
+      )}
+      {ve.has('poliza') && <td className="px-2.5 py-2 whitespace-nowrap font-mono text-xs text-slate-600">{fila.numero ?? '—'}</td>}
+      {ve.has('vehiculo') && (
+        <td className="px-2.5 py-2">
+          <span className="block max-w-[13rem] truncate text-slate-700" title={fila.vehiculo ?? undefined}>
+            {fila.vehiculo ?? '—'}
+          </span>
+          {fila.patente && <p className="font-mono text-xs text-slate-500">{fila.patente}</p>}
+        </td>
+      )}
+      {ve.has('cuota') && (
+        <td className="px-2.5 py-2 text-right whitespace-nowrap tabular-nums text-slate-800">
+          {fila.cuota ?? '—'}
+          {/* El aumento al renovar es lo que el usuario pidió ver de un vistazo: va pegado a la cuota,
+              que es el número que hay que tocar, con las observaciones enteras en el tooltip. */}
+          {fila.aumentaAlRenovar && (
+            <span className="mt-1 block" title={fila.observaciones ?? 'Las observaciones piden aumentar al renovar.'}>
+              <Etiqueta tono="aviso">{porcentaje !== null ? `Aumentar ${porcentaje}%` : 'Aumentar al renovar'}</Etiqueta>
             </span>
           )}
-        </p>
-      </td>
-      <td className="px-2.5 py-2 whitespace-nowrap font-mono text-xs text-slate-600">{fila.numero ?? '—'}</td>
-      <td className="px-2.5 py-2">
-        <span className="block max-w-[13rem] truncate text-slate-700" title={fila.vehiculo ?? undefined}>
-          {fila.vehiculo ?? '—'}
-        </span>
-        {fila.patente && <p className="font-mono text-xs text-slate-500">{fila.patente}</p>}
-      </td>
-      <td className="px-2.5 py-2 text-right whitespace-nowrap tabular-nums text-slate-800">
-        {fila.cuota ?? '—'}
-        {/* El aumento al renovar es lo que el usuario pidió ver de un vistazo: va pegado a la cuota,
-            que es el número que hay que tocar, con las observaciones enteras en el tooltip. */}
-        {fila.aumentaAlRenovar && (
-          <span className="mt-1 block" title={fila.observaciones ?? 'Las observaciones piden aumentar al renovar.'}>
-            <Etiqueta tono="aviso">{porcentaje !== null ? `Aumentar ${porcentaje}%` : 'Aumentar al renovar'}</Etiqueta>
+        </td>
+      )}
+      {ve.has('hasta') && (
+        <td className="px-2.5 py-2 whitespace-nowrap">
+          <span className="text-slate-700" title={fila.vigenciaHasta ? `En la planilla: ${fila.vigenciaHasta}` : undefined}>
+            {fechaCorta(fila.venceEl)}
           </span>
-        )}
-      </td>
-      <td className="px-2.5 py-2 whitespace-nowrap">
-        <span className="text-slate-700" title={fila.vigenciaHasta ? `En la planilla: ${fila.vigenciaHasta}` : undefined}>
-          {fechaCorta(fila.venceEl)}
-        </span>
-        <p className={cx('text-xs font-semibold tabular-nums', claseDeDias(fila.diasParaVencer))}>{textoDeDias(fila.diasParaVencer)}</p>
-      </td>
-      <td className="px-2.5 py-2">
-        <select
-          value={fila.responsableId === null ? '' : String(fila.responsableId)}
-          disabled={bloqueado}
-          aria-label={`Responsable de la renovación de ${fila.clienteNombre ?? 'la póliza'}`}
-          onChange={(evento) => alActualizar(fila, { responsableId: evento.target.value === '' ? null : Number(evento.target.value) })}
-          className={cx(
-            'h-8 w-full min-w-[8rem] rounded-lg border bg-white px-1.5 text-xs',
-            fila.responsableId === null ? 'border-slate-300 text-slate-500' : 'border-slate-300 font-medium text-slate-800',
-          )}
-        >
-          <option value="">Sin asignar</option>
-          {responsables.map((responsable) => (
-            <option key={responsable.id} value={responsable.id}>
-              {responsable.nombre}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td className="px-2.5 py-2">
-        <select
-          value={fila.estado}
-          disabled={bloqueado}
-          aria-label={`Estado del trámite de ${fila.clienteNombre ?? 'la póliza'}`}
-          onChange={(evento) => alActualizar(fila, { estado: evento.target.value as EstadoRenovacion })}
-          className={cx('h-8 w-full min-w-[7.5rem] rounded-lg border px-1.5 text-xs', CLASES_ESTADO[fila.estado])}
-        >
-          {ESTADOS_DE_RENOVACION.map((estado) => (
-            <option key={estado} value={estado}>
-              {NOMBRE_ESTADO_RENOVACION[estado]}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td className="px-2.5 py-2">
-        <CampoNota
-          valor={fila.nota}
-          disabled={bloqueado}
-          etiqueta={`Nota de la renovación de ${fila.clienteNombre ?? 'la póliza'}`}
-          alGuardar={(nota) => alActualizar(fila, { nota })}
-        />
-      </td>
-      <td className="px-2.5 py-2">
-        <div className="flex items-center justify-end gap-1">
-          <Boton tamano="sm" icono="renovaciones" onClick={() => alRenovar(fila)} disabled={bloqueado}>
-            Renovar
-          </Boton>
-          <button
-            type="button"
-            title="Anotar una tarea de esta renovación"
-            aria-label={`Nueva tarea de la renovación de ${fila.clienteNombre ?? 'la póliza'}`}
-            disabled={sinTareas}
-            onClick={() => alCrearTarea(fila)}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-marino-300 hover:bg-marino-50 hover:text-marino-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Icono nombre="tareas" tamano={14} />
-          </button>
-          <button
-            type="button"
-            title="El cliente no renueva"
-            aria-label={`Marcar que ${fila.clienteNombre ?? 'el cliente'} no renueva`}
+          <p className={cx('text-xs font-semibold tabular-nums', claseDeDias(fila.diasParaVencer))}>{textoDeDias(fila.diasParaVencer)}</p>
+        </td>
+      )}
+      {ve.has('responsable') && (
+        <td className="px-2.5 py-2">
+          <select
+            value={fila.responsableId === null ? '' : String(fila.responsableId)}
             disabled={bloqueado}
-            onClick={() => alNoRenovar(fila)}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label={`Responsable de la renovación de ${fila.clienteNombre ?? 'la póliza'}`}
+            onChange={(evento) => alActualizar(fila, { responsableId: evento.target.value === '' ? null : Number(evento.target.value) })}
+            className={cx(
+              'h-8 w-full min-w-[8rem] rounded-lg border bg-white px-1.5 text-xs',
+              fila.responsableId === null ? 'border-slate-300 text-slate-500' : 'border-slate-300 font-medium text-slate-800',
+            )}
           >
-            <Icono nombre="cerrar" tamano={14} />
-          </button>
-        </div>
-      </td>
+            <option value="">Sin asignar</option>
+            {responsables.map((responsable) => (
+              <option key={responsable.id} value={responsable.id}>
+                {responsable.nombre}
+              </option>
+            ))}
+          </select>
+        </td>
+      )}
+      {ve.has('estado') && (
+        <td className="px-2.5 py-2">
+          <select
+            value={fila.estado}
+            disabled={bloqueado}
+            aria-label={`Estado del trámite de ${fila.clienteNombre ?? 'la póliza'}`}
+            onChange={(evento) => alActualizar(fila, { estado: evento.target.value as EstadoRenovacion })}
+            className={cx('h-8 w-full min-w-[7.5rem] rounded-lg border px-1.5 text-xs', CLASES_ESTADO[fila.estado])}
+          >
+            {ESTADOS_DE_RENOVACION.map((estado) => (
+              <option key={estado} value={estado}>
+                {NOMBRE_ESTADO_RENOVACION[estado]}
+              </option>
+            ))}
+          </select>
+        </td>
+      )}
+      {ve.has('nota') && (
+        <td className="px-2.5 py-2">
+          <CampoNota
+            valor={fila.nota}
+            disabled={bloqueado}
+            etiqueta={`Nota de la renovación de ${fila.clienteNombre ?? 'la póliza'}`}
+            alGuardar={(nota) => alActualizar(fila, { nota })}
+          />
+        </td>
+      )}
+      {ve.has('acciones') && (
+        <td className="px-2.5 py-2">
+          <div className="flex items-center justify-end gap-1">
+            <Boton tamano="sm" icono="renovaciones" onClick={() => alRenovar(fila)} disabled={bloqueado}>
+              Renovar
+            </Boton>
+            <button
+              type="button"
+              title="Anotar una tarea de esta renovación"
+              aria-label={`Nueva tarea de la renovación de ${fila.clienteNombre ?? 'la póliza'}`}
+              disabled={sinTareas}
+              onClick={() => alCrearTarea(fila)}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-marino-300 hover:bg-marino-50 hover:text-marino-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Icono nombre="tareas" tamano={14} />
+            </button>
+            <button
+              type="button"
+              title="El cliente no renueva"
+              aria-label={`Marcar que ${fila.clienteNombre ?? 'el cliente'} no renueva`}
+              disabled={bloqueado}
+              onClick={() => alNoRenovar(fila)}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Icono nombre="cerrar" tamano={14} />
+            </button>
+          </div>
+        </td>
+      )}
     </tr>
   )
 }
