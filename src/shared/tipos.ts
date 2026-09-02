@@ -2846,21 +2846,25 @@ export interface EstadoDeUnTipo {
 /**
  * Con qué proveedor habla el catálogo. InfoAuto es el catálogo clásico de las aseguradoras
  * argentinas; Mercado Libre es la API que la agencia contrató desde el panel de desarrolladores de
- * Mercado Pago. Se elige uno: los ids de marca y modelo de cada uno no tienen nada que ver entre sí,
- * así que mezclarlos rompería las pólizas ya cargadas con el código del otro.
+ * Mercado Pago; DNRPA es la Tabla de Valuación de Automotores y Motovehículos que publica gratis el
+ * organismo, y es el único de los tres que cubre motos sin costo. Se elige uno: los ids de marca y
+ * modelo de cada uno no tienen nada que ver entre sí, así que mezclarlos rompería las pólizas ya
+ * cargadas con el código del otro.
  */
-export const PROVEEDORES_DE_CATALOGO = ['INFOAUTO', 'MERCADO_LIBRE'] as const
+export const PROVEEDORES_DE_CATALOGO = ['INFOAUTO', 'MERCADO_LIBRE', 'DNRPA'] as const
 export type ProveedorDeCatalogo = (typeof PROVEEDORES_DE_CATALOGO)[number]
 
 export const NOMBRE_PROVEEDOR_CATALOGO: Record<ProveedorDeCatalogo, string> = {
   INFOAUTO: 'InfoAuto',
   MERCADO_LIBRE: 'Mercado Libre',
+  DNRPA: 'DNRPA',
 }
 
 /**
  * Cómo se llama cada credencial según el proveedor. Es lo mismo por dentro —un identificador y un
  * secreto— pero en el panel de cada uno se llama distinto, y la pantalla tiene que decir el nombre
- * que la persona está viendo del otro lado.
+ * que la persona está viendo del otro lado. DNRPA no tiene ninguno de los dos: la tabla es pública y
+ * no hace falta iniciar sesión en ningún lado.
  */
 export const ETIQUETAS_DE_CREDENCIAL: Record<ProveedorDeCatalogo, { usuario: string; clave: string; ayuda: string }> = {
   INFOAUTO: {
@@ -2872,6 +2876,12 @@ export const ETIQUETAS_DE_CREDENCIAL: Record<ProveedorDeCatalogo, { usuario: str
     usuario: 'App ID',
     clave: 'Clave secreta',
     ayuda: 'Se copian del panel de desarrolladores de Mercado Pago, en la aplicación que creaste (App ID y Clave secreta).',
+  },
+  DNRPA: {
+    usuario: '',
+    clave: '',
+    ayuda:
+      'La DNRPA publica gratis la Tabla de Valuación de Automotores y Motovehículos. No hace falta usuario ni clave: el programa detecta sola la tabla vigente.',
   },
 }
 
@@ -2901,6 +2911,8 @@ export interface EstadoDelCatalogo {
   usuario: string
   /** true si además del identificador y el secreto hay un Access Token pegado a mano. */
   tokenCargado: boolean
+  /** Sólo DNRPA: la URL puesta a mano, si se pisó la detección automática. No es un secreto. */
+  urlFuente: string | null
   /** Los tipos de vehículo que este proveedor puede servir: Mercado Libre no publica motos. */
   tiposQueSirve: TipoDeVehiculo[]
   /** Dónde se guardan las credenciales, para poder decirlo en la pantalla. */
@@ -2916,6 +2928,9 @@ export interface DatosDelProveedorDeVehiculos {
   clave: string
   /** Sólo Mercado Libre: un Access Token `APP_USR-…` pegado a mano, si se prefiere ese camino. */
   accessToken?: string
+  /** Sólo DNRPA, y opcional: pisa la URL del PDF que el programa detecta solo. Es el escape manual
+   * para cuando la DNRPA cambia la página y la detección deja de encontrar la tabla vigente. */
+  urlFuente?: string
 }
 
 /** El estado de las credenciales acá y en el servidor: lo que devuelve todo lo que las toca. */
