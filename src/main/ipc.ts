@@ -193,8 +193,13 @@ import {
 } from './servicios/catalogoVehiculos'
 import {
   adoptarVehiculosDelVps,
+  borrarMetaDelVps,
   borrarVehiculosDelVps,
+  estadoCompartidoDeGoogle,
+  estadoCompartidoDeMeta,
   estadoCompartidoDeVehiculos,
+  publicarSinRomper,
+  publicarTicketSinRomper,
   publicarVehiculosEnElVps,
 } from './servicios/ajustesCompartidos'
 import { guardarPlantillaDeAviso, plantillaDeAviso } from './servicios/plantillas'
@@ -367,16 +372,21 @@ export function registrarIpc(): void {
   manejar('eliminacion:vistaPrevia', (tipo, id) => exito(vistaPreviaDeEliminacion(tipo, id, exigirRol('SUPER_ADMIN'))))
   manejar('eliminacion:borrar', (tipo, id) => exito(eliminarRegistro(tipo, id, exigirRol('SUPER_ADMIN'))))
 
-  // Conexión con Google: SUPER_ADMIN y ADMIN, y con permiso sobre Administración.
-  manejar('config:estadoGoogle', () => {
+  // Conexión con Google: la MIRAN SUPER_ADMIN y ADMIN; la CARGA sólo el superadministrador, porque
+  // desde la v12.4 lo que se carga acá viaja al resto de las computadoras (la sucursal que no tenía la
+  // cuenta no subía los adjuntos de los siniestros y nadie se enteraba hasta que hacían falta).
+  manejar('config:estadoGoogle', async () => {
     exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirVista('administracion')
-    return exito(estadoGoogle())
+    return exito({ ...estadoGoogle(), compartido: await estadoCompartidoDeGoogle() })
   })
-  manejar('config:guardarGoogle', (datos) => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
+  manejar('config:guardarGoogle', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN')
     exigirEdicion('administracion')
-    return exito(guardarGoogle(datos))
+    const estado = guardarGoogle(datos)
+    // Lo local ya quedó escrito: que el servidor no conteste no puede devolver un error rojo sobre algo
+    // que sí se guardó. El motivo viaja en `compartido.error` y la pantalla lo muestra.
+    return exito({ ...estado, compartido: await publicarSinRomper('google', actor.nombre) })
   })
 
   // La base del GENERAL DE CLIENTES en el VPS (v12). El estado lo ven SUPER_ADMIN y ADMIN;
@@ -512,11 +522,15 @@ export function registrarIpc(): void {
     return exito(listarCompanias(veLosNumerosDeLaAgencia(actor.rol)))
   })
   // Tocarlas sigue siendo de administradores: cambiar los días de cobertura repinta la planilla de
-  // todas las sucursales.
-  manejar('companias:editar', (id, datos) => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
+  // todas las sucursales. Y como repinta la de TODAS, desde la v12.4 el catálogo viaja al servidor
+  // apenas se guarda: antes había que cargarlo máquina por máquina y dos sucursales podían ver la
+  // misma póliza de dos colores distintos.
+  manejar('companias:editar', async (id, datos) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirEdicion('administracion')
-    return exito(editarCompania(id, datos))
+    const compania = editarCompania(id, datos)
+    await publicarSinRomper('companias', actor.nombre)
+    return exito(compania)
   })
 
   // Cobranzas: la caja y la mora las trabaja quien tenga el módulo; las comisiones siguen pidiendo
@@ -577,7 +591,18 @@ export function registrarIpc(): void {
     return actor.rol === 'SUPER_ADMIN' ? null : actor.sucursal.nombre
   }
   manejar('impresora:direcciones', () => exito(direccionesDeTicket(miSucursalSalvoSuperAdmin())))
-  manejar('impresora:guardarDirecciones', (direcciones) => exito(guardarDireccionesDeTicket(direcciones, miSucursalSalvoSuperAdmin())))
+  // Guardar el encabezado lo hace cualquiera (el de SU sucursal) y viaja a todas las computadoras: hasta
+  // ahora había que cargar el teléfono de Lanús en cada máquina, y con que una quedara vieja salían
+  // comprobantes con un número que ya no atiende nadie.
+  manejar('impresora:guardarDirecciones', async (direcciones) => {
+    const actor = exigirSesion()
+    const propia = miSucursalSalvoSuperAdmin()
+    guardarDireccionesDeTicket(direcciones, propia)
+    // La publicación mezcla con lo que hay en el servidor y puede traerse el encabezado bueno de las
+    // otras sucursales, así que la lista que vuelve a la pantalla se lee DESPUÉS de publicar.
+    await publicarTicketSinRomper(actor.nombre, propia)
+    return exito(direccionesDeTicket(propia))
+  })
   // El «sí» del cartel que pregunta si imprimir: lo toca quien cobró, con los mismos permisos con los
   // que registró el pago. No lanza si la impresora falla: el motivo queda anotado y el pago ya está.
   manejar('impresora:imprimirPago', async (pagoId, copias) => {
@@ -596,10 +621,14 @@ export function registrarIpc(): void {
     exigirSesion()
     return exito({ texto: plantillaDeAviso() })
   })
-  manejar('config:guardarPlantillaAviso', (texto) => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
+  manejar('config:guardarPlantillaAviso', async (texto) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirEdicion('administracion')
-    return exito(guardarPlantillaDeAviso(texto))
+    // Viaja con el catálogo de compañías: es el mensaje que la agencia le manda al cliente y no tiene
+    // por qué ser distinto según desde qué mostrador se apriete «Avisar».
+    const plantilla = guardarPlantillaDeAviso(texto)
+    await publicarSinRomper('companias', actor.nombre)
+    return exito(plantilla)
   })
 
   // Sincronización con la hoja de Google. El estado y el «sincronizar ahora» son de la barra superior
@@ -1108,36 +1137,22 @@ export function registrarIpc(): void {
   // deshacer el guardado local —quedó bien escrito— así que el motivo viaja en la respuesta y la
   // pantalla lo muestra con el botón para reintentar.
   //
-  // Un ADMIN puede cargarlas en SU computadora pero no publicarlas: son las credenciales de toda la
-  // agencia y pisar las de las otras cinco máquinas es del que manda.
+  // Las carga SÓLO el superadministrador. Antes un ADMIN podía cargarlas en su computadora sin
+  // publicarlas, y eso era exactamente el problema que se quería sacar: una máquina con credenciales
+  // distintas a las de las otras cuatro, sin que nadie se entere.
   manejar('vehiculos:guardarCredenciales', async (datos) => {
-    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    const actor = exigirRol('SUPER_ADMIN')
     exigirEdicion('administracion')
     guardarCredencialesDeVehiculos(datos)
     const estado = estadoDelCatalogo()
-    if (actor.rol !== 'SUPER_ADMIN') {
-      return exito({
-        estado,
-        compartido: await estadoCompartidoDeVehiculos(),
-        detalle: 'Quedaron guardadas en esta computadora. Mandarlas al resto lo hace el superadministrador.',
-      })
-    }
-    try {
-      return exito({
-        estado,
-        compartido: await publicarVehiculosEnElVps(actor.nombre),
-        detalle: 'Guardadas y mandadas al servidor: el resto de las computadoras las va a tomar al abrir el programa.',
-      })
-    } catch (error) {
-      return exito({
-        estado,
-        compartido: {
-          ...(await estadoCompartidoDeVehiculos()),
-          error: error instanceof Error ? error.message : String(error),
-        },
-        detalle: 'Quedaron guardadas en esta computadora, pero no se pudieron mandar al servidor.',
-      })
-    }
+    const compartido = await publicarSinRomper('vehiculos', actor.nombre)
+    return exito({
+      estado,
+      compartido,
+      detalle: compartido.error
+        ? 'Quedaron guardadas en esta computadora, pero no se pudieron mandar al servidor.'
+        : 'Guardadas y mandadas al servidor: el resto de las computadoras las va a tomar al abrir el programa.',
+    })
   })
   // Reintento manual de la publicación, para cuando el guardado la encontró sin conexión.
   manejar('vehiculos:publicar', async () => {
@@ -1209,19 +1224,26 @@ export function registrarIpc(): void {
     exigirVista('marketing')
     return exito(await panelDeRedes())
   })
-  manejar('redes:estadoMeta', () => {
+  manejar('redes:estadoMeta', async () => {
     exigirVista('marketing', 'administracion')
-    return exito(estadoMeta())
+    return exito({ ...estadoMeta(), compartido: await estadoCompartidoDeMeta() })
   })
-  manejar('redes:guardarMeta', (datos) => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
+  // La app de Meta y su dirección de vuelta las carga sólo el superadministrador: viajan a todas las
+  // computadoras, y la dirección de vuelta tiene que ser EXACTAMENTE la misma en las cinco y en el
+  // panel de Meta. Una sola distinta rompe el login de Facebook con un mensaje que no explica nada.
+  manejar('redes:guardarMeta', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN')
     exigirEdicion('administracion')
-    return exito(guardarMeta(datos))
+    const estado = guardarMeta(datos)
+    return exito({ ...estado, compartido: await publicarSinRomper('meta', actor.nombre) })
   })
-  manejar('redes:borrarMeta', () => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
+  manejar('redes:borrarMeta', async () => {
+    exigirRol('SUPER_ADMIN')
     exigirEdicion('administracion')
-    return exito(borrarMeta())
+    const estado = borrarMeta()
+    // Sacarla de esta computadora y dejarla en el servidor la devolvería en el próximo arranque.
+    await borrarMetaDelVps().catch((error) => console.error('[ajustes] No se pudo sacar la app de Meta del servidor:', error))
+    return exito({ ...estado, compartido: await estadoCompartidoDeMeta() })
   })
   // Vincular deja la cuenta de la agencia atada a esta computadora: es de administradores.
   manejar('redes:vincular', async () => {

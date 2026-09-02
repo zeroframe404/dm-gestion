@@ -242,6 +242,68 @@ export function guardarDireccionesDeTicket(
 }
 
 // ---------------------------------------------------------------------------
+// Lo que viaja al resto de las computadoras
+// ---------------------------------------------------------------------------
+
+/**
+ * El encabezado de las cuatro sucursales, listo para publicar.
+ *
+ * Es el único de los ajustes compartidos que NO carga sólo el superadministrador: cada mostrador
+ * escribe la dirección y el teléfono de su propio local (ver `guardarDireccionesDeTicket`, que recorta
+ * lo que puede tocar cada uno). Lo que se comparte es el conjunto, así que cuando Lanús corrige su
+ * teléfono, la computadora de la oficina también lo tiene: hasta ahora había que ir máquina por
+ * máquina, y con que una quedara vieja salían comprobantes con un número que ya no atiende nadie.
+ *
+ * Las filas van ordenadas por sucursal y sin las que están completamente vacías: la huella es el hash
+ * del JSON y tiene que dar igual en las cinco computadoras.
+ */
+export function valorCompartidoDelTicket(): { direcciones: Array<{ sucursal: string; direccion: string; telefono: string }> } | null {
+  const filas = direccionesDeTicket()
+    .map((fila) => ({
+      sucursal: fila.sucursal,
+      direccion: fila.direccion ?? '',
+      telefono: fila.telefono ?? '',
+    }))
+    .filter((fila) => fila.direccion.trim() !== '' || fila.telefono.trim() !== '')
+    .sort((a, b) => identidadDeSucursal(a.sucursal).localeCompare(identidadDeSucursal(b.sucursal)))
+  if (filas.length === 0) return null
+  return { direcciones: filas }
+}
+
+/**
+ * Adopta el encabezado que publicó otra computadora.
+ *
+ * Reemplaza el conjunto: adoptar es quedarse con lo publicado, no con una mezcla. Lo que esta
+ * computadora tenga cargado para una sucursal que no vino se conserva —puede ser un local nuevo que
+ * todavía no se publicó—, así nadie se queda sin encabezado por adoptar.
+ */
+export function adoptarEncabezadoDelTicket(valor: unknown): boolean {
+  if (!valor || typeof valor !== 'object') return false
+  const crudas = (valor as { direcciones?: unknown }).direcciones
+  if (!Array.isArray(crudas)) return false
+
+  const publicadas = new Map<string, { sucursal: string; direccion: string; telefono: string | null }>()
+  for (const cruda of crudas) {
+    if (!cruda || typeof cruda !== 'object') continue
+    const fila = cruda as Record<string, unknown>
+    const sucursal = typeof fila.sucursal === 'string' ? fila.sucursal.trim() : ''
+    if (!sucursal) continue
+    publicadas.set(identidadDeSucursal(sucursal), {
+      sucursal,
+      direccion: typeof fila.direccion === 'string' ? fila.direccion : '',
+      telefono: typeof fila.telefono === 'string' ? fila.telefono : null,
+    })
+  }
+  if (publicadas.size === 0) return false
+
+  const propias = direccionesDeTicket()
+    .filter((fila) => !publicadas.has(identidadDeSucursal(fila.sucursal)))
+    .map((fila) => ({ sucursal: fila.sucursal, direccion: fila.direccion, telefono: fila.telefono ?? null }))
+  guardarDirecciones([...publicadas.values(), ...propias])
+  return true
+}
+
+// ---------------------------------------------------------------------------
 // El ticket
 // ---------------------------------------------------------------------------
 

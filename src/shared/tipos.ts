@@ -83,6 +83,11 @@ export interface EstadoConexionGoogle {
   projectId: string | null
   urlHoja: string | null
   actualizadoEn: string | null
+  /**
+   * Cómo está esta conexión en el servidor, para que la pantalla pueda decir si el resto de las
+   * computadoras tiene lo mismo. `null` = todavía no se consultó (o no hay servidor en esta versión).
+   */
+  compartido?: EstadoDeAjusteCompartido | null
 }
 
 // ---------------------------------------------------------------------------
@@ -3005,11 +3010,15 @@ export interface EstadoDeMeta {
   /** Dónde se guarda, para poder decirlo en la pantalla. */
   rutaDeConfig: string
   actualizadoEn: string | null
+  /** Cómo está la app en el servidor: si el resto de las computadoras tiene la misma. */
+  compartido?: EstadoDeAjusteCompartido | null
 }
 
 export interface DatosDeMeta {
   appId: string
   appSecret: string
+  /** Vacía deja la de fábrica. Tiene que ser la MISMA que está registrada en el panel de Meta. */
+  urlDeRedireccion?: string
 }
 
 /** Una Página para elegir, cuando la persona administra más de una. */

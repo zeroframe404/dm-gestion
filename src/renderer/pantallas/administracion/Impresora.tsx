@@ -348,8 +348,8 @@ function DireccionesDelTicket() {
       titulo={soloLaMia ? 'Encabezado del ticket de tu sucursal' : 'Encabezado del ticket'}
       descripcion={
         soloLaMia
-          ? `Los comprobantes que salgan de esta computadora encabezan con la dirección y el teléfono de ${usuario.sucursal.nombre}. El resto del encabezado (provincia, CUIT e inicio de actividades) es igual para toda la agencia.`
-          : 'Cada comprobante encabeza con la dirección y el teléfono de la sucursal donde se cobró. El resto del encabezado (provincia, CUIT e inicio de actividades) es igual para toda la agencia.'
+          ? `Los comprobantes que salgan de esta computadora encabezan con la dirección y el teléfono de ${usuario.sucursal.nombre}. Lo que cargues acá vale para todas las computadoras de la agencia: hasta la v12.3 había que cargarlo máquina por máquina y con que una quedara vieja salían comprobantes con un número que ya no atiende nadie. El resto del encabezado (provincia, CUIT e inicio de actividades) es igual para toda la agencia.`
+          : 'Cada comprobante encabeza con la dirección y el teléfono de la sucursal donde se cobró, y lo que se carga acá vale para todas las computadoras. El resto del encabezado (provincia, CUIT e inicio de actividades) es igual para toda la agencia.'
       }
       acciones={
         <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios}>

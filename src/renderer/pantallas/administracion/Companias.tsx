@@ -79,7 +79,7 @@ export function Companias() {
 
       <Tarjeta
         titulo="Compañías"
-        descripcion="Los días de cobertura financiera son los que cada compañía sigue cubriendo al cliente después del vencimiento: mientras corren, la fila de la planilla queda amarilla; el último día, naranja; después, roja. Los meses de renovación son cada cuánto hay que renovar a mano en esa compañía (Agrosalta 4, Río Uruguay 6, Metropol 12): las que quedan vacías renuevan solas y no aparecen en la bandeja de Renovaciones."
+        descripcion="Los días de cobertura financiera son los que cada compañía sigue cubriendo al cliente después del vencimiento: mientras corren, la fila de la planilla queda amarilla; el último día, naranja; después, roja. Los meses de renovación son cada cuánto hay que renovar a mano en esa compañía (Agrosalta 4, Río Uruguay 6, Metropol 12): las que quedan vacías renuevan solas y no aparecen en la bandeja de Renovaciones. Lo que se guarda acá sale para todas las computadoras: pintan la misma planilla, así que no puede haber dos versiones."
         alRas
       >
         <div className="overflow-x-auto">
@@ -193,7 +193,7 @@ export function Companias() {
 
       <Tarjeta
         titulo="Mensaje de aviso por WhatsApp"
-        descripcion="Lo que se manda al tocar «Avisar» en la planilla. Se pueden usar {nombre}, {cuota} y {vencimiento}."
+        descripcion="Lo que se manda al tocar «Avisar» en la planilla. Se pueden usar {nombre}, {cuota} y {vencimiento}. Vale para todas las computadoras: es el mensaje de la agencia, no el de un mostrador."
         acciones={
           puedeEditar && (
             <>

@@ -1341,6 +1341,54 @@ del simulador). Para la semilla de GitHub siguen valiendo `DM_GESTION_TOKEN_DATO
 valen en desarrollo. Los simuladores están en `scripts/vps-simulado.mjs` y `scripts/github-simulado.mjs`,
 y los usan las pruebas y el humo.
 
+## Lo que se carga una vez y lo tienen todas (los ajustes compartidos)
+
+Hasta la v12.3, la configuración de los servicios externos vivía en el `config.json` de cada
+computadora y el encabezado del ticket en la base local de cada una. Eso significaba ir máquina por
+máquina, y con que **una** quedara sin cargar esa sucursal trabajaba distinto sin que nadie se
+enterara: la que no tenía la cuenta de Google no subía los adjuntos de los siniestros, la que no tenía
+la app de Meta no podía publicar, la que tenía otra dirección de vuelta fallaba el login de Facebook
+con un mensaje que no explica nada, y la que tenía el teléfono viejo imprimía comprobantes con un
+número que ya no atiende nadie.
+
+Desde la v12.4 todo eso viaja por el **puente de ajustes del VPS** (`src/main/servicios/ajustesCompartidos.ts`):
+se carga una vez, el servidor lo guarda cifrado y el resto de las computadoras lo adopta sola al
+arrancar.
+
+| Qué | Dónde se carga | Quién lo carga |
+| --- | --- | --- |
+| Catálogo de vehículos (InfoAuto, Mercado Libre, DNRPA) | Administración → Catálogo de vehículos | Superadministrador |
+| Conexión con Google (Drive: respaldos y adjuntos) | Administración → Google Drive | Superadministrador |
+| App de Meta y **la dirección de vuelta** | Administración → Redes sociales | Superadministrador |
+| Catálogo de compañías y la plantilla del aviso | Administración → Compañías | Administrador o superadministrador |
+| Encabezado del ticket (dirección y teléfono) | Administración → Impresora | Cualquier rol, **el de su sucursal** |
+| Las cuatro listas del módulo Compañías | Compañías → «Publicar para todas» | Superadministrador |
+
+Tres reglas que ordenan todo esto:
+
+1. **Guardar es guardar para todas.** No hay un segundo botón de «publicar» (salvo en el módulo
+   Compañías, donde las listas son largas y se cargan de a poco): apretar «Guardar» escribe acá y sale
+   para el servidor en el mismo movimiento.
+2. **Que el servidor no conteste no deshace el guardado.** Lo local quedó bien escrito; el motivo
+   vuelve en `compartido.error` y la pantalla lo muestra con el aviso de que el resto todavía no se
+   enteró. Se reintenta guardando de nuevo.
+3. **La adopción del arranque no pisa lo que se cargó acá y no llegó a viajar.** Cada computadora
+   recuerda la huella de lo último que sincronizó (`ajuste_sincronizado_<clave>` en `configuracion`); si
+   lo que tiene hoy no es esa huella, hay un cambio local sin publicar y el arranque lo respeta. Sin esa
+   regla, el teléfono corregido con el servidor caído desaparecía a la mañana siguiente.
+
+**El encabezado del ticket tiene una vuelta más.** Es el único que escriben todos, y cada uno ve sólo el
+renglón de su sucursal. Si Lanús publicara la lista entera tal como la tiene guardada, mandaría también
+su copia de la dirección de Dock Sud —que puede ser vieja— y borraría la corrección que Dock Sud hizo
+esta mañana. Así que al publicar se lee lo que hay en el servidor y se le reemplaza **sólo** el renglón
+de la sucursal de quien está guardando (`publicarEncabezadoDelTicket`). El superadministrador es la
+excepción: ve las cuatro, así que lo que tiene en pantalla es lo que manda.
+
+**La huella.** El servidor y cada computadora se comparan por el SHA-256 del JSON del valor, así que el
+**orden de las claves importa** y por eso está escrito a mano en cada `valorCompartidoDe…`: dos objetos
+con los mismos datos en distinto orden darían huellas distintas y la pantalla diría «desactualizada»
+para siempre. Por lo mismo, las listas (compañías, direcciones) viajan ordenadas por una clave estable.
+
 ## Permisos por rol (Administración → Permisos)
 
 Los tres roles siguen siendo los mismos (EMPLEADO, ADMIN, SUPER_ADMIN), pero ahora **qué ve y qué toca
