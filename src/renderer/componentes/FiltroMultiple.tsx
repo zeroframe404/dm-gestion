@@ -12,7 +12,7 @@
 //    filtro sin nada elegido no filtra nada.
 //  - `alCambiar` devuelve siempre una lista nueva, en el orden en que están las opciones (no en el
 //    orden en que las fueron tocando), así dos filtros equivalentes se ven iguales.
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Icono } from './Icono'
 import { cx } from './ui'
 
@@ -144,6 +144,30 @@ export function FiltroMultiple({
 
   const hayBuscador = conHuerfanas.length >= buscarDesde
 
+  /**
+   * Las flechas mueven entre casillas y Inicio/Fin van a las puntas. Con Tab también se recorre —son
+   * casillas de verdad—, pero con veinte compañías Tab obliga a pasar por todas para llegar a la
+   * última: es la diferencia entre elegir tres compañías y renunciar a hacerlo.
+   */
+  const alTeclearEnLaLista = useCallback((evento: ReactKeyboardEvent<HTMLUListElement>) => {
+    const teclas = ['ArrowDown', 'ArrowUp', 'Home', 'End']
+    if (!teclas.includes(evento.key)) return
+    const casillas = Array.from(evento.currentTarget.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+    if (casillas.length === 0) return
+    const actual = casillas.indexOf(document.activeElement as HTMLInputElement)
+    const siguiente =
+      evento.key === 'Home'
+        ? 0
+        : evento.key === 'End'
+          ? casillas.length - 1
+          : evento.key === 'ArrowDown'
+            ? Math.min(actual + 1, casillas.length - 1)
+            : Math.max(actual - 1, 0)
+    // Desde el buscador, la primera flecha hacia abajo entra en la lista en vez de no hacer nada.
+    evento.preventDefault()
+    casillas[actual === -1 && evento.key === 'ArrowUp' ? casillas.length - 1 : siguiente]?.focus()
+  }, [])
+
   return (
     <div className={cx('relative', className)} ref={contenedor}>
       <button
@@ -188,12 +212,17 @@ export function FiltroMultiple({
                 onChange={(evento) => setBusqueda(evento.target.value)}
                 placeholder="Buscar…"
                 aria-label={`Buscar en ${etiqueta}`}
+                onKeyDown={(evento) => {
+                  if (evento.key !== 'ArrowDown') return
+                  evento.preventDefault()
+                  contenedor.current?.querySelector<HTMLInputElement>('ul input[type="checkbox"]')?.focus()
+                }}
                 className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-7 pr-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-marino-400 focus:outline-none"
               />
             </div>
           )}
 
-          <ul className="max-h-72 overflow-y-auto py-1">
+          <ul className="max-h-72 overflow-y-auto py-1" onKeyDown={alTeclearEnLaLista}>
             {visibles.length === 0 && <li className="px-3 py-4 text-center text-xs text-slate-500">Ninguna opción coincide.</li>}
             {visibles.map((opcion) => (
               <li key={opcion.valor}>
