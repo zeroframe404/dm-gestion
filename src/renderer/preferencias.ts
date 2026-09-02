@@ -8,7 +8,7 @@
 //
 // Ninguna de estas funciones puede romper una pantalla: si `localStorage` está bloqueado se trabaja
 // con los valores por defecto y listo. Es una preferencia, no un dato.
-import { escalaMasCercana, ESCALA_NORMAL, sanearOcultas, type ColumnaElegible } from './vista'
+import { escalaGuardada, sanearOcultas, type ColumnaElegible } from './vista'
 
 const CLAVE_ZOOM = 'dm.vista.zoom'
 const CLAVE_BARRA_LATERAL = 'dm.vista.barraLateral'
@@ -36,10 +36,7 @@ function escribir(clave: string, valor: string): void {
 
 /** Lo último que se eligió en esta computadora, saneado contra los pasos que existen hoy. */
 export function zoomGuardado(): number {
-  const guardado = leer(CLAVE_ZOOM)
-  if (guardado === null) return ESCALA_NORMAL
-  const numero = Number(guardado)
-  return Number.isFinite(numero) ? escalaMasCercana(numero) : ESCALA_NORMAL
+  return escalaGuardada(leer(CLAVE_ZOOM))
 }
 
 export function guardarZoom(escala: number): void {
@@ -60,11 +57,6 @@ export function aplicarZoom(escala: number): void {
   } catch {
     /* fuera de Electron (o con una precarga vieja) no hay zoom: la app funciona igual */
   }
-}
-
-/** Al arrancar, antes de dibujar: si no, la pantalla aparece al 100 % y salta. */
-export function aplicarZoomGuardado(): void {
-  aplicarZoom(zoomGuardado())
 }
 
 // ---------------------------------------------------------------------------

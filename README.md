@@ -12,7 +12,7 @@ hoja de Google dejó de ser la fuente de verdad. Ver «La base en el VPS (Fase 1
 ```bash
 npm install       # instala dependencias (better-sqlite3 trae binarios listos, no compila nada)
 npm run dev       # desarrollo con recarga automática (usuarios locales: sin DM_GESTION_TOKEN_DATOS no toca GitHub)
-npm run prueba    # 520 pruebas propias, sin tocar ninguna hoja real ni GitHub
+npm run prueba    # 523 pruebas propias, sin tocar ninguna hoja real ni GitHub
 npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
 npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador de GitHub
 npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
@@ -196,24 +196,52 @@ el usuario ni en la base. Es a propósito: el mismo usuario entra en la notebook
 en el monitor grande de la oficina, y espera que cada máquina se acuerde de lo suyo. Es el mismo
 criterio que ya usaba el volumen de los avisos (`src/renderer/sonidos/index.ts`).
 
-La lógica pura —los pasos del zoom y qué columnas quedan a la vista— vive en `src/renderer/vista.ts`,
-sin tocar `window`, así que se prueba en Node (`pruebas/vista.prueba.ts`). El archivo de al lado,
-`src/renderer/preferencias.ts`, es el único que guarda y el único que aplica.
+Tres archivos, con una responsabilidad cada uno:
+
+- `src/renderer/vista.ts`: las reglas puras —los pasos del zoom, cómo se lee lo guardado, cuánto hay
+  que juntar con la rueda para que valga un paso, qué columnas quedan a la vista—. No toca `window`,
+  así que se prueba en Node (`pruebas/vista.prueba.ts`).
+- `src/renderer/preferencias.ts`: el único que lee y escribe el `localStorage`, y el único que le pide
+  el zoom a la precarga.
+- `src/renderer/zoom.ts`: el zoom vivo —cuánto está puesto, quién lo cambia y los atajos—, fuera de
+  React.
 
 ### Zoom (`dm.vista.zoom`)
 
 Nueve pasos, de 70 % a 200 %, en el control «− 100 % +» de la barra superior. Además andan **Ctrl +**,
 **Ctrl −**, **Ctrl 0** y **Ctrl + rueda del mouse**.
 
+El valor vive en `zoom.ts` y no en el estado de un componente, por dos motivos concretos:
+
+- Los atajos tienen que andar **también en la pantalla de ingreso y en la de cambiar la contraseña**,
+  donde no hay barra superior. Alguien que dejó la pantalla al 175 % y cerró sesión no tiene ningún
+  botón a mano: Ctrl 0 es su única salida, y por eso los listeners se instalan en `main.tsx` y no en
+  un componente. Es también la salida cuando el zoom es tan grande que el propio control queda fuera
+  de la ventana.
+- Se cambia desde tres lugares —los botones, el teclado y la rueda—, así que el número que se muestra
+  se suscribe al valor en vez de tener el suyo.
+
+**La rueda junta antes de mover.** `Ctrl + rueda` no avanza un paso por evento sino cada 100 px
+acumulados (`RUEDA_POR_PASO`). Con el mouse da lo mismo —una muesca ya son ~100 px— pero en el
+touchpad de la notebook, que es justamente la máquina del caso, Chromium manda el pellizco como
+decenas de eventos de unos pocos píxeles: un paso por evento hacía que un solo gesto recorriera los
+nueve pasos y terminara en el extremo.
+
 Lo hace el zoom de Chromium (`webFrame.setZoomFactor`, en la precarga) y **no** una transformación de
 CSS. La diferencia importa: los anchos de la tabla virtual están en píxeles y los diálogos se
 posicionan con `fixed`, así que escalar por CSS dejaría la planilla igual de ancha y los carteles fuera
 de lugar. Con el zoom del navegador entra todo, incluidas las barras de desplazamiento.
 
-Los atajos se manejan en el renderer (`ControlDeZoom.tsx`) y no con un menú de Electron porque la
-versión publicada arranca sin menú (`Menu.setApplicationMenu(null)` en `src/main/index.ts`), y sin menú
-Chromium se queda sin los Ctrl + / − / 0 de fábrica. La escala guardada se aplica en `main.tsx` antes
-de dibujar: si se aplicara desde un componente, la pantalla aparecería al 100 % y saltaría.
+Los atajos se manejan en el renderer y no con un menú de Electron porque la versión publicada arranca
+sin menú (`Menu.setApplicationMenu(null)` en `src/main/index.ts`), y sin menú Chromium se queda sin los
+Ctrl + / − / 0 de fábrica. Se descarta `Alt` a propósito: en el teclado español AltGr es Ctrl + Alt, y
+sin esa salida cualquier símbolo escrito con AltGr haría zoom en el medio de una celda. La escala
+guardada se aplica en `main.tsx` antes de dibujar: si se aplicara desde un componente, la pantalla
+aparecería al 100 % y saltaría.
+
+`webFrame` está disponible en la precarga aunque la ventana corra con `sandbox: true`: en Electron 43
+el módulo `electron` que ve una precarga sandboxeada expone `contextBridge`, `crashReporter`,
+`ipcRenderer`, `nativeImage`, `sharedTexture`, `webFrame` y `webUtils`, y nada más.
 
 `window.dm.vista` es lo único de la API de la precarga que **no** pasa por IPC. Mandarlo al proceso
 principal sería un viaje de ida y vuelta para algo que se toca con la rueda del mouse.

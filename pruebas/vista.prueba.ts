@@ -6,14 +6,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  acumularRueda,
   alternarOculta,
   columnasVisibles,
   comoPorcentaje,
   ESCALAS,
   ESCALA_NORMAL,
   escalaAnterior,
+  escalaGuardada,
   escalaMasCercana,
   escalaSiguiente,
+  RUEDA_POR_PASO,
   sanearOcultas,
   type ColumnaElegible,
 } from '../src/renderer/vista'
@@ -62,6 +65,48 @@ test('ir y volver por todos los pasos no se pierde en el camino', () => {
     escala = escalaAnterior(escala)
     assert.equal(escala, ESCALAS[i], `bajando se salteó el paso ${i}`)
   }
+})
+
+test('lo que quedó guardado se lee con desconfianza', () => {
+  assert.equal(escalaGuardada('1.25'), 1.25)
+  assert.equal(escalaGuardada('0.9'), 0.9)
+  // Nunca estuvo guardado: el tamaño de siempre.
+  assert.equal(escalaGuardada(null), ESCALA_NORMAL)
+  // Y esto es lo que importa: vacío NO puede terminar en 70 %. `Number('')` es 0, y 0 acomodado al
+  // paso más cercano sería el más chico de todos; la ventana abriría chiquita por una clave a medio
+  // escribir.
+  assert.equal(escalaGuardada(''), ESCALA_NORMAL)
+  assert.equal(escalaGuardada('   '), ESCALA_NORMAL)
+  for (const basura of ['abc', 'null', '{}', '[1,2]', '1e999', '-5', '0', 'NaN', 'Infinity']) {
+    assert.equal(escalaGuardada(basura), ESCALA_NORMAL, `«${basura}» tendría que volver al 100 %`)
+  }
+})
+
+test('la rueda junta antes de mover un paso', () => {
+  // Con el mouse, una muesca es un evento grande: un paso, como siempre.
+  assert.deepEqual(acumularRueda(0, -RUEDA_POR_PASO), { acumulado: 0, paso: 1 })
+  assert.deepEqual(acumularRueda(0, RUEDA_POR_PASO), { acumulado: 0, paso: -1 })
+
+  // Con el touchpad, Chromium manda el pellizco en pedacitos: se juntan y recién ahí se mueve. Antes
+  // de esto, cada uno de estos eventos valía un paso entero y un solo gesto se comía toda la escala.
+  let acumulado = 0
+  let pasos = 0
+  for (let i = 0; i < 30; i++) {
+    const resultado = acumularRueda(acumulado, -4)
+    acumulado = resultado.acumulado
+    pasos += resultado.paso
+  }
+  assert.equal(pasos, 1, `120 px de gesto tendrían que valer un paso, no ${pasos}`)
+})
+
+test('cambiar de sentido con la rueda arranca de cero', () => {
+  // Si no, achicar después de agrandar tiene que remontar primero todo lo que se había juntado.
+  const juntado = acumularRueda(0, -60)
+  assert.deepEqual(juntado, { acumulado: -60, paso: 0 })
+  assert.deepEqual(acumularRueda(juntado.acumulado, 60), { acumulado: 60, paso: 0 })
+  // Y un evento de cero, o uno raro, no mueve ni ensucia lo juntado.
+  assert.deepEqual(acumularRueda(-60, 0), { acumulado: -60, paso: 0 })
+  assert.deepEqual(acumularRueda(-60, Number.NaN), { acumulado: -60, paso: 0 })
 })
 
 test('el porcentaje se muestra redondeado y con el signo', () => {
