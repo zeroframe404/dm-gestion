@@ -51,7 +51,7 @@ export function Imputados() {
     if (!datos) return
     setGuardando(pago.id)
     setError(null)
-    const respuesta = await window.dm.cobranzas.cambiarResultado(pago.id, resultado, datos.companias)
+    const respuesta = await window.dm.cobranzas.cambiarResultado(pago.id, resultado, datos.companiasElegidas)
     setGuardando(null)
     if (respuesta.ok) setDatos(respuesta.datos)
     else setError(respuesta.error)
@@ -80,7 +80,7 @@ export function Imputados() {
           Mes
           <select
             value={datos.periodo}
-            onChange={(evento) => void cargar(evento.target.value, datos.companias)}
+            onChange={(evento) => void cargar(evento.target.value, datos.companiasElegidas)}
             className="ml-2 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800"
           >
             {datos.periodos.map((periodo) => (
@@ -92,8 +92,8 @@ export function Imputados() {
         </label>
         <FiltroMultiple
           etiqueta="Compañía"
-          valores={datos.companias}
-          opciones={datos.companiasDisponibles}
+          valores={datos.companiasElegidas}
+          opciones={datos.companias}
           alCambiar={(v) => void cargar(datos.periodo, v)}
         />
         {datos.sucursal && (
@@ -149,7 +149,7 @@ export function Imputados() {
               <tr>
                 <td colSpan={10} className="px-3 py-12 text-center text-slate-500">
                   No hay pagos de {nombreDePeriodo(datos.periodo)}
-                  {datos.companias.length > 0 ? ` de ${datos.companias.join(', ')}` : ''}.
+                  {datos.companiasElegidas.length > 0 ? ` de ${datos.companiasElegidas.join(', ')}` : ''}.
                 </td>
               </tr>
             )}

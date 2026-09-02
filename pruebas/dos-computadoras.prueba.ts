@@ -291,7 +291,7 @@ test('el pago que cobra una computadora aparece en la caja del día de la otra, 
 
   en(lanus2)
   await lanus2.motor.ciclarBajada()
-  const caja = cajaDelDia('2026-08-12', 'Lanús')
+  const caja = cajaDelDia('2026-08-12', ['Lanús'])
   const pago = caja.pagos.find((p) => p.clienteNombre === CLIENTES.gonzalez.nombre)
   assert.ok(pago, 'el pago está en la caja de la otra computadora')
   assert.equal(pago.usuarioNombre, 'Milagros', 'con quién lo cobró')
@@ -324,7 +324,7 @@ test('los pagos que habían quedado sólo en una computadora se encolan solos al
 
   en(lanus2)
   await lanus2.motor.ciclarBajada()
-  const pago = cajaDelDia('2026-08-13', 'Lanús').pagos.find((p) => p.clienteNombre === 'CLIENTE DE ANTES')
+  const pago = cajaDelDia('2026-08-13', ['Lanús']).pagos.find((p) => p.clienteNombre === 'CLIENTE DE ANTES')
   assert.ok(pago, 'el pago rezagado llegó a la otra computadora')
   assert.equal(pago.usuarioNombre, 'Daiana')
   cerrarTodo()
@@ -340,15 +340,15 @@ test('los administradores ven la caja y la rendición de todas las sucursales; u
   await lanus2.motor.ciclarBajada()
 
   // Daiana (empleada de Lanús) desde la otra computadora: ve lo que cobró Milagros, no lo de Dock Sud.
-  const deDaiana = cajaDelDia('2026-08-12', 'Dock Sud', DAIANA)
-  assert.equal(deDaiana.sucursal, 'Lanús', 'pida lo que pida, mira su mostrador')
+  const deDaiana = cajaDelDia('2026-08-12', ['Dock Sud'], DAIANA)
+  assert.deepEqual(deDaiana.sucursalesElegidas, ['Lanús'], 'pida lo que pida, mira su mostrador')
   assert.equal(deDaiana.sucursalFija, true)
   assert.deepEqual(deDaiana.sucursales, ['Lanús'])
   assert.deepEqual(
     deDaiana.pagos.map((p) => p.clienteNombre),
     [CLIENTES.gonzalez.nombre],
   )
-  const deFede = cajaDelDia('2026-08-12', '', FEDE)
+  const deFede = cajaDelDia('2026-08-12', [], FEDE)
   assert.deepEqual(
     deFede.pagos.map((p) => p.clienteNombre),
     [CLIENTES.perezAuto.nombre],
@@ -356,10 +356,10 @@ test('los administradores ven la caja y la rendición de todas las sucursales; u
 
   // Daniel y Sofia (administradores) eligen la sucursal, o todas.
   for (const admin of [DANIEL, SOFIA]) {
-    const todas = cajaDelDia('2026-08-12', '', admin)
+    const todas = cajaDelDia('2026-08-12', [], admin)
     assert.equal(todas.sucursalFija, false)
     assert.equal(todas.pagos.length, 2, `${admin.nombre} ve las dos cajas juntas`)
-    assert.equal(cajaDelDia('2026-08-12', 'Lanús', admin).pagos.length, 1)
+    assert.equal(cajaDelDia('2026-08-12', ['Lanús'], admin).pagos.length, 1)
   }
 
   // Lo mismo en Imputados: la empleada rinde lo de su mostrador y no puede tocar lo de otro.
@@ -392,7 +392,7 @@ test('un cobro IMPUTADO viaja por la columna COBRO de APP PAGOS, y en la otra co
   const alla = exigirFila(CLIENTES.gonzalez.nombre)
   assert.equal(alla.pagoImputado, true, 'la otra computadora sabe que está imputada')
   assert.equal(alla.pagoRegistrado, false, 'y que el cliente todavía no pagó')
-  const caja = cajaDelDia('2026-08-12', 'Lanús')
+  const caja = cajaDelDia('2026-08-12', ['Lanús'])
   assert.equal(caja.pagos.length, 1)
   assert.equal(caja.pagos[0]!.estadoCobro, 'IMPUTADO')
   assert.equal(caja.total, 0)
@@ -408,6 +408,6 @@ test('un cobro IMPUTADO viaja por la columna COBRO de APP PAGOS, y en la otra co
   const pagada = exigirFila(CLIENTES.gonzalez.nombre)
   assert.equal(pagada.pagoImputado, false)
   assert.equal(pagada.pagoRegistrado, true)
-  assert.equal(cajaDelDia('2026-08-14', 'Lanús').total, 24420)
+  assert.equal(cajaDelDia('2026-08-14', ['Lanús']).total, 24420)
   cerrarTodo()
 })

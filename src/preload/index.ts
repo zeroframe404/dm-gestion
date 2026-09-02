@@ -97,9 +97,9 @@ const api: ApiDm = {
     editar: (id, datos) => invocar('companias:editar', id, datos),
   },
   cobranzas: {
-    caja: (fecha, sucursal) => invocar('cobranzas:caja', fecha, sucursal),
+    caja: (fecha, sucursales) => invocar('cobranzas:caja', fecha, sucursales),
     registrarPagoManual: (datos) => invocar('cobranzas:registrarPagoManual', datos),
-    exportarCaja: (fecha, sucursal) => invocar('cobranzas:exportarCaja', fecha, sucursal),
+    exportarCaja: (fecha, sucursales) => invocar('cobranzas:exportarCaja', fecha, sucursales),
     mora: (filtros) => invocar('cobranzas:mora', filtros),
     avisarMora: (filaId) => invocar('cobranzas:avisarMora', filaId),
     imputados: (periodo, companias) => invocar('cobranzas:imputados', periodo, companias),
@@ -224,7 +224,7 @@ const api: ApiDm = {
   },
   metricas: {
     tablero: (filtros) => invocar('metricas:tablero', filtros),
-    estadisticas: (periodo, sucursal) => invocar('metricas:estadisticas', periodo, sucursal),
+    estadisticas: (periodo, sucursales) => invocar('metricas:estadisticas', periodo, sucursales),
   },
   reportes: {
     catalogo: () => invocar('reportes:catalogo'),

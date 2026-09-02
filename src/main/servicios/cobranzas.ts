@@ -127,21 +127,27 @@ export function sucursalObligadaDe(actor: SesionUsuario | null | undefined): str
   return actor.sucursal.nombre
 }
 
-export function cajaDelDia(fechaPedida: string | null, sucursalPedida: string, actor?: SesionUsuario | null): CajaDelDia {
+export function cajaDelDia(fechaPedida: string | null, sucursalesPedidas: string[], actor?: SesionUsuario | null): CajaDelDia {
   const fecha = exigirFecha(fechaPedida)
   const obligada = sucursalObligadaDe(actor)
   const todas = sucursalesDeLaCaja()
-  const sucursales = obligada ? todas.filter((s) => mismaSucursal(s, obligada)) : todas
-  // Con sucursal obligada, la pedida no cuenta: se mira la del mostrador y nada más.
-  const sucursal = sucursales.find((s) => mismaSucursal(s, obligada || sucursalPedida)) ?? (obligada || '')
+  const disponibles = obligada ? todas.filter((s) => mismaSucursal(s, obligada)) : todas
+  // Con sucursal obligada, lo pedido no cuenta: se mira la del mostrador y nada más. Sin ella, se
+  // devuelven las elegidas escritas como el catálogo, y lo que no esté entre las disponibles se cae.
+  const sucursales = obligada
+    ? disponibles
+    : listaDeFiltro(sucursalesPedidas).flatMap((pedida) => {
+        const encontrada = disponibles.find((s) => mismaSucursal(s, pedida))
+        return encontrada ? [encontrada] : []
+      })
 
   const crudas = db().prepare(`${SELECT_PAGOS} WHERE p.fecha_iso = ? ORDER BY p.creado_en, p.id`).all(fecha) as PagoCrudo[]
-  const pagos = crudas.map(aPagoRegistrado).filter((pago) => !sucursal || mismaSucursal(pago.sucursal, sucursal))
+  const pagos = crudas.map(aPagoRegistrado).filter((pago) => coincideAlguno(sucursales, pago.sucursal, mismaSucursal))
 
   return {
     fecha,
-    sucursal,
-    sucursales,
+    sucursalesElegidas: sucursales,
+    sucursales: disponibles,
     sucursalFija: obligada !== '',
     mediosDePago: catalogos().mediosDePago,
     pagos,
@@ -173,10 +179,14 @@ function celda(valor: string | number | null): string {
  * El día en CSV, con punto y coma de separador y BOM: así se abre de un doble clic en el Excel de la
  * agencia, sin pasar por el asistente de importación.
  */
-export function csvDeLaCaja(fechaPedida: string | null, sucursalPedida: string, actor?: SesionUsuario | null): { nombre: string; contenido: string } {
-  const caja = cajaDelDia(fechaPedida, sucursalPedida, actor)
+export function csvDeLaCaja(
+  fechaPedida: string | null,
+  sucursalesPedidas: string[],
+  actor?: SesionUsuario | null,
+): { nombre: string; contenido: string } {
+  const caja = cajaDelDia(fechaPedida, sucursalesPedidas, actor)
   const lineas: string[] = []
-  lineas.push(celda(`Caja del ${caja.fecha}${caja.sucursal ? ` · ${caja.sucursal}` : ' · todas las sucursales'}`))
+  lineas.push(celda(`Caja del ${caja.fecha}${caja.sucursalesElegidas.length > 0 ? ` · ${caja.sucursalesElegidas.join(', ')}` : ' · todas las sucursales'}`))
   lineas.push('')
   lineas.push(
     ['Hora', 'Cliente', 'DNI/CUIT', 'Compañía', 'Póliza', 'Patente', 'Importe', 'Medio', 'Sucursal', 'Cobró', 'Mes', 'Resultado', 'Cobro']
@@ -217,7 +227,7 @@ export function csvDeLaCaja(fechaPedida: string | null, sucursalPedida: string, 
     lineas.push(celda(`${caja.sinImporte} pago(s) sin importe numérico: no suman al total.`))
   }
 
-  const sufijo = caja.sucursal ? `-${caja.sucursal.replace(/[^\p{L}\p{N}]+/gu, '-')}` : ''
+  const sufijo = caja.sucursalesElegidas.length > 0 ? `-${caja.sucursalesElegidas.join('-').replace(/[^\p{L}\p{N}]+/gu, '-')}` : ''
   // El BOM del principio es lo que le dice a Excel que el archivo está en UTF-8.
   return { nombre: `caja-${caja.fecha}${sufijo}.csv`, contenido: `﻿${lineas.join('\r\n')}\r\n` }
 }
@@ -261,7 +271,7 @@ export function registrarPagoManual(datos: DatosDePagoManual, actor: SesionUsuar
     // El ticket es del pago de este mes; si sólo se adelantó la cuota que viene, del adelanto.
     const pagoId = (datos.alcance === 'ADELANTADO' ? idDelAdelantoDeLaCuota(cuotaFilaId) : idDelPagoDeLaCuota(cuotaFilaId)) ?? idDelAdelantoDeLaCuota(cuotaFilaId)
     if (pagoId === null) throw new ErrorDeNegocio('El pago se guardó pero no se pudo leer de vuelta. Actualizá la pantalla.')
-    return { caja: cajaDelDia(interpretada.iso, sucursal, actor), pagoId }
+    return { caja: cajaDelDia(interpretada.iso, sucursal ? [sucursal] : [], actor), pagoId }
   }
 
   const nombre = texto(datos.clienteNombre, 'El nombre del cliente', 2, 200)
@@ -306,7 +316,7 @@ export function registrarPagoManual(datos: DatosDePagoManual, actor: SesionUsuar
     valorAnterior: null,
     valorNuevo: `${nombre} · ${importe}${medio ? ` · ${medio}` : ''} (${fecha})`,
   })
-  return { caja: cajaDelDia(interpretada.iso, sucursal, actor), pagoId }
+  return { caja: cajaDelDia(interpretada.iso, sucursal ? [sucursal] : [], actor), pagoId }
 }
 
 // ---------------------------------------------------------------------------
@@ -488,12 +498,12 @@ export function imputados(periodoPedido: string | null, companiasPedidas: string
 
   return {
     periodo,
-    companias,
+    companiasElegidas: companias,
     sucursal,
     // Sin ningún pago cargado la lista queda vacía a propósito: es lo que la pantalla mira para
     // explicar que la rendición todavía no tiene nada.
     periodos: periodos.length === 0 || periodos.includes(periodo) ? periodos : [periodo, ...periodos],
-    companiasDisponibles,
+    companias: companiasDisponibles,
     pagos,
     contadores,
     total: pagos.length,

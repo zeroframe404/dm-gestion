@@ -210,7 +210,7 @@ function baseConUnCobroImportado(): BaseDeDatos {
 test('un cobro importado cae en la sucursal de su cliente, no en «ninguna»', () => {
   baseConUnCobroImportado()
 
-  const sinFiltro = cajaDelDia('2026-08-12', '')
+  const sinFiltro = cajaDelDia('2026-08-12', [])
   assert.equal(sinFiltro.pagos.length, 1, 'sin filtrar, el cobro está')
   assert.equal(sinFiltro.pagos[0]!.sucursal, 'LANUS', 'la sucursal sale del cliente cuando el cobro no la trae')
   cerrarBaseDeDatos()
@@ -220,11 +220,11 @@ test('la caja del día filtrada por Lanús encuentra ese cobro', () => {
   baseConUnCobroImportado()
 
   // Es lo que ve quien entra en la sucursal: la caja abre ya filtrada por la sucursal del usuario.
-  const enLanus = cajaDelDia('2026-08-12', 'Lanús')
+  const enLanus = cajaDelDia('2026-08-12', ['Lanús'])
   assert.equal(enLanus.pagos.length, 1, 'elegir «Lanús» del desplegable tiene que encontrar el cobro de LANUS')
   assert.equal(enLanus.total, 15000, 'y el total de la caja lo incluye')
 
-  const enDockSud = cajaDelDia('2026-08-12', 'Dock Sud')
+  const enDockSud = cajaDelDia('2026-08-12', ['Dock Sud'])
   assert.equal(enDockSud.pagos.length, 0, 'y no se cuela en la caja de otra sucursal')
   cerrarBaseDeDatos()
 })

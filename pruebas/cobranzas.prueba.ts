@@ -91,7 +91,7 @@ test('tres pagos del día suman bien por medio de pago', async () => {
   registrarPago(buscar(CLIENTES.perezAuto.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 5.500,50', medioDePago: 'EFECTIVO' }, DANIEL)
   registrarPago(buscar(CLIENTES.rodriguez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 20.000', medioDePago: 'TRANSFERENCIA' }, DANIEL)
 
-  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  const caja = cajaDelDia(DIA_DE_CAJA, [])
   assert.equal(caja.fecha, DIA_DE_CAJA)
   assert.equal(caja.pagos.length, 3)
   assert.equal(caja.total, 35_500.5)
@@ -109,7 +109,7 @@ test('cada pago de la caja dice la hora, quién cobró y en qué sucursal', asyn
   await cobranzasDePrueba()
   registrarPago(buscar(CLIENTES.gonzalez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 10.000', medioDePago: 'EFECTIVO' }, BRENDA)
 
-  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  const caja = cajaDelDia(DIA_DE_CAJA, [])
   const pago = caja.pagos[0]!
   assert.equal(pago.clienteNombre, CLIENTES.gonzalez.nombre)
   assert.equal(pago.numeroPoliza, CLIENTES.gonzalez.poliza)
@@ -119,8 +119,8 @@ test('cada pago de la caja dice la hora, quién cobró y en qué sucursal', asyn
   assert.equal(pago.hechoEnLaApp, true)
 
   // Y filtrando por otra sucursal ese pago no aparece.
-  assert.equal(cajaDelDia(DIA_DE_CAJA, 'Lanús').pagos.length, 0)
-  assert.equal(cajaDelDia(DIA_DE_CAJA, 'Dock Sud').pagos.length, 1)
+  assert.equal(cajaDelDia(DIA_DE_CAJA, ['Lanús']).pagos.length, 0)
+  assert.equal(cajaDelDia(DIA_DE_CAJA, ['Dock Sud']).pagos.length, 1)
   cerrarBaseDeDatos()
 })
 
@@ -151,7 +151,7 @@ test('el alta manual sobre una cuota del mes deja la fila paga y no duplica el p
 
   // La misma cuota cobrada de nuevo corrige el pago; no aparece dos veces en la caja.
   registrarPago(fila.filaId, { fecha: DIA_DE_CAJA, importe: '$ 22.000', medioDePago: 'EFECTIVO' }, DANIEL)
-  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  const caja = cajaDelDia(DIA_DE_CAJA, [])
   assert.equal(caja.pagos.length, 1)
   assert.equal(caja.total, 22_000)
   assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM pagos WHERE hecho_en_la_app = 1`).get() as { n: number }).n, 1)
@@ -209,7 +209,7 @@ test('«Exportar el día» arma un CSV con los pagos y los totales por medio', a
   registrarPago(buscar(CLIENTES.gonzalez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 10.000', medioDePago: 'EFECTIVO' }, DANIEL)
   registrarPago(buscar(CLIENTES.rodriguez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 20.000', medioDePago: 'TRANSFERENCIA' }, DANIEL)
 
-  const archivo = csvDeLaCaja(DIA_DE_CAJA, '')
+  const archivo = csvDeLaCaja(DIA_DE_CAJA, [])
   assert.equal(archivo.nombre, `caja-${DIA_DE_CAJA}.csv`)
   // El BOM del principio es lo que hace que Excel lo abra en UTF-8.
   assert.ok(archivo.contenido.startsWith('﻿'))
@@ -666,7 +666,7 @@ test('el CSV no deja que una celda de la hoja se abra como fórmula en Excel', a
     },
     DANIEL,
   )
-  const archivo = csvDeLaCaja(DIA_DE_CAJA, '')
+  const archivo = csvDeLaCaja(DIA_DE_CAJA, [])
   assert.match(archivo.contenido, /"'=SUMA\(A1:A9\)"/)
   assert.match(archivo.contenido, /"'@raro"/)
   cerrarBaseDeDatos()
@@ -686,13 +686,13 @@ test('un cobro IMPUTADO no deja la fila paga ni suma a la caja; cuando el client
   assert.equal(imputada.pago, null, 'CUANDO PAGO sigue vacío')
   assert.equal(imputada.pagoFecha, null)
 
-  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  const caja = cajaDelDia(DIA_DE_CAJA, [])
   assert.equal(caja.pagos.length, 1, 'el pago se ve en la caja')
   assert.equal(caja.pagos[0]!.estadoCobro, 'IMPUTADO')
   assert.equal(caja.total, 0, 'pero no suma: la plata no entró')
   assert.equal(caja.imputados, 1)
   assert.equal(caja.totalesPorMedio.length, 0)
-  assert.match(csvDeLaCaja(DIA_DE_CAJA, '').contenido, /IMPUTADO \(falta cobrar\)/)
+  assert.match(csvDeLaCaja(DIA_DE_CAJA, []).contenido, /IMPUTADO \(falta cobrar\)/)
 
   // En la rendición se cuenta como «sin cobrar», y en la mora sigue apareciendo con la marca.
   assert.equal(imputados('2026-08', []).sinCobrar, 1)
@@ -712,8 +712,8 @@ test('un cobro IMPUTADO no deja la fila paga ni suma a la caja; cuando el client
   assert.equal(pagada.pagoRegistrado, true)
   assert.equal(pagada.pagoFecha, HOY)
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM pagos WHERE hecho_en_la_app = 1').get() as { n: number }).n, 1, 'es el mismo pago, corregido')
-  assert.equal(cajaDelDia(HOY, '').total, 10_000, 'ahora sí suma, en el día que pagó')
-  assert.equal(cajaDelDia(DIA_DE_CAJA, '').pagos.length, 0, 'y ya no está en el día de la imputación')
+  assert.equal(cajaDelDia(HOY, []).total, 10_000, 'ahora sí suma, en el día que pagó')
+  assert.equal(cajaDelDia(DIA_DE_CAJA, []).pagos.length, 0, 'y ya no está en el día de la imputación')
   assert.equal(mora(SIN_FILTROS, HOY).filas.some((f) => f.filaId === fila.filaId), false)
   const corregido = filas<{ campos_json: string }>(db, `SELECT campos_json FROM cola_sync WHERE fila_id = ?`, `PAGO:${fila.filaId}`)
   assert.equal((JSON.parse(corregido[0]!.campos_json) as Record<string, string>).cobro, 'PAGO', 'la hoja se entera de que dejó de estar imputado')
@@ -773,7 +773,7 @@ test('pagar las dos cuotas juntas cobra la de este mes y deja la del mes que vie
   assert.equal(actualizada.adelantoSiguiente.imputado, false, 'todavía no existe la fila de septiembre')
 
   // Las dos entran hoy en la caja.
-  const caja = cajaDelDia(DIA_DE_CAJA, '')
+  const caja = cajaDelDia(DIA_DE_CAJA, [])
   assert.equal(caja.pagos.length, 2)
   assert.equal(caja.total, 20_500)
   const adelanto = caja.pagos.find((p) => p.adelantoModo !== null)

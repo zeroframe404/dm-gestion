@@ -1588,12 +1588,13 @@ export interface TotalPorMedio {
 export interface CajaDelDia {
   /** Día que se está mirando, 'AAAA-MM-DD'. */
   fecha: string
-  /** Sucursal filtrada; '' = todas. */
-  sucursal: string
+  /** Sucursales filtradas, ya escritas como el catálogo; vacías = todas. */
+  sucursalesElegidas: string[]
+  /** Las que este usuario puede mirar: son las opciones del desplegable. */
   sucursales: string[]
   /**
    * true cuando la sucursal no se puede cambiar: un empleado ve la caja de su mostrador y nada más.
-   * Los administradores eligen cualquiera (o «Todas»).
+   * Los administradores eligen las que quieran (o ninguna, que son todas).
    */
   sucursalFija: boolean
   mediosDePago: string[]
@@ -1720,12 +1721,12 @@ export const NOMBRE_RESULTADO_IMPUTACION: Record<ResultadoImputacion, string> = 
 export interface RendicionImputados {
   periodo: string
   /** Compañías filtradas, ya plegadas contra las que existen; lista vacía = todas. */
-  companias: string[]
+  companiasElegidas: string[]
   /** Sucursal a la que está acotada la rendición ('' = todas): la del mostrador cuando pregunta un empleado. */
   sucursal: string
   periodos: string[]
   /** Todas las compañías que aparecen en el mes: son las opciones del desplegable. */
-  companiasDisponibles: string[]
+  companias: string[]
   pagos: PagoRegistrado[]
   /** Cuántos pagos hay de cada resultado (la clave '' son los pendientes). */
   contadores: Record<ResultadoImputacion, number>
@@ -2435,8 +2436,8 @@ export interface TareaCompletada {
 
 /** Filtros globales del tablero: una sucursal (o todas) y un mes. */
 export interface FiltrosMetricas {
-  /** '' = todas las sucursales. */
-  sucursal: string
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
   /** 'AAAA-MM'; null = el mes abierto de la cartera. */
   periodo: string | null
 }
@@ -2484,7 +2485,9 @@ export interface CobranzaDelMes {
 export interface TableroMetricas {
   periodo: string
   periodos: string[]
-  sucursal: string
+  /** Las sucursales filtradas, ya escritas como el catálogo. Vacías = el tablero es de toda la agencia. */
+  sucursalesElegidas: string[]
+  /** Todas las del catálogo: son las opciones del desplegable. */
   sucursales: string[]
 
   activos: number
@@ -2521,7 +2524,9 @@ export interface FilaEstadistica {
 export interface EstadisticasDeCartera {
   periodo: string
   periodos: string[]
-  sucursal: string
+  /** Las sucursales filtradas, ya escritas como el catálogo. Vacías = son las de toda la agencia. */
+  sucursalesElegidas: string[]
+  /** Todas las del catálogo: son las opciones del desplegable. */
   sucursales: string[]
   porCompania: FilaEstadistica[]
   porSucursal: FilaEstadistica[]
@@ -3031,9 +3036,12 @@ export type VentanaDeVencimiento = (typeof VENTANAS_DE_VENCIMIENTO)[number]
 
 /** El filtro guardado de un segmento. Es lo que se recalcula cada vez que se abre. */
 export interface FiltrosDeSegmento {
-  sucursal: string
-  compania: string
-  formaPago: string
+  /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
+  sucursales: string[]
+  companias: string[]
+  formasDePago: string[]
+  /** Las siete de `src/shared/ramas.ts`, más lo que la base tenga fuera del catálogo. */
+  ramas: string[]
   vence: VentanaDeVencimiento
   /** Sólo las cuotas que no figuran pagas. */
   soloImpagas: boolean
@@ -3044,9 +3052,10 @@ export interface FiltrosDeSegmento {
 }
 
 export const SEGMENTO_SIN_FILTROS: FiltrosDeSegmento = {
-  sucursal: '',
-  compania: '',
-  formaPago: '',
+  sucursales: [],
+  companias: [],
+  formasDePago: [],
+  ramas: [],
   vence: '',
   soloImpagas: true,
   soloSinAvisar: false,
@@ -3113,6 +3122,8 @@ export interface ResultadoDeSegmento {
   sucursales: string[]
   companias: string[]
   formasDePago: string[]
+  /** Las opciones del filtro de rama: las siete de la agencia más lo que la base traiga aparte. */
+  ramas: string[]
   hoy: string
 }
 

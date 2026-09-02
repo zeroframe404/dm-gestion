@@ -15,25 +15,12 @@ import {
   type VentanaDeVencimiento,
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { NOMBRE_RAMA, type Rama } from '../../../shared/ramas'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Tarjeta } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { pesos } from '../cobranzas/formato'
-
-/**
- * Las opciones del desplegable más el valor que ya tenía puesto el segmento, si no está entre ellas.
- *
- * Un segmento guarda su filtro tal cual se eligió el día que se creó, y la lista de opciones se
- * recalcula sobre el mes abierto de ESTA computadora: si la sucursal guardada no aparece más (la
- * planilla la escribe distinto, o esa base no la tiene), el `<select>` se quedaba en blanco —como si
- * no hubiera filtro— pero el filtro seguía puesto y la lista salía corta o vacía. Mostrándola se ve
- * qué está filtrando y se puede sacar.
- */
-function conElValorGuardado(opciones: string[], valor: string): string[] {
-  const clave = (texto: string) => texto.trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-  if (!valor || opciones.some((opcion) => clave(opcion) === clave(valor))) return opciones
-  return [...opciones, valor]
-}
 
 export function Segmentos() {
   const usuario = useUsuarioActual()
@@ -186,39 +173,52 @@ export function Segmentos() {
           }
         >
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className={etiqueta}>
+            {/* Lo elegido que ya no está entre las opciones lo sigue mostrando `FiltroMultiple`: un
+                segmento guarda su filtro tal cual se eligió el día que se creó, y la lista se recalcula
+                sobre el mes abierto de ESTA computadora. Si la sucursal guardada no aparece más, antes el
+                `<select>` quedaba en blanco —como si no hubiera filtro— y la lista salía corta sin decir
+                por qué. */}
+            <div className={etiqueta}>
               Sucursal
-              <select value={datos.filtros.sucursal} onChange={(e) => cambiarFiltros({ sucursal: e.target.value })} className={`mt-1 ${control}`}>
-                <option value="">Todas</option>
-                {conElValorGuardado(datos.sucursales, datos.filtros.sucursal).map((sucursal) => (
-                  <option key={sucursal} value={sucursal}>
-                    {sucursal}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={etiqueta}>
+              <FiltroMultiple
+                etiqueta="Sucursal"
+                valores={datos.filtros.sucursales}
+                opciones={datos.sucursales}
+                alCambiar={(v) => cambiarFiltros({ sucursales: v })}
+                className="mt-1"
+              />
+            </div>
+            <div className={etiqueta}>
               Compañía
-              <select value={datos.filtros.compania} onChange={(e) => cambiarFiltros({ compania: e.target.value })} className={`mt-1 ${control}`}>
-                <option value="">Todas</option>
-                {conElValorGuardado(datos.companias, datos.filtros.compania).map((compania) => (
-                  <option key={compania} value={compania}>
-                    {compania}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={etiqueta}>
+              <FiltroMultiple
+                etiqueta="Compañía"
+                valores={datos.filtros.companias}
+                opciones={datos.companias}
+                alCambiar={(v) => cambiarFiltros({ companias: v })}
+                className="mt-1"
+              />
+            </div>
+            <div className={etiqueta}>
               Forma de pago
-              <select value={datos.filtros.formaPago} onChange={(e) => cambiarFiltros({ formaPago: e.target.value })} className={`mt-1 ${control}`}>
-                <option value="">Todas</option>
-                {conElValorGuardado(datos.formasDePago, datos.filtros.formaPago).map((forma) => (
-                  <option key={forma} value={forma}>
-                    {forma}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <FiltroMultiple
+                etiqueta="Forma de pago"
+                valores={datos.filtros.formasDePago}
+                opciones={datos.formasDePago}
+                alCambiar={(v) => cambiarFiltros({ formasDePago: v })}
+                className="mt-1"
+              />
+            </div>
+            <div className={etiqueta}>
+              Rama
+              <FiltroMultiple
+                etiqueta="Rama"
+                valores={datos.filtros.ramas}
+                opciones={datos.ramas}
+                textoDe={(r) => NOMBRE_RAMA[r as Rama] ?? r}
+                alCambiar={(v) => cambiarFiltros({ ramas: v })}
+                className="mt-1"
+              />
+            </div>
             <label className={etiqueta}>
               Vencimiento
               <select

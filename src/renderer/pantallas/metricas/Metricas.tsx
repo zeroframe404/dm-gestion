@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import type { TableroMetricas } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Cargando, Tarjeta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { pesos, pesosRedondos } from '../cobranzas/formato'
@@ -16,17 +17,17 @@ export function Metricas() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const cargar = useCallback(async (periodo: string | null, sucursal: string) => {
+  const cargar = useCallback(async (periodo: string | null, sucursales: string[]) => {
     setCargando(true)
     setError(null)
-    const resultado = await window.dm.metricas.tablero({ periodo, sucursal })
+    const resultado = await window.dm.metricas.tablero({ periodo, sucursales })
     if (resultado.ok) setDatos(resultado.datos)
     else setError(resultado.error)
     setCargando(false)
   }, [])
 
   useEffect(() => {
-    void cargar(null, '')
+    void cargar(null, [])
   }, [cargar])
 
   if (cargando && !datos) return <Cargando texto="Calculando las métricas…" />
@@ -38,7 +39,8 @@ export function Metricas() {
     )
   }
 
-  const alcance = datos.sucursal ? `${nombreDePeriodo(datos.periodo)} · ${datos.sucursal}` : nombreDePeriodo(datos.periodo)
+  const alcance =
+    datos.sucursalesElegidas.length > 0 ? `${nombreDePeriodo(datos.periodo)} · ${datos.sucursalesElegidas.join(', ')}` : nombreDePeriodo(datos.periodo)
   const seleccion = 'h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800'
 
   return (
@@ -48,7 +50,7 @@ export function Metricas() {
           Mes
           <select
             value={datos.periodo}
-            onChange={(evento) => void cargar(evento.target.value, datos.sucursal)}
+            onChange={(evento) => void cargar(evento.target.value, datos.sucursalesElegidas)}
             className={`ml-2 ${seleccion}`}
           >
             {datos.periodos.length === 0 && <option value={datos.periodo}>{nombreDePeriodo(datos.periodo)}</option>}
@@ -59,21 +61,12 @@ export function Metricas() {
             ))}
           </select>
         </label>
-        <label className="text-sm font-semibold text-slate-700">
-          Sucursal
-          <select
-            value={datos.sucursal}
-            onChange={(evento) => void cargar(datos.periodo, evento.target.value)}
-            className={`ml-2 ${seleccion}`}
-          >
-            <option value="">Todas</option>
-            {datos.sucursales.map((sucursal) => (
-              <option key={sucursal} value={sucursal}>
-                {sucursal}
-              </option>
-            ))}
-          </select>
-        </label>
+        <FiltroMultiple
+          etiqueta="Sucursal"
+          valores={datos.sucursalesElegidas}
+          opciones={datos.sucursales}
+          alCambiar={(v) => void cargar(datos.periodo, v)}
+        />
         {cargando && <span className="text-xs text-slate-500">Actualizando…</span>}
         <BotonAyuda clave="metricas" className="ml-auto" />
       </div>

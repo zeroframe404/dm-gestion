@@ -508,14 +508,14 @@ export function registrarIpc(): void {
   // administrador, aunque un empleado tenga «editar» en Cobranzas.
   // La caja y la rendición de las OTRAS sucursales son de los administradores; un empleado mira y
   // rinde lo de su mostrador (ver `sucursalObligadaDe` en cobranzas.ts).
-  manejar('cobranzas:caja', (fecha, sucursal) => exito(cajaDelDia(fecha, sucursal, exigirVista('cobranzas'))))
+  manejar('cobranzas:caja', (fecha, sucursales) => exito(cajaDelDia(fecha, sucursales, exigirVista('cobranzas'))))
   manejar('cobranzas:registrarPagoManual', (datos) => {
     const resultado = registrarPagoManual(datos, exigirEdicion('cobranzas'))
     if (datos.estadoCobro !== 'IMPUTADO') resolverTicketDelPago(resultado.pagoId)
     return exito(resultado.caja)
   })
-  manejar('cobranzas:exportarCaja', async (fecha, sucursal) => {
-    const archivo = csvDeLaCaja(fecha, sucursal, exigirVista('cobranzas'))
+  manejar('cobranzas:exportarCaja', async (fecha, sucursales) => {
+    const archivo = csvDeLaCaja(fecha, sucursales, exigirVista('cobranzas'))
     return exito(await guardarComo({ ...archivo, descripcion: 'Planilla CSV' }, ventanaActual()))
   })
   manejar('cobranzas:mora', (filtros) => {
@@ -913,9 +913,9 @@ export function registrarIpc(): void {
     return exito(tableroDeMetricas(filtros, veLosNumerosDeLaAgencia(actor.rol)))
   })
   // Estadísticas es la pestaña de Cartera con los mismos números en tabla.
-  manejar('metricas:estadisticas', (periodo, sucursal) => {
+  manejar('metricas:estadisticas', (periodo, sucursales) => {
     const actor = exigirVista('metricas', 'cartera')
-    return exito(estadisticasDeCartera(periodo, sucursal, veLosNumerosDeLaAgencia(actor.rol)))
+    return exito(estadisticasDeCartera(periodo, sucursales, veLosNumerosDeLaAgencia(actor.rol)))
   })
 
   // Reportes: exportar lo que ya se ve en pantalla. Un reporte junta datos de varios módulos, así que
