@@ -304,7 +304,13 @@ export function catalogos(): CatalogosCartera {
   }
 }
 
-export function planillaDelMes(periodoPedido?: string | null): PlanillaDelMes {
+/**
+ * `actor` decide si un mes cerrado se marca de sólo lectura: para un ADMIN o SUPER_ADMIN sigue siendo
+ * de lectura y escritura (ver `exigirMesAbierto`), y sólo un EMPLEADO lo ve de sólo lectura. Sin
+ * actor —las pruebas que no ejercitan permisos— se mantiene la regla anterior, que era la misma para
+ * todos.
+ */
+export function planillaDelMes(periodoPedido?: string | null, actor?: SesionUsuario): PlanillaDelMes {
   sincronizarCompanias()
   const periodos = periodosDisponibles()
   const periodo = periodoPedido && periodos.some((p) => p.periodo === periodoPedido) ? periodoPedido : (periodos[0]?.periodo ?? periodoDeHoy())
@@ -312,10 +318,11 @@ export function planillaDelMes(periodoPedido?: string | null): PlanillaDelMes {
   const crudas = db()
     .prepare(`${SELECT_PLANILLA} WHERE c.periodo = ? AND c.dada_de_baja = 0 ORDER BY c.dia_vencimiento_numero, nombre`)
     .all(periodo) as FilaCruda[]
+  const esMesCerrado = periodos.length > 0 && periodos[0]!.periodo !== periodo
 
   return {
     periodo,
-    soloLectura: periodos.length > 0 && periodos[0]!.periodo !== periodo,
+    soloLectura: esMesCerrado && (actor?.rol ?? 'EMPLEADO') === 'EMPLEADO',
     filas: crudas.map((c) => aFila(c, dias)),
     catalogos: catalogos(),
     diasCoberturaPorCompania: dias,
@@ -334,11 +341,17 @@ function devolverFila(filaId: string): FilaCartera {
   return aFila(buscarFila(filaId), diasCoberturaPorCompania())
 }
 
-/** Los meses cerrados son de sólo lectura: sólo se puede tocar el mes abierto. */
-function exigirMesAbierto(periodo: string): void {
+/**
+ * Los meses cerrados son de sólo lectura para un EMPLEADO: sólo se puede tocar el mes abierto. Un
+ * ADMIN o SUPER_ADMIN sigue pudiendo corregir un mes ya cerrado (un pago mal cargado, una baja que
+ * se escapó), que es exactamente lo que la agencia pidió: cerrar el mes no debe dejar a nadie con
+ * las manos atadas si hace falta arreglar algo.
+ */
+function exigirMesAbierto(periodo: string, actor: SesionUsuario): void {
+  if (actor.rol !== 'EMPLEADO') return
   const periodos = periodosDisponibles()
   if (periodos.length > 0 && periodos[0]!.periodo !== periodo) {
-    throw new ErrorDeNegocio(`«${periodo}» es un mes anterior y se ve sólo para consultar. Cambiá al mes actual para modificar algo.`)
+    throw new ErrorDeNegocio(`«${periodo}» es un mes anterior y se ve sólo para consultar. Pedile a un administrador que lo modifique.`)
   }
 }
 
@@ -437,7 +450,7 @@ export function editarCelda(filaId: string, campo: CampoEditable, valor: string,
   const destino = DESTINOS[campo]
   if (!destino) throw new ErrorDeNegocio('Ese campo no se puede editar desde la planilla.')
   const fila = buscarFila(texto(filaId, 'La fila', 1, 64))
-  exigirMesAbierto(fila.periodo)
+  exigirMesAbierto(fila.periodo, actor)
 
   const nuevo = limpiar(valor)
   const anterior = limpiar((fila as unknown as Record<string, unknown>)[destino.columna === 'nombre' ? 'nombre' : campoALectura(campo)])
@@ -536,7 +549,7 @@ export function prepararAviso(filaId: string, actor: SesionUsuario): AvisoPrepar
  */
 export function marcarAvisado(filaId: string, actor: SesionUsuario): FilaCartera {
   const cruda = buscarFila(texto(filaId, 'La fila', 1, 64))
-  exigirMesAbierto(cruda.periodo)
+  exigirMesAbierto(cruda.periodo, actor)
   const hoy = hoyLocal()
 
   db()
@@ -573,7 +586,7 @@ export function prepararAvisoDeCuota(
   plantilla?: string,
 ): AvisoPreparado & { marcada: boolean } {
   const cruda = buscarFila(texto(filaId, 'La fila', 1, 64))
-  if (exigirAbierto) exigirMesAbierto(cruda.periodo)
+  if (exigirAbierto) exigirMesAbierto(cruda.periodo, actor)
   const fila = aFila(cruda, diasCoberturaPorCompania())
 
   const telefono = telefonoParaWhatsapp(fila.telefono)
@@ -689,7 +702,7 @@ interface CobroDeFila {
  */
 export function registrarPago(filaId: string, datos: DatosDePago, actor: SesionUsuario): FilaCartera {
   const fila = buscarFila(texto(filaId, 'La fila', 1, 64))
-  exigirMesAbierto(fila.periodo)
+  exigirMesAbierto(fila.periodo, actor)
 
   const fecha = limpiar(datos.fecha) || hoyLocal()
   const fechaIso = interpretarFecha(fecha, Number(fila.periodo.slice(0, 4))).iso
@@ -835,7 +848,7 @@ function cobrarLaCuotaAdelantada(cobro: CobroDeFila, importe: string, modo: Modo
  */
 export function imputarAdelanto(filaId: string, actor: SesionUsuario): FilaCartera {
   const fila = buscarFila(texto(filaId, 'La fila', 1, 64))
-  exigirMesAbierto(fila.periodo)
+  exigirMesAbierto(fila.periodo, actor)
   if (fila.pago_adelantado_id === null) {
     throw new ErrorDeNegocio('Esta fila no tiene ningún pago adelantado esperando. Actualizá la pantalla.')
   }
@@ -922,7 +935,7 @@ export const INSERT_BAJA = `
 
 export function darDeBaja(filaId: string, datos: DatosDeBaja, actor: SesionUsuario): null {
   const fila = buscarFila(texto(filaId, 'La fila', 1, 64))
-  exigirMesAbierto(fila.periodo)
+  exigirMesAbierto(fila.periodo, actor)
   const motivo = datos.motivo
   if (!MOTIVOS_DE_BAJA.includes(motivo as MotivoDeBaja)) throw new ErrorDeNegocio('Elegí un motivo de baja de la lista.')
   const nota = limpiar(datos.nota)

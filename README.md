@@ -418,9 +418,11 @@ calculado solo y las acciones de un clic.
     explica.
   - **«Deshacer»** es otra cosa y sigue igual: el «me equivoqué» del momento, sólo para las bajas
     hechas en la app, que devuelve la fila al mes del que salió.
-- **Meses anteriores**: se ven completos pero de sólo lectura. **Cerrar mes** (ADMIN/SUPER_ADMIN) crea el
-  mes siguiente copiando las pólizas activas, igual que duplicar la hoja: conserva cuota, vencimiento,
-  forma de pago y observaciones, y vacía el pago y el aviso.
+- **Meses anteriores**: se ven completos, y de sólo lectura para un EMPLEADO; un ADMIN o SUPER_ADMIN los
+  sigue viendo de lectura y escritura, para poder corregir algo (un pago mal cargado, una baja que se
+  escapó) sin depender de que el mes siga abierto. **Cerrar mes** (ADMIN/SUPER_ADMIN) crea el mes
+  siguiente copiando las pólizas activas, igual que duplicar la hoja: conserva cuota, vencimiento, forma
+  de pago y observaciones, y vacía el pago y el aviso.
 
 ### Rechazos del débito automático (Cartera → Rechazos)
 
