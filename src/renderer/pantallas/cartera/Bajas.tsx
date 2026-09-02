@@ -6,10 +6,18 @@
 //    igual que en la planilla del mes.
 //  - «Poner vigente» devuelve la póliza a la cartera sin cargarla de nuevo: es el caso del cliente que
 //    se dio de baja en julio y vuelve en septiembre.
+//  - Los filtros son LOS MISMOS que los de la planilla del mes —sucursal, forma de pago, compañía y
+//    rama, todos de varias opciones a la vez—, porque la baja es la misma fila del otro lado: quien
+//    mira «ATM y Metropol en Dock Sud» en la planilla quiere mirar exactamente eso mismo acá. Lo que
+//    no viaja son el semáforo y los contadores, que son del mes vivo y una baja ya no tiene.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { coincideAlguno, mismoTextoDeFiltro } from '../../../shared/filtros'
+import { NOMBRE_RAMA, ramaDeVehiculo, type Rama } from '../../../shared/ramas'
 import { nombreDePeriodo } from '../../../shared/semaforo'
+import { mismaSucursal } from '../../../shared/sucursales'
 import type { ResultadoDeEliminacion } from '../../../shared/eliminacion'
-import { NOMBRE_MOTIVO_BAJA, type FilaBaja, type MotivoDeBaja, type PeriodoCartera } from '../../../shared/tipos'
+import { NOMBRE_MOTIVO_BAJA, type CatalogosCartera, type FilaBaja, type MotivoDeBaja, type PeriodoCartera } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, Boton, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
@@ -87,6 +95,26 @@ const GRUPOS: Array<{ titulo: string; campos: Array<{ campo: keyof FilaBaja; eti
   },
 ]
 
+/**
+ * Los mismos filtros de la planilla del mes, menos los que no tienen sentido en una baja: el semáforo
+ * y los contadores del día. Cada desplegable guarda una LISTA y la lista vacía es «todas».
+ */
+interface Filtros {
+  busqueda: string
+  sucursales: string[]
+  formasDePago: string[]
+  companias: string[]
+  ramas: string[]
+}
+
+const FILTROS_VACIOS: Filtros = { busqueda: '', sucursales: [], formasDePago: [], companias: [], ramas: [] }
+
+/** «Pick up», «Moto eléctrica»… o el texto crudo del vehículo cuando no es ninguna de las siete ramas. */
+function nombreDeRama(baja: FilaBaja): string {
+  const rama = ramaDeVehiculo(baja.vehiculo, baja.categoriaVehiculo)
+  return rama ? NOMBRE_RAMA[rama] : (baja.vehiculo ?? '')
+}
+
 export function Bajas() {
   const usuario = useUsuarioActual()
   const { ir } = useNavegacion()
@@ -96,8 +124,9 @@ export function Bajas() {
 
   const [periodos, setPeriodos] = useState<PeriodoCartera[]>([])
   const [periodo, setPeriodo] = useState<string | null>(null)
+  const [catalogos, setCatalogos] = useState<CatalogosCartera | null>(null)
   const [filas, setFilas] = useState<FilaBaja[]>([])
-  const [busqueda, setBusqueda] = useState('')
+  const [filtros, setFiltros] = useState<Filtros>(FILTROS_VACIOS)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -120,6 +149,9 @@ export function Bajas() {
       if (!vigente) return
       if (resultado.ok) {
         setPeriodos(resultado.datos.periodos)
+        // Los catálogos vienen en la misma respuesta que ya se pedía por los meses: no hay una llamada
+        // más, y las opciones son EXACTAMENTE las de la planilla del mes.
+        setCatalogos(resultado.datos.catalogos)
         const inicial = resultado.datos.periodo
         setPeriodo(inicial)
         void cargar(inicial)
@@ -133,16 +165,42 @@ export function Bajas() {
     }
   }, [cargar])
 
-  // El buscador es de memoria: las bajas de un mes son pocas y ya están todas acá.
+  /** La rama de cada baja, calculada una vez: es la misma cuenta que hace la planilla del mes. */
+  const conRama = useMemo(
+    () => filas.map((baja) => ({ baja, rama: ramaDeVehiculo(baja.vehiculo, baja.categoriaVehiculo) })),
+    [filas],
+  )
+
+  // Se filtra en memoria: las bajas de un mes son pocas y ya están todas acá.
   const visibles = useMemo(() => {
-    const texto = normalizar(busqueda)
-    if (!texto) return filas
-    return filas.filter((baja) =>
-      [baja.clienteNombre, baja.documento, baja.numeroPoliza, baja.patente, baja.compania, baja.sucursal, baja.telefono].some((valor) =>
-        normalizar(valor).includes(texto),
-      ),
-    )
-  }, [busqueda, filas])
+    const texto = normalizar(filtros.busqueda)
+    return conRama
+      .filter(({ baja, rama }) => {
+        if (
+          texto &&
+          ![baja.clienteNombre, baja.documento, baja.numeroPoliza, baja.patente, baja.compania, baja.sucursal, baja.telefono].some((valor) =>
+            normalizar(valor).includes(texto),
+          )
+        ) {
+          return false
+        }
+        // `mismaSucursal` y no el texto pelado, igual que en la planilla: es lo que mete «AVELLANEDA»
+        // y «DOCKSUD» dentro de la misma opción «Dock Sud».
+        if (!coincideAlguno(filtros.sucursales, baja.sucursal, mismaSucursal)) return false
+        if (!coincideAlguno(filtros.formasDePago, baja.formaPago)) return false
+        if (!coincideAlguno(filtros.companias, baja.compania)) return false
+        if (filtros.ramas.length > 0 && !filtros.ramas.some((elegida) => (rama ? elegida === rama : mismoTextoDeFiltro(elegida, baja.vehiculo)))) return false
+        return true
+      })
+      .map(({ baja }) => baja)
+  }, [conRama, filtros])
+
+  const hayFiltros =
+    Boolean(filtros.busqueda) ||
+    filtros.sucursales.length > 0 ||
+    filtros.formasDePago.length > 0 ||
+    filtros.companias.length > 0 ||
+    filtros.ramas.length > 0
 
   const detalle = useMemo(() => filas.find((f) => f.id === seleccionada) ?? null, [filas, seleccionada])
 
@@ -218,15 +276,40 @@ export function Bajas() {
         <div className="relative">
           <Icono nombre="lupa" tamano={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
-            value={busqueda}
-            onChange={(evento) => setBusqueda(evento.target.value)}
+            value={filtros.busqueda}
+            onChange={(evento) => setFiltros((f) => ({ ...f, busqueda: evento.target.value }))}
             placeholder="Buscar por nombre, patente, póliza o DNI…"
             className="h-9 w-80 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400"
           />
         </div>
-        {busqueda && (
+        <FiltroMultiple
+          etiqueta="Sucursal"
+          valores={filtros.sucursales}
+          opciones={catalogos?.sucursales ?? []}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, sucursales: v }))}
+        />
+        <FiltroMultiple
+          etiqueta="Forma de pago"
+          valores={filtros.formasDePago}
+          opciones={catalogos?.formasDePago ?? []}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, formasDePago: v }))}
+        />
+        <FiltroMultiple
+          etiqueta="Compañía"
+          valores={filtros.companias}
+          opciones={catalogos?.companias ?? []}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, companias: v }))}
+        />
+        <FiltroMultiple
+          etiqueta="Rama"
+          valores={filtros.ramas}
+          opciones={catalogos?.ramas ?? []}
+          textoDe={(r) => NOMBRE_RAMA[r as Rama] ?? r}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, ramas: v }))}
+        />
+        {hayFiltros && (
           <>
-            <Boton tamano="sm" variante="fantasma" icono="cerrar" onClick={() => setBusqueda('')}>
+            <Boton tamano="sm" variante="fantasma" icono="cerrar" onClick={() => setFiltros(FILTROS_VACIOS)}>
               Limpiar
             </Boton>
             <span className="text-sm text-slate-500">
@@ -254,6 +337,7 @@ export function Bajas() {
                   <th className={encabezado}>Póliza</th>
                   <th className={encabezado}>Patente</th>
                   <th className={encabezado}>Vehículo</th>
+                  <th className={encabezado}>Rama</th>
                   <th className={encabezado}>Cuota</th>
                   <th className={encabezado}>Sucursal</th>
                   <th className={encabezado}>Motivo</th>
@@ -264,10 +348,12 @@ export function Bajas() {
               <tbody>
                 {visibles.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="px-3 py-10 text-center text-slate-500">
+                    <td colSpan={12} className="px-3 py-10 text-center text-slate-500">
                       {filas.length === 0
                         ? `No hay bajas cargadas en ${periodo ? nombreDePeriodo(periodo) : 'este mes'}.`
-                        : `Ninguna baja de ${periodo ? nombreDePeriodo(periodo) : 'este mes'} coincide con «${busqueda}».`}
+                        : filtros.busqueda
+                          ? `Ninguna baja de ${periodo ? nombreDePeriodo(periodo) : 'este mes'} coincide con «${filtros.busqueda}» y los filtros elegidos.`
+                          : `Ninguna baja de ${periodo ? nombreDePeriodo(periodo) : 'este mes'} coincide con los filtros elegidos.`}
                     </td>
                   </tr>
                 )}
@@ -286,6 +372,8 @@ export function Bajas() {
                     <td className="px-3 py-2 font-mono text-xs text-slate-600">{baja.numeroPoliza ?? '—'}</td>
                     <td className="px-3 py-2 font-mono text-xs text-slate-600">{baja.patente ?? '—'}</td>
                     <td className="px-3 py-2 text-slate-600">{[baja.marca, baja.modelo].filter(Boolean).join(' ') || '—'}</td>
+                    {/* La rama no se guarda: se deduce del vehículo y de la categoría del catálogo, igual que en la planilla. */}
+                    <td className="px-3 py-2 text-slate-600">{nombreDeRama(baja) || '—'}</td>
                     <td className="px-3 py-2 tabular-nums text-slate-600">{baja.cuota ?? '—'}</td>
                     <td className="px-3 py-2 text-slate-600">{baja.sucursal ?? '—'}</td>
                     <td className="px-3 py-2 text-slate-700">

@@ -524,9 +524,9 @@ export function registrarIpc(): void {
   })
   manejar('cobranzas:avisarMora', (filaId) => exito(avisarMora(filaId, exigirEdicion('cobranzas'))))
   // Imputados es una pestaña de Cartera que trabaja sobre los pagos: se pide cualquiera de los dos.
-  manejar('cobranzas:imputados', (periodo, compania) => exito(imputados(periodo, compania, exigirVista('cartera', 'cobranzas'))))
-  manejar('cobranzas:cambiarResultado', (pagoId, resultado, compania) =>
-    exito(cambiarResultado(pagoId, resultado, compania, exigirEdicion('cartera', 'cobranzas'))),
+  manejar('cobranzas:imputados', (periodo, companias) => exito(imputados(periodo, companias, exigirVista('cartera', 'cobranzas'))))
+  manejar('cobranzas:cambiarResultado', (pagoId, resultado, companias) =>
+    exito(cambiarResultado(pagoId, resultado, companias, exigirEdicion('cartera', 'cobranzas'))),
   )
   manejar('cobranzas:comisiones', (periodo) => {
     exigirRol('SUPER_ADMIN', 'ADMIN')

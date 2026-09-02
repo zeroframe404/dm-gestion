@@ -11,6 +11,7 @@ import {
   type RendicionImputados,
   type ResultadoImputacion,
 } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
 import { usePermisos } from '../../contexto/Permisos'
 import { EstadoDelCobro } from './CajaDelDia'
@@ -33,24 +34,24 @@ export function Imputados() {
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState<number | null>(null)
 
-  const cargar = useCallback(async (periodo: string | null, compania: string) => {
+  const cargar = useCallback(async (periodo: string | null, companias: string[]) => {
     setCargando(true)
     setError(null)
-    const resultado = await window.dm.cobranzas.imputados(periodo, compania)
+    const resultado = await window.dm.cobranzas.imputados(periodo, companias)
     if (resultado.ok) setDatos(resultado.datos)
     else setError(resultado.error)
     setCargando(false)
   }, [])
 
   useEffect(() => {
-    void cargar(null, '')
+    void cargar(null, [])
   }, [cargar])
 
   const cambiar = async (pago: PagoRegistrado, resultado: ResultadoImputacion) => {
     if (!datos) return
     setGuardando(pago.id)
     setError(null)
-    const respuesta = await window.dm.cobranzas.cambiarResultado(pago.id, resultado, datos.compania)
+    const respuesta = await window.dm.cobranzas.cambiarResultado(pago.id, resultado, datos.companias)
     setGuardando(null)
     if (respuesta.ok) setDatos(respuesta.datos)
     else setError(respuesta.error)
@@ -79,7 +80,7 @@ export function Imputados() {
           Mes
           <select
             value={datos.periodo}
-            onChange={(evento) => void cargar(evento.target.value, datos.compania)}
+            onChange={(evento) => void cargar(evento.target.value, datos.companias)}
             className="ml-2 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800"
           >
             {datos.periodos.map((periodo) => (
@@ -89,21 +90,12 @@ export function Imputados() {
             ))}
           </select>
         </label>
-        <label className="text-sm font-semibold text-slate-700">
-          Compañía
-          <select
-            value={datos.compania}
-            onChange={(evento) => void cargar(datos.periodo, evento.target.value)}
-            className="ml-2 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800"
-          >
-            <option value="">Todas</option>
-            {datos.companias.map((compania) => (
-              <option key={compania} value={compania}>
-                {compania}
-              </option>
-            ))}
-          </select>
-        </label>
+        <FiltroMultiple
+          etiqueta="Compañía"
+          valores={datos.companias}
+          opciones={datos.companiasDisponibles}
+          alCambiar={(v) => void cargar(datos.periodo, v)}
+        />
         {datos.sucursal && (
           <span
             className="inline-flex h-9 items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 text-xs font-semibold text-slate-600"
@@ -157,7 +149,7 @@ export function Imputados() {
               <tr>
                 <td colSpan={10} className="px-3 py-12 text-center text-slate-500">
                   No hay pagos de {nombreDePeriodo(datos.periodo)}
-                  {datos.compania ? ` de ${datos.compania}` : ''}.
+                  {datos.companias.length > 0 ? ` de ${datos.companias.join(', ')}` : ''}.
                 </td>
               </tr>
             )}

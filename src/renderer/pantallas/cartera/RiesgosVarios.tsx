@@ -7,8 +7,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BotonEliminar, useEsSuperAdmin } from '../../componentes/BotonEliminar'
 import { esDebitoAutomatico } from '../../../shared/semaforo'
+import { coincideAlguno } from '../../../shared/filtros'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { CampoDeRiesgo, FilaRiesgoVario, ListadoRiesgos } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -54,7 +56,8 @@ export function RiesgosVarios() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
-  const [sucursal, setSucursal] = useState('')
+  // Una LISTA, no un valor: se pueden mirar Dock Sud y Daniel a la vez. Vacía = todas.
+  const [sucursales, setSucursales] = useState<string[]>([])
   const [editando, setEditando] = useState<{ id: number; campo: CampoDeRiesgo } | null>(null)
   const [altaAbierta, setAltaAbierta] = useState(false)
 
@@ -78,13 +81,13 @@ export function RiesgosVarios() {
       // La sucursal se compara con `mismaSucursal`, que es con lo que el servicio arma el desplegable:
       // además de las tildes y las mayúsculas sabe que «AVELLANEDA» y «DOCKSUD» son Dock Sud. Con el
       // texto pelado, elegir una opción que pliega dos grafías dejaba el listado vacío.
-      if (sucursal && !mismaSucursal(f.sucursal, sucursal)) return false
+      if (!coincideAlguno(sucursales, f.sucursal, mismaSucursal)) return false
       if (!texto) return true
       return [f.clienteNombre, f.documento, f.numeroPoliza, f.tipoRiesgo, f.compania, f.telefono].some((valor) =>
         normalizar(valor).includes(texto),
       )
     })
-  }, [datos, busqueda, sucursal])
+  }, [datos, busqueda, sucursales])
 
   const guardar = async (id: number, campo: CampoDeRiesgo, valor: string) => {
     setEditando(null)
@@ -114,19 +117,7 @@ export function RiesgosVarios() {
             className="h-9 w-80 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400"
           />
         </div>
-        <select
-          value={sucursal}
-          onChange={(evento) => setSucursal(evento.target.value)}
-          aria-label="Sucursal"
-          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800"
-        >
-          <option value="">Todas las sucursales</option>
-          {datos.sucursales.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <FiltroMultiple etiqueta="Sucursal" valores={sucursales} opciones={datos.sucursales} alCambiar={setSucursales} />
         <span className="text-sm text-slate-500">
           {filtradas.length.toLocaleString('es-AR')} de {datos.total.toLocaleString('es-AR')} riesgos
         </span>

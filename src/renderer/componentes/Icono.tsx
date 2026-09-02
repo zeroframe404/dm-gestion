@@ -383,6 +383,8 @@ const TRAZOS = {
       <path d="M9 3v18" />
     </>
   ),
+  // La flechita de un desplegable. La gira 180° el que la usa cuando el panel está abierto.
+  desplegar: <path d="m6 9 6 6 6-6" />,
 } satisfies Record<string, ReactNode>
 
 export type NombreIcono = keyof typeof TRAZOS

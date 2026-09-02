@@ -723,7 +723,7 @@ test('un aviso de rechazo sube a APP RECHAZOS y lo que la otra sucursal resuelve
     'RESUELTO',
     'lo que resolvió la otra sucursal baja acá',
   )
-  assert.equal(listarRechazos({ busqueda: '', sucursal: '', estado: '' }).porEstado.RESUELTO, 1)
+  assert.equal(listarRechazos({ busqueda: '', sucursales: [], estado: '' }).porEstado.RESUELTO, 1)
   cerrarBaseDeDatos()
 })
 
@@ -756,7 +756,7 @@ test('un aviso cargado en otra computadora llega por la importación, no queda s
 
   await importar()
 
-  const enLanus = listarRechazos({ busqueda: '', sucursal: 'Lanús', estado: '' })
+  const enLanus = listarRechazos({ busqueda: '', sucursales: ['Lanús'], estado: '' })
   assert.equal(enLanus.filas.length, 1, 'el aviso de la otra computadora llegó a esta base')
   const traido = enLanus.filas[0]!
   assert.equal(traido.clienteNombre, CLIENTES.perezAuto.nombre)

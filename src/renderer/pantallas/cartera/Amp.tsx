@@ -5,8 +5,10 @@
 // Nada se borra: destildar la devuelve, y «Ver también las resueltas» muestra el histórico completo.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BotonEliminar, useEsSuperAdmin } from '../../componentes/BotonEliminar'
+import { coincideAlguno } from '../../../shared/filtros'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { ListadoAmp } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -26,7 +28,8 @@ export function Amp() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
-  const [sucursal, setSucursal] = useState('')
+  // Una LISTA, no un valor: se pueden mirar Dock Sud y Daniel a la vez. Vacía = todas.
+  const [sucursales, setSucursales] = useState<string[]>([])
   const [verResueltas, setVerResueltas] = useState(false)
   const [guardando, setGuardando] = useState<number | null>(null)
 
@@ -50,11 +53,11 @@ export function Amp() {
       // La sucursal se compara con `mismaSucursal`, que es con lo que el servicio arma el desplegable:
       // además de las tildes y las mayúsculas sabe que «AVELLANEDA» y «DOCKSUD» son Dock Sud. Con el
       // texto pelado, elegir una opción que pliega dos grafías dejaba el listado vacío.
-      if (sucursal && !mismaSucursal(f.sucursal, sucursal)) return false
+      if (!coincideAlguno(sucursales, f.sucursal, mismaSucursal)) return false
       if (!texto) return true
       return [f.clienteNombre, f.patente, f.marca, f.modelo, f.detalle].some((valor) => normalizar(valor).includes(texto))
     })
-  }, [datos, busqueda, sucursal])
+  }, [datos, busqueda, sucursales])
 
   const cambiar = async (id: number, resuelto: boolean) => {
     setGuardando(id)
@@ -82,19 +85,7 @@ export function Amp() {
             className="h-9 w-72 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400"
           />
         </div>
-        <select
-          value={sucursal}
-          onChange={(evento) => setSucursal(evento.target.value)}
-          aria-label="Sucursal"
-          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800"
-        >
-          <option value="">Todas las sucursales</option>
-          {datos.sucursales.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <FiltroMultiple etiqueta="Sucursal" valores={sucursales} opciones={datos.sucursales} alCambiar={setSucursales} />
         <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
           <input type="checkbox" checked={verResueltas} onChange={(evento) => setVerResueltas(evento.target.checked)} className="h-4 w-4" />
           Ver también las resueltas

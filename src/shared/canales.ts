@@ -256,8 +256,8 @@ export interface Canales {
   'cobranzas:mora': (filtros: FiltrosMora) => Resultado<ListadoMora>
   /** El mismo WhatsApp de la planilla, también para cuotas de meses ya cerrados. */
   'cobranzas:avisarMora': (filaId: string) => Resultado<AvisoDeMora>
-  'cobranzas:imputados': (periodo: string | null, compania: string) => Resultado<RendicionImputados>
-  'cobranzas:cambiarResultado': (pagoId: number, resultado: ResultadoImputacion, compania: string) => Resultado<RendicionImputados>
+  'cobranzas:imputados': (periodo: string | null, companias: string[]) => Resultado<RendicionImputados>
+  'cobranzas:cambiarResultado': (pagoId: number, resultado: ResultadoImputacion, companias: string[]) => Resultado<RendicionImputados>
   /** Sólo ADMIN y SUPER_ADMIN. */
   'cobranzas:comisiones': (periodo: string | null) => Resultado<ResumenComisiones>
 

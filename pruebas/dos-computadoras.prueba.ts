@@ -298,7 +298,7 @@ test('el pago que cobra una computadora aparece en la caja del día de la otra, 
   assert.equal(pago.sucursal, 'Lanús')
   assert.equal(pago.importeMonto, 24420)
   assert.equal(caja.total, 24420)
-  assert.equal(imputados('2026-08', '').pagos.some((p) => p.clienteNombre === CLIENTES.gonzalez.nombre), true, 'y en la rendición del mes')
+  assert.equal(imputados('2026-08', []).pagos.some((p) => p.clienteNombre === CLIENTES.gonzalez.nombre), true, 'y en la rendición del mes')
 
   // El pago cobrado en la otra computadora no se vuelve a subir desde ésta.
   assert.equal(cuantasPendientes(), 0)
@@ -363,14 +363,14 @@ test('los administradores ven la caja y la rendición de todas las sucursales; u
   }
 
   // Lo mismo en Imputados: la empleada rinde lo de su mostrador y no puede tocar lo de otro.
-  const rendicion = imputados('2026-08', '', DAIANA)
+  const rendicion = imputados('2026-08', [], DAIANA)
   assert.equal(rendicion.sucursal, 'Lanús')
   assert.deepEqual(rendicion.pagos.map((p) => p.clienteNombre), [CLIENTES.gonzalez.nombre])
-  assert.equal(imputados('2026-08', '', SOFIA).pagos.length, 2)
-  assert.equal(imputados('2026-08', '', SOFIA).sucursal, '')
-  const deDockSud = imputados('2026-08', '', SOFIA).pagos.find((p) => p.clienteNombre === CLIENTES.perezAuto.nombre)!
-  assert.throws(() => cambiarResultado(deDockSud.id, 'OK', '', DAIANA), /otra sucursal/)
-  assert.equal(cambiarResultado(deDockSud.id, 'OK', '', SOFIA).pagos.find((p) => p.id === deDockSud.id)?.resultado, 'OK')
+  assert.equal(imputados('2026-08', [], SOFIA).pagos.length, 2)
+  assert.equal(imputados('2026-08', [], SOFIA).sucursal, '')
+  const deDockSud = imputados('2026-08', [], SOFIA).pagos.find((p) => p.clienteNombre === CLIENTES.perezAuto.nombre)!
+  assert.throws(() => cambiarResultado(deDockSud.id, 'OK', [], DAIANA), /otra sucursal/)
+  assert.equal(cambiarResultado(deDockSud.id, 'OK', [], SOFIA).pagos.find((p) => p.id === deDockSud.id)?.resultado, 'OK')
   cerrarTodo()
 })
 

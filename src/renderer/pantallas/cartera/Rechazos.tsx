@@ -14,6 +14,7 @@ import {
   type ListadoRechazos,
   type MotivoDeRechazo,
 } from '../../../shared/tipos'
+import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
@@ -37,7 +38,7 @@ export function Rechazos() {
   const [error, setError] = useState<string | null>(null)
   const [texto, setTexto] = useState('')
   // Arranca en la sucursal de quien entró: es lo que esa persona tiene que cobrar. Se puede sacar.
-  const [filtros, setFiltros] = useState<FiltrosRechazos>({ busqueda: '', sucursal: usuario.sucursal.nombre, estado: '' })
+  const [filtros, setFiltros] = useState<FiltrosRechazos>({ busqueda: '', sucursales: [usuario.sucursal.nombre], estado: '' })
 
   const cargar = useCallback(async (aplicar: FiltrosRechazos) => {
     setCargando(true)
@@ -93,30 +94,20 @@ export function Rechazos() {
             className="h-9 w-80 rounded-lg border border-slate-300 bg-white pl-8 pr-3 text-sm text-slate-800 placeholder:text-slate-400"
           />
         </div>
-        <select
-          value={filtros.sucursal}
-          onChange={(evento) => setFiltros((f) => ({ ...f, sucursal: evento.target.value }))}
-          aria-label="Sucursal"
-          className={cx(
-            'h-9 max-w-52 rounded-lg border bg-white px-2 text-sm',
-            filtros.sucursal ? 'border-marino-400 font-semibold text-marino-800' : 'border-slate-300 text-slate-700',
-          )}
-        >
-          <option value="">Sucursal: todas</option>
-          {sucursales.map((nombre) => (
-            <option key={nombre} value={nombre}>
-              {nombre}
-            </option>
-          ))}
-        </select>
-        {(filtros.busqueda || filtros.sucursal || filtros.estado) && (
+        <FiltroMultiple
+          etiqueta="Sucursal"
+          valores={filtros.sucursales}
+          opciones={sucursales}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, sucursales: v }))}
+        />
+        {(filtros.busqueda || filtros.sucursales.length > 0 || filtros.estado) && (
           <Boton
             tamano="sm"
             variante="fantasma"
             icono="cerrar"
             onClick={() => {
               setTexto('')
-              setFiltros({ busqueda: '', sucursal: '', estado: '' })
+              setFiltros({ busqueda: '', sucursales: [], estado: '' })
             }}
           >
             Limpiar

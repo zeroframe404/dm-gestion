@@ -483,11 +483,11 @@ test('un aviso de rechazo del débito le llega a la sucursal del cliente y se pu
 
   // Apretar el botón de nuevo no crea un segundo aviso.
   avisarRechazo(fila.polizaId, { sucursal: '', motivo: 'SIN FONDOS', nota: '' }, DANIEL)
-  assert.equal(listarRechazos({ busqueda: '', sucursal: '', estado: '' }).total, 1)
+  assert.equal(listarRechazos({ busqueda: '', sucursales: [], estado: '' }).total, 1)
 
   // Y darlo por resuelto lo saca de la campana.
   assert.equal(resolverRechazoDesdeLaCampana(aviso.id, enDockSud).sinResolver, 0)
-  const listado = listarRechazos({ busqueda: '', sucursal: '', estado: '' })
+  const listado = listarRechazos({ busqueda: '', sucursales: [], estado: '' })
   assert.equal(listado.porEstado.RESUELTO, 1)
   assert.equal(listado.filas[0]!.resueltoPor, 'Fede')
   cerrarBaseDeDatos()

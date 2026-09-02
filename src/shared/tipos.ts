@@ -461,6 +461,12 @@ export interface FilaCartera {
   fechaEnvio: string | null
   avisarVto: string | null
   vehiculo: string | null
+  /**
+   * La categoría que le puso el catálogo de vehículos («PICKUP», «SUV»…), o null cuando el vehículo se
+   * tipeó a mano y nadie la sabe. No se muestra: sirve para deducir la RAMA de la fila, porque una pick
+   * up cargada desde «Nueva póliza» queda con `vehiculo = 'AUTO'` y la rama sólo se ve acá.
+   */
+  categoriaVehiculo: CategoriaDeVehiculo | null
   marca: string | null
   modelo: string | null
   patente: string | null
@@ -552,6 +558,12 @@ export interface CatalogosCartera {
   companias: string[]
   coberturas: string[]
   tiposDeVehiculo: string[]
+  /**
+   * Las siete ramas de la agencia más lo que la base tenga y el catálogo no conozca. Ver
+   * `src/shared/ramas.ts`: la lista cerrada está SIEMPRE completa, aunque el mes que se mira no tenga
+   * ninguna moto, para que el desplegable diga lo mismo en las cinco computadoras.
+   */
+  ramas: string[]
   mediosDePago: string[]
 }
 
@@ -695,6 +707,8 @@ export interface FilaBaja {
   cobertura: string | null
   patente: string | null
   vehiculo: string | null
+  /** Ver `FilaCartera.categoriaVehiculo`: la usa el filtro de rama de la pantalla de Bajas. */
+  categoriaVehiculo: CategoriaDeVehiculo | null
   marca: string | null
   modelo: string | null
   anio: string | null
@@ -815,8 +829,9 @@ export interface DatosDeRechazo {
 
 export interface FiltrosRechazos {
   busqueda: string
-  sucursal: string
-  /** '' = todos los estados. */
+  /** Vacío = todas. Se comparan con `mismaSucursal`, que pliega «AVELLANEDA» dentro de «Dock Sud». */
+  sucursales: string[]
+  /** '' = todos los estados. Es una pestaña con su contador, no un desplegable: se elige uno. */
   estado: '' | EstadoDeRechazo
 }
 
@@ -1683,12 +1698,13 @@ export const NOMBRE_RESULTADO_IMPUTACION: Record<ResultadoImputacion, string> = 
 
 export interface RendicionImputados {
   periodo: string
-  /** Compañía filtrada; '' = todas. */
-  compania: string
+  /** Compañías filtradas, ya plegadas contra las que existen; lista vacía = todas. */
+  companias: string[]
   /** Sucursal a la que está acotada la rendición ('' = todas): la del mostrador cuando pregunta un empleado. */
   sucursal: string
   periodos: string[]
-  companias: string[]
+  /** Todas las compañías que aparecen en el mes: son las opciones del desplegable. */
+  companiasDisponibles: string[]
   pagos: PagoRegistrado[]
   /** Cuántos pagos hay de cada resultado (la clave '' son los pendientes). */
   contadores: Record<ResultadoImputacion, number>

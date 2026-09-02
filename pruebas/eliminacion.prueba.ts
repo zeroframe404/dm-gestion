@@ -433,7 +433,7 @@ test('borrar un aviso de rechazo del débito', async () => {
   const base = await carteraDePrueba()
   const poliza = unico<number>(base, 'SELECT id FROM polizas WHERE activa = 1 LIMIT 1')
   avisarRechazo(poliza, { motivo: 'SIN FONDOS', nota: 'rebotó', sucursal: '' }, DANIEL)
-  const rechazo = listarRechazos({ busqueda: '', sucursal: '', estado: '' }).filas[0]
+  const rechazo = listarRechazos({ busqueda: '', sucursales: [], estado: '' }).filas[0]
   assert.ok(rechazo, 'quedó el aviso')
 
   const vista = vistaPreviaDeEliminacion('rechazo', rechazo.id, DANIEL)

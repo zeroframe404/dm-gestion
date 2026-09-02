@@ -102,8 +102,8 @@ const api: ApiDm = {
     exportarCaja: (fecha, sucursal) => invocar('cobranzas:exportarCaja', fecha, sucursal),
     mora: (filtros) => invocar('cobranzas:mora', filtros),
     avisarMora: (filaId) => invocar('cobranzas:avisarMora', filaId),
-    imputados: (periodo, compania) => invocar('cobranzas:imputados', periodo, compania),
-    cambiarResultado: (pagoId, resultado, compania) => invocar('cobranzas:cambiarResultado', pagoId, resultado, compania),
+    imputados: (periodo, companias) => invocar('cobranzas:imputados', periodo, companias),
+    cambiarResultado: (pagoId, resultado, companias) => invocar('cobranzas:cambiarResultado', pagoId, resultado, companias),
     comisiones: (periodo) => invocar('cobranzas:comisiones', periodo),
   },
   impresora: {

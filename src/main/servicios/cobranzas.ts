@@ -3,6 +3,7 @@
 // Los pagos son siempre los mismos: los que nacen de «Registrar pago» en la Cartera y los que se
 // cargan a mano acá. Esta pantalla los mira de tres maneras distintas —por día, por mes y por
 // compañía—, así que todo sale de la misma tabla `pagos` y de `pagos.ts`.
+import { listaDeFiltro } from '../../shared/filtros'
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
@@ -458,8 +459,9 @@ function periodosConPagos(): string[] {
   return filas.map((f) => f.periodo)
 }
 
-export function imputados(periodoPedido: string | null, companiaPedida: string, actor?: SesionUsuario | null): RendicionImputados {
+export function imputados(periodoPedido: string | null, companiasPedidas: string[], actor?: SesionUsuario | null): RendicionImputados {
   const periodos = periodosConPagos()
+  const pedidas = listaDeFiltro(companiasPedidas)
   const pedido = limpiar(periodoPedido)
   const periodo = pedido && FORMATO_PERIODO.test(pedido) ? pedido : (periodos[0] ?? periodoDeHoy())
   const sucursal = sucursalObligadaDe(actor)
@@ -470,21 +472,24 @@ export function imputados(periodoPedido: string | null, companiaPedida: string, 
   // Un empleado rinde lo que cobró su mostrador; las otras sucursales no son de su incumbencia.
   const todos = crudas.map(aPagoRegistrado).filter((pago) => !sucursal || mismaSucursal(pago.sucursal, sucursal))
 
-  const companias = distintos(todos.map((pago) => pago.compania))
-  const compania = companias.find((c) => mismaCosa(c, companiaPedida)) ?? ''
-  const pagos = compania ? todos.filter((pago) => mismaCosa(pago.compania, compania)) : todos
+  const companiasDisponibles = distintos(todos.map((pago) => pago.compania))
+  // Se devuelven las compañías tal como las escribe el mes, no como llegaron del filtro: así el
+  // desplegable se ve elegido aunque en la pantalla anterior estuvieran escritas de otra forma. Una
+  // que este mes no tiene ningún pago se cae sola, que es lo mismo que hacía la versión de un valor.
+  const companias = companiasDisponibles.filter((c) => pedidas.some((pedida) => mismaCosa(c, pedida)))
+  const pagos = companias.length > 0 ? todos.filter((pago) => companias.some((c) => mismaCosa(pago.compania, c))) : todos
 
   const contadores = Object.fromEntries(RESULTADOS_DE_IMPUTACION.map((r) => [r, 0])) as Record<ResultadoImputacion, number>
   for (const pago of pagos) contadores[pago.resultado]++
 
   return {
     periodo,
-    compania,
+    companias,
     sucursal,
     // Sin ningún pago cargado la lista queda vacía a propósito: es lo que la pantalla mira para
     // explicar que la rendición todavía no tiene nada.
     periodos: periodos.length === 0 || periodos.includes(periodo) ? periodos : [periodo, ...periodos],
-    companias,
+    companiasDisponibles,
     pagos,
     contadores,
     total: pagos.length,
@@ -516,7 +521,7 @@ function pagosSinMes(): number {
 export function cambiarResultado(
   pagoId: number,
   resultado: ResultadoImputacion,
-  companiaDelFiltro: string,
+  companiasDelFiltro: string[],
   actor: SesionUsuario,
 ): RendicionImputados {
   const identificador = enteroPositivo(pagoId, 'El pago')
@@ -553,7 +558,7 @@ export function cambiarResultado(
       valorNuevo: resultado || null,
     })
   }
-  return imputados(pago.periodo, companiaDelFiltro, actor)
+  return imputados(pago.periodo, listaDeFiltro(companiasDelFiltro), actor)
 }
 
 // ---------------------------------------------------------------------------

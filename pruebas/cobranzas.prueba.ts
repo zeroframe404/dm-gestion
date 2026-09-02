@@ -329,7 +329,7 @@ test('«Avisar» desde la mora arma el WhatsApp y sólo marca la fila si el mes 
 
 test('la rendición trae los pagos del mes con su RESULTADO, normalizado', async () => {
   await cobranzasDePrueba()
-  const rendicion = imputados('2026-08', '')
+  const rendicion = imputados('2026-08', [])
 
   assert.equal(rendicion.periodo, '2026-08')
   assert.equal(rendicion.pagos.length, 3, 'los tres pagos de la pestaña IMPUTADOS')
@@ -345,7 +345,7 @@ test('la rendición trae los pagos del mes con su RESULTADO, normalizado', async
   assert.equal(rendicion.contadores.REVISAR, 1)
 
   // El filtro por compañía deja sólo las de esa compañía.
-  const soloSancor = imputados('2026-08', 'SANCOR')
+  const soloSancor = imputados('2026-08', ['SANCOR'])
   assert.equal(soloSancor.pagos.length, 2)
   for (const pago of soloSancor.pagos) assert.equal(pago.compania, 'SANCOR')
   cerrarBaseDeDatos()
@@ -353,10 +353,10 @@ test('la rendición trae los pagos del mes con su RESULTADO, normalizado', async
 
 test('marcar RESULTADO=IMPUTADO lo guarda y lo manda a la hoja', async () => {
   const db = await cobranzasDePrueba()
-  const rendicion = imputados('2026-08', '')
+  const rendicion = imputados('2026-08', [])
   const pendiente = rendicion.pagos.find((p) => p.resultado === '')!
 
-  const despues = cambiarResultado(pendiente.id, 'IMPUTADO', '', DANIEL)
+  const despues = cambiarResultado(pendiente.id, 'IMPUTADO', [], DANIEL)
   assert.equal(despues.pendientes, 0)
   assert.equal(despues.contadores.IMPUTADO, 2)
   assert.equal(despues.pagos.find((p) => p.id === pendiente.id)?.resultado, 'IMPUTADO')
@@ -374,7 +374,7 @@ test('marcar RESULTADO=IMPUTADO lo guarda y lo manda a la hoja', async () => {
   assert.equal(historial[0]!.usuarioNombre, 'Daniel Martínez')
 
   // Volver a marcar lo mismo no encola nada nuevo.
-  cambiarResultado(pendiente.id, 'IMPUTADO', '', DANIEL)
+  cambiarResultado(pendiente.id, 'IMPUTADO', [], DANIEL)
   assert.equal(colaDeImputados(db).filter((e) => e.fila_id === pendiente.filaId).length, 1)
   cerrarBaseDeDatos()
 })
@@ -384,7 +384,7 @@ test('un pago cobrado en la aplicación se suma a la rendición y viaja a la hoj
   const fila = buscar(CLIENTES.suarez.nombre)
   registrarPago(fila.filaId, { fecha: DIA_DE_CAJA, importe: '$ 28.000', medioDePago: 'EFECTIVO' }, DANIEL)
 
-  const rendicion = imputados('2026-08', '')
+  const rendicion = imputados('2026-08', [])
   const nuevo = rendicion.pagos.find((p) => p.numeroPoliza === CLIENTES.suarez.poliza)
   assert.ok(nuevo, 'el cobro del mostrador tiene que aparecer en la rendición')
   assert.equal(nuevo.hechoEnLaApp, true)
@@ -439,13 +439,13 @@ test('sin una pestaña IMPUTADOS que sirva, los pagos y el resultado viajan por 
   assert.equal(hoja.tieneColumnaResultado, true)
   assert.equal(hoja.aviso, null, 'ya no hay nada que avisar: los pagos no se quedan sólo en esta computadora')
 
-  const rendicion = imputados('2026-08', '')
+  const rendicion = imputados('2026-08', [])
   assert.equal(rendicion.avisoDeSincronizacion, null)
 
   // Un pago que vino de la hoja vieja (nunca estuvo en APP PAGOS): al imputarlo se agrega entero allá,
   // con el resultado adentro.
   const pendiente = rendicion.pagos.find((p) => p.resultado === '')!
-  const despues = cambiarResultado(pendiente.id, 'OK', '', DANIEL)
+  const despues = cambiarResultado(pendiente.id, 'OK', [], DANIEL)
   assert.equal(despues.pagos.find((p) => p.id === pendiente.id)?.resultado, 'OK')
   const encolada = filas<{ operacion: string; pestana: string; campos_json: string }>(
     db,
@@ -580,16 +580,16 @@ test('sin columna RESULTADO en la hoja, reimportar no borra la rendición hecha 
   const hoja = hojaSinColumnaResultado()
   await importar(db, hoja)
 
-  const rendicion = imputados('2026-08', '')
+  const rendicion = imputados('2026-08', [])
   assert.match(rendicion.avisoDeSincronizacion ?? '', /no tiene columna RESULTADO/)
   const pago = rendicion.pagos[0]!
-  cambiarResultado(pago.id, 'IMPUTADO', '', DANIEL)
-  assert.equal(imputados('2026-08', '').pagos.find((p) => p.id === pago.id)?.resultado, 'IMPUTADO')
+  cambiarResultado(pago.id, 'IMPUTADO', [], DANIEL)
+  assert.equal(imputados('2026-08', []).pagos.find((p) => p.id === pago.id)?.resultado, 'IMPUTADO')
 
   // La importación completa vuelve a correr (la dispara sola la bajada al ver filas nuevas): lo que
   // se cargó a mano tiene que seguir ahí, porque la hoja no tiene de dónde traerlo.
   await importar(db, hoja)
-  assert.equal(imputados('2026-08', '').pagos.find((p) => p.id === pago.id)?.resultado, 'IMPUTADO')
+  assert.equal(imputados('2026-08', []).pagos.find((p) => p.id === pago.id)?.resultado, 'IMPUTADO')
   cerrarBaseDeDatos()
 })
 
@@ -639,8 +639,8 @@ test('un pago cobrado sin pestaña IMPUTADOS va a APP PAGOS, y se queda ahí aun
   db.prepare(`UPDATE cola_sync SET estado = 'listo'`).run()
   db.prepare(`UPDATE filas_crudas SET en_la_hoja = 1 WHERE tipo_pestana = 'PAGOS' AND numero_fila > 0`).run()
   assert.equal(hojaDeImputados().pestana, 'IMPUTADOS')
-  const pago = imputados('2026-08', '').pagos.find((p) => p.numeroPoliza === CLIENTES.suarez.poliza)!
-  cambiarResultado(pago.id, 'IMPUTADO', '', DANIEL)
+  const pago = imputados('2026-08', []).pagos.find((p) => p.numeroPoliza === CLIENTES.suarez.poliza)!
+  cambiarResultado(pago.id, 'IMPUTADO', [], DANIEL)
   const actualizada = filas<{ operacion: string; pestana: string }>(db, `SELECT operacion, pestana FROM cola_sync WHERE estado = 'pendiente' AND fila_id = ?`, `PAGO:${fila.filaId}`)
   assert.deepEqual(actualizada, [{ operacion: 'actualizar', pestana: 'APP PAGOS' }])
   cerrarBaseDeDatos()
@@ -695,7 +695,7 @@ test('un cobro IMPUTADO no deja la fila paga ni suma a la caja; cuando el client
   assert.match(csvDeLaCaja(DIA_DE_CAJA, '').contenido, /IMPUTADO \(falta cobrar\)/)
 
   // En la rendición se cuenta como «sin cobrar», y en la mora sigue apareciendo con la marca.
-  assert.equal(imputados('2026-08', '').sinCobrar, 1)
+  assert.equal(imputados('2026-08', []).sinCobrar, 1)
   const enMora = mora(SIN_FILTROS, HOY).filas.find((f) => f.filaId === fila.filaId)
   assert.ok(enMora, 'la cuota vencida sigue en mora: lo que se persigue es el pago del cliente')
   assert.equal(enMora.imputada, true)
@@ -756,7 +756,7 @@ test('el alta manual desde la caja también puede quedar como IMPUTADO', async (
 test('pagar las dos cuotas juntas cobra la de este mes y deja la del mes que viene guardada como adelanto', async () => {
   const db = await cobranzasDePrueba()
   const fila = buscar(CLIENTES.suarez.nombre)
-  const enAgostoAntes = imputados('2026-08', '').pagos.length
+  const enAgostoAntes = imputados('2026-08', []).pagos.length
   const pagosAntes = (db.prepare('SELECT COUNT(*) AS n FROM pagos').get() as { n: number }).n
 
   const actualizada = registrarPago(
@@ -782,8 +782,8 @@ test('pagar las dos cuotas juntas cobra la de este mes y deja la del mes que vie
   assert.equal(adelanto.adelantoImputado, false)
 
   // Y cada una se rinde en el mes que paga.
-  assert.equal(imputados('2026-08', '').pagos.length, enAgostoAntes + 1)
-  assert.equal(imputados('2026-09', '').pagos.length, 1)
+  assert.equal(imputados('2026-08', []).pagos.length, enAgostoAntes + 1)
+  assert.equal(imputados('2026-09', []).pagos.length, 1)
 
   // En la hoja el adelanto viaja con MES y año, para que ningún importador lo tome por el mes de este año.
   const encolado = filas<{ campos_json: string }>(db, `SELECT campos_json FROM cola_sync WHERE fila_id = ?`, `PAGO:ADELANTO:${fila.filaId}`)
