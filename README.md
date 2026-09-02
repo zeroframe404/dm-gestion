@@ -312,8 +312,16 @@ principal sería un viaje de ida y vuelta para algo que se toca con la rueda del
 
 ### Columnas (`dm.vista.columnas.<tabla>`)
 
-El botón **«Columnas»** de Cartera, Clientes, Pólizas y Mora abre un desplegable con una casilla por
-columna. Lo que se apaga se guarda por tabla y por computadora.
+El botón **«Columnas»** abre un desplegable con una casilla por columna. Lo que se apaga se guarda por
+tabla y por computadora. Está en Cartera, Clientes, Pólizas y Mora —que dibujan la tabla con
+`TablaVirtual`— y también en Cobranzas → Caja del día, Siniestros, Renovaciones y Presupuestos, que
+tienen su `<table>` escrita a mano: ahí el desplegable usa el mismo `useColumnasElegidas` y cada `<th>`
+y cada `<td>` se dibuja según las columnas que quedaron a la vista (claves `cobranzas-caja`,
+`siniestros`, `renovaciones` y `presupuestos`).
+
+En todas, la columna que dice de quién es la fila —el asegurado, el cliente— va con `siempre: true` y
+no se puede apagar, igual que la última de Renovaciones y Siniestros, que es donde están los botones
+que cierran el trámite y la marca de que la fila se abre.
 
 **La columna del nombre es la primera y la única fija** (`fija: true`, `siempre: true` en
 `ColumnaTabla`): queda pegada a la izquierda al correr la tabla en horizontal y no se puede apagar. La
@@ -448,7 +456,7 @@ WhatsApp suelto y se perdía.
 - **Cómo cruza de una computadora a otra.** Cada sucursal tiene su propia base local, así que el aviso
   viaja por la hoja de Google en la pestaña **APP RECHAZOS**. Es la única de las pestañas que escribe la
   aplicación que además **se lee de vuelta a su tabla** (`guardarRechazo` en `importacion/importador.ts`):
-  las otras tres (APP LEADS, APP PRESUPUESTOS, APP TAREAS) son de ida nada más, para poder mirarlas
+  APP TAREAS también se lee de vuelta (ver **Tareas**); APP LEADS y APP PRESUPUESTOS son de ida nada más, para poder mirarlas
   desde Google. Además es la única pestaña de la app que entra en el **ciclo de bajada de todos los
   días** (`pestanasDeTodosLosDias` en `sincronizacion/motor.ts`): un aviso que tardara hasta la próxima
   bajada completa en aparecer no serviría para llamar a nadie. Lo que la sucursal avisada cambia
@@ -948,8 +956,21 @@ siniestro); acá está el módulo propio.
 - **La campana** de la barra superior enciende un punto cuando te asignan algo que todavía no viste o
   cuando algo vence hoy; el número que se ve al lado es lo pendiente. Son dos cosas distintas a
   propósito: tener ocho tareas abiertas es normal y no tiene que gritar, que te acaben de asignar una
-  sí. Abrirla cuenta como enterarse. Se refresca sola cada dos minutos, porque una tarea puede
-  asignarla otra persona desde otra computadora y llega por la sincronización.
+  sí. Abrirla cuenta como enterarse.
+- **El círculo rojo del menú**: el módulo «Tareas» de la barra lateral lleva un globito rojo con el
+  número de pendientes en blanco. Con la barra achicada a iconos va pegado al icono, arriba a la
+  derecha; con la barra ancha, al final del renglón. Sale del mismo contexto que la campana
+  (`contexto/Tareas.tsx`), así que los dos números no se pueden contradecir, y lo que dice el círculo
+  también va en el `title` y en el `aria-label`, porque un lector de pantalla no ve un globito.
+- **Se asignan entre cualquiera**: la lista de responsables son todos los usuarios activos, sin mirar el
+  rol. Un empleado le puede anotar una tarea al superadministrador y al revés; lo único que se rechaza
+  es un responsable que no existe o que está dado de baja.
+- **Llegan en el momento**: además de la bajada de los cinco minutos, el motor tiene un **carril rápido**
+  que cada 30 segundos baja una sola pestaña, APP TAREAS (`ciclarTareas` en `sincronizacion/motor.ts`).
+  Cuando trae algo emite `tareas:cambiaron`, y con ese aviso se vuelven a pedir la campana, el círculo
+  del menú, el listado del módulo y las tareas de Inicio, sin esperar a ningún reloj. El carril rápido
+  no toca la marca de «última bajada» ni dispara la importación completa: es una pestaña sola, no la
+  bajada de la aplicación.
 - La que uno se pone a sí mismo **no** enciende su propia campana.
 
 ### Las pestañas nuevas de la hoja
@@ -963,13 +984,16 @@ primera vez que hay algo que subir a alguna de ellas**.
   llenarse de pestañas vacías.
 - Se crean **al final**, nunca en el medio: el orden de las pestañas es lo que usa el importador para
   deducir el año de las planillas mensuales que no lo dicen en el título.
-- Las tres primeras van en un solo sentido (la aplicación escribe, la hoja mira). Sus filas quedan
+- APP LEADS y APP PRESUPUESTOS van en un solo sentido (la aplicación escribe, la hoja mira). Sus filas quedan
   anotadas como conocidas igual que las de cualquier otro módulo, así que volver a importar no las
   duplica ni dispara una importación completa.
 - **«APP RECHAZOS» y «APP PAGOS» van en los dos sentidos**: se leen de vuelta (a `rechazos_debito` y a
   `pagos`) y entran en el ciclo de bajada de todos los días, porque son el camino por el que un aviso o
   un pago cargado en una sucursal llega a la computadora de la otra. Ver **Rechazos del débito
   automático** y **Cobranzas e Imputados**, más arriba.
+- **«APP TAREAS» también se lee de vuelta** desde la v12.4: entra en el ciclo de todos los días y además
+  tiene el carril rápido de 30 segundos, que es lo que hace que una tarea asignada desde otra sucursal
+  aparezca en el momento. Ver **Tareas**, más arriba.
 - Las tareas de la Fase 5 —creadas antes de que la pestaña existiera— se quedan sin subir: no se inventa
   historia en la hoja.
 

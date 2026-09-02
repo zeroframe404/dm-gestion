@@ -4,6 +4,13 @@
 //   subida  → 1 lectura + 1 escritura + 1 agregado + 1 borrado = 4 como mucho, 6 veces por minuto = 24
 //   bajada  → 1 estructura + 1 encabezados + 1 lectura = 3, una vez cada 5 minutos
 // Total holgado por debajo de 50.
+//
+// Hay un tercer temporizador, el CARRIL RÁPIDO: cada 30 segundos baja una sola pestaña, APP TAREAS.
+// Cinco minutos son una eternidad para una tarea que alguien acaba de asignar desde otra sucursal —el
+// pedido fue justamente que lleguen en el momento—, y una pestaña sola es un pedido chico contra el VPS
+// de la agencia, que es donde vive la base desde la v12 y no tiene la cuota de Google. Si el carril
+// rápido encuentra algo, avisa al renderer para que la campana y el listado se refresquen sin esperar
+// a su propio reloj.
 import type { EstadoSincronizacion, SesionUsuario } from '../../shared/tipos'
 import type { FuenteHoja } from '../importacion/fuente'
 import { esFallaDeRed } from '../servicios/red'
@@ -27,6 +34,8 @@ import { subirTanda } from './subida'
 
 export const INTERVALO_SUBIDA_MS = 10_000
 export const INTERVALO_BAJADA_MS = 5 * 60_000
+/** El carril rápido de las tareas. Medio minuto es lo más parecido a «en el momento» sin ser un chat. */
+export const INTERVALO_TAREAS_MS = 30_000
 
 /**
  * Arranca un ciclo del temporizador sin dejar la promesa suelta. Antes acá había un `void`: si el
@@ -56,14 +65,19 @@ export interface OpcionesMotor {
   alCambiarEstado?: (estado: EstadoSincronizacion) => void
   /** Qué pestañas se miran en el ciclo automático; el resto sólo en la bajada completa. */
   pestanasDelCiclo?: (contexto: ContextoHoja) => string[]
+  /** Se llama cuando el carril rápido trajo tareas nuevas o cambiadas, para avisar al renderer. */
+  alCambiarLasTareas?: () => void
 }
 
 /**
  * Por defecto el ciclo mira lo que se usa todos los días: el mes abierto, sus bajas y los riesgos.
  *
- * «APP RECHAZOS» también entra, y es la única pestaña de la aplicación que lo hace: es por donde le
- * llega a una sucursal el aviso de que a un cliente suyo le rebotó el débito, y un aviso que tarda
- * hasta la próxima bajada completa en aparecer no sirve para llamarlo.
+ * «APP RECHAZOS» y «APP TAREAS» también entran, y son las dos únicas pestañas de la aplicación que lo
+ * hacen: por una le llega a una sucursal el aviso de que a un cliente suyo le rebotó el débito, y por
+ * la otra las tareas que le asignaron desde otro mostrador. Un aviso o una tarea que tardan hasta la
+ * próxima bajada completa en aparecer no sirven para lo que se necesitan. Las tareas además tienen su
+ * propio carril rápido cada 30 segundos; entran igual acá para el caso en que el rápido no haya podido
+ * correr (sin internet un rato, la cola trabada).
  */
 function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
   const mensuales = contexto.pestanas.filter((p) => p.tipo === 'MENSUAL' && p.periodo).sort((a, b) => (b.periodo ?? '').localeCompare(a.periodo ?? ''))
@@ -76,15 +90,29 @@ function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
     }
   }
   for (const p of contexto.pestanas) {
-    if (p.tipo === 'RIESGOS_VARIOS' || p.tipo === 'PAGOS' || p.tipo === 'SINIESTROS' || p.tipo === 'APP_RECHAZOS') titulos.add(p.titulo)
+    if (
+      p.tipo === 'RIESGOS_VARIOS' ||
+      p.tipo === 'PAGOS' ||
+      p.tipo === 'SINIESTROS' ||
+      p.tipo === 'APP_RECHAZOS' ||
+      p.tipo === 'APP_TAREAS'
+    ) {
+      titulos.add(p.titulo)
+    }
   }
   return [...titulos]
+}
+
+/** La pestaña del carril rápido. Vacío = la hoja todavía no tiene ninguna tarea y no hay nada que bajar. */
+function pestanasDeTareas(contexto: ContextoHoja): string[] {
+  return contexto.pestanas.filter((p) => p.tipo === 'APP_TAREAS').map((p) => p.titulo)
 }
 
 export class MotorDeSincronizacion {
   private opciones: OpcionesMotor
   private temporizadorSubida: NodeJS.Timeout | null = null
   private temporizadorBajada: NodeJS.Timeout | null = null
+  private temporizadorTareas: NodeJS.Timeout | null = null
   private contexto: ContextoHoja | null = null
   private contextoLeidoEn = 0
   private trabajando = false
@@ -107,10 +135,12 @@ export class MotorDeSincronizacion {
     if (barridas > 0) anotarEvento('motor', `Se limpiaron ${barridas} entradas de la cola que no se podían subir nunca.`)
     this.temporizadorSubida = setInterval(() => enSegundoPlano(this.ciclarSubida(), 'subida'), INTERVALO_SUBIDA_MS)
     this.temporizadorBajada = setInterval(() => enSegundoPlano(this.ciclarBajada(), 'bajada'), INTERVALO_BAJADA_MS)
+    this.temporizadorTareas = setInterval(() => enSegundoPlano(this.ciclarTareas(), 'las tareas'), INTERVALO_TAREAS_MS)
     // Los temporizadores no tienen que impedir que el proceso termine: la aplicación se cierra cuando
     // el usuario cierra la ventana, no cuando la sincronización lo permite.
     this.temporizadorSubida.unref?.()
     this.temporizadorBajada.unref?.()
+    this.temporizadorTareas.unref?.()
     anotarEvento('motor', 'Sincronización encendida.')
     this.avisar()
   }
@@ -118,8 +148,10 @@ export class MotorDeSincronizacion {
   apagar(): void {
     if (this.temporizadorSubida) clearInterval(this.temporizadorSubida)
     if (this.temporizadorBajada) clearInterval(this.temporizadorBajada)
+    if (this.temporizadorTareas) clearInterval(this.temporizadorTareas)
     this.temporizadorSubida = null
     this.temporizadorBajada = null
+    this.temporizadorTareas = null
     this.encendido = false
     this.contexto = null
     this.avisar()
@@ -243,16 +275,52 @@ export class MotorDeSincronizacion {
     return this.seguir(this.correrBajada(fuente, completa, bloqueadas))
   }
 
-  private async correrBajada(fuente: FuenteHoja, completa: boolean, bloqueadas: Set<string>): Promise<ResultadoBajada | null> {
+  /**
+   * El carril rápido: baja SÓLO la pestaña de las tareas, cada 30 segundos.
+   *
+   * No sube nada antes (eso lo hace su propio ciclo cada 10 segundos) y no toca la marca de «última
+   * bajada»: no es la bajada de la aplicación, es una pestaña sola. Como cualquier otra bajada saltea
+   * las filas con cambios locales sin subir, así una tarea que se está escribiendo acá no se pisa con
+   * la versión vieja del servidor.
+   */
+  async ciclarTareas(): Promise<ResultadoBajada | null> {
+    if (this.trabajando || !this.encendido) return null
+    const fuente = this.opciones.crearFuente()
+    if (!fuente) return null
+    return this.seguir(this.correrBajada(fuente, false, filasConPendientes(), { soloLasTareas: true }))
+  }
+
+  private async correrBajada(
+    fuente: FuenteHoja,
+    completa: boolean,
+    bloqueadas: Set<string>,
+    opciones: { soloLasTareas?: boolean } = {},
+  ): Promise<ResultadoBajada | null> {
+    const soloLasTareas = opciones.soloLasTareas === true
     this.trabajando = true
     this.avisar()
     const arranque = Date.now()
     try {
       const contexto = await this.conContexto(fuente, completa)
-      const titulos = completa ? contexto.pestanas.map((p) => p.titulo) : (this.opciones.pestanasDelCiclo ?? pestanasDeTodosLosDias)(contexto)
+      const titulos = soloLasTareas
+        ? pestanasDeTareas(contexto)
+        : completa
+          ? contexto.pestanas.map((p) => p.titulo)
+          : (this.opciones.pestanasDelCiclo ?? pestanasDeTodosLosDias)(contexto)
+      // Todavía no hay pestaña de tareas en la base: no hay nada que bajar y tampoco nada que anotar.
+      if (soloLasTareas && titulos.length === 0) return null
       const resultado = await bajarCambios(fuente, contexto, titulos, bloqueadas)
       this.sinConexion = false
       this.ultimoError = null
+      if (soloLasTareas) {
+        if (resultado.filasCambiadas > 0 || resultado.filasNuevas > 0 || resultado.filasQueYaNoEstan > 0) {
+          this.opciones.alCambiarLasTareas?.()
+        }
+        // Filas escritas a mano en la pestaña (sin _ID) piden la importación completa, y ésa no se
+        // dispara desde acá: correrla cada medio minuto sería peor que esperar. La bajada de los cinco
+        // minutos también mira APP TAREAS y es la que la corre.
+        return resultado
+      }
       guardarMarca('ultima_bajada', new Date().toISOString())
 
       if (resultado.necesitaImportacion) {

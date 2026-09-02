@@ -65,6 +65,12 @@ export function Tareas() {
     void cargar(filtros)
   }, [cargar, filtros])
 
+  // Una tarea que asignó otra sucursal baja por el carril rápido de la sincronización: el listado se
+  // vuelve a pedir en el momento, sin que nadie tenga que salir y entrar al módulo.
+  useEffect(() => {
+    return window.dm.tareas.alCambiarDeAfuera(() => void cargar(filtros))
+  }, [cargar, filtros])
+
   useEffect(() => {
     if (parametros.tareaId === undefined) return
     setAbierta(parametros.tareaId)

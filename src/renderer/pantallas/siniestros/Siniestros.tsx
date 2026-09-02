@@ -4,7 +4,7 @@
 //
 // La lista es la que ya conocen; lo nuevo está adentro. Por eso la fila entera abre la ficha y la
 // pantalla no se llena de botones.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import {
   ESTADOS_DE_SINIESTRO,
@@ -18,12 +18,33 @@ import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { DialogoAltaSiniestro } from './DialogoAltaSiniestro'
 import { FichaSiniestro } from './FichaSiniestro'
 import { usePuedeEditar } from '../../contexto/Permisos'
 
 const FILTROS_VACIOS: FiltrosSiniestros = { periodo: '', busqueda: '', sucursales: [], companias: [], estado: '', soloRobos: false }
+
+/**
+ * Las columnas que se pueden apagar con «Columnas». El asegurado no: sin él la fila no se sabe de
+ * quién es. La última —los clips y las tareas pendientes, con la flecha— tampoco: es la que dice que
+ * la fila se abre.
+ */
+const COLUMNAS: Array<{ id: string; titulo: string; siempre?: boolean }> = [
+  { id: 'sucursal', titulo: 'Sucursal' },
+  { id: 'compania', titulo: 'Compañía' },
+  { id: 'poliza', titulo: 'Póliza' },
+  { id: 'cobertura', titulo: 'Cobertura' },
+  { id: 'asegurado', titulo: 'Asegurado', siempre: true },
+  { id: 'patente', titulo: 'Patente' },
+  { id: 'carga', titulo: 'Carga' },
+  { id: 'fecha', titulo: 'Siniestro' },
+  { id: 'numero', titulo: 'N° siniestro' },
+  { id: 'estado', titulo: 'Estado' },
+  { id: 'observaciones', titulo: 'Observaciones' },
+  { id: 'marcas', titulo: 'Adjuntos y tareas', siempre: true },
+]
 
 /** Cada estado con su color: el trámite se lee de un vistazo, sin leer la palabra. */
 export const CLASES_ESTADO: Record<EstadoSiniestro, string> = {
@@ -42,6 +63,8 @@ export function Siniestros() {
   const [error, setError] = useState<string | null>(null)
   const [abierto, setAbierto] = useState<number | null>(null)
   const [altaAbierta, setAltaAbierta] = useState(false)
+  const { visibles, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('siniestros', COLUMNAS)
+  const ve = useMemo(() => new Set(visibles.map((columna) => columna.id)), [visibles])
 
   const cargar = useCallback(async (cuales: FiltrosSiniestros) => {
     setCargando(true)
@@ -119,6 +142,7 @@ export function Siniestros() {
         </label>
 
         <div className="ml-auto flex items-center gap-2">
+          <SelectorDeColumnas columnas={COLUMNAS} ocultas={ocultas} alAlternar={alternarColumna} alMostrarTodas={mostrarTodas} />
           {puedeEditar && (
             <Boton variante="primario" icono="mas" onClick={() => setAltaAbierta(true)}>
               Cargar siniestro
@@ -156,24 +180,21 @@ export function Siniestros() {
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-slate-50">
             <tr className="border-b border-slate-200">
-              <th className={encabezado}>Sucursal</th>
-              <th className={encabezado}>Compañía</th>
-              <th className={encabezado}>Póliza</th>
-              <th className={encabezado}>Cobertura</th>
-              <th className={encabezado}>Asegurado</th>
-              <th className={encabezado}>Patente</th>
-              <th className={encabezado}>Carga</th>
-              <th className={encabezado}>Siniestro</th>
-              <th className={encabezado}>N° siniestro</th>
-              <th className={encabezado}>Estado</th>
-              <th className={encabezado}>Observaciones</th>
-              <th className={encabezado} aria-label="Adjuntos y tareas" />
+              {visibles.map((columna) => (
+                <th
+                  key={columna.id}
+                  className={encabezado}
+                  {...(columna.id === 'marcas' ? { 'aria-label': columna.titulo } : {})}
+                >
+                  {columna.id === 'marcas' ? null : columna.titulo}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {datos.filas.length === 0 && (
               <tr>
-                <td colSpan={12} className="px-3 py-12 text-center text-slate-500">
+                <td colSpan={visibles.length} className="px-3 py-12 text-center text-slate-500">
                   {datos.total === 0
                     ? 'Todavía no hay siniestros. Se cargan con «Cargar siniestro» y también entran solos al importar la pestaña SINIESTROS de la hoja.'
                     : 'Ningún siniestro coincide con los filtros.'}
@@ -181,7 +202,7 @@ export function Siniestros() {
               </tr>
             )}
             {datos.filas.map((fila) => (
-              <FilaDeSiniestro key={fila.id} fila={fila} alAbrir={() => setAbierto(fila.id)} />
+              <FilaDeSiniestro key={fila.id} fila={fila} ve={ve} alAbrir={() => setAbierto(fila.id)} />
             ))}
           </tbody>
         </table>
@@ -200,7 +221,7 @@ export function Siniestros() {
   )
 }
 
-function FilaDeSiniestro({ fila, alAbrir }: { fila: FilaSiniestro; alAbrir: () => void }) {
+function FilaDeSiniestro({ fila, ve, alAbrir }: { fila: FilaSiniestro; ve: Set<string>; alAbrir: () => void }) {
   const celda = 'px-3 py-2 text-slate-600'
   return (
     <tr
@@ -214,44 +235,50 @@ function FilaDeSiniestro({ fila, alAbrir }: { fila: FilaSiniestro; alAbrir: () =
       }}
       className="cursor-pointer border-b border-slate-100 last:border-b-0 hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
     >
-      <td className={celda}>{fila.sucursal ?? '—'}</td>
-      <td className={celda}>{fila.compania ?? '—'}</td>
-      <td className={cx(celda, 'font-mono text-xs')}>{fila.numeroPoliza ?? '—'}</td>
-      <td className={celda}>{fila.cobertura ?? '—'}</td>
-      <td className="px-3 py-2 font-medium text-slate-900">{fila.clienteNombre ?? '—'}</td>
-      <td className={cx(celda, 'font-mono text-xs font-semibold')}>{fila.patente ?? '—'}</td>
-      <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fila.fechaCarga ?? '—'}</td>
-      <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fila.fecha ?? '—'}</td>
-      <td className={cx(celda, 'font-mono text-xs')}>{fila.numeroSiniestro ?? '—'}</td>
-      <td className="px-3 py-2">
-        <span className={cx('inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', CLASES_ESTADO[fila.estado])}>
-          {fila.estado}
-        </span>
-      </td>
-      <td className="max-w-80 px-3 py-2 text-slate-600">
-        {/* ROBO va en rojo, igual que en la hoja: en la agencia un robo se mira distinto que un choque. */}
-        {fila.esRobo && (
-          <span className="mr-1.5 inline-flex rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-extrabold tracking-wide text-red-700">ROBO</span>
-        )}
-        <span className="align-middle">{fila.descripcion ?? fila.observaciones ?? ''}</span>
-      </td>
-      <td className="px-3 py-2 whitespace-nowrap text-slate-400">
-        <span className="inline-flex items-center gap-2">
-          {fila.adjuntos > 0 && (
-            <span className="inline-flex items-center gap-0.5 text-xs" title={`${fila.adjuntos} documento(s)`}>
-              <Icono nombre="clip" tamano={13} />
-              {fila.adjuntos}
-            </span>
+      {ve.has('sucursal') && <td className={celda}>{fila.sucursal ?? '—'}</td>}
+      {ve.has('compania') && <td className={celda}>{fila.compania ?? '—'}</td>}
+      {ve.has('poliza') && <td className={cx(celda, 'font-mono text-xs')}>{fila.numeroPoliza ?? '—'}</td>}
+      {ve.has('cobertura') && <td className={celda}>{fila.cobertura ?? '—'}</td>}
+      {ve.has('asegurado') && <td className="px-3 py-2 font-medium text-slate-900">{fila.clienteNombre ?? '—'}</td>}
+      {ve.has('patente') && <td className={cx(celda, 'font-mono text-xs font-semibold')}>{fila.patente ?? '—'}</td>}
+      {ve.has('carga') && <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fila.fechaCarga ?? '—'}</td>}
+      {ve.has('fecha') && <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fila.fecha ?? '—'}</td>}
+      {ve.has('numero') && <td className={cx(celda, 'font-mono text-xs')}>{fila.numeroSiniestro ?? '—'}</td>}
+      {ve.has('estado') && (
+        <td className="px-3 py-2">
+          <span className={cx('inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', CLASES_ESTADO[fila.estado])}>
+            {fila.estado}
+          </span>
+        </td>
+      )}
+      {ve.has('observaciones') && (
+        <td className="max-w-80 px-3 py-2 text-slate-600">
+          {/* ROBO va en rojo, igual que en la hoja: en la agencia un robo se mira distinto que un choque. */}
+          {fila.esRobo && (
+            <span className="mr-1.5 inline-flex rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-extrabold tracking-wide text-red-700">ROBO</span>
           )}
-          {fila.tareasPendientes > 0 && (
-            <span className="inline-flex items-center gap-0.5 text-xs text-amber-600" title={`${fila.tareasPendientes} tarea(s) pendiente(s)`}>
-              <Icono nombre="tareas" tamano={13} />
-              {fila.tareasPendientes}
-            </span>
-          )}
-          <Icono nombre="flechaDerecha" tamano={14} />
-        </span>
-      </td>
+          <span className="align-middle">{fila.descripcion ?? fila.observaciones ?? ''}</span>
+        </td>
+      )}
+      {ve.has('marcas') && (
+        <td className="px-3 py-2 whitespace-nowrap text-slate-400">
+          <span className="inline-flex items-center gap-2">
+            {fila.adjuntos > 0 && (
+              <span className="inline-flex items-center gap-0.5 text-xs" title={`${fila.adjuntos} documento(s)`}>
+                <Icono nombre="clip" tamano={13} />
+                {fila.adjuntos}
+              </span>
+            )}
+            {fila.tareasPendientes > 0 && (
+              <span className="inline-flex items-center gap-0.5 text-xs text-amber-600" title={`${fila.tareasPendientes} tarea(s) pendiente(s)`}>
+                <Icono nombre="tareas" tamano={13} />
+                {fila.tareasPendientes}
+              </span>
+            )}
+            <Icono nombre="flechaDerecha" tamano={14} />
+          </span>
+        </td>
+      )}
     </tr>
   )
 }

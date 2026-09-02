@@ -89,6 +89,9 @@ function MisTareas() {
       else setTareas([])
     }
     void traer()
+    // Inicio es la pantalla que queda abierta cuando nadie está haciendo nada: si le asignan una tarea
+    // desde otra sucursal, tiene que aparecer sola.
+    return window.dm.tareas.alCambiarDeAfuera(() => void traer())
   }, [verTareas])
 
   // Mientras carga no se reserva lugar: si no hay nada pendiente, esta sección no existe y el mapa de

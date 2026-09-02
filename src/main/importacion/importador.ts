@@ -10,6 +10,7 @@
 //  - Los datos raros se registran en el informe y NO frenan la importación.
 import type { BaseDeDatos } from '../db/base'
 import { esVehiculo } from '../../shared/riesgos'
+import { estadoDeTareaDesdeTexto, prioridadDeTareaDesdeTexto } from '../../shared/tareas'
 import { claveDeSucursal, sucursalCanonica, sucursalesEnTexto } from '../../shared/sucursales'
 import {
   NOMBRE_TIPO_PESTANA,
@@ -382,6 +383,30 @@ function prepararSentencias(db: BaseDeDatos) {
     // lo que hace que el aviso cargado en una sucursal llegue a la computadora de la otra. Lo que ya se
     // sabe acá manda sobre lo que trae la hoja salvo en el estado, que es justamente lo que la otra
     // sucursal cambia (COALESCE al revés dejaría un aviso resuelto como pendiente para siempre).
+    // Las tareas que llegan de otra computadora. Se identifican por su _ID, igual que todo lo demás.
+    //
+    // Al actualizar NO se tocan `creado_en`, `creado_por`, `visto_en` ni los vínculos (cliente, póliza,
+    // siniestro…): son de esta base y de esta persona. `visto_en` en particular es lo que apaga el
+    // punto rojo de la campana, y pisarlo en cada importación haría que una tarea ya leída volviera a
+    // avisar. La tarea nueva entra con `visto_en` en NULL a propósito: eso es exactamente lo que
+    // enciende la campana de quien la recibió.
+    tarea: db.prepare(`
+      INSERT INTO tareas (fila_id, pestana, titulo, detalle, responsable_id, responsable_nombre, sucursal_texto,
+                          vence_el, prioridad, estado, creado_por, visto_en, creado_en, actualizado_en)
+      VALUES (@fila_id, @pestana, @titulo, @detalle, @responsable_id, @responsable_nombre, @sucursal_texto,
+              @vence_el, @prioridad, @estado, @creado_por, NULL, @creado_en, @ahora)
+      ON CONFLICT(fila_id) WHERE fila_id IS NOT NULL DO UPDATE SET
+        pestana = excluded.pestana,
+        titulo = excluded.titulo,
+        detalle = excluded.detalle,
+        responsable_id = excluded.responsable_id,
+        responsable_nombre = excluded.responsable_nombre,
+        sucursal_texto = excluded.sucursal_texto,
+        vence_el = excluded.vence_el,
+        prioridad = excluded.prioridad,
+        estado = excluded.estado,
+        actualizado_en = excluded.actualizado_en`),
+
     rechazo: db.prepare(`
       INSERT INTO rechazos_debito (fila_id, pestana, poliza_id, cliente_id, cliente_nombre, documento, telefono, compania,
                                    numero_poliza, patente, forma_pago, cuota, periodo, sucursal_texto, motivo, nota,
@@ -1183,6 +1208,9 @@ class TrabajoDeImportacion {
               break
             case 'APP_RECHAZOS':
               this.guardarRechazo(p, fila, resumen)
+              break
+            case 'APP_TAREAS':
+              this.guardarTarea(p, fila, resumen)
               break
             default:
               break
@@ -2092,6 +2120,61 @@ class TrabajoDeImportacion {
       ahora: this.ahora,
     })
     this.contar(resumen, 'rechazos_debito')
+  }
+
+  /**
+   * Una tarea de la pestaña APP TAREAS.
+   *
+   * Es lo que hace que una tarea asignada en Lanús aparezca en Dock Sud: la bajada de todos los días
+   * (y el carril rápido de 30 segundos) ve una fila con un _ID que esta computadora no conoce y pide la
+   * importación, y esta importación es la que crea la tarea local. Las que ya conocemos las mantiene al
+   * día la bajada campo por campo (`DESTINOS.APP_TAREAS` en `sincronizacion/bajada.ts`).
+   *
+   * En la hoja el responsable va por NOMBRE, que es lo que se lee; acá se busca a qué usuario activo
+   * corresponde, porque la campana y «las mías» trabajan con el id. Con ninguno o con dos que se llamen
+   * igual la tarea queda con el nombre a la vista y sin dueño: mejor sin dueño que del equivocado.
+   */
+  private guardarTarea(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
+    if (this.sinDatosUtiles(p, fila)) return
+    // Una tarea que esta computadora acaba de tocar y todavía no subió no se vuelve a leer de la hoja:
+    // la hoja va atrás de lo local y le devolvería el estado viejo. Queda para la próxima vuelta, con su
+    // entrada de la cola ya viajada. Es el mismo criterio que con las bajas.
+    if (this.sinSubir.has(fila.id)) return
+    const titulo = limpiar(fila.valor('titulo'))
+    // Sin título no es una tarea: no hay nada que mostrar en el listado ni con qué reconocerla.
+    if (!titulo) return
+
+    const responsableNombre = limpiar(fila.valor('responsable'))
+    const responsables = responsableNombre
+      ? (this.db.prepare('SELECT id FROM usuarios WHERE activo = 1 AND nombre = ?').all(responsableNombre) as Array<{ id: number }>)
+      : []
+
+    const fechaTexto = fila.valor('fecha')
+    const fecha = interpretarFecha(fechaTexto, null, this.anioActual)
+    if (fecha.problema) this.problema(p.titulo, fila.numero, fila.id, 'fecha de tarea inválida', fecha.problema)
+    const vence = interpretarFecha(fila.valor('vence'), null, this.anioActual)
+    if (vence.problema) this.problema(p.titulo, fila.numero, fila.id, 'vencimiento de tarea inválido', vence.problema)
+
+    const sucursalTexto = this.sucursalDeLaFila(fila)
+    this.resolverSucursal(p, fila, sucursalTexto)
+
+    this.sentencias.tarea.run({
+      fila_id: fila.id,
+      pestana: p.titulo,
+      titulo,
+      detalle: oNulo(fila.valor('descripcion')),
+      responsable_id: responsables.length === 1 ? (responsables[0]?.id ?? null) : null,
+      responsable_nombre: oNulo(responsableNombre),
+      sucursal_texto: oNulo(sucursalTexto),
+      vence_el: vence.iso,
+      prioridad: prioridadDeTareaDesdeTexto(fila.valor('prioridad')),
+      estado: estadoDeTareaDesdeTexto(fila.valor('estado')),
+      // `creado_por` es NOT NULL y en la hoja puede venir vacío (una fila escrita a mano).
+      creado_por: limpiar(fila.valor('usuario')) || 'Sincronización',
+      creado_en: fecha.iso ?? (limpiar(fechaTexto) || this.ahora.slice(0, 10)),
+      ahora: this.ahora,
+    })
+    this.contar(resumen, 'tareas')
   }
 
   private guardarReglaCobertura(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {

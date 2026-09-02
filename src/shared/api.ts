@@ -220,6 +220,8 @@ export interface ApiDm {
     marcarVistos: Remota<'tareas:marcarVistos'>
     /** Alguien terminó una tarea: suena el aviso y las pantallas abiertas se refrescan. */
     alCompletarse: Suscripcion<'tareas:completada'>
+    /** La sincronización trajo tareas de otra computadora: hay que volver a preguntar. */
+    alCambiarDeAfuera: Suscripcion<'tareas:cambiaron'>
   }
   metricas: {
     tablero: Remota<'metricas:tablero'>

@@ -18,6 +18,7 @@ import { anotarEvento } from './cola'
 import { repiteEncabezados } from '../importacion/encabezados'
 import { alDesaparecerDeLaHoja, alReaparecerEnLaHoja } from '../servicios/filas'
 import { normalizarEstadoDeCobro } from '../servicios/pagos'
+import { estadoDeTareaDesdeTexto, prioridadDeTareaDesdeTexto } from '../../shared/tareas'
 import { columnaDelId, huellaDeFila, type ContextoHoja, type PestanaSincronizable } from './hoja'
 
 export interface ResultadoBajada {
@@ -110,6 +111,27 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
     observaciones: { tabla: 'rechazos_debito', columna: 'nota' },
     motivo: { tabla: 'rechazos_debito', columna: 'motivo' },
   },
+  // Las tareas. Lo que cambia después de creada la tarea es de quién es, para cuándo, con qué urgencia
+  // y en qué anda: todo eso lo toca la computadora de quien la está haciendo, que puede ser otra.
+  //
+  // `responsable` merece una nota: en la hoja va el NOMBRE, porque es lo que se lee, pero la campana y
+  // el filtro «las mías» trabajan con `responsable_id`. Por eso se deriva el id del nombre en la misma
+  // escritura; si el nombre no coincide con ningún usuario activo —o coincide con dos— la tarea queda
+  // con el nombre a la vista y sin dueño, que es preferible a asignársela a la persona equivocada.
+  APP_TAREAS: {
+    titulo: { tabla: 'tareas', columna: 'titulo' },
+    descripcion: { tabla: 'tareas', columna: 'detalle' },
+    responsable: {
+      tabla: 'tareas',
+      columna: 'responsable_nombre',
+      derivadas: (valor) => ({ responsable_id: idDeResponsablePorNombre(valor) }),
+    },
+    sucursal: { tabla: 'tareas', columna: 'sucursal_texto' },
+    vence: { tabla: 'tareas', columna: 'vence_el' },
+    // Los dos tienen CHECK en la tabla: lo que venga escrito a mano se acomoda o no entra.
+    prioridad: { tabla: 'tareas', columna: 'prioridad', normalizar: (valor) => prioridadDeTareaDesdeTexto(valor) },
+    estado: { tabla: 'tareas', columna: 'estado', normalizar: (valor) => estadoDeTareaDesdeTexto(valor) },
+  },
   COBERTURA: {
     cobertura: { tabla: 'reglas_cobertura', columna: 'cobertura' },
     incluye: { tabla: 'reglas_cobertura', columna: 'incluye' },
@@ -117,6 +139,18 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
     detalle: { tabla: 'reglas_cobertura', columna: 'detalle' },
     observaciones: { tabla: 'reglas_cobertura', columna: 'observaciones' },
   },
+}
+
+/**
+ * El id del usuario que se llama así, si hay exactamente uno activo. Con ninguno o con dos devuelve
+ * null: una tarea sin dueño se ve igual en el listado y se puede reasignar; una asignada a la persona
+ * equivocada desaparece de la vista de quien tenía que hacerla.
+ */
+function idDeResponsablePorNombre(nombre: string): number | null {
+  const buscado = limpiar(nombre)
+  if (!buscado) return null
+  const iguales = db().prepare('SELECT id FROM usuarios WHERE activo = 1 AND nombre = ?').all(buscado) as Array<{ id: number }>
+  return iguales.length === 1 ? (iguales[0]?.id ?? null) : null
 }
 
 /** Campos del cliente: se guardan en la ficha del cliente, no en la fila del mes. */

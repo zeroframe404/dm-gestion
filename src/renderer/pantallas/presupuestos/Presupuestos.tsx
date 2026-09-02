@@ -3,7 +3,7 @@
 // Sólo se muestran las versiones vigentes: las anteriores están adentro de cada ficha, que es donde
 // sirven. El tilde «con versiones anteriores» las trae para el caso en que haya que buscar un precio
 // que se pasó hace dos semanas.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ESTADOS_DE_PRESUPUESTO,
   type EstadoPresupuesto,
@@ -16,12 +16,26 @@ import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
+import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { FichaPresupuesto } from './FichaPresupuesto'
 import { FormularioPresupuesto } from './FormularioPresupuesto'
 import { usePuedeEditar } from '../../contexto/Permisos'
 
 const FILTROS_VACIOS: FiltrosPresupuestos = { busqueda: '', estado: '', sucursales: [], incluirVersiones: false }
+
+/** Las que se pueden apagar con «Columnas». El cliente no: sin él la fila no se sabe de quién es. */
+const COLUMNAS: Array<{ id: string; titulo: string; siempre?: boolean }> = [
+  { id: 'numero', titulo: 'N.º' },
+  { id: 'cliente', titulo: 'Cliente', siempre: true },
+  { id: 'vehiculo', titulo: 'Vehículo' },
+  { id: 'patente', titulo: 'Patente' },
+  { id: 'opciones', titulo: 'Opciones' },
+  { id: 'desde', titulo: 'Desde' },
+  { id: 'sucursal', titulo: 'Sucursal' },
+  { id: 'estado', titulo: 'Estado' },
+  { id: 'fecha', titulo: 'Fecha' },
+]
 
 export const CLASES_ESTADO_PRESUPUESTO: Record<EstadoPresupuesto, string> = {
   BORRADOR: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -40,6 +54,8 @@ export function Presupuestos() {
   const [abierto, setAbierto] = useState<number | null>(null)
   const [alta, setAlta] = useState<{ leadId: number | null; clienteId: number | null } | null>(null)
   const [catalogos, setCatalogos] = useState<{ companias: string[]; coberturas: string[] }>({ companias: [], coberturas: [] })
+  const { visibles, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('presupuestos', COLUMNAS)
+  const ve = useMemo(() => new Set(visibles.map((columna) => columna.id)), [visibles])
 
   const cargar = useCallback(async (cuales: FiltrosPresupuestos) => {
     setCargando(true)
@@ -131,6 +147,7 @@ export function Presupuestos() {
         </label>
 
         <div className="ml-auto flex items-center gap-2">
+          <SelectorDeColumnas columnas={COLUMNAS} ocultas={ocultas} alAlternar={alternarColumna} alMostrarTodas={mostrarTodas} />
           {puedeEditar && (
             <Boton variante="primario" icono="mas" onClick={() => setAlta({ leadId: null, clienteId: null })}>
               Nuevo presupuesto
@@ -168,21 +185,17 @@ export function Presupuestos() {
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-slate-50">
             <tr className="border-b border-slate-200">
-              <th className={encabezado}>N.º</th>
-              <th className={encabezado}>Cliente</th>
-              <th className={encabezado}>Vehículo</th>
-              <th className={encabezado}>Patente</th>
-              <th className={encabezado}>Opciones</th>
-              <th className={encabezado}>Desde</th>
-              <th className={encabezado}>Sucursal</th>
-              <th className={encabezado}>Estado</th>
-              <th className={encabezado}>Fecha</th>
+              {visibles.map((columna) => (
+                <th key={columna.id} className={encabezado}>
+                  {columna.titulo}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {datos.filas.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-12 text-center text-slate-500">
+                <td colSpan={visibles.length} className="px-3 py-12 text-center text-slate-500">
                   {datos.total === 0
                     ? 'Todavía no hay presupuestos. Con «Nuevo presupuesto» cargás las compañías que cotizaste y el mensaje de WhatsApp sale armado.'
                     : 'Ningún presupuesto coincide con los filtros.'}
@@ -190,7 +203,7 @@ export function Presupuestos() {
               </tr>
             )}
             {datos.filas.map((fila) => (
-              <FilaDePresupuesto key={fila.id} fila={fila} alAbrir={() => setAbierto(fila.id)} />
+              <FilaDePresupuesto key={fila.id} fila={fila} ve={ve} alAbrir={() => setAbierto(fila.id)} />
             ))}
           </tbody>
         </table>
@@ -214,7 +227,7 @@ export function Presupuestos() {
   )
 }
 
-function FilaDePresupuesto({ fila, alAbrir }: { fila: FilaPresupuesto; alAbrir: () => void }) {
+function FilaDePresupuesto({ fila, ve, alAbrir }: { fila: FilaPresupuesto; ve: Set<string>; alAbrir: () => void }) {
   const celda = 'px-3 py-2 text-slate-600'
   const vehiculo = [fila.marca, fila.modelo, fila.anio].filter(Boolean).join(' ')
   return (
@@ -232,22 +245,26 @@ function FilaDePresupuesto({ fila, alAbrir }: { fila: FilaPresupuesto; alAbrir: 
         !fila.vigente && 'text-slate-400',
       )}
     >
-      <td className={cx(celda, 'font-mono text-xs font-semibold whitespace-nowrap')}>
-        {fila.numero}
-        {fila.version > 1 && <span className="ml-1 text-slate-400">v{fila.version}</span>}
-      </td>
-      <td className="px-3 py-2 font-medium text-slate-900">{fila.clienteNombre}</td>
-      <td className={celda}>{vehiculo || fila.tipoVehiculo || '—'}</td>
-      <td className={cx(celda, 'font-mono text-xs font-semibold')}>{fila.patente ?? '—'}</td>
-      <td className={cx(celda, 'tabular-nums')}>{fila.opciones}</td>
-      <td className={cx(celda, 'font-semibold tabular-nums text-slate-900')}>{fila.desde ?? '—'}</td>
-      <td className={celda}>{fila.sucursal ?? '—'}</td>
-      <td className="px-3 py-2">
-        <span className={cx('inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', CLASES_ESTADO_PRESUPUESTO[fila.estado])}>
-          {fila.estado}
-        </span>
-      </td>
-      <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fila.creadoEn.slice(0, 10)}</td>
+      {ve.has('numero') && (
+        <td className={cx(celda, 'font-mono text-xs font-semibold whitespace-nowrap')}>
+          {fila.numero}
+          {fila.version > 1 && <span className="ml-1 text-slate-400">v{fila.version}</span>}
+        </td>
+      )}
+      {ve.has('cliente') && <td className="px-3 py-2 font-medium text-slate-900">{fila.clienteNombre}</td>}
+      {ve.has('vehiculo') && <td className={celda}>{vehiculo || fila.tipoVehiculo || '—'}</td>}
+      {ve.has('patente') && <td className={cx(celda, 'font-mono text-xs font-semibold')}>{fila.patente ?? '—'}</td>}
+      {ve.has('opciones') && <td className={cx(celda, 'tabular-nums')}>{fila.opciones}</td>}
+      {ve.has('desde') && <td className={cx(celda, 'font-semibold tabular-nums text-slate-900')}>{fila.desde ?? '—'}</td>}
+      {ve.has('sucursal') && <td className={celda}>{fila.sucursal ?? '—'}</td>}
+      {ve.has('estado') && (
+        <td className="px-3 py-2">
+          <span className={cx('inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', CLASES_ESTADO_PRESUPUESTO[fila.estado])}>
+            {fila.estado}
+          </span>
+        </td>
+      )}
+      {ve.has('fecha') && <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fila.creadoEn.slice(0, 10)}</td>}
     </tr>
   )
 }

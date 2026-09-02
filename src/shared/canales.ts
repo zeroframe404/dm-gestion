@@ -595,6 +595,12 @@ export interface Eventos {
   'vehiculos:progreso': ProgresoDeCatalogo
   /** Una tarea se dio por terminada: el renderer hace sonar el aviso y refresca lo que tenga a la vista. */
   'tareas:completada': TareaCompletada
+  /**
+   * El carril rápido de la sincronización bajó tareas nuevas o cambiadas de otra computadora. No lleva
+   * datos: es un «volvé a preguntar» para la campana, el contador de la barra lateral y el listado, que
+   * si no tendrían que esperar a su propio reloj para enterarse.
+   */
+  'tareas:cambiaron': null
 }
 
 export type NombreCanal = keyof Canales

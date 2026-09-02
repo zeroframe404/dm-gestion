@@ -274,11 +274,12 @@ function NumeracionDeTickets({ proximoNumero, alGuardar }: { proximoNumero: numb
  * acá, una fila por sucursal, y se puede agregar la de una sucursal nueva sin tocar el programa.
  */
 function DireccionesDelTicket() {
-  // A un empleado el proceso principal le manda UNA sola fila —la de su mostrador— y sólo le acepta
-  // esa al guardar. Acá además se le esconde el «agregar una sucursal»: dar de alta la dirección de un
-  // local en el que uno no está no es algo que haga falta desde el mostrador.
+  // A todo el mundo menos al superadministrador el proceso principal le manda UNA sola fila —la de la
+  // sucursal en la que está asignado— y sólo le acepta esa al guardar. Acá además se le esconde el
+  // «agregar una sucursal»: dar de alta la dirección de un local en el que uno no está no es algo que
+  // haga falta desde el mostrador.
   const usuario = useUsuarioActual()
-  const soloLaMia = usuario.rol === 'EMPLEADO'
+  const soloLaMia = usuario.rol !== 'SUPER_ADMIN'
   const [filas, setFilas] = useState<DireccionDeSucursal[] | null>(null)
   const [guardadas, setGuardadas] = useState<DireccionDeSucursal[]>([])
   const [nueva, setNueva] = useState('')

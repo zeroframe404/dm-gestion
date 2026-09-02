@@ -172,9 +172,10 @@ function identidadDeSucursal(nombre: string): string {
  * no se pierden solas.
  *
  * Con `soloLaSucursal` se devuelve una sola fila: la del mostrador de quien está mirando. Es lo que ve
- * un empleado, porque la impresora que tiene delante imprime esa dirección y ninguna otra; ver —y
- * peor, poder cambiar— la dirección de Lanús desde Dock Sud sólo sirve para romper el ticket de una
- * sucursal en la que uno no está.
+ * todo el mundo menos el superadministrador —empleado y administrador por igual: los dos están
+ * asignados a un local—, porque la impresora que tiene delante imprime esa dirección y ninguna otra;
+ * ver —y peor, poder cambiar— la dirección de Lanús desde Dock Sud sólo sirve para romper el ticket de
+ * una sucursal en la que uno no está.
  */
 export function direccionesDeTicket(soloLaSucursal?: string | null): DireccionDeSucursal[] {
   const filas = listarSucursales().map((sucursal) => ({

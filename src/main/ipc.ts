@@ -566,15 +566,18 @@ export function registrarIpc(): void {
     return exito(null)
   })
   // Las direcciones del encabezado del ticket, una por sucursal.
-  // Un empleado ve y edita la dirección de SU sucursal y ninguna otra: la impresora que tiene delante
-  // imprime esa y nada más, y poder tocar la de Lanús desde Dock Sud sólo sirve para romper el ticket
-  // de un mostrador en el que uno no está. El recorte se hace acá, no en la pantalla.
-  const miSucursalSiEsEmpleado = (): string | null => {
+  // Todo el mundo ve y edita la de la sucursal en la que está asignado y ninguna otra: la impresora
+  // que tiene delante imprime esa y nada más, y poder tocar la de Lanús desde Dock Sud sólo sirve para
+  // romper el ticket de un mostrador en el que uno no está. Vale igual para un administrador: está
+  // asignado a un local como cualquiera. La única excepción es el superadministrador, que es quien
+  // ordena el encabezado de toda la agencia y por eso las ve todas. El recorte se hace acá, no en la
+  // pantalla.
+  const miSucursalSalvoSuperAdmin = (): string | null => {
     const actor = exigirSesion()
-    return actor.rol === 'EMPLEADO' ? actor.sucursal.nombre : null
+    return actor.rol === 'SUPER_ADMIN' ? null : actor.sucursal.nombre
   }
-  manejar('impresora:direcciones', () => exito(direccionesDeTicket(miSucursalSiEsEmpleado())))
-  manejar('impresora:guardarDirecciones', (direcciones) => exito(guardarDireccionesDeTicket(direcciones, miSucursalSiEsEmpleado())))
+  manejar('impresora:direcciones', () => exito(direccionesDeTicket(miSucursalSalvoSuperAdmin())))
+  manejar('impresora:guardarDirecciones', (direcciones) => exito(guardarDireccionesDeTicket(direcciones, miSucursalSalvoSuperAdmin())))
   // El «sí» del cartel que pregunta si imprimir: lo toca quien cobró, con los mismos permisos con los
   // que registró el pago. No lanza si la impresora falla: el motivo queda anotado y el pago ya está.
   manejar('impresora:imprimirPago', async (pagoId, copias) => {
@@ -1257,11 +1260,12 @@ export function registrarIpc(): void {
     return exito(await publicarEnRed(pedido, actor))
   })
 
-  // El control remoto de las computadoras de la agencia. Mirar si está en línea lo puede hacer
-  // cualquiera que vea Administración; entrar a la consola pide su propia clave del otro lado, que es
-  // como tiene que ser para un acceso a todas las máquinas.
+  // El control remoto de las computadoras de la agencia. Lo mira CUALQUIER rol: quien tiene el
+  // problema delante es el mostrador, y hacerle pedir a un administrador la dirección de la consola
+  // no protege nada —entrar pide su propia clave del otro lado, que es como tiene que ser para un
+  // acceso a todas las máquinas—; sólo demora el arreglo.
   manejar('mesh:estado', async () => {
-    exigirVista('administracion')
+    exigirSesion()
     return exito(await estadoDelMesh())
   })
 

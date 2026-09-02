@@ -6,6 +6,7 @@
 // notebook puede quedar siempre angosta y el monitor de la oficina siempre ancho.
 import { useMemo, useState } from 'react'
 import { usePermisos } from '../contexto/Permisos'
+import { useAvisosDeTareas } from '../contexto/Tareas'
 import { esAreaDePermisos, MODULO_ADMINISTRACION, MODULOS, type IdModulo, type Modulo } from '../modulos'
 import { barraLateralColapsada, guardarBarraLateralColapsada } from '../preferencias'
 import { Icono } from './Icono'
@@ -18,6 +19,9 @@ interface PropsBarraLateral {
 
 export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
   const { puedeVer } = usePermisos()
+  // Lo pendiente de esta persona, para el círculo rojo del módulo Tareas. Es el mismo número que
+  // muestra la campana de la barra superior: los dos salen del mismo contexto.
+  const { pendientes } = useAvisosDeTareas()
   const [colapsada, setColapsada] = useState(barraLateralColapsada)
   // Inicio siempre está; el resto, según los permisos del rol. Administración también, porque «Acerca
   // de» la ve todo el mundo: adentro se muestran sólo las secciones que correspondan.
@@ -75,7 +79,13 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
         <ul className="flex flex-col gap-0.5">
           {visibles.map((modulo) => (
             <li key={modulo.id}>
-              <ItemMenu modulo={modulo} activo={modulo.id === moduloActivo} colapsada={colapsada} alElegir={alElegir} />
+              <ItemMenu
+                modulo={modulo}
+                activo={modulo.id === moduloActivo}
+                colapsada={colapsada}
+                alElegir={alElegir}
+                pendientes={modulo.id === 'tareas' ? pendientes : 0}
+              />
             </li>
           ))}
         </ul>
@@ -98,18 +108,23 @@ interface PropsItemMenu {
   activo: boolean
   colapsada: boolean
   alElegir: (id: IdModulo) => void
+  /** Cuántas tareas pendientes tiene esta persona. 0 = no se dibuja ningún círculo. */
+  pendientes?: number
 }
 
-function ItemMenu({ modulo, activo, colapsada, alElegir }: PropsItemMenu) {
+function ItemMenu({ modulo, activo, colapsada, alElegir, pendientes = 0 }: PropsItemMenu) {
+  // Más de 99 no entra en el círculo y tampoco cambia lo que hay que hacer: «+99» y a trabajar.
+  const cuenta = pendientes > 99 ? '+99' : String(pendientes)
   return (
     <button
       type="button"
       onClick={() => alElegir(modulo.id)}
       aria-current={activo ? 'page' : undefined}
       // Achicada no se lee ningún nombre: el título del navegador es la única forma de saber cuál es
-      // cuál sin volver a agrandarla, y el aria-label es lo que lee el lector de pantalla.
-      title={colapsada ? modulo.nombre : undefined}
-      aria-label={colapsada ? modulo.nombre : undefined}
+      // cuál sin volver a agrandarla, y el aria-label es lo que lee el lector de pantalla. El número
+      // del círculo entra en los dos: un lector de pantalla no ve el globito rojo.
+      title={colapsada ? nombreConPendientes(modulo.nombre, pendientes) : undefined}
+      aria-label={pendientes > 0 || colapsada ? nombreConPendientes(modulo.nombre, pendientes) : undefined}
       className={cx(
         'relative flex w-full items-center rounded-lg py-2 text-left text-sm font-medium transition-colors',
         colapsada ? 'justify-center px-2' : 'gap-3 px-3',
@@ -125,6 +140,30 @@ function ItemMenu({ modulo, activo, colapsada, alElegir }: PropsItemMenu) {
       )}
       <Icono nombre={modulo.icono} tamano={18} className={activo ? 'text-white' : 'text-cielo-200'} />
       {!colapsada && <span className="truncate">{modulo.nombre}</span>}
+      {/* Achicada la barra es una tira de iconos: el círculo se pega al icono, arriba a la derecha.
+          Ancha va al final del renglón, que es donde se lo busca. */}
+      {pendientes > 0 &&
+        (colapsada ? (
+          <span
+            aria-hidden="true"
+            className="absolute right-1 top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-4 text-white ring-2 ring-marino-950"
+          >
+            {cuenta}
+          </span>
+        ) : (
+          <span
+            aria-hidden="true"
+            className="ml-auto inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-bold tabular-nums leading-none text-white"
+          >
+            {cuenta}
+          </span>
+        ))}
     </button>
   )
+}
+
+/** «Tareas · 3 pendientes», para el tooltip y para el lector de pantalla. */
+function nombreConPendientes(nombre: string, pendientes: number): string {
+  if (pendientes <= 0) return nombre
+  return `${nombre} · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}`
 }

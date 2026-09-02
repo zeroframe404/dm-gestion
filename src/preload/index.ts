@@ -238,6 +238,7 @@ const api: ApiDm = {
     avisos: () => invocar('tareas:avisos'),
     marcarVistos: () => invocar('tareas:marcarVistos'),
     alCompletarse: (escuchar) => suscribir('tareas:completada', escuchar),
+    alCambiarDeAfuera: (escuchar) => suscribir('tareas:cambiaron', escuchar),
   },
   metricas: {
     tablero: (filtros) => invocar('metricas:tablero', filtros),
