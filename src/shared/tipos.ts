@@ -3058,17 +3058,25 @@ export interface PaginaParaElegir {
   instagramUsuario: string | null
 }
 
-/** El vínculo activo, tal como lo ve la pantalla. Sin tokens. */
+/**
+ * La cuenta vinculada a una sucursal, tal como la ve la pantalla. Sin tokens: el token de la Página
+ * vive cifrado en el servidor y esta computadora nunca lo recibe.
+ */
 export interface VinculoConMeta {
+  sucursal: string
   paginaId: string
   paginaNombre: string
+  instagramId: string | null
   instagramUsuario: string | null
+  estado: 'ACTIVA' | 'DESVINCULADA' | 'TOKEN_RECHAZADO'
+  puedePublicarEnInstagram: boolean
   vinculadoPor: string
   vinculadoEn: string
 }
 
-/** Lo que devuelve «Vincular cuenta»: las Páginas encontradas, para elegir una. */
+/** Lo que devuelve «Vincular cuenta»: las Páginas encontradas para esa sucursal, para elegir una. */
 export interface VinculacionPendiente {
+  sucursal: string
   paginas: PaginaParaElegir[]
   /**
    * Cuando hay una sola Página se elige sola y esto viene con el vínculo ya hecho: preguntar «cuál de
@@ -3078,18 +3086,19 @@ export interface VinculacionPendiente {
 }
 
 export interface PublicacionDeRed {
-  id: number
+  id: string
+  sucursal: string
   destino: DestinoDePublicacion
-  estado: 'PUBLICADA' | 'FALLIDA'
+  estado: 'BORRADOR' | 'PROGRAMADA' | 'PUBLICADA' | 'FALLIDA'
   texto: string
-  /** El nombre del archivo que se publicó, sin la ruta. null si fue sólo texto. */
-  archivo: string | null
-  /** La dirección de la publicación, para abrirla. null si falló. */
+  /** La dirección de la publicación, para abrirla. null si falló o todavía no se publicó. */
   url: string | null
   /** El motivo, cuando falló. Se guarda porque si no se pierde apenas se cierra la pantalla. */
   error: string | null
-  publicadoPor: string
-  publicadoEn: string
+  creadoPor: string
+  /** Cuándo se publicó de verdad. null si falló o todavía no se publicó (ver `creadoEn`). */
+  publicadoEn: string | null
+  creadoEn: string
 }
 
 /** Un archivo elegido para publicar, ya revisado por el proceso principal. */
@@ -3108,19 +3117,19 @@ export interface ArchivoParaPublicar {
 export interface PanelDeRedes {
   /** false = falta cargar el App ID y el App Secret en Administración. */
   appConfigurada: boolean
-  /** false = el sistema no puede cifrar y no se puede guardar el vínculo. */
-  puedeGuardar: boolean
-  vinculo: VinculoConMeta | null
-  /** Si la Página vinculada tiene una cuenta de Instagram Business. */
-  puedePublicarEnInstagram: boolean
-  /** Cuántas publicaciones más admite Instagram hoy; null si no se pudo averiguar. */
-  cuotaDeInstagram: number | null
-  /** El último error de Meta, si el vínculo se cayó. */
+  /** true si este actor puede vincular/desvincular cuentas: sólo SUPER_ADMIN. */
+  puedeVincular: boolean
+  /** Una fila por sucursal: todas para SUPER_ADMIN, sólo la propia (si la tiene) para el resto. */
+  cuentas: VinculoConMeta[]
+  /** La sucursal de este actor. null para un SUPER_ADMIN sin sucursal propia (publica donde elija). */
+  sucursalPropia: string | null
+  /** El último error de Meta, si algún vínculo se cayó. */
   ultimoError: string | null
-  historial: PublicacionDeRed[]
 }
 
 export interface PedidoDePublicacion {
+  /** Para qué sucursal es. Vacío = la propia del actor (obligatorio elegir si es SUPER_ADMIN sin sucursal). */
+  sucursal: string
   destino: DestinoDePublicacion
   texto: string
   /** Ruta del archivo elegido. Vacío = sólo texto (que Instagram no acepta). */

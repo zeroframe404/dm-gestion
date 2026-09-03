@@ -1,10 +1,14 @@
-// Marketing → Redes: publicar en la Página de Facebook de la agencia y en su Instagram.
+// Marketing → Redes: publicar en la Página de Facebook e Instagram de una sucursal.
 //
 // La pantalla abre SIEMPRE, incluso sin nada configurado: si falta la app de Meta o si todavía no se
 // vinculó ninguna cuenta, lo explica y dice a quién pedírselo. Un empleado no entra a Administración,
 // así que mandarlo ahí sería mandarlo a una puerta cerrada.
 //
-// Tres bloques, en el orden en que se usan: el estado de la cuenta, el posteo, y lo que ya se publicó.
+// Cada sucursal tiene su propia cuenta. Un ADMIN o EMPLEADO publica siempre en la suya, sin elegir; un
+// SUPER_ADMIN puede elegir cualquiera, incluida una que todavía no tenga nada vinculado.
+//
+// Cuatro bloques, en el orden en que se usan: la sucursal (si hay para elegir), la cuenta, el posteo,
+// y lo que ya se publicó.
 import { useCallback, useEffect, useState } from 'react'
 import {
   NOMBRE_DESTINO,
@@ -12,9 +16,11 @@ import {
   type DestinoDePublicacion,
   type PaginaParaElegir,
   type PanelDeRedes,
+  type PublicacionDeRed,
 } from '../../../shared/tipos'
+import { SUCURSALES } from '../../../shared/sucursales'
 import { Icono } from '../../componentes/Icono'
-import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Etiqueta, Tarjeta, cx } from '../../componentes/ui'
+import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Etiqueta, Selector, Tarjeta, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
@@ -26,7 +32,6 @@ function cuando(iso: string): string {
 export function Redes() {
   const usuario = useUsuarioActual()
   const puedeEditar = usePuedeEditar('marketing')
-  const esAdministrador = usuario.rol !== 'EMPLEADO'
 
   const [panel, setPanel] = useState<PanelDeRedes | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -34,21 +39,56 @@ export function Redes() {
   const [aviso, setAviso] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
 
+  // Un SUPER_ADMIN elige la sucursal; el resto siempre publica en la propia.
+  const [sucursalElegida, setSucursalElegida] = useState<string>(usuario.sucursal.nombre)
+  const esSuper = usuario.rol === 'SUPER_ADMIN'
+
+  const [historial, setHistorial] = useState<PublicacionDeRed[]>([])
+  const [cuotaInstagram, setCuotaInstagram] = useState<number | null>(null)
   const [paginas, setPaginas] = useState<PaginaParaElegir[]>([])
   const [destino, setDestino] = useState<DestinoDePublicacion>('FACEBOOK')
   const [texto, setTexto] = useState('')
   const [archivo, setArchivo] = useState<ArchivoParaPublicar | null>(null)
 
-  const cargar = useCallback(async () => {
+  const cargarPanel = useCallback(async () => {
     const resultado = await window.dm.redes.panel()
-    if (resultado.ok) setPanel(resultado.datos)
-    else setError(resultado.error)
+    if (resultado.ok) {
+      setPanel(resultado.datos)
+      if (esSuper && !resultado.datos.sucursalPropia) {
+        setSucursalElegida((actual) => actual || SUCURSALES[0])
+      }
+    } else {
+      setError(resultado.error)
+    }
     setCargando(false)
-  }, [])
+  }, [esSuper])
 
   useEffect(() => {
-    void cargar()
-  }, [cargar])
+    void cargarPanel()
+  }, [cargarPanel])
+
+  const cuentaActual = panel?.cuentas.find((cuenta) => cuenta.sucursal === sucursalElegida) ?? null
+  const vinculada = cuentaActual?.estado === 'ACTIVA'
+  const puedeInstagram = Boolean(cuentaActual?.puedePublicarEnInstagram)
+
+  const cargarHistorial = useCallback(async () => {
+    const resultado = await window.dm.redes.publicaciones(sucursalElegida)
+    if (resultado.ok) setHistorial(resultado.datos)
+  }, [sucursalElegida])
+
+  useEffect(() => {
+    void cargarHistorial()
+  }, [cargarHistorial])
+
+  useEffect(() => {
+    if (!vinculada || !puedeInstagram) {
+      setCuotaInstagram(null)
+      return
+    }
+    void window.dm.redes.cuotaInstagram(sucursalElegida).then((resultado) => {
+      if (resultado.ok) setCuotaInstagram(resultado.datos)
+    })
+  }, [sucursalElegida, vinculada, puedeInstagram])
 
   const correr = async (que: string, accion: () => Promise<void>) => {
     setOcupado(que)
@@ -60,15 +100,15 @@ export function Redes() {
 
   const vincular = () =>
     correr('vincular', async () => {
-      const resultado = await window.dm.redes.vincular()
+      const resultado = await window.dm.redes.vincular(sucursalElegida)
       if (!resultado.ok) {
         setError(resultado.error)
         return
       }
       // Con una sola Página se vinculó sola; con varias hay que elegir.
-      if (resultado.datos.vinculada) setAviso(`Quedó vinculada la página «${resultado.datos.vinculada.paginaNombre}».`)
+      if (resultado.datos.vinculada) setAviso(`Quedó vinculada la página «${resultado.datos.vinculada.paginaNombre}» para ${sucursalElegida}.`)
       else setPaginas(resultado.datos.paginas)
-      await cargar()
+      await cargarPanel()
     })
 
   const elegirPagina = (paginaId: string) =>
@@ -85,7 +125,7 @@ export function Redes() {
 
   const desvincular = () =>
     correr('desvincular', async () => {
-      const resultado = await window.dm.redes.desvincular()
+      const resultado = await window.dm.redes.desvincular(sucursalElegida)
       if (resultado.ok) {
         setPanel(resultado.datos)
         setAviso('Se desvinculó la cuenta. Nada de lo publicado se borra.')
@@ -106,12 +146,13 @@ export function Redes() {
 
   const publicar = () =>
     correr('publicar', async () => {
-      const resultado = await window.dm.redes.publicar({ destino, texto, ruta: archivo?.ruta ?? '' })
+      const resultado = await window.dm.redes.publicar({ sucursal: sucursalElegida, destino, texto, ruta: archivo?.ruta ?? '' })
       if (resultado.ok) {
         setPanel(resultado.datos)
         setTexto('')
         setArchivo(null)
         setAviso(`Publicado en ${NOMBRE_DESTINO[destino]}.`)
+        await cargarHistorial()
       } else {
         setError(resultado.error)
       }
@@ -120,8 +161,7 @@ export function Redes() {
   if (cargando) return <Cargando />
   if (!panel) return <div className="p-8">{error && <Alerta tono="error">{error}</Alerta>}</div>
 
-  const vinculada = panel.vinculo !== null
-  const instagramApagado = destino === 'INSTAGRAM' && !panel.puedePublicarEnInstagram
+  const instagramApagado = destino === 'INSTAGRAM' && !puedeInstagram
   const puedePublicar = vinculada && puedeEditar && !instagramApagado && (texto.trim().length > 0 || archivo !== null)
 
   return (
@@ -130,13 +170,24 @@ export function Redes() {
       {aviso && <Alerta tono="exito">{aviso}</Alerta>}
       {panel.ultimoError && !error && <Alerta tono="aviso">{panel.ultimoError}</Alerta>}
 
+      {/* --- La sucursal ------------------------------------------------------ */}
+      {esSuper && (
+        <Tarjeta titulo="Sucursal" descripcion="Cada sucursal tiene su propia cuenta de Facebook e Instagram. Elegí con cuál trabajar.">
+          <Selector
+            etiqueta="Sucursal"
+            value={sucursalElegida}
+            onChange={(evento) => setSucursalElegida(evento.target.value)}
+            opciones={SUCURSALES.map((nombre) => ({ valor: nombre, texto: nombre }))}
+          />
+        </Tarjeta>
+      )}
+
       {/* --- La cuenta ------------------------------------------------------ */}
       <Tarjeta
-        titulo="La cuenta de la agencia"
-        descripcion="Publicar acá sale en nombre de la Página de Facebook de la agencia y de su Instagram. Se vincula una vez por computadora."
+        titulo={`La cuenta de ${sucursalElegida}`}
+        descripcion="Publicar acá sale en nombre de la Página de Facebook de esa sucursal y de su Instagram."
         acciones={
-          esAdministrador &&
-          puedeEditar && (
+          panel.puedeVincular && (
             <>
               {vinculada && (
                 <Boton onClick={() => void desvincular()} cargando={ocupado === 'desvincular'}>
@@ -148,7 +199,7 @@ export function Redes() {
                 icono="facebook"
                 onClick={() => void vincular()}
                 cargando={ocupado === 'vincular'}
-                disabled={!panel.appConfigurada || !panel.puedeGuardar}
+                disabled={!panel.appConfigurada}
               >
                 {vinculada ? 'Volver a vincular' : 'Vincular cuenta'}
               </Boton>
@@ -160,15 +211,15 @@ export function Redes() {
           {!panel.appConfigurada && (
             <Alerta tono="aviso">
               Todavía no está cargada la app de Meta en esta computadora, así que no se puede vincular ninguna cuenta.{' '}
-              {esAdministrador
+              {panel.puedeVincular
                 ? 'Se carga en Administración → Redes sociales, con el App ID y el App Secret de developers.facebook.com.'
-                : 'Pedile a un administrador que la cargue en Administración → Redes sociales.'}
+                : 'Pedile a un superadministrador que la cargue en Administración → Redes sociales.'}
             </Alerta>
           )}
-          {panel.appConfigurada && !panel.puedeGuardar && (
+          {cuentaActual?.estado === 'TOKEN_RECHAZADO' && (
             <Alerta tono="error">
-              Windows no puede cifrar en esta computadora, así que el permiso de Facebook no se podría guardar de forma segura. Sin
-              eso no se vincula: sería dejar la cuenta de la agencia escrita en un archivo.
+              Se cortó la conexión con Meta: Facebook cambió o retiró el permiso de esta cuenta. Un superadministrador tiene que
+              volver a vincularla.
             </Alerta>
           )}
 
@@ -178,31 +229,29 @@ export function Redes() {
                 <Icono nombre="facebook" tamano={17} />
               </span>
               <div className="min-w-0">
-                <p className="truncate font-semibold text-slate-900">{panel.vinculo?.paginaNombre}</p>
+                <p className="truncate font-semibold text-slate-900">{cuentaActual.paginaNombre}</p>
                 <p className="truncate text-xs text-slate-500">
-                  {panel.puedePublicarEnInstagram ? `Instagram @${panel.vinculo?.instagramUsuario}` : 'Sin Instagram vinculado'}
-                  {panel.vinculo?.vinculadoPor ? ` · vinculó ${panel.vinculo.vinculadoPor}` : ''}
-                  {panel.vinculo?.vinculadoEn ? ` el ${cuando(panel.vinculo.vinculadoEn)}` : ''}
+                  {puedeInstagram ? `Instagram @${cuentaActual.instagramUsuario}` : 'Sin Instagram vinculado'}
+                  {cuentaActual.vinculadoPor ? ` · vinculó ${cuentaActual.vinculadoPor}` : ''}
+                  {cuentaActual.vinculadoEn ? ` el ${cuando(cuentaActual.vinculadoEn)}` : ''}
                 </p>
               </div>
-              {panel.cuotaDeInstagram !== null && (
-                <span className="ml-auto text-xs text-slate-500">
-                  Instagram: quedan {panel.cuotaDeInstagram} publicación(es) hoy
-                </span>
+              {cuotaInstagram !== null && (
+                <span className="ml-auto text-xs text-slate-500">Instagram: quedan {cuotaInstagram} publicación(es) hoy</span>
               )}
             </div>
           ) : (
             panel.appConfigurada && (
               <p className="text-sm leading-relaxed text-slate-600">
-                Todavía no hay ninguna cuenta vinculada.{' '}
-                {esAdministrador
-                  ? 'Al tocar «Vincular cuenta» se abre el ingreso de Facebook; después se elige cuál de las páginas de la agencia se va a usar.'
-                  : 'Pedile a un administrador que vincule la cuenta de la agencia.'}
+                Todavía no hay ninguna cuenta vinculada para {sucursalElegida}.{' '}
+                {panel.puedeVincular
+                  ? 'Al tocar «Vincular cuenta» se abre el ingreso de Facebook; después se elige cuál de las páginas se va a usar.'
+                  : 'Pedile a un superadministrador que vincule la cuenta de esta sucursal.'}
               </p>
             )
           )}
 
-          {!panel.puedePublicarEnInstagram && vinculada && (
+          {vinculada && !puedeInstagram && (
             <p className="text-xs leading-relaxed text-slate-500">
               Para publicar en Instagram, esa cuenta tiene que ser <strong>Business</strong> y estar vinculada a la página de
               Facebook. Se hace desde la configuración de la página, en Facebook.
@@ -226,7 +275,7 @@ export function Redes() {
               deshacer una vez publicada, y tiene que estar a la vista, no adentro de una lista. */}
           <div className="grid gap-3 sm:grid-cols-2">
             {(['FACEBOOK', 'INSTAGRAM'] as DestinoDePublicacion[]).map((candidato) => {
-              const apagado = candidato === 'INSTAGRAM' && !panel.puedePublicarEnInstagram
+              const apagado = candidato === 'INSTAGRAM' && !puedeInstagram
               return (
                 <button
                   key={candidato}
@@ -297,16 +346,12 @@ export function Redes() {
       </Tarjeta>
 
       {/* --- El historial --------------------------------------------------- */}
-      <Tarjeta
-        titulo="Lo que se publicó"
-        descripcion="Las últimas publicaciones de esta computadora, incluidas las que fallaron y por qué."
-        alRas
-      >
-        {panel.historial.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-slate-500">Todavía no se publicó nada desde el programa.</p>
+      <Tarjeta titulo="Lo que se publicó" descripcion={`Las últimas publicaciones de ${sucursalElegida}, incluidas las que fallaron y por qué.`} alRas>
+        {historial.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500">Todavía no se publicó nada en esta sucursal.</p>
         ) : (
           <ul>
-            {panel.historial.map((publicacion) => (
+            {historial.map((publicacion) => (
               <li key={publicacion.id} className="flex items-start gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0">
                 <span
                   className={cx(
@@ -337,8 +382,7 @@ export function Redes() {
                   {publicacion.texto && <p className="mt-0.5 line-clamp-2 text-sm text-slate-700">{publicacion.texto}</p>}
                   {publicacion.error && <p className="mt-0.5 text-xs text-red-700">{publicacion.error}</p>}
                   <p className="mt-0.5 text-[11px] text-slate-400">
-                    {cuando(publicacion.publicadoEn)} · {publicacion.publicadoPor}
-                    {publicacion.archivo ? ` · ${publicacion.archivo}` : ''}
+                    {cuando(publicacion.publicadoEn ?? publicacion.creadoEn)} · {publicacion.creadoPor}
                   </p>
                 </div>
               </li>

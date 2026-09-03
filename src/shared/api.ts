@@ -274,6 +274,8 @@ export interface ApiDm {
     desvincular: Remota<'redes:desvincular'>
     elegirArchivo: Remota<'redes:elegirArchivo'>
     publicar: Remota<'redes:publicar'>
+    publicaciones: Remota<'redes:publicaciones'>
+    cuotaInstagram: Remota<'redes:cuotaInstagram'>
   }
   sistema: {
     abrirEnlace: Remota<'sistema:abrirEnlace'>

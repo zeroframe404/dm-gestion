@@ -19,7 +19,6 @@ import { credencialesVps } from './servicios/config'
 import { hayImportacionEnCurso, marcarImportacionesInterrumpidas } from './servicios/importacion'
 import { detenerSincronizacion } from './servicios/sincronizacion'
 import { detenerActualizaciones, iniciarActualizaciones } from './servicios/updater'
-import { AlmacenDeVinculo, configurarAlmacenDeRedes } from './redes/almacen'
 import { AlmacenDeCredencial } from './usuarios/credencial'
 import { AlmacenGitHub, REPO_DATOS, TOKEN_DATOS, TOKEN_DATOS_ANTERIOR } from './usuarios/github'
 import { AlmacenVps } from './usuarios/vps'
@@ -229,9 +228,6 @@ function prepararBaseDeUsuarios(): void {
     sinTokenEnProduccion: !enDesarrollo && !almacen,
     version: app.getVersion(),
   })
-  // El vínculo con Meta usa el mismo cifrador: adentro va el token de la Página, que no vence y
-  // publica en nombre de la agencia.
-  configurarAlmacenDeRedes(new AlmacenDeVinculo(path.join(carpetaDatos(), 'redes.bin'), cifrador))
   if (almacen) console.log(`[usuarios] Base de usuarios: ${almacen.descripcion}.`)
   else console.log(enDesarrollo ? '[usuarios] Desarrollo sin DM_GESTION_VPS_URL: usuarios locales.' : '[usuarios] Versión publicada sin servidor de usuarios: usuarios locales.')
 }

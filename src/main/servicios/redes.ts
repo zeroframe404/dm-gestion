@@ -1,28 +1,26 @@
-// Marketing → Redes: publicar en la Página de Facebook de la agencia y en su Instagram.
-//
-// (Ojo con el nombre: `red.ts`, en singular, es otra cosa —clasifica errores de conexión—. El plural
-// es a propósito y las dos van a seguir existiendo.)
+// Marketing → Redes: publicar en la Página de Facebook de la agencia y en su Instagram, y
+// Administración → Redes sociales: vincular la cuenta de cada sucursal.
 //
 // Lo que hay que saber antes de tocar esto:
 //
-//   · La app de Meta la carga un administrador en Administración → Redes sociales, y vive en
-//     config.json como cualquier credencial. Sin eso, la pestaña abre igual y explica qué falta.
-//   · El vínculo (la Página elegida y su token) va cifrado en redes.bin, no en la base.
-//   · Un token de Página NO VENCE, pero se cae si cambian la contraseña de Facebook, sacan la app o
-//     esa persona pierde el rol de administrador de la Página. Meta contesta con el código 190 y ahí
-//     la salida es volver a vincular, no reintentar.
-//   · Instagram NO acepta el archivo: sólo toma una URL que Meta pueda descargar. Por eso la foto se
-//     sube primero a la Página SIN publicar y se usa la dirección del CDN de esa foto. Es la parte más
-//     frágil de todo esto y está explicada en `meta.ts`.
-//   · Video y reels quedan afuera de esta versión, y la pantalla lo dice: un reel necesita esperar a
-//     que Meta lo procese (minutos) y un video en Facebook, subida en tres pasos.
+//   · La app de Meta la carga un SUPER_ADMIN en Administración → Redes sociales, y sigue viviendo en
+//     config.json como cualquier credencial (eso no cambió). Sin eso, la pestaña abre igual y explica
+//     qué falta.
+//   · Lo que SÍ cambió: la Página vinculada y su token ya NO se guardan en esta computadora. Cada
+//     sucursal tiene su propia cuenta, y el token vive cifrado en el servidor del VPS — de ahí en más
+//     es el servidor el que habla con Meta (publicar, y en fases siguientes comentarios y mensajes).
+//     Esta computadora sólo hace el login de Facebook (`redes/oauth.ts`, `redes/meta.ts`) y le manda
+//     al servidor el token de la Página elegida, una única vez.
+//   · Vincular una cuenta es sólo del SUPER_ADMIN. Publicar lo puede hacer cualquier rol con permiso
+//     de editar Marketing, pero acotado a SU sucursal — salvo el SUPER_ADMIN, que puede elegir
+//     cualquiera. El servidor vuelve a validar las dos cosas: acá sólo se evita el viaje si ya se sabe
+//     que va a fallar.
 import { statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { BrowserWindow } from 'electron'
 import {
   DESTINOS_DE_PUBLICACION,
-  NOMBRE_DESTINO,
   type ArchivoParaPublicar,
   type DestinoDePublicacion,
   type PanelDeRedes,
@@ -32,22 +30,10 @@ import {
   type VinculacionPendiente,
   type VinculoConMeta,
 } from '../../shared/tipos'
-import { db } from '../db/base'
-import { ahoraIso, limpiar } from '../importacion/normalizar'
-import { almacenDeRedes } from '../redes/almacen'
-import {
-  ErrorDeMetaApi,
-  borrarFotoDeLaPagina,
-  cuotaDeInstagram,
-  esTokenRechazado,
-  paginasDelUsuario,
-  publicarEnInstagram,
-  publicarTextoEnLaPagina,
-  subirFotoALaPagina,
-  tokenDeLargaDuracion,
-  tokenDesdeElCodigo,
-  urlPublicaDeLaFoto,
-} from '../redes/meta'
+import type { ActorDeRedesVps, CuentaDeRedesVps, PublicacionDeRedVps } from '../vps/fuenteVps'
+import { crearFuenteVps } from './sincronizacion'
+import { limpiar } from '../importacion/normalizar'
+import { tokenDesdeElCodigo, tokenDeLargaDuracion, paginasDelUsuario, type PaginaConToken } from '../redes/meta'
 import { pedirCodigoDeMeta } from '../redes/oauth'
 import { credencialesMeta, urlDeVueltaDeMeta } from './config'
 import { ErrorDeNegocio } from './errores'
@@ -69,54 +55,105 @@ const TIPOS_DE_IMAGEN: Record<string, string> = {
 /** Instagram publica JPEG sin problemas; con PNG falla bastante seguido. */
 const EXTENSIONES_DE_INSTAGRAM = ['.jpg', '.jpeg']
 
-/** Cuántas publicaciones se muestran en el historial de la pantalla. */
-const TOPE_DE_HISTORIAL = 30
-
 /**
- * El token de usuario de larga duración entre «vincular» y «elegir la página». No se guarda en disco a
- * propósito: sirve nada más que para leer la lista de Páginas, y de ahí en adelante lo único que hace
- * falta —y lo único que se guarda— es el token de la Página elegida.
+ * Las Páginas que trajo el login, entre «vincular» y «elegir la página». No se guarda en disco a
+ * propósito: sirve nada más que para leer la lista y elegir, y de ahí en adelante lo único que hace
+ * falta —y lo único que se manda al servidor— es el token de la Página elegida.
  */
-let vinculacionEnCurso: { token: string; vence: number; paginas: Awaited<ReturnType<typeof paginasDelUsuario>> } | null = null
+let vinculacionEnCurso: { sucursal: string; paginas: PaginaConToken[]; vence: number } | null = null
 
 /** Cinco minutos: lo que tarda alguien en mirar la lista y elegir. */
 const VALIDEZ_DE_LA_VINCULACION_MS = 5 * 60 * 1000
 
-/** El último error de Meta, para poder explicar por qué dejó de andar. */
+/** El último error, para poder explicarlo en la pantalla aunque no haya vínculo. */
 let ultimoError: string | null = null
+
+function actorVps(actor: SesionUsuario): ActorDeRedesVps {
+  return { nombre: actor.nombre, rol: actor.rol, sucursal: actor.sucursal.nombre }
+}
+
+function exigirVps() {
+  const vps = crearFuenteVps()
+  if (!vps) {
+    throw new ErrorDeNegocio('La base del VPS no está disponible en esta computadora: Redes sociales necesita conexión con el servidor.')
+  }
+  return vps
+}
+
+function aVinculo(cuenta: CuentaDeRedesVps): VinculoConMeta {
+  return {
+    sucursal: cuenta.sucursal,
+    paginaId: cuenta.facebookPaginaId,
+    paginaNombre: cuenta.facebookPaginaNombre,
+    instagramId: cuenta.instagramId,
+    instagramUsuario: cuenta.instagramUsuario,
+    estado: cuenta.estado,
+    puedePublicarEnInstagram: cuenta.puedePublicarEnInstagram,
+    vinculadoPor: cuenta.vinculadoPor,
+    vinculadoEn: cuenta.vinculadoEn,
+  }
+}
+
+function aPublicacionDeRed(publicacion: PublicacionDeRedVps): PublicacionDeRed {
+  return {
+    id: publicacion.id,
+    sucursal: publicacion.sucursal,
+    destino: publicacion.destino,
+    estado: publicacion.estado,
+    texto: publicacion.texto,
+    url: publicacion.url,
+    error: publicacion.error,
+    creadoPor: publicacion.creadoPor,
+    publicadoEn: publicacion.publicadoEn,
+    creadoEn: publicacion.creadoEn,
+  }
+}
 
 // ---------------------------------------------------------------------------
 // El estado
 // ---------------------------------------------------------------------------
 
-function aVinculo(): VinculoConMeta | null {
-  const guardado = almacenDeRedes()?.leer()
-  if (!guardado) return null
-  return {
-    paginaId: guardado.paginaId,
-    paginaNombre: guardado.paginaNombre,
-    instagramUsuario: guardado.instagramUsuario,
-    vinculadoPor: guardado.vinculadoPor,
-    vinculadoEn: guardado.vinculadoEn,
+function exigirCredenciales(): { appId: string; appSecret: string } {
+  const credenciales = credencialesMeta()
+  if (!credenciales) {
+    throw new ErrorDeNegocio(
+      'Todavía no está cargada la app de Meta en esta computadora. Un superadministrador la carga en Administración → Redes sociales.',
+    )
   }
+  return credenciales
 }
 
 /**
- * Todo lo que la pestaña necesita. NUNCA lanza por falta de credenciales o de vínculo: la pestaña
- * tiene que abrir igual y explicar qué falta. Un empleado no entra a Administración, así que el texto
- * de la pantalla le dice a quién pedírselo en vez de mandarlo a una pantalla que no puede abrir.
+ * Todo lo que la pestaña necesita. NUNCA lanza por falta de credenciales, de conexión con el VPS o de
+ * vínculo: la pestaña tiene que abrir igual y explicar qué falta. Un empleado no entra a
+ * Administración, así que el texto de la pantalla le dice a quién pedírselo en vez de mandarlo a una
+ * pantalla que no puede abrir.
  */
-export async function panelDeRedes(): Promise<PanelDeRedes> {
-  const guardado = almacenDeRedes()?.leer() ?? null
-  const cuota = guardado?.instagramId ? await cuotaDeInstagram(guardado.instagramId, guardado.paginaToken) : null
-  return {
+export async function panelDeRedes(actor: SesionUsuario): Promise<PanelDeRedes> {
+  const base: Omit<PanelDeRedes, 'cuentas' | 'ultimoError'> = {
     appConfigurada: credencialesMeta() !== null,
-    puedeGuardar: almacenDeRedes()?.puedeCifrar() ?? false,
-    vinculo: aVinculo(),
-    puedePublicarEnInstagram: Boolean(guardado?.instagramId),
-    cuotaDeInstagram: cuota,
-    ultimoError,
-    historial: historialDePublicaciones(),
+    puedeVincular: actor.rol === 'SUPER_ADMIN',
+    sucursalPropia: actor.sucursal.nombre,
+  }
+  const vps = crearFuenteVps()
+  if (!vps) {
+    return { ...base, cuentas: [], ultimoError: 'La base del VPS no está disponible en esta computadora.' }
+  }
+  try {
+    const cuentas = await vps.redesCuentas(actorVps(actor))
+    return { ...base, cuentas: cuentas.map(aVinculo), ultimoError }
+  } catch (error) {
+    return { ...base, cuentas: [], ultimoError: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/** El historial de publicaciones de una sucursal (la propia del actor, si no se pide otra). */
+export async function publicaciones(actor: SesionUsuario, sucursal?: string): Promise<PublicacionDeRed[]> {
+  try {
+    const lista = await exigirVps().redesPublicaciones(actorVps(actor), sucursal)
+    return lista.map(aPublicacionDeRed)
+  } catch {
+    return []
   }
 }
 
@@ -124,30 +161,24 @@ export async function panelDeRedes(): Promise<PanelDeRedes> {
 // Vincular
 // ---------------------------------------------------------------------------
 
-function exigirCredenciales(): { appId: string; appSecret: string } {
-  const credenciales = credencialesMeta()
-  if (!credenciales) {
-    throw new ErrorDeNegocio(
-      'Todavía no está cargada la app de Meta en esta computadora. Un administrador la carga en Administración → Redes sociales.',
-    )
+function exigirSuperAdmin(actor: SesionUsuario): void {
+  if (actor.rol !== 'SUPER_ADMIN') {
+    throw new ErrorDeNegocio('Vincular o desvincular la cuenta de una sucursal es sólo del superadministrador.')
   }
-  return credenciales
 }
 
 /**
- * Abre el ingreso de Facebook y trae las Páginas que administra esa persona.
+ * Abre el ingreso de Facebook y trae las Páginas que administra esa persona, para vincular una a la
+ * sucursal indicada.
  *
  * Con una sola Página se vincula sola: preguntar «cuál de esta única opción» es una pregunta que no es
  * una pregunta. Con varias, la pantalla muestra la lista y `elegirPaginaVinculada` termina el trabajo.
  */
-export async function vincularConMeta(padre: BrowserWindow | null, actor: SesionUsuario): Promise<VinculacionPendiente> {
-  const almacen = almacenDeRedes()
-  if (!almacen) throw new ErrorDeNegocio('No se puede guardar la vinculación en esta computadora.')
-  if (!almacen.puedeCifrar()) {
-    throw new ErrorDeNegocio(
-      'Windows no puede cifrar en esta computadora, así que el permiso de Facebook no se puede guardar de forma segura. Sin eso no se vincula: sería dejar la cuenta de la agencia escrita en un archivo.',
-    )
-  }
+export async function vincularConMeta(padre: BrowserWindow | null, actor: SesionUsuario, sucursal: string): Promise<VinculacionPendiente> {
+  exigirSuperAdmin(actor)
+  const sucursalLimpia = limpiar(sucursal)
+  if (!sucursalLimpia) throw new ErrorDeNegocio('Elegí para qué sucursal es.')
+  const vps = exigirVps()
   const { appId, appSecret } = exigirCredenciales()
 
   // La misma dirección que muestra la pantalla y que viajó con el ajuste: si acá se usara otra, el
@@ -165,38 +196,34 @@ export async function vincularConMeta(padre: BrowserWindow | null, actor: Sesion
     )
   }
 
-  vinculacionEnCurso = { token: tokenLargo, vence: Date.now() + VALIDEZ_DE_LA_VINCULACION_MS, paginas }
-  ultimoError = null
+  vinculacionEnCurso = { sucursal: sucursalLimpia, paginas, vence: Date.now() + VALIDEZ_DE_LA_VINCULACION_MS }
 
   if (paginas.length === 1) {
-    return { paginas: [], vinculada: guardarPagina(paginas[0]!, actor) }
+    return { sucursal: sucursalLimpia, paginas: [], vinculada: await guardarPagina(vps, sucursalLimpia, paginas[0]!, actor) }
   }
   return {
+    sucursal: sucursalLimpia,
     paginas: paginas.map((pagina) => ({ id: pagina.id, nombre: pagina.nombre, instagramUsuario: pagina.instagramUsuario })),
     vinculada: null,
   }
 }
 
-function guardarPagina(pagina: Awaited<ReturnType<typeof paginasDelUsuario>>[number], actor: SesionUsuario): VinculoConMeta {
-  const almacen = almacenDeRedes()
-  if (!almacen) throw new ErrorDeNegocio('No se puede guardar la vinculación en esta computadora.')
-  const guardado = almacen.guardar({
-    paginaId: pagina.id,
-    paginaNombre: pagina.nombre,
-    paginaToken: pagina.token,
+async function guardarPagina(vps: ReturnType<typeof exigirVps>, sucursal: string, pagina: PaginaConToken, actor: SesionUsuario): Promise<VinculoConMeta> {
+  const cuenta = await vps.redesVincular(actorVps(actor), {
+    sucursal,
+    facebookPaginaId: pagina.id,
+    facebookPaginaNombre: pagina.nombre,
     instagramId: pagina.instagramId,
     instagramUsuario: pagina.instagramUsuario,
-    vinculadoPor: actor.nombre,
-    vinculadoEn: ahoraIso(),
+    paginaToken: pagina.token,
   })
-  if (!guardado) throw new ErrorDeNegocio('No se pudo guardar la vinculación de forma segura en esta computadora.')
   vinculacionEnCurso = null
-  const vinculo = aVinculo()
-  if (!vinculo) throw new ErrorDeNegocio('No se pudo leer la vinculación recién guardada.')
-  return vinculo
+  ultimoError = null
+  return aVinculo(cuenta)
 }
 
-export function elegirPaginaVinculada(paginaId: string, actor: SesionUsuario): VinculoConMeta {
+export async function elegirPaginaVinculada(paginaId: string, actor: SesionUsuario): Promise<VinculoConMeta> {
+  exigirSuperAdmin(actor)
   const id = limpiar(paginaId)
   if (!vinculacionEnCurso || vinculacionEnCurso.vence < Date.now()) {
     vinculacionEnCurso = null
@@ -204,11 +231,13 @@ export function elegirPaginaVinculada(paginaId: string, actor: SesionUsuario): V
   }
   const pagina = vinculacionEnCurso.paginas.find((candidata) => candidata.id === id)
   if (!pagina) throw new ErrorDeNegocio('Esa página no está entre las que trajo Facebook. Volvé a vincular.')
-  return guardarPagina(pagina, actor)
+  return guardarPagina(exigirVps(), vinculacionEnCurso.sucursal, pagina, actor)
 }
 
-export function desvincularDeMeta(): void {
-  almacenDeRedes()?.borrar()
+export async function desvincularDeMeta(actor: SesionUsuario, sucursal: string): Promise<void> {
+  exigirSuperAdmin(actor)
+  const vps = exigirVps()
+  await vps.redesDesvincular(actorVps(actor), limpiar(sucursal))
   vinculacionEnCurso = null
   ultimoError = null
 }
@@ -264,70 +293,6 @@ export async function revisarArchivoParaPublicar(ruta: string): Promise<ArchivoP
 // Publicar
 // ---------------------------------------------------------------------------
 
-function anotar(datos: {
-  destino: DestinoDePublicacion
-  estado: 'PUBLICADA' | 'FALLIDA'
-  texto: string
-  archivo: string | null
-  idEnLaRed: string | null
-  url: string | null
-  error: string | null
-  actor: SesionUsuario
-}): void {
-  db()
-    .prepare(
-      `INSERT INTO publicaciones_redes (destino, estado, texto, archivo, id_en_la_red, url, error, usuario_id, publicado_por, publicado_en)
-       VALUES (@destino, @estado, @texto, @archivo, @id_en_la_red, @url, @error, @usuario_id, @publicado_por, @publicado_en)`,
-    )
-    .run({
-      destino: datos.destino,
-      estado: datos.estado,
-      texto: datos.texto,
-      archivo: datos.archivo,
-      id_en_la_red: datos.idEnLaRed,
-      url: datos.url,
-      error: datos.error,
-      usuario_id: datos.actor.id,
-      publicado_por: datos.actor.nombre,
-      publicado_en: ahoraIso(),
-    })
-}
-
-export function historialDePublicaciones(limite = TOPE_DE_HISTORIAL): PublicacionDeRed[] {
-  const filas = db()
-    .prepare(
-      `SELECT id, destino, estado, texto, archivo, url, error, publicado_por, publicado_en
-         FROM publicaciones_redes ORDER BY id DESC LIMIT ?`,
-    )
-    .all(limite) as Array<{
-    id: number
-    destino: DestinoDePublicacion
-    estado: 'PUBLICADA' | 'FALLIDA'
-    texto: string
-    archivo: string | null
-    url: string | null
-    error: string | null
-    publicado_por: string
-    publicado_en: string
-  }>
-  return filas.map((fila) => ({
-    id: fila.id,
-    destino: fila.destino,
-    estado: fila.estado,
-    texto: fila.texto,
-    archivo: fila.archivo,
-    url: fila.url,
-    error: fila.error,
-    publicadoPor: fila.publicado_por,
-    publicadoEn: fila.publicado_en,
-  }))
-}
-
-/** La dirección para abrir un posteo de Facebook. Instagram devuelve la suya en otro campo. */
-function urlDeFacebook(postId: string): string {
-  return `https://www.facebook.com/${postId}`
-}
-
 function validarPedido(pedido: unknown): PedidoDePublicacion {
   const p = objeto(pedido, 'El pedido de publicación')
   const destino = limpiar(p.destino) as DestinoDePublicacion
@@ -339,90 +304,40 @@ function validarPedido(pedido: unknown): PedidoDePublicacion {
   if (destino === 'INSTAGRAM' && !ruta) throw new ErrorDeNegocio('Instagram no publica sin imagen: elegí una foto.')
   // El texto se valida sólo por largo: lo escribe la agencia y va tal cual.
   if (cuerpo) validarTexto(cuerpo, 'El texto', 1, 2_200)
-  return { destino, texto: cuerpo, ruta }
+  return { sucursal: limpiar(p.sucursal), destino, texto: cuerpo, ruta }
 }
 
 /**
- * Publica y anota el resultado, salga bien o mal. Que se anote lo fallido es el punto de la tabla: el
- * error de Meta se pierde apenas se cierra la pantalla, y sin él nadie puede averiguar qué pasó.
+ * Publica (vía el servidor, que es quien tiene el token) y anota el resultado, salga bien o mal. Que
+ * quede anotado lo fallido es el punto de la tabla: el error de Meta se pierde apenas se cierra la
+ * pantalla, y sin él nadie puede averiguar qué pasó.
  */
 export async function publicarEnRed(pedido: unknown, actor: SesionUsuario): Promise<PanelDeRedes> {
-  const { destino, texto: cuerpo, ruta } = validarPedido(pedido)
-  const guardado = almacenDeRedes()?.leer()
-  if (!guardado) throw new ErrorDeNegocio('Todavía no hay ninguna cuenta vinculada. Tocá «Vincular cuenta» primero.')
-  if (destino === 'INSTAGRAM' && !guardado.instagramId) {
-    throw new ErrorDeNegocio(
-      `La página «${guardado.paginaNombre}» no tiene una cuenta de Instagram Business vinculada. Se vincula desde la configuración de la página en Facebook.`,
-    )
-  }
-
+  const { sucursal, destino, texto: cuerpo, ruta } = validarPedido(pedido)
+  const vps = exigirVps()
   const archivo = ruta ? await revisarArchivoParaPublicar(ruta) : null
-  const nombreDelArchivo = archivo?.nombre ?? null
 
   try {
-    if (destino === 'FACEBOOK') {
-      if (!archivo) {
-        const postId = await publicarTextoEnLaPagina(guardado.paginaId, guardado.paginaToken, cuerpo)
-        anotar({ destino, estado: 'PUBLICADA', texto: cuerpo, archivo: null, idEnLaRed: postId, url: urlDeFacebook(postId), error: null, actor })
-      } else {
-        const contenido = await readFile(archivo.ruta)
-        const { fotoId, postId } = await subirFotoALaPagina(
-          guardado.paginaId,
-          guardado.paginaToken,
-          contenido,
-          archivo.nombre,
-          archivo.tipo,
-          cuerpo,
-          true,
-        )
-        const id = postId ?? fotoId
-        anotar({ destino, estado: 'PUBLICADA', texto: cuerpo, archivo: nombreDelArchivo, idEnLaRed: id, url: urlDeFacebook(id), error: null, actor })
-      }
-    } else {
-      // Instagram: la foto va primero a la Página SIN publicar, sólo para tener una dirección que Meta
-      // pueda descargar. Al terminar se borra: no tiene por qué quedar dando vueltas en Facebook.
-      const contenido = await readFile(archivo!.ruta)
-      const { fotoId } = await subirFotoALaPagina(
-        guardado.paginaId,
-        guardado.paginaToken,
-        contenido,
-        archivo!.nombre,
-        archivo!.tipo,
-        '',
-        false,
-      )
-      try {
-        const urlDeLaImagen = await urlPublicaDeLaFoto(fotoId, guardado.paginaToken)
-        const publicacionId = await publicarEnInstagram(guardado.instagramId!, guardado.paginaToken, urlDeLaImagen, cuerpo)
-        anotar({
-          destino,
-          estado: 'PUBLICADA',
-          texto: cuerpo,
-          archivo: nombreDelArchivo,
-          idEnLaRed: publicacionId,
-          url: guardado.instagramUsuario ? `https://www.instagram.com/${guardado.instagramUsuario}/` : null,
-          error: null,
-          actor,
-        })
-      } finally {
-        await borrarFotoDeLaPagina(fotoId, guardado.paginaToken)
-      }
-    }
+    await vps.redesPublicar(actorVps(actor), {
+      sucursal: sucursal || undefined,
+      destino,
+      texto: cuerpo,
+      archivo: archivo ? { nombre: archivo.nombre, tipo: archivo.tipo, contenidoBase64: (await readFile(archivo.ruta)).toString('base64') } : null,
+    })
     ultimoError = null
   } catch (error) {
-    const motivo = error instanceof Error ? error.message : String(error)
-    anotar({ destino, estado: 'FALLIDA', texto: cuerpo, archivo: nombreDelArchivo, idEnLaRed: null, url: null, error: motivo, actor })
-
-    if (esTokenRechazado(error)) {
-      // El vínculo NO se borra solo: borrarlo escondería el motivo y la pantalla diría «no hay cuenta
-      // vinculada», que manda a buscar el problema donde no está.
-      ultimoError = `Se cortó la conexión con Meta: ${motivo} Hay que volver a vincular la cuenta.`
-      throw new ErrorDeNegocio(ultimoError)
-    }
-    ultimoError = motivo
-    if (error instanceof ErrorDeMetaApi) throw new ErrorDeNegocio(`${NOMBRE_DESTINO[destino]} no aceptó la publicación: ${motivo}`)
-    throw error
+    ultimoError = error instanceof Error ? error.message : String(error)
+    throw error instanceof ErrorDeNegocio ? error : new ErrorDeNegocio(ultimoError)
   }
 
-  return panelDeRedes()
+  return panelDeRedes(actor)
+}
+
+/** Cuántas publicaciones más admite Instagram hoy en la cuenta de esa sucursal (o la propia). null si no se pudo averiguar. */
+export async function cuotaDeInstagram(actor: SesionUsuario, sucursal?: string): Promise<number | null> {
+  try {
+    return await exigirVps().redesCuotaInstagram(actorVps(actor), sucursal)
+  } catch {
+    return null
+  }
 }

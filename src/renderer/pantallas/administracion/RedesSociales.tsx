@@ -10,9 +10,11 @@
 // ingreso con un error que no explica nada. Por eso la pantalla la muestra grande, con un botón para
 // copiarla, y por eso viaja junto con la app.
 import { useCallback, useEffect, useState } from 'react'
-import type { EstadoDeMeta } from '../../../shared/tipos'
+import type { EstadoDeMeta, VinculoConMeta } from '../../../shared/tipos'
+import { SUCURSALES } from '../../../shared/sucursales'
 import { EstadoCompartido } from '../../componentes/EstadoCompartido'
-import { Alerta, Boton, Campo, CampoClave, Cargando, Tarjeta } from '../../componentes/ui'
+import { Icono } from '../../componentes/Icono'
+import { Alerta, Boton, Campo, CampoClave, Cargando, Etiqueta, Tarjeta } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
@@ -28,6 +30,7 @@ export function RedesSociales() {
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
+  const [cuentas, setCuentas] = useState<VinculoConMeta[] | null>(null)
 
   const cargar = useCallback(async () => {
     const resultado = await window.dm.redes.estadoMeta()
@@ -38,6 +41,10 @@ export function RedesSociales() {
     } else {
       setError(resultado.error)
     }
+    // Sólo para mostrar el panorama: vincular o desvincular se hace desde Marketing → Redes, donde
+    // ya está el contexto de «para qué sucursal» y el diálogo para elegir la página.
+    const panel = await window.dm.redes.panel()
+    if (panel.ok) setCuentas(panel.datos.cuentas)
   }, [])
 
   useEffect(() => {
@@ -164,6 +171,44 @@ export function RedesSociales() {
             </Alerta>
           )}
         </div>
+      </Tarjeta>
+
+      <Tarjeta
+        titulo="Cuentas vinculadas por sucursal"
+        descripcion="Cada sucursal tiene su propia Página de Facebook e Instagram. Se vinculan y se desvinculan desde Marketing → Redes, eligiendo ahí la sucursal; acá se ve el panorama de las cuatro."
+      >
+        {cuentas === null ? (
+          <Cargando />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {SUCURSALES.map((sucursal) => {
+              const cuenta = cuentas.find((candidata) => candidata.sucursal === sucursal) ?? null
+              const vinculada = cuenta?.estado === 'ACTIVA'
+              return (
+                <li
+                  key={sucursal}
+                  className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-marino-700 text-white">
+                    <Icono nombre="facebook" tamano={17} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-slate-900">{sucursal}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {vinculada
+                        ? `${cuenta.paginaNombre}${cuenta.instagramUsuario ? ` · Instagram @${cuenta.instagramUsuario}` : ' · sin Instagram'}`
+                        : cuenta?.estado === 'TOKEN_RECHAZADO'
+                          ? 'Se cortó la conexión con Meta: hay que volver a vincular.'
+                          : 'Sin vincular.'}
+                    </p>
+                  </div>
+                  {vinculada && <Etiqueta tono="exito">Vinculada</Etiqueta>}
+                  {cuenta?.estado === 'TOKEN_RECHAZADO' && <Etiqueta tono="peligro">Token rechazado</Etiqueta>}
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </Tarjeta>
 
       <Tarjeta
