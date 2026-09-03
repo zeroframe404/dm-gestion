@@ -3085,17 +3085,23 @@ export interface VinculacionPendiente {
   vinculada: VinculoConMeta | null
 }
 
+/** Feed (foto o video en el muro), Reel (siempre video) o Historia (foto o video, 24 horas). */
+export type TipoDeContenido = 'FEED' | 'REEL' | 'STORIA'
+
 export interface PublicacionDeRed {
   id: string
   sucursal: string
   destino: DestinoDePublicacion
+  tipoDeContenido: TipoDeContenido
   estado: 'BORRADOR' | 'PROGRAMADA' | 'PUBLICADA' | 'FALLIDA'
   texto: string
-  /** La dirección de la publicación, para abrirla. null si falló o todavía no se publicó. */
+  /** La dirección de la publicación, para abrirla. null si falló, todavía no se publicó, o es una historia. */
   url: string | null
   /** El motivo, cuando falló. Se guarda porque si no se pierde apenas se cierra la pantalla. */
   error: string | null
   creadoPor: string
+  /** Cuándo tiene que salir sola. null = no está programada (ya se publicó, o falló). */
+  programadoPara: string | null
   /** Cuándo se publicó de verdad. null si falló o todavía no se publicó (ver `creadoEn`). */
   publicadoEn: string | null
   creadoEn: string
@@ -3107,7 +3113,8 @@ export interface ArchivoParaPublicar {
   nombre: string
   tipo: string
   bytes: number
-  /** La imagen en data: URI para la vista previa. */
+  tipoDeArchivo: 'FOTO' | 'VIDEO'
+  /** La imagen en data: URI para la vista previa. Para un video, vacío: no hay miniatura. */
   vistaPrevia: string
   /** Qué le impide ir a Instagram, si algo. Vacío = se puede. */
   avisoDeInstagram: string
@@ -3131,9 +3138,12 @@ export interface PedidoDePublicacion {
   /** Para qué sucursal es. Vacío = la propia del actor (obligatorio elegir si es SUPER_ADMIN sin sucursal). */
   sucursal: string
   destino: DestinoDePublicacion
+  tipoDeContenido: TipoDeContenido
   texto: string
-  /** Ruta del archivo elegido. Vacío = sólo texto (que Instagram no acepta). */
+  /** Ruta del archivo elegido. Vacío = sólo texto (que Instagram no acepta, y que ni Reel ni Historia aceptan). */
   ruta: string
+  /** Fecha/hora (ISO) a la que tiene que salir sola. Vacío = publicar ya. Una historia no se puede programar. */
+  programarPara: string
 }
 
 /** Una respuesta ya mandada a un comentario. */

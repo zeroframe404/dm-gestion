@@ -87,9 +87,9 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Qué se hace acá',
         parrafos: [
-          'Se elige una foto, se escribe el texto, se marca si va a Facebook o a Instagram y se publica. Sale en nombre de la sucursal, igual que si lo publicara alguien desde el teléfono: la diferencia es que queda anotado quién lo publicó y cuándo, y que se puede hacer desde la misma pantalla donde ya estás trabajando.',
+          'Se elige una foto o un video, se escribe el texto, se marca si va a Facebook o a Instagram, si es para el Feed, un Reel o una Historia, y se publica (o se programa para más adelante). Sale en nombre de la sucursal, igual que si lo publicara alguien desde el teléfono: la diferencia es que queda anotado quién lo publicó y cuándo, y que se puede hacer desde la misma pantalla donde ya estás trabajando.',
           'Cada sucursal tiene su propia cuenta de Facebook e Instagram, separada de las demás. Un administrador o un empleado publica siempre en la de su sucursal; el superadministrador puede elegir cualquiera desde el selector de arriba.',
-          'Es de a una publicación por vez, a propósito. No hay envíos masivos ni programados: las dos cosas son las que hacen que una cuenta termine bloqueada, y la de cada sucursal es la que se usa todo el día.',
+          'Es de a una publicación por vez, a propósito. No hay envíos masivos: eso es lo que hace que una cuenta termine bloqueada, y la de cada sucursal es la que se usa todo el día.',
         ],
       },
       {
@@ -103,9 +103,16 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Facebook e Instagram no son lo mismo',
         parrafos: [
-          'Facebook acepta un posteo de texto solo, o texto con una foto. Instagram siempre necesita una foto: sin imagen no publica, y por eso el botón queda apagado.',
+          'Facebook acepta un posteo de texto solo, texto con una foto, o texto con un video. Instagram siempre necesita una foto o un video: sin archivo no publica, y por eso el botón queda apagado. En el Feed de Instagram sólo se publican fotos; para un video en Instagram hay que elegir Reel o Historia.',
           'Además, Instagram sólo se puede publicar por programa si la cuenta es Business y está vinculada a la página de Facebook. Eso se configura una vez desde Facebook, no desde acá. Si la página no tiene una cuenta así, la pantalla lo dice y el botón de Instagram queda apagado en vez de fallar al publicar.',
-          'Por ahora se publican fotos .jpg o .png de hasta 8 MB. Los videos, los reels, las historias y la programación de publicaciones todavía no están; cuando estén, va a decirlo esta misma pantalla.',
+          'Las fotos son .jpg o .png de hasta 8 MB; los videos son .mp4 o .mov de hasta 40 MB. Un Reel siempre lleva video; una Historia acepta foto o video, pero dura sólo 24 horas y no se puede programar: sale apenas se toca «Publicar».',
+        ],
+      },
+      {
+        titulo: 'Reels, Historias y programar',
+        parrafos: [
+          'Un Reel es siempre un video, en Facebook o en Instagram. En Instagram, Meta tarda un rato en procesar el video antes de poder publicarlo: por eso un Reel de Instagram siempre queda «Programada» en la lista de abajo un momento, aunque no se haya elegido ninguna fecha, hasta que el servidor termina de subirlo solo.',
+          'Programar (el interruptor debajo del texto) deja elegir una fecha y hora futura en vez de publicar al toque: en Facebook lo programa Meta directamente; en Instagram, que no tiene programación propia, el archivo se sube apenas se pide y el servidor lo publica solo cuando llega la hora. Una Historia no se puede programar en ninguna de las dos: son 24 horas, y elegir un horario para eso no tiene sentido.',
         ],
       },
       {
@@ -128,6 +135,14 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Vincular',
         explicacion: 'Darle permiso al programa para publicar en nombre de una sucursal. Lo hace el superadministrador, una vez por sucursal, ingresando en Facebook.',
+      },
+      {
+        termino: 'Reel',
+        explicacion: 'Una publicación de video corto, pensada para el descubrimiento (le puede llegar a gente que no sigue la cuenta). Siempre lleva un video, nunca una foto.',
+      },
+      {
+        termino: 'Historia',
+        explicacion: 'Una foto o un video que dura 24 horas y después desaparece solo. No se puede programar: se publica apenas se toca «Publicar».',
       },
     ],
   },
