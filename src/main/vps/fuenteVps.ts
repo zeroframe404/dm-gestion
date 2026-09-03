@@ -78,20 +78,25 @@ export interface ArchivoParaVps {
 export interface PedidoDePublicacionParaVps {
   sucursal?: string
   destino: 'FACEBOOK' | 'INSTAGRAM'
+  tipoDeContenido?: 'FEED' | 'REEL' | 'STORIA'
   texto: string
   archivo?: ArchivoParaVps | null
+  /** Fecha/hora ISO a la que tiene que salir sola. Vacío/null = publicar ya. */
+  programarPara?: string | null
 }
 
 export interface PublicacionDeRedVps {
   id: string
   sucursal: string
   destino: 'FACEBOOK' | 'INSTAGRAM'
+  tipoDeContenido: 'FEED' | 'REEL' | 'STORIA'
   estado: 'BORRADOR' | 'PROGRAMADA' | 'PUBLICADA' | 'FALLIDA'
   texto: string
   idEnLaRed: string | null
   url: string | null
   error: string | null
   creadoPor: string
+  programadoPara: string | null
   publicadoEn: string | null
   creadoEn: string
 }

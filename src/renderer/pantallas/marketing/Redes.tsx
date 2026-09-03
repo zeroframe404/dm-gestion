@@ -17,15 +17,19 @@ import {
   type PaginaParaElegir,
   type PanelDeRedes,
   type PublicacionDeRed,
+  type TipoDeContenido,
 } from '../../../shared/tipos'
 import { SUCURSALES } from '../../../shared/sucursales'
+import { AvisoLimitacionMeta } from '../../componentes/AvisoLimitacionMeta'
 import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 import { Icono } from '../../componentes/Icono'
-import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Etiqueta, Selector, Tarjeta, cx } from '../../componentes/ui'
+import { Alerta, AreaTexto, Boton, Campo, Cargando, Dialogo, Etiqueta, Selector, Tarjeta, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { Comentarios } from './Comentarios'
 import { Mensajes } from './Mensajes'
+
+const NOMBRE_TIPO_DE_CONTENIDO: Record<TipoDeContenido, string> = { FEED: 'Feed', REEL: 'Reel', STORIA: 'Historia' }
 
 type PestanaDeRedes = 'publicar' | 'comentarios' | 'mensajes'
 
@@ -59,8 +63,20 @@ export function Redes() {
   const [cuotaInstagram, setCuotaInstagram] = useState<number | null>(null)
   const [paginas, setPaginas] = useState<PaginaParaElegir[]>([])
   const [destino, setDestino] = useState<DestinoDePublicacion>('FACEBOOK')
+  const [tipoDeContenido, setTipoDeContenidoState] = useState<TipoDeContenido>('FEED')
   const [texto, setTexto] = useState('')
   const [archivo, setArchivo] = useState<ArchivoParaPublicar | null>(null)
+  const [programarActivado, setProgramarActivado] = useState(false)
+  const [programarPara, setProgramarPara] = useState('')
+
+  // Una historia no se puede programar: al elegirla, se apaga sola la programación si estaba activada.
+  const setTipoDeContenido = (tipo: TipoDeContenido) => {
+    setTipoDeContenidoState(tipo)
+    if (tipo === 'STORIA') {
+      setProgramarActivado(false)
+      setProgramarPara('')
+    }
+  }
 
   const cargarPanel = useCallback(async () => {
     const resultado = await window.dm.redes.panel()
@@ -158,12 +174,22 @@ export function Redes() {
 
   const publicar = () =>
     correr('publicar', async () => {
-      const resultado = await window.dm.redes.publicar({ sucursal: sucursalElegida, destino, texto, ruta: archivo?.ruta ?? '' })
+      const programarParaIso = programarActivado && programarPara ? new Date(programarPara).toISOString() : ''
+      const resultado = await window.dm.redes.publicar({
+        sucursal: sucursalElegida,
+        destino,
+        tipoDeContenido,
+        texto,
+        ruta: archivo?.ruta ?? '',
+        programarPara: programarParaIso,
+      })
       if (resultado.ok) {
         setPanel(resultado.datos)
         setTexto('')
         setArchivo(null)
-        setAviso(`Publicado en ${NOMBRE_DESTINO[destino]}.`)
+        setProgramarActivado(false)
+        setProgramarPara('')
+        setAviso(programarParaIso ? `Se programó para ${NOMBRE_DESTINO[destino]}.` : `Publicado en ${NOMBRE_DESTINO[destino]}.`)
         await cargarHistorial()
       } else {
         setError(resultado.error)
@@ -174,7 +200,17 @@ export function Redes() {
   if (!panel) return <div className="p-8">{error && <Alerta tono="error">{error}</Alerta>}</div>
 
   const instagramApagado = destino === 'INSTAGRAM' && !puedeInstagram
-  const puedePublicar = vinculada && puedeEditar && !instagramApagado && (texto.trim().length > 0 || archivo !== null)
+  const necesitaArchivo = tipoDeContenido !== 'FEED' || destino === 'INSTAGRAM'
+  const archivoInvalido = Boolean(
+    archivo &&
+      ((tipoDeContenido === 'REEL' && archivo.tipoDeArchivo !== 'VIDEO') ||
+        (destino === 'INSTAGRAM' && tipoDeContenido === 'FEED' && archivo.tipoDeArchivo === 'VIDEO') ||
+        (destino === 'FACEBOOK' && tipoDeContenido === 'STORIA' && archivo.tipoDeArchivo === 'VIDEO')),
+  )
+  const fechaProgramacionInvalida = programarActivado && (!programarPara || new Date(programarPara).getTime() <= Date.now())
+  const tieneContenido = necesitaArchivo ? archivo !== null : texto.trim().length > 0 || archivo !== null
+  const puedePublicar =
+    vinculada && puedeEditar && !instagramApagado && !archivoInvalido && !fechaProgramacionInvalida && tieneContenido
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -285,10 +321,10 @@ export function Redes() {
           {/* --- El posteo ------------------------------------------------------ */}
           <Tarjeta
             titulo="Publicar"
-            descripcion="Se publica de a uno, con la foto y el texto que elijas. Por ahora sólo fotos: los videos y los reels necesitan otro camino."
+            descripcion="Se publica de a uno, con el archivo y el texto que elijas: foto o video en el Feed, siempre video en un Reel, foto o video en una Historia."
             acciones={
               <Boton variante="primario" icono="subir" onClick={() => void publicar()} cargando={ocupado === 'publicar'} disabled={!puedePublicar}>
-                Publicar en {NOMBRE_DESTINO[destino]}
+                {programarActivado ? `Programar en ${NOMBRE_DESTINO[destino]}` : `Publicar en ${NOMBRE_DESTINO[destino]}`}
               </Boton>
             }
           >
@@ -318,10 +354,10 @@ export function Redes() {
                         <span className="block font-semibold">{NOMBRE_DESTINO[candidato]}</span>
                         <span className="block text-xs text-slate-500">
                           {candidato === 'FACEBOOK'
-                            ? 'En la página. Acepta texto solo o texto con foto.'
+                            ? 'En la página. Acepta texto solo, foto o video.'
                             : apagado
                               ? 'No hay una cuenta de Instagram Business vinculada.'
-                              : 'Siempre con una foto: Instagram no publica texto solo.'}
+                              : 'Siempre con una foto o un video: Instagram no publica texto solo.'}
                         </span>
                       </span>
                     </button>
@@ -329,28 +365,70 @@ export function Redes() {
                 })}
               </div>
 
-              {/* La foto, con vista previa: un posteo equivocado en una red social no se puede deshacer
-                  sin que alguien lo haya visto. */}
+              {/* Qué tipo de contenido: cambia qué archivo hace falta y si se puede programar. */}
+              <div className="grid gap-3 sm:grid-cols-3">
+                {(['FEED', 'REEL', 'STORIA'] as TipoDeContenido[]).map((candidato) => (
+                  <button
+                    key={candidato}
+                    type="button"
+                    onClick={() => setTipoDeContenido(candidato)}
+                    disabled={!vinculada}
+                    aria-pressed={tipoDeContenido === candidato}
+                    className={cx(
+                      'rounded-xl border-2 px-4 py-3 text-left transition-colors',
+                      'disabled:cursor-not-allowed disabled:opacity-50',
+                      tipoDeContenido === candidato
+                        ? 'border-marino-600 bg-marino-50 text-marino-900'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300',
+                    )}
+                  >
+                    <span className="block font-semibold">{NOMBRE_TIPO_DE_CONTENIDO[candidato]}</span>
+                    <span className="block text-xs text-slate-500">
+                      {candidato === 'FEED' && 'En el muro, con el resto de las publicaciones.'}
+                      {candidato === 'REEL' && 'Siempre un video.'}
+                      {candidato === 'STORIA' && 'Foto o video, 24 horas. No se puede programar.'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* El archivo, con vista previa cuando es una foto: un posteo equivocado en una red social
+                  no se puede deshacer sin que alguien lo haya visto. Un video no tiene miniatura. */}
               <div className="flex flex-wrap items-start gap-4">
                 <div className="flex flex-col gap-2">
                   <Boton icono="clip" onClick={() => void elegirArchivo()} cargando={ocupado === 'archivo'} disabled={!vinculada || !puedeEditar}>
-                    {archivo ? 'Cambiar la foto' : 'Elegir una foto'}
+                    {archivo ? 'Cambiar el archivo' : 'Elegir una foto o un video'}
                   </Boton>
                   {archivo && (
                     <Boton variante="fantasma" tamano="sm" icono="cerrar" onClick={() => setArchivo(null)}>
-                      Sacarla
+                      Sacarlo
                     </Boton>
                   )}
                 </div>
                 {archivo && (
                   <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <img src={archivo.vistaPrevia} alt="" className="h-24 w-24 rounded-lg object-cover" />
+                    {archivo.tipoDeArchivo === 'FOTO' ? (
+                      <img src={archivo.vistaPrevia} alt="" className="h-24 w-24 rounded-lg object-cover" />
+                    ) : (
+                      <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-lg bg-slate-200 text-slate-500">
+                        <Icono nombre="subir" tamano={28} />
+                      </span>
+                    )}
                     <div className="min-w-0 text-xs">
                       <p className="truncate font-semibold text-slate-800">{archivo.nombre}</p>
-                      <p className="text-slate-500">{(archivo.bytes / 1024).toFixed(0)} KB</p>
+                      <p className="text-slate-500">{(archivo.bytes / 1024 / 1024).toFixed(1)} MB</p>
                       {archivo.avisoDeInstagram && <p className="mt-1 text-amber-700">{archivo.avisoDeInstagram}</p>}
                     </div>
                   </div>
+                )}
+                {archivoInvalido && (
+                  <p className="text-xs text-red-700">
+                    {tipoDeContenido === 'REEL' && 'Un Reel es siempre un video: para una foto, elegí Feed.'}
+                    {destino === 'INSTAGRAM' &&
+                      tipoDeContenido === 'FEED' &&
+                      'Instagram no publica video en el Feed: elegí Reel o Historia.'}
+                    {destino === 'FACEBOOK' && tipoDeContenido === 'STORIA' && 'Facebook no publica video en Historias desde acá.'}
+                  </p>
                 )}
               </div>
 
@@ -360,8 +438,38 @@ export function Redes() {
                 value={texto}
                 disabled={!vinculada || !puedeEditar}
                 onChange={(evento) => setTexto(evento.target.value)}
-                ayuda={`${texto.length} de 2.200 caracteres.`}
+                ayuda={
+                  tipoDeContenido === 'STORIA' ? 'Las historias no llevan texto: se guarda como referencia, pero no sale en Meta.' : `${texto.length} de 2.200 caracteres.`
+                }
               />
+
+              {/* Programar: sólo Feed y Reel. Una historia se publica siempre al momento. */}
+              {tipoDeContenido === 'STORIA' ? (
+                <AvisoLimitacionMeta motivo="Las historias no se pueden programar." />
+              ) : (
+                <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={programarActivado}
+                      disabled={!vinculada || !puedeEditar}
+                      onChange={(evento) => setProgramarActivado(evento.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    Programar para más adelante, en vez de publicar ahora
+                  </label>
+                  {programarActivado && (
+                    <Campo
+                      etiqueta="Fecha y hora"
+                      type="datetime-local"
+                      value={programarPara}
+                      onChange={(evento) => setProgramarPara(evento.target.value)}
+                      disabled={!vinculada || !puedeEditar}
+                      error={fechaProgramacionInvalida ? 'Elegí una fecha y hora futura.' : null}
+                    />
+                  )}
+                </div>
+              )}
 
               {!puedeEditar && <Alerta tono="aviso">Tenés Marketing en sólo lectura: podés mirar lo publicado pero no publicar.</Alerta>}
             </div>
@@ -378,7 +486,11 @@ export function Redes() {
                     <span
                       className={cx(
                         'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
-                        publicacion.estado === 'PUBLICADA' ? 'bg-slate-100 text-slate-600' : 'bg-red-50 text-red-600',
+                        publicacion.estado === 'PUBLICADA'
+                          ? 'bg-slate-100 text-slate-600'
+                          : publicacion.estado === 'PROGRAMADA'
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-red-50 text-red-600',
                       )}
                     >
                       <Icono nombre={publicacion.destino === 'FACEBOOK' ? 'facebook' : 'instagram'} tamano={15} />
@@ -386,8 +498,11 @@ export function Redes() {
                     <div className="min-w-0 flex-1">
                       <p className="flex flex-wrap items-center gap-2 text-sm">
                         <span className="font-semibold text-slate-900">{NOMBRE_DESTINO[publicacion.destino]}</span>
+                        <Etiqueta tono="neutro">{NOMBRE_TIPO_DE_CONTENIDO[publicacion.tipoDeContenido]}</Etiqueta>
                         {publicacion.estado === 'FALLIDA' ? (
                           <Etiqueta tono="peligro">No salió</Etiqueta>
+                        ) : publicacion.estado === 'PROGRAMADA' ? (
+                          <Etiqueta tono="aviso">Programada para {cuando(publicacion.programadoPara ?? publicacion.creadoEn)}</Etiqueta>
                         ) : (
                           <Etiqueta tono="exito">Publicada</Etiqueta>
                         )}

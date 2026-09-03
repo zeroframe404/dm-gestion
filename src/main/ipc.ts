@@ -1281,11 +1281,14 @@ export function registrarIpc(): void {
     exigirEdicion('marketing')
     const ventana = ventanaActual()
     const opciones = {
-      title: 'Elegí la foto para publicar',
-      buttonLabel: 'Usar esta foto',
+      title: 'Elegí la foto o el video para publicar',
+      buttonLabel: 'Usar este archivo',
       properties: ['openFile'] as Array<'openFile'>,
-      // Sólo fotos: los videos y los reels necesitan otro camino y todavía no están.
-      filters: [{ name: 'Fotos', extensions: ['jpg', 'jpeg', 'png'] }],
+      filters: [
+        { name: 'Fotos y videos', extensions: ['jpg', 'jpeg', 'png', 'mp4', 'mov'] },
+        { name: 'Fotos', extensions: ['jpg', 'jpeg', 'png'] },
+        { name: 'Videos', extensions: ['mp4', 'mov'] },
+      ],
     }
     const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
     if (elegido.canceled || elegido.filePaths.length === 0) return exito(null)

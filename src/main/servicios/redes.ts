@@ -30,6 +30,7 @@ import {
   type PedidoDePublicacion,
   type PublicacionDeRed,
   type SesionUsuario,
+  type TipoDeContenido,
   type VinculacionPendiente,
   type VinculoConMeta,
 } from '../../shared/tipos'
@@ -50,16 +51,23 @@ import { ErrorDeNegocio } from './errores'
 import { objeto, texto as validarTexto } from './validacion'
 
 /**
- * Ocho megas. NO es el mismo tope que el de los adjuntos de un siniestro (25 MB): Instagram rechaza
- * más arriba de esto, y dejar pasar acá lo que Meta va a rechazar después es peor que no dejarlo
- * pasar, porque el error llega tarde y sin explicación.
+ * Ocho megas para una foto. NO es el mismo tope que el de los adjuntos de un siniestro (25 MB):
+ * Instagram rechaza más arriba de esto, y dejar pasar acá lo que Meta va a rechazar después es peor
+ * que no dejarlo pasar, porque el error llega tarde y sin explicación.
  */
 export const TAMANO_MAXIMO_DE_PUBLICACION = 8 * 1024 * 1024
+/** Cuarenta megas para un video: mismo tope que aplica el servidor, que es quien de verdad lo recibe. */
+export const TAMANO_MAXIMO_DE_VIDEO = 40 * 1024 * 1024
 
 const TIPOS_DE_IMAGEN: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png': 'image/png',
+}
+
+const TIPOS_DE_VIDEO: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
 }
 
 /** Instagram publica JPEG sin problemas; con PNG falla bastante seguido. */
@@ -109,11 +117,13 @@ function aPublicacionDeRed(publicacion: PublicacionDeRedVps): PublicacionDeRed {
     id: publicacion.id,
     sucursal: publicacion.sucursal,
     destino: publicacion.destino,
+    tipoDeContenido: publicacion.tipoDeContenido,
     estado: publicacion.estado,
     texto: publicacion.texto,
     url: publicacion.url,
     error: publicacion.error,
     creadoPor: publicacion.creadoPor,
+    programadoPara: publicacion.programadoPara,
     publicadoEn: publicacion.publicadoEn,
     creadoEn: publicacion.creadoEn,
   }
@@ -266,12 +276,13 @@ export async function revisarArchivoParaPublicar(ruta: string): Promise<ArchivoP
   if (!elegida) throw new ErrorDeNegocio('No se eligió ningún archivo.')
 
   const extension = path.extname(elegida).toLowerCase()
-  const tipo = TIPOS_DE_IMAGEN[extension]
-  if (!tipo) {
-    throw new ErrorDeNegocio(
-      'Por ahora se publican fotos: .jpg o .png. Los videos y los reels necesitan otro camino y todavía no están.',
-    )
+  const tipoDeFoto = TIPOS_DE_IMAGEN[extension]
+  const tipoDeVideo = TIPOS_DE_VIDEO[extension]
+  if (!tipoDeFoto && !tipoDeVideo) {
+    throw new ErrorDeNegocio('El archivo tiene que ser una foto (.jpg, .png) o un video (.mp4, .mov).')
   }
+  const tipo = tipoDeFoto ?? tipoDeVideo!
+  const tipoDeArchivo: 'FOTO' | 'VIDEO' = tipoDeFoto ? 'FOTO' : 'VIDEO'
 
   let bytes: number
   try {
@@ -279,23 +290,28 @@ export async function revisarArchivoParaPublicar(ruta: string): Promise<ArchivoP
   } catch {
     throw new ErrorDeNegocio('No se pudo leer ese archivo. Fijate si sigue estando donde estaba.')
   }
-  if (bytes > TAMANO_MAXIMO_DE_PUBLICACION) {
+  const maximo = tipoDeArchivo === 'FOTO' ? TAMANO_MAXIMO_DE_PUBLICACION : TAMANO_MAXIMO_DE_VIDEO
+  if (bytes > maximo) {
     throw new ErrorDeNegocio(
-      `La foto pesa ${(bytes / 1024 / 1024).toFixed(1)} MB y el máximo son ${TAMANO_MAXIMO_DE_PUBLICACION / 1024 / 1024} MB. Achicala y probá de nuevo.`,
+      `El archivo pesa ${(bytes / 1024 / 1024).toFixed(1)} MB y el máximo son ${maximo / 1024 / 1024} MB. Achicalo y probá de nuevo.`,
     )
   }
 
-  const contenido = await readFile(elegida)
+  // Para un video no hay miniatura (y evita leer hasta 40 MB dos veces: acá y al publicar): sólo se
+  // muestra el nombre y el peso en la pantalla.
+  const vistaPrevia = tipoDeArchivo === 'FOTO' ? `data:${tipo};base64,${(await readFile(elegida)).toString('base64')}` : ''
   return {
     ruta: elegida,
     nombre: path.basename(elegida),
     tipo,
     bytes,
-    vistaPrevia: `data:${tipo};base64,${contenido.toString('base64')}`,
+    tipoDeArchivo,
+    vistaPrevia,
     // No bloquea: Facebook publica el PNG sin problema y es Instagram el que se pone difícil.
-    avisoDeInstagram: EXTENSIONES_DE_INSTAGRAM.includes(extension)
-      ? ''
-      : 'Instagram rechaza los PNG bastante seguido. Si es para Instagram, conviene guardarla como .jpg.',
+    avisoDeInstagram:
+      tipoDeArchivo === 'VIDEO' || EXTENSIONES_DE_INSTAGRAM.includes(extension)
+        ? ''
+        : 'Instagram rechaza los PNG bastante seguido. Si es para Instagram, conviene guardarla como .jpg.',
   }
 }
 
@@ -303,18 +319,31 @@ export async function revisarArchivoParaPublicar(ruta: string): Promise<ArchivoP
 // Publicar
 // ---------------------------------------------------------------------------
 
+const TIPOS_DE_CONTENIDO: TipoDeContenido[] = ['FEED', 'REEL', 'STORIA']
+
 function validarPedido(pedido: unknown): PedidoDePublicacion {
   const p = objeto(pedido, 'El pedido de publicación')
   const destino = limpiar(p.destino) as DestinoDePublicacion
   if (!DESTINOS_DE_PUBLICACION.includes(destino)) throw new ErrorDeNegocio('Elegí Facebook o Instagram.')
+  const tipoDeContenidoPedido = limpiar(p.tipoDeContenido) as TipoDeContenido
+  const tipoDeContenido: TipoDeContenido = TIPOS_DE_CONTENIDO.includes(tipoDeContenidoPedido) ? tipoDeContenidoPedido : 'FEED'
   const cuerpo = typeof p.texto === 'string' ? p.texto.trim() : ''
   if (cuerpo.length > 2_200) throw new ErrorDeNegocio('El texto es muy largo: el máximo son 2.200 caracteres.')
   const ruta = typeof p.ruta === 'string' ? p.ruta.trim() : ''
-  if (!cuerpo && !ruta) throw new ErrorDeNegocio('Escribí algo o elegí una foto: no se puede publicar nada vacío.')
-  if (destino === 'INSTAGRAM' && !ruta) throw new ErrorDeNegocio('Instagram no publica sin imagen: elegí una foto.')
+  const programarPara = typeof p.programarPara === 'string' ? p.programarPara.trim() : ''
+
+  if (tipoDeContenido === 'STORIA' && programarPara) {
+    throw new ErrorDeNegocio('Las historias no se pueden programar: se publican al momento.')
+  }
+  if (tipoDeContenido === 'STORIA' && !ruta) throw new ErrorDeNegocio('Una historia necesita una foto o un video.')
+  if (tipoDeContenido === 'REEL' && !ruta) throw new ErrorDeNegocio('Un Reel necesita un video.')
+  if (!cuerpo && !ruta) throw new ErrorDeNegocio('Escribí algo o elegí un archivo: no se puede publicar nada vacío.')
+  if (destino === 'INSTAGRAM' && !ruta) throw new ErrorDeNegocio('Instagram no publica sin una foto o un video: elegí un archivo.')
+  if (programarPara && Number.isNaN(Date.parse(programarPara))) throw new ErrorDeNegocio('La fecha de programación no es válida.')
+  if (programarPara && Date.parse(programarPara) <= Date.now()) throw new ErrorDeNegocio('La fecha de programación tiene que ser futura.')
   // El texto se valida sólo por largo: lo escribe la agencia y va tal cual.
   if (cuerpo) validarTexto(cuerpo, 'El texto', 1, 2_200)
-  return { sucursal: limpiar(p.sucursal), destino, texto: cuerpo, ruta }
+  return { sucursal: limpiar(p.sucursal), destino, tipoDeContenido, texto: cuerpo, ruta, programarPara }
 }
 
 /**
@@ -323,16 +352,26 @@ function validarPedido(pedido: unknown): PedidoDePublicacion {
  * pantalla, y sin él nadie puede averiguar qué pasó.
  */
 export async function publicarEnRed(pedido: unknown, actor: SesionUsuario): Promise<PanelDeRedes> {
-  const { sucursal, destino, texto: cuerpo, ruta } = validarPedido(pedido)
+  const { sucursal, destino, tipoDeContenido, texto: cuerpo, ruta, programarPara } = validarPedido(pedido)
   const vps = exigirVps()
   const archivo = ruta ? await revisarArchivoParaPublicar(ruta) : null
+
+  if (tipoDeContenido === 'REEL' && archivo?.tipoDeArchivo === 'FOTO') throw new ErrorDeNegocio('Un Reel es un video: para una foto, elegí Feed.')
+  if (destino === 'INSTAGRAM' && tipoDeContenido === 'FEED' && archivo?.tipoDeArchivo === 'VIDEO') {
+    throw new ErrorDeNegocio('Instagram no publica video en el feed: elegí Reel o Historia.')
+  }
+  if (destino === 'FACEBOOK' && tipoDeContenido === 'STORIA' && archivo?.tipoDeArchivo === 'VIDEO') {
+    throw new ErrorDeNegocio('Facebook no deja publicar un video en Historias desde el programa todavía: subilo directamente desde Facebook.')
+  }
 
   try {
     await vps.redesPublicar(actorVps(actor), {
       sucursal: sucursal || undefined,
       destino,
+      tipoDeContenido,
       texto: cuerpo,
       archivo: archivo ? { nombre: archivo.nombre, tipo: archivo.tipo, contenidoBase64: (await readFile(archivo.ruta)).toString('base64') } : null,
+      programarPara: programarPara || null,
     })
     ultimoError = null
   } catch (error) {
