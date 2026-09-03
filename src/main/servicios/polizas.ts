@@ -94,7 +94,10 @@ const SELECT_POLIZAS = `
     COALESCE(cl.documento, q.documento) AS documento,
     COALESCE(cl.sucursal_texto, q.sucursal_texto) AS sucursal,
     b.motivo AS motivo_baja,
-    COALESCE(b.fecha_baja_iso, b.fecha_baja) AS fecha_baja
+    COALESCE(b.fecha_baja_iso, b.fecha_baja) AS fecha_baja,
+    -- ¿Hay otra póliza que la nombre como su anterior? Es lo que separa «se renovó» de «se dio de
+    -- baja»: las dos salen de la cartera, pero sólo una de las dos es cartera perdida.
+    EXISTS (SELECT 1 FROM polizas s WHERE s.poliza_anterior_id = p.id) AS tiene_sucesora
   FROM polizas p
   LEFT JOIN clientes cl ON cl.id = p.cliente_id
   LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
@@ -147,6 +150,8 @@ interface FilaCrudaPoliza {
   sucursal: string | null
   motivo_baja: string | null
   fecha_baja: string | null
+  /** 1 si hay otra póliza que la nombra en `poliza_anterior_id`, o sea que ésta se renovó. */
+  tiene_sucesora: number
 }
 
 /**
@@ -173,6 +178,11 @@ function describirVehiculo(fila: FilaCrudaPoliza): string | null {
   return descripcion || limpiar(fila.tipo_vehiculo) || null
 }
 
+/** Fuera de la cartera, con sucesora y sin baja anotada: se renovó, no se perdió. */
+function esRenovada(fila: { activa: number; tiene_sucesora: number; motivo_baja: string | null }): boolean {
+  return fila.activa === 0 && fila.tiene_sucesora === 1 && fila.motivo_baja === null
+}
+
 function aPoliza(fila: FilaCrudaPoliza, hoy: string): PolizaDeCliente {
   return {
     id: fila.id,
@@ -189,7 +199,9 @@ function aPoliza(fila: FilaCrudaPoliza, hoy: string): PolizaDeCliente {
     vigenciaHastaIso: fila.vigencia_hasta_iso,
     avisarVto: fila.avisar_vto,
     observaciones: fila.observaciones,
-    estado: estadoDePoliza(fila.activa === 1, fila.vigencia_hasta_iso, hoy),
+    // Se renovó (y no se dio de baja) cuando salió de la cartera, tiene sucesora y NADIE le anotó una
+    // baja: al renovar se puede elegir mandarla a Bajas, y ahí la agencia quiere verla como baja.
+    estado: estadoDePoliza(fila.activa === 1, fila.vigencia_hasta_iso, hoy, esRenovada(fila)),
     vehiculoId: fila.vehiculo_id,
     vehiculo: describirVehiculo(fila),
     rama: ramaDeVehiculo(fila.tipo_vehiculo, fila.categoria_vehiculo),

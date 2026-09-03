@@ -186,7 +186,8 @@ export function FichaDelCliente({
                 Nueva tarea
               </Boton>
             )}
-            {/* La papelera. Para quien no es superadministrador el componente no dibuja nada: ni un
+            {/* La papelera. El cliente lo borran los tres roles desde la 12.5 (ver shared/eliminacion.ts),
+                siempre que puedan editar Clientes; para quien no, el componente no dibuja nada: ni un
                 botón apagado, que lo único que consigue es que alguien lo intente. */}
             <BotonEliminar tipo="cliente" id={ficha.id} tamano="md" etiqueta="Eliminar cliente" alBorrar={alBorrar} />
           </div>
@@ -480,8 +481,11 @@ function PestanaVehiculos({ ficha }: { ficha: FichaCliente }) {
 // ---------------------------------------------------------------------------
 
 function PestanaPolizas({ ficha, hoy, alAbrirPoliza }: { ficha: FichaCliente; hoy: string; alAbrirPoliza: (polizaId: number) => void }) {
-  const activas = ficha.polizas.filter((poliza) => poliza.estado !== 'BAJA')
-  const historico = ficha.polizas.filter((poliza) => poliza.estado === 'BAJA')
+  // Al histórico entran las dos formas de salir de la cartera: la que se dio de baja y la que se
+  // renovó con otro número. Preguntar por «!== BAJA» dejaba a la renovada arriba, como si estuviera
+  // vigente, y a la vez su número viejo compitiendo con el nuevo en la misma lista.
+  const activas = ficha.polizas.filter((poliza) => poliza.estado === 'ACTIVA' || poliza.estado === 'VENCIDA')
+  const historico = ficha.polizas.filter((poliza) => poliza.estado === 'BAJA' || poliza.estado === 'RENOVADA')
 
   return (
     <div className="flex flex-col gap-5">
@@ -571,8 +575,12 @@ function PestanaPolizas({ ficha, hoy, alAbrirPoliza }: { ficha: FichaCliente; ho
 function FilaDePoliza({ poliza, hoy, alAbrir }: { poliza: PolizaDeCliente; hoy: string; alAbrir: (polizaId: number) => void }) {
   // Se recalcula el estado acá en vez de confiar en el que vino: es la misma regla de shared que usan
   // la bandeja de renovaciones y el listado de pólizas, y así una ficha abierta desde ayer no muestra
-  // como vigente algo que venció anoche.
-  const estado = estadoDePoliza(poliza.estado !== 'BAJA', poliza.vigenciaHastaIso, hoy)
+  // como vigente algo que venció anoche. Lo único que no se puede recalcular acá es si SALIÓ de la
+  // cartera y por qué —eso lo sabe la base, no la pantalla—, así que ésos se dejan tal cual vinieron.
+  const estado =
+    poliza.estado === 'BAJA' || poliza.estado === 'RENOVADA'
+      ? poliza.estado
+      : estadoDePoliza(true, poliza.vigenciaHastaIso, hoy)
   const dias = diasParaVencer(poliza.vigenciaHastaIso, hoy)
 
   return (

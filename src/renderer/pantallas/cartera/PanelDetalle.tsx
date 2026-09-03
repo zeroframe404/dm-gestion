@@ -4,7 +4,7 @@ import type { CampoEditable, EntradaHistorial, FilaCartera } from '../../../shar
 import type { ResultadoDeEliminacion } from '../../../shared/eliminacion'
 import { Icono } from '../../componentes/Icono'
 import { cx } from '../../componentes/ui'
-import { BotonEliminar, useEsSuperAdmin } from '../../componentes/BotonEliminar'
+import { BotonEliminar, usePuedeEliminar } from '../../componentes/BotonEliminar'
 
 interface Props {
   fila: FilaCartera
@@ -172,7 +172,7 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar 
 }
 
 function PieDeBorrado({ fila, alBorrar }: { fila: FilaCartera; alBorrar: Props['alBorrar'] }) {
-  if (!useEsSuperAdmin()) return null
+  if (!usePuedeEliminar('cuota')) return null
   return (
     <footer className="flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-3">
       <p className="text-xs text-slate-500">Borra esta fila del mes, no la póliza.</p>

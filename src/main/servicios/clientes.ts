@@ -24,6 +24,7 @@ import {
   type DatosDeCliente,
   type DatosDeTarea,
   type EstadoDeCliente,
+  type EstadoPoliza,
   type EstadoTarea,
   type FichaCliente,
   type FilaCliente,
@@ -505,6 +506,8 @@ interface PolizaCruda {
   modelo: string | null
   tipo: string | null
   categoria: string | null
+  /** 1 si hay otra póliza que la nombra en `poliza_anterior_id`, o sea que ésta se renovó. */
+  tiene_sucesora: number
 }
 
 /** Cómo se nombra el vehículo en las listas de pólizas: «FORD FIESTA» dice más que «AUTO». */
@@ -513,13 +516,21 @@ function describirVehiculo(cruda: PolizaCruda): string | null {
   return descripcion || limpiar(cruda.tipo) || null
 }
 
+/** Las que siguen siendo cartera de la agencia. Fuera quedan la baja y la que se renovó con otro número. */
+function estaEnLaCartera(estado: EstadoPoliza): boolean {
+  return estado === 'ACTIVA' || estado === 'VENCIDA'
+}
+
 function polizasDe(cliente: ClienteCrudo, hoy: string): PolizaDeCliente[] {
   const base = db()
   const crudas = base
     .prepare(
       `SELECT p.id, p.fila_id, p.numero, p.propuesta, p.compania, p.cobertura, p.forma_pago, p.avisar_vto,
               p.observaciones, p.vigencia_desde, p.vigencia_hasta, p.vigencia_hasta_iso, p.activa, p.vehiculo_id,
-              v.patente, v.marca, v.modelo, v.tipo, v.categoria
+              v.patente, v.marca, v.modelo, v.tipo, v.categoria,
+              -- ¿Se renovó con otro número? Es lo que separa «se renovó» de «se dio de baja»: las dos
+              -- salen de la cartera, pero sólo una es cartera perdida (ver estadoDePoliza).
+              EXISTS (SELECT 1 FROM polizas s WHERE s.poliza_anterior_id = p.id) AS tiene_sucesora
        FROM polizas p LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
        WHERE p.cliente_id = ?`,
     )
@@ -558,7 +569,10 @@ function polizasDe(cliente: ClienteCrudo, hoy: string): PolizaDeCliente[] {
   }
 
   const filas = crudas.map((cruda): PolizaDeCliente => {
-    const estado = estadoDePoliza(cruda.activa === 1, cruda.vigencia_hasta_iso, hoy)
+    // Renovada = fuera de la cartera, con sucesora y sin baja anotada. Lo de la baja importa: al
+    // renovar se puede elegir mandar la anterior a Bajas, y ahí la agencia quiere verla como baja.
+    const seRenovo = cruda.activa === 0 && cruda.tiene_sucesora === 1 && !bajas.has(cruda.id)
+    const estado = estadoDePoliza(cruda.activa === 1, cruda.vigencia_hasta_iso, hoy, seRenovo)
     const baja = estado === 'BAJA' ? (bajas.get(cruda.id) ?? null) : null
     const delMes = cuotas.get(cruda.id) ?? null
     return {
@@ -592,8 +606,9 @@ function polizasDe(cliente: ClienteCrudo, hoy: string): PolizaDeCliente[] {
 
   // Primero la cartera vigente y después el histórico; dentro de cada grupo, lo que vence más tarde
   // arriba. Las pólizas sin vigencia cargada (la hoja tiene muchas) quedan al final de su grupo.
+  // Al histórico entran las dos formas de salir de la cartera: la baja y la renovada.
   return filas.sort((a, b) => {
-    const grupo = Number(a.estado === 'BAJA') - Number(b.estado === 'BAJA')
+    const grupo = Number(!estaEnLaCartera(a.estado)) - Number(!estaEnLaCartera(b.estado))
     if (grupo !== 0) return grupo
     const hastaA = a.vigenciaHastaIso ?? ''
     const hastaB = b.vigenciaHastaIso ?? ''

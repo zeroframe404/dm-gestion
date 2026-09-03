@@ -69,8 +69,9 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'El botón de eliminar',
         parrafos: [
-          'Hay un botón rojo con una papelera que borra un registro de la base para siempre: un cliente, una póliza, una fila de la planilla, una baja, un aviso de rechazo, un lead, un presupuesto, un siniestro, un riesgo vario, una ampliación o una tarea. Lo ve ÚNICAMENTE el superadministrador. Para el resto del equipo el botón no existe: no aparece apagado ni con un cartel, directamente no está.',
-          'No se puede dar por esta pantalla ni por ninguna otra, y es a propósito. Un administrador tiene todo lo demás —dar de baja, deshacer, poner vigente, corregir— y todo eso se puede revertir. Esto no: se va el cliente, sus pólizas, cada mes que pagó y cada mes que no. Con que alguien se distraiga una vez, la agencia pierde a una persona entera y no hay forma de traerla de vuelta.',
+          'Hay un botón rojo con una papelera que borra un registro de la base para siempre: un cliente, una póliza, una fila de la planilla, una baja, un aviso de rechazo, un lead, un presupuesto, un siniestro, un riesgo vario, una ampliación o una tarea. Quién puede borrar qué depende de cuál sea: EL CLIENTE lo borran los tres roles —superadministrador, administradores y empleados—, y TODO LO DEMÁS sigue siendo únicamente del superadministrador. Para quien no puede borrar ese tipo, el botón no existe: no aparece apagado ni con un cartel, directamente no está.',
+          'El cliente se abrió porque el caso de todos los días es el alta cargada dos veces o el DNI mal tipeado, y esperar a otra persona para sacar una fila que nadie quería la dejaba apareciendo en la planilla, en la mora y en los avisos de WhatsApp. Además hace falta poder EDITAR el módulo de donde sale el registro: a quien tiene Clientes en «sólo ver» tampoco se le abre la papelera de un cliente.',
+          'El resto no se puede dar por esta pantalla ni por ninguna otra, y es a propósito. Una póliza, una baja o una fila de la planilla son piezas de la cartera: se dan de baja, se deshacen, se ponen vigentes o se corrigen, y todo eso un administrador ya lo tiene. Borrarlas es otra cosa y no se revierte.',
           'Antes de borrar, la aplicación abre un cartel que dice exactamente qué se lleva puesto («3 pólizas, 42 cuotas del mes, 12 pagos»), qué renglones se sacan de la hoja de Google y qué conviene saber antes. El botón de confirmar arranca apagado y se enciende recién a los cinco segundos, con la cuenta a la vista: es el rato que se tarda en leer esa lista. Todo borrado queda anotado en el historial con quién lo hizo, cuándo y qué decía el registro.',
         ],
       },
@@ -246,12 +247,13 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.google': {
     clave: 'administracion.google',
     titulo: 'Administración → Google Drive',
-    resumen: 'La credencial de Google que queda sólo para Drive: los respaldos diarios y los adjuntos de siniestros. La carga el superadministrador una vez y la adoptan todas las computadoras.',
+    resumen: 'La credencial de Google que queda sólo para Drive: los respaldos diarios y los adjuntos de siniestros. Es OBLIGATORIA: la carga el superadministrador una vez, viaja al servidor y la adoptan solas las cinco computadoras, sea quien sea el que las use.',
     secciones: [
       {
         titulo: 'Qué es esta pantalla',
         parrafos: [
-          'Desde la versión 12 el GENERAL DE CLIENTES vive en la base del VPS y el programa no sincroniza más con la planilla de Google (el servidor la mantiene actualizado como copia de lectura). Esta credencial de Google queda para lo único que sigue usando Google: subir los respaldos diarios a Drive y guardar los adjuntos de los siniestros. Si no se configura, la aplicación funciona igual; sólo se pierden esas copias en Drive.',
+          'Desde la versión 12 el GENERAL DE CLIENTES vive en la base del VPS y el programa no sincroniza más con la planilla de Google (el servidor la mantiene actualizado como copia de lectura). Esta credencial de Google queda para lo único que sigue usando Google: subir los respaldos diarios a Drive y guardar los adjuntos de los siniestros.',
+          'Desde la 12.5 es OBLIGATORIA. El programa abre igual sin ella —nada de esto puede frenar el mostrador— pero mientras falte aparece un cartel en Inicio para TODO el equipo, porque lo que se pierde no se nota hasta que hace falta: el día que hay que buscar el documento de un siniestro o volver la base a como estaba el martes. La carga el superadministrador una sola vez; viaja cifrada al servidor y las demás computadoras la adoptan solas al arrancar, sin que nadie tenga que ir máquina por máquina.',
         ],
       },
       {
@@ -329,9 +331,17 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
-        titulo: 'Últimos movimientos y respaldos',
+        titulo: 'Últimos movimientos',
         parrafos: [
-          'Más abajo se ve un historial de lo último que pasó (subidas, bajadas, algún conflicto resuelto), útil para entender qué pasó si algo no cuadra. Y todos los días, después de las ocho de la noche, se guarda automáticamente una copia completa de la base en un archivo Excel aparte (y en Drive, si la cuenta de Google sigue cargada), por si alguna vez hiciera falta volver atrás; se conservan las últimas 30 copias, y «Respaldar ahora» genera una en el momento.',
+          'Más abajo se ve un historial de lo último que pasó (subidas, bajadas, algún conflicto resuelto), útil para entender qué pasó si algo no cuadra.',
+        ],
+      },
+      {
+        titulo: 'Los respaldos son dos cosas distintas',
+        parrafos: [
+          'Los del SERVIDOR son los que sirven para volver atrás. El servidor guarda solo, todos los días, una copia completa de la base de la agencia; no hace falta que nadie encienda ninguna computadora. Se muestran los últimos tres, con el día, cuántas pestañas y filas tiene cada uno, y quién lo hizo. «Respaldar ahora» guarda el de hoy en el momento (si ya está, no lo duplica).',
+          '«Restaurar» deja la base exactamente como estaba ese día, en TODAS las computadoras, y descarta todo lo que se cargó desde entonces. Es lo más fuerte que hace el programa: sólo lo puede hacer el superadministrador, el cartel dice qué se lleva puesto y el botón de confirmar se enciende recién a los cinco segundos. Antes de tocar nada, el servidor guarda una foto de cómo está la base en ese momento, así que si se restauró el respaldo equivocado hay con qué volver. Las otras computadoras quedan al día solas en su próxima sincronización.',
+          'Las copias de ESTA computadora son otra cosa: todos los días después de las ocho de la noche se guarda un archivo Excel con la base entera (y una copia en Drive, si la conexión con Google está cargada), y se conservan las últimas 30. Sirven para abrir en Excel y mirar; para volver atrás están los del servidor.',
         ],
       },
     ],
@@ -346,7 +356,11 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
       {
         termino: 'Respaldo',
-        explicacion: 'Una copia guardada aparte de toda la base, por si alguna vez hace falta recuperar información.',
+        explicacion: 'Una copia guardada aparte de toda la base, por si alguna vez hace falta recuperar información. Hay dos: los del servidor, que se hacen solos todos los días y se pueden restaurar, y las copias en Excel de esta computadora, para mirar.',
+      },
+      {
+        termino: 'Restaurar',
+        explicacion: 'Volver la base de toda la agencia a como estaba el día de un respaldo, descartando lo que se cargó después. Sólo lo puede hacer el superadministrador, y antes de hacerlo el servidor guarda una foto de cómo está ahora, por si hubo que volver.',
       },
     ],
   },

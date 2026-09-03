@@ -42,6 +42,30 @@ export interface AjusteVps extends FichaDeAjusteVps {
  * puente puede leer/guardar), acá el servidor decide con esto si se puede vincular una cuenta (sólo
  * SUPER_ADMIN) o en qué sucursal se puede publicar — por eso viaja en cada pedido.
  */
+/** La ficha de un respaldo del servidor, sin el volcado adentro: es lo que se dibuja en la pantalla. */
+export interface RespaldoVps {
+  id: number
+  /** AAAA-MM-DD en la zona de la agencia. */
+  dia: string
+  motivo: 'DIARIO' | 'A_MANO' | 'ANTES_DE_RESTAURAR'
+  fecha: string
+  tamano: number
+  pestanas: number
+  filas: number
+  /** Quién lo pidió, o null cuando lo hizo el reloj del servidor. */
+  hechoPor: string | null
+}
+
+export interface ResumenDeRestauracionVps {
+  pestanas: number
+  filas: number
+  /**
+   * La foto que el servidor sacó del estado anterior antes de pisarlo, para poder deshacer. Viene en
+   * null en el único caso en que no había nada que fotografiar: la base del servidor estaba vacía.
+   */
+  respaldoPrevio: RespaldoVps | null
+}
+
 export interface ActorDeRedesVps {
   nombre: string
   rol: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLEADO'
@@ -432,6 +456,51 @@ export class FuenteVps implements FuenteHoja {
 
   async borrarAjuste(clave: string): Promise<void> {
     await this.pedir(`borrar el ajuste «${clave}»`, 'POST', `/api/dmg/ajustes/${encodeURIComponent(clave)}/borrar`, {})
+  }
+
+  // --- Respaldos del estado de la base ---------------------------------------
+  //
+  // Los hace y los guarda el SERVIDOR, no esta computadora: la copia .xlsx de %APPDATA% depende de que
+  // alguien abra el programa después de las 20:00, y encima queda en la máquina de la que justamente
+  // hay que tener copia. Acá sólo se los mira y, si hace falta, se pide rebobinar.
+
+  async respaldos(cuantos = 3): Promise<RespaldoVps[]> {
+    const datos = (await this.pedir(
+      'listar los respaldos del servidor',
+      'GET',
+      `/api/dmg/respaldos?cuantos=${encodeURIComponent(String(cuantos))}`,
+      undefined,
+      // Dibuja una pantalla: si el servidor no está, se dice y listo, no se la deja cargando medio
+      // minuto mientras reintenta.
+      { reintentarSinRespuesta: false },
+    )) as { respaldos: RespaldoVps[] }
+    return datos?.respaldos ?? []
+  }
+
+  async crearRespaldo(hechoPor: string | null): Promise<{ respaldo: RespaldoVps; yaEstaba: boolean }> {
+    return (await this.pedir(
+      'guardar el respaldo en el servidor',
+      'POST',
+      '/api/dmg/respaldos',
+      { hechoPor },
+      // Es idempotente por día: repetirlo tras un corte sin respuesta deja exactamente lo mismo.
+      { reintentarSinRespuesta: true },
+    )) as { respaldo: RespaldoVps; yaEstaba: boolean }
+  }
+
+  /**
+   * Rebobina la base del servidor a ese respaldo. NUNCA se reintenta solo: pisa el GENERAL DE CLIENTES
+   * de la agencia entera, y repetirlo por las dudas después de un corte es exactamente lo que no hay
+   * que hacer. Si no vuelve respuesta, lo correcto es mirar cómo quedó y decidir a mano.
+   */
+  async restaurarRespaldo(id: number, hechoPor: string | null): Promise<ResumenDeRestauracionVps> {
+    return (await this.pedir(
+      'restaurar el respaldo',
+      'POST',
+      `/api/dmg/respaldos/${encodeURIComponent(String(id))}/restaurar`,
+      { hechoPor },
+      { reintentarSinRespuesta: false },
+    )) as ResumenDeRestauracionVps
   }
 
   // --- Redes sociales por sucursal -------------------------------------------

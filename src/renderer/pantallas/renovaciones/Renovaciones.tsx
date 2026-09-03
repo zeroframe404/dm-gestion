@@ -11,6 +11,7 @@ import {
   ESTADOS_DE_RENOVACION,
   NOMBRE_ESTADO_RENOVACION,
   type BandejaRenovaciones,
+  type DestinoDeLaAnterior,
   type EstadoRenovacion,
   type FilaRenovacion,
   type SemanaDeRenovaciones,
@@ -28,6 +29,13 @@ import { DialogoNoRenueva, DialogoRenovar } from './DialogoRenovar'
 
 /** Los estados que dan el trámite por cerrado: son los que esconde la casilla «Ocultar las ya resueltas». */
 const ESTADOS_RESUELTOS: EstadoRenovacion[] = ['renovada', 'no renueva']
+
+/** Qué decir de la póliza vieja después de renovar, según lo que se eligió en el cartel. */
+const QUE_PASO_CON_LA_ANTERIOR: Record<DestinoDeLaAnterior, string> = {
+  renovada: 'La anterior pasó a histórica, marcada como renovada.',
+  baja: 'La anterior quedó en Cartera → Bajas con su motivo.',
+  activa: 'La anterior sigue vigente en la cartera: quedaron las dos.',
+}
 
 interface Filtros {
   /** Vacía = todos; 'sin' son las que no tienen responsable y el resto son ids de usuario en texto. */
@@ -300,11 +308,13 @@ export function Renovaciones() {
       <DialogoRenovar
         fila={renovarA}
         alCerrar={() => setRenovarA(null)}
-        alRenovar={(nueva, nombre) => {
+        alRenovar={(nueva, nombre, destino) => {
           setBandeja(nueva)
           setRenovarA(null)
           setError(null)
-          setAviso(`${nombre} quedó renovada. La vigencia anterior pasó a histórica.`)
+          // El aviso dice qué pasó con la anterior porque ahora se elige: decir siempre «pasó a
+          // histórica» sería mentir en dos de los tres casos, y es lo único que queda en pantalla.
+          setAviso(`${nombre} quedó renovada. ${QUE_PASO_CON_LA_ANTERIOR[destino]}`)
         }}
         alFallar={setError}
       />

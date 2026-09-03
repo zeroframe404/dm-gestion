@@ -33,7 +33,7 @@
 //    vale. Es configuración de la agencia, no un dato que dos personas escriben a la vez.
 import { createHash } from 'node:crypto'
 import { claveDeSucursal, sucursalCanonica } from '../../shared/sucursales'
-import type { EstadoDeAjusteCompartido } from '../../shared/tipos'
+import type { EstadoDeAjusteCompartido, EstadoDeGoogleEnLaAgencia } from '../../shared/tipos'
 import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import { adoptarCompanias, valorCompartidoDeCompanias } from './companias'
@@ -286,6 +286,31 @@ export const adoptarVehiculosDelVps = (): Promise<ResultadoDeAdopcion> => adopta
 export const estadoCompartidoDeGoogle = (): Promise<EstadoDeAjusteCompartido> => estadoDe(GOOGLE)
 export const publicarGoogleEnElVps = (quien: string | null): Promise<EstadoDeAjusteCompartido> => publicar(GOOGLE, quien)
 export const adoptarGoogleDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(GOOGLE)
+/** El botón «Traerla ahora» del cartel de Inicio: lo apretó alguien, así que sí pisa lo local. */
+export const traerGoogleDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(GOOGLE, { pisarLoLocal: true })
+
+/**
+ * Cómo está la conexión con Google en la agencia y en esta computadora, sin ningún secreto adentro.
+ *
+ * Lo mira todo el equipo (ver `EstadoDeGoogleEnLaAgencia` en tipos.ts), así que sale por su propio
+ * canal en vez de por `config:estadoGoogle`, que lleva el correo de la cuenta y la URL de la hoja y
+ * sigue siendo de administradores. Y no rompe nunca: con el servidor caído se contesta con lo que se
+ * sabe de esta computadora y el motivo aparte.
+ */
+export async function estadoDeGoogleEnLaAgencia(): Promise<EstadoDeGoogleEnLaAgencia> {
+  const enEstaComputadora = valorCompartidoDeGoogle() !== null
+  const hayServidor = crearFuenteVps() !== null
+  const compartido = await estadoDe(GOOGLE)
+  return {
+    hayServidor,
+    enEstaComputadora,
+    enElServidor: compartido.enElServidor,
+    alDia: compartido.alDia,
+    actualizadoEn: compartido.actualizadoEn,
+    actualizadoPor: compartido.actualizadoPor,
+    error: compartido.error,
+  }
+}
 
 export const estadoCompartidoDeMeta = (): Promise<EstadoDeAjusteCompartido> => estadoDe(META)
 export const publicarMetaEnElVps = (quien: string | null): Promise<EstadoDeAjusteCompartido> => publicar(META, quien)

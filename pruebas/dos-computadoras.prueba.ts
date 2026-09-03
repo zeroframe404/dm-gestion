@@ -458,15 +458,24 @@ test('los administradores ven la caja y la rendición de todas las sucursales; u
   assert.deepEqual(deSarandi.pagos, [], 'Sarandí no cobró nada ese día: la caja está vacía, no llena de las otras')
   assert.equal(deSarandi.total, 0)
 
-  // Lo mismo en Imputados: la empleada rinde lo de su mostrador y no puede tocar lo de otro.
-  const rendicion = imputados('2026-08', [], DAIANA)
-  assert.equal(rendicion.sucursal, 'Lanús')
-  assert.deepEqual(rendicion.pagos.map((p) => p.clienteNombre), [CLIENTES.gonzalez.nombre])
-  assert.equal(imputados('2026-08', [], SOFIA).pagos.length, 2)
-  assert.equal(imputados('2026-08', [], SOFIA).sucursal, '')
-  const deDockSud = imputados('2026-08', [], SOFIA).pagos.find((p) => p.clienteNombre === CLIENTES.perezAuto.nombre)!
-  assert.throws(() => cambiarResultado(deDockSud.id, 'OK', [], DAIANA), /otra sucursal/)
-  assert.equal(cambiarResultado(deDockSud.id, 'OK', [], SOFIA).pagos.find((p) => p.id === deDockSud.id)?.resultado, 'OK')
+  // Imputados NO se recorta como la caja: la rendición del mes es una sola cuenta contra la compañía y
+  // la ven entera los tres roles. La sucursal es un filtro de la pantalla, y quien lo pide de más se lo
+  // pone; quien no lo pide, ve las cuatro.
+  const rendicion = imputados('2026-08', [], [])
+  assert.deepEqual(rendicion.sucursalesElegidas, [], 'sin filtro pedido, la rendición no se acota sola')
+  assert.equal(rendicion.pagos.length, 2, 'la rendición trae los pagos de las dos sucursales')
+  for (const deLaAgencia of ['Lanús', 'Dock Sud']) {
+    assert.ok(rendicion.sucursales.includes(deLaAgencia), `«${deLaAgencia}» se puede elegir en el filtro`)
+  }
+  const soloLanus = imputados('2026-08', [], ['Lanús'])
+  assert.deepEqual(soloLanus.sucursalesElegidas, ['Lanús'])
+  assert.deepEqual(soloLanus.pagos.map((p) => p.clienteNombre), [CLIENTES.gonzalez.nombre])
+
+  // Y se rinde cualquier pago, sea de la sucursal que sea: Daiana (empleada de Lanús) pone el resultado
+  // de un pago que se cobró en Dock Sud. Antes esto reventaba con «otra sucursal».
+  const deDockSud = rendicion.pagos.find((p) => p.clienteNombre === CLIENTES.perezAuto.nombre)!
+  const rendido = cambiarResultado(deDockSud.id, 'OK', [], DAIANA)
+  assert.equal(rendido.pagos.find((p) => p.id === deDockSud.id)?.resultado, 'OK')
   cerrarTodo()
 })
 

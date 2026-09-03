@@ -262,6 +262,18 @@ export function limpiarImposibles(): number {
     .run().changes
 }
 
+/**
+ * Tira TODO lo que todavía no subió. Se usa en un solo lugar y es a propósito: al restaurar un
+ * respaldo, lo que esperaba en la cola son justamente los cambios de después de esa foto —los que se
+ * quieren descartar— y dejarlos ahí haría que el motor se los mandara al servidor recién restaurado y
+ * deshiciera la restauración a los treinta segundos.
+ *
+ * Lo ya subido (`listo`) no se toca: eso es la bitácora de lo que sí viajó.
+ */
+export function vaciarCola(): number {
+  return db().prepare(`DELETE FROM cola_sync WHERE estado IN ('pendiente', 'fallido')`).run().changes
+}
+
 /** Limpia las entradas ya subidas hace más de una semana: la cola no es un archivo histórico. */
 export function limpiarViejas(): number {
   const limite = new Date(Date.now() - 7 * 86_400_000).toISOString()

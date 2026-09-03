@@ -5,6 +5,7 @@
 // compañía—, así que todo sale de la misma tabla `pagos` y de `pagos.ts`.
 import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal, periodoDeHoy } from '../../shared/semaforo'
+import { veLosNumerosDeLaAgencia } from '../../shared/permisos'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   RANGOS_DE_MORA,
@@ -113,10 +114,16 @@ function totalesPorMedio(pagos: PagoRegistrado[]): TotalPorMedio[] {
 }
 
 /**
- * Qué sucursales puede mirar quien pregunta. Un administrador (SUPER_ADMIN o ADMIN) ve la caja y la
- * rendición de todas; un empleado, sólo las de su mostrador. Es una regla de ROL, como la de los
- * números de la agencia (ver `veLosNumerosDeLaAgencia`): la caja de las otras sucursales es la plata
- * que entró en otro mostrador, y quien la mira desde arriba es quien administra la agencia.
+ * Qué sucursales de LA CAJA DEL DÍA puede mirar quien pregunta. Un administrador (SUPER_ADMIN o ADMIN)
+ * ve la de todas; un empleado, sólo la de su mostrador. Es una regla de ROL, como la de los números de
+ * la agencia (ver `veLosNumerosDeLaAgencia`): la caja de las otras sucursales es la plata que entró en
+ * otro mostrador, y quien la mira desde arriba es quien administra la agencia.
+ *
+ * Es SÓLO de la caja del día y no de la rendición de Imputados, aunque las dos pantallas vivan en
+ * Cobranzas. La caja es plata: cuánto entró hoy en cada mostrador. La rendición es una planilla de
+ * control contra la compañía —qué dijo de cada pago del mes—, la agencia la cierra una vez por mes
+ * entre todos, y partirla por mostrador dejaba a cada sucursal viendo un pedazo de una cuenta que es
+ * una sola. Por eso Imputados quedó abierta a los tres roles y esto no se usa ahí.
  *
  * Devuelve '' cuando no hay restricción (también cuando no se sabe quién pregunta: los llamados
  * internos y las pruebas). Se compara por sucursal, no por usuario: dos personas del mismo mostrador
@@ -479,18 +486,48 @@ function periodosConPagos(): string[] {
   return filas.map((f) => f.periodo)
 }
 
-export function imputados(periodoPedido: string | null, companiasPedidas: string[], actor?: SesionUsuario | null): RendicionImputados {
+/**
+ * La rendición del mes contra las compañías. La ven ENTERA los tres roles, y la sucursal es un filtro
+ * más —como la compañía—, no un recorte que se impone por rol.
+ *
+ * Por qué no se recorta como la caja del día: la rendición es UNA sola cuenta por mes contra cada
+ * compañía. Un pago que se cobró en Lanús y una compañía que lo rechaza son el mismo problema para
+ * toda la agencia, y quien se sienta a cerrar el mes necesita ver los pendientes de las cuatro
+ * sucursales para saber si terminó. Con la rendición partida por mostrador nadie veía el total, cada
+ * sucursal cerraba lo suyo sin saber qué faltaba y los pendientes de las otras no aparecían en ningún
+ * lado.
+ *
+ * Lo único que SIGUE recortado por rol es el total en pesos del mes (`totalImporte`), que viene en
+ * null para un empleado. Abrir la rendición a las cuatro sucursales convirtió ese número en el bruto
+ * cobrado del mes por toda la agencia, que es exactamente lo que describe `veLosNumerosDeLaAgencia` en
+ * permisos.ts y lo que la agencia pidió no mostrar. Las filas se ven enteras, con su importe cada una
+ * —eso es el trabajo del día y un empleado ya lo ve en la mora y en la planilla—; lo que no se ve es
+ * la suma. La cuenta de PAGOS, que es lo que sirve para saber cuánto falta rendir, se ve siempre.
+ */
+export function imputados(
+  periodoPedido: string | null,
+  companiasPedidas: string[],
+  sucursalesPedidas: string[] = [],
+  veLosNumeros = true,
+): RendicionImputados {
   const periodos = periodosConPagos()
   const pedidas = listaDeFiltro(companiasPedidas)
   const pedido = limpiar(periodoPedido)
   const periodo = pedido && FORMATO_PERIODO.test(pedido) ? pedido : (periodos[0] ?? periodoDeHoy())
-  const sucursal = sucursalObligadaDe(actor)
+
+  // Las mismas opciones que ofrece la caja: las cuatro del catálogo más las que traigan los pagos.
+  const sucursalesDisponibles = sucursalesDeLaCaja()
+  // Lo pedido se pliega contra lo que existe, igual que las compañías: un nombre que no está en la
+  // lista se descarta en vez de vaciar la pantalla sin explicación.
+  const sucursales = listaDeFiltro(sucursalesPedidas).flatMap((pedidaSucursal) => {
+    const encontrada = sucursalesDisponibles.find((s) => mismaSucursal(s, pedidaSucursal))
+    return encontrada ? [encontrada] : []
+  })
 
   const crudas = db()
     .prepare(`${SELECT_PAGOS} WHERE ${PERIODO_DEL_PAGO} = ? ORDER BY p.fecha_iso, p.cliente_nombre`)
     .all(periodo) as PagoCrudo[]
-  // Un empleado rinde lo que cobró su mostrador; las otras sucursales no son de su incumbencia.
-  const todos = crudas.map(aPagoRegistrado).filter((pago) => !sucursal || mismaSucursal(pago.sucursal, sucursal))
+  const todos = crudas.map(aPagoRegistrado).filter((pago) => coincideAlguno(sucursales, pago.sucursal, mismaSucursal))
 
   const companiasDisponibles = distintos(todos.map((pago) => pago.compania))
   // Se devuelven las compañías tal como las escribe el mes, no como llegaron del filtro: así el
@@ -505,7 +542,8 @@ export function imputados(periodoPedido: string | null, companiasPedidas: string
   return {
     periodo,
     companiasElegidas: companias,
-    sucursal,
+    sucursalesElegidas: sucursales,
+    sucursales: sucursalesDisponibles,
     // Sin ningún pago cargado la lista queda vacía a propósito: es lo que la pantalla mira para
     // explicar que la rendición todavía no tiene nada.
     periodos: periodos.length === 0 || periodos.includes(periodo) ? periodos : [periodo, ...periodos],
@@ -513,7 +551,7 @@ export function imputados(periodoPedido: string | null, companiasPedidas: string
     pagos,
     contadores,
     total: pagos.length,
-    totalImporte: pagos.reduce((suma, pago) => suma + (pago.importeMonto ?? 0), 0),
+    totalImporte: veLosNumeros ? pagos.reduce((suma, pago) => suma + (pago.importeMonto ?? 0), 0) : null,
     pendientes: contadores[''],
     sinCobrar: pagos.filter((pago) => pago.estadoCobro === 'IMPUTADO').length,
     sinMes: pagosSinMes(),
@@ -537,12 +575,19 @@ function pagosSinMes(): number {
  * Cambia el RESULTADO de un pago y lo manda a la hoja. Si la hoja no tiene una pestaña IMPUTADOS que
  * sirva —o la tiene sin columna RESULTADO— el cambio se guarda igual acá: no se pierde trabajo por
  * cómo esté armada la planilla, y la pantalla lo explica.
+ *
+ * Se rinde cualquier pago del mes, sea de la sucursal que sea. Antes un empleado sólo podía tocar los
+ * de su mostrador, y como la rendición ahora se ve entera, dejar la mitad de las filas mirando pero
+ * sin poder tocarse sería peor que no mostrarlas: la pantalla ofrecería un desplegable que devuelve un
+ * error rojo. Quién lo tocó queda anotado en el historial de siempre, que es lo que hace falta para
+ * poder preguntar después.
  */
 export function cambiarResultado(
   pagoId: number,
   resultado: ResultadoImputacion,
   companiasDelFiltro: string[],
   actor: SesionUsuario,
+  sucursalesDelFiltro: string[] = [],
 ): RendicionImputados {
   const identificador = enteroPositivo(pagoId, 'El pago')
   if (!(RESULTADOS_DE_IMPUTACION as readonly string[]).includes(resultado)) {
@@ -550,10 +595,6 @@ export function cambiarResultado(
   }
   const pago = db().prepare(`${SELECT_PAGOS} WHERE p.id = ?`).get(identificador) as PagoCrudo | undefined
   if (!pago) throw new ErrorDeNegocio('No se encontró ese pago.')
-  const obligada = sucursalObligadaDe(actor)
-  if (obligada && !mismaSucursal(pago.sucursal, obligada)) {
-    throw new ErrorDeNegocio(`Ese pago se cobró en otra sucursal: sólo lo rinde quien administra la agencia o el mostrador de ${pago.sucursal ?? 'esa sucursal'}.`)
-  }
 
   if (normalizarResultado(pago.resultado) !== resultado) {
     db().prepare('UPDATE pagos SET resultado = ?, actualizado_en = ? WHERE id = ?').run(resultado || null, ahoraIso(), identificador)
@@ -578,7 +619,7 @@ export function cambiarResultado(
       valorNuevo: resultado || null,
     })
   }
-  return imputados(pago.periodo, listaDeFiltro(companiasDelFiltro), actor)
+  return imputados(pago.periodo, listaDeFiltro(companiasDelFiltro), listaDeFiltro(sucursalesDelFiltro), veLosNumerosDeLaAgencia(actor.rol))
 }
 
 // ---------------------------------------------------------------------------

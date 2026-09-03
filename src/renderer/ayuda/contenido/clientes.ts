@@ -50,7 +50,7 @@ export const AYUDA_CLIENTES: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Eliminar cliente',
         explicacion:
-          'El botón rojo de la ficha, que sólo ve un superadministrador: borra a la persona de la base con sus vehículos, sus pólizas, sus cuotas, sus pagos y sus siniestros, para siempre. Si el cliente simplemente se fue, lo que corresponde es dar de baja sus pólizas, no borrarlo.',
+          'El botón rojo de la ficha: borra a la persona de la base con sus vehículos, sus pólizas, sus cuotas, sus pagos y sus siniestros, para siempre. Lo ve cualquiera que pueda editar Clientes —superadministrador, administradores y empleados—, porque el caso de todos los días es el alta cargada dos veces o el DNI mal tipeado, y esperar a otra persona para sacar una fila que nadie quería la dejaba apareciendo en la planilla, en la mora y en los avisos. Antes de borrar, el cartel cuenta todo lo que se lleva puesto y el botón se enciende recién a los cinco segundos; quién lo borró queda anotado en el historial. Si el cliente simplemente se fue, lo que corresponde es dar de baja sus pólizas, no borrarlo.',
       },
       {
         termino: 'Sin pólizas',

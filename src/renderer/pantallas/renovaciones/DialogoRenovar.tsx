@@ -4,14 +4,18 @@
 import { useEffect, useState } from 'react'
 import { mesesDeVigencia, porcentajeDeAumento } from '../../../shared/polizas'
 import {
+  DESTINOS_DE_LA_ANTERIOR,
+  DETALLE_DESTINO_ANTERIOR,
   MOTIVOS_DE_BAJA,
+  NOMBRE_DESTINO_ANTERIOR,
   NOMBRE_MOTIVO_BAJA,
   type BandejaRenovaciones,
   type DatosDeRenovacion,
+  type DestinoDeLaAnterior,
   type FilaRenovacion,
   type MotivoDeBaja,
 } from '../../../shared/tipos'
-import { Alerta, AreaTexto, Boton, Campo, Cargando, Dialogo, Selector } from '../../componentes/ui'
+import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Selector } from '../../componentes/ui'
 
 // ---------------------------------------------------------------------------
 // Renovar
@@ -21,7 +25,7 @@ interface PropsRenovar {
   /** null = cerrado. Al pasar una fila se pide la sugerencia al proceso principal. */
   fila: FilaRenovacion | null
   alCerrar: () => void
-  alRenovar: (bandeja: BandejaRenovaciones, nombre: string) => void
+  alRenovar: (bandeja: BandejaRenovaciones, nombre: string, destino: DestinoDeLaAnterior) => void
   alFallar: (mensaje: string) => void
 }
 
@@ -32,6 +36,9 @@ const FORMULARIO_VACIO: DatosDeRenovacion = {
   numero: '',
   propuesta: '',
   observaciones: '',
+  destinoDeLaAnterior: 'renovada',
+  motivoDeBaja: 'CAMBIO DE COMPANIA',
+  notaDeBaja: '',
 }
 
 /** «un año», «4 meses»: cuánto dura el plazo, escrito como se dice. */
@@ -101,13 +108,16 @@ export function DialogoRenovar({ fila, alCerrar, alRenovar, alFallar }: PropsRen
   const yaAumentada = porcentaje !== null && cuotaAnterior !== '' && datos.cuota.trim() !== cuotaAnterior
   const puedeVolverALaAnterior = yaAumentada && leerCuota(cuotaAnterior) !== null
 
-  const cambiar = (campo: keyof DatosDeRenovacion, valor: string) => setDatos((previo) => ({ ...previo, [campo]: valor }))
+  const cambiar = <C extends keyof DatosDeRenovacion>(campo: C, valor: DatosDeRenovacion[C]) =>
+    setDatos((previo) => ({ ...previo, [campo]: valor }))
+
+  const destino: DestinoDeLaAnterior = datos.destinoDeLaAnterior ?? 'renovada'
 
   const guardar = async () => {
     setGuardando(true)
     const resultado = await window.dm.renovaciones.renovar(fila.polizaId, datos)
     setGuardando(false)
-    if (resultado.ok) alRenovar(resultado.datos, fila.clienteNombre ?? 'La póliza')
+    if (resultado.ok) alRenovar(resultado.datos, fila.clienteNombre ?? 'La póliza', destino)
     else alFallar(resultado.error)
   }
 
@@ -144,8 +154,9 @@ export function DialogoRenovar({ fila, alCerrar, alRenovar, alFallar }: PropsRen
       ) : (
         <div className="flex flex-col gap-3">
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-            Se crea la vigencia nueva y la anterior queda como histórica. Está todo propuesto (las fechas nuevas y la
-            {yaAumentada ? ' cuota ya aumentada' : ' misma cuota'}): cambiá lo que haga falta antes de guardar.
+            Se carga el número nuevo y nace la vigencia que sigue. Está todo propuesto (las fechas nuevas y la
+            {yaAumentada ? ' cuota ya aumentada' : ' misma cuota'}): cambiá lo que haga falta antes de guardar. Abajo se
+            elige qué pasa con la póliza anterior.
           </p>
 
           {fila.aumentaAlRenovar && (
@@ -212,9 +223,114 @@ export function DialogoRenovar({ fila, alCerrar, alRenovar, alFallar }: PropsRen
             onChange={(evento) => cambiar('observaciones', evento.target.value)}
             ayuda="Vienen las de la póliza anterior. Si ya aplicaste el aumento, conviene sacar la nota que lo pedía."
           />
+
+          <DestinoDeLaPolizaAnterior
+            fila={fila}
+            destino={destino}
+            motivo={datos.motivoDeBaja ?? 'CAMBIO DE COMPANIA'}
+            nota={datos.notaDeBaja ?? ''}
+            numeroNuevo={datos.numero}
+            alElegir={(elegido) => cambiar('destinoDeLaAnterior', elegido)}
+            alCambiarMotivo={(elegido) => cambiar('motivoDeBaja', elegido)}
+            alCambiarNota={(texto) => cambiar('notaDeBaja', texto)}
+          />
         </div>
       )}
     </Dialogo>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Qué pasa con la póliza anterior
+// ---------------------------------------------------------------------------
+
+/**
+ * Las tres opciones, en el mismo cartel donde se carga el número nuevo.
+ *
+ * Hasta la 12.4 esto no se preguntaba: la anterior salía siempre de la cartera. Y casi siempre está
+ * bien —por eso «Renovadas» viene elegida— pero los otros dos casos existen y no tenían salida. Si la
+ * compañía anuló la vieja en vez de renovarla, la agencia la necesita en BAJAS, que es donde mira lo
+ * que se perdió en el mes; y si las dos siguen vigentes —porque la compañía todavía no dio de baja la
+ * anterior, o porque la nueva es de otro riesgo— sacarla de la cartera dejaba de cobrarse una póliza
+ * que estaba viva.
+ */
+function DestinoDeLaPolizaAnterior({
+  fila,
+  destino,
+  motivo,
+  nota,
+  numeroNuevo,
+  alElegir,
+  alCambiarMotivo,
+  alCambiarNota,
+}: {
+  fila: FilaRenovacion
+  destino: DestinoDeLaAnterior
+  motivo: MotivoDeBaja
+  nota: string
+  numeroNuevo: string
+  alElegir: (destino: DestinoDeLaAnterior) => void
+  alCambiarMotivo: (motivo: MotivoDeBaja) => void
+  alCambiarNota: (nota: string) => void
+}) {
+  const anterior = `${fila.compania ?? ''} ${fila.numero ?? 'sin número'}`.trim()
+  const mismoNumero = numeroNuevo.trim() !== '' && numeroNuevo.trim() === (fila.numero ?? '').trim()
+
+  return (
+    <fieldset className="rounded-lg border border-slate-300 bg-white p-3">
+      <legend className="px-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+        La póliza anterior ({anterior})
+      </legend>
+      <div className="flex flex-col gap-1.5">
+        {DESTINOS_DE_LA_ANTERIOR.map((opcion) => (
+          <label
+            key={opcion}
+            className={cx(
+              'flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-sm',
+              destino === opcion ? 'border-marino-400 bg-marino-50' : 'border-slate-200 hover:bg-slate-50',
+            )}
+          >
+            <input
+              type="radio"
+              name="destino-de-la-anterior"
+              className="mt-0.5"
+              checked={destino === opcion}
+              onChange={() => alElegir(opcion)}
+            />
+            <span className="min-w-0">
+              <span className="font-semibold text-slate-800">{NOMBRE_DESTINO_ANTERIOR[opcion]}</span>
+              <span className="block text-xs leading-relaxed text-slate-600">{DETALLE_DESTINO_ANTERIOR[opcion]}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {destino === 'baja' && (
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Selector
+            etiqueta="Motivo de la baja"
+            value={motivo}
+            onChange={(evento) => alCambiarMotivo(evento.target.value as MotivoDeBaja)}
+            opciones={MOTIVOS_DE_BAJA.map((valor) => ({ valor, texto: NOMBRE_MOTIVO_BAJA[valor] }))}
+          />
+          <Campo
+            etiqueta="Nota de la baja"
+            value={nota}
+            onChange={(evento) => alCambiarNota(evento.target.value)}
+            ayuda="Opcional. Si la dejás vacía se anota que la renovó la póliza nueva."
+          />
+        </div>
+      )}
+
+      {destino === 'activa' && mismoNumero && (
+        <div className="mt-3">
+          <Alerta tono="aviso">
+            Las dos pólizas van a quedar vigentes con el mismo número ({numeroNuevo.trim()}). Si la compañía emitió una
+            nueva, cargá su número arriba; si es la misma póliza, lo que corresponde es dejarla en Renovadas.
+          </Alerta>
+        </div>
+      )}
+    </fieldset>
   )
 }
 

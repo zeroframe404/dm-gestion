@@ -1,10 +1,23 @@
 // Borrado definitivo y puntual de un registro: el botón de la papelera.
 //
-// Es del SUPER_ADMIN y de nadie más. No es un permiso configurable a propósito —igual que
+// Quién puede borrar qué depende del TIPO, y no es un permiso configurable a propósito —igual que
 // `veLosNumerosDeLaAgencia` en permisos.ts—: si se pudiera encender desde una pantalla, alcanzaría con
-// que alguien se distraiga una vez y la agencia se quedaría sin el cliente, sus pólizas y sus pagos, y
-// sin nadie a quien reclamárselos. Un ADMIN sigue teniendo todo lo demás: dar de baja, deshacer, poner
-// vigente, corregir. Lo que no tiene es la papelera.
+// que alguien se distraiga una vez.
+//
+//   · El CLIENTE lo borran el superadministrador, los administradores y los empleados (12.5). Lo pidió
+//     la agencia y el caso es el de todos los días: el alta que se cargó dos veces, el DNI mal tipeado
+//     que creó una persona que no existe, la consulta que se cargó como cliente. Antes había que
+//     esperar al superadministrador para sacar una fila que nadie quería, y mientras tanto esa fila
+//     seguía apareciendo en la planilla, en la mora y en los avisos de WhatsApp. Borrar el cliente se
+//     lleva puesto TODO lo suyo (pólizas, cuotas, pagos, siniestros, adjuntos): por eso el cartel
+//     cuenta antes qué se va, hay que esperar los cinco segundos, y queda anotado en el historial con
+//     nombre y apellido de quien lo borró.
+//   · TODO LO DEMÁS sigue siendo del SUPER_ADMIN y de nadie más. Una póliza, una baja o una fila de la
+//     planilla son piezas de la cartera y su lugar no es la papelera: se dan de baja, se deshacen, se
+//     ponen vigentes o se corrigen, y todo eso un ADMIN ya lo tiene.
+//
+// Además del rol hace falta poder EDITAR el módulo de donde salió el registro (ver `AREA_ELIMINABLE`):
+// a quien tiene Clientes en «sólo ver» no se le abre la papelera de un cliente.
 //
 // «Puntual» es la palabra que importa: se borra UN registro elegido a mano, con su nombre delante y
 // después de leer todo lo que se lleva puesto. No hay borrado en lote y no lo va a haber.
@@ -20,6 +33,9 @@
  * que cobraron), compañías, sucursales, reglas de cobertura ni plantillas —ésas ya tienen su propio
  * borrado, con sus propias reglas— ni nada del catálogo de vehículos, que se vuelve a bajar solo.
  */
+import type { Area } from './permisos'
+import type { Rol } from './tipos'
+
 export const TIPOS_ELIMINABLES = [
   'cliente',
   'poliza',
@@ -69,6 +85,54 @@ export const NOMBRE_ELIMINABLE: Record<TipoEliminable, NombreDeTipo> = {
 
 export function esTipoEliminable(valor: unknown): valor is TipoEliminable {
   return typeof valor === 'string' && (TIPOS_ELIMINABLES as readonly string[]).includes(valor)
+}
+
+/**
+ * Los roles que pueden borrar cada tipo. Está escrito tipo por tipo y no con un `todos menos`: cada
+ * línea nueva es una decisión que alguien tiene que tomar mirando qué se lleva puesta, y una lista
+ * explícita obliga a tomarla.
+ */
+const ROLES_QUE_BORRAN: Record<TipoEliminable, readonly Rol[]> = {
+  cliente: ['SUPER_ADMIN', 'ADMIN', 'EMPLEADO'],
+  poliza: ['SUPER_ADMIN'],
+  cuota: ['SUPER_ADMIN'],
+  baja: ['SUPER_ADMIN'],
+  rechazo: ['SUPER_ADMIN'],
+  lead: ['SUPER_ADMIN'],
+  presupuesto: ['SUPER_ADMIN'],
+  siniestro: ['SUPER_ADMIN'],
+  riesgo: ['SUPER_ADMIN'],
+  amp: ['SUPER_ADMIN'],
+  tarea: ['SUPER_ADMIN'],
+}
+
+/**
+ * El área de permisos del módulo de donde sale cada papelera. Además del rol hay que poder EDITAR ese
+ * módulo: si a alguien se le dejó Clientes en «sólo ver», la papelera del cliente tampoco se le abre.
+ * Para el SUPER_ADMIN no cambia nada —tiene «editar» en todo—, así que esto sólo acota a los demás.
+ */
+export const AREA_ELIMINABLE: Record<TipoEliminable, Area> = {
+  cliente: 'clientes',
+  poliza: 'polizas',
+  cuota: 'cartera',
+  baja: 'cartera',
+  rechazo: 'cartera',
+  lead: 'leads',
+  presupuesto: 'presupuestos',
+  siniestro: 'siniestros',
+  riesgo: 'cartera',
+  amp: 'cartera',
+  tarea: 'tareas',
+}
+
+/** ¿Este rol puede borrar registros de este tipo? Falta todavía el permiso de `AREA_ELIMINABLE`. */
+export function rolPuedeEliminar(rol: Rol, tipo: TipoEliminable): boolean {
+  return ROLES_QUE_BORRAN[tipo].includes(rol)
+}
+
+/** Por qué no se puede, para decirlo con las mismas palabras en el servicio y en la pantalla. */
+export function motivoDeNoPoderEliminar(tipo: TipoEliminable): string {
+  return `Borrar ${conArticulo(tipo)} de la base es sólo del superadministrador.`
 }
 
 /** «el cliente», «la póliza». */

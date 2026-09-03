@@ -22,8 +22,11 @@ import {
 import {
   ESTADOS_DE_RENOVACION,
   MOTIVOS_DE_BAJA,
+  NOMBRE_DESTINO_ANTERIOR,
   NOMBRE_MOTIVO_BAJA,
+  esDestinoDeLaAnterior,
   type BandejaRenovaciones,
+  type DestinoDeLaAnterior,
   type DatosDeBaja,
   type DatosDeRenovacion,
   type DatosDeSeguimiento,
@@ -397,9 +400,16 @@ export function datosSugeridosDeRenovacion(polizaId: number): DatosDeRenovacion 
     vigenciaDesde: desde,
     vigenciaHasta: mesesDespues(desde, meses),
     cuota: cuotaSugerida(cuota?.cuota ?? null, observaciones),
+    // El número viene con el de la póliza que termina y NO en blanco a propósito: hay compañías que
+    // renuevan conservando el número y ahí no hay nada que tipear. Cuando la compañía da uno nuevo se
+    // pisa, que es el caso que la agencia pidió resolver con el cartel de acá abajo.
     numero: limpiar(poliza.numero),
     propuesta: limpiar(poliza.propuesta),
     observaciones: limpiar(observaciones),
+    // Lo que viene elegido en el cartel: renovar sin darle vueltas es lo que pasa casi siempre.
+    destinoDeLaAnterior: 'renovada',
+    motivoDeBaja: 'CAMBIO DE COMPANIA',
+    notaDeBaja: '',
   }
 }
 
@@ -615,11 +625,37 @@ function camposParaLaHoja(
   }
 }
 
+/**
+ * Qué se hace con la póliza vieja, leído de lo que mandó la pantalla.
+ *
+ * Sin destino se asume `renovada`, que es exactamente lo que hacía la 12.4: una computadora sin
+ * actualizar sigue renovando como siempre en vez de que se le rechace el llamado.
+ */
+/** El motivo de baja tal como llega de la pantalla, o el error de siempre si no es uno de la lista. */
+function motivoElegido(crudo: unknown): MotivoDeBaja {
+  const motivo = crudo as MotivoDeBaja
+  if (!MOTIVOS_DE_BAJA.includes(motivo)) throw new ErrorDeNegocio('Elegí un motivo de baja de la lista.')
+  return motivo
+}
+
+function destinoDeLaAnterior(entrada: Record<string, unknown>): DestinoDeLaAnterior {
+  const pedido = entrada.destinoDeLaAnterior
+  if (pedido === undefined || pedido === null || pedido === '') return 'renovada'
+  if (!esDestinoDeLaAnterior(pedido)) {
+    throw new ErrorDeNegocio('Elegí qué pasa con la póliza anterior: dejarla en Renovadas, mandarla a Bajas o dejarla Activa.')
+  }
+  return pedido
+}
+
 export function renovar(polizaId: number, datos: DatosDeRenovacion, actor: SesionUsuario): BandejaRenovaciones {
   const anterior = buscarPoliza(enteroPositivo(polizaId, 'La póliza'))
   if (anterior.activa !== 1) throw new ErrorDeNegocio('Esa póliza ya no está en la cartera: no se puede renovar.')
 
   const entrada = objeto(datos, 'Los datos de la renovación')
+  const destino = destinoDeLaAnterior(entrada)
+  // El motivo se exige sólo cuando hace falta: pedirlo siempre obligaría a elegir uno para tirarlo.
+  const motivoDeBaja = destino === 'baja' ? motivoElegido(entrada.motivoDeBaja) : null
+  const notaDeBaja = destino === 'baja' ? texto(entrada.notaDeBaja ?? '', 'La nota de la baja', 0, 1000) : ''
   const desdeIso = vigenciaIso(entrada.vigenciaDesde, 'la vigencia desde')
   const hastaIso = vigenciaIso(entrada.vigenciaHasta, 'la vigencia hasta')
   if (hastaIso <= desdeIso) throw new ErrorDeNegocio('La vigencia nueva tiene que terminar después de empezar.')
@@ -702,10 +738,33 @@ export function renovar(polizaId: number, datos: DatosDeRenovacion, actor: Sesio
         ahora,
       }) as { id: number }
 
-    // La anterior queda histórica: activa = 0 y enganchada por poliza_anterior_id. No se le inventa una
-    // baja con motivo, porque no se dio de baja: se renovó, y en BAJAS no tiene nada que hacer.
-    // (La clave ya se liberó más arriba, antes de insertar la nueva.)
-    db().prepare('UPDATE polizas SET activa = 0, actualizado_en = ? WHERE id = ?').run(ahora, anterior.id)
+    // Qué pasa con la anterior lo eligió quien renovó (ver `DESTINOS_DE_LA_ANTERIOR` en tipos.ts). Sea
+    // cual sea, queda enganchada a la nueva por `poliza_anterior_id`, y la clave ya se liberó más
+    // arriba, antes de insertar la nueva.
+    //
+    //   · renovada — sale de la cartera. No se le inventa una baja con motivo, porque no se dio de
+    //     baja: se renovó, y en BAJAS no tiene nada que hacer.
+    //   · baja     — sale de la cartera y además entra a BAJAS. Lo escribe `bajaSinFilaDelMes`, que es
+    //     el mismo camino que usa «No renueva» cuando la póliza no tiene fila en el mes abierto: acá
+    //     tampoco la tiene, porque la de abajo se dio de baja al crear la fila nueva.
+    //   · activa   — no se toca: quedan las dos vigentes.
+    if (destino !== 'activa') {
+      db().prepare('UPDATE polizas SET activa = 0, actualizado_en = ? WHERE id = ?').run(ahora, anterior.id)
+    }
+
+    // La baja va ANTES de tocar la fila del mes, y adentro de la misma transacción.
+    //
+    // El orden importa por la HOJA y es el mismo que declara `darDeBaja` en cartera.ts: primero se
+    // agrega a BAJAS y recién después se saca de la planilla del mes. La cola se aplica por orden de
+    // id, así que encolar al revés dejaría, ante una falla en el medio, la póliza sacada del mes y sin
+    // entrar a BAJAS: perdida en los dos lados. Al revés queda repetida un rato, que se arregla solo.
+    //
+    // `bajaSinFilaDelMes` es el mismo camino que usa «No renueva» cuando la póliza no tiene fila en el
+    // mes abierto —acá tampoco la va a tener— y abre su propia transacción, que en better-sqlite3
+    // anida con un SAVEPOINT y no rompe ésta.
+    if (destino === 'baja' && motivoDeBaja) {
+      bajaSinFilaDelMes(anterior, motivoDeBaja, notaDeBaja || `Renovada por la póliza ${numero || 'nueva'}.`, periodo, actor)
+    }
 
     if (periodo && filaIdNuevo && pestanaDelMes) {
       db()
@@ -742,7 +801,9 @@ export function renovar(polizaId: number, datos: DatosDeRenovacion, actor: Sesio
         })
 
       // La fila vieja sale de la planilla: si quedaran las dos, el mes tendría la póliza duplicada.
-      if (cuotaVieja) {
+      // Con la anterior ACTIVA es al revés: se la deja, porque las dos pólizas están vigentes y las dos
+      // tienen que cobrarse. Ahí el mes muestra dos filas a propósito, no una duplicada.
+      if (cuotaVieja && destino !== 'activa') {
         db().prepare('UPDATE cuotas_mes SET dada_de_baja = 1, actualizado_en = ? WHERE id = ?').run(ahora, cuotaVieja.id)
       }
 
@@ -758,18 +819,26 @@ export function renovar(polizaId: number, datos: DatosDeRenovacion, actor: Sesio
         },
         actor,
       )
-      if (cuotaVieja) encolar({ operacion: 'borrar', pestana: cuotaVieja.pestana, filaId: cuotaVieja.fila_id, campos: {} }, actor)
+      if (cuotaVieja && destino !== 'activa') {
+        encolar({ operacion: 'borrar', pestana: cuotaVieja.pestana, filaId: cuotaVieja.fila_id, campos: {} }, actor)
+      }
     }
 
     // El seguimiento de la ANTERIOR queda cerrado y apuntando a la nueva: así la bandeja de la semana
     // que viene no la vuelve a pedir y desde el historial se llega a la póliza que la reemplazó.
+    //
+    // Con la anterior ACTIVA esto es lo único que la saca de la bandeja: la póliza sigue vigente y
+    // vencida, así que sin el seguimiento cerrado volvería a pedir que la renueven todos los días.
+    // Queda en la bandeja marcada «Renovada», que es lo que pasó.
     const venceEl = anterior.vigencia_hasta_iso ?? desdeIso
     const seguimiento = seguimientoActual(anterior.id, venceEl)
     guardarSeguimiento(
       {
         polizaId: anterior.id,
         venceEl,
-        estado: 'renovada',
+        // El destino `baja` es una renovación en la que además la compañía anuló la vieja: el
+        // seguimiento dice «no renueva» para que la bandeja lo lea como lo que la agencia ve en BAJAS.
+        estado: destino === 'baja' ? 'no renueva' : 'renovada',
         responsableId: seguimiento?.responsable_id ?? null,
         responsableNombre: seguimiento?.responsable_nombre ?? null,
         nota: seguimiento?.nota ?? null,
@@ -787,7 +856,9 @@ export function renovar(polizaId: number, datos: DatosDeRenovacion, actor: Sesio
     filaId: filaIdNuevo,
     campo: 'RENOVACIÓN',
     valorAnterior: `${limpiar(anterior.numero) || 'sin número'} · ${limpiar(anterior.vigencia_desde) || '?'} a ${limpiar(anterior.vigencia_hasta) || '?'}`,
-    valorNuevo: `${numero || 'sin número'} · ${desdeTexto} a ${hastaTexto}`,
+    // Adónde fue a parar la anterior va en el historial y no sólo en la pantalla: dentro de un mes, la
+    // pregunta va a ser por qué esa póliza quedó vigente (o en BAJAS) y la respuesta tiene que estar.
+    valorNuevo: `${numero || 'sin número'} · ${desdeTexto} a ${hastaTexto} · la anterior queda en ${NOMBRE_DESTINO_ANTERIOR[destino]}`,
   })
   return bandejaDeRenovaciones()
 }
@@ -885,8 +956,7 @@ export function noRenueva(polizaId: number, datos: DatosDeBaja, actor: SesionUsu
   if (poliza.activa !== 1) throw new ErrorDeNegocio('Esa póliza ya no está en la cartera.')
 
   const entrada = objeto(datos, 'Los datos de la baja')
-  const motivo = entrada.motivo as MotivoDeBaja
-  if (!MOTIVOS_DE_BAJA.includes(motivo)) throw new ErrorDeNegocio('Elegí un motivo de baja de la lista.')
+  const motivo = motivoElegido(entrada.motivo)
   const nota = texto(entrada.nota ?? '', 'La nota', 0, 1000)
 
   const periodo = periodoAbierto()

@@ -124,12 +124,23 @@ export function tituloDeSemana(lunesDeLaSemana: string, hoy: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * ACTIVA, BAJA o VENCIDA. La baja manda sobre todo: una póliza dada de baja no es «vencida» aunque
- * su vigencia haya pasado. Sin fecha de vigencia cargada no se puede afirmar que venció, así que
- * sigue ACTIVA (es lo que pasa con buena parte de lo importado, donde la vigencia viene vacía).
+ * ACTIVA, VENCIDA, RENOVADA o BAJA. Lo que sale de la cartera manda sobre todo: una póliza que ya no
+ * está no es «vencida» aunque su vigencia haya pasado. Sin fecha de vigencia cargada no se puede
+ * afirmar que venció, así que sigue ACTIVA (es lo que pasa con buena parte de lo importado, donde la
+ * vigencia viene vacía).
+ *
+ * `renovada` es lo que separa las dos formas de salir de la cartera, y por eso se pregunta antes que
+ * la baja: la póliza que se renovó con otro número no se perdió, siguió. Se deduce de que exista otra
+ * póliza que la nombre en `poliza_anterior_id`, así que quien llama tiene que averiguarlo y pasarlo;
+ * este archivo es puro y no toca la base. Sin el dato queda BAJA, que es lo que hacía la 12.4.
  */
-export function estadoDePoliza(activa: boolean, vigenciaHastaIso: string | null | undefined, hoy: string): EstadoPoliza {
-  if (!activa) return 'BAJA'
+export function estadoDePoliza(
+  activa: boolean,
+  vigenciaHastaIso: string | null | undefined,
+  hoy: string,
+  renovada = false,
+): EstadoPoliza {
+  if (!activa) return renovada ? 'RENOVADA' : 'BAJA'
   const dias = diasParaVencer(vigenciaHastaIso, hoy)
   if (dias !== null && dias < 0) return 'VENCIDA'
   return 'ACTIVA'
@@ -138,6 +149,7 @@ export function estadoDePoliza(activa: boolean, vigenciaHastaIso: string | null 
 export const NOMBRE_ESTADO_POLIZA: Record<EstadoPoliza, string> = {
   ACTIVA: 'Activa',
   BAJA: 'Baja',
+  RENOVADA: 'Renovada',
   VENCIDA: 'Vencida',
 }
 

@@ -8,6 +8,7 @@
 // se atiende una computadora que no anda, y la versión del programa. Ninguna configura nada que afecte
 // a las demás computadoras.
 import { useMemo, useState } from 'react'
+import { AvisoConexionGoogle } from '../../componentes/AvisoConexionGoogle'
 import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 import { usePermisos } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -89,6 +90,11 @@ export function Administracion() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/* El mismo cartel que Inicio, también acá: es la pantalla a la que alguien llega cuando le
+          avisaron que falta cargar algo. La pestaña «Google Drive» sólo la ven SUPER_ADMIN y ADMIN,
+          así que para un empleado éste es el único lugar de Administración donde puede enterarse. */}
+      <AvisoConexionGoogle className="px-8 pt-6" />
+
       <BarraDePestanas
         etiqueta="Secciones de administración"
         prefijo="administracion"

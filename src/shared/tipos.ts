@@ -77,6 +77,34 @@ export interface DatosConexionGoogle {
 }
 
 /** Estado de la conexión con Google. Nunca expone la clave privada al renderer. */
+/**
+ * Si la agencia tiene cargada la conexión con Google Drive y si ESTA computadora ya la tiene.
+ *
+ * Existe aparte de `EstadoConexionGoogle` porque lo mira TODO EL EQUIPO y no sólo quien la carga: no
+ * lleva ni el correo de la cuenta ni la URL de la hoja, nada más que si está y de cuándo es. La
+ * credencial es obligatoria (12.5) y sin ella no suben los respaldos ni los adjuntos de los
+ * siniestros, así que quien atiende el mostrador tiene que poder ver que falta —y avisarle al
+ * superadministrador— en vez de enterarse el día que hace falta un documento.
+ */
+export interface EstadoDeGoogleEnLaAgencia {
+  /**
+   * true si esta versión habla con el VPS. En desarrollo no hay puente y no se sabe nada del resto de
+   * la agencia: sin esto, el cartel de «falta cargarla» quedaría prendido para siempre en la máquina
+   * de quien programa, que es la forma más rápida de que un aviso deje de leerse.
+   */
+  hayServidor: boolean
+  /** true si esta computadora tiene la credencial y puede subir a Drive. */
+  enEstaComputadora: boolean
+  /** true si el superadministrador ya la cargó y viajó al VPS. */
+  enElServidor: boolean
+  /** true si lo de acá es exactamente lo que hay en el servidor. */
+  alDia: boolean
+  actualizadoEn: string | null
+  actualizadoPor: string | null
+  /** Por qué no se pudo preguntarle al servidor, si es el caso. No frena nada. */
+  error: string | null
+}
+
 export interface EstadoConexionGoogle {
   configurado: boolean
   clientEmail: string | null
@@ -983,6 +1011,53 @@ export interface PanelSincronizacion {
   respaldos: RespaldoGuardado[]
 }
 
+/**
+ * Un respaldo del GENERAL DE CLIENTES guardado EN EL SERVIDOR (12.5). Es otra cosa que
+ * `RespaldoGuardado`, que es la copia .xlsx de esta computadora:
+ *
+ *   · la copia local la hace la aplicación y depende de que alguien la abra después de las 20:00, y
+ *     queda en la máquina de la que justamente hay que tener copia;
+ *   · éste lo hace el reloj del servidor, que está siempre encendido, y guarda la base de verdad.
+ *
+ * Los dos siguen existiendo: el .xlsx se abre en Excel sin nada más, y éste se puede rebobinar.
+ */
+export interface RespaldoDelVps {
+  id: number
+  /** El día que la agencia le pone, AAAA-MM-DD. */
+  dia: string
+  motivo: MotivoDeRespaldo
+  /** Cuándo se guardó, en ISO. */
+  fecha: string
+  /** El volcado comprimido, en bytes. */
+  tamano: number
+  pestanas: number
+  filas: number
+  /** Quién lo pidió, o null cuando lo hizo solo el reloj del servidor. */
+  hechoPor: string | null
+}
+
+export const MOTIVOS_DE_RESPALDO = ['DIARIO', 'A_MANO', 'ANTES_DE_RESTAURAR'] as const
+export type MotivoDeRespaldo = (typeof MOTIVOS_DE_RESPALDO)[number]
+
+export const NOMBRE_MOTIVO_RESPALDO: Record<MotivoDeRespaldo, string> = {
+  DIARIO: 'Del día',
+  A_MANO: 'A mano',
+  ANTES_DE_RESTAURAR: 'Antes de restaurar',
+}
+
+/** Qué quedó después de rebobinar. */
+export interface ResumenDeRestauracion {
+  pestanas: number
+  filas: number
+/**
+   * La foto que el servidor sacó del estado anterior antes de pisarlo: con esto se puede deshacer.
+   * Viene en null en el único caso en que no había nada que fotografiar: el servidor estaba vacío.
+   */
+  respaldoPrevio: RespaldoDelVps | null
+  /** Cuántas filas quedaron en la base de ESTA computadora después de volver a importar. */
+  filasLocales: number
+}
+
 export interface RespaldoGuardado {
   archivo: string
   ruta: string
@@ -997,7 +1072,15 @@ export interface RespaldoGuardado {
 // ---------------------------------------------------------------------------
 
 /** Los tres estados posibles. La constante existe para poder validar lo que llega de la pantalla. */
-export const ESTADOS_DE_POLIZA = ['ACTIVA', 'VENCIDA', 'BAJA'] as const
+/**
+ * RENOVADA se agregó en la 12.5 y no es un estado guardado: se deduce de que la póliza esté fuera de
+ * la cartera Y tenga una sucesora que la nombra en `poliza_anterior_id`.
+ *
+ * Antes esa póliza se leía «Baja» —sin motivo— en el listado, en la ficha del cliente y en el Excel,
+ * indistinguible de una que la compañía anuló. Es justamente lo contrario: la cartera no se perdió,
+ * siguió con otro número. Confundirlas hace que la agencia crea que perdió clientes que no perdió.
+ */
+export const ESTADOS_DE_POLIZA = ['ACTIVA', 'VENCIDA', 'RENOVADA', 'BAJA'] as const
 export type EstadoPoliza = (typeof ESTADOS_DE_POLIZA)[number]
 
 /**
@@ -1350,6 +1433,40 @@ export interface BandejaRenovaciones {
   sucursales: string[]
 }
 
+/**
+ * Qué pasa con la póliza VIEJA cuando se carga el número nuevo. Las tres son situaciones reales del
+ * mostrador y hasta la 12.4 la aplicación resolvía siempre por la primera, sin preguntar:
+ *
+ *   · `renovada` — lo normal y lo que viene elegido: la vieja sale de la cartera y queda enganchada a
+ *     la nueva. No es una baja y en BAJAS no tiene nada que hacer: no se dio de baja, se renovó.
+ *   · `baja` — la compañía anuló la vieja en vez de renovarla (cambió de compañía, la reemitió con
+ *     otro número, el cliente la anuló y volvió a tomar). Sale de la cartera Y aparece en
+ *     Cartera → Bajas con su motivo, que es donde la agencia mira lo que se perdió en el mes.
+ *   · `activa` — las dos conviven. Pasa cuando la compañía todavía no dio de baja la anterior, cuando
+ *     la nueva es de otro riesgo del mismo cliente, o cuando la vieja sigue cubriendo hasta que la
+ *     nueva empiece. Queda vigente en la cartera, con su fila del mes, y no vuelve a la bandeja de
+ *     renovaciones porque su seguimiento ya quedó cerrado.
+ */
+export const DESTINOS_DE_LA_ANTERIOR = ['renovada', 'baja', 'activa'] as const
+export type DestinoDeLaAnterior = (typeof DESTINOS_DE_LA_ANTERIOR)[number]
+
+export const NOMBRE_DESTINO_ANTERIOR: Record<DestinoDeLaAnterior, string> = {
+  renovada: 'Renovadas',
+  baja: 'Bajas',
+  activa: 'Activas',
+}
+
+/** La frase que explica cada opción en el cartel, para no repetirla en dos pantallas. */
+export const DETALLE_DESTINO_ANTERIOR: Record<DestinoDeLaAnterior, string> = {
+  renovada: 'Sale de la cartera y queda enganchada a la póliza nueva. Es lo que corresponde casi siempre.',
+  baja: 'Sale de la cartera y además aparece en Cartera → Bajas con el motivo que elijas.',
+  activa: 'Sigue vigente en la cartera, con su fila del mes: quedan las dos pólizas.',
+}
+
+export function esDestinoDeLaAnterior(valor: unknown): valor is DestinoDeLaAnterior {
+  return typeof valor === 'string' && (DESTINOS_DE_LA_ANTERIOR as readonly string[]).includes(valor)
+}
+
 export interface DatosDeRenovacion {
   vigenciaDesde: string
   vigenciaHasta: string
@@ -1358,6 +1475,12 @@ export interface DatosDeRenovacion {
   /** Número de propuesta de la póliza nueva; vacío si la compañía no la usa o todavía no la dio. */
   propuesta: string
   observaciones: string
+  /** Qué pasa con la póliza vieja. Sin esto se asume `renovada`, que es lo que hacía la 12.4. */
+  destinoDeLaAnterior?: DestinoDeLaAnterior
+  /** Sólo cuando el destino es `baja`: el motivo con el que entra a Cartera → Bajas. */
+  motivoDeBaja?: MotivoDeBaja
+  /** Sólo cuando el destino es `baja`: la nota de esa baja. */
+  notaDeBaja?: string
 }
 
 export const TEXTO_AUMENTA_AL_RENOVAR = '20% aumentar cuando se renueva'
@@ -1785,8 +1908,16 @@ export interface RendicionImputados {
   periodo: string
   /** Compañías filtradas, ya plegadas contra las que existen; lista vacía = todas. */
   companiasElegidas: string[]
-  /** Sucursal a la que está acotada la rendición ('' = todas): la del mostrador cuando pregunta un empleado. */
-  sucursal: string
+  /**
+   * Sucursales filtradas, ya plegadas contra las que existen; lista vacía = todas.
+   *
+   * Es un filtro de pantalla y no un recorte por rol: la rendición del mes la ven entera los tres
+   * roles (ver `imputados` en servicios/cobranzas.ts). El que sí se recorta por rol es el de la caja
+   * del día, que es otra cosa: ahí se muestra plata.
+   */
+  sucursalesElegidas: string[]
+  /** Todas las sucursales que se pueden elegir: las cuatro del catálogo más las que traen los pagos. */
+  sucursales: string[]
   periodos: string[]
   /** Todas las compañías que aparecen en el mes: son las opciones del desplegable. */
   companias: string[]
@@ -1794,7 +1925,13 @@ export interface RendicionImputados {
   /** Cuántos pagos hay de cada resultado (la clave '' son los pendientes). */
   contadores: Record<ResultadoImputacion, number>
   total: number
-  totalImporte: number
+  /**
+   * El bruto cobrado del mes, o null para quien no ve los números de la agencia (ver
+   * `veLosNumerosDeLaAgencia` en permisos.ts). Desde que la rendición se ve entera, este total es el de
+   * las cuatro sucursales juntas: es lo agregado, y es justo lo que la agencia pidió no mostrarle a un
+   * empleado. Cada fila sí trae su importe, que es el trabajo del día.
+   */
+  totalImporte: number | null
   pendientes: number
   /** Cuántos de los pagos del mes están IMPUTADOS y todavía sin cobrar al cliente. */
   sinCobrar: number

@@ -313,7 +313,7 @@ const REPORTES: Reporte[] = [
       col('sucursal', 'Sucursal', 14),
       col('estado', 'Estado', 14),
     ],
-    estados: ['ACTIVA', 'DADA DE BAJA'],
+    estados: ['ACTIVA', 'RENOVADA', 'DADA DE BAJA'],
     etiquetaDeEstado: 'Estado',
     campoSucursal: 'sucursal',
     campoCompania: 'compania',
@@ -325,7 +325,15 @@ const REPORTES: Reporte[] = [
                 v.patente, v.marca, v.modelo, v.anio, p.forma_pago AS formaPago, p.prima,
                 p.vigencia_desde AS vigenciaDesde, p.vigencia_hasta AS vigenciaHasta, p.productor,
                 cl.sucursal_texto AS sucursal,
-                CASE WHEN p.activa = 1 THEN 'ACTIVA' ELSE 'DADA DE BAJA' END AS estado
+                -- RENOVADA y DADA DE BAJA son las dos formas de salir de la cartera y el Excel tiene
+                -- que distinguirlas: la renovada siguió con otro número, no es cartera perdida. Se
+                -- reconoce por tener sucesora y ninguna baja anotada, igual que en la pantalla.
+                CASE
+                  WHEN p.activa = 1 THEN 'ACTIVA'
+                  WHEN EXISTS (SELECT 1 FROM polizas s WHERE s.poliza_anterior_id = p.id)
+                       AND NOT EXISTS (SELECT 1 FROM bajas b WHERE b.poliza_id = p.id) THEN 'RENOVADA'
+                  ELSE 'DADA DE BAJA'
+                END AS estado
            FROM polizas p
            JOIN clientes cl ON cl.id = p.cliente_id
            LEFT JOIN vehiculos v ON v.id = p.vehiculo_id`,
