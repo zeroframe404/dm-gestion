@@ -22,6 +22,7 @@ import type { BrowserWindow } from 'electron'
 import {
   DESTINOS_DE_PUBLICACION,
   type ArchivoParaPublicar,
+  type ComentarioDeRed,
   type DestinoDePublicacion,
   type PanelDeRedes,
   type PedidoDePublicacion,
@@ -30,7 +31,7 @@ import {
   type VinculacionPendiente,
   type VinculoConMeta,
 } from '../../shared/tipos'
-import type { ActorDeRedesVps, CuentaDeRedesVps, PublicacionDeRedVps } from '../vps/fuenteVps'
+import type { ActorDeRedesVps, ComentarioDeRedVps, CuentaDeRedesVps, PublicacionDeRedVps } from '../vps/fuenteVps'
 import { crearFuenteVps } from './sincronizacion'
 import { limpiar } from '../importacion/normalizar'
 import { tokenDesdeElCodigo, tokenDeLargaDuracion, paginasDelUsuario, type PaginaConToken } from '../redes/meta'
@@ -339,5 +340,65 @@ export async function cuotaDeInstagram(actor: SesionUsuario, sucursal?: string):
     return await exigirVps().redesCuotaInstagram(actorVps(actor), sucursal)
   } catch {
     return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Comentarios
+// ---------------------------------------------------------------------------
+
+function aComentarioDeRed(comentario: ComentarioDeRedVps): ComentarioDeRed {
+  return {
+    id: comentario.id,
+    sucursal: comentario.sucursal,
+    plataforma: comentario.plataforma,
+    autorNombre: comentario.autorNombre,
+    mensaje: comentario.mensaje,
+    creadoEnMeta: comentario.creadoEnMeta,
+    estado: comentario.estado,
+    respondido: comentario.respondido,
+    puedeResponder: comentario.puedeResponder,
+    puedeOcultar: comentario.puedeOcultar,
+    puedeEliminar: comentario.puedeEliminar,
+    motivoSiNoPuede: comentario.motivoSiNoPuede,
+    respuestas: comentario.respuestas,
+  }
+}
+
+export async function comentarios(actor: SesionUsuario, sucursal?: string, soloSinResponder?: boolean): Promise<ComentarioDeRed[]> {
+  try {
+    const lista = await exigirVps().redesComentarios(actorVps(actor), sucursal, soloSinResponder)
+    return lista.map(aComentarioDeRed)
+  } catch {
+    return []
+  }
+}
+
+export async function responderComentario(actor: SesionUsuario, comentarioId: string, mensaje: string): Promise<ComentarioDeRed> {
+  const texto = limpiar(mensaje)
+  if (!texto) throw new ErrorDeNegocio('Escribí una respuesta.')
+  try {
+    return aComentarioDeRed(await exigirVps().redesComentarioResponder(actorVps(actor), comentarioId, texto))
+  } catch (error) {
+    throw error instanceof ErrorDeNegocio ? error : new ErrorDeNegocio(error instanceof Error ? error.message : String(error))
+  }
+}
+
+async function cambiarVisibilidadDeComentario(actor: SesionUsuario, comentarioId: string, ocultar: boolean): Promise<ComentarioDeRed> {
+  try {
+    return aComentarioDeRed(await exigirVps().redesComentarioOcultar(actorVps(actor), comentarioId, ocultar))
+  } catch (error) {
+    throw error instanceof ErrorDeNegocio ? error : new ErrorDeNegocio(error instanceof Error ? error.message : String(error))
+  }
+}
+
+export const ocultarComentario = (actor: SesionUsuario, comentarioId: string) => cambiarVisibilidadDeComentario(actor, comentarioId, true)
+export const mostrarComentario = (actor: SesionUsuario, comentarioId: string) => cambiarVisibilidadDeComentario(actor, comentarioId, false)
+
+export async function eliminarComentario(actor: SesionUsuario, comentarioId: string): Promise<void> {
+  try {
+    await exigirVps().redesComentarioEliminar(actorVps(actor), comentarioId)
+  } catch (error) {
+    throw error instanceof ErrorDeNegocio ? error : new ErrorDeNegocio(error instanceof Error ? error.message : String(error))
   }
 }
