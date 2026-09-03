@@ -23,7 +23,9 @@ import {
   DESTINOS_DE_PUBLICACION,
   type ArchivoParaPublicar,
   type ComentarioDeRed,
+  type ConversacionDeRed,
   type DestinoDePublicacion,
+  type MensajeDeRed,
   type PanelDeRedes,
   type PedidoDePublicacion,
   type PublicacionDeRed,
@@ -31,7 +33,14 @@ import {
   type VinculacionPendiente,
   type VinculoConMeta,
 } from '../../shared/tipos'
-import type { ActorDeRedesVps, ComentarioDeRedVps, CuentaDeRedesVps, PublicacionDeRedVps } from '../vps/fuenteVps'
+import type {
+  ActorDeRedesVps,
+  ComentarioDeRedVps,
+  ConversacionDeRedVps,
+  CuentaDeRedesVps,
+  MensajeDeRedVps,
+  PublicacionDeRedVps,
+} from '../vps/fuenteVps'
 import { crearFuenteVps } from './sincronizacion'
 import { limpiar } from '../importacion/normalizar'
 import { tokenDesdeElCodigo, tokenDeLargaDuracion, paginasDelUsuario, type PaginaConToken } from '../redes/meta'
@@ -398,6 +407,58 @@ export const mostrarComentario = (actor: SesionUsuario, comentarioId: string) =>
 export async function eliminarComentario(actor: SesionUsuario, comentarioId: string): Promise<void> {
   try {
     await exigirVps().redesComentarioEliminar(actorVps(actor), comentarioId)
+  } catch (error) {
+    throw error instanceof ErrorDeNegocio ? error : new ErrorDeNegocio(error instanceof Error ? error.message : String(error))
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mensajes privados
+// ---------------------------------------------------------------------------
+
+function aConversacionDeRed(conversacion: ConversacionDeRedVps): ConversacionDeRed {
+  return {
+    id: conversacion.id,
+    sucursal: conversacion.sucursal,
+    plataforma: conversacion.plataforma,
+    participanteNombre: conversacion.participanteNombre,
+    ultimoMensajeEn: conversacion.ultimoMensajeEn,
+    puedeResponder: conversacion.puedeResponder,
+    motivoSiNoPuedeResponder: conversacion.motivoSiNoPuedeResponder,
+  }
+}
+
+function aMensajeDeRed(mensaje: MensajeDeRedVps): MensajeDeRed {
+  return {
+    id: mensaje.id,
+    direccion: mensaje.direccion,
+    mensaje: mensaje.mensaje,
+    creadoEnMeta: mensaje.creadoEnMeta,
+    enviadoPor: mensaje.enviadoPor,
+  }
+}
+
+export async function conversaciones(actor: SesionUsuario, sucursal?: string): Promise<ConversacionDeRed[]> {
+  try {
+    return (await exigirVps().redesConversaciones(actorVps(actor), sucursal)).map(aConversacionDeRed)
+  } catch {
+    return []
+  }
+}
+
+export async function mensajesDeConversacion(actor: SesionUsuario, conversacionId: string): Promise<MensajeDeRed[]> {
+  try {
+    return (await exigirVps().redesConversacionMensajes(actorVps(actor), conversacionId)).map(aMensajeDeRed)
+  } catch {
+    return []
+  }
+}
+
+export async function responderConversacion(actor: SesionUsuario, conversacionId: string, mensaje: string): Promise<MensajeDeRed> {
+  const texto = limpiar(mensaje)
+  if (!texto) throw new ErrorDeNegocio('Escribí un mensaje.')
+  try {
+    return aMensajeDeRed(await exigirVps().redesConversacionResponder(actorVps(actor), conversacionId, texto))
   } catch (error) {
     throw error instanceof ErrorDeNegocio ? error : new ErrorDeNegocio(error instanceof Error ? error.message : String(error))
   }

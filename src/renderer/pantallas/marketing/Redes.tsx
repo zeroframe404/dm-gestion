@@ -25,12 +25,14 @@ import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Etiqueta, Selector, Tarjet
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { Comentarios } from './Comentarios'
+import { Mensajes } from './Mensajes'
 
-type PestanaDeRedes = 'publicar' | 'comentarios'
+type PestanaDeRedes = 'publicar' | 'comentarios' | 'mensajes'
 
 const PESTANAS_DE_REDES: ItemDePestana<PestanaDeRedes>[] = [
   { id: 'publicar', nombre: 'Publicar', icono: 'subir', ayuda: 'marketing.redes' },
   { id: 'comentarios', nombre: 'Comentarios', icono: 'mensaje', ayuda: 'marketing.redes.comentarios' },
+  { id: 'mensajes', nombre: 'Mensajes', icono: 'usuario', ayuda: 'marketing.redes.mensajes' },
 ]
 
 function cuando(iso: string): string {
@@ -194,6 +196,8 @@ export function Redes() {
       <div id={`panel-redes-${pestana}`} role="tabpanel" aria-labelledby={`tab-redes-${pestana}`} className="min-h-0 flex-1 overflow-y-auto">
         {pestana === 'comentarios' ? (
           <Comentarios sucursal={sucursalElegida} puedeEditar={puedeEditar} />
+        ) : pestana === 'mensajes' ? (
+          <Mensajes sucursal={sucursalElegida} puedeEditar={puedeEditar} />
         ) : (
           <div className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
           {error && <Alerta tono="error">{error}</Alerta>}
