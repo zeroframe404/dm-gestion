@@ -3,8 +3,9 @@
 // en consola y se devuelve un mensaje genérico para no filtrar detalles internos al renderer.
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type { ArgumentosDe, DatosDeEvento, NombreCanal, NombreEvento, RespuestaDe } from '../shared/canales'
+import { AREA_ELIMINABLE, esTipoEliminable, motivoDeNoPoderEliminar, rolPuedeEliminar } from '../shared/eliminacion'
 import { veLosNumerosDeLaAgencia } from '../shared/permisos'
-import type { InfoApp, Resultado } from '../shared/tipos'
+import type { InfoApp, Resultado, SesionUsuario } from '../shared/tipos'
 import { carpetaDatos, rutaBaseDeDatos, rutaConfig } from './rutas'
 import { cambiarClave, ingresar, salir } from './servicios/auth'
 import { comprobarAcceso, conectarEmisor, estadoDeAcceso, estadoDeUsuarios, subirLocales } from './servicios/baseDeUsuarios'
@@ -208,10 +209,13 @@ import {
   estadoCompartidoDeGoogle,
   estadoCompartidoDeMeta,
   estadoCompartidoDeVehiculos,
+  estadoDeGoogleEnLaAgencia,
   publicarSinRomper,
   publicarTicketSinRomper,
   publicarVehiculosEnElVps,
+  traerGoogleDelVps,
 } from './servicios/ajustesCompartidos'
+import { crearRespaldoEnElVps, listarRespaldosDelVps, restaurarRespaldoDelVps } from './servicios/respaldosVps'
 import { guardarPlantillaDeAviso, plantillaDeAviso } from './servicios/plantillas'
 import { historialDeFila } from './servicios/historial'
 import {
@@ -271,6 +275,23 @@ function manejar<C extends NombreCanal>(canal: C, manejador: Manejador<C>): void
 
 function exito<T>(datos: T): Resultado<T> {
   return { ok: true, datos }
+}
+
+/**
+ * Quién puede abrir la papelera de un registro. Son dos controles y hacen falta los dos:
+ *   1. el ROL, que depende del tipo (`rolPuedeEliminar`): el cliente lo borran los tres, el resto sólo
+ *      el superadministrador;
+ *   2. poder EDITAR el módulo de donde salió (`AREA_ELIMINABLE`), así a quien tiene Clientes en «sólo
+ *      ver» tampoco se le abre la papelera de un cliente.
+ *
+ * El tipo llega del renderer y puede ser cualquier cosa: se valida acá antes de mirarlo, y lo que no
+ * sea un tipo conocido se rechaza como el resto de los datos que entran por IPC.
+ */
+function exigirBorrado(tipoCrudo: unknown): SesionUsuario {
+  if (!esTipoEliminable(tipoCrudo)) throw new ErrorDeNegocio('No se sabe qué tipo de registro se quiere borrar.')
+  const actor = exigirEdicion(AREA_ELIMINABLE[tipoCrudo])
+  if (!rolPuedeEliminar(actor.rol, tipoCrudo)) throw new ErrorDeNegocio(motivoDeNoPoderEliminar(tipoCrudo))
+  return actor
 }
 
 function emitirATodas<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
@@ -377,11 +398,13 @@ export function registrarIpc(): void {
     if (actual) emitirATodas('permisos:cambiaron', misPermisos(actual))
   })
 
-  // Borrado definitivo y puntual: sólo el SUPER_ADMIN, sin excepción y sin permiso que lo habilite.
-  // Se pide el rol también para MIRAR lo que se llevaría el borrado: el detalle de un cliente entero
+  // Borrado definitivo y puntual. Quién puede borrar qué depende del tipo (ver `exigirBorrado` acá
+  // arriba y shared/eliminacion.ts): el CLIENTE lo borran los tres roles desde la 12.5, y todo lo demás
+  // sigue siendo del SUPER_ADMIN, sin excepción.
+  // Se pide lo mismo para MIRAR lo que se llevaría el borrado: el detalle de un cliente entero
   // (cuántos pagos, cuántos siniestros) no tiene por qué salir de acá para quien no puede borrarlo.
-  manejar('eliminacion:vistaPrevia', (tipo, id) => exito(vistaPreviaDeEliminacion(tipo, id, exigirRol('SUPER_ADMIN'))))
-  manejar('eliminacion:borrar', (tipo, id) => exito(eliminarRegistro(tipo, id, exigirRol('SUPER_ADMIN'))))
+  manejar('eliminacion:vistaPrevia', (tipo, id) => exito(vistaPreviaDeEliminacion(tipo, id, exigirBorrado(tipo))))
+  manejar('eliminacion:borrar', (tipo, id) => exito(eliminarRegistro(tipo, id, exigirBorrado(tipo))))
 
   // Conexión con Google: la MIRAN SUPER_ADMIN y ADMIN; la CARGA sólo el superadministrador, porque
   // desde la v12.4 lo que se carga acá viaja al resto de las computadoras (la sucursal que no tenía la
@@ -398,6 +421,22 @@ export function registrarIpc(): void {
     // Lo local ya quedó escrito: que el servidor no conteste no puede devolver un error rojo sobre algo
     // que sí se guardó. El motivo viaja en `compartido.error` y la pantalla lo muestra.
     return exito({ ...estado, compartido: await publicarSinRomper('google', actor.nombre) })
+  })
+  // Cómo está la conexión con Google en la agencia: lo mira CUALQUIERA que tenga la sesión abierta.
+  // Es a propósito distinto de `config:estadoGoogle` de acá arriba: eso lleva el correo de la cuenta y
+  // la URL de la hoja y sigue siendo de administradores; esto no lleva ningún dato de la credencial,
+  // sólo si está y de cuándo es. Sin ella no suben los respaldos ni los adjuntos de los siniestros, y
+  // quien atiende el mostrador tiene que poder ver que falta en vez de enterarse el día que hace falta.
+  manejar('config:googleEnLaAgencia', async () => {
+    exigirSesion()
+    return exito(await estadoDeGoogleEnLaAgencia())
+  })
+  // Bajarla a mano. También de cualquiera: la adopción del arranque ya la baja sola en las cinco
+  // computadoras, y este botón es para no tener que cerrar y volver a abrir el programa.
+  manejar('config:traerGoogle', async () => {
+    exigirSesion()
+    await traerGoogleDelVps()
+    return exito(await estadoDeGoogleEnLaAgencia())
   })
 
   // La base del GENERAL DE CLIENTES en el VPS (v12). El estado lo ven SUPER_ADMIN y ADMIN;
@@ -546,8 +585,8 @@ export function registrarIpc(): void {
 
   // Cobranzas: la caja y la mora las trabaja quien tenga el módulo; las comisiones siguen pidiendo
   // administrador, aunque un empleado tenga «editar» en Cobranzas.
-  // La caja y la rendición de las OTRAS sucursales son de los administradores; un empleado mira y
-  // rinde lo de su mostrador (ver `sucursalObligadaDe` en cobranzas.ts).
+  // La caja del día de las OTRAS sucursales sigue siendo de los administradores —es plata que entró en
+  // otro mostrador—; un empleado mira la suya (ver `sucursalObligadaDe` en cobranzas.ts).
   manejar('cobranzas:caja', (fecha, sucursales) => exito(cajaDelDia(fecha, sucursales, exigirVista('cobranzas'))))
   manejar('cobranzas:registrarPagoManual', (datos) => {
     const resultado = registrarPagoManual(datos, exigirEdicion('cobranzas'))
@@ -564,9 +603,15 @@ export function registrarIpc(): void {
   })
   manejar('cobranzas:avisarMora', (filaId) => exito(avisarMora(filaId, exigirEdicion('cobranzas'))))
   // Imputados es una pestaña de Cartera que trabaja sobre los pagos: se pide cualquiera de los dos.
-  manejar('cobranzas:imputados', (periodo, companias) => exito(imputados(periodo, companias, exigirVista('cartera', 'cobranzas'))))
-  manejar('cobranzas:cambiarResultado', (pagoId, resultado, companias) =>
-    exito(cambiarResultado(pagoId, resultado, companias, exigirEdicion('cartera', 'cobranzas'))),
+  // La rendición del mes se ve y se rinde ENTERA, con las cuatro sucursales, sea cual sea el rol: la
+  // sucursal es un filtro de la pantalla como la compañía. Es a propósito distinto de la caja del día
+  // de acá arriba (ver `imputados` en servicios/cobranzas.ts).
+  manejar('cobranzas:imputados', (periodo, companias, sucursales) => {
+    const actor = exigirVista('cartera', 'cobranzas')
+    return exito(imputados(periodo, companias, sucursales, veLosNumerosDeLaAgencia(actor.rol)))
+  })
+  manejar('cobranzas:cambiarResultado', (pagoId, resultado, companias, sucursales) =>
+    exito(cambiarResultado(pagoId, resultado, companias, exigirEdicion('cartera', 'cobranzas'), sucursales)),
   )
   manejar('cobranzas:comisiones', (periodo) => {
     exigirRol('SUPER_ADMIN', 'ADMIN')
@@ -666,6 +711,29 @@ export function registrarIpc(): void {
     exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirEdicion('administracion')
     return exito(await respaldarAhora())
+  })
+
+  // Respaldos del GENERAL DE CLIENTES guardados en el servidor.
+  //
+  // Mirarlos y pedir uno nuevo es de administradores, igual que el resto de Administración. RESTAURAR
+  // es del SUPER_ADMIN y de nadie más, con el mismo criterio que el borrado definitivo: rebobinar pisa
+  // la base de las CINCO computadoras y descarta todo lo que se cargó desde ese día, así que no es una
+  // acción que pueda salir de un botón que alguien tocó sin querer. No es un permiso configurable a
+  // propósito: si se pudiera encender desde una pantalla, alcanzaría con distraerse una vez.
+  manejar('respaldos:listar', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('administracion')
+    return exito(await listarRespaldosDelVps())
+  })
+  manejar('respaldos:crear', async () => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await crearRespaldoEnElVps(actor))
+  })
+  manejar('respaldos:restaurar', async (id) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await restaurarRespaldoDelVps(id, actor))
   })
 
   // Clientes: los trabaja todo el equipo que tenga el módulo. Nada de acá borra en forma definitiva,

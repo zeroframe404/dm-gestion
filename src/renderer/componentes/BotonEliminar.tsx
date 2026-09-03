@@ -1,9 +1,11 @@
 // El botón de la papelera: borrado definitivo y puntual de UN registro.
 //
 // Tres decisiones que conviene tener presentes:
-//   1. Si quien tiene la sesión abierta no es SUPER_ADMIN, el componente no dibuja NADA. No un botón
-//      apagado ni un cartel de «no tenés permiso»: nada. Un botón que no se puede tocar sólo sirve para
-//      que alguien lo intente. El proceso principal vuelve a controlarlo igual, que es el que manda.
+//   1. Si quien tiene la sesión abierta no puede borrar ESE tipo, el componente no dibuja NADA. No un
+//      botón apagado ni un cartel de «no tenés permiso»: nada. Un botón que no se puede tocar sólo
+//      sirve para que alguien lo intente. Quién puede borrar qué está en shared/eliminacion.ts —el
+//      cliente lo borran los tres roles, el resto sólo el superadministrador— y el proceso principal
+//      vuelve a controlarlo igual, que es el que manda.
 //   2. Antes de borrar se le pregunta al proceso principal qué se lleva puesto el borrado y se muestra
 //      contado: «3 pólizas, 12 filas de la planilla, 4 pagos». Contarlo acá sería contar sobre lo que la
 //      pantalla tenía cargado, que casi nunca es todo.
@@ -12,21 +14,31 @@
 //      tarda en leer la lista de arriba.
 import { useEffect, useRef, useState } from 'react'
 import {
+  AREA_ELIMINABLE,
   conArticulo,
   NOMBRE_ELIMINABLE,
   resumenDeLoBorrado,
+  rolPuedeEliminar,
   SEGUNDOS_PARA_CONFIRMAR,
   type ResultadoDeEliminacion,
   type TipoEliminable,
   type VistaPreviaDeEliminacion,
 } from '../../shared/eliminacion'
 import { useSesion } from '../contexto/Sesion'
+import { usePermisos } from '../contexto/Permisos'
 import { Alerta, Boton, Dialogo } from './ui'
 import { Icono } from './Icono'
 
-/** ¿Esta persona puede borrar registros de la base? Sólo el superadministrador. */
-export function useEsSuperAdmin(): boolean {
-  return useSesion().usuario?.rol === 'SUPER_ADMIN'
+/**
+ * ¿Esta persona puede borrar registros de ESTE tipo? Es la misma cuenta que hace `exigirBorrado` en
+ * ipc.ts: el rol que corresponde al tipo, y además poder editar el módulo de donde sale el registro.
+ * Acá sólo evita dibujar un botón que después iba a fallar; el que manda es el proceso principal.
+ */
+export function usePuedeEliminar(tipo: TipoEliminable): boolean {
+  const rol = useSesion().usuario?.rol
+  const { puedeEditar } = usePermisos()
+  if (!rol) return false
+  return rolPuedeEliminar(rol, tipo) && puedeEditar(AREA_ELIMINABLE[tipo])
 }
 
 interface PropsBotonEliminar {
@@ -42,10 +54,10 @@ interface PropsBotonEliminar {
 
 export function BotonEliminar({ tipo, id, etiqueta = 'Eliminar', tamano = 'sm', alBorrar, className }: PropsBotonEliminar) {
   const [abierto, setAbierto] = useState(false)
-  const esSuperAdmin = useEsSuperAdmin()
+  const puedeBorrar = usePuedeEliminar(tipo)
 
-  // Nada de nada para el resto del equipo: ni el botón apagado.
-  if (!esSuperAdmin) return null
+  // Nada de nada para quien no puede borrar esto: ni el botón apagado.
+  if (!puedeBorrar) return null
 
   const nombre = NOMBRE_ELIMINABLE[tipo]
   return (

@@ -17,10 +17,15 @@ import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { FormularioPoliza } from './FormularioPoliza'
 import { usePuedeEditar } from '../../contexto/Permisos'
 
-/** Color de la etiqueta de estado. Vencida va en ámbar y no en rojo: sigue siendo cartera, hay que renovarla. */
+/**
+ * Color de la etiqueta de estado. Vencida va en ámbar y no en rojo: sigue siendo cartera, hay que
+ * renovarla. Renovada va en neutro como la baja —las dos salieron de la cartera— pero se nombra
+ * distinto a propósito: la renovada no es cartera perdida, siguió con otro número.
+ */
 export const TONO_DE_ESTADO: Record<EstadoPoliza, 'exito' | 'aviso' | 'neutro'> = {
   ACTIVA: 'exito',
   VENCIDA: 'aviso',
+  RENOVADA: 'neutro',
   BAJA: 'neutro',
 }
 

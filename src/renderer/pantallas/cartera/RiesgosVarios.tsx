@@ -5,7 +5,7 @@
 // azul para lo que se cobra solo (TARJETA y CBU) y un alta simple. Acá no hay período —es una tabla
 // sola que se corrige encima— así que no hay selector de mes ni meses de sólo lectura.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BotonEliminar, useEsSuperAdmin } from '../../componentes/BotonEliminar'
+import { BotonEliminar, usePuedeEliminar } from '../../componentes/BotonEliminar'
 import { esDebitoAutomatico } from '../../../shared/semaforo'
 import { coincideAlguno } from '../../../shared/filtros'
 import { mismaSucursal } from '../../../shared/sucursales'
@@ -51,7 +51,7 @@ const COLUMNAS: Columna[] = [
 
 export function RiesgosVarios() {
   const puedeEditar = usePuedeEditar('cartera')
-  const puedeBorrar = useEsSuperAdmin()
+  const puedeBorrar = usePuedeEliminar('riesgo')
   const [datos, setDatos] = useState<ListadoRiesgos | null>(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)

@@ -139,6 +139,9 @@ import type {
   DatosEdicionUsuario,
   DatosNuevoUsuario,
   EstadoConexionGoogle,
+  EstadoDeGoogleEnLaAgencia,
+  RespaldoDelVps,
+  ResumenDeRestauracion,
   EstadoMigracionVps,
   ResumenMigracionVps,
   EstadoDeAcceso,
@@ -210,6 +213,14 @@ export interface Canales {
 
   'config:estadoGoogle': () => Resultado<EstadoConexionGoogle>
   'config:guardarGoogle': (datos: DatosConexionGoogle) => Resultado<EstadoConexionGoogle>
+  /**
+   * Si la agencia tiene cargada la conexión con Google y si esta computadora la tiene. Lo pide TODO el
+   * equipo (la credencial es obligatoria y sin ella no suben los respaldos ni los adjuntos), así que a
+   * diferencia de `config:estadoGoogle` no lleva ni el correo de la cuenta ni la URL de la hoja.
+   */
+  'config:googleEnLaAgencia': () => Resultado<EstadoDeGoogleEnLaAgencia>
+  /** El botón «Traerla ahora»: baja del VPS lo que cargó el superadministrador. Lo puede tocar cualquiera. */
+  'config:traerGoogle': () => Resultado<EstadoDeGoogleEnLaAgencia>
 
   // La base del GENERAL DE CLIENTES en el VPS (v12): estado y migración inicial.
   'vps:estado': () => Resultado<EstadoMigracionVps>
@@ -275,8 +286,13 @@ export interface Canales {
   'cobranzas:mora': (filtros: FiltrosMora) => Resultado<ListadoMora>
   /** El mismo WhatsApp de la planilla, también para cuotas de meses ya cerrados. */
   'cobranzas:avisarMora': (filaId: string) => Resultado<AvisoDeMora>
-  'cobranzas:imputados': (periodo: string | null, companias: string[]) => Resultado<RendicionImputados>
-  'cobranzas:cambiarResultado': (pagoId: number, resultado: ResultadoImputacion, companias: string[]) => Resultado<RendicionImputados>
+  'cobranzas:imputados': (periodo: string | null, companias: string[], sucursales: string[]) => Resultado<RendicionImputados>
+  'cobranzas:cambiarResultado': (
+    pagoId: number,
+    resultado: ResultadoImputacion,
+    companias: string[],
+    sucursales: string[],
+  ) => Resultado<RendicionImputados>
   /** Sólo ADMIN y SUPER_ADMIN. */
   'cobranzas:comisiones': (periodo: string | null) => Resultado<ResumenComisiones>
 
@@ -307,6 +323,16 @@ export interface Canales {
   'sincronizacion:ahora': (completa: boolean) => Resultado<EstadoSincronizacion>
   'sincronizacion:reintentar': () => Resultado<number>
   'sincronizacion:respaldarAhora': () => Resultado<boolean>
+
+  // Respaldos del GENERAL DE CLIENTES guardados EN EL SERVIDOR. Son otra cosa que los .xlsx de
+  // `sincronizacion:respaldarAhora`, que son de esta computadora: éstos los hace el reloj del VPS y
+  // se pueden rebobinar.
+  /** Los últimos que guardó el servidor, del más nuevo al más viejo. */
+  'respaldos:listar': () => Resultado<RespaldoDelVps[]>
+  /** Guarda uno ahora mismo, sin esperar al reloj. Es idempotente por día. */
+  'respaldos:crear': () => Resultado<RespaldoDelVps[]>
+  /** Rebobina: deja la base del servidor —y la de esta computadora— como estaban ese día. */
+  'respaldos:restaurar': (id: number) => Resultado<ResumenDeRestauracion>
 
   // Clientes: el listado, la ficha y el alta sin duplicados. Los trabaja todo el equipo.
   'clientes:listar': (filtros: FiltrosClientes) => Resultado<ListadoClientes>

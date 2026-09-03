@@ -29,9 +29,14 @@ export class VpsSimulado {
     | 'ajusteConsultado'
     | 'ajusteGuardado'
     | 'usuariosLeidos'
-    | 'usuariosGuardados',
+    | 'usuariosGuardados'
+    | 'respaldosListados'
+    | 'respaldosCreados'
+    | 'respaldosRestaurados',
     number
   >
+  /** Los respaldos guardados, del más nuevo al más viejo. */
+  respaldos: Array<{ id: number; dia: string; motivo: string; fecha: string; hechoPor: string | null }>
   /** La base de usuarios de la agencia, tal como quedó en el servidor. */
   usuarios: { texto: string; version: number; actualizadoEn: string; actualizadoPor: string | null; mensaje: string | null } | null
   /** Los mensajes con los que se guardó la base de usuarios, en orden. */
@@ -43,4 +48,9 @@ export class VpsSimulado {
   /** «Otra computadora» cambió una celda directamente en la base. */
   editarDirecto(titulo: string, fila: number, columna: number, valor: string): void
   cargarPestanaDirecto(pestana: PestanaSimulada): void
+  /** Guarda una foto de cómo están las pestañas ahora, como hace el reloj del servidor. */
+  guardarRespaldo(
+    motivo: 'DIARIO' | 'A_MANO' | 'ANTES_DE_RESTAURAR',
+    hechoPor: string | null,
+  ): { respaldo: { id: number; dia: string; motivo: string }; yaEstaba: boolean }
 }

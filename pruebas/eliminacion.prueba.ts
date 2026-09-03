@@ -1,7 +1,8 @@
-// El botón de la papelera: borrado definitivo y puntual, sólo del superadministrador.
+// El botón de la papelera: borrado definitivo y puntual.
 //
 // Lo que estas pruebas cuidan, en orden de gravedad:
-//   1. que un ADMIN o un EMPLEADO no puedan borrar nada;
+//   1. que cada rol pueda borrar exactamente lo que le toca: el CLIENTE lo borran los tres (12.5), y
+//      todo lo demás sigue siendo del superadministrador;
 //   2. que la cascada no deje la base a medias —las claves foráneas están en ON, así que un olvido
 //      tira la transacción entera— ni se lleve puesto lo que es de otro cliente;
 //   3. que lo que el cartel promete antes de confirmar sea exactamente lo que después se borra;
@@ -26,7 +27,7 @@ import { crearTareaCompleta } from '../src/main/servicios/tareas'
 import { copiarAdjunto, rutaDeAdjunto, usarCarpetaDeAdjuntosDePrueba } from '../src/main/servicios/adjuntos'
 import { encolar, pestanasPendientes } from '../src/main/sincronizacion/cola'
 import { ahoraIso } from '../src/main/importacion/normalizar'
-import { resumenDeLoBorrado, TIPOS_ELIMINABLES } from '../src/shared/eliminacion'
+import { AREA_ELIMINABLE, resumenDeLoBorrado, rolPuedeEliminar, TIPOS_ELIMINABLES } from '../src/shared/eliminacion'
 import type { FiltrosClientes, SesionUsuario } from '../src/shared/tipos'
 import { construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
@@ -68,6 +69,28 @@ async function carteraDePrueba(): Promise<BaseDeDatos> {
   return base
 }
 
+/**
+ * Deja cargadas en la base a las personas que van a borrar. La semilla trae sólo al superadministrador,
+ * y el historial —que es lo que anota quién borró qué— apunta a `usuarios(id)`. La clave no se usa:
+ * acá nadie inicia sesión, se le pasa la sesión armada a cada servicio.
+ */
+function sumarUsuarios(base: BaseDeDatos, ...personas: SesionUsuario[]): void {
+  for (const persona of personas) {
+    base
+      .prepare(
+        `INSERT OR IGNORE INTO usuarios (id, nombre, usuario, clave_hash, rol, sucursal_id, activo, debe_cambiar_clave)
+         VALUES (@id, @nombre, @usuario, 'sin-clave', @rol, (SELECT id FROM sucursales WHERE nombre = @sucursal), 1, 0)`,
+      )
+      .run({
+        id: persona.id,
+        nombre: persona.nombre,
+        usuario: persona.usuario,
+        rol: persona.rol,
+        sucursal: persona.sucursal.nombre,
+      })
+  }
+}
+
 function idDeCliente(busqueda: string): number {
   const encontrado = listarClientes({ ...SIN_FILTROS, busqueda }).filas[0]
   if (!encontrado) throw new Error(`No está «${busqueda}» en el listado de clientes`)
@@ -90,21 +113,49 @@ function vaciarCola(base: BaseDeDatos): void {
 // Quién puede
 // ---------------------------------------------------------------------------
 
-test('sólo el superadministrador puede borrar: un ADMIN y un EMPLEADO no', async () => {
+test('un ADMIN y un EMPLEADO borran clientes, y sólo clientes', async () => {
   const base = await carteraDePrueba()
-  const cliente = idDeCliente('gonzalez')
-  const antes = contar(base, 'clientes')
+  // El borrado se anota en el historial, que apunta a `usuarios(id)`: sin las dos personas cargadas la
+  // transacción se cae por clave foránea antes de llegar a probar nada de lo que importa acá.
+  sumarUsuarios(base, ANA, MARIA)
 
+  // El cliente sí: es lo que pidió la agencia. Se mira primero lo que se lleva puesto —el mismo cartel
+  // que ve el superadministrador— y después se borra de verdad.
   for (const quien of [ANA, MARIA]) {
-    assert.throws(
-      () => eliminarRegistro('cliente', cliente, quien),
-      (error: unknown) => error instanceof ErrorDeNegocio && /superadministrador/i.test((error as Error).message),
-      `${quien.rol} no tendría que poder borrar`,
-    )
-    // Ni siquiera puede mirar lo que se llevaría el borrado: es el detalle entero de una persona.
-    assert.throws(() => vistaPreviaDeEliminacion('cliente', cliente, quien), ErrorDeNegocio)
+    const cliente = idDeCliente(quien === ANA ? 'gonzalez' : 'lopez')
+    const antes = contar(base, 'clientes')
+    const previa = vistaPreviaDeEliminacion('cliente', cliente, quien)
+    assert.equal(previa.tipo, 'cliente')
+    eliminarRegistro('cliente', cliente, quien)
+    assert.equal(contar(base, 'clientes'), antes - 1, `${quien.rol} tiene que poder borrar un cliente`)
   }
-  assert.equal(contar(base, 'clientes'), antes, 'no se borró nada')
+
+  // El resto de la papelera no: eso sigue siendo del superadministrador, con el mismo mensaje de antes.
+  for (const quien of [ANA, MARIA]) {
+    for (const tipo of TIPOS_ELIMINABLES.filter((t) => t !== 'cliente')) {
+      assert.throws(
+        () => eliminarRegistro(tipo, 1, quien),
+        (error: unknown) => error instanceof ErrorDeNegocio && /superadministrador/i.test((error as Error).message),
+        `${quien.rol} no tendría que poder borrar ${tipo}`,
+      )
+      // Ni siquiera puede mirar lo que se llevaría el borrado.
+      assert.throws(() => vistaPreviaDeEliminacion(tipo, 1, quien), ErrorDeNegocio)
+    }
+  }
+})
+
+test('la lista de quién borra qué y la de las áreas están completas', () => {
+  // Las dos son Record<TipoEliminable, …>: si mañana se agrega un tipo, TypeScript obliga a completarlas
+  // y esto obliga a que lo que se completó tenga sentido, que es la parte que el compilador no ve.
+  for (const tipo of TIPOS_ELIMINABLES) {
+    assert.ok(rolPuedeEliminar('SUPER_ADMIN', tipo), `el superadministrador borra ${tipo}`)
+    assert.ok(AREA_ELIMINABLE[tipo], `${tipo} tiene que decir de qué módulo sale`)
+  }
+  // Y el cliente es el único que hoy está abierto al resto del equipo.
+  for (const tipo of TIPOS_ELIMINABLES) {
+    const abierto = rolPuedeEliminar('ADMIN', tipo) || rolPuedeEliminar('EMPLEADO', tipo)
+    assert.equal(abierto, tipo === 'cliente', `${tipo}: abierto al equipo sólo si es el cliente`)
+  }
 })
 
 test('un tipo o un id que no existen se rechazan sin tocar la base', async () => {

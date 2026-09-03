@@ -2,6 +2,11 @@
 // por cada pago del mes, qué dijo la compañía— y el RESULTADO se sincroniza con la hoja.
 //
 // La misma pantalla se ve en Cobranzas → Imputados y en Cartera → Imputados.
+//
+// Se ve ENTERA, con las cuatro sucursales, sea cual sea el rol: la sucursal es un filtro más, al lado
+// del de compañía. Es a propósito distinto de la caja del día, donde un empleado sigue viendo sólo su
+// mostrador. La caja es plata; esto es una planilla de control que la agencia cierra una vez por mes
+// entre todos, y partida por mostrador nadie veía cuántos pendientes quedaban de verdad.
 import { useCallback, useEffect, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import {
@@ -34,24 +39,29 @@ export function Imputados() {
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState<number | null>(null)
 
-  const cargar = useCallback(async (periodo: string | null, companias: string[]) => {
+  const cargar = useCallback(async (periodo: string | null, companias: string[], sucursales: string[]) => {
     setCargando(true)
     setError(null)
-    const resultado = await window.dm.cobranzas.imputados(periodo, companias)
+    const resultado = await window.dm.cobranzas.imputados(periodo, companias, sucursales)
     if (resultado.ok) setDatos(resultado.datos)
     else setError(resultado.error)
     setCargando(false)
   }, [])
 
   useEffect(() => {
-    void cargar(null, [])
+    void cargar(null, [], [])
   }, [cargar])
 
   const cambiar = async (pago: PagoRegistrado, resultado: ResultadoImputacion) => {
     if (!datos) return
     setGuardando(pago.id)
     setError(null)
-    const respuesta = await window.dm.cobranzas.cambiarResultado(pago.id, resultado, datos.companiasElegidas)
+    const respuesta = await window.dm.cobranzas.cambiarResultado(
+      pago.id,
+      resultado,
+      datos.companiasElegidas,
+      datos.sucursalesElegidas,
+    )
     setGuardando(null)
     if (respuesta.ok) setDatos(respuesta.datos)
     else setError(respuesta.error)
@@ -80,7 +90,7 @@ export function Imputados() {
           Mes
           <select
             value={datos.periodo}
-            onChange={(evento) => void cargar(evento.target.value, datos.companiasElegidas)}
+            onChange={(evento) => void cargar(evento.target.value, datos.companiasElegidas, datos.sucursalesElegidas)}
             className="ml-2 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800"
           >
             {datos.periodos.map((periodo) => (
@@ -94,18 +104,19 @@ export function Imputados() {
           etiqueta="Compañía"
           valores={datos.companiasElegidas}
           opciones={datos.companias}
-          alCambiar={(v) => void cargar(datos.periodo, v)}
+          alCambiar={(v) => void cargar(datos.periodo, v, datos.sucursalesElegidas)}
         />
-        {datos.sucursal && (
-          <span
-            className="inline-flex h-9 items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 text-xs font-semibold text-slate-600"
-            title="La rendición de las otras sucursales la ven los administradores."
-          >
-            Sólo {datos.sucursal}
-          </span>
-        )}
+        <FiltroMultiple
+          etiqueta="Sucursal"
+          valores={datos.sucursalesElegidas}
+          opciones={datos.sucursales}
+          alCambiar={(v) => void cargar(datos.periodo, datos.companiasElegidas, v)}
+        />
         <span className="ml-auto text-sm text-slate-500">
-          {numero(datos.total)} pagos · {pesos(datos.totalImporte)}
+          {/* La cuenta de pagos se ve siempre: es lo que dice cuánto falta rendir. El total en pesos
+              sólo lo ve quien ve los números de la agencia; para el resto viene en null. */}
+          {numero(datos.total)} pagos
+          {datos.totalImporte !== null && ` · ${pesos(datos.totalImporte)}`}
         </span>
       </div>
 

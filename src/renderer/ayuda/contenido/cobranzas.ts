@@ -136,8 +136,8 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Filtrar y lo que puede faltar',
         parrafos: [
-          'Arriba se elige el mes y, opcionalmente, una compañía puntual para ver sólo sus pagos. Si algunos pagos no tienen fecha ni mes legible, aparece un aviso: esos quedan afuera de cualquier rendición hasta corregir el dato de origen.',
-          'Los administradores (SUPER_ADMIN y ADMIN) rinden los pagos de todas las sucursales. Un empleado ve y rinde sólo los que se cobraron en su mostrador: la pantalla lo indica con la etiqueta «Sólo …» al lado de los filtros.',
+          'Arriba se elige el mes y, opcionalmente, una compañía y una sucursal para ver sólo esos pagos. Los dos filtros dejan tildar varias opciones a la vez, y sin tildar nada entran todas. Si algunos pagos no tienen fecha ni mes legible, aparece un aviso: esos quedan afuera de cualquier rendición hasta corregir el dato de origen.',
+          'La rendición la ven ENTERA los tres roles, con las cuatro sucursales, y cualquiera puede cargar el resultado de cualquier pago. Es a propósito distinto de la caja del día, donde un empleado sigue viendo sólo su mostrador: la caja es plata que entró, y esto es la planilla de control contra la compañía, que la agencia cierra una vez por mes entre todos. Partida por mostrador nadie veía cuántos pendientes quedaban de verdad.',
         ],
       },
     ],

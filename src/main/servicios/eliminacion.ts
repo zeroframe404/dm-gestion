@@ -1,5 +1,6 @@
-// Borrado definitivo y puntual de un registro. Es del SUPER_ADMIN y de nadie más (ver ipc.ts, que es el
-// que exige el rol, y shared/eliminacion.ts, que explica por qué no es un permiso configurable).
+// Borrado definitivo y puntual de un registro. Quién puede borrar qué depende del tipo: el CLIENTE lo
+// borran los tres roles (12.5) y todo lo demás sigue siendo del SUPER_ADMIN (ver ipc.ts, que es el que
+// exige el rol y el permiso del módulo, y shared/eliminacion.ts, que explica por qué es así).
 //
 // Cómo está armado. Cada tipo tiene un PLAN: qué se llama esto, qué se lleva puesto, qué renglones hay
 // que sacar de la hoja de Google, qué archivos hay que borrar de esta computadora, qué conviene avisar
@@ -31,7 +32,9 @@ import {
   NOMBRE_ELIMINABLE,
   conArticulo,
   esTipoEliminable,
+  motivoDeNoPoderEliminar,
   resumenDeLoBorrado,
+  rolPuedeEliminar,
   type LoQueArrastra,
   type ResultadoDeEliminacion,
   type TipoEliminable,
@@ -1026,14 +1029,18 @@ function planDeTarea(id: number): Plan {
 const LARGO_MAXIMO_DE_LA_FOTO = 4000
 
 /**
- * El rol se controla dos veces a propósito. `ipc.ts` ya exige SUPER_ADMIN antes de llamar acá —es lo que
- * hace con Usuarios y con Permisos— pero un borrado definitivo se merece que la regla esté también en el
+ * El rol se controla dos veces a propósito. `ipc.ts` ya lo exige antes de llamar acá —es lo que hace con
+ * Usuarios y con Permisos— pero un borrado definitivo se merece que la regla esté también en el
  * servicio: así queda escrita al lado de lo que borra, no en otro archivo, y una prueba puede
  * comprobarla sin levantar el proceso de Electron entero.
+ *
+ * Lo que NO se repite acá es el permiso del módulo (`AREA_ELIMINABLE`): la matriz vive en el proceso
+ * principal y pedirla desde este archivo lo ataría a la sesión. Ese control queda en ipc.ts, que es
+ * donde se sabe quién llamó, junto con el resto de los `exigirEdicion`.
  */
-function exigirSuperAdmin(actor: SesionUsuario): void {
-  if (actor.rol !== 'SUPER_ADMIN') {
-    throw new ErrorDeNegocio('Borrar registros de la base es sólo del superadministrador.')
+function exigirRolQuePuedaBorrar(actor: SesionUsuario, tipo: TipoEliminable): void {
+  if (!rolPuedeEliminar(actor.rol, tipo)) {
+    throw new ErrorDeNegocio(motivoDeNoPoderEliminar(tipo))
   }
 }
 
@@ -1095,8 +1102,8 @@ function avisosDeLaSincronizacion(tipo: TipoEliminable, renglones: number, archi
 
 /** Lo que el cartel muestra antes de confirmar. No toca nada. */
 export function vistaPreviaDeEliminacion(tipoCrudo: unknown, idCrudo: unknown, actor: SesionUsuario): VistaPreviaDeEliminacion {
-  exigirSuperAdmin(actor)
   const { tipo, id } = pedido(tipoCrudo, idCrudo)
+  exigirRolQuePuedaBorrar(actor, tipo)
   const plan = planDe(tipo, id)
   return {
     tipo,
@@ -1118,8 +1125,8 @@ export function vistaPreviaDeEliminacion(tipoCrudo: unknown, idCrudo: unknown, a
  *   3. los archivos del disco, al final: son lo único que no se puede deshacer con un ROLLBACK.
  */
 export function eliminarRegistro(tipoCrudo: unknown, idCrudo: unknown, actor: SesionUsuario): ResultadoDeEliminacion {
-  exigirSuperAdmin(actor)
   const { tipo, id } = pedido(tipoCrudo, idCrudo)
+  exigirRolQuePuedaBorrar(actor, tipo)
   const plan = planDe(tipo, id)
   const nombre = NOMBRE_ELIMINABLE[tipo]
   const resumen = resumenDeLoBorrado(plan.arrastra)

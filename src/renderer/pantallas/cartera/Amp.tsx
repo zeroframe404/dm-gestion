@@ -4,7 +4,7 @@
 //
 // Nada se borra: destildar la devuelve, y «Ver también las resueltas» muestra el histórico completo.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BotonEliminar, useEsSuperAdmin } from '../../componentes/BotonEliminar'
+import { BotonEliminar, usePuedeEliminar } from '../../componentes/BotonEliminar'
 import { coincideAlguno } from '../../../shared/filtros'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { ListadoAmp } from '../../../shared/tipos'
@@ -23,7 +23,7 @@ function normalizar(valor: string | null | undefined): string {
 
 export function Amp() {
   const puedeEditar = usePuedeEditar('cartera')
-  const puedeBorrar = useEsSuperAdmin()
+  const puedeBorrar = usePuedeEliminar('amp')
   const [datos, setDatos] = useState<ListadoAmp | null>(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)

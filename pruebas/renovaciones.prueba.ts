@@ -6,6 +6,7 @@ import test from 'node:test'
 import { abrirBaseDeDatos, cerrarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
 import { ejecutarImportacion } from '../src/main/importacion/importador'
 import { ahoraIso } from '../src/main/importacion/normalizar'
+import { bajasDelMes, planillaDelMes } from '../src/main/servicios/cartera'
 import { editarCompania, listarCompanias } from '../src/main/servicios/companias'
 import { editarPoliza, listarPolizas, verPoliza } from '../src/main/servicios/polizas'
 import {
@@ -317,9 +318,10 @@ test('renovar crea la vigencia nueva y deja la anterior como histórica', async 
 
   renovar(original.id, { ...sugerido, cuota: '$ 22.200', numero: '1234567-R' }, DANIEL)
 
-  // La anterior deja de estar activa, pero no se borra ni se inventa una baja: se renovó, no se dio de baja.
+  // La anterior deja de estar activa, pero no se borra ni se inventa una baja: se renovó, no se dio de
+  // baja. Y se LEE como renovada, que es lo que la separa de una anulación en el listado y en la ficha.
   const vieja = verPoliza(original.id)
-  assert.notEqual(vieja.estado, 'ACTIVA', 'la anterior queda como histórica')
+  assert.equal(vieja.estado, 'RENOVADA', 'la anterior queda como renovada, no como una baja sin motivo')
   assert.equal(vieja.motivoBaja, null, 'renovar no es dar de baja: no se le pone motivo')
 
   // La nueva existe, está activa y quedó enganchada a la anterior.
@@ -336,6 +338,91 @@ test('renovar crea la vigencia nueva y deja la anterior como histórica', async 
   // El seguimiento de la anterior queda marcado como renovada y sale de lo pendiente.
   const pendientes = filasDeLaBandeja().filter((f) => f.polizaId === original.id && f.estado !== 'renovada')
   assert.equal(pendientes.length, 0, 'la renovada no sigue figurando como pendiente')
+})
+
+// ---------------------------------------------------------------------------
+// Qué pasa con la póliza anterior: Renovadas, Bajas o Activas
+// ---------------------------------------------------------------------------
+
+test('sin elegir destino, la anterior queda en Renovadas: es lo que hacía la versión anterior', async () => {
+  await escenario()
+  const original = cambiar(polizaDe(CLIENTES.gonzalez.poliza), { vigenciaHasta: enDias(15).texto })
+  const sugerido = datosSugeridosDeRenovacion(original.id)
+  assert.equal(sugerido.destinoDeLaAnterior, 'renovada', 'el cartel abre con Renovadas elegida')
+
+  // Se manda a propósito sin el campo, que es lo que haría una computadora sin actualizar.
+  const { destinoDeLaAnterior: _sinUsar, ...comoLaVersionAnterior } = sugerido
+  renovar(original.id, { ...comoLaVersionAnterior, numero: '1234567-R' }, DANIEL)
+
+  const vieja = verPoliza(original.id)
+  assert.equal(vieja.estado, 'RENOVADA')
+  assert.equal(vieja.motivoBaja, null, 'no se le inventa una baja')
+})
+
+test('con destino Bajas la anterior sale de la cartera Y aparece en Cartera → Bajas', async () => {
+  await escenario()
+  const original = cambiar(polizaDe(CLIENTES.gonzalez.poliza), { vigenciaHasta: enDias(15).texto })
+  const sugerido = datosSugeridosDeRenovacion(original.id)
+
+  renovar(
+    original.id,
+    { ...sugerido, numero: '1234567-B', destinoDeLaAnterior: 'baja', motivoDeBaja: 'CAMBIO DE COMPANIA', notaDeBaja: 'La reemitieron' },
+    DANIEL,
+  )
+
+  const vieja = verPoliza(original.id)
+  assert.equal(vieja.estado, 'BAJA', 'la anterior queda dada de baja')
+  assert.equal(vieja.motivoBaja, 'CAMBIO DE COMPANIA')
+
+  const baja = bajasDelMes('').find((fila) => fila.polizaId === original.id)
+  assert.ok(baja, 'y tiene su fila en Bajas, que es donde la agencia mira lo que se perdió')
+  assert.equal(baja.motivo, 'CAMBIO DE COMPANIA')
+
+  // Y la nueva nació igual, que es lo que separa esto de «No renueva».
+  const nueva = polizaDe('1234567-B')
+  assert.equal(nueva.estado, 'ACTIVA')
+  assert.equal(nueva.clienteId, original.clienteId)
+
+  // El trámite queda cerrado: la bandeja no la vuelve a pedir.
+  const fila = filasDeLaBandeja().find((f) => f.polizaId === original.id)
+  if (fila) assert.equal(fila.estado, 'no renueva')
+})
+
+test('con destino Activas quedan las dos vigentes, con sus dos filas del mes', async () => {
+  await escenario()
+  const original = cambiar(polizaDe(CLIENTES.gonzalez.poliza), { vigenciaHasta: enDias(15).texto })
+  const sugerido = datosSugeridosDeRenovacion(original.id)
+  const filasAntes = planillaDelMes(null).filas.filter((f) => f.polizaId === original.id).length
+
+  renovar(original.id, { ...sugerido, numero: '1234567-A', destinoDeLaAnterior: 'activa' }, DANIEL)
+
+  const vieja = verPoliza(original.id)
+  assert.equal(vieja.estado, 'ACTIVA', 'la anterior sigue vigente: es lo que se pidió')
+  assert.equal(vieja.motivoBaja, null)
+
+  const nueva = polizaDe('1234567-A')
+  assert.equal(nueva.estado, 'ACTIVA')
+
+  // Las dos filas del mes: la vieja no se dio de baja, porque su póliza sigue cobrándose.
+  const enElMes = planillaDelMes(null).filas
+  assert.equal(enElMes.filter((f) => f.polizaId === original.id).length, filasAntes, 'la fila de la anterior sigue en la planilla')
+  assert.equal(enElMes.filter((f) => f.polizaId === nueva.id).length, 1, 'y la nueva tiene la suya')
+
+  // Aun vigente y vencida, no vuelve a la bandeja como pendiente: el seguimiento quedó cerrado.
+  const pendientes = filasDeLaBandeja().filter((f) => f.polizaId === original.id && f.estado === 'pendiente')
+  assert.equal(pendientes.length, 0, 'la bandeja no la vuelve a pedir todos los días')
+})
+
+test('un destino que no está en la lista se rechaza sin renovar nada', async () => {
+  await escenario()
+  const original = cambiar(polizaDe(CLIENTES.gonzalez.poliza), { vigenciaHasta: enDias(15).texto })
+  const sugerido = datosSugeridosDeRenovacion(original.id)
+
+  assert.throws(
+    () => renovar(original.id, { ...sugerido, numero: '1234567-X', destinoDeLaAnterior: 'archivada' as never }, DANIEL),
+    /Renovadas|Bajas|Activa/i,
+  )
+  assert.equal(verPoliza(original.id).estado, 'ACTIVA', 'no se tocó nada')
 })
 
 test('la renovación llega a la hoja de Google en el próximo ciclo', async () => {
@@ -389,7 +476,7 @@ test('renovar conservando el mismo número de póliza no choca contra la clave d
   renovar(original.id, { ...sugerido, numero: original.numero ?? '' }, DANIEL)
 
   const vieja = verPoliza(original.id)
-  assert.notEqual(vieja.estado, 'ACTIVA', 'la anterior queda histórica')
+  assert.equal(vieja.estado, 'RENOVADA', 'la anterior queda histórica')
   assert.equal(vieja.numero, original.numero, 'y conserva su número: lo que cambia es la clave interna')
 
   const activas = listarPolizas({ ...SIN_FILTROS, busqueda: original.numero ?? '', estados: ['ACTIVA'] }).filas

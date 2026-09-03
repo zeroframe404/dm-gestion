@@ -64,8 +64,8 @@ export function ConexionGoogle() {
   return (
     <div className="mx-auto max-w-3xl">
       <Tarjeta
-        titulo="Google Drive"
-        descripcion="Desde la versión 12 la base vive en el VPS y el programa no sincroniza más con la hoja (el servidor la mantiene como copia de lectura). Esta cuenta de Google queda sólo para Drive: los respaldos diarios y los adjuntos de siniestros."
+        titulo="Google Drive (obligatoria)"
+        descripcion="Desde la versión 12 la base vive en el VPS y el programa no sincroniza más con la hoja (el servidor la mantiene como copia de lectura). Esta cuenta de Google queda sólo para Drive: los respaldos diarios y los adjuntos de siniestros. Es obligatoria: la carga el superadministrador una vez, viaja al VPS y la adoptan solas las cinco computadoras, sea quien sea el que las use."
       >
         {cargando ? (
           <Cargando />
@@ -78,7 +78,11 @@ export function ConexionGoogle() {
                 {estado.actualizadoEn && <> Última actualización: {formatearFecha(estado.actualizadoEn)}.</>}
               </Alerta>
             ) : (
-              <Alerta tono="info">Todavía no hay una cuenta de servicio configurada.</Alerta>
+              <Alerta tono="error">
+                Todavía no hay una cuenta de servicio configurada, y es obligatoria. Sin ella no se sube el respaldo
+                diario de la base ni los adjuntos de los siniestros: se siguen guardando en cada computadora, pero no
+                queda copia fuera de acá. Mientras falte, el cartel aparece en Inicio para todo el equipo.
+              </Alerta>
             )}
 
             <AreaTexto

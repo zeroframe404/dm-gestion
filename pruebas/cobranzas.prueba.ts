@@ -20,7 +20,7 @@ import {
 import { editarCompania, listarCompanias } from '../src/main/servicios/companias'
 import { hojaDeImputados, normalizarResultado } from '../src/main/servicios/pagos'
 import { historialDeFila } from '../src/main/servicios/historial'
-import { SUCURSALES } from '../src/shared/sucursales'
+import { mismaSucursal, SUCURSALES } from '../src/shared/sucursales'
 import type { FilaCartera, FiltrosMora, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
@@ -348,6 +348,62 @@ test('la rendición trae los pagos del mes con su RESULTADO, normalizado', async
   const soloSancor = imputados('2026-08', ['SANCOR'])
   assert.equal(soloSancor.pagos.length, 2)
   for (const pago of soloSancor.pagos) assert.equal(pago.compania, 'SANCOR')
+  cerrarBaseDeDatos()
+})
+
+test('la rendición se ve entera y la sucursal es un filtro más, no un recorte por rol', async () => {
+  await cobranzasDePrueba()
+
+  // Sin filtro pedido no se acota nada, y las cuatro sucursales de la agencia se pueden elegir aunque
+  // este mes no tengan ningún pago: es el mismo criterio que el filtro de la mora.
+  const rendicion = imputados('2026-08', [], [])
+  assert.deepEqual(rendicion.sucursalesElegidas, [])
+  assert.equal(rendicion.pagos.length, 3)
+  for (const deLaAgencia of SUCURSALES) {
+    assert.ok(rendicion.sucursales.includes(deLaAgencia), `«${deLaAgencia}» está en el filtro de sucursal`)
+  }
+
+  // Pidiendo una sucursal quedan sus pagos y nada más.
+  const conSucursal = rendicion.pagos.find((pago) => pago.sucursal)!
+  const acotada = imputados('2026-08', [], [conSucursal.sucursal!])
+  assert.ok(acotada.pagos.length > 0, 'filtrar por una sucursal que sí rindió trae sus pagos')
+  for (const pago of acotada.pagos) assert.ok(mismaSucursal(pago.sucursal, conSucursal.sucursal))
+
+  // Una sucursal que no existe se descarta en vez de vaciar la pantalla sin explicación.
+  const inventada = imputados('2026-08', [], ['MAR DEL PLATA'])
+  assert.deepEqual(inventada.sucursalesElegidas, [])
+  assert.equal(inventada.pagos.length, 3, 'lo que no está en la lista no filtra')
+
+  // Y un empleado rinde cualquier pago del mes, sea de la sucursal que sea: es lo que la agencia pidió
+  // y lo contrario de lo que hacía antes, que le devolvía «ese pago se cobró en otra sucursal».
+  const deOtroMostrador = rendicion.pagos.find((pago) => !mismaSucursal(pago.sucursal, BRENDA.sucursal.nombre))!
+  const despues = cambiarResultado(deOtroMostrador.id, 'OK', [], BRENDA)
+  assert.equal(despues.pagos.find((pago) => pago.id === deOtroMostrador.id)?.resultado, 'OK')
+  cerrarBaseDeDatos()
+})
+
+test('lo único que un empleado sigue sin ver de la rendición es el total en pesos del mes', async () => {
+  await cobranzasDePrueba()
+
+  // Con la rendición abierta a las cuatro sucursales, ese total pasó a ser el bruto cobrado del mes por
+  // TODA la agencia, que es justo lo que describe `veLosNumerosDeLaAgencia`. Las filas se ven enteras.
+  const deUnEmpleado = imputados('2026-08', [], [], false)
+  assert.equal(deUnEmpleado.totalImporte, null, 'el bruto del mes de la agencia no se muestra')
+  assert.equal(deUnEmpleado.total, 3, 'pero la cuenta de pagos sí: es lo que dice cuánto falta rendir')
+  assert.ok(
+    deUnEmpleado.pagos.some((pago) => pago.importeMonto !== null),
+    'y cada fila conserva su importe, que es el trabajo del día',
+  )
+
+  // Y para un administrador, el total de siempre.
+  const deUnAdministrador = imputados('2026-08', [], [])
+  assert.ok(typeof deUnAdministrador.totalImporte === 'number' && deUnAdministrador.totalImporte > 0)
+
+  // También al rendir: la pantalla se redibuja con lo que devuelve `cambiarResultado`, y si ahí volviera
+  // el total, el número aparecería recién después de tocar un desplegable.
+  const pago = deUnEmpleado.pagos[0]!
+  assert.equal(cambiarResultado(pago.id, 'OK', [], BRENDA).totalImporte, null)
+  assert.ok(typeof cambiarResultado(pago.id, 'REVISAR', [], DANIEL).totalImporte === 'number')
   cerrarBaseDeDatos()
 })
 

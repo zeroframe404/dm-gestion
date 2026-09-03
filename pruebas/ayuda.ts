@@ -9,7 +9,7 @@ import type { FuenteHoja } from '../src/main/importacion/fuente'
 import { listarAmp } from '../src/main/servicios/amp'
 import { catalogos } from '../src/main/servicios/cartera'
 import { listarClientes } from '../src/main/servicios/clientes'
-import { cajaDelDia, mora } from '../src/main/servicios/cobranzas'
+import { cajaDelDia, imputados, mora } from '../src/main/servicios/cobranzas'
 import { buscarDeudores } from '../src/main/servicios/deudores'
 import { listarLeads } from '../src/main/servicios/leads'
 import { catalogosDePoliza } from '../src/main/servicios/polizas'
@@ -142,6 +142,9 @@ export function desplegablesDeSucursal(hoy?: string): Array<[string, string[]]> 
     ['Pólizas', catalogosDePoliza().sucursales],
     ['Clientes', listarClientes({ busqueda: '', sucursales: [], companias: [], estado: '' }).sucursales],
     ['Caja del día', cajaDelDia(null, []).sucursales],
+    // Imputados tiene desplegable de sucursal desde la 12.5: entra acá para que no repita el problema
+    // de Sarandí, que fue exactamente una pantalla que quedó afuera de este arreglo.
+    ['Imputados', imputados(null, [], []).sucursales],
     ['Mora', mora({ busqueda: '', sucursales: [], companias: [], rangos: [], incluirDebito: true }, hoy).sucursales],
     ['Deudores', buscarDeudores(DEUDORES_SIN_FILTROS, hoy).sucursales],
     ['Riesgos varios', listarRiesgos().sucursales],

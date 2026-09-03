@@ -117,6 +117,19 @@ test('la baja manda sobre el vencimiento', () => {
   assert.equal(estadoDePoliza(false, '2027-01-01', hoy), 'BAJA')
 })
 
+test('la que se renovó no es una baja: sale de la cartera con su propio nombre', () => {
+  const hoy = '2026-08-21'
+  // Las dos salen de la cartera, pero sólo una es cartera perdida. Confundirlas hacía que la agencia
+  // creyera que perdió clientes que en realidad siguieron con otro número.
+  assert.equal(estadoDePoliza(false, '2026-08-20', hoy, true), 'RENOVADA')
+  assert.equal(estadoDePoliza(false, '2027-01-01', hoy, true), 'RENOVADA')
+  assert.equal(estadoDePoliza(false, '2026-08-20', hoy, false), 'BAJA', 'sin sucesora sigue siendo una baja')
+  assert.equal(estadoDePoliza(false, '2026-08-20', hoy), 'BAJA', 'y sin el dato también, como en la 12.4')
+  // Sobre la póliza VIVA no manda: una que sigue vigente es ACTIVA aunque ya haya renovado otra vez.
+  assert.equal(estadoDePoliza(true, '2027-01-01', hoy, true), 'ACTIVA')
+  assert.equal(estadoDePoliza(true, '2026-08-20', hoy, true), 'VENCIDA')
+})
+
 test('sin fecha de vigencia no se puede afirmar que venció: sigue activa', () => {
   // Buena parte de lo importado viene sin vigencia cargada; marcarlas vencidas sería mentir.
   assert.equal(estadoDePoliza(true, null, '2026-08-21'), 'ACTIVA')

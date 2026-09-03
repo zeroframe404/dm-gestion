@@ -53,6 +53,8 @@ const api: ApiDm = {
   config: {
     estadoGoogle: () => invocar('config:estadoGoogle'),
     guardarGoogle: (datos) => invocar('config:guardarGoogle', datos),
+    googleEnLaAgencia: () => invocar('config:googleEnLaAgencia'),
+    traerGoogle: () => invocar('config:traerGoogle'),
     plantillaAviso: () => invocar('config:plantillaAviso'),
     guardarPlantillaAviso: (texto) => invocar('config:guardarPlantillaAviso', texto),
   },
@@ -102,8 +104,9 @@ const api: ApiDm = {
     exportarCaja: (fecha, sucursales) => invocar('cobranzas:exportarCaja', fecha, sucursales),
     mora: (filtros) => invocar('cobranzas:mora', filtros),
     avisarMora: (filaId) => invocar('cobranzas:avisarMora', filaId),
-    imputados: (periodo, companias) => invocar('cobranzas:imputados', periodo, companias),
-    cambiarResultado: (pagoId, resultado, companias) => invocar('cobranzas:cambiarResultado', pagoId, resultado, companias),
+    imputados: (periodo, companias, sucursales) => invocar('cobranzas:imputados', periodo, companias, sucursales),
+    cambiarResultado: (pagoId, resultado, companias, sucursales) =>
+      invocar('cobranzas:cambiarResultado', pagoId, resultado, companias, sucursales),
     comisiones: (periodo) => invocar('cobranzas:comisiones', periodo),
   },
   impresora: {
@@ -203,6 +206,11 @@ const api: ApiDm = {
     reintentar: () => invocar('sincronizacion:reintentar'),
     respaldarAhora: () => invocar('sincronizacion:respaldarAhora'),
     alCambiarEstado: (escuchar) => suscribir('sincronizacion:estado', escuchar),
+  },
+  respaldos: {
+    listar: () => invocar('respaldos:listar'),
+    crear: () => invocar('respaldos:crear'),
+    restaurar: (id) => invocar('respaldos:restaurar', id),
   },
   leads: {
     listar: (filtros) => invocar('leads:listar', filtros),

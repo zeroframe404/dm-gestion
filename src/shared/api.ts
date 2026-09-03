@@ -43,6 +43,8 @@ export interface ApiDm {
   config: {
     estadoGoogle: Remota<'config:estadoGoogle'>
     guardarGoogle: Remota<'config:guardarGoogle'>
+    googleEnLaAgencia: Remota<'config:googleEnLaAgencia'>
+    traerGoogle: Remota<'config:traerGoogle'>
     plantillaAviso: Remota<'config:plantillaAviso'>
     guardarPlantillaAviso: Remota<'config:guardarPlantillaAviso'>
   }
@@ -184,6 +186,12 @@ export interface ApiDm {
     reintentar: Remota<'sincronizacion:reintentar'>
     respaldarAhora: Remota<'sincronizacion:respaldarAhora'>
     alCambiarEstado: Suscripcion<'sincronizacion:estado'>
+  }
+  /** Los respaldos del SERVIDOR, no los .xlsx de esta computadora (ésos están en `sincronizacion`). */
+  respaldos: {
+    listar: Remota<'respaldos:listar'>
+    crear: Remota<'respaldos:crear'>
+    restaurar: Remota<'respaldos:restaurar'>
   }
   leads: {
     listar: Remota<'leads:listar'>

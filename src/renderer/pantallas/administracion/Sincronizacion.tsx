@@ -1,9 +1,14 @@
 // Administración → Sincronización: qué está esperando para subir, qué pasó últimamente y los respaldos.
+//
+// Los respaldos son DOS cosas distintas y la pantalla los muestra por separado a propósito: los del
+// SERVIDOR (12.5), que se hacen solos aunque nadie encienda una computadora y sirven para rebobinar la
+// base de toda la agencia, y las copias .xlsx de ESTA computadora, que sirven para abrir en Excel.
 import { useCallback, useEffect, useState } from 'react'
 import type { PanelSincronizacion } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, Etiqueta, Tarjeta, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
+import { RespaldosDelServidor } from './RespaldosDelServidor'
 
 function fecha(iso: string | null): string {
   if (!iso) return '—'
@@ -214,9 +219,13 @@ export function Sincronizacion() {
         </ul>
       </Tarjeta>
 
+      {/* Primero los del servidor: son los que sirven para VOLVER, y son los que la agencia pidió
+          ver. Los de acá abajo, los .xlsx de esta computadora, quedan para mirar en Excel. */}
+      <RespaldosDelServidor />
+
       <Tarjeta
-        titulo="Respaldos"
-        descripcion="Todos los días después de las 20:00 se guarda una copia de la base entera en formato Excel y, si la cuenta de Google sigue cargada, se sube a la carpeta «Respaldos DM» del Drive. Se conservan los últimos 30."
+        titulo="Respaldos en esta computadora"
+        descripcion="Además de los del servidor, todos los días después de las 20:00 esta computadora guarda una copia de la base entera en formato Excel y, si la cuenta de Google sigue cargada, la sube a la carpeta «Respaldos DM» del Drive. Se conservan las últimas 30. Sirven para abrir en Excel y mirar; para volver atrás están los del servidor."
         acciones={
           <Boton
             icono="descargar"
@@ -248,7 +257,7 @@ export function Sincronizacion() {
               {panel.respaldos.length === 0 && (
                 <tr>
                   <td colSpan={3} className="px-3 py-8 text-center text-slate-500">
-                    Todavía no hay respaldos. El primero sale hoy después de las 20:00.
+                    Todavía no hay copias en esta computadora. La primera sale hoy después de las 20:00.
                   </td>
                 </tr>
               )}

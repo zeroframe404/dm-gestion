@@ -32,9 +32,12 @@ export type AccionHistorial =
   | 'rechazo_debito'
   // Las listas de consulta del módulo Compañías: organizadores, precios, grúas y cláusulas.
   | 'referencia'
-  // Borrado definitivo de un registro (sólo el SUPER_ADMIN). El historial NO se borra nunca: esta
-  // entrada es lo único que queda de lo que se fue.
+  // Borrado definitivo de un registro (ver shared/eliminacion.ts). El historial NO se borra nunca:
+  // esta entrada es lo único que queda de lo que se fue.
   | 'eliminacion'
+  // Rebobinar la base a un respaldo del servidor (sólo el SUPER_ADMIN). Igual que el borrado, esta
+  // entrada es lo único que queda de lo que se pisó: quién restauró, cuándo y a qué respaldo.
+  | 'restauracion'
 
 export interface CambioARegistrar {
   accion: AccionHistorial

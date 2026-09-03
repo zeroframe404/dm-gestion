@@ -510,9 +510,42 @@ La aplicación y la hoja se mantienen iguales solas, usando la columna `_ID` com
   no deja a toda la aplicación sin novedades. Si un mismo campo cambió de los dos lados, el que pierde
   queda en `historial` marcado como «pisado por sincronización» y aparece en los movimientos de la
   pantalla de Sincronización.
-- **Respaldo**: la primera vez que la aplicación está abierta después de las 20:00 exporta la hoja a
-  `.xlsx` en `%APPDATA%/dm-gestion/respaldos/` (conserva 30) y sube una copia a la carpeta
-  «Respaldos DM» del Drive. Si Drive falla, la copia local igual queda guardada.
+- **Respaldos**: son **dos** y son distintos a propósito (ver «Respaldos y rebobinar», más abajo). El
+  del **servidor** (12.5) lo hace el VPS solo, una vez por día, y sirve para **volver atrás**. La copia
+  **local** sigue existiendo: la primera vez que la aplicación está abierta después de las 20:00
+  exporta la base a `.xlsx` en `%APPDATA%/dm-gestion/respaldos/` (conserva 30) y sube una copia a la
+  carpeta «Respaldos DM» del Drive; si Drive falla, la copia local igual queda guardada. Ésa sirve para
+  abrir en Excel y mirar.
+
+### Respaldos y rebobinar (12.5)
+
+Hasta la 12.4 el único respaldo era el `.xlsx` de cada computadora, y tenía dos agujeros: **dependía de
+que alguien abriera el programa** después de las 20:00 (un fin de semana largo no había respaldo de
+ningún día) y quedaba guardado **en la máquina de la que justamente hay que tener copia**.
+
+Desde la 12.5 el **servidor** guarda una foto por día de `dmg_pestanas` + `dmg_filas`, que es el GENERAL
+DE CLIENTES entero. Lo hace su propio reloj (`respaldos.jobs.ts`, cada 6 h por defecto,
+`DMG_RESPALDO_INTERVALO_SEGUNDOS`), así que existe aunque no se encienda ninguna computadora.
+
+- **Se guardan 14 y se muestran los últimos 3**, en **Administración → Sincronización → «Respaldos en
+  el servidor»**, con día, hora, cuántas pestañas y filas tiene, tamaño y quién lo hizo. Tres alcanzan
+  para el caso real —«esto se rompió hoy, volvamos a ayer»— y una lista corta se lee de un vistazo.
+- **El volcado va comprimido con gzip** y **NO lleva credenciales**: `dmg_ajustes` y `dmg_usuarios`
+  quedan afuera a propósito. Rebobinar la cartera al martes pasado no puede pisar las contraseñas de la
+  agencia ni devolverle el acceso a alguien a quien se le sacó.
+- **El respaldo del día es idempotente** (la clave es día + motivo), así que el reloj puede correr
+  varias veces sin llenar la base de copias iguales, y «Respaldar ahora» tampoco.
+- **Restaurar es sólo del `SUPER_ADMIN`**, con el mismo criterio que la papelera: pisa la base de las
+  **cinco** computadoras y descarta todo lo cargado desde ese día. El cartel dice qué se lleva puesto y
+  el botón se enciende recién a los **cinco segundos**.
+- **Antes de rebobinar, el servidor guarda una foto del estado actual** (`ANTES_DE_RESTAURAR`). Es la
+  salida para el error más caro: restaurar el respaldo equivocado.
+- **El orden de la restauración importa** y está en `servicios/respaldosVps.ts`: se apaga el motor, se
+  vacía la cola de subida (lo pendiente es de después del respaldo y volvería a subir, deshaciendo el
+  rebobinado a los treinta segundos), se restaura en el servidor, se **reimporta completo** contra él
+  —la base local es una copia derivada— y recién ahí se vuelve a encender. Las otras computadoras se
+  enteran solas en su próxima bajada. Quién restauró y a qué respaldo queda en `historial`, con la
+  acción `restauracion`.
 
 **Cuota de Google**: la subida usa como mucho 4 llamadas por tanda (6 tandas por minuto = 24) y la
 bajada 3 cada 5 minutos. Bien por debajo de las ~50 por minuto.
@@ -581,9 +614,14 @@ cobrarle. Se tilda lo que haga falta y la lista se rehace sola:
 ### Pólizas
 
 - **Listado por póliza** (no por cliente) con compañía, número, cobertura, vehículo, cuota, vigencia y
-  **estado**. El estado no está en ninguna columna de la hoja: se calcula con `activa` y la vigencia —
-  ACTIVA, VENCIDA (la vigencia ya pasó) o BAJA (se dio de baja). Una póliza sin vigencia cargada sigue
+  **estado**. El estado no está en ninguna columna de la hoja: se calcula con `activa`, la vigencia y si
+  hay otra póliza que la nombre en `poliza_anterior_id` — ACTIVA, VENCIDA (la vigencia ya pasó),
+  **RENOVADA** (siguió con otro número) o BAJA (se dio de baja). Una póliza sin vigencia cargada sigue
   activa: no se puede afirmar que venció.
+- **RENOVADA es de la 12.5.** Antes la póliza que se había renovado se leía «Baja», sin motivo, en el
+  listado, en la ficha del cliente y en el Excel: indistinguible de una que la compañía anuló. Son lo
+  contrario: la cartera no se perdió, siguió. Se reconoce por tener sucesora y **ninguna baja anotada**
+  (al renovar se puede elegir mandar la anterior a Bajas, y ahí sí es una baja).
 - **Alta y edición en una sola pantalla**: cliente (buscador), riesgo asegurado (uno de los del cliente
   o uno nuevo), compañía, cobertura, forma de pago, cuota, día de vencimiento, número de póliza o
   propuesta, vigencia, AVISAR VTO y observaciones. Compañía, cobertura y forma de pago sugieren lo que
@@ -650,13 +688,28 @@ datos crudos. Intentar interpretarla sería frágil y se rompería en silencio. 
 - **Etiqueta destacada** cuando las observaciones piden aumentar al renovar. Se reconoce la idea, no el
   texto exacto: «20% aumentar cuando se renueva», «aumentar 20 % al renovar» y «SUBE 15% EN LA
   RENOVACION» valen igual.
-- **Renovar** crea la vigencia nueva y deja la anterior como histórica, enganchada por
-  `poliza_anterior_id`. No se le inventa una baja con motivo: no se dio de baja, se renovó. Propone
-  todo editable: la vigencia corrida por los meses de la compañía (cuatro en Agrosalta, seis en Río
-  Uruguay, doce en Metropol) y la cuota anterior —ya aumentada si las observaciones lo piden—, más el
-  número de póliza y el de propuesta. Cuando la compañía no tiene plazo cargado, el plazo se deduce de
-  la vigencia que está terminando —«igual eso lo dice la fin de vigencia»— siempre que dé uno de los
-  habituales (3, 4, 6 o 12 meses); si no, un año.
+- **Renovar** carga el número nuevo y crea la vigencia que sigue, enganchada a la anterior por
+  `poliza_anterior_id`. Propone todo editable: la vigencia corrida por los meses de la compañía (cuatro
+  en Agrosalta, seis en Río Uruguay, doce en Metropol) y la cuota anterior —ya aumentada si las
+  observaciones lo piden—, más el número de póliza y el de propuesta. Cuando la compañía no tiene plazo
+  cargado, el plazo se deduce de la vigencia que está terminando —«igual eso lo dice la fin de
+  vigencia»— siempre que dé uno de los habituales (3, 4, 6 o 12 meses); si no, un año.
+- **Qué pasa con la póliza anterior se elige en el mismo cartel (12.5).** Hasta la 12.4 no se
+  preguntaba: la vieja salía siempre de la cartera. Casi siempre está bien, pero los otros dos casos
+  existen y no tenían salida. Las tres opciones, con la primera ya elegida:
+
+  | Opción | Qué le pasa a la anterior | Su fila del mes |
+  | --- | --- | --- |
+  | **Renovadas** (por defecto) | `activa = 0`, sin baja con motivo: no se dio de baja, se renovó. Se lee **RENOVADA** en el listado y en la ficha. | Sale de la planilla; la nueva ocupa su lugar |
+  | **Bajas** | `activa = 0` **y** entra a Cartera → Bajas con el motivo que se elija, que es donde la agencia mira lo que se perdió en el mes. Es el caso de la compañía que anuló la vieja en vez de renovarla. | Sale de la planilla |
+  | **Activas** | Queda **vigente**: las dos pólizas conviven. Es la compañía que todavía no dio de baja la anterior, o la nueva que es de otro riesgo del mismo cliente. | **Se queda**: las dos se cobran |
+
+  En los tres casos el seguimiento de la anterior queda cerrado, así que la bandeja no la vuelve a
+  pedir —ni siquiera con «Activas», que sigue vencida— y el destino elegido queda anotado en el
+  historial: dentro de un mes la pregunta va a ser por qué esa póliza quedó vigente, y la respuesta
+  tiene que estar. Con «Bajas», la fila de BAJAS se encola **antes** de sacar la del mes, que es el
+  orden que declara `darDeBaja` en `cartera.ts`: ante una falla en el medio la póliza queda repetida un
+  rato, no perdida en los dos lados.
 - **No renueva** da de baja la póliza con el motivo elegido y cierra el trámite.
 
 Todo respeta los roles y escribe en `historial` y en `cola_sync`, así que los cambios suben a la hoja
@@ -695,7 +748,8 @@ quién cobró. Arriba, el total del día y el subtotal por cada medio de pago.
 - **Quién ve qué caja es una regla de rol** (12.2): SUPER_ADMIN y ADMIN eligen cualquier sucursal o
   «Todas»; un EMPLEADO ve la caja de su mostrador y el desplegable queda fijo. Dos personas de la misma
   sucursal se ven entre sí (lo que cobra una aparece en la caja de la otra, ver «Los pagos viajan por
-  APP PAGOS», más abajo). Lo mismo rige en Imputados: un empleado rinde sólo lo cobrado en su sucursal.
+  APP PAGOS», más abajo). Esto vale **sólo para la caja del día**: la rendición de Imputados la ven
+  entera los tres roles (ver «Imputados», más abajo).
 - La sucursal de la caja es **la del mostrador donde entró la plata**, no la del cliente: un cliente de
   Lanús que paga en Dock Sud suma a la caja de Dock Sud (`pagos.sucursal_cobro`).
 - **Exportar el día** guarda un CSV con punto y coma y BOM, listo para abrir de un doble clic en Excel.
@@ -722,9 +776,18 @@ días de atraso, cuota, teléfono y el mismo **Avisar** por WhatsApp de la plani
 La misma pantalla se ve en **Cobranzas → Imputados** y en **Cartera → Imputados**: es el equivalente de
 la hoja IMPUTADOS y tiene que ser una sola.
 
-Selector de mes y compañía y, por cada pago, fecha, cliente, póliza, importe, medio y **RESULTADO**
-editable (vacío, IMPUTADO, OK, REVISAR, MAL), con los contadores arriba. El RESULTADO se sincroniza con
-la hoja, y lo que la contadora escriba allá vuelve en la próxima bajada.
+Selector de mes, compañía y sucursal y, por cada pago, fecha, cliente, póliza, importe, medio y
+**RESULTADO** editable (vacío, IMPUTADO, OK, REVISAR, MAL), con los contadores arriba. El RESULTADO se
+sincroniza con la hoja, y lo que la contadora escriba allá vuelve en la próxima bajada.
+
+**La rendición la ven ENTERA los tres roles (12.5).** Hasta la 12.4 un EMPLEADO veía y rendía sólo los
+pagos de su mostrador, con la misma regla de rol que la caja del día. Se sacó a pedido de la agencia, y
+la razón es que las dos pantallas no son lo mismo: la caja del día es **plata** —cuánto entró hoy en
+cada mostrador— y por eso sigue recortada; la rendición es una **planilla de control** contra la
+compañía, una sola cuenta por mes, que la agencia cierra entre todos. Partida por mostrador nadie veía
+el total de pendientes: cada sucursal cerraba lo suyo sin saber qué faltaba. Ahora la sucursal es un
+filtro más al lado del de compañía (se tildan varias, sin tildar nada entran todas) y cualquiera puede
+cargar el RESULTADO de cualquier pago; quién lo tocó queda anotado en el historial de siempre.
 
 Dos cosas que hacen falta saber:
 
@@ -1358,11 +1421,27 @@ arrancar.
 | Qué | Dónde se carga | Quién lo carga |
 | --- | --- | --- |
 | Catálogo de vehículos (InfoAuto, Mercado Libre, DNRPA) | Administración → Catálogo de vehículos | Superadministrador |
-| Conexión con Google (Drive: respaldos y adjuntos) | Administración → Google Drive | Superadministrador |
+| Conexión con Google (Drive: respaldos y adjuntos) — **obligatoria** | Administración → Google Drive | Superadministrador |
 | App de Meta y **la dirección de vuelta** | Administración → Redes sociales | Superadministrador |
 | Catálogo de compañías y la plantilla del aviso | Administración → Compañías | Administrador o superadministrador |
 | Encabezado del ticket (dirección y teléfono) | Administración → Impresora | Cualquier rol, **el de su sucursal** |
 | Las cuatro listas del módulo Compañías | Compañías → «Publicar para todas» | Superadministrador |
+
+**La conexión con Google es OBLIGATORIA (12.5).** Es la única de la tabla que lo es, y la razón es que
+lo que se pierde sin ella no se nota hasta que hace falta: el respaldo diario que sube a Drive y los
+adjuntos de los siniestros. Hasta la 12.4 la sucursal sin cuenta cargada no subía nada y nadie se
+enteraba. Ahora:
+
+- mientras falte en la agencia, aparece un cartel **rojo** en **Inicio** y en **Administración**, para
+  **todo el equipo**. Un empleado no la puede cargar, pero sí puede ver que falta y avisar;
+- si está en el servidor pero esta computadora no la tiene —o tiene **otra**—, el cartel es ámbar y
+  trae un botón **«Traerla ahora»** que cualquiera puede tocar: bajar el ajuste no es cargarlo;
+- el cartel **no lleva ningún dato de la credencial** (ni el correo de la cuenta ni la URL de la hoja):
+  sale por `config:googleEnLaAgencia`, que sólo contesta si está y de cuándo es. El detalle sigue
+  siendo de administradores, en Administración → Google Drive;
+- **obligatoria no es un bloqueo duro.** El programa abre igual, y si el servidor no contesta el cartel
+  no aparece: no se le va a decir a nadie que falta una credencial cuando lo único que pasó es que se
+  cayó internet. Es la regla que ordena todo este archivo (ver `ajustesCompartidos.ts`).
 
 Tres reglas que ordenan todo esto:
 
@@ -1563,35 +1642,55 @@ computadoras se comparan no cambie si no cambian los datos; que adoptar reemplac
 fila rota de lo publicado se saltee sola en vez de llevarse puesta la adopción entera; y que lo cargado
 y no publicado cuente como pendiente.
 
-## Eliminar registros (sólo el superadministrador)
+## Eliminar registros
 
 Hasta acá el programa no borraba nada. Se daba de baja, se deshacía, se ponía vigente, se corregía: todo
 reversible, y todo con el historial detrás. Pero un cliente cargado dos veces, un aviso de rechazo mandado
 por error o una fila de la planilla que nunca tendría que haber existido no se arreglan dando de baja —dar
 de baja es un hecho del negocio, no un botón de deshacer— y quedaban ahí para siempre.
 
-Ahora hay un **botón rojo con una papelera** que borra un registro de la base de verdad. Es del
-`SUPER_ADMIN` y de nadie más.
+Ahora hay un **botón rojo con una papelera** que borra un registro de la base de verdad.
+
+### Quién puede borrar qué (12.5)
+
+**El cliente lo borran los tres roles.** Lo pidió la agencia y el caso es el de todos los días: el alta
+cargada dos veces, el DNI mal tipeado que creó una persona que no existe, la consulta que se cargó como
+cliente. Antes había que esperar al superadministrador para sacar una fila que nadie quería, y mientras
+tanto esa fila seguía apareciendo en la planilla, en la mora y en los avisos de WhatsApp.
+
+**Todo lo demás sigue siendo del `SUPER_ADMIN`, sin excepción.** Una póliza, una baja o una fila de la
+planilla son piezas de la cartera: se dan de baja, se deshacen, se ponen vigentes o se corrigen, y todo
+eso un ADMIN ya lo tiene.
+
+Además del rol hace falta poder **editar** el módulo de donde sale el registro (`AREA_ELIMINABLE` en
+`src/shared/eliminacion.ts`): a quien tiene Clientes en «sólo ver» no se le abre la papelera de un
+cliente. Para el superadministrador esto no cambia nada, porque tiene «editar» en todo.
+
+Sigue **sin ser un permiso configurable**, igual que `veLosNumerosDeLaAgencia`: la lista está escrita en
+el código, tipo por tipo, y no hay pantalla que la encienda. Si se pudiera encender desde una pantalla,
+alcanzaría con que alguien se distraiga una vez.
 
 ### Qué se puede borrar y dónde está el botón
 
-| Tipo | Dónde | Qué se lleva puesto |
-| --- | --- | --- |
-| `cliente` | Clientes → ficha, arriba a la derecha | Vehículos, pólizas, cuotas de todos los meses, pagos, bajas, siniestros con sus documentos, notas, tareas, presupuestos, riesgos varios, AMP y avisos de rechazo |
-| `poliza` | Pólizas → Editar póliza | Sus cuotas, pagos, bajas, siniestros, AMP, avisos de rechazo, tareas y el seguimiento de renovación |
-| `cuota` | Cartera → Planilla del mes, panel de la derecha | Los pagos hechos contra esa fila, su baja y su aviso de rechazo |
-| `baja` | Cartera → Bajas, en la fila y en el panel | Nada más que la baja |
-| `rechazo` | Cartera → Rechazos, en la fila | Nada más que el aviso |
-| `lead` | Leads → ficha | Sus notas y sus tareas |
-| `presupuesto` | Presupuestos → ficha | **Todas** sus versiones, sus opciones y sus tareas |
-| `siniestro` | Siniestros → ficha | Sus observaciones, sus documentos adjuntos y sus tareas |
-| `riesgo` | Cartera → Riesgos varios, en la fila | Nada más que el riesgo |
-| `amp` | Cartera → AMP, en la fila | Nada más que la ampliación |
-| `tarea` | Tareas → ficha | Sus comentarios y sus adjuntos |
+| Tipo | Quién | Dónde | Qué se lleva puesto |
+| --- | --- | --- | --- |
+| `cliente` | Los tres roles | Clientes → ficha, arriba a la derecha | Vehículos, pólizas, cuotas de todos los meses, pagos, bajas, siniestros con sus documentos, notas, tareas, presupuestos, riesgos varios, AMP y avisos de rechazo |
+| `poliza` | Sólo `SUPER_ADMIN` | Pólizas → Editar póliza | Sus cuotas, pagos, bajas, siniestros, AMP, avisos de rechazo, tareas y el seguimiento de renovación |
+| `cuota` | Sólo `SUPER_ADMIN` | Cartera → Planilla del mes, panel de la derecha | Los pagos hechos contra esa fila, su baja y su aviso de rechazo |
+| `baja` | Sólo `SUPER_ADMIN` | Cartera → Bajas, en la fila y en el panel | Nada más que la baja |
+| `rechazo` | Sólo `SUPER_ADMIN` | Cartera → Rechazos, en la fila | Nada más que el aviso |
+| `lead` | Sólo `SUPER_ADMIN` | Leads → ficha | Sus notas y sus tareas |
+| `presupuesto` | Sólo `SUPER_ADMIN` | Presupuestos → ficha | **Todas** sus versiones, sus opciones y sus tareas |
+| `siniestro` | Sólo `SUPER_ADMIN` | Siniestros → ficha | Sus observaciones, sus documentos adjuntos y sus tareas |
+| `riesgo` | Sólo `SUPER_ADMIN` | Cartera → Riesgos varios, en la fila | Nada más que el riesgo |
+| `amp` | Sólo `SUPER_ADMIN` | Cartera → AMP, en la fila | Nada más que la ampliación |
+| `tarea` | Sólo `SUPER_ADMIN` | Tareas → ficha | Sus comentarios y sus adjuntos |
 
-Para quien no es superadministrador el botón **no se dibuja**: no aparece apagado ni con un cartel de
+Para quien no puede borrar ese tipo el botón **no se dibuja**: no aparece apagado ni con un cartel de
 «no tenés permiso», directamente no está (`BotonEliminar` devuelve `null`). Un botón que no se puede
-tocar sólo sirve para que alguien lo intente.
+tocar sólo sirve para que alguien lo intente. El proceso principal lo vuelve a controlar igual, dos
+veces: `exigirBorrado` en `ipc.ts` (rol + permiso del módulo) y `exigirRolQuePuedaBorrar` en el servicio,
+al lado de lo que borra.
 
 ### Los cinco segundos
 
@@ -1611,9 +1710,10 @@ quise borrar», y es más o menos lo que se tarda en leer la lista de arriba.
   `vistaPreviaDeEliminacion` (que no lo ejecuta) y `eliminarRegistro` (que sí): lo que el cartel promete y
   lo que el borrado hace **no pueden separarse, son la misma cuenta**.
 - `src/renderer/componentes/BotonEliminar.tsx` — el botón y el cartel con la cuenta regresiva.
-- Canales `eliminacion:vistaPrevia` y `eliminacion:borrar`, los dos con `exigirRol('SUPER_ADMIN')` en
-  `ipc.ts`. El servicio vuelve a controlar el rol por su cuenta: un borrado definitivo se merece que la
-  regla esté escrita al lado de lo que borra.
+- Canales `eliminacion:vistaPrevia` y `eliminacion:borrar`, los dos con `exigirBorrado(tipo)` en
+  `ipc.ts`, que cruza dos cosas: el rol que corresponde a ese tipo (`rolPuedeEliminar`) y poder **editar**
+  el módulo de donde sale (`AREA_ELIMINABLE`). El servicio vuelve a controlar el rol por su cuenta: un
+  borrado definitivo se merece que la regla esté escrita al lado de lo que borra.
 
 Cuatro reglas que atraviesan todos los planes:
 

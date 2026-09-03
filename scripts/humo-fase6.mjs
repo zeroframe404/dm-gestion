@@ -256,7 +256,7 @@ const imputados = await evaluar(`(async () => {
     await new Promise((r) => setTimeout(r, 1200))
     marcados.push(true)
   }
-  const rendicion = await window.dm.cobranzas.imputados(null, [])
+  const rendicion = await window.dm.cobranzas.imputados(null, [], [])
   return {
     marcados: marcados.length,
     imputados: rendicion.ok ? rendicion.datos.contadores.IMPUTADO : 0,

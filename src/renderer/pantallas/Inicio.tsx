@@ -5,6 +5,7 @@
 // mañana en vez de mirar un papelito.
 import { useEffect, useState } from 'react'
 import { NOMBRE_ROL, type FilaTarea } from '../../shared/tipos'
+import { AvisoConexionGoogle } from '../componentes/AvisoConexionGoogle'
 import { DialogoReportarError } from '../componentes/DialogoReportarError'
 import { Icono } from '../componentes/Icono'
 import { Boton, Etiqueta, cx } from '../componentes/ui'
@@ -49,6 +50,11 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
       </section>
 
       <DialogoReportarError abierto={reportando} alCerrar={() => setReportando(false)} />
+
+      {/* La conexión con Google es obligatoria desde la 12.5 y sin ella no se suben los respaldos ni
+          los adjuntos de los siniestros. El cartel va acá, arriba de todo y para todo el equipo: es la
+          pantalla que se mira al entrar, y enterarse el día que hace falta un documento es tarde. */}
+      <AvisoConexionGoogle />
 
       <MisTareas />
 

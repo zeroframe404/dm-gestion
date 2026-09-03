@@ -19,6 +19,18 @@ function normalizarFila(fila) {
   return Array.isArray(fila) ? fila.map(comoTexto) : []
 }
 
+/**
+ * Una copia de la que nadie puede tirar del hilo. El Map se copia Y las celdas también: `editarDirecto`
+ * muta el arreglo de celdas en su lugar, así que con un `new Map(filas)` a secas los dos apuntarían al
+ * MISMO arreglo y una edición posterior se filtraría dentro del respaldo. Justamente lo que estas
+ * pruebas existen para descubrir.
+ */
+function copiaProfunda(pestana) {
+  const filas = new Map()
+  for (const [numero, celdas] of pestana.filas) filas.set(numero, [...celdas])
+  return { ...pestana, filas }
+}
+
 export class VpsSimulado {
   constructor(opciones = {}) {
     this.token = opciones.token ?? TOKEN_POR_DEFECTO
@@ -39,7 +51,11 @@ export class VpsSimulado {
       estructura: 0, leer: 0, celdas: 0, agregar: 0, borrar: 0, pestanas: 0, tramos: 0, estado: 0,
       ajusteLeido: 0, ajusteConsultado: 0, ajusteGuardado: 0,
       usuariosLeidos: 0, usuariosGuardados: 0,
+      respaldosListados: 0, respaldosCreados: 0, respaldosRestaurados: 0,
     }
+    /** Los respaldos guardados, del más nuevo al más viejo. */
+    this.respaldos = []
+    this.proximoRespaldoId = 1
     /** Los mensajes con los que se guardó la base de usuarios: lo que antes era el mensaje del commit. */
     this.mensajesDeUsuarios = []
     /** Los ajustes compartidos, por clave. */
@@ -68,6 +84,43 @@ export class VpsSimulado {
       columnasOcultas: [...columnasOcultas],
       filas,
     })
+  }
+
+  /**
+   * Guarda una foto de las pestañas tal como están. El día sale de la fecha real, igual que el
+   * servidor; en una prueba todos caen el mismo día, así que el motivo es lo que los distingue.
+   */
+  guardarRespaldo(motivo, hechoPor) {
+    const dia = new Date().toISOString().slice(0, 10)
+    const yaEstaba = this.respaldos.find((r) => r.dia === dia && r.motivo === motivo)
+    if (yaEstaba && motivo !== 'ANTES_DE_RESTAURAR') return { respaldo: yaEstaba, yaEstaba: true }
+    const foto = this.pestanas.map(copiaProfunda)
+    const respaldo = {
+      id: yaEstaba ? yaEstaba.id : this.proximoRespaldoId++,
+      dia,
+      motivo,
+      fecha: new Date().toISOString(),
+      hechoPor,
+      pestanas: foto,
+    }
+    if (yaEstaba) this.respaldos[this.respaldos.indexOf(yaEstaba)] = respaldo
+    else this.respaldos.unshift(respaldo)
+    return { respaldo, yaEstaba: false }
+  }
+
+  /** La ficha que viaja: cuenta las pestañas y las filas, y no lleva el volcado adentro. */
+  fichaDeRespaldo(respaldo) {
+    const filas = respaldo.pestanas.reduce((suma, pestana) => suma + pestana.filas.size, 0)
+    return {
+      id: respaldo.id,
+      dia: respaldo.dia,
+      motivo: respaldo.motivo,
+      fecha: respaldo.fecha,
+      tamano: filas * 40,
+      pestanas: respaldo.pestanas.length,
+      filas,
+      hechoPor: respaldo.hechoPor,
+    }
   }
 
   porTitulo(titulo) {
@@ -110,7 +163,7 @@ export class VpsSimulado {
       pedido.on('end', () => {
         if (this.colgar) return
         const json = cuerpo ? JSON.parse(cuerpo) : {}
-        const [ruta] = (pedido.url ?? '').split('?')
+        const [ruta, consulta] = (pedido.url ?? '').split('?')
         this.intercambios.push({ metodo: pedido.method, ruta, autorizacion: pedido.headers.authorization ?? null })
         const responder = (estado, datos) => {
           respuesta.writeHead(estado, { 'content-type': 'application/json' })
@@ -127,7 +180,7 @@ export class VpsSimulado {
         }
 
         try {
-          return this.atender(pedido.method ?? 'GET', ruta ?? '', json, responder)
+          return this.atender(pedido.method ?? 'GET', ruta ?? '', json, responder, new URLSearchParams(consulta ?? ''))
         } catch (error) {
           return responder(500, { error: error instanceof Error ? error.message : String(error) })
         }
@@ -148,7 +201,7 @@ export class VpsSimulado {
     return false
   }
 
-  atender(metodo, ruta, json, responder) {
+  atender(metodo, ruta, json, responder, busqueda = new URLSearchParams()) {
     if (metodo === 'GET' && ruta === '/api/dmg/estado') {
       this.llamadas.estado++
       let filas = 0
@@ -383,6 +436,35 @@ export class VpsSimulado {
       if (metodo === 'POST' && cola === '/borrar') {
         return responder(200, { borrado: this.ajustes.delete(clave) })
       }
+    }
+    // Respaldos del GENERAL DE CLIENTES. El servidor real guarda el volcado comprimido en Postgres;
+    // acá alcanza con una copia profunda en memoria, porque lo que las pruebas miran es que rebobinar
+    // rebobine de verdad: que lo que se cargó después del respaldo NO sobreviva a la restauración.
+    if (ruta === '/api/dmg/respaldos' && metodo === 'GET') {
+      this.llamadas.respaldosListados++
+      const cuantos = Number(busqueda.get('cuantos')) || 3
+      return responder(200, { respaldos: this.respaldos.slice(0, cuantos).map((r) => this.fichaDeRespaldo(r)) })
+    }
+    if (ruta === '/api/dmg/respaldos' && metodo === 'POST') {
+      this.llamadas.respaldosCreados++
+      const quien = typeof json?.hechoPor === 'string' ? json.hechoPor : null
+      const { respaldo, yaEstaba } = this.guardarRespaldo('A_MANO', quien)
+      return responder(200, { respaldo: this.fichaDeRespaldo(respaldo), yaEstaba })
+    }
+    const restaurar = /^\/api\/dmg\/respaldos\/(\d+)\/restaurar$/.exec(ruta)
+    if (restaurar && metodo === 'POST') {
+      this.llamadas.respaldosRestaurados++
+      const guardado = this.respaldos.find((r) => r.id === Number(restaurar[1]))
+      if (!guardado) return responder(404, { error: 'Ese respaldo ya no está en el servidor.' })
+      const quien = typeof json?.hechoPor === 'string' ? json.hechoPor : null
+      // Igual que el servidor real: primero la foto de cómo está AHORA, después se pisa.
+      const { respaldo: previo } = this.guardarRespaldo('ANTES_DE_RESTAURAR', quien)
+      this.pestanas = guardado.pestanas.map(copiaProfunda)
+      return responder(200, {
+        pestanas: this.pestanas.length,
+        filas: this.pestanas.reduce((suma, pestana) => suma + pestana.filas.size, 0),
+        respaldoPrevio: this.fichaDeRespaldo(previo),
+      })
     }
     return responder(404, { error: `Ruta desconocida: ${metodo} ${ruta}` })
   }
