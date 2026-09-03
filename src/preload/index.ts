@@ -293,6 +293,11 @@ const api: ApiDm = {
     publicar: (pedido) => invocar('redes:publicar', pedido),
     publicaciones: (sucursal) => invocar('redes:publicaciones', sucursal),
     cuotaInstagram: (sucursal) => invocar('redes:cuotaInstagram', sucursal),
+    comentarios: (sucursal, soloSinResponder) => invocar('redes:comentarios', sucursal, soloSinResponder),
+    comentarioResponder: (comentarioId, mensaje) => invocar('redes:comentarios:responder', comentarioId, mensaje),
+    comentarioOcultar: (comentarioId) => invocar('redes:comentarios:ocultar', comentarioId),
+    comentarioMostrar: (comentarioId) => invocar('redes:comentarios:mostrar', comentarioId),
+    comentarioEliminar: (comentarioId) => invocar('redes:comentarios:eliminar', comentarioId),
   },
   sistema: {
     abrirEnlace: (url) => invocar('sistema:abrirEnlace', url),

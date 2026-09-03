@@ -57,12 +57,17 @@ import {
 } from './servicios/reportes'
 import { borrarPlantilla, crearPlantilla, editarPlantilla, listarPlantillas } from './servicios/plantillas'
 import {
+  comentarios,
   cuotaDeInstagram,
   desvincularDeMeta,
+  eliminarComentario,
   elegirPaginaVinculada,
+  mostrarComentario,
+  ocultarComentario,
   panelDeRedes,
   publicaciones,
   publicarEnRed,
+  responderComentario,
   revisarArchivoParaPublicar,
   vincularConMeta,
 } from './servicios/redes'
@@ -1294,6 +1299,29 @@ export function registrarIpc(): void {
   manejar('redes:publicaciones', async (sucursal) => {
     const actor = exigirVista('marketing')
     return exito(await publicaciones(actor, sucursal))
+  })
+  // Comentarios: mirarlos alcanza con ver Marketing; responder, ocultar o eliminar piden edición,
+  // igual que publicar (y con el mismo corte por sucursal, que revalida el servidor).
+  manejar('redes:comentarios', async (sucursal, soloSinResponder) => {
+    const actor = exigirVista('marketing')
+    return exito(await comentarios(actor, sucursal, soloSinResponder))
+  })
+  manejar('redes:comentarios:responder', async (comentarioId, mensaje) => {
+    const actor = exigirEdicion('marketing')
+    return exito(await responderComentario(actor, comentarioId, mensaje))
+  })
+  manejar('redes:comentarios:ocultar', async (comentarioId) => {
+    const actor = exigirEdicion('marketing')
+    return exito(await ocultarComentario(actor, comentarioId))
+  })
+  manejar('redes:comentarios:mostrar', async (comentarioId) => {
+    const actor = exigirEdicion('marketing')
+    return exito(await mostrarComentario(actor, comentarioId))
+  })
+  manejar('redes:comentarios:eliminar', async (comentarioId) => {
+    const actor = exigirEdicion('marketing')
+    await eliminarComentario(actor, comentarioId)
+    return exito(null)
   })
 
   // El control remoto de las computadoras de la agencia. Lo mira CUALQUIER rol: quien tiene el

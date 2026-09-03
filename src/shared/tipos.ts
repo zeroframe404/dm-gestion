@@ -3136,6 +3136,35 @@ export interface PedidoDePublicacion {
   ruta: string
 }
 
+/** Una respuesta ya mandada a un comentario. */
+export interface RespuestaDeComentario {
+  id: string
+  mensaje: string
+  respondidoPor: string
+  respondidoEn: string
+}
+
+/**
+ * Un comentario de una publicación, tal como lo juntó el webhook de Meta. Las tres banderas `puede*`
+ * son optimistas al llegar (true) y se corrigen solas la primera vez que la acción se prueba y Meta la
+ * rechaza — ahí es donde aparece `motivoSiNoPuede`, y es el texto que va en el aviso amarillo.
+ */
+export interface ComentarioDeRed {
+  id: string
+  sucursal: string
+  plataforma: DestinoDePublicacion
+  autorNombre: string
+  mensaje: string
+  creadoEnMeta: string
+  estado: 'VISIBLE' | 'OCULTO' | 'ELIMINADO'
+  respondido: boolean
+  puedeResponder: boolean
+  puedeOcultar: boolean
+  puedeEliminar: boolean
+  motivoSiNoPuede: string | null
+  respuestas: RespuestaDeComentario[]
+}
+
 // ---------------------------------------------------------------------------
 // Fase 9 · Marketing: plantillas de mensajes y segmentos de la cartera
 // ---------------------------------------------------------------------------

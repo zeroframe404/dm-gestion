@@ -96,6 +96,29 @@ export interface PublicacionDeRedVps {
   creadoEn: string
 }
 
+export interface ComentarioRespuestaDeRedVps {
+  id: string
+  mensaje: string
+  respondidoPor: string
+  respondidoEn: string
+}
+
+export interface ComentarioDeRedVps {
+  id: string
+  sucursal: string
+  plataforma: 'FACEBOOK' | 'INSTAGRAM'
+  autorNombre: string
+  mensaje: string
+  creadoEnMeta: string
+  estado: 'VISIBLE' | 'OCULTO' | 'ELIMINADO'
+  respondido: boolean
+  puedeResponder: boolean
+  puedeOcultar: boolean
+  puedeEliminar: boolean
+  motivoSiNoPuede: string | null
+  respuestas: ComentarioRespuestaDeRedVps[]
+}
+
 function consultaDeActor(actor: ActorDeRedesVps): string {
   const parametros = new URLSearchParams({ actorNombre: actor.nombre, actorRol: actor.rol })
   if (actor.sucursal) parametros.set('actorSucursal', actor.sucursal)
@@ -467,5 +490,57 @@ export class FuenteVps implements FuenteHoja {
       { reintentarSinRespuesta: false },
     )) as { cuota: number | null }
     return datos?.cuota ?? null
+  }
+
+  // --- Comentarios -----------------------------------------------------------
+  //
+  // La bandeja se lee de lo que ya juntó el webhook del servidor, no de una llamada a Meta en cada
+  // pedido: por eso `redesComentarios` es liviano y se puede llamar seguido.
+
+  async redesComentarios(actor: ActorDeRedesVps, sucursal?: string, soloSinResponder?: boolean): Promise<ComentarioDeRedVps[]> {
+    const parametros = new URLSearchParams(consultaDeActor(actor))
+    if (sucursal) parametros.set('sucursal', sucursal)
+    if (soloSinResponder) parametros.set('soloSinResponder', '1')
+    const datos = (await this.pedir(
+      'listar los comentarios',
+      'GET',
+      `/api/dmg/redes/comentarios?${parametros}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { comentarios: ComentarioDeRedVps[] }
+    return datos?.comentarios ?? []
+  }
+
+  async redesComentarioResponder(actor: ActorDeRedesVps, comentarioId: string, mensaje: string): Promise<ComentarioDeRedVps> {
+    const respuesta = (await this.pedir(
+      'responder el comentario',
+      'POST',
+      `/api/dmg/redes/comentarios/${encodeURIComponent(comentarioId)}/responder`,
+      { actor, mensaje },
+      { reintentarSinRespuesta: false },
+    )) as { comentario: ComentarioDeRedVps }
+    return respuesta.comentario
+  }
+
+  async redesComentarioOcultar(actor: ActorDeRedesVps, comentarioId: string, ocultar: boolean): Promise<ComentarioDeRedVps> {
+    const accion = ocultar ? 'ocultar' : 'mostrar'
+    const respuesta = (await this.pedir(
+      `${accion} el comentario`,
+      'POST',
+      `/api/dmg/redes/comentarios/${encodeURIComponent(comentarioId)}/${accion}`,
+      { actor },
+      { reintentarSinRespuesta: false },
+    )) as { comentario: ComentarioDeRedVps }
+    return respuesta.comentario
+  }
+
+  async redesComentarioEliminar(actor: ActorDeRedesVps, comentarioId: string): Promise<void> {
+    await this.pedir(
+      'eliminar el comentario',
+      'POST',
+      `/api/dmg/redes/comentarios/${encodeURIComponent(comentarioId)}/eliminar`,
+      { actor },
+      { reintentarSinRespuesta: false },
+    )
   }
 }

@@ -82,20 +82,22 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
   'marketing.redes': {
     clave: 'marketing.redes',
     titulo: 'Marketing → Redes',
-    resumen: 'Publicar en la página de Facebook de la agencia y en su Instagram, desde el programa.',
+    resumen: 'Publicar en la página de Facebook de una sucursal y en su Instagram, desde el programa.',
     secciones: [
       {
         titulo: 'Qué se hace acá',
         parrafos: [
-          'Se elige una foto, se escribe el texto, se marca si va a Facebook o a Instagram y se publica. Sale en nombre de la agencia, igual que si lo publicara alguien desde el teléfono: la diferencia es que queda anotado quién lo publicó y cuándo, y que se puede hacer desde la misma pantalla donde ya estás trabajando.',
-          'Es de a una publicación por vez, a propósito. No hay envíos masivos ni programados: las dos cosas son las que hacen que una cuenta termine bloqueada, y la de la agencia es la que se usa todo el día.',
+          'Se elige una foto, se escribe el texto, se marca si va a Facebook o a Instagram y se publica. Sale en nombre de la sucursal, igual que si lo publicara alguien desde el teléfono: la diferencia es que queda anotado quién lo publicó y cuándo, y que se puede hacer desde la misma pantalla donde ya estás trabajando.',
+          'Cada sucursal tiene su propia cuenta de Facebook e Instagram, separada de las demás. Un administrador o un empleado publica siempre en la de su sucursal; el superadministrador puede elegir cualquiera desde el selector de arriba.',
+          'Es de a una publicación por vez, a propósito. No hay envíos masivos ni programados: las dos cosas son las que hacen que una cuenta termine bloqueada, y la de cada sucursal es la que se usa todo el día.',
         ],
       },
       {
-        titulo: 'Vincular la cuenta',
+        titulo: 'Vincular la cuenta de una sucursal',
         parrafos: [
-          'Se hace una vez por computadora y lo hace un administrador. Al tocar «Vincular cuenta» se abre una ventana de Facebook para ingresar; después, si la cuenta administra más de una página, el programa pregunta cuál usar. El permiso queda guardado y cifrado en esa computadora, y no viaja a ninguna otra.',
-          'Para que esto funcione hace falta, antes, que un administrador cargue la app de Meta en Administración → Redes sociales. Si todavía no está, esta pantalla te lo dice y no te deja seguir.',
+          'Sólo lo hace el superadministrador, y sólo una vez por sucursal (no por computadora): el permiso queda guardado y cifrado en el servidor de la agencia, así que cualquier admin o empleado de esa sucursal puede publicar apenas está vinculada, sin tener que hacer nada más.',
+          'Al tocar «Vincular cuenta» se abre una ventana de Facebook para ingresar; después, si la cuenta administra más de una página, el programa pregunta cuál usar para esa sucursal.',
+          'Para que esto funcione hace falta, antes, que un superadministrador cargue la app de Meta en Administración → Redes sociales. Si todavía no está, esta pantalla te lo dice y no te deja seguir.',
         ],
       },
       {
@@ -103,21 +105,21 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
         parrafos: [
           'Facebook acepta un posteo de texto solo, o texto con una foto. Instagram siempre necesita una foto: sin imagen no publica, y por eso el botón queda apagado.',
           'Además, Instagram sólo se puede publicar por programa si la cuenta es Business y está vinculada a la página de Facebook. Eso se configura una vez desde Facebook, no desde acá. Si la página no tiene una cuenta así, la pantalla lo dice y el botón de Instagram queda apagado en vez de fallar al publicar.',
-          'Por ahora se publican fotos .jpg o .png de hasta 8 MB. Los videos y los reels necesitan otro camino y todavía no están; cuando estén, va a decirlo esta misma pantalla.',
+          'Por ahora se publican fotos .jpg o .png de hasta 8 MB. Los videos, los reels, las historias y la programación de publicaciones todavía no están; cuando estén, va a decirlo esta misma pantalla.',
         ],
       },
       {
         titulo: 'Cuando algo no sale',
         parrafos: [
           'Todo lo que se intenta queda en la lista de abajo, incluidas las publicaciones que fallaron y el motivo que dio Facebook. Eso es a propósito: el error se pierde apenas cerrás la pantalla, y sin él nadie puede averiguar qué pasó tres días después.',
-          'Si aparece «se cortó la conexión con Meta», hay que volver a vincular la cuenta: pasa cuando alguien cambió la contraseña de Facebook, le sacó el permiso a la app, o dejó de ser administrador de la página. La vinculación no se borra sola para que se pueda ver el motivo.',
+          'Si aparece «se cortó la conexión con Meta», un superadministrador tiene que volver a vincular la cuenta de esa sucursal: pasa cuando alguien cambió la contraseña de Facebook, le sacó el permiso a la app, o dejó de ser administrador de la página. La vinculación no se borra sola para que se pueda ver el motivo.',
         ],
       },
     ],
     conceptos: [
       {
         termino: 'Página de Facebook',
-        explicacion: 'La cuenta pública de la agencia, distinta del perfil personal de quien la administra. Es donde se publica.',
+        explicacion: 'La cuenta pública de una sucursal, distinta del perfil personal de quien la administra. Es donde se publica.',
       },
       {
         termino: 'Cuenta Business de Instagram',
@@ -125,7 +127,35 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
       },
       {
         termino: 'Vincular',
-        explicacion: 'Darle permiso al programa para publicar en nombre de la agencia. Se hace una vez por computadora, ingresando en Facebook.',
+        explicacion: 'Darle permiso al programa para publicar en nombre de una sucursal. Lo hace el superadministrador, una vez por sucursal, ingresando en Facebook.',
+      },
+    ],
+  },
+
+  'marketing.redes.comentarios': {
+    clave: 'marketing.redes.comentarios',
+    titulo: 'Marketing → Redes → Comentarios',
+    resumen: 'Ver y contestar los comentarios de las publicaciones de Facebook e Instagram de la sucursal.',
+    secciones: [
+      {
+        titulo: 'Cómo llegan los comentarios',
+        parrafos: [
+          'Los comentarios nuevos aparecen solos, apenas alguien los escribe en Facebook o Instagram: Meta le avisa al servidor de la agencia y de ahí pasan a esta bandeja. No hace falta actualizar nada a mano.',
+          'Sólo se ven los comentarios de la cuenta de tu sucursal (el superadministrador puede elegir cualquiera desde el selector de arriba). Contestar, ocultar o eliminar un comentario pide el mismo permiso que publicar.',
+        ],
+      },
+      {
+        titulo: 'Contestar, ocultar o eliminar',
+        parrafos: [
+          'Contestar manda la respuesta directo a Facebook o Instagram, igual que si se escribiera desde ahí. Ocultar no borra el comentario: sólo deja de mostrarse en la publicación, y se puede volver a mostrar en cualquier momento. Eliminar sí lo borra de la red social, y no se puede deshacer.',
+          'Cuando Meta no deja hacer alguna de estas tres cosas con un comentario puntual (pasa, por ejemplo, con comentarios muy viejos o de ciertos tipos de publicación), la pantalla lo avisa con un cartel amarillo y dice que hay que hacerlo directamente desde Facebook o Instagram.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Ocultar',
+        explicacion: 'Deja de mostrar el comentario en la publicación, sin borrarlo. Se puede volver a mostrar en cualquier momento.',
       },
     ],
   },

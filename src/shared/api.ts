@@ -276,6 +276,11 @@ export interface ApiDm {
     publicar: Remota<'redes:publicar'>
     publicaciones: Remota<'redes:publicaciones'>
     cuotaInstagram: Remota<'redes:cuotaInstagram'>
+    comentarios: Remota<'redes:comentarios'>
+    comentarioResponder: Remota<'redes:comentarios:responder'>
+    comentarioOcultar: Remota<'redes:comentarios:ocultar'>
+    comentarioMostrar: Remota<'redes:comentarios:mostrar'>
+    comentarioEliminar: Remota<'redes:comentarios:eliminar'>
   }
   sistema: {
     abrirEnlace: Remota<'sistema:abrirEnlace'>

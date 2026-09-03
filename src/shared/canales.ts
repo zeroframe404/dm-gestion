@@ -4,6 +4,7 @@ import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion }
 import type { MatrizPermisos } from './permisos'
 import type {
   AceptacionDePresupuesto,
+  ComentarioDeRed,
   ConsultaDeAntiguedad,
   DatosDeClausula,
   DatosDeGrua,
@@ -568,6 +569,12 @@ export interface Canales {
   'redes:publicaciones': (sucursal?: string) => Resultado<PublicacionDeRed[]>
   /** Cuántas publicaciones más admite Instagram hoy en la cuenta de esa sucursal. */
   'redes:cuotaInstagram': (sucursal?: string) => Resultado<number | null>
+  /** La bandeja de comentarios de una sucursal (la propia del actor, si no se pide otra). */
+  'redes:comentarios': (sucursal?: string, soloSinResponder?: boolean) => Resultado<ComentarioDeRed[]>
+  'redes:comentarios:responder': (comentarioId: string, mensaje: string) => Resultado<ComentarioDeRed>
+  'redes:comentarios:ocultar': (comentarioId: string) => Resultado<ComentarioDeRed>
+  'redes:comentarios:mostrar': (comentarioId: string) => Resultado<ComentarioDeRed>
+  'redes:comentarios:eliminar': (comentarioId: string) => Resultado<null>
 
   'sistema:abrirEnlace': (url: string) => Resultado<null>
 
