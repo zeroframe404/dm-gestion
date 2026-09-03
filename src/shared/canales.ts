@@ -6,6 +6,7 @@ import type {
   AceptacionDePresupuesto,
   ComentarioDeRed,
   ConsultaDeAntiguedad,
+  ConversacionDeRed,
   DatosDeClausula,
   DatosDeGrua,
   DatosDeOrganizador,
@@ -65,6 +66,7 @@ import type {
   ListadoDeudores,
   ListadoPolizas,
   MatrizDeCobertura,
+  MensajeDeRed,
   NotaDeCliente,
   PolizaDeCliente,
   ReglaDeCobertura,
@@ -575,6 +577,10 @@ export interface Canales {
   'redes:comentarios:ocultar': (comentarioId: string) => Resultado<ComentarioDeRed>
   'redes:comentarios:mostrar': (comentarioId: string) => Resultado<ComentarioDeRed>
   'redes:comentarios:eliminar': (comentarioId: string) => Resultado<null>
+  /** La bandeja de mensajes privados de una sucursal (la propia del actor, si no se pide otra). */
+  'redes:conversaciones': (sucursal?: string) => Resultado<ConversacionDeRed[]>
+  'redes:conversaciones:mensajes': (conversacionId: string) => Resultado<MensajeDeRed[]>
+  'redes:conversaciones:responder': (conversacionId: string, mensaje: string) => Resultado<MensajeDeRed>
 
   'sistema:abrirEnlace': (url: string) => Resultado<null>
 

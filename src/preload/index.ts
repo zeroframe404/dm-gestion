@@ -298,6 +298,9 @@ const api: ApiDm = {
     comentarioOcultar: (comentarioId) => invocar('redes:comentarios:ocultar', comentarioId),
     comentarioMostrar: (comentarioId) => invocar('redes:comentarios:mostrar', comentarioId),
     comentarioEliminar: (comentarioId) => invocar('redes:comentarios:eliminar', comentarioId),
+    conversaciones: (sucursal) => invocar('redes:conversaciones', sucursal),
+    conversacionMensajes: (conversacionId) => invocar('redes:conversaciones:mensajes', conversacionId),
+    conversacionResponder: (conversacionId, mensaje) => invocar('redes:conversaciones:responder', conversacionId, mensaje),
   },
   sistema: {
     abrirEnlace: (url) => invocar('sistema:abrirEnlace', url),

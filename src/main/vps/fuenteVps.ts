@@ -119,6 +119,24 @@ export interface ComentarioDeRedVps {
   respuestas: ComentarioRespuestaDeRedVps[]
 }
 
+export interface ConversacionDeRedVps {
+  id: string
+  sucursal: string
+  plataforma: 'FACEBOOK' | 'INSTAGRAM'
+  participanteNombre: string
+  ultimoMensajeEn: string
+  puedeResponder: boolean
+  motivoSiNoPuedeResponder: string | null
+}
+
+export interface MensajeDeRedVps {
+  id: string
+  direccion: 'ENTRANTE' | 'SALIENTE'
+  mensaje: string
+  creadoEnMeta: string
+  enviadoPor: string | null
+}
+
 function consultaDeActor(actor: ActorDeRedesVps): string {
   const parametros = new URLSearchParams({ actorNombre: actor.nombre, actorRol: actor.rol })
   if (actor.sucursal) parametros.set('actorSucursal', actor.sucursal)
@@ -542,5 +560,42 @@ export class FuenteVps implements FuenteHoja {
       { actor },
       { reintentarSinRespuesta: false },
     )
+  }
+
+  // --- Mensajes privados -------------------------------------------------------
+
+  async redesConversaciones(actor: ActorDeRedesVps, sucursal?: string): Promise<ConversacionDeRedVps[]> {
+    const parametros = new URLSearchParams(consultaDeActor(actor))
+    if (sucursal) parametros.set('sucursal', sucursal)
+    const datos = (await this.pedir(
+      'listar las conversaciones',
+      'GET',
+      `/api/dmg/redes/conversaciones?${parametros}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { conversaciones: ConversacionDeRedVps[] }
+    return datos?.conversaciones ?? []
+  }
+
+  async redesConversacionMensajes(actor: ActorDeRedesVps, conversacionId: string): Promise<MensajeDeRedVps[]> {
+    const datos = (await this.pedir(
+      'leer los mensajes de la conversación',
+      'GET',
+      `/api/dmg/redes/conversaciones/${encodeURIComponent(conversacionId)}/mensajes?${consultaDeActor(actor)}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { mensajes: MensajeDeRedVps[] }
+    return datos?.mensajes ?? []
+  }
+
+  async redesConversacionResponder(actor: ActorDeRedesVps, conversacionId: string, mensaje: string): Promise<MensajeDeRedVps> {
+    const respuesta = (await this.pedir(
+      'responder el mensaje',
+      'POST',
+      `/api/dmg/redes/conversaciones/${encodeURIComponent(conversacionId)}/responder`,
+      { actor, mensaje },
+      { reintentarSinRespuesta: false },
+    )) as { mensaje: MensajeDeRedVps }
+    return respuesta.mensaje
   }
 }

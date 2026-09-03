@@ -160,4 +160,32 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
     ],
   },
 
+  'marketing.redes.mensajes': {
+    clave: 'marketing.redes.mensajes',
+    titulo: 'Marketing → Redes → Mensajes',
+    resumen: 'Ver y contestar los mensajes privados (Messenger e Instagram) de la sucursal.',
+    secciones: [
+      {
+        titulo: 'Cómo funciona',
+        parrafos: [
+          'A la izquierda está la lista de conversaciones, ordenada por la más reciente; a la derecha, la conversación abierta. Los mensajes nuevos llegan solos, igual que los comentarios: no hace falta actualizar nada a mano.',
+          'Sólo se ven las conversaciones de la cuenta de tu sucursal (el superadministrador puede elegir cualquiera desde el selector de arriba). Contestar pide el mismo permiso que publicar.',
+        ],
+      },
+      {
+        titulo: 'La ventana de 24 horas',
+        parrafos: [
+          'Es una regla de Meta, no del programa: si pasaron más de 24 horas desde el último mensaje que mandó la persona, ya no se puede mandar un mensaje libre por acá. Cuando pasa esto, la conversación queda marcada en la lista y aparece un cartel amarillo en vez del cuadro para escribir, diciendo que hay que responder directamente desde Facebook o Instagram.',
+          'Apenas la persona vuelve a escribir, la ventana se abre de nuevo sola.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Ventana de 24 horas',
+        explicacion: 'El tiempo que da Meta para contestar un mensaje libremente, contado desde el último mensaje que mandó la persona (no desde el último mensaje nuestro).',
+      },
+    ],
+  },
+
 }

@@ -58,16 +58,19 @@ import {
 import { borrarPlantilla, crearPlantilla, editarPlantilla, listarPlantillas } from './servicios/plantillas'
 import {
   comentarios,
+  conversaciones,
   cuotaDeInstagram,
   desvincularDeMeta,
   eliminarComentario,
   elegirPaginaVinculada,
+  mensajesDeConversacion,
   mostrarComentario,
   ocultarComentario,
   panelDeRedes,
   publicaciones,
   publicarEnRed,
   responderComentario,
+  responderConversacion,
   revisarArchivoParaPublicar,
   vincularConMeta,
 } from './servicios/redes'
@@ -1322,6 +1325,20 @@ export function registrarIpc(): void {
     const actor = exigirEdicion('marketing')
     await eliminarComentario(actor, comentarioId)
     return exito(null)
+  })
+  // Mensajes privados: mismo criterio que comentarios. La ventana de 24 horas ya viene resuelta en
+  // `conversacion.puedeResponder`; acá no hace falta volver a mirarla.
+  manejar('redes:conversaciones', async (sucursal) => {
+    const actor = exigirVista('marketing')
+    return exito(await conversaciones(actor, sucursal))
+  })
+  manejar('redes:conversaciones:mensajes', async (conversacionId) => {
+    const actor = exigirVista('marketing')
+    return exito(await mensajesDeConversacion(actor, conversacionId))
+  })
+  manejar('redes:conversaciones:responder', async (conversacionId, mensaje) => {
+    const actor = exigirEdicion('marketing')
+    return exito(await responderConversacion(actor, conversacionId, mensaje))
   })
 
   // El control remoto de las computadoras de la agencia. Lo mira CUALQUIER rol: quien tiene el

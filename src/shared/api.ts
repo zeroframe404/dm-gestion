@@ -281,6 +281,9 @@ export interface ApiDm {
     comentarioOcultar: Remota<'redes:comentarios:ocultar'>
     comentarioMostrar: Remota<'redes:comentarios:mostrar'>
     comentarioEliminar: Remota<'redes:comentarios:eliminar'>
+    conversaciones: Remota<'redes:conversaciones'>
+    conversacionMensajes: Remota<'redes:conversaciones:mensajes'>
+    conversacionResponder: Remota<'redes:conversaciones:responder'>
   }
   sistema: {
     abrirEnlace: Remota<'sistema:abrirEnlace'>

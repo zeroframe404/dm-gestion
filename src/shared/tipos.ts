@@ -3165,6 +3165,30 @@ export interface ComentarioDeRed {
   respuestas: RespuestaDeComentario[]
 }
 
+/**
+ * Una conversación de mensajes privados (Messenger o Instagram). `puedeResponder` ya viene resuelto
+ * por el servidor: junta la ventana de 24 horas (no se puede mandar un mensaje libre si pasaron más
+ * de 24 horas desde el último mensaje que mandó la persona) con las veces que Meta ya rechazó
+ * responder acá antes.
+ */
+export interface ConversacionDeRed {
+  id: string
+  sucursal: string
+  plataforma: DestinoDePublicacion
+  participanteNombre: string
+  ultimoMensajeEn: string
+  puedeResponder: boolean
+  motivoSiNoPuedeResponder: string | null
+}
+
+export interface MensajeDeRed {
+  id: string
+  direccion: 'ENTRANTE' | 'SALIENTE'
+  mensaje: string
+  creadoEnMeta: string
+  enviadoPor: string | null
+}
+
 // ---------------------------------------------------------------------------
 // Fase 9 · Marketing: plantillas de mensajes y segmentos de la cartera
 // ---------------------------------------------------------------------------
