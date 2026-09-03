@@ -57,9 +57,11 @@ import {
 } from './servicios/reportes'
 import { borrarPlantilla, crearPlantilla, editarPlantilla, listarPlantillas } from './servicios/plantillas'
 import {
+  cuotaDeInstagram,
   desvincularDeMeta,
   elegirPaginaVinculada,
   panelDeRedes,
+  publicaciones,
   publicarEnRed,
   revisarArchivoParaPublicar,
   vincularConMeta,
@@ -1217,13 +1219,15 @@ export function registrarIpc(): void {
 
   // --- Marketing → Redes -----------------------------------------------------
   //
-  // Publicar es EDITAR Marketing: sale en nombre de la agencia y se ve desde afuera. Cargar la app de
-  // Meta, en cambio, es una credencial y por eso pide administrador, igual que la cuenta de Google.
+  // Publicar es EDITAR Marketing: sale en nombre de la agencia y se ve desde afuera, pero acotado a
+  // la sucursal de quien publica (el servidor lo vuelve a validar). Cargar la app de Meta y vincular
+  // o desvincular la cuenta de una sucursal, en cambio, son credenciales y por eso son sólo del
+  // SUPER_ADMIN — no de cualquier administrador, a diferencia de antes.
   // Mirar la pestaña alcanza con ver Marketing: tiene que poder abrirse aunque no haya nada cargado,
   // para que la pantalla explique qué falta en vez de romperse.
   manejar('redes:panel', async () => {
-    exigirVista('marketing')
-    return exito(await panelDeRedes())
+    const actor = exigirVista('marketing')
+    return exito(await panelDeRedes(actor))
   })
   manejar('redes:estadoMeta', async () => {
     exigirVista('marketing', 'administracion')
@@ -1246,23 +1250,24 @@ export function registrarIpc(): void {
     await borrarMetaDelVps().catch((error) => console.error('[ajustes] No se pudo sacar la app de Meta del servidor:', error))
     return exito({ ...estado, compartido: await estadoCompartidoDeMeta() })
   })
-  // Vincular deja la cuenta de la agencia atada a esta computadora: es de administradores.
-  manejar('redes:vincular', async () => {
-    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+  // Vincular/desvincular deja atada (o suelta) la cuenta de una sucursal: sólo el superadministrador,
+  // porque de ahí en más cualquier admin o empleado de esa sucursal va a poder publicar con ella.
+  manejar('redes:vincular', async (sucursal) => {
+    const actor = exigirRol('SUPER_ADMIN')
     exigirEdicion('marketing')
-    return exito(await vincularConMeta(ventanaActual(), actor))
+    return exito(await vincularConMeta(ventanaActual(), actor, String(sucursal ?? '')))
   })
   manejar('redes:elegirPagina', async (paginaId) => {
-    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    const actor = exigirRol('SUPER_ADMIN')
     exigirEdicion('marketing')
-    elegirPaginaVinculada(paginaId, actor)
-    return exito(await panelDeRedes())
+    await elegirPaginaVinculada(paginaId, actor)
+    return exito(await panelDeRedes(actor))
   })
-  manejar('redes:desvincular', async () => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
+  manejar('redes:desvincular', async (sucursal) => {
+    const actor = exigirRol('SUPER_ADMIN')
     exigirEdicion('marketing')
-    desvincularDeMeta()
-    return exito(await panelDeRedes())
+    await desvincularDeMeta(actor, String(sucursal ?? ''))
+    return exito(await panelDeRedes(actor))
   })
   manejar('redes:elegirArchivo', async () => {
     exigirEdicion('marketing')
@@ -1281,6 +1286,14 @@ export function registrarIpc(): void {
   manejar('redes:publicar', async (pedido) => {
     const actor = exigirEdicion('marketing')
     return exito(await publicarEnRed(pedido, actor))
+  })
+  manejar('redes:cuotaInstagram', async (sucursal) => {
+    const actor = exigirVista('marketing')
+    return exito(await cuotaDeInstagram(actor, sucursal))
+  })
+  manejar('redes:publicaciones', async (sucursal) => {
+    const actor = exigirVista('marketing')
+    return exito(await publicaciones(actor, sucursal))
   })
 
   // El control remoto de las computadoras de la agencia. Lo mira CUALQUIER rol: quien tiene el

@@ -101,6 +101,7 @@ import type {
   PanelDeRedes,
   PedidoDePublicacion,
   PedidoDeTicket,
+  PublicacionDeRed,
   VinculacionPendiente,
   TareaCompletada,
   RendicionImputados,
@@ -549,19 +550,24 @@ export interface Canales {
     anio: string,
   ) => Resultado<VehiculoDelCatalogo>
 
-  // Marketing → Redes: publicar en la Página de Facebook de la agencia y en su Instagram. El App ID y
-  // el App Secret se cargan en Administración; el token de la Página nunca sale del proceso principal.
+  // Marketing → Redes: publicar en la Página de Facebook/Instagram de cada sucursal. El App ID y el
+  // App Secret se cargan en Administración; el token de cada Página vive cifrado en el servidor del
+  // VPS y esta computadora nunca lo guarda.
   'redes:panel': () => Resultado<PanelDeRedes>
   'redes:estadoMeta': () => Resultado<EstadoDeMeta>
   'redes:guardarMeta': (datos: DatosDeMeta) => Resultado<EstadoDeMeta>
   'redes:borrarMeta': () => Resultado<EstadoDeMeta>
-  /** Abre el ingreso de Facebook. Con una sola Página vincula sola; con varias, hay que elegir. */
-  'redes:vincular': () => Resultado<VinculacionPendiente>
+  /** Abre el ingreso de Facebook para vincular la cuenta de esa sucursal. Sólo SUPER_ADMIN. */
+  'redes:vincular': (sucursal: string) => Resultado<VinculacionPendiente>
   'redes:elegirPagina': (paginaId: string) => Resultado<PanelDeRedes>
-  'redes:desvincular': () => Resultado<PanelDeRedes>
+  'redes:desvincular': (sucursal: string) => Resultado<PanelDeRedes>
   /** Abre el diálogo para elegir la foto y la revisa. null si se canceló. */
   'redes:elegirArchivo': () => Resultado<ArchivoParaPublicar | null>
   'redes:publicar': (pedido: PedidoDePublicacion) => Resultado<PanelDeRedes>
+  /** El historial de publicaciones de una sucursal (la propia del actor, si no se pide otra). */
+  'redes:publicaciones': (sucursal?: string) => Resultado<PublicacionDeRed[]>
+  /** Cuántas publicaciones más admite Instagram hoy en la cuenta de esa sucursal. */
+  'redes:cuotaInstagram': (sucursal?: string) => Resultado<number | null>
 
   'sistema:abrirEnlace': (url: string) => Resultado<null>
 

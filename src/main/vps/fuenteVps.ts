@@ -37,6 +37,71 @@ export interface AjusteVps extends FichaDeAjusteVps {
   valor: unknown
 }
 
+/**
+ * Quién pide la acción de Redes sociales. A diferencia de los ajustes (que cualquiera con acceso al
+ * puente puede leer/guardar), acá el servidor decide con esto si se puede vincular una cuenta (sólo
+ * SUPER_ADMIN) o en qué sucursal se puede publicar — por eso viaja en cada pedido.
+ */
+export interface ActorDeRedesVps {
+  nombre: string
+  rol: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLEADO'
+  sucursal: string | null
+}
+
+export interface CuentaDeRedesVps {
+  sucursal: string
+  facebookPaginaId: string
+  facebookPaginaNombre: string
+  instagramId: string | null
+  instagramUsuario: string | null
+  estado: 'ACTIVA' | 'DESVINCULADA' | 'TOKEN_RECHAZADO'
+  puedePublicarEnInstagram: boolean
+  vinculadoPor: string
+  vinculadoEn: string
+}
+
+export interface DatosDeVinculoParaVps {
+  sucursal: string
+  facebookPaginaId: string
+  facebookPaginaNombre: string
+  instagramId: string | null
+  instagramUsuario: string | null
+  paginaToken: string
+}
+
+export interface ArchivoParaVps {
+  nombre: string
+  tipo: string
+  contenidoBase64: string
+}
+
+export interface PedidoDePublicacionParaVps {
+  sucursal?: string
+  destino: 'FACEBOOK' | 'INSTAGRAM'
+  texto: string
+  archivo?: ArchivoParaVps | null
+}
+
+export interface PublicacionDeRedVps {
+  id: string
+  sucursal: string
+  destino: 'FACEBOOK' | 'INSTAGRAM'
+  estado: 'BORRADOR' | 'PROGRAMADA' | 'PUBLICADA' | 'FALLIDA'
+  texto: string
+  idEnLaRed: string | null
+  url: string | null
+  error: string | null
+  creadoPor: string
+  publicadoEn: string | null
+  creadoEn: string
+}
+
+function consultaDeActor(actor: ActorDeRedesVps): string {
+  const parametros = new URLSearchParams({ actorNombre: actor.nombre, actorRol: actor.rol })
+  if (actor.sucursal) parametros.set('actorSucursal', actor.sucursal)
+  return parametros.toString()
+}
+
 export interface PestanaParaMigrar {
   titulo: string
   oculta: boolean
@@ -321,5 +386,86 @@ export class FuenteVps implements FuenteHoja {
 
   async borrarAjuste(clave: string): Promise<void> {
     await this.pedir(`borrar el ajuste «${clave}»`, 'POST', `/api/dmg/ajustes/${encodeURIComponent(clave)}/borrar`, {})
+  }
+
+  // --- Redes sociales por sucursal -------------------------------------------
+  //
+  // El token de la Página vive cifrado en el servidor: esta computadora nunca lo ve ni lo vuelve a
+  // mandar. Lo único que sale de acá, una sola vez, es el token recién elegido en el login de
+  // Facebook (ver `redesVincular`); de ahí en más el servidor es quien habla con Meta.
+
+  async redesCuentas(actor: ActorDeRedesVps): Promise<CuentaDeRedesVps[]> {
+    const datos = (await this.pedir(
+      'listar las cuentas de redes sociales',
+      'GET',
+      `/api/dmg/redes/cuentas?${consultaDeActor(actor)}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { cuentas: CuentaDeRedesVps[] }
+    return datos?.cuentas ?? []
+  }
+
+  async redesVincular(actor: ActorDeRedesVps, datos: DatosDeVinculoParaVps): Promise<CuentaDeRedesVps> {
+    const respuesta = (await this.pedir(
+      'vincular la cuenta de redes sociales',
+      'POST',
+      '/api/dmg/redes/cuentas',
+      { actor, ...datos },
+      { reintentarSinRespuesta: false },
+    )) as { cuenta: CuentaDeRedesVps }
+    return respuesta.cuenta
+  }
+
+  async redesDesvincular(actor: ActorDeRedesVps, sucursal: string): Promise<void> {
+    await this.pedir(
+      'desvincular la cuenta de redes sociales',
+      'POST',
+      `/api/dmg/redes/cuentas/${encodeURIComponent(sucursal)}/desvincular`,
+      { actor },
+      { reintentarSinRespuesta: false },
+    )
+  }
+
+  /**
+   * Publicar sube una foto: puede tardar. Va SIN reintentos automáticos a propósito — repetir un
+   * pedido que sí llegó a publicarse pero se cortó en la respuesta duplicaría la publicación, y eso
+   * es peor que pedirle a la persona que apriete «Publicar» de nuevo si hace falta.
+   */
+  async redesPublicar(actor: ActorDeRedesVps, pedido: PedidoDePublicacionParaVps): Promise<PublicacionDeRedVps> {
+    const respuesta = (await this.pedir(
+      'publicar en redes sociales',
+      'POST',
+      '/api/dmg/redes/publicaciones',
+      { actor, ...pedido },
+      { reintentarSinRespuesta: false },
+    )) as { publicacion: PublicacionDeRedVps }
+    return respuesta.publicacion
+  }
+
+  async redesPublicaciones(actor: ActorDeRedesVps, sucursal?: string): Promise<PublicacionDeRedVps[]> {
+    const parametros = new URLSearchParams(consultaDeActor(actor))
+    if (sucursal) parametros.set('sucursal', sucursal)
+    const datos = (await this.pedir(
+      'listar publicaciones de redes sociales',
+      'GET',
+      `/api/dmg/redes/publicaciones?${parametros}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { publicaciones: PublicacionDeRedVps[] }
+    return datos?.publicaciones ?? []
+  }
+
+  /** Cuántas publicaciones más admite Instagram hoy en la cuenta de esa sucursal; null si no se pudo averiguar. */
+  async redesCuotaInstagram(actor: ActorDeRedesVps, sucursal?: string): Promise<number | null> {
+    const parametros = new URLSearchParams(consultaDeActor(actor))
+    const objetivo = sucursal ?? actor.sucursal ?? ''
+    const datos = (await this.pedir(
+      'consultar la cuota de Instagram',
+      'GET',
+      `/api/dmg/redes/cuentas/${encodeURIComponent(objetivo)}/cuota-instagram?${parametros}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { cuota: number | null }
+    return datos?.cuota ?? null
   }
 }
