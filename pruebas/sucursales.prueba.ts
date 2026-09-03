@@ -112,14 +112,31 @@ test('una base que tenía «Avellaneda» aparte se queda con una sola Dock Sud, 
   cerrarBaseDeDatos()
 })
 
-test('una sucursal que no es ninguna de las cuatro no se borra: quien la tenga asignada no se queda sin nada', () => {
+test('una sucursal que no es ninguna de las cuatro y nadie tiene asignada se borra', () => {
   const base = baseNueva()
   const quilmes = Number(base.prepare(`INSERT INTO sucursales (nombre) VALUES ('Quilmes')`).run().lastInsertRowid)
+  const dLanus = Number(base.prepare(`INSERT INTO sucursales (nombre) VALUES ('D/ LANUS')`).run().lastInsertRowid)
+
+  ajustarCatalogoDeSucursales(base)
+
+  assert.ok(!listarSucursales().some((s) => s.id === quilmes), 'nadie la tenía asignada: no hace falta')
+  assert.ok(!listarSucursales().some((s) => s.id === dLanus), 'nadie la tenía asignada: no hace falta')
+  cerrarBaseDeDatos()
+})
+
+test('una sucursal que no es ninguna de las cuatro pero SÍ tiene asignados no se borra: no se queda nadie sin sucursal', () => {
+  const base = baseNueva()
+  const quilmes = Number(base.prepare(`INSERT INTO sucursales (nombre) VALUES ('Quilmes')`).run().lastInsertRowid)
+  base.prepare(
+    `INSERT INTO clientes (clave, nombre, sucursal_id, sucursal_texto, creado_en, actualizado_en)
+     VALUES ('C-1', 'PEREZ JUAN', ?, 'Quilmes', '2026-08-01T09:00:00', '2026-08-01T09:00:00')`,
+  ).run(quilmes)
 
   ajustarCatalogoDeSucursales(base)
 
   assert.ok(listarSucursales().some((s) => s.id === quilmes), 'sigue estando, aunque quede al final de la lista')
   assert.equal(listarSucursales().at(-1)?.nombre, 'Quilmes')
+  assert.equal(unico<number>(base, `SELECT sucursal_id FROM clientes WHERE clave = 'C-1'`), quilmes)
   cerrarBaseDeDatos()
 })
 

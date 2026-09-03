@@ -46,6 +46,19 @@ export function ajustarCatalogoDeSucursales(db: Database): void {
       db.prepare('DELETE FROM sucursales WHERE id = ?').run(fila.id)
       console.log(`[db] La sucursal «${fila.nombre}» es «${nombre}»: se unieron en una sola.`)
     }
+
+    // Las que no son ninguna de las cuatro (como «D/ LANUS» o «QUILMES», que quedaron del
+    // usuarios.json o de la hoja vieja) tampoco se pueden borrar a ciegas: si usuarios, clientes
+    // o leads las tienen asignadas, esas filas se quedarían sin sucursal. Pero si nadie las tiene
+    // asignadas, ya no hacen falta.
+    const restantes = db.prepare('SELECT id, nombre FROM sucursales ORDER BY id').all() as Array<{ id: number; nombre: string }>
+    const tieneAsignados = db.prepare('SELECT 1 FROM usuarios WHERE sucursal_id = ? UNION ALL SELECT 1 FROM clientes WHERE sucursal_id = ? UNION ALL SELECT 1 FROM leads WHERE sucursal_id = ? LIMIT 1')
+    for (const fila of restantes) {
+      if (sucursalCanonica(fila.nombre)) continue
+      if (tieneAsignados.get(fila.id, fila.id, fila.id)) continue
+      db.prepare('DELETE FROM sucursales WHERE id = ?').run(fila.id)
+      console.log(`[db] La sucursal «${fila.nombre}» no tiene nadie asignado: se borra.`)
+    }
   })()
 }
 
