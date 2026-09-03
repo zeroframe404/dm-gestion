@@ -155,8 +155,9 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Cómo llegan los comentarios',
         parrafos: [
-          'Los comentarios nuevos aparecen solos, apenas alguien los escribe en Facebook o Instagram: Meta le avisa al servidor de la agencia y de ahí pasan a esta bandeja. No hace falta actualizar nada a mano.',
+          'Los comentarios nuevos aparecen solos, apenas alguien los escribe en Facebook o Instagram: Meta le avisa al servidor de la agencia y de ahí pasan a esta bandeja. No hace falta actualizar nada a mano. Si por algún motivo ese aviso no llega, el servidor igual repasa las cuentas cada tanto y los trae de todas formas — puede tardar unos minutos más en ese caso, pero no se pierden.',
           'Sólo se ven los comentarios de la cuenta de tu sucursal (el superadministrador puede elegir cualquiera desde el selector de arriba). Contestar, ocultar o eliminar un comentario pide el mismo permiso que publicar.',
+          'Las respuestas a una Historia no aparecen en esta bandeja: Meta no las expone como comentarios de una publicación, así que no hay forma de verlas ni contestarlas desde acá. Hay que hacerlo directamente desde Facebook o Instagram.',
         ],
       },
       {
@@ -183,7 +184,7 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Cómo funciona',
         parrafos: [
-          'A la izquierda está la lista de conversaciones, ordenada por la más reciente; a la derecha, la conversación abierta. Los mensajes nuevos llegan solos, igual que los comentarios: no hace falta actualizar nada a mano.',
+          'A la izquierda está la lista de conversaciones, ordenada por la más reciente; a la derecha, la conversación abierta. Los mensajes nuevos llegan solos, igual que los comentarios: no hace falta actualizar nada a mano (y si el aviso de Meta no llega, el servidor los repasa igual cada tanto).',
           'Sólo se ven las conversaciones de la cuenta de tu sucursal (el superadministrador puede elegir cualquiera desde el selector de arriba). Contestar pide el mismo permiso que publicar.',
         ],
       },

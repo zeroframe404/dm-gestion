@@ -88,7 +88,10 @@ export function Comentarios({ sucursal, puedeEditar }: Props) {
       {error && <Alerta tono="error">{error}</Alerta>}
 
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-700">Comentarios de {sucursal}</h2>
+        <div>
+          <h2 className="text-sm font-semibold text-slate-700">Comentarios de {sucursal}</h2>
+          <p className="text-xs text-slate-400">Las respuestas a una Historia no entran acá: Meta no las expone como comentarios.</p>
+        </div>
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input type="checkbox" checked={soloSinResponder} onChange={(evento) => setSoloSinResponder(evento.target.checked)} />
           Sólo sin responder
