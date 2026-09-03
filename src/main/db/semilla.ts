@@ -41,7 +41,14 @@ export function ajustarCatalogoDeSucursales(db: Database): void {
       const destino = canonica.get(claveDeSucursal(nombre))
       if (destino === undefined || destino === fila.id) continue
       for (const tabla of ['usuarios', 'clientes', 'leads']) {
-        db.prepare(`UPDATE ${tabla} SET sucursal_id = ? WHERE sucursal_id = ?`).run(destino, fila.id)
+        // leads es una tabla que se crea en migración 9; durante upgrade desde versiones anteriores
+        // puede no existir todavía cuando se siembran los datos iniciales.
+        try {
+          db.prepare(`UPDATE ${tabla} SET sucursal_id = ? WHERE sucursal_id = ?`).run(destino, fila.id)
+        } catch (e) {
+          if ((e as Error).message?.includes('no such table')) continue
+          throw e
+        }
       }
       db.prepare('DELETE FROM sucursales WHERE id = ?').run(fila.id)
       console.log(`[db] La sucursal «${fila.nombre}» es «${nombre}»: se unieron en una sola.`)
@@ -52,10 +59,15 @@ export function ajustarCatalogoDeSucursales(db: Database): void {
     // o leads las tienen asignadas, esas filas se quedarían sin sucursal. Pero si nadie las tiene
     // asignadas, ya no hacen falta.
     const restantes = db.prepare('SELECT id, nombre FROM sucursales ORDER BY id').all() as Array<{ id: number; nombre: string }>
-    const tieneAsignados = db.prepare('SELECT 1 FROM usuarios WHERE sucursal_id = ? UNION ALL SELECT 1 FROM clientes WHERE sucursal_id = ? UNION ALL SELECT 1 FROM leads WHERE sucursal_id = ? LIMIT 1')
+    // La tabla leads se crea en migración 9; durante upgrade desde versiones anteriores no existe.
+    const leadsExiste = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='leads'").get()
+    const sql = leadsExiste
+      ? 'SELECT 1 FROM usuarios WHERE sucursal_id = ? UNION ALL SELECT 1 FROM clientes WHERE sucursal_id = ? UNION ALL SELECT 1 FROM leads WHERE sucursal_id = ? LIMIT 1'
+      : 'SELECT 1 FROM usuarios WHERE sucursal_id = ? UNION ALL SELECT 1 FROM clientes WHERE sucursal_id = ? LIMIT 1'
+    const tieneAsignados = db.prepare(sql)
     for (const fila of restantes) {
       if (sucursalCanonica(fila.nombre)) continue
-      if (tieneAsignados.get(fila.id, fila.id, fila.id)) continue
+      if (leadsExiste ? tieneAsignados.get(fila.id, fila.id, fila.id) : tieneAsignados.get(fila.id, fila.id)) continue
       db.prepare('DELETE FROM sucursales WHERE id = ?').run(fila.id)
       console.log(`[db] La sucursal «${fila.nombre}» no tiene nadie asignado: se borra.`)
     }
