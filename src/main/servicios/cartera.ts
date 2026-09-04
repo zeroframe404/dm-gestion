@@ -90,17 +90,25 @@ export const SELECT_PLANILLA = `
     COALESCE(p.activa, 1) AS poliza_activa,
     -- Un pago cargado en la aplicación que deja la fila paga. No cuenta un cobro IMPUTADO (el cliente
     -- todavía debe) ni un pago adelantado PENDIENTE que nadie imputó todavía a esta fila.
-    EXISTS (
-      SELECT 1 FROM pagos pg
-      WHERE (pg.cuota_fila_id = c.fila_id OR (pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo))
-        AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
-        -- COALESCE a propósito: con adelanto_modo NULL, «NOT (NULL AND ...)» es NULL y el pago desaparecería.
-        AND NOT (COALESCE(pg.adelanto_modo, '') = 'PENDIENTE' AND pg.cuota_fila_id IS NULL)
+    -- Dos EXISTS y no uno con OR: con el OR SQLite recorría «pagos» entera por cada fila de la
+    -- planilla; así cada uno usa su índice (cuota_fila_id, o poliza_id + periodo).
+    (
+      EXISTS (
+        SELECT 1 FROM pagos pg
+        WHERE pg.cuota_fila_id = c.fila_id
+          AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
+      )
+      OR EXISTS (
+        SELECT 1 FROM pagos pg
+        WHERE pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo
+          AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
+          -- COALESCE a propósito: con adelanto_modo NULL, «NOT (NULL AND ...)» es NULL y el pago desaparecería.
+          AND NOT (COALESCE(pg.adelanto_modo, '') = 'PENDIENTE' AND pg.cuota_fila_id IS NULL)
+      )
     ) AS pago_registrado,
-    EXISTS (
-      SELECT 1 FROM pagos pg
-      WHERE (pg.cuota_fila_id = c.fila_id OR (pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo))
-        AND pg.estado_cobro = 'IMPUTADO'
+    (
+      EXISTS (SELECT 1 FROM pagos pg WHERE pg.cuota_fila_id = c.fila_id AND pg.estado_cobro = 'IMPUTADO')
+      OR EXISTS (SELECT 1 FROM pagos pg WHERE pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo AND pg.estado_cobro = 'IMPUTADO')
     ) AS pago_imputado,
     pa.id AS pago_adelantado_id, pa.fecha AS pago_adelantado_fecha, pa.importe AS pago_adelantado_importe,
     pa.medio AS pago_adelantado_medio, pa.adelanto_modo AS pago_adelantado_modo,
