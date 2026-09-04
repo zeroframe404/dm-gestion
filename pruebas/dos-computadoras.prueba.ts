@@ -7,11 +7,12 @@ import test from 'node:test'
 import { abrirBaseDeDatos, cerrarBaseDeDatos, usarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
 import { ejecutarImportacion } from '../src/main/importacion/importador'
 import { ahoraIso } from '../src/main/importacion/normalizar'
-import { bajasDelMes, darDeBaja, deshacerBaja, editarCelda, planillaDelMes, registrarPago } from '../src/main/servicios/cartera'
+import { bajasDelMes, darDeBaja, deshacerBaja, editarCelda, periodosDisponibles, planillaDelMes, registrarPago } from '../src/main/servicios/cartera'
 import { cajaDelDia, cambiarResultado, imputados } from '../src/main/servicios/cobranzas'
 import { PESTANA_APP } from '../src/main/servicios/filas'
 import { hojaDeImputados, subirPagosRezagados } from '../src/main/servicios/pagos'
 import { repararBajasDuplicadas, repararColaContraPestanaInexistente, repararCuotasDuplicadas } from '../src/main/servicios/reparaciones'
+import { cerrarMesConLaBase } from '../src/main/servicios/sincronizacion'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes } from '../src/main/sincronizacion/cola'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { PESTANA_PAGOS_APP } from '../src/main/sincronizacion/pestanasApp'
@@ -234,6 +235,61 @@ test('dos computadoras borran en el mismo minuto: cada una saca SU renglón aunq
     assert.equal(bajasDelMes('2026-08').length, 2, `${pc.nombre}: dos bajas, las dos de verdad`)
     assert.ok(fila(CLIENTES.suarez.nombre), `${pc.nombre}: Suárez sigue vigente`)
   }
+  cerrarTodo()
+})
+
+test('dos computadoras cierran el mes: sólo una crea la planilla nueva y la otra recibe un aviso claro (12.6)', async () => {
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+  en(lanus1)
+  const filasDeAgosto = planillaDelMes('2026-08').filas.length
+  const resumen = await cerrarMesConLaBase(DANIEL, { fuente: hoja, sincronizar: () => lanus1.motor.sincronizarAhora(true) })
+  assert.equal(resumen.periodo, '2026-09')
+  assert.ok(hoja.titulos().includes('SEPTIEMBRE'), 'la pestaña se creó en la base ANTES de copiar las filas: es el candado')
+  await subirTodo(lanus1)
+  assert.equal(hoja.filasDe('SEPTIEMBRE').length - 1, filasDeAgosto, 'una fila por póliza activa')
+
+  // Lanús 2 leyó la estructura antes de que Lanús 1 creara la pestaña (los dos pasan el «¿ya está
+  // abierto?»): la base es la que dice que no, y acá no se copia nada.
+  en(lanus2)
+  const estructuraDeVerdad = hoja.estructura.bind(hoja)
+  hoja.estructura = async () => {
+    const estructura = await estructuraDeVerdad()
+    return { ...estructura, pestanas: estructura.pestanas.filter((p) => p.titulo !== 'SEPTIEMBRE') }
+  }
+  await assert.rejects(cerrarMesConLaBase(DANIEL, { fuente: hoja, sincronizar: async () => undefined }), /Otra computadora acaba de cerrar el mes/)
+  hoja.estructura = estructuraDeVerdad
+  assert.equal(periodosDisponibles().some((p) => p.periodo === '2026-09'), false, 'Lanús 2 no copió ninguna fila')
+
+  // Con la base a la vista, el freno es «ya está abierto en la base».
+  await assert.rejects(cerrarMesConLaBase(DANIEL, { fuente: hoja, sincronizar: async () => undefined }), /ya está abierto en la base/)
+  assert.equal(hoja.filasDe('SEPTIEMBRE').length - 1, filasDeAgosto, 'la planilla nueva sigue con una fila por póliza')
+  // Y la sincronización de verdad le trae a Lanús 2 el mes nuevo tal como lo cerró Lanús 1.
+  await lanus2.motor.sincronizarAhora(true)
+  assert.equal(planillaDelMes('2026-09').filas.length, filasDeAgosto, 'Lanús 2 ve el mes nuevo con una fila por póliza')
+  assert.equal(planillaDelMes('2026-09').filas.filter((f) => f.nombre === CLIENTES.lopez.nombre).length, 1, 'y a cada póliza una sola vez')
+
+  // Sin conexión con la base no se cierra: el candado vive en la base.
+  await assert.rejects(cerrarMesConLaBase(DANIEL, { fuente: null }), /Sin conexión con la base/)
+  cerrarTodo()
+})
+
+test('renombrar una pestaña no le cambia el _ID a nadie en ninguna computadora (12.6)', async () => {
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+  const idsAntes = [...hoja.idsDe('AGOSTO').values()]
+  const escriturasAntes = hoja.llamadas.escribirColumna
+  en(lanus1)
+  const filasAntes = planillaDelMes('2026-08').filas.length
+  const bajasAntes = bajasDelMes('2026-08').length
+
+  hoja.restaurarPestana(Object.assign(hoja.quitarPestana('AGOSTO'), { titulo: 'AGOSTO 2026' }))
+  for (const pc of [lanus1, lanus2]) {
+    en(pc)
+    await pc.importar()
+    assert.equal(planillaDelMes('2026-08').filas.length, filasAntes, `${pc.nombre}: la planilla tiene las mismas filas`)
+    assert.equal(bajasDelMes('2026-08').length, bajasAntes, `${pc.nombre}: ninguna baja fantasma`)
+  }
+  assert.deepEqual([...hoja.idsDe('AGOSTO 2026').values()], idsAntes, 'los _ID son los mismos de antes')
+  assert.equal(hoja.llamadas.escribirColumna, escriturasAntes, 'ninguna computadora escribió un _ID')
   cerrarTodo()
 })
 

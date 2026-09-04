@@ -64,6 +64,59 @@ import { huellaDeFila } from '../sincronizacion/hoja'
 import { alDesaparecerDeLaHoja, alLlegarUnaBaja, cuotaDelMesDeLaBaja, filasConCambiosSinSubir } from '../servicios/filas'
 import { normalizarEstadoDeCobro } from '../servicios/pagos'
 
+interface PestanaParaDuenios {
+  titulo: string
+  indice: number
+  periodo: string | null
+  columnaId: number | null
+  valores: string[][]
+}
+
+/**
+ * De qué pestaña es cada _ID de la grilla: la del período más viejo que lo lleva (una pestaña sin
+ * período cuenta como la más nueva de todas) y, a igual período, la de más a la izquierda.
+ *
+ * Es la regla que hace que duplicar la pestaña del mes para armar el que viene no le robe los _ID al
+ * original (la copia es la más nueva, y arranca con identificadores propios), y que una pestaña
+ * renombrada conserve todos los suyos. Y como sale sólo de la grilla, todas las computadoras llegan a
+ * la misma respuesta: hasta la 12.5 se decidía con `filas_crudas` de cada base, y una _ID que una PC
+ * recordaba en otra pestaña se renombraba en la base compartida, con lo que en las demás la fila
+ * vieja «desaparecía» y la nueva aparecía como una cuota más.
+ */
+export function duenioDeCadaId(pestanas: PestanaParaDuenios[]): Map<string, string> {
+  const duenios = new Map<string, { titulo: string; periodo: string; indice: number }>()
+  for (const p of pestanas) {
+    if (p.columnaId === null) continue
+    const periodo = p.periodo ?? '9999-99'
+    for (const fila of p.valores) {
+      const id = limpiar(fila[p.columnaId])
+      if (!id) continue
+      const actual = duenios.get(id)
+      if (!actual || periodo < actual.periodo || (periodo === actual.periodo && p.indice < actual.indice)) {
+        duenios.set(id, { titulo: p.titulo, periodo, indice: p.indice })
+      }
+    }
+  }
+  return new Map([...duenios].map(([id, duenio]) => [id, duenio.titulo]))
+}
+
+/**
+ * Los _ID de la grilla a los que otras pestañas hacen referencia: «PAGO:<_ID>» en APP PAGOS,
+ * «BAJA:<_ID>» en BAJAS, «PAGO:ADELANTO:<_ID>»… Lo que sigue al último «:» es el renglón referido.
+ */
+export function idsReferenciadosEnLaGrilla(pestanas: Array<{ columnaId: number | null; valores: string[][] }>): Set<string> {
+  const referidos = new Set<string>()
+  for (const p of pestanas) {
+    if (p.columnaId === null) continue
+    for (const fila of p.valores) {
+      const id = limpiar(fila[p.columnaId])
+      const separador = id.lastIndexOf(':')
+      if (separador > 0 && separador < id.length - 1) referidos.add(id.slice(separador + 1))
+    }
+  }
+  return referidos
+}
+
 export interface OpcionesImportacion {
   db: BaseDeDatos
   fuente: FuenteHoja
@@ -71,6 +124,8 @@ export interface OpcionesImportacion {
   alProgresar?: (progreso: ProgresoImportacion) => void
   estaCancelada?: () => boolean
   anioActual?: number
+  /** El mes de hoy (1-12). Sólo lo usa el clasificador para anclar planillas sin año; las pruebas lo fijan. */
+  mesActual?: number
 }
 
 /** Cantidad máxima de problemas que se listan uno por uno; el resto sólo se cuenta. */
@@ -219,14 +274,6 @@ function prepararSentencias(db: BaseDeDatos) {
       WHERE pestana = @pestana AND en_la_hoja = 1 AND (vista_en IS NULL OR vista_en <> @ahora)`),
 
     /** En qué pestaña se registró un _ID: sirve para saber quién es el dueño cuando aparece repetido. */
-    pestanaDeFila: db.prepare('SELECT pestana FROM filas_crudas WHERE fila_id = ?'),
-
-    /** En qué pestaña están hoy las cuotas de un mes: es la planilla que la agencia viene usando. */
-    pestanasDeLasCuotas: db.prepare(
-      `SELECT pestana, COUNT(*) AS filas, SUM(creada_en_la_app) AS de_la_app
-         FROM cuotas_mes WHERE periodo = ? GROUP BY pestana`,
-    ),
-
     // Primera vez que aparece el cliente en esta corrida: lo que dice la planilla más nueva manda.
     clienteCompleto: db.prepare(`
       INSERT INTO clientes (clave, documento, documento_normalizado, nombre, telefono, email, direccion, localidad,
@@ -546,6 +593,16 @@ class TrabajoDeImportacion {
   private readonly alProgresar: (progreso: ProgresoImportacion) => void
   private readonly estaCancelada: () => boolean
   private readonly anioActual: number
+  private readonly mesActual: number
+  /**
+   * A qué pestaña pertenece cada _ID de la grilla (12.6). Se decide mirando la grilla ENTERA y nada
+   * más —la pestaña del período más viejo, y a igual período la de más a la izquierda—, así todas las
+   * computadoras deciden lo mismo. Hasta la 12.5 se miraba `filas_crudas` de esta base: un _ID que
+   * esta computadora recordaba en otra pestaña (una pestaña renombrada, o una que ésta no había visto
+   * todavía) recibía uno nuevo, se escribía en la base compartida, y en todas las demás computadoras
+   * la fila vieja «desaparecía» (baja fantasma) y la nueva aparecía (cuota duplicada).
+   */
+  private duenioDeId = new Map<string, string>()
   /** Marca de tiempo única de la corrida: todo lo que toca esta importación lleva este actualizado_en. */
   private readonly ahora = ahoraIso()
   /** Filas con cambios locales que todavía no viajaron: sobre ellas la hoja no manda (ver filas.ts). */
@@ -563,6 +620,8 @@ class TrabajoDeImportacion {
    * cuotas, clientes, vehículos ni pólizas: ver `descartarPlanillasRepetidas`.
    */
   private planillasRepetidas = new Set<string>()
+  /** Las planillas descartadas de cada mes, para volver a sacar sus cuotas cuando la buena ya se guardó. */
+  private descartadasPorPeriodo = new Map<string, string[]>()
   private periodoPorMes = new Map<number, string>()
   private layouts = new Map<string, Layout>()
 
@@ -611,6 +670,7 @@ class TrabajoDeImportacion {
     this.alProgresar = opciones.alProgresar ?? (() => undefined)
     this.estaCancelada = opciones.estaCancelada ?? (() => false)
     this.anioActual = opciones.anioActual ?? new Date().getFullYear()
+    this.mesActual = opciones.mesActual ?? new Date().getMonth() + 1
     this.sentencias = prepararSentencias(this.db)
     this.sinSubir = filasConCambiosSinSubir(this.db)
   }
@@ -629,6 +689,12 @@ class TrabajoDeImportacion {
       }
       if (this.estado === 'EN_CURSO') {
         this.emitirProgreso('consolidando', 'Consolidando pólizas activas y totales…')
+        // Segunda pasada sobre las planillas repetidas: al preparar, la planilla buena podía no estar
+        // todavía en esta base (primera vez que se la lee) y sus gemelas no tenían con qué compararse.
+        for (const [periodo, titulos] of this.descartadasPorPeriodo) {
+          const sacadas = this.sacarCuotasDeLasPlanillasDescartadas(periodo, titulos)
+          if (sacadas > 0) this.avisos.push(`Se sacaron ${sacadas} cuotas de ${periodo} que habían entrado por una planilla repetida.`)
+        }
         this.consolidar()
         const huboError = this.resumenes.some((r) => r.estado === 'error') || this.hojaSoloLectura
         this.estado = huboError ? 'CON_ERRORES' : 'COMPLETA'
@@ -655,6 +721,7 @@ class TrabajoDeImportacion {
     const clasificadas = clasificarPestanas(
       estructura.pestanas.map((p) => ({ titulo: p.titulo, indice: p.indice })),
       this.anioActual,
+      this.mesActual,
     )
     this.pestanas = estructura.pestanas.map((p) => {
       const c = clasificadas.find((x) => x.titulo === p.titulo && x.indice === p.indice)!
@@ -699,7 +766,23 @@ class TrabajoDeImportacion {
     this.emitirProgreso('pestanas', 'Revisando los encabezados de cada pestaña…')
     await this.resolverLayouts()
 
+    // Toda la grilla en memoria antes de decidir nada: qué planilla ES la del mes cuando hay dos, y de
+    // qué pestaña es cada _ID, son decisiones que tienen que salir de lo que todas las computadoras ven
+    // igual (la grilla) y no de lo que cada una recuerda en su base. No son llamadas de más: cada
+    // pestaña se leía igual al procesarla; ahora se lee antes y se guarda hasta que le toque.
+    await this.leerTodasLasPestanas()
+    if (this.estaCancelada()) return
+
     this.descartarPlanillasRepetidas()
+    this.duenioDeId = duenioDeCadaId(
+      this.pestanas.map((p) => ({
+        titulo: p.titulo,
+        indice: p.indice,
+        periodo: p.periodo,
+        columnaId: this.columnaIdDe(p, this.valoresCacheados.get(p.titulo) ?? []),
+        valores: this.valoresCacheados.get(p.titulo) ?? [],
+      })),
+    )
 
     this.masNueva = await this.elegirMasNuevaConDatos()
     if (!this.masNueva) {
@@ -744,22 +827,39 @@ class TrabajoDeImportacion {
       porPeriodo.set(p.periodo, [...(porPeriodo.get(p.periodo) ?? []), p])
     }
 
+    // Todo lo que decide sale de la grilla, para que las cinco computadoras elijan la misma planilla
+    // (hasta la 12.5 se miraban las cuotas de ESTA base, y dos computadoras podían quedarse cada una con
+    // una pestaña distinta del mismo mes, para siempre). Primero la pestaña cuyos renglones tienen
+    // pagos, bajas o avisos colgando en las otras pestañas de la grilla (APP PAGOS escribe
+    // «PAGO:<_ID de la fila>», BAJAS «BAJA:<_ID>»): ésa es la que la agencia viene usando. Después, la
+    // que tiene más filas con datos. Y en un empate, la de más a la izquierda: la copia se inserta a
+    // la derecha del original.
+    const referenciadas = idsReferenciadosEnLaGrilla(
+      this.pestanas.map((p) => ({ columnaId: this.columnaIdDe(p, this.valoresCacheados.get(p.titulo) ?? []), valores: this.valoresCacheados.get(p.titulo) ?? [] })),
+    )
     for (const [periodo, grupo] of porPeriodo) {
       if (grupo.length < 2) continue
-      const cuotasPorPestana = new Map(
-        (this.sentencias.pestanasDeLasCuotas.all(periodo) as Array<{ pestana: string; filas: number; de_la_app: number | null }>).map((f) => [
-          f.pestana,
-          f,
-        ]),
-      )
-      // Primero la que abrió «Cerrar mes»: es la que la aplicación viene manteniendo, y de sus filas
-      // cuelgan los pagos y los adelantos del mes. Después, la que tiene más cuotas del mes. Y en un
-      // empate, la de más a la izquierda: Google inserta la copia inmediatamente a la derecha.
-      const deLaApp = (p: PestanaTrabajo) => cuotasPorPestana.get(p.titulo)?.de_la_app ?? 0
-      const cuantasTiene = (p: PestanaTrabajo) => cuotasPorPestana.get(p.titulo)?.filas ?? 0
-      const queda = [...grupo].sort((a, b) => deLaApp(b) - deLaApp(a) || cuantasTiene(b) - cuantasTiene(a) || a.indice - b.indice)[0]!
+      const medida = new Map<string, { filas: number; referidas: number }>()
+      for (const p of grupo) {
+        const valores = this.valoresCacheados.get(p.titulo) ?? []
+        const columnaId = this.columnaIdDe(p, valores)
+        const primeraFila = (this.layouts.get(p.titulo)?.filaEncabezados ?? 0) + 1
+        let filas = 0
+        let referidas = 0
+        for (let r = primeraFila; r < valores.length; r++) {
+          const celdas = valores[r] ?? []
+          if (!celdas.some((valor, i) => i !== columnaId && limpiar(valor) !== '')) continue
+          filas++
+          if (columnaId !== null && referenciadas.has(limpiar(celdas[columnaId]))) referidas++
+        }
+        medida.set(p.titulo, { filas, referidas })
+      }
+      const referidas = (p: PestanaTrabajo) => medida.get(p.titulo)?.referidas ?? 0
+      const cuantasTiene = (p: PestanaTrabajo) => medida.get(p.titulo)?.filas ?? 0
+      const queda = [...grupo].sort((a, b) => referidas(b) - referidas(a) || cuantasTiene(b) - cuantasTiene(a) || a.indice - b.indice)[0]!
       const descartadas = grupo.filter((p) => p !== queda)
       for (const p of descartadas) this.planillasRepetidas.add(p.titulo)
+      this.descartadasPorPeriodo.set(periodo, descartadas.map((p) => p.titulo))
       const sacadas = this.sacarCuotasDeLasPlanillasDescartadas(periodo, descartadas.map((p) => p.titulo))
       this.avisos.push(
         `Hay más de una planilla mensual para ${periodo}: se toma «${queda.titulo}» y se ignoran ` +
@@ -834,10 +934,8 @@ class TrabajoDeImportacion {
     let elegida: PestanaTrabajo | null = null
     for (const candidata of candidatas.filter((p) => !p.oculta)) {
       if (this.estaCancelada()) return null
-      this.actualizarPestana(candidata.titulo, 'leyendo', null, 'buscando la planilla más nueva')
-      const valores = await this.fuente.leerValores(candidata.titulo)
+      const valores = this.valoresCacheados.get(candidata.titulo) ?? (await this.fuente.leerValores(candidata.titulo))
       this.valoresCacheados.set(candidata.titulo, valores)
-      this.actualizarPestana(candidata.titulo, 'pendiente', null, null)
       const mapeo = mapearEncabezados(valores[0] ?? [], 'MENSUAL')
       const reconoceIdentidad = mapeo.porCampo.has('nombre') || mapeo.porCampo.has('documento') || mapeo.porCampo.has('patente')
       const filasConDatos = valores.slice(1).filter((fila) => fila.some((valor, i) => !mapeo.columnasId.includes(i) && limpiar(valor) !== '')).length
@@ -883,6 +981,34 @@ class TrabajoDeImportacion {
     for (const { titulo, detalle } of resultado.sinResolver) {
       this.problema(titulo, null, null, 'pestaña sin encabezados', detalle)
     }
+  }
+
+  /** Lee todas las pestañas de la grilla y las deja en la caché, de a una, mostrando el avance. */
+  private async leerTodasLasPestanas(): Promise<void> {
+    for (const p of this.pestanas) {
+      if (this.estaCancelada()) return
+      if (this.valoresCacheados.has(p.titulo)) continue
+      this.actualizarPestana(p.titulo, 'leyendo', null, 'leyendo la grilla')
+      try {
+        this.valoresCacheados.set(p.titulo, await this.fuente.leerValores(p.titulo))
+        this.actualizarPestana(p.titulo, 'pendiente', null, null)
+      } catch (error) {
+        // Se anota y la pestaña se vuelve a intentar al procesarla, que es donde el error se informa.
+        this.actualizarPestana(p.titulo, 'pendiente', null, mensajeDe(error))
+      }
+    }
+  }
+
+  /**
+   * La columna del _ID de una pestaña, con la misma regla que `procesarPestana`: por el encabezado
+   * «_ID» y, en una pestaña sin fila de encabezados, por el contenido. Null si todavía no tiene una
+   * (sus filas no llevan _ID y no son dueñas de ninguno).
+   */
+  private columnaIdDe(p: PestanaTrabajo, valores: string[][]): number | null {
+    const layout = this.layouts.get(p.titulo)
+    const filaEncabezados = layout?.filaEncabezados ?? 0
+    if (filaEncabezados < 0) return columnaIdPorContenido(valores) ?? layout?.mapeo.columnaId ?? null
+    return layout?.mapeo.columnaId ?? null
   }
 
   /** Pólizas ya existentes en la base (de corridas anteriores) para poder enlazar históricos. */
@@ -1090,15 +1216,21 @@ class TrabajoDeImportacion {
 
       const ids: string[] = []
       let encabezadosRepetidos = 0
-      /** Tramos contiguos de filas cuyo _ID hay que escribir en la hoja (no se pisa la columna entera). */
-      const tramos: Array<{ fila: number; valores: string[] }> = []
-      const agregarAEscribir = (fila: number, valor: string) => {
+      /**
+       * Tramos contiguos de filas cuyo _ID hay que escribir en la hoja (no se pisa la columna entera).
+       * `previos` lleva lo que la celda decía al decidirlo: la base escribe sólo si sigue diciendo eso,
+       * así un renglón que otra computadora corrió mientras tanto no recibe el _ID de otro.
+       */
+      const tramos: Array<{ fila: number; valores: string[]; previos: string[] }> = []
+      const agregarAEscribir = (fila: number, valor: string, previo: string) => {
         const ultimo = tramos[tramos.length - 1]
-        if (ultimo && ultimo.fila + ultimo.valores.length === fila) ultimo.valores.push(valor)
-        else tramos.push({ fila, valores: [valor] })
+        if (ultimo && ultimo.fila + ultimo.valores.length === fila) {
+          ultimo.valores.push(valor)
+          ultimo.previos.push(previo)
+        } else tramos.push({ fila, valores: [valor], previos: [previo] })
       }
       const escribirTitulo = mapeo.columnaId === null && filaEncabezados >= 0
-      if (escribirTitulo) agregarAEscribir(filaEncabezados + 1, ENCABEZADO_ID)
+      if (escribirTitulo) agregarAEscribir(filaEncabezados + 1, ENCABEZADO_ID, limpiar((valores[filaEncabezados] ?? [])[indiceId]))
 
       for (let r = primeraFila; r < valores.length; r++) {
         const celdas = valores[r] ?? []
@@ -1115,18 +1247,21 @@ class TrabajoDeImportacion {
           continue
         }
         resumen.filasConDatos++
+        const previo = existente
         if (existente) {
-          const duenio = this.idsVistos.get(existente)
-          if (duenio !== undefined) {
-            // Alguien copió filas (o pestañas enteras) con su _ID: la copia recibe uno nuevo.
-            this.problema(p.titulo, r + 1, existente, '_ID repetido', `el _ID ${existente} ya está en ${duenio}; se asignó uno nuevo a esta fila`)
+          // Duplicar la pestaña del mes es el flujo normal para armar el mes nuevo: el _ID se lo queda
+          // la pestaña dueña según la grilla (la del período más viejo, ver `duenioDeCadaId`) y la
+          // copia arranca con identificadores propios. Se decide con la grilla entera y no con lo que
+          // esta base recuerda: una pestaña renombrada conserva todos sus _ID en todas las computadoras.
+          const duenio = this.duenioDeId.get(existente)
+          if (duenio !== undefined && duenio !== p.titulo) {
+            this.problema(p.titulo, r + 1, existente, '_ID de otra pestaña', `el _ID ${existente} pertenece a «${duenio}» (¿se duplicó la pestaña?); esta fila recibe uno nuevo`)
             existente = ''
           } else {
-            // Duplicar la pestaña del mes es el flujo normal para armar el mes nuevo: el _ID se lo queda
-            // la pestaña donde ya estaba registrado y la copia arranca con identificadores propios.
-            const registrada = this.sentencias.pestanaDeFila.get(existente) as { pestana: string } | undefined
-            if (registrada && registrada.pestana !== p.titulo) {
-              this.problema(p.titulo, r + 1, existente, '_ID de otra pestaña', `el _ID ${existente} ya estaba en «${registrada.pestana}» (¿se duplicó la pestaña?); esta fila recibe uno nuevo`)
+            const visto = this.idsVistos.get(existente)
+            if (visto !== undefined) {
+              // Alguien copió filas dentro de la misma pestaña con su _ID: la copia recibe uno nuevo.
+              this.problema(p.titulo, r + 1, existente, '_ID repetido', `el _ID ${existente} ya está en ${visto}; se asignó uno nuevo a esta fila`)
               existente = ''
             }
           }
@@ -1136,7 +1271,7 @@ class TrabajoDeImportacion {
         } else {
           existente = generarId()
           resumen.idsNuevos++
-          agregarAEscribir(r + 1, existente)
+          agregarAEscribir(r + 1, existente, previo)
         }
         this.idsVistos.set(existente, `«${p.titulo}» fila ${r + 1}`)
         ids.push(existente)
@@ -1151,7 +1286,7 @@ class TrabajoDeImportacion {
 
       // --- Escritura en la hoja: en su propio try, porque un problema de permisos no puede tirar abajo
       // el guardado de una pestaña que ya se leyó bien.
-      const escrituraOk = await this.escribirIds(p, resumen, indiceId, tramos, escribirTitulo)
+      const { ok: escrituraOk, saltadas } = await this.escribirIds(p, resumen, indiceId, tramos, escribirTitulo)
 
       // --- Persistencia, una transacción por pestaña.
       this.actualizarPestana(p.titulo, 'guardando', resumen.filasConDatos, null)
@@ -1165,6 +1300,13 @@ class TrabajoDeImportacion {
         // una fila con un _ID que la hoja no conoce haría que la próxima corrida la duplique.
         const esNuevo = !limpiar(celdas[indiceId])
         if (!escrituraOk && esNuevo) {
+          sinIdEstable++
+          continue
+        }
+        // La base no escribió ese _ID porque el renglón se corrió entre la lectura y la escritura (otra
+        // computadora borró algo más arriba): esta fila se toma en la próxima importación, con la grilla
+        // ya quieta. Guardarla ahora con un _ID que la base no tiene la duplicaría.
+        if (saltadas.has(r + 1)) {
           sinIdEstable++
           continue
         }
@@ -1252,16 +1394,27 @@ class TrabajoDeImportacion {
     p: PestanaTrabajo,
     resumen: ResumenPestana,
     indiceId: number,
-    tramos: Array<{ fila: number; valores: string[] }>,
+    tramos: Array<{ fila: number; valores: string[]; previos: string[] }>,
     columnaNueva: boolean,
-  ): Promise<boolean> {
-    if (tramos.length === 0) return true
-    if (this.hojaSoloLectura) return false
+  ): Promise<{ ok: boolean; saltadas: Set<number> }> {
+    const saltadas = new Set<number>()
+    if (tramos.length === 0) return { ok: true, saltadas }
+    if (this.hojaSoloLectura) return { ok: false, saltadas }
 
     this.actualizarPestana(p.titulo, 'escribiendo_ids', resumen.filasConDatos, `${resumen.idsNuevos} _ID nuevos`)
     try {
       await this.fuente.asegurarColumnas(p.sheetId, indiceId + 1)
-      await this.fuente.escribirTramos(p.titulo, indiceId, tramos)
+      const resultado = await this.fuente.escribirTramos(p.titulo, indiceId, tramos)
+      for (const fila of resultado.saltadas) saltadas.add(fila)
+      if (saltadas.size > 0) {
+        this.problema(
+          p.titulo,
+          null,
+          null,
+          'renglones corridos durante la importación',
+          `${saltadas.size} fila(s) cambiaron de lugar en la base mientras se importaba (otra computadora borró renglones): se toman en la próxima importación`,
+        )
+      }
     } catch (error) {
       this.hojaSoloLectura = true
       const mensaje = mensajeDe(error)
@@ -1269,7 +1422,7 @@ class TrabajoDeImportacion {
         `No se pudo escribir la columna _ID en la hoja: ${mensaje} — Compartí la hoja con la cuenta de servicio como EDITOR (no como lector) y volvé a correr la importación. Sin _ID no hay forma de reconocer las filas, así que las que todavía no lo tienen no se guardaron.`,
       )
       this.problema(p.titulo, null, null, 'no se pudo escribir el _ID', mensaje)
-      return false
+      return { ok: false, saltadas }
     }
 
     // Ocultar la columna es cosmético: si falla, se avisa pero no se pierde la pestaña.
@@ -1280,7 +1433,7 @@ class TrabajoDeImportacion {
         this.problema(p.titulo, null, null, 'no se pudo ocultar el _ID', mensajeDe(error))
       }
     }
-    return true
+    return { ok: true, saltadas }
   }
 
   /** Deja en el informe lo que el mapeo de encabezados no pudo resolver. */

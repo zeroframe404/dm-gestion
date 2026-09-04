@@ -17,6 +17,7 @@ import type { FuenteHoja } from '../importacion/fuente'
 import type { Layout } from '../importacion/layouts'
 import { limpiar } from '../importacion/normalizar'
 import { clasificarPestana } from '../importacion/pestanas'
+import { ErrorDeNegocio } from '../servicios/errores'
 import type { ContextoHoja, PestanaSincronizable } from './hoja'
 import { anotarEvento } from './cola'
 
@@ -222,7 +223,7 @@ export function encabezadosParaPestanaDelMes(layout: Layout | undefined): string
  * describir a ésta) y las visibles (una oculta suele ser un borrador o un mes escondido); a igual
  * condición gana el período más nuevo y, a igual período, la de más a la derecha.
  */
-function plantillaPara(contexto: ContextoHoja, tipo: TipoPestana): PestanaSincronizable | null {
+export function plantillaPara(contexto: ContextoHoja, tipo: TipoPestana): PestanaSincronizable | null {
   const puntaje = (pestana: PestanaSincronizable): number =>
     (pestana.layout && pestana.layout.filaEncabezados >= 0 ? 2 : 0) + (pestana.oculta ? 0 : 1)
   const candidatas = contexto.pestanas
@@ -232,6 +233,43 @@ function plantillaPara(contexto: ContextoHoja, tipo: TipoPestana): PestanaSincro
         puntaje(b) - puntaje(a) || (b.periodo ?? '').localeCompare(a.periodo ?? '') || b.indice - a.indice,
     )
   return candidatas[0] ?? null
+}
+
+/**
+ * Título para una pestaña NUEVA de ese período, decidido con la grilla de la base y no con lo que esta
+ * computadora recuerda: el nombre pelado («SEPTIEMBRE») y, si ese título ya lo usa OTRO período
+ * («ENERO» del año pasado al cerrar diciembre), el nombre con el año («ENERO 27»). Es la versión de
+ * `nombreParaPestanaNueva` (cartera.ts) para «Cerrar mes» con la base a la vista.
+ */
+export function tituloParaPestanaNueva(contexto: ContextoHoja, base: string, periodo: string): string {
+  const chocada = contexto.pestanas.some((p) => p.titulo === base && p.periodo !== null && p.periodo !== periodo)
+  return chocada ? `${base} ${periodo.slice(2, 4)}` : base
+}
+
+/**
+ * Crea la pestaña del mes nuevo AHORA y sin tolerar el «ya existe» (12.6). Es el candado de «Cerrar
+ * mes» entre dos computadoras: las dos pueden mirar la base y no ver el mes que viene, pero sólo una
+ * crea la pestaña; a la otra la base le contesta que ya existe y no cierra nada, en vez de agregar
+ * la planilla entera por segunda vez con otros _ID. Lo que se copia (los encabezados de la planilla
+ * más nueva) es lo mismo que en `asegurarPestanasDelMes`, que sigue siendo el camino tolerante para
+ * la cola y las pruebas.
+ */
+export async function crearPestanaDelMesEstricta(fuente: FuenteHoja, contexto: ContextoHoja, titulo: string): Promise<void> {
+  const plantilla = plantillaPara(contexto, 'MENSUAL')
+  const encabezados = encabezadosParaPestanaDelMes(plantilla?.layout)
+  if (!plantilla || !encabezados) {
+    throw new ErrorDeNegocio(`No se puede crear la pestaña «${titulo}»: no hay otra planilla mensual para copiarle los encabezados. Reimportá la base y volvé a intentar.`)
+  }
+  try {
+    await fuente.crearPestana(titulo, encabezados)
+  } catch (error) {
+    const motivo = error instanceof Error ? error.message : String(error)
+    if (/already exists|ya existe/i.test(motivo)) {
+      throw new ErrorDeNegocio(`Otra computadora acaba de cerrar el mes (la pestaña «${titulo}» ya existe en la base). Sincronizá y volvé a mirar la planilla: no hace falta cerrarlo de nuevo.`)
+    }
+    throw error
+  }
+  anotarEvento('pestana', `Se creó la pestaña «${titulo}» al final de la base, con los encabezados de «${plantilla.titulo}».`)
 }
 
 /** Para avisar UNA vez por pestaña que no hay plantilla, y no en cada ciclo de diez segundos. */

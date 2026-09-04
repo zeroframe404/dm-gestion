@@ -1386,7 +1386,12 @@ export function bajasDelMes(periodo: string | null): FilaBaja[] {
  * Crea las cuotas del mes siguiente copiando las pólizas activas, igual que cuando se duplica la hoja:
  * se conservan cuota, vencimiento, forma de pago y observaciones, y se vacían el pago y el aviso.
  */
-export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
+/**
+ * Qué mes se cierra y cuál se abre, con los tres frenos de siempre. Está aparte para que
+ * `cerrarMesConLaBase` (sincronizacion.ts) pueda comprobarlos ANTES de crear la pestaña en la base:
+ * si fallaran después, la base quedaría con una pestaña vacía del mes que viene.
+ */
+export function periodoACerrar(): { actual: string; nuevo: string } {
   const periodos = periodosDisponibles()
   const actual = periodos[0]?.periodo
   if (!actual) throw new ErrorDeNegocio('Todavía no hay ninguna planilla cargada: importá la hoja de Google primero.')
@@ -1395,6 +1400,19 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
   if (nuevo > periodoSiguiente(periodoDeHoy())) {
     throw new ErrorDeNegocio(`Ya está abierto ${actual}, que es el mes que viene. Esperá a que llegue para abrir ${nuevo}.`)
   }
+  return { actual, nuevo }
+}
+
+export interface OpcionesDeCierre {
+  /**
+   * El título de la pestaña del mes nuevo, cuando quien llama ya lo decidió mirando la base (ver
+   * `cerrarMesConLaBase`). Sin esto se deduce de lo que esta computadora recuerda.
+   */
+  pestana?: string
+}
+
+export function cerrarMes(actor: SesionUsuario, opciones: OpcionesDeCierre = {}): ResumenCierreDeMes {
+  const { actual, nuevo } = periodoACerrar()
 
   // La sucursal se arrastra RESUELTA (la de la fila si la tiene, si no la del cliente), igual que la
   // muestra la planilla. Si se copiara la columna cruda, un mes que quedó sin sucursal se la pasaría al
@@ -1413,7 +1431,7 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
   if (origen.length === 0) throw new ErrorDeNegocio(`La planilla de ${actual} no tiene pólizas activas para copiar.`)
 
   const ahora = ahoraIso()
-  const pestanaDelMesNuevo = nombreParaPestanaNueva(nombreDePestanaMensual(nuevo), nuevo)
+  const pestanaDelMesNuevo = opciones.pestana ?? nombreParaPestanaNueva(nombreDePestanaMensual(nuevo), nuevo)
 
   // Los pagos adelantados que esperaban este mes: se cobraron en el mes que se cierra para el que se
   // abre. Los ACREDITAR dejan la fila nueva paga; los PENDIENTE quedan a la vista para imputarlos a

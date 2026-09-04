@@ -3,12 +3,15 @@
 import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
 import type { DatosDeEvento, NombreEvento } from '../../shared/canales'
+import { nombreDePeriodo } from '../../shared/semaforo'
 import type {
   EntradaDeCola,
   EstadoSincronizacion,
   EventoSync,
   PanelSincronizacion,
   RespaldoGuardado,
+  ResumenCierreDeMes,
+  SesionUsuario,
 } from '../../shared/tipos'
 import { db } from '../db/base'
 import { extraerIdDeHoja, FuenteGoogleSheets, type FuenteHoja } from '../importacion/fuente'
@@ -16,7 +19,9 @@ import { ejecutarImportacion } from '../importacion/importador'
 import { ahoraIso } from '../importacion/normalizar'
 import { carpetaDatos } from '../rutas'
 import { anotarEvento, reintentarFallidas } from '../sincronizacion/cola'
+import { leerContexto } from '../sincronizacion/hoja'
 import { MotorDeSincronizacion } from '../sincronizacion/motor'
+import { crearPestanaDelMesEstricta, tituloParaPestanaNueva } from '../sincronizacion/pestanasApp'
 import {
   hacerRespaldo,
   listarRespaldos,
@@ -25,6 +30,7 @@ import {
   type ServicioDeRespaldo,
 } from '../sincronizacion/respaldo'
 import { FuenteVps } from '../vps/fuenteVps'
+import { cerrarMes, nombreDePestanaMensual, periodoACerrar } from './cartera'
 import { credencialesGoogle, credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
 import { repararAlArrancar, repararBajasDuplicadas, repararCuotasDuplicadas } from './reparaciones'
@@ -142,6 +148,54 @@ export async function sincronizarAhora(completa = false): Promise<EstadoSincroni
   if (!motor.estaEncendido()) motor.encender()
   await motor.sincronizarAhora(completa)
   return motor.estado()
+}
+
+export interface OpcionesDeCierreConLaBase {
+  /** La fuente contra la que se cierra; por defecto la del programa. Las pruebas pasan la suya. */
+  fuente?: FuenteHoja | null
+  /** Cómo sincronizar antes de mirar la base; por defecto el motor del programa. */
+  sincronizar?: () => Promise<unknown>
+}
+
+/**
+ * «Cerrar mes» con la base como árbitro (12.6). Hasta la 12.5 el único freno contra cerrar el mes dos
+ * veces —una computadora en cada mostrador— eran los períodos que ESTA computadora conocía: si la
+ * otra había cerrado hace un rato y la bajada todavía no lo había traído, o si ésta estaba sin
+ * conexión, se creaba la planilla entera por segunda vez con otros _ID y septiembre aparecía con
+ * cada póliza dos veces.
+ *
+ * Ahora, en orden: los frenos locales de siempre; una sincronización completa (sin conexión no se
+ * cierra: es un cambio deliberado, y el mensaje lo dice); la base a la vista, para ver si el mes ya
+ * está abierto y decidir el título; y la creación ESTRICTA de la pestaña, que es el candado — si dos
+ * computadoras llegan hasta acá a la vez, sólo una crea la pestaña y la otra recibe «ya existe».
+ * Recién con la pestaña creada se copian las filas localmente y se encolan.
+ */
+export async function cerrarMesConLaBase(actor: SesionUsuario, opciones: OpcionesDeCierreConLaBase = {}): Promise<ResumenCierreDeMes> {
+  const fuente = opciones.fuente === undefined ? crearFuente() : opciones.fuente
+  if (!fuente) {
+    throw new ErrorDeNegocio(
+      'Sin conexión con la base de la agencia no se puede cerrar el mes: el mes nuevo se crea en la base para que las otras computadoras no lo cierren también. Probá cuando vuelva internet.',
+    )
+  }
+  periodoACerrar()
+  try {
+    await (opciones.sincronizar ?? (() => sincronizarAhora(true)))()
+  } catch (error) {
+    const motivo = error instanceof Error ? error.message : String(error)
+    throw new ErrorDeNegocio(`No se pudo sincronizar con la base antes de cerrar el mes (${motivo}). Cerrar el mes necesita conexión: probá de nuevo en un rato.`)
+  }
+  // Después de sincronizar, los frenos locales ya saben lo que la otra computadora hizo hace un rato.
+  const { nuevo } = periodoACerrar()
+  const contexto = await leerContexto(fuente)
+  const abierta = contexto.pestanas.find((p) => p.tipo === 'MENSUAL' && p.periodo === nuevo)
+  if (abierta) {
+    throw new ErrorDeNegocio(
+      `El mes ${nombreDePeriodo(nuevo)} ya está abierto en la base (la pestaña «${abierta.titulo}»): lo cerró otra computadora. Sincronizá y volvé a mirar la planilla.`,
+    )
+  }
+  const titulo = tituloParaPestanaNueva(contexto, nombreDePestanaMensual(nuevo), nuevo)
+  await crearPestanaDelMesEstricta(fuente, contexto, titulo)
+  return cerrarMes(actor, { pestana: titulo })
 }
 
 export function panelDeSincronizacion(): PanelSincronizacion {
