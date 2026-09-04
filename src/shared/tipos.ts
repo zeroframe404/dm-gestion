@@ -2675,7 +2675,8 @@ export interface BajaPorMotivo {
 export interface MesDeEvolucion {
   periodo: string
   activos: number
-  altas: number
+  /** null cuando no hay mes anterior cargado: sin él las altas no se pueden deducir (no es un cero). */
+  altas: number | null
   bajas: number
   /** null cuando quien mira no ve los números de la agencia. Un cero diría «no se cobró nada». */
   cobrado: number | null
@@ -2710,10 +2711,11 @@ export interface TableroMetricas {
   activosPorCompania: PorcionMetrica[]
   activosPorSucursal: PorcionMetrica[]
 
-  altas: number
+  /** null si no hay mes anterior cargado (ver `hayMesAnterior`): la pantalla muestra un guion, no un cero. */
+  altas: number | null
   bajas: number
   bajasPorMotivo: BajaPorMotivo[]
-  /** false si no hay mes anterior cargado: sin él las altas no se pueden deducir y van en 0. */
+  /** false si no hay mes anterior cargado: sin él las altas no se pueden deducir y van en null. */
   hayMesAnterior: boolean
 
   evolucion: MesDeEvolucion[]
@@ -2729,7 +2731,8 @@ export interface TableroMetricas {
 export interface FilaEstadistica {
   etiqueta: string
   activos: number
-  altas: number
+  /** null cuando no hay mes anterior cargado: la columna muestra un guion. */
+  altas: number | null
   bajas: number
   /** Cuántos pagos entraron en el mes. La cantidad la ve todo el mundo. */
   pagos: number

@@ -354,7 +354,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Qué se compara',
         parrafos: [
-          'Muestra activos y altas por compañía (y por otros cortes según lo que traiga la pantalla), con los totales al pie. Si el mes elegido no tiene un mes anterior importado, las altas quedan en cero, porque para calcular una alta hace falta comparar contra el mes de antes; en cuanto se importe ese mes anterior, el número aparece solo.',
+          'Muestra activos y altas por compañía (y por otros cortes según lo que traiga la pantalla), con los totales al pie. Si el mes elegido no tiene un mes anterior importado, las altas muestran un guion (no un cero), porque para calcular una alta hace falta comparar contra el mes de antes; en cuanto se importe ese mes anterior, el número aparece solo. Cada póliza se cuenta una sola vez aunque figure en dos renglones.',
         ],
       },
     ],
