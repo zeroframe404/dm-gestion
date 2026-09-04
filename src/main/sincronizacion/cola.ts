@@ -70,6 +70,7 @@ export const ESPERA_DE_AGRUPADO_MS = 60_000
 export function encolar(
   entrada: { operacion: OperacionSync; pestana: string; filaId: string; campos: Partial<Record<Campo | '_id', string>> },
   actor?: SesionUsuario | null,
+  opciones: { sinEspera?: boolean } = {},
 ): void {
   const base = db()
   if (entrada.operacion !== 'borrar') {
@@ -93,7 +94,10 @@ export function encolar(
     }
   }
   // Los borrados esperan su ventana de agrupado; el resto sale en el ciclo siguiente, como siempre.
-  const espera = entrada.operacion === 'borrar' ? new Date(Date.now() + ESPERA_DE_AGRUPADO_MS).toISOString() : null
+  // `sinEspera` (12.7): el borrado de una ficha de adjunto sale en el ciclo siguiente, sin la ventana de
+  // agrupado, porque el archivo ya se borró del servidor y cada segundo que la fila siga en la hoja las
+  // otras computadoras la muestran «en el servidor» sin poder abrirla.
+  const espera = entrada.operacion === 'borrar' && !opciones.sinEspera ? new Date(Date.now() + ESPERA_DE_AGRUPADO_MS).toISOString() : null
   base
     .prepare(
       `INSERT INTO cola_sync (creado_en, operacion, pestana, fila_id, campos_json, proximo_intento, usuario_nombre)
@@ -175,10 +179,16 @@ export function cuantasListasParaSubir(): number {
   ).n
 }
 
-/** Filas con cambios locales sin subir: la bajada no las toca para no pisarlos. */
+/**
+ * Filas con cambios locales sin subir: la bajada no las toca para no pisarlos. Cuentan también las
+ * entradas dadas por perdidas (`fallido`, 12.7): hasta la 12.6 sólo contaban las pendientes, así que
+ * la bajada pisaba la fila de una entrada fallida y, al apretar «Volver a intentar», el valor viejo
+ * de esta computadora pisaba en silencio el más nuevo de la otra. Es el mismo criterio que usa la
+ * importación (`filasConCambiosSinSubir`).
+ */
 export function filasConPendientes(): Set<string> {
   return new Set(
-    (db().prepare(`SELECT DISTINCT fila_id FROM cola_sync WHERE estado = 'pendiente'`).all() as Array<{ fila_id: string }>).map(
+    (db().prepare(`SELECT DISTINCT fila_id FROM cola_sync WHERE estado IN ('pendiente', 'fallido')`).all() as Array<{ fila_id: string }>).map(
       (fila) => fila.fila_id,
     ),
   )

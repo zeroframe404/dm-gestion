@@ -46,6 +46,7 @@ import {
   type AdjuntoGenerico,
 } from './adjuntos'
 import { registrarComentarioNuevo } from '../sincronizacion/anexos'
+import { claveDeVinculoDeTarea } from '../sincronizacion/vinculos'
 import { avisarTareaCompletada } from './avisos'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
@@ -312,6 +313,7 @@ function aAdjuntoDeTarea(a: AdjuntoGenerico): AdjuntoDeTarea {
     enElServidor: a.enElServidor,
     errorDelServidor: a.errorDelServidor,
     descargado: a.descargado,
+    enOtraComputadora: a.enOtraComputadora,
     miniatura: a.miniatura,
   }
 }
@@ -377,7 +379,21 @@ function camposParaLaHoja(f: FilaCruda): Record<string, string> {
     estado: NOMBRE_ESTADO_TAREA[f.estado as EstadoTarea] ?? f.estado,
     vinculo: vinculoTexto ?? '',
     usuario: f.creado_por,
+    // 12.7: la clave con la que la otra computadora engancha la tarea a su ficha (ver vinculos.ts).
+    vinculo_clave: claveDeVinculo(f) ?? '',
   }
+}
+
+/** La clave compartida del vínculo de la tarea, calculada de sus id locales. */
+export function claveDeVinculo(f: Pick<FilaCruda, 'siniestro_id' | 'renovacion_id' | 'presupuesto_id' | 'lead_id' | 'poliza_id' | 'cliente_id'>): string | null {
+  return claveDeVinculoDeTarea(db(), {
+    siniestro_id: f.siniestro_id,
+    renovacion_id: f.renovacion_id,
+    presupuesto_id: f.presupuesto_id,
+    lead_id: f.lead_id,
+    poliza_id: f.poliza_id,
+    cliente_id: f.cliente_id,
+  })
 }
 
 /**
@@ -391,7 +407,7 @@ export function registrarTareaNueva(tareaId: number, actor: SesionUsuario): void
   const filaId = generarId()
   const pestana = pestanaDeTareas()
   db().transaction(() => {
-    db().prepare('UPDATE tareas SET fila_id = ?, pestana = ? WHERE id = ?').run(filaId, pestana, tareaId)
+    db().prepare('UPDATE tareas SET fila_id = ?, pestana = ?, vinculo_clave = ? WHERE id = ?').run(filaId, pestana, claveDeVinculo(cruda), tareaId)
     registrarFilaDeLaApp({ filaId, pestana, tipoPestana: 'APP_TAREAS', periodo: null })
   })()
   encolar({ operacion: 'crear', pestana, filaId, campos: camposParaLaHoja(buscarTarea(tareaId)) }, actor)

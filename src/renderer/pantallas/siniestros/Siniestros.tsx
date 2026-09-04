@@ -76,8 +76,11 @@ export function Siniestros() {
     setCargando(false)
   }, [])
 
+  // Con un respiro: el buscador pedía el listado entero (1.500 siniestros con sus contadores) en cada
+  // tecla. Doscientos milisegundos no se notan al escribir y ahorran una consulta por letra.
   useEffect(() => {
-    void cargar(filtros)
+    const espera = setTimeout(() => void cargar(filtros), 200)
+    return () => clearTimeout(espera)
   }, [cargar, filtros])
 
   // Otro módulo puede mandar directo a una ficha (por ejemplo desde la ficha del cliente).

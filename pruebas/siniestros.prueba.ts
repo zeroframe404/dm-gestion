@@ -417,6 +417,9 @@ test('una columna que la hoja sí tiene y quedó vacía a propósito sí borra e
   const db = await baseImportada()
   const id = listarSiniestros({ ...SIN_FILTROS, soloRobos: true }).filas[0]!.id
   editarSiniestro(id, 'importe', '150000', DANIEL)
+  // Con la corrección todavía en la cola, la hoja va atrás de esta computadora y la importación no la
+  // toca (12.7). Recién cuando subió, lo que diga la planilla manda. Se simula que ya subió.
+  db.prepare(`UPDATE cola_sync SET estado = 'listo', subido_en = ? WHERE estado = 'pendiente'`).run(new Date().toISOString())
 
   // Alguien vació la celda IMPORTE en la planilla: eso es una decisión, no una columna que falta.
   const hoja = hojaActual!
@@ -431,10 +434,10 @@ test('una columna que la hoja sí tiene y quedó vacía a propósito sí borra e
 })
 
 // ---------------------------------------------------------------------------
-// El abogado y el tercero: viven sólo acá, y se cuentan en la línea de tiempo
+// El abogado y el tercero: viajan como columnas (12.7) y se cuentan en la línea de tiempo
 // ---------------------------------------------------------------------------
 
-test('el abogado y los datos del tercero se guardan y quedan contados en la línea de tiempo', async () => {
+test('el abogado y los datos del tercero se guardan, viajan a la hoja y quedan contados en la línea de tiempo', async () => {
   const db = await baseImportada()
   const id = listarSiniestros({ ...SIN_FILTROS, soloRobos: true }).filas[0]!.id
   const colaAntes = colaDeSiniestros(db).length
@@ -453,12 +456,15 @@ test('el abogado y los datos del tercero se guardan y quedan contados en la lín
   assert.equal(ficha.siniestro.terceroLesionados, 'SI')
   assert.equal(ficha.siniestro.terceroLesionadosDetalle, 'El acompañante, fue al Fiorito')
 
-  // La hoja no tiene columnas para esto: no se le encola una edición que iba a quedar fallida…
+  // Hasta la 12.6 la hoja no tenía columnas para esto y no se encolaba nada: la ficha de la otra
+  // computadora los mostraba vacíos. Ahora viajan como cualquier campo, y la subida agrega la columna
+  // que falte (ver pruebas/siniestros-entre-computadoras.prueba.ts).
   const cola = colaDeSiniestros(db)
   const campos = cola.flatMap((entrada) => Object.keys(JSON.parse(entrada.campos_json) as Record<string, string>))
-  assert.ok(!campos.includes('abogado'), 'no se le escribe a la hoja una columna que no tiene')
-  assert.ok(!campos.includes('tercero_compania'))
-  // …y en cambio se cuenta en la línea de tiempo, que es lo que sí viaja en OBSERVACIONES.
+  assert.ok(campos.includes('abogado'), 'el abogado sale para la hoja')
+  assert.ok(campos.includes('tercero_compania'))
+  assert.ok(campos.includes('tercero_lesionados_detalle'))
+  // …y además se cuenta en la línea de tiempo, que es el relato del trámite.
   assert.ok(cola.length > colaAntes, 'el resumen de observaciones sí sale para la hoja')
   const relato = ficha.observaciones.map((o) => o.texto)
   assert.ok(relato.some((texto) => texto === 'Abogado: Dr. Suárez, 11-4455-6677'), relato.join(' | '))

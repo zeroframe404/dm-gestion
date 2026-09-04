@@ -10,6 +10,8 @@ import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { builtinModules } from 'node:module'
 const archivo = process.argv[2]
+// PRUEBA_OUTDIR permite correr dos archivos a la vez sin que se pisen el empaquetado (dist/solo por defecto).
+const outDir = process.env.PRUEBA_OUTDIR || 'dist/solo'
 if (!archivo) {
   console.error('Uso: npm run prueba:sola -- pruebas/<archivo>.prueba.ts')
   process.exit(2)
@@ -17,8 +19,8 @@ if (!archivo) {
 const externos = ['electron','better-sqlite3','bcryptjs','@googleapis/sheets','pdfjs-dist','pdfjs-dist/legacy/build/pdf.mjs','node:test',...builtinModules,...builtinModules.map((m)=>'node:'+m)]
 await build({
   configFile: false, publicDir: false, logLevel: 'error',
-  build: { outDir: 'dist/solo', emptyOutDir: true, target: 'node22', minify: false, sourcemap: 'inline',
+  build: { outDir, emptyOutDir: true, target: 'node22', minify: false, sourcemap: 'inline',
     lib: { entry: { solo: resolve(archivo) }, formats: ['cjs'], fileName: (_f, n) => n + '.js' },
     rolldownOptions: { external: externos } },
 })
-execFileSync('node', ['--test-reporter=spec', 'dist/solo/solo.js'], { stdio: 'inherit' })
+execFileSync('node', ['--test-reporter=spec', resolve(outDir, 'solo.js')], { stdio: 'inherit' })

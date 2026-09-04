@@ -1522,6 +1522,24 @@ export const MIGRACIONES: Migracion[] = [
       CREATE INDEX IF NOT EXISTS idx_bajas_poliza_fecha ON bajas (poliza_id, fecha_baja_iso);
     `,
   },
+  {
+    version: 24,
+    descripcion: 'El vínculo de cada tarea con una clave que todas las computadoras entienden, y las notas de los leads con fila en la base',
+    sql: `
+      -- Hasta la 12.6 el vínculo de una tarea viajaba a APP TAREAS como texto legible («Siniestro
+      -- S-123 · Pérez»): en la otra computadora la tarea llegaba suelta, sin cliente, póliza ni
+      -- siniestro, y la ficha del siniestro la mostraba vacía. La clave («SINIESTRO:<_ID>»,
+      -- «POLIZA:<clave>», «CLIENTE:<clave>»…) es la identidad compartida, igual que en los adjuntos.
+      ALTER TABLE tareas ADD COLUMN vinculo_clave TEXT;
+      -- Lo mismo para el presupuesto: de qué consulta salió («LEAD:<_ID>»).
+      ALTER TABLE presupuestos ADD COLUMN vinculo_clave TEXT;
+
+      -- Las notas de las consultas (leads) viajan por APP COMENTARIOS como las observaciones de los
+      -- siniestros, una fila cada una, con fila_id = 'COM:<id>'.
+      ALTER TABLE lead_notas ADD COLUMN fila_id TEXT;
+      CREATE UNIQUE INDEX idx_lead_notas_fila ON lead_notas (fila_id) WHERE fila_id IS NOT NULL;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

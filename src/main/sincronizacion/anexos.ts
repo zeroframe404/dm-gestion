@@ -21,13 +21,17 @@ import { encolar } from './cola'
 import { PESTANA_ADJUNTOS_APP, PESTANA_COMENTARIOS_APP } from './pestanasApp'
 
 export type TipoDeAnexo = 'poliza' | 'siniestro' | 'tarea'
+/** De qué fichas puede colgar un comentario: además de las tres, las consultas (leads, 12.7). */
+export type TipoDeComentario = 'siniestro' | 'tarea' | 'lead'
+/** Todo lo que puede ser «la ficha madre» de un anexo. */
+export type TipoDePadre = TipoDeAnexo | 'lead'
 
 /** Prefijos del `_ID`: lo que sigue es el id del archivo en el servidor o un id al azar del comentario. */
 export const PREFIJO_DE_ADJUNTO = 'ADJ:'
 export const PREFIJO_DE_COMENTARIO = 'COM:'
 
-const ETIQUETA: Record<TipoDeAnexo, string> = { poliza: 'POLIZA', siniestro: 'SINIESTRO', tarea: 'TAREA' }
-const TIPO_POR_ETIQUETA = new Map<string, TipoDeAnexo>(Object.entries(ETIQUETA).map(([tipo, etiqueta]) => [etiqueta, tipo as TipoDeAnexo]))
+const ETIQUETA: Record<TipoDePadre, string> = { poliza: 'POLIZA', siniestro: 'SINIESTRO', tarea: 'TAREA', lead: 'LEAD' }
+const TIPO_POR_ETIQUETA = new Map<string, TipoDePadre>(Object.entries(ETIQUETA).map(([tipo, etiqueta]) => [etiqueta, tipo as TipoDePadre]))
 
 /** El nombre real de la pestaña (por si la agencia la renombró) o el de fábrica. */
 export function pestanaDeAdjuntos(): string {
@@ -47,21 +51,18 @@ export function pestanaDeComentarios(): string {
  * identidad que las otras computadoras conozcan (una tarea vieja sin fila en la base). En ese caso lo
  * que cuelga de ella se queda en esta PC, como hasta ahora.
  */
-export function vinculoDelPadre(tipo: TipoDeAnexo, padreId: number, base: BaseDeDatos = db()): string | null {
+export function vinculoDelPadre(tipo: TipoDePadre, padreId: number, base: BaseDeDatos = db()): string | null {
   const clave = claveDelPadre(tipo, padreId, base)
   return clave ? `${ETIQUETA[tipo]}:${clave}` : null
 }
 
-function claveDelPadre(tipo: TipoDeAnexo, padreId: number, base: BaseDeDatos): string | null {
+function claveDelPadre(tipo: TipoDePadre, padreId: number, base: BaseDeDatos): string | null {
   if (tipo === 'poliza') {
     const fila = base.prepare('SELECT clave FROM polizas WHERE id = ?').get(padreId) as { clave: string | null } | undefined
     return fila?.clave ?? null
   }
-  if (tipo === 'siniestro') {
-    const fila = base.prepare('SELECT fila_id FROM siniestros WHERE id = ?').get(padreId) as { fila_id: string | null } | undefined
-    return fila?.fila_id ?? null
-  }
-  const fila = base.prepare('SELECT fila_id FROM tareas WHERE id = ?').get(padreId) as { fila_id: string | null } | undefined
+  const tabla = tipo === 'siniestro' ? 'siniestros' : tipo === 'lead' ? 'leads' : 'tareas'
+  const fila = base.prepare(`SELECT fila_id FROM ${tabla} WHERE id = ?`).get(padreId) as { fila_id: string | null } | undefined
   return fila?.fila_id ?? null
 }
 
@@ -69,7 +70,7 @@ function claveDelPadre(tipo: TipoDeAnexo, padreId: number, base: BaseDeDatos): s
  * Lo que dice la columna DESCRIPCION: para quien mira la pestaña en la base o en Google, y para la
  * computadora que recibe la fila antes de tener la ficha (por ejemplo, la póliza todavía no llegó).
  */
-export function descripcionDelPadre(tipo: TipoDeAnexo, padreId: number, base: BaseDeDatos = db()): string {
+export function descripcionDelPadre(tipo: TipoDePadre, padreId: number, base: BaseDeDatos = db()): string {
   if (tipo === 'poliza') {
     const p = base
       .prepare(
@@ -88,12 +89,16 @@ export function descripcionDelPadre(tipo: TipoDeAnexo, padreId: number, base: Ba
     if (!s) return `Siniestro ${padreId}`
     return ['Siniestro', s.numero_siniestro, s.cliente_nombre, s.patente].filter((x) => limpiar(x ?? '')).join(' · ')
   }
+  if (tipo === 'lead') {
+    const l = base.prepare('SELECT nombre FROM leads WHERE id = ?').get(padreId) as { nombre: string } | undefined
+    return l ? `Consulta de ${l.nombre}` : `Consulta ${padreId}`
+  }
   const t = base.prepare('SELECT titulo FROM tareas WHERE id = ?').get(padreId) as { titulo: string } | undefined
   return t ? `Tarea: ${t.titulo}` : `Tarea ${padreId}`
 }
 
 export interface PadreDeAnexo {
-  tipo: TipoDeAnexo
+  tipo: TipoDePadre
   /** El id local de la ficha, o null si esta computadora todavía no la tiene. */
   id: number | null
 }
@@ -108,13 +113,15 @@ export function padreDelVinculo(vinculo: string, base: BaseDeDatos = db()): Padr
   return { tipo, id: idDelPadre(tipo, clave, base) }
 }
 
-function idDelPadre(tipo: TipoDeAnexo, clave: string, base: BaseDeDatos): number | null {
+function idDelPadre(tipo: TipoDePadre, clave: string, base: BaseDeDatos): number | null {
   const sql =
     tipo === 'poliza'
       ? 'SELECT id FROM polizas WHERE clave = ? OR fila_id = ? ORDER BY id LIMIT 1'
       : tipo === 'siniestro'
         ? 'SELECT id FROM siniestros WHERE fila_id = ? OR fila_id = ? LIMIT 1'
-        : 'SELECT id FROM tareas WHERE fila_id = ? OR fila_id = ? LIMIT 1'
+        : tipo === 'lead'
+          ? 'SELECT id FROM leads WHERE fila_id = ? OR fila_id = ? LIMIT 1'
+          : 'SELECT id FROM tareas WHERE fila_id = ? OR fila_id = ? LIMIT 1'
   const fila = base.prepare(sql).get(clave, clave) as { id: number } | undefined
   return fila?.id ?? null
 }
@@ -135,6 +142,12 @@ export interface AdjuntoParaLaHoja {
   tamano: number
   sha256: string | null
   usuario: string
+  /**
+   * Cuándo llegó el archivo al servidor (columna SUBIDO, 12.7), o null si todavía no. La ficha viaja
+   * apenas se adjunta; el archivo, en los ciclos siguientes. Hasta la 12.6 la otra computadora daba el
+   * archivo por subido con sólo ver la fila, y al abrirlo el servidor contestaba que no existía.
+   */
+  subidoEn: string | null
 }
 
 export function camposDeAdjunto(datos: AdjuntoParaLaHoja): Partial<Record<Campo, string>> {
@@ -149,12 +162,23 @@ export function camposDeAdjunto(datos: AdjuntoParaLaHoja): Partial<Record<Campo,
     tamano: String(datos.tamano),
     sha256: datos.sha256 ?? '',
     usuario: datos.usuario,
+    subido: datos.subidoEn ?? '',
   }
+}
+
+/**
+ * El archivo acaba de llegar al servidor: se anota en su fila de APP ADJUNTOS, así las otras
+ * computadoras pasan de «cargado en otra computadora» a «en el servidor» y lo pueden abrir. Si la
+ * fila todavía no viajó (el «crear» sigue en la cola), el campo se junta con ella.
+ */
+export function encolarSubidoDeAnexo(filaId: string, subidoEn: string, actor: SesionUsuario | null = null, base: BaseDeDatos = db()): void {
+  const conocida = base.prepare('SELECT pestana FROM filas_crudas WHERE fila_id = ?').get(filaId) as { pestana: string } | undefined
+  encolar({ operacion: 'actualizar', pestana: conocida?.pestana ?? pestanaDeAdjuntos(), filaId, campos: { subido: subidoEn } }, actor)
 }
 
 export interface ComentarioParaLaHoja {
   fecha: string
-  tipo: 'siniestro' | 'tarea'
+  tipo: TipoDeComentario
   vinculo: string
   usuario: string
   texto: string
@@ -204,13 +228,13 @@ export function encolarBorradoDeAnexo(filaId: string, tipoPestana: 'APP_ADJUNTOS
  * y `registrarLoQueNoViajo` lo vuelve a intentar cuando la ficha la tenga.
  */
 export function registrarComentarioNuevo(
-  tipo: 'siniestro' | 'tarea',
+  tipo: TipoDeComentario,
   padreId: number,
   comentarioId: number,
   actor: SesionUsuario | null,
   base: BaseDeDatos = db(),
 ): string | null {
-  const tabla = tipo === 'tarea' ? 'tarea_comentarios' : 'siniestro_observaciones'
+  const tabla = TABLA_DE_COMENTARIOS[tipo].tabla
   const fila = base.prepare(`SELECT id, fila_id, texto, usuario_nombre, creado_en FROM ${tabla} WHERE id = ?`).get(comentarioId) as
     | { id: number; fila_id: string | null; texto: string; usuario_nombre: string; creado_en: string }
     | undefined
@@ -258,6 +282,13 @@ const TABLA_DE_ADJUNTOS: Record<TipoDeAnexo, { tabla: string; padre: string }> =
   tarea: { tabla: 'tarea_adjuntos', padre: 'tarea_id' },
 }
 
+/** Dónde viven los comentarios de cada ficha: las observaciones del siniestro, los de la tarea, las notas del lead. */
+const TABLA_DE_COMENTARIOS: Record<TipoDeComentario, { tabla: string; padre: string }> = {
+  siniestro: { tabla: 'siniestro_observaciones', padre: 'siniestro_id' },
+  tarea: { tabla: 'tarea_comentarios', padre: 'tarea_id' },
+  lead: { tabla: 'lead_notas', padre: 'lead_id' },
+}
+
 /** Una fecha usable como `creado_en`: el ISO completo si vino así, si no el día con hora cero. */
 function fechaDeLaFila(texto: string, ahora: string): string {
   const limpio = limpiar(texto)
@@ -277,7 +308,7 @@ function fechaDeLaFila(texto: string, ahora: string): string {
 export function guardarAdjuntoDeLaHoja(fila: FilaDeAnexo, base: BaseDeDatos = db()): ResultadoDeAnexo {
   if (!fila.filaId.startsWith(PREFIJO_DE_ADJUNTO)) return 'ignorado'
   const padre = padreDelVinculo(fila.valor('vinculo'), base)
-  if (!padre) return 'ignorado'
+  if (!padre || padre.tipo === 'lead') return 'ignorado'
   if (padre.id === null) return 'sin-padre'
   const { tabla, padre: columnaPadre } = TABLA_DE_ADJUNTOS[padre.tipo]
   const ahora = ahoraIso()
@@ -290,6 +321,13 @@ export function guardarAdjuntoDeLaHoja(fila: FilaDeAnexo, base: BaseDeDatos = db
   const categoria = separador > 0 ? categoriaEscrita.slice(0, separador) : categoriaEscrita || null
   const categoriaDetalle = separador > 0 ? categoriaEscrita.slice(separador + 2) : null
   const conCategoria = padre.tipo === 'siniestro'
+  // 12.7: la columna SUBIDO la escribe la computadora que subió el archivo, después de subirlo. Hasta
+  // la 12.6 acá se daba por subido con sólo ver la fila (la fecha de la fila hacía de fecha de subida),
+  // y con eso pasaban dos cosas: la otra computadora decía «en el servidor» de un archivo que todavía
+  // no había llegado, y —peor— la PROPIA computadora que lo cargó, al correr una importación completa
+  // antes de terminar de subirlo, lo marcaba como subido y no lo subía nunca más.
+  const subidoEscrito = limpiar(fila.valor('subido'))
+  const subidoEn = vpsId && subidoEscrito ? fechaDeLaFila(subidoEscrito, ahora) : null
 
   base
     .prepare(
@@ -304,7 +342,9 @@ export function guardarAdjuntoDeLaHoja(fila: FilaDeAnexo, base: BaseDeDatos = db
          tamano = CASE WHEN excluded.tamano > 0 THEN excluded.tamano ELSE ${tabla}.tamano END,
          sha256 = COALESCE(excluded.sha256, ${tabla}.sha256),
          vps_id = COALESCE(excluded.vps_id, ${tabla}.vps_id),
-         vps_subido_en = COALESCE(${tabla}.vps_subido_en, excluded.vps_subido_en),
+         -- La computadora que tiene el archivo (lo cargó, o ya lo bajó) sabe mejor que la fila si lo
+         -- subió: la fila nunca le cambia ese dato. Las que no lo tienen toman lo que diga SUBIDO.
+         vps_subido_en = CASE WHEN ${tabla}.archivo <> '' THEN ${tabla}.vps_subido_en ELSE COALESCE(${tabla}.vps_subido_en, excluded.vps_subido_en) END,
          usuario_nombre = excluded.usuario_nombre${conCategoria ? ', categoria = excluded.categoria, categoria_detalle = excluded.categoria_detalle' : ''}`,
     )
     .run({
@@ -315,14 +355,43 @@ export function guardarAdjuntoDeLaHoja(fila: FilaDeAnexo, base: BaseDeDatos = db
       tamano: Number.isFinite(tamano) && tamano > 0 ? tamano : 0,
       sha256,
       vps_id: vpsId,
-      // Si la fila está en la base, la computadora que la escribió ya lo subió (o está en eso): se da
-      // por estar en el servidor; la bajada dirá otra cosa si todavía no llegó.
-      vps_subido_en: vpsId ? fechaDeLaFila(fila.valor('fecha'), ahora) : null,
+      vps_subido_en: subidoEn,
       usuario: limpiar(fila.valor('usuario')) || 'Otra computadora',
       creado_en: fechaDeLaFila(fila.valor('fecha'), ahora),
       ...(conCategoria ? { categoria, categoria_detalle: categoriaDetalle } : {}),
     })
   return 'guardado'
+}
+
+/**
+ * Los renglones de la línea de tiempo que hasta la 12.6 eran la ÚNICA forma en que viajaban el abogado
+ * y los datos del tercero («Abogado: Dr. Pérez», «Patente del tercero: AB123CD»). Desde la 12.7 esos
+ * campos tienen columna propia en la pestaña SINIESTROS, pero el renglón se sigue escribiendo con
+ * cada cambio, así que aplicarlos en orden deja la ficha como el último cambio: es lo que hace que
+ * lo cargado con la 12.6 (que sólo dejó renglones) aparezca en las otras computadoras, y que una
+ * computadora con el programa viejo siga contando lo suyo. «(se borró)» vacía el campo.
+ */
+const CAMPO_POR_RENGLON: Array<{ etiqueta: string; columna: string }> = [
+  { etiqueta: 'Abogado', columna: 'abogado' },
+  { etiqueta: 'Compañía del tercero', columna: 'tercero_compania' },
+  { etiqueta: 'Teléfono del tercero', columna: 'tercero_telefono' },
+  { etiqueta: 'Patente del tercero', columna: 'tercero_patente' },
+  { etiqueta: 'Terceros lesionados', columna: 'tercero_lesionados' },
+  { etiqueta: 'Quién se lesionó', columna: 'tercero_lesionados_detalle' },
+]
+
+export function aplicarRenglonALaFicha(siniestroId: number, texto: string, base: BaseDeDatos = db()): boolean {
+  const separador = texto.indexOf(': ')
+  if (separador <= 0) return false
+  const etiqueta = texto.slice(0, separador)
+  const destino = CAMPO_POR_RENGLON.find((c) => c.etiqueta === etiqueta)
+  if (!destino) return false
+  const valor = texto.slice(separador + 2).trim()
+  const nuevo = !valor || valor === '(se borró)' ? null : valor.slice(0, 500)
+  const cambio = base
+    .prepare(`UPDATE siniestros SET ${destino.columna} = ? WHERE id = ? AND ${destino.columna} IS NOT ?`)
+    .run(nuevo, siniestroId, nuevo)
+  return cambio.changes > 0
 }
 
 /** Una fila de APP COMENTARIOS que escribió otra computadora: un comentario o una observación más. */
@@ -334,8 +403,7 @@ export function guardarComentarioDeLaHoja(fila: FilaDeAnexo, base: BaseDeDatos =
   const texto = limpiar(fila.valor('texto'))
   if (!texto) return 'ignorado'
   const ahora = ahoraIso()
-  const tabla = padre.tipo === 'tarea' ? 'tarea_comentarios' : 'siniestro_observaciones'
-  const columnaPadre = padre.tipo === 'tarea' ? 'tarea_id' : 'siniestro_id'
+  const { tabla, padre: columnaPadre } = TABLA_DE_COMENTARIOS[padre.tipo]
   base
     .prepare(
       `INSERT INTO ${tabla} (${columnaPadre}, fila_id, texto, usuario_id, usuario_nombre, creado_en)
@@ -351,6 +419,8 @@ export function guardarComentarioDeLaHoja(fila: FilaDeAnexo, base: BaseDeDatos =
       creado_en: fechaDeLaFila(fila.valor('fecha'), ahora),
     })
   if (padre.tipo === 'tarea') base.prepare('UPDATE tareas SET actualizado_en = ? WHERE id = ?').run(ahora, padre.id)
+  else if (padre.tipo === 'lead') base.prepare('UPDATE leads SET actualizado_en = ? WHERE id = ?').run(ahora, padre.id)
+  else aplicarRenglonALaFicha(padre.id, texto, base)
   return 'guardado'
 }
 
@@ -371,9 +441,9 @@ export function borrarAnexoLocal(filaId: string, base: BaseDeDatos = db()): bool
     return borrado
   }
   if (filaId.startsWith(PREFIJO_DE_COMENTARIO)) {
-    const a = base.prepare('DELETE FROM tarea_comentarios WHERE fila_id = ?').run(filaId).changes
-    const b = base.prepare('DELETE FROM siniestro_observaciones WHERE fila_id = ?').run(filaId).changes
-    return a + b > 0
+    let borrados = 0
+    for (const { tabla } of Object.values(TABLA_DE_COMENTARIOS)) borrados += base.prepare(`DELETE FROM ${tabla} WHERE fila_id = ?`).run(filaId).changes
+    return borrados > 0
   }
   return false
 }

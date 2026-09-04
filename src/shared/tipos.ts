@@ -2131,6 +2131,8 @@ export interface AdjuntoDeSiniestro {
   errorDelServidor: string | null
   /** false cuando lo cargó otra computadora y esta todavía no lo bajó (se baja al abrirlo). */
   descargado: boolean
+  /** Lo cargó otra computadora y todavía no se sabe si terminó de subirlo (12.7). */
+  enOtraComputadora: boolean
   miniatura: string | null
 }
 
@@ -2534,6 +2536,8 @@ export interface AdjuntoDeTarea {
   enElServidor: boolean
   errorDelServidor: string | null
   descargado: boolean
+  /** Lo cargó otra computadora y todavía no se sabe si terminó de subirlo (12.7). */
+  enOtraComputadora: boolean
   miniatura: string | null
 }
 
@@ -2553,6 +2557,8 @@ export interface AdjuntoDePoliza {
   enElServidor: boolean
   errorDelServidor: string | null
   descargado: boolean
+  /** Lo cargó otra computadora y todavía no se sabe si terminó de subirlo (12.7). */
+  enOtraComputadora: boolean
   miniatura: string | null
   ancho: number | null
   alto: number | null

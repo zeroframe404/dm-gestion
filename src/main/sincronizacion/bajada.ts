@@ -17,10 +17,21 @@ import { db } from '../db/base'
 import { anotarEvento } from './cola'
 import { repiteEncabezados } from '../importacion/encabezados'
 import { esPestanaDeAnexos, guardarAnexoDeLaHoja } from './anexos'
+import { refrescarLayoutSiCambio } from './columnas'
 import { alDesaparecerDeLaHoja, alReaparecerEnLaHoja } from '../servicios/filas'
 import { normalizarEstadoDeCobro } from '../servicios/pagos'
 import { estadoDeTareaDesdeTexto, prioridadDeTareaDesdeTexto } from '../../shared/tareas'
+import { normalizarDocumento, normalizarNumeroPoliza, normalizarPatente } from '../importacion/normalizar'
 import { columnaDelId, huellaDeFila, type ContextoHoja, type PestanaSincronizable } from './hoja'
+import {
+  columnasDeVinculo,
+  estadoDeLeadDesdeTexto,
+  estadoDePresupuestoDesdeTexto,
+  guardarOpcionesDePresupuesto,
+  opcionesDesdeLaHoja,
+  origenDeLeadDesdeTexto,
+  resolverVinculoDeTarea,
+} from './vinculos'
 
 export interface ResultadoBajada {
   pestanasLeidas: number
@@ -31,6 +42,8 @@ export interface ResultadoBajada {
   pisados: number
   /** true si aparecieron filas nuevas y hay que correr la importación completa para incorporarlas. */
   necesitaImportacion: boolean
+  /** En qué pestañas aparecieron (12.7): la importación puede acotarse a ésas en vez de leer todo. */
+  pestanasConFilasNuevas: string[]
   llamadas: number
 }
 
@@ -75,6 +88,8 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
     numero_poliza: { tabla: 'bajas', columna: 'numero_poliza' },
     patente: { tabla: 'bajas', columna: 'patente' },
   },
+  // Los riesgos varios: todo lo que la pantalla deja corregir con doble clic (12.7: hasta la 12.6
+  // faltaban diez campos, y el teléfono lo interceptaba el atajo del cliente y nunca llegaba).
   RIESGOS_VARIOS: {
     tipo_riesgo: { tabla: 'riesgos_varios', columna: 'tipo_riesgo' },
     descripcion: { tabla: 'riesgos_varios', columna: 'descripcion' },
@@ -83,13 +98,45 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
     telefono: { tabla: 'riesgos_varios', columna: 'telefono' },
     compania: { tabla: 'riesgos_varios', columna: 'compania' },
     numero_poliza: { tabla: 'riesgos_varios', columna: 'numero_poliza' },
+    sucursal: { tabla: 'riesgos_varios', columna: 'sucursal_texto' },
+    emision: { tabla: 'riesgos_varios', columna: 'emision', derivadas: (valor) => ({ emision_iso: interpretarFecha(valor, null).iso }) },
+    nombre: { tabla: 'riesgos_varios', columna: 'cliente_nombre' },
+    documento: { tabla: 'riesgos_varios', columna: 'documento' },
+    patente: { tabla: 'riesgos_varios', columna: 'patente' },
+    prima: { tabla: 'riesgos_varios', columna: 'prima' },
+    dia_vencimiento: { tabla: 'riesgos_varios', columna: 'dia_vencimiento' },
+    forma_pago: { tabla: 'riesgos_varios', columna: 'forma_pago' },
+    vigencia_desde: { tabla: 'riesgos_varios', columna: 'vigencia_desde' },
+    vigencia_hasta: { tabla: 'riesgos_varios', columna: 'vigencia_hasta' },
+    aviso: { tabla: 'riesgos_varios', columna: 'aviso' },
+    pago: { tabla: 'riesgos_varios', columna: 'pago' },
   },
+  // Los siniestros. Hasta la 12.6 sólo bajaban cinco campos: una corrección de la cobertura, la
+  // patente, la sucursal o las fechas hecha en otra computadora no llegaba a la tabla de ésta hasta
+  // una reimportación completa (quedaba en los datos crudos y nada más), y la ficha decía otra cosa
+  // en cada mostrador. Ahora baja TODO lo que la ficha muestra, incluidos los datos del tercero y el
+  // abogado, que desde la 12.7 tienen columna propia.
   SINIESTROS: {
     descripcion: { tabla: 'siniestros', columna: 'descripcion' },
     estado: { tabla: 'siniestros', columna: 'estado' },
     importe: { tabla: 'siniestros', columna: 'importe' },
     numero_siniestro: { tabla: 'siniestros', columna: 'numero_siniestro' },
     observaciones: { tabla: 'siniestros', columna: 'observaciones' },
+    fecha: { tabla: 'siniestros', columna: 'fecha', derivadas: (valor) => ({ fecha_iso: interpretarFecha(valor, null).iso }) },
+    fecha_carga: { tabla: 'siniestros', columna: 'fecha_carga', derivadas: (valor) => ({ fecha_carga_iso: interpretarFecha(valor, null).iso }) },
+    nombre: { tabla: 'siniestros', columna: 'cliente_nombre' },
+    documento: { tabla: 'siniestros', columna: 'documento' },
+    sucursal: { tabla: 'siniestros', columna: 'sucursal_texto' },
+    patente: { tabla: 'siniestros', columna: 'patente' },
+    compania: { tabla: 'siniestros', columna: 'compania' },
+    numero_poliza: { tabla: 'siniestros', columna: 'numero_poliza' },
+    cobertura: { tabla: 'siniestros', columna: 'cobertura' },
+    abogado: { tabla: 'siniestros', columna: 'abogado' },
+    tercero_compania: { tabla: 'siniestros', columna: 'tercero_compania' },
+    tercero_telefono: { tabla: 'siniestros', columna: 'tercero_telefono' },
+    tercero_patente: { tabla: 'siniestros', columna: 'tercero_patente' },
+    tercero_lesionados: { tabla: 'siniestros', columna: 'tercero_lesionados' },
+    tercero_lesionados_detalle: { tabla: 'siniestros', columna: 'tercero_lesionados_detalle' },
   },
   PAGOS: {
     // La fecha cambia cuando se corrige un cobro, y sobre todo cuando un IMPUTADO pasa a PAGO: la
@@ -104,6 +151,10 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
     // El estado del COBRO (PAGO / IMPUTADO): lo cambia la computadora que cobró, cuando el cliente
     // termina pagando lo que estaba imputado. Se guarda normalizado: la columna no admite vacío.
     cobro: { tabla: 'pagos', columna: 'estado_cobro', normalizar: (valor) => normalizarEstadoDeCobro(valor) },
+    // 12.7: la sucursal del cobro y el mes de la cuota también se corrigen desde la otra computadora.
+    sucursal: { tabla: 'pagos', columna: 'sucursal_texto' },
+    mes: { tabla: 'pagos', columna: 'periodo_texto' },
+    usuario: { tabla: 'pagos', columna: 'usuario_nombre' },
   },
   // Los avisos de rechazo del débito. Lo único que cambia después de creado el aviso es en qué anda
   // (PENDIENTE → VISTO → RESUELTO) y la nota: eso lo toca la sucursal avisada, desde su computadora.
@@ -111,6 +162,11 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
     estado: { tabla: 'rechazos_debito', columna: 'estado' },
     observaciones: { tabla: 'rechazos_debito', columna: 'nota' },
     motivo: { tabla: 'rechazos_debito', columna: 'motivo' },
+    sucursal: { tabla: 'rechazos_debito', columna: 'sucursal_texto' },
+    telefono: { tabla: 'rechazos_debito', columna: 'telefono' },
+    usuario: { tabla: 'rechazos_debito', columna: 'avisado_por' },
+    forma_pago: { tabla: 'rechazos_debito', columna: 'forma_pago' },
+    cuota: { tabla: 'rechazos_debito', columna: 'cuota' },
   },
   // Las tareas. Lo que cambia después de creada la tarea es de quién es, para cuándo, con qué urgencia
   // y en qué anda: todo eso lo toca la computadora de quien la está haciendo, que puede ser otra.
@@ -132,6 +188,33 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
     // Los dos tienen CHECK en la tabla: lo que venga escrito a mano se acomoda o no entra.
     prioridad: { tabla: 'tareas', columna: 'prioridad', normalizar: (valor) => prioridadDeTareaDesdeTexto(valor) },
     estado: { tabla: 'tareas', columna: 'estado', normalizar: (valor) => estadoDeTareaDesdeTexto(valor) },
+    // 12.7: la clave del vínculo; de ella salen los id locales de la ficha a la que la tarea pertenece.
+    vinculo_clave: { tabla: 'tareas', columna: 'vinculo_clave', derivadas: (valor) => columnasDeVinculo(resolverVinculoDeTarea(db(), valor)) },
+  },
+  // Las consultas y los presupuestos (12.7): hasta la 12.6 no bajaban nunca a las otras computadoras.
+  APP_LEADS: {
+    nombre: { tabla: 'leads', columna: 'nombre' },
+    telefono: { tabla: 'leads', columna: 'telefono' },
+    documento: { tabla: 'leads', columna: 'documento', derivadas: (valor) => ({ documento_normalizado: normalizarDocumento(valor) || null }) },
+    sucursal: { tabla: 'leads', columna: 'sucursal_texto' },
+    interes: { tabla: 'leads', columna: 'interes' },
+    tipo_vehiculo: { tabla: 'leads', columna: 'tipo_vehiculo' },
+    origen: { tabla: 'leads', columna: 'origen', normalizar: (valor) => origenDeLeadDesdeTexto(valor) },
+    estado: { tabla: 'leads', columna: 'estado', normalizar: (valor) => estadoDeLeadDesdeTexto(valor) },
+  },
+  APP_PRESUPUESTOS: {
+    estado: { tabla: 'presupuestos', columna: 'estado', normalizar: (valor) => estadoDePresupuestoDesdeTexto(valor) },
+    observaciones: { tabla: 'presupuestos', columna: 'observaciones' },
+    sucursal: { tabla: 'presupuestos', columna: 'sucursal_texto' },
+    nombre: { tabla: 'presupuestos', columna: 'cliente_nombre', normalizar: (valor) => limpiar(valor) || 'Sin nombre' },
+    telefono: { tabla: 'presupuestos', columna: 'telefono' },
+    documento: { tabla: 'presupuestos', columna: 'documento' },
+    patente: { tabla: 'presupuestos', columna: 'patente' },
+    marca: { tabla: 'presupuestos', columna: 'marca' },
+    modelo: { tabla: 'presupuestos', columna: 'modelo' },
+    anio: { tabla: 'presupuestos', columna: 'anio' },
+    tipo_vehiculo: { tabla: 'presupuestos', columna: 'tipo_vehiculo' },
+    vinculo_clave: { tabla: 'presupuestos', columna: 'vinculo_clave', derivadas: (valor) => columnasDeVinculo(soloLead(resolverVinculoDeTarea(db(), valor))) },
   },
   COBERTURA: {
     cobertura: { tabla: 'reglas_cobertura', columna: 'cobertura' },
@@ -195,6 +278,7 @@ export async function bajarCambios(
     camposAplicados: 0,
     pisados: 0,
     necesitaImportacion: false,
+    pestanasConFilasNuevas: [],
     llamadas: 0,
   }
   const aLeer = titulos.filter((t) => contexto.porTitulo.has(t))
@@ -218,6 +302,10 @@ function aplicarPestana(
   resultado: ResultadoBajada,
   filasBloqueadas: Set<string>,
 ): void {
+  // 12.7: si otra computadora le agregó una columna a la pestaña desde que se leyó la estructura, la
+  // fila de encabezados recién leída lo dice. El mapeo se rehace ANTES de mirar las filas, si no el
+  // dato de la columna nueva quedaba en los datos crudos y nunca llegaba a su tabla.
+  refrescarLayoutSiCambio(pestana, valores)
   const columnaId = columnaDelId(pestana, valores)
   // Todas las columnas tituladas _ID, no sólo la que manda: si una pestaña arrastra una segunda columna
   // _ID de cuando la duplicaron, sus valores no son datos de la fila. El importador usa el mismo criterio,
@@ -255,6 +343,7 @@ function aplicarPestana(
         // estaría en ninguna fila de la hoja y la subida no tendría dónde escribirlo.
         resultado.filasNuevas++
         resultado.necesitaImportacion = true
+        if (!resultado.pestanasConFilasNuevas.includes(pestana.titulo)) resultado.pestanasConFilasNuevas.push(pestana.titulo)
         continue
       }
       vistas.add(id)
@@ -274,6 +363,7 @@ function aplicarPestana(
         }
         resultado.filasNuevas++
         resultado.necesitaImportacion = true
+        if (!resultado.pestanasConFilasNuevas.includes(pestana.titulo)) resultado.pestanasConFilasNuevas.push(pestana.titulo)
         continue
       }
       if (conocida.huella === huella && conocida.en_la_hoja === 1) {
@@ -293,6 +383,7 @@ function aplicarPestana(
       const encabezados = pestana.layout?.mapeo.encabezados ?? []
       const nuevos: Record<string, string> = { ...anteriores }
 
+      let opcionesCambiadas = false
       for (const [campo, columna] of pestana.layout?.mapeo.porCampo ?? []) {
         const encabezado = encabezados[columna] ?? ''
         if (!encabezado) continue
@@ -300,6 +391,7 @@ function aplicarPestana(
         const anterior = limpiar(anteriores[encabezado] ?? '')
         if (remoto === anterior) continue
         nuevos[encabezado] = remoto
+        if (pestana.tipo === 'APP_PRESUPUESTOS' && (campo === 'opciones_json' || campo === 'opciones')) opcionesCambiadas = true
         const pisado = aplicarCampo(pestana, id, campo, remoto)
         resultado.camposAplicados++
         if (pisado !== null && limpiar(pisado) !== anterior) {
@@ -307,10 +399,21 @@ function aplicarPestana(
           resultado.pisados++
         }
       }
+      if (opcionesCambiadas) {
+        const porCampo = pestana.layout?.mapeo.porCampo
+        const valorDe = (campo: Campo): string => {
+          const columna = porCampo?.get(campo)
+          return columna === undefined ? '' : limpiar(celdas[columna])
+        }
+        aplicarOpcionesDePresupuesto(id, valorDe('opciones_json'), valorDe('opciones'))
+      }
       // Las columnas sin mapeo también se guardan: los datos crudos son la red de seguridad.
       encabezados.forEach((encabezado, i) => {
         if (encabezado && i !== columnaId) nuevos[encabezado] = limpiar(celdas[i])
       })
+      // Un adjunto o un comentario cuya fila cambió (12.7: la computadora que subió el archivo anota
+      // cuándo llegó al servidor) se vuelve a guardar entero: sus tablas no están en DESTINOS.
+      if (esPestanaDeAnexos(pestana.tipo)) incorporarAnexo(pestana, id, celdas, huella, r + 1, ahora, false)
 
       actualizarCruda.run(JSON.stringify(nuevos), huella, r + 1, pestana.sheetId, ahora, ahora, id)
     }
@@ -337,7 +440,15 @@ function aplicarPestana(
  * por la importación completa. Devuelve false si la ficha madre todavía no está en esta computadora:
  * ahí sí hace falta la importación (que trae la ficha y, con ella, el anexo).
  */
-function incorporarAnexo(pestana: PestanaSincronizable, id: string, celdas: string[], huella: string, numeroFila: number, ahora: string): boolean {
+function incorporarAnexo(
+  pestana: PestanaSincronizable,
+  id: string,
+  celdas: string[],
+  huella: string,
+  numeroFila: number,
+  ahora: string,
+  anotarFilaCruda = true,
+): boolean {
   if (pestana.tipo !== 'APP_ADJUNTOS' && pestana.tipo !== 'APP_COMENTARIOS') return false
   const porCampo = pestana.layout?.mapeo.porCampo ?? new Map<Campo, number>()
   const valor = (campo: Campo): string => {
@@ -346,6 +457,8 @@ function incorporarAnexo(pestana: PestanaSincronizable, id: string, celdas: stri
   }
   const resultado = guardarAnexoDeLaHoja(pestana.tipo, { filaId: id, pestana: pestana.titulo, valor }, db())
   if (resultado === 'sin-padre') return false
+  // Una fila ya conocida que cambió: quien llama actualiza los datos crudos por su cuenta.
+  if (!anotarFilaCruda) return true
   const encabezados = pestana.layout?.mapeo.encabezados ?? []
   const datos: Record<string, string> = {}
   encabezados.forEach((encabezado, i) => {
@@ -366,8 +479,70 @@ function incorporarAnexo(pestana: PestanaSincronizable, id: string, celdas: stri
  * Escribe el valor que vino de la hoja en la tabla que corresponde. Devuelve el valor que había en la
  * base local (para saber si se pisó un cambio hecho acá), o null si el campo no se guarda en ninguna tabla.
  */
+/** Sólo el lead: un presupuesto no cambia de cliente por la clave (ver DESTINOS.APP_PRESUPUESTOS). */
+function soloLead(ids: ReturnType<typeof resolverVinculoDeTarea>): ReturnType<typeof resolverVinculoDeTarea> {
+  return ids?.lead_id ? { lead_id: ids.lead_id } : null
+}
+
+/**
+ * Campos de la planilla del mes que además describen la póliza o el vehículo (12.7). Hasta la 12.6
+ * la bajada los escribía sólo en la fila del mes: la ficha de la póliza, la bandeja de renovaciones
+ * y la búsqueda por patente de la otra computadora quedaban con lo viejo hasta una reimportación.
+ * Se aplican sólo desde la planilla del mes más nuevo, que es la que define la cartera.
+ */
+const DESTINOS_DE_LA_POLIZA: Partial<Record<Campo, { columna: string; derivadas?: (valor: string) => Record<string, unknown> }>> = {
+  cobertura: { columna: 'cobertura' },
+  prima: { columna: 'prima', derivadas: (valor) => ({ prima_monto: interpretarNumero(valor) }) },
+  productor: { columna: 'productor' },
+  forma_pago: { columna: 'forma_pago' },
+  vigencia_desde: { columna: 'vigencia_desde', derivadas: (valor) => ({ vigencia_desde_iso: interpretarFecha(valor, null).iso }) },
+  vigencia_hasta: { columna: 'vigencia_hasta', derivadas: (valor) => ({ vigencia_hasta_iso: interpretarFecha(valor, null).iso }) },
+  compania: { columna: 'compania' },
+  numero_poliza: { columna: 'numero', derivadas: (valor) => ({ numero_normalizado: normalizarNumeroPoliza(valor) || null }) },
+  avisar_vto: { columna: 'avisar_vto' },
+}
+const DESTINOS_DEL_VEHICULO: Partial<Record<Campo, { columna: string; derivadas?: (valor: string) => Record<string, unknown> }>> = {
+  patente: { columna: 'patente', derivadas: (valor) => ({ patente_normalizada: normalizarPatente(valor) || null }) },
+  marca: { columna: 'marca' },
+  modelo: { columna: 'modelo' },
+  anio: { columna: 'anio', derivadas: (valor) => ({ anio_numero: /^\d{4}$/.test(limpiar(valor)) ? Number(limpiar(valor)) : null }) },
+  tipo_vehiculo: { columna: 'tipo' },
+  motor: { columna: 'motor' },
+  chasis: { columna: 'chasis' },
+  uso: { columna: 'uso' },
+  color: { columna: 'color' },
+  suma_asegurada: { columna: 'suma_asegurada' },
+}
+
+function aplicarALaPolizaDelMes(filaId: string, campo: Campo, valor: string): void {
+  const enPoliza = DESTINOS_DE_LA_POLIZA[campo]
+  const enVehiculo = DESTINOS_DEL_VEHICULO[campo]
+  if (!enPoliza && !enVehiculo) return
+  const cuota = db()
+    .prepare(
+      `SELECT c.poliza_id, p.vehiculo_id FROM cuotas_mes c JOIN polizas p ON p.id = c.poliza_id
+       WHERE c.fila_id = ? AND c.periodo = (SELECT MAX(periodo) FROM cuotas_mes)`,
+    )
+    .get(filaId) as { poliza_id: number; vehiculo_id: number | null } | undefined
+  if (!cuota) return
+  const ahora = ahoraIso()
+  if (enPoliza) {
+    const derivadas = enPoliza.derivadas?.(valor) ?? {}
+    const asignaciones = [`${enPoliza.columna} = @valor`, ...Object.keys(derivadas).map((c) => `${c} = @${c}`), 'actualizado_en = @ahora']
+    db().prepare(`UPDATE polizas SET ${asignaciones.join(', ')} WHERE id = @id`).run({ valor: valor || null, ...derivadas, ahora, id: cuota.poliza_id })
+  }
+  if (enVehiculo && cuota.vehiculo_id !== null) {
+    const derivadas = enVehiculo.derivadas?.(valor) ?? {}
+    const asignaciones = [`${enVehiculo.columna} = @valor`, ...Object.keys(derivadas).map((c) => `${c} = @${c}`), 'actualizado_en = @ahora']
+    db().prepare(`UPDATE vehiculos SET ${asignaciones.join(', ')} WHERE id = @id`).run({ valor: valor || null, ...derivadas, ahora, id: cuota.vehiculo_id })
+  }
+}
+
 function aplicarCampo(pestana: PestanaSincronizable, filaId: string, campo: Campo, valor: string): string | null {
-  const columnaCliente = DESTINOS_DEL_CLIENTE[campo]
+  // Los datos del cliente viajan en la planilla del mes. En las otras pestañas, «telefono» es el
+  // teléfono de ESA fila (el riesgo, el aviso), no el de la ficha del cliente: hasta la 12.6 el atajo
+  // se los comía y nunca llegaban a su tabla.
+  const columnaCliente = pestana.tipo === 'MENSUAL' ? DESTINOS_DEL_CLIENTE[campo] : undefined
   if (columnaCliente) {
     const cliente = db()
       .prepare(
@@ -381,7 +556,10 @@ function aplicarCampo(pestana: PestanaSincronizable, filaId: string, campo: Camp
   }
 
   const destino = DESTINOS[pestana.tipo]?.[campo]
-  if (!destino) return null
+  if (!destino) {
+    if (pestana.tipo === 'MENSUAL') aplicarALaPolizaDelMes(filaId, campo, valor)
+    return null
+  }
   const actual = db().prepare(`SELECT ${destino.columna} AS valor FROM ${destino.tabla} WHERE fila_id = ?`).get(filaId) as
     | { valor: string | null }
     | undefined
@@ -392,7 +570,19 @@ function aplicarCampo(pestana: PestanaSincronizable, filaId: string, campo: Camp
   db()
     .prepare(`UPDATE ${destino.tabla} SET ${asignaciones.join(', ')} WHERE fila_id = @fila_id`)
     .run({ valor: destino.normalizar ? guardado : valor || null, ...derivadas, ahora: ahoraIso(), fila_id: filaId })
+  if (pestana.tipo === 'MENSUAL') aplicarALaPolizaDelMes(filaId, campo, valor)
   return actual.valor ?? ''
+}
+
+/**
+ * Las opciones de un presupuesto viajan enteras en OPCIONES JSON (12.7): cuando esa celda cambia se
+ * reemplazan las de acá. No entra en DESTINOS porque no es una columna, es una tabla.
+ */
+function aplicarOpcionesDePresupuesto(filaId: string, json: string, textoLegible: string): void {
+  const presupuesto = db().prepare('SELECT id FROM presupuestos WHERE fila_id = ?').get(filaId) as { id: number } | undefined
+  if (!presupuesto) return
+  const companias = (db().prepare('SELECT DISTINCT compania FROM polizas WHERE compania IS NOT NULL').all() as Array<{ compania: string }>).map((c) => c.compania)
+  guardarOpcionesDePresupuesto(db(), presupuesto.id, opcionesDesdeLaHoja(json, textoLegible, companias))
 }
 
 function anotarPisado(pestana: string, filaId: string, campo: string, valorLocal: string, valorRemoto: string): void {

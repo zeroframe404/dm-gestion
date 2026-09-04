@@ -9,6 +9,7 @@ import type { TipoPestana } from '../../shared/tipos'
 import { db, type BaseDeDatos } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import { borrarAnexoLocal, esPestanaDeAnexos } from '../sincronizacion/anexos'
+import { borrarArchivoDeAdjunto } from './carpetaDeAdjuntos'
 
 /**
  * Pestaña de origen que se le pone a lo que nació en la aplicación y todavía no tiene lugar en la
@@ -108,6 +109,80 @@ export function alDesaparecerDeLaHoja(
     // Un adjunto o un comentario que desapareció de su pestaña lo borraron desde otra computadora:
     // se va de acá también, archivo incluido (12.6).
     else if (esPestanaDeAnexos(fila.tipo)) borrarAnexoLocal(fila.filaId, base)
+    // 12.7: lo mismo con el resto. Un siniestro, una tarea, un riesgo, un pago, un aviso, una
+    // consulta o un presupuesto que se borró en otra computadora seguía existiendo en ésta como
+    // fantasma —editable, y con cada edición yendo a parar a «la fila ya no está en la base»—.
+    else borrarRegistroQueYaNoEsta(base, fila.filaId, fila.tipo)
+  }
+}
+
+/**
+ * Borra de esta computadora el registro que representaba una fila que ya no está en la hoja, con lo
+ * que cuelga de él (observaciones, comentarios, adjuntos con su archivo, opciones). Los vínculos
+ * desde otras fichas (una tarea que apuntaba al siniestro) quedan sueltos, no se borran: la tarea
+ * tiene su propia fila y su propio borrado.
+ */
+function borrarRegistroQueYaNoEsta(base: BaseDeDatos, filaId: string, tipo: TipoPestana): void {
+  const idDe = (tabla: string): number | null =>
+    (base.prepare(`SELECT id FROM ${tabla} WHERE fila_id = ?`).get(filaId) as { id: number } | undefined)?.id ?? null
+  const borrarArchivos = (tabla: string, columna: string, id: number) => {
+    const archivos = base.prepare(`SELECT archivo FROM ${tabla} WHERE ${columna} = ?`).all(id) as Array<{ archivo: string }>
+    for (const { archivo } of archivos) borrarArchivoDeAdjunto(archivo)
+    base.prepare(`DELETE FROM ${tabla} WHERE ${columna} = ?`).run(id)
+  }
+  switch (tipo) {
+    case 'SINIESTROS': {
+      const id = idDe('siniestros')
+      if (id === null) return
+      base.prepare('DELETE FROM siniestro_observaciones WHERE siniestro_id = ?').run(id)
+      borrarArchivos('siniestro_adjuntos', 'siniestro_id', id)
+      base.prepare('UPDATE tareas SET siniestro_id = NULL WHERE siniestro_id = ?').run(id)
+      base.prepare('DELETE FROM siniestros WHERE id = ?').run(id)
+      return
+    }
+    case 'APP_TAREAS': {
+      const id = idDe('tareas')
+      if (id === null) return
+      base.prepare('DELETE FROM tarea_comentarios WHERE tarea_id = ?').run(id)
+      borrarArchivos('tarea_adjuntos', 'tarea_id', id)
+      base.prepare('DELETE FROM tareas WHERE id = ?').run(id)
+      return
+    }
+    case 'RIESGOS_VARIOS':
+      base.prepare('DELETE FROM riesgos_varios WHERE fila_id = ?').run(filaId)
+      return
+    case 'PAGOS':
+      base.prepare('DELETE FROM pagos WHERE fila_id = ?').run(filaId)
+      return
+    case 'APP_RECHAZOS':
+      base.prepare('DELETE FROM rechazos_debito WHERE fila_id = ?').run(filaId)
+      return
+    case 'AMP':
+      base.prepare('DELETE FROM amp WHERE fila_id = ?').run(filaId)
+      return
+    case 'COBERTURA':
+      base.prepare('DELETE FROM reglas_cobertura WHERE fila_id = ?').run(filaId)
+      return
+    case 'APP_LEADS': {
+      const id = idDe('leads')
+      if (id === null) return
+      base.prepare('DELETE FROM lead_notas WHERE lead_id = ?').run(id)
+      base.prepare('UPDATE tareas SET lead_id = NULL WHERE lead_id = ?').run(id)
+      base.prepare('UPDATE presupuestos SET lead_id = NULL WHERE lead_id = ?').run(id)
+      base.prepare('DELETE FROM leads WHERE id = ?').run(id)
+      return
+    }
+    case 'APP_PRESUPUESTOS': {
+      const id = idDe('presupuestos')
+      if (id === null) return
+      base.prepare('DELETE FROM presupuesto_opciones WHERE presupuesto_id = ?').run(id)
+      base.prepare('UPDATE tareas SET presupuesto_id = NULL WHERE presupuesto_id = ?').run(id)
+      base.prepare('UPDATE presupuestos SET presupuesto_anterior_id = NULL WHERE presupuesto_anterior_id = ?').run(id)
+      base.prepare('DELETE FROM presupuestos WHERE id = ?').run(id)
+      return
+    }
+    default:
+      return
   }
 }
 

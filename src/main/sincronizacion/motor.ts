@@ -59,8 +59,11 @@ export type EstadoConexion = 'sincronizado' | 'pendiente' | 'sin-conexion' | 'ap
 export interface OpcionesMotor {
   /** Devuelve la fuente configurada, o null si todavía no hay conexión con Google configurada. */
   crearFuente: () => FuenteHoja | null
-  /** Corre la importación completa (la que sabe incorporar filas nuevas). */
-  importar: () => Promise<void>
+  /**
+   * Corre la importación que incorpora filas nuevas. Con `pestanas` (12.7) se acota a ésas: la bajada
+   * dice en cuáles aparecieron; sin lista, importa todo (el botón de Administración).
+   */
+  importar: (pestanas?: string[]) => Promise<void>
   /** Se llama cada vez que cambia el estado, para refrescar el indicador de la barra superior. */
   alCambiarEstado?: (estado: EstadoSincronizacion) => void
   /** Qué pestañas se miran en el ciclo automático; el resto sólo en la bajada completa. */
@@ -103,7 +106,13 @@ function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
       p.tipo === 'APP_RECHAZOS' ||
       p.tipo === 'APP_TAREAS' ||
       p.tipo === 'APP_ADJUNTOS' ||
-      p.tipo === 'APP_COMENTARIOS'
+      p.tipo === 'APP_COMENTARIOS' ||
+      // 12.7: las consultas, los presupuestos, las ampliaciones y las reglas de cobertura también se
+      // cargan desde cualquier mostrador; hasta la 12.6 sólo entraban con «Forzar bajada completa».
+      p.tipo === 'APP_LEADS' ||
+      p.tipo === 'APP_PRESUPUESTOS' ||
+      p.tipo === 'AMP' ||
+      p.tipo === 'COBERTURA'
     ) {
       titulos.add(p.titulo)
     }
@@ -130,6 +139,13 @@ export class MotorDeSincronizacion {
   private contexto: ContextoHoja | null = null
   private contextoLeidoEn = 0
   private trabajando = false
+  /**
+   * Una importación en curso (12.7). Es un candado distinto de `trabajando` a propósito: mientras la
+   * importación corre (minutos, cuando es completa) la subida, el carril rápido y los archivos siguen
+   * andando. Hasta la 12.6 todo quedaba congelado, y con cinco computadoras cargando la importación
+   * corría casi todo el tiempo: nada subía y los adjuntos no llegaban.
+   */
+  private importando = false
   /** Lo que está corriendo ahora, para que «Sincronizar ahora» espere su turno en vez de no hacer nada. */
   private enCurso: Promise<unknown> | null = null
   private ultimoError: string | null = null
@@ -148,8 +164,10 @@ export class MotorDeSincronizacion {
     const barridas = limpiarImposibles()
     if (barridas > 0) anotarEvento('motor', `Se limpiaron ${barridas} entradas de la cola que no se podían subir nunca.`)
     this.temporizadorSubida = setInterval(() => enSegundoPlano(this.ciclarSubida(), 'subida'), INTERVALO_SUBIDA_MS)
-    this.temporizadorBajada = setInterval(() => enSegundoPlano(this.ciclarBajada(), 'bajada'), INTERVALO_BAJADA_MS)
-    this.temporizadorTareas = setInterval(() => enSegundoPlano(this.ciclarTareas(), 'las tareas'), INTERVALO_TAREAS_MS)
+    // Los tres relojes con períodos múltiplos vencían juntos y se saltaban entre sí (el carril rápido
+    // no corre si la subida ya está trabajando); corridos unos segundos, cada uno tiene su momento.
+    this.temporizadorBajada = setInterval(() => enSegundoPlano(this.ciclarBajada(), 'bajada'), INTERVALO_BAJADA_MS + 7_000)
+    this.temporizadorTareas = setInterval(() => enSegundoPlano(this.ciclarTareas(), 'las tareas'), INTERVALO_TAREAS_MS + 3_000)
     // Los temporizadores no tienen que impedir que el proceso termine: la aplicación se cierra cuando
     // el usuario cierra la ventana, no cuando la sincronización lo permite.
     this.temporizadorSubida.unref?.()
@@ -181,7 +199,7 @@ export class MotorDeSincronizacion {
     const fallidas = cuantasFallidas()
     let situacion: EstadoConexion = 'sincronizado'
     if (!this.encendido) situacion = 'apagado'
-    else if (this.trabajando) situacion = 'trabajando'
+    else if (this.trabajando || this.importando) situacion = 'trabajando'
     else if (this.sinConexion) situacion = 'sin-conexion'
     else if (pendientes > 0 || fallidas > 0) situacion = 'pendiente'
     return {
@@ -242,12 +260,18 @@ export class MotorDeSincronizacion {
     this.avisar()
     const arranque = Date.now()
     try {
-      const subidas = hayFilas ? await this.subirLaCola(fuente, arranque) : 0
+      let subidas = hayFilas ? await this.subirLaCola(fuente, arranque) : 0
       // Los archivos van después de las filas: la ficha del adjunto ya está en la base cuando el
       // archivo llega al servidor, y si el servidor no está, la cola ya lo dijo.
       if (this.opciones.subirArchivos) {
         const archivos = await this.opciones.subirArchivos()
-        if (archivos.subidos > 0) anotarEvento('subida', `Se subieron ${archivos.subidos} archivos adjuntos al servidor.`, { filas: archivos.subidos })
+        if (archivos.subidos > 0) {
+          anotarEvento('subida', `Se subieron ${archivos.subidos} archivos adjuntos al servidor.`, { filas: archivos.subidos })
+          // 12.7: cada archivo que llegó dejó en la cola el «SUBIDO» de su fila. Sale ahora, en el
+          // mismo ciclo, así las otras computadoras no lo ven como «cargado en otra computadora»
+          // diez segundos de más.
+          if (cuantasListasParaSubir() > 0) subidas += await this.subirLaCola(fuente, arranque)
+        }
       }
       return subidas
     } catch (error) {
@@ -289,7 +313,7 @@ export class MotorDeSincronizacion {
 
   /** Trae de la hoja lo que cambió. Con `completa` mira todas las pestañas. */
   async ciclarBajada(completa = false): Promise<ResultadoBajada | null> {
-    if (this.trabajando || !this.encendido) return null
+    if (this.trabajando || this.importando || !this.encendido) return null
     const fuente = this.opciones.crearFuente()
     if (!fuente) return null
 
@@ -313,7 +337,9 @@ export class MotorDeSincronizacion {
    * la versión vieja del servidor.
    */
   async ciclarTareas(): Promise<ResultadoBajada | null> {
-    if (this.trabajando || !this.encendido) return null
+    // Con una importación en curso el carril rápido espera: la importación ya trae esas pestañas y
+    // las dos escribirían las mismas filas al mismo tiempo.
+    if (this.trabajando || this.importando || !this.encendido) return null
     const fuente = this.opciones.crearFuente()
     if (!fuente) return null
     return this.seguir(this.correrBajada(fuente, false, filasConPendientes(), { soloLasTareas: true }))
@@ -353,8 +379,22 @@ export class MotorDeSincronizacion {
       guardarMarca('ultima_bajada', new Date().toISOString())
 
       if (resultado.necesitaImportacion) {
-        anotarEvento('bajada', `Aparecieron ${resultado.filasNuevas} filas nuevas en la base: se corre la importación completa para incorporarlas.`)
-        await this.opciones.importar()
+        // La importación se acota a las pestañas donde aparecieron filas (12.7) y corre con su propio
+        // candado: la subida y los archivos siguen mientras tanto. Una bajada completa (el botón) sigue
+        // importando todo, que es lo que quien lo aprieta espera.
+        const pestanas = completa ? undefined : resultado.pestanasConFilasNuevas
+        anotarEvento(
+          'bajada',
+          `Aparecieron ${resultado.filasNuevas} filas nuevas en la base: se importan ${pestanas && pestanas.length > 0 ? `las pestañas ${pestanas.map((p) => `«${p}»`).join(', ')}` : 'todas las pestañas'} para incorporarlas.`,
+        )
+        this.trabajando = false
+        this.importando = true
+        this.avisar()
+        try {
+          await this.opciones.importar(pestanas)
+        } finally {
+          this.importando = false
+        }
       }
       if (resultado.filasCambiadas > 0 || resultado.filasNuevas > 0 || resultado.filasQueYaNoEstan > 0 || completa) {
         anotarEvento(

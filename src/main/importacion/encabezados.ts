@@ -83,10 +83,26 @@ export type Campo =
   | 'tamano'
   | 'sha256'
   | 'texto'
+  // 12.7: cuándo llegó el archivo al servidor. Lo escribe la computadora que lo subió DESPUÉS de
+  // subirlo; hasta entonces la celda está vacía y las otras computadoras saben que todavía no está.
+  | 'subido'
+  // 12.7: lo que la ficha del siniestro sabía y la pestaña SINIESTROS no tenía dónde guardar. Ahora
+  // viajan como columnas propias, así la ficha se ve igual en las cinco computadoras.
+  | 'abogado'
+  | 'tercero_compania'
+  | 'tercero_telefono'
+  | 'tercero_patente'
+  | 'tercero_lesionados'
+  | 'tercero_lesionados_detalle'
+  // 12.7: la clave compartida del vínculo de una tarea o un presupuesto («SINIESTRO:<_ID>»,
+  // «LEAD:<_ID>»…), al lado del texto legible; y las opciones de un presupuesto enteras, en JSON,
+  // para que la otra computadora las reconstruya sin adivinar.
+  | 'vinculo_clave'
+  | 'opciones_json'
 
 /** Sinónimos generales (normalizados). El orden importa: ante un sinónimo repetido gana el primer campo. */
 const SINONIMOS: Record<Campo, string[]> = {
-  nombre: ['NOMBRE', 'APELLIDO Y NOMBRE', 'NOMBRE Y APELLIDO', 'APELLIDO NOMBRE', 'NOMBRE APELLIDO', 'APELLIDOS Y NOMBRES', 'NOMBRES Y APELLIDOS', 'ASEGURADO', 'ASEGURADO A', 'ASEG', 'ASEG A', 'CLIENTE', 'TOMADOR', 'TITULAR', 'APELLIDO', 'NOMBRE COMPLETO', 'RAZON SOCIAL', 'CLIENTES'],
+  nombre: ['NOMBRE', 'APELLIDO Y NOMBRE', 'NOMBRE Y APELLIDO', 'APELLIDO NOMBRE', 'NOMBRE APELLIDO', 'APELLIDOS Y NOMBRES', 'NOMBRES Y APELLIDOS', 'ASEGURADO', 'ASEGURADO A', 'ASEG', 'ASEG A', 'CLIENTE', 'TOMADOR', 'TITULAR', 'APELLIDO', 'NOMBRE COMPLETO', 'RAZON SOCIAL', 'CLIENTES', 'ASEGURADOS', 'NOMBRE DEL ASEGURADO', 'NOMBRE ASEGURADO', 'ASEGURADO NOMBRE', 'APELLIDO Y NOMBRE DEL ASEGURADO', 'NOMBRE Y APELLIDO DEL ASEGURADO', 'NOMBRE DEL CLIENTE', 'NOMBRE CLIENTE', 'NOMBRE DEL TITULAR', 'TITULAR DE LA POLIZA', 'ASEGURADO TITULAR', 'DENUNCIANTE', 'NOMBRE DEL DENUNCIANTE'],
   documento: ['DNI', 'CUIT', 'CUIL', 'DNI CUIT', 'DNI O CUIT', 'DNI CUIL', 'CUIT CUIL', 'DNI CUIT CUIL', 'DOCUMENTO', 'DOC', 'NRO DOC', 'N DOC', 'NRO DOCUMENTO', 'NUMERO DE DOCUMENTO', 'N DOCUMENTO', 'DNI N', 'NRO DNI', 'N DNI'],
   telefono: ['TELEFONO', 'TELEFONOS', 'TEL', 'CELULAR', 'CEL', 'WHATSAPP', 'WSP', 'WPP', 'CONTACTO', 'TELEFONO CELULAR', 'TEL CEL', 'NRO TELEFONO', 'N TELEFONO', 'TE', 'NUMERO DE TELEFONO'],
   email: ['EMAIL', 'E MAIL', 'MAIL', 'CORREO', 'CORREO ELECTRONICO', 'EMAILS'],
@@ -96,7 +112,7 @@ const SINONIMOS: Record<Campo, string[]> = {
   fecha_nacimiento: ['FECHA DE NACIMIENTO', 'FECHA NACIMIENTO', 'NACIMIENTO', 'F NAC', 'FEC NAC', 'F NACIMIENTO', 'FECHA NAC', 'FEC NACIMIENTO', 'CUMPLEANOS'],
   compania: ['COMPANIA', 'CIA', 'COMP', 'ASEGURADORA', 'EMPRESA', 'COMPANIA ASEGURADORA', 'CIA ASEGURADORA', 'COMPANIAS', 'COMPANY'],
   numero_poliza: ['POLIZA', 'N POLIZA', 'NRO POLIZA', 'NUMERO POLIZA', 'NUMERO DE POLIZA', 'N DE POLIZA', 'NRO DE POLIZA', 'POLIZA N', 'POLIZA NRO', 'POLIZA NUMERO', 'NUM POLIZA', 'NO POLIZA', 'POL', 'POLIZAS', 'N DE POLIZAS', 'NUMERO'],
-  cobertura: ['COBERTURA', 'COB', 'TIPO DE COBERTURA', 'TIPO COBERTURA', 'PLAN', 'COBERTURAS', 'TIPO DE SEGURO', 'TIPO SEGURO'],
+  cobertura: ['COBERTURA', 'COB', 'TIPO DE COBERTURA', 'TIPO COBERTURA', 'PLAN', 'COBERTURAS', 'TIPO DE SEGURO', 'TIPO SEGURO', 'COBERT', 'COBERTURA DE LA POLIZA', 'COBERTURA POLIZA', 'COB POLIZA', 'TIPO DE COB', 'CLASE DE COBERTURA'],
   prima: ['PRIMA', 'PREMIO', 'PREMIO MENSUAL', 'PRIMA MENSUAL', 'PREMIO TOTAL', 'PRIMA TOTAL', 'PREMIO ANUAL', 'PRIMA ANUAL'],
   forma_pago: ['FORMA DE PAGO', 'FORMA PAGO', 'MODO DE PAGO', 'FP', 'F PAGO', 'TIPO DE PAGO', 'MEDIO DE PAGO', 'MEDIO PAGO', 'COBRO', 'FORMA DE COBRO', 'MODALIDAD DE PAGO', 'MODALIDAD'],
   productor: ['PRODUCTOR', 'VENDEDOR', 'ASESOR', 'PAS', 'PRODUCTORA', 'VENDEDORA', 'QUIEN LO TRAJO'],
@@ -125,13 +141,13 @@ const SINONIMOS: Record<Campo, string[]> = {
   fecha_baja: ['FECHA DE BAJA', 'FECHA BAJA', 'BAJA', 'F BAJA', 'FECHA DE LA BAJA', 'DIA DE BAJA', 'BAJA EL'],
   mes: ['MES', 'PERIODO', 'MES DE BAJA', 'MES BAJA', 'MES PAGO', 'MES DE PAGO', 'MES ABONADO', 'MES QUE PAGA', 'MES CUOTA', 'PERIODO PAGADO'],
   tipo_riesgo: ['RIESGO', 'TIPO DE RIESGO', 'RAMO', 'BIEN ASEGURADO', 'BIEN', 'SEGURO', 'PRODUCTO', 'TIPO RIESGO', 'RIESGOS', 'RUBRO'],
-  fecha: ['FECHA', 'FECHA SINIESTRO', 'FECHA DEL SINIESTRO', 'FECHA DE SINIESTRO', 'FECHA IMPUTACION', 'FECHA DE IMPUTACION', 'FECHA DE OCURRENCIA', 'FECHA OCURRENCIA', 'FECHA DENUNCIA', 'FECHA DE DENUNCIA', 'FECHA DE COBRO'],
+  fecha: ['FECHA', 'FECHA SINIESTRO', 'FECHA DEL SINIESTRO', 'FECHA DE SINIESTRO', 'FECHA IMPUTACION', 'FECHA DE IMPUTACION', 'FECHA DE OCURRENCIA', 'FECHA OCURRENCIA', 'FECHA DENUNCIA', 'FECHA DE DENUNCIA', 'FECHA DE COBRO', 'FECHA DEL HECHO', 'FECHA HECHO', 'FECHA DEL ACCIDENTE', 'FECHA ACCIDENTE', 'FECHA DEL STRO', 'FECHA STRO', 'F SINIESTRO', 'F DEL SINIESTRO', 'F STRO', 'DIA DEL SINIESTRO', 'DIA SINIESTRO', 'OCURRENCIA', 'OCURRIDO', 'OCURRIDO EL', 'FECHA OCURRIDO', 'FECHA DE OCURRIDO', 'FECHA EN QUE OCURRIO', 'CUANDO OCURRIO', 'CUANDO PASO', 'FECHA SINIESTRO OCURRIDO', 'FECHA DE SINIESTRO OCURRIDO'],
   // Cuándo se cargó el siniestro en la agencia, que no es cuándo pasó: son dos columnas distintas.
-  fecha_carga: ['FECHA DE CARGA', 'FECHA CARGA', 'CARGA', 'CARGADO EL', 'FECHA DE LA CARGA', 'F CARGA'],
+  fecha_carga: ['FECHA DE CARGA', 'FECHA CARGA', 'CARGA', 'CARGADO EL', 'FECHA DE LA CARGA', 'F CARGA', 'FECHA DE ALTA DEL SINIESTRO', 'FECHA CARGADO', 'FECHA DE CARGADO', 'FECHA DE INGRESO DEL SINIESTRO', 'INGRESADO EL', 'FECHA INGRESADO', 'CARGADO'],
   emision: ['EMISION', 'FECHA DE EMISION', 'FECHA EMISION', 'EMITIDA', 'EMITIDO', 'F EMISION', 'EMISION POLIZA'],
   resuelto: ['RESUELTO', 'RESUELTA', 'RESUELTOS', 'LISTO', 'HECHO', 'TERMINADO', 'FINALIZADO'],
-  numero_siniestro: ['SINIESTRO', 'N SINIESTRO', 'NRO SINIESTRO', 'NUMERO DE SINIESTRO', 'NUMERO SINIESTRO', 'N DE SINIESTRO', 'NRO DE SINIESTRO', 'STRO', 'N STRO', 'NRO STRO', 'SINIESTRO N', 'SINIESTRO NRO'],
-  descripcion: ['DESCRIPCION', 'HECHO', 'TIPO DE SINIESTRO', 'TIPO SINIESTRO', 'DANOS', 'DANO', 'RELATO', 'QUE PASO', 'DESCRIPCION DEL HECHO', 'DESCRIPCION DEL SINIESTRO', 'DETALLE DEL SINIESTRO'],
+  numero_siniestro: ['SINIESTRO', 'N SINIESTRO', 'NRO SINIESTRO', 'NUMERO DE SINIESTRO', 'NUMERO SINIESTRO', 'N DE SINIESTRO', 'NRO DE SINIESTRO', 'STRO', 'N STRO', 'NRO STRO', 'SINIESTRO N', 'SINIESTRO NRO', 'N DE STRO', 'NRO DE STRO', 'NUMERO DE STRO', 'NUMERO STRO', 'STRO N', 'STRO NRO', 'NUM SINIESTRO', 'NUM DE SINIESTRO', 'NO SINIESTRO', 'NO DE SINIESTRO', 'SINIESTRO NUMERO', 'N SINIESTRO CIA', 'NRO SINIESTRO CIA', 'NUMERO DE SINIESTRO CIA', 'N DE SINIESTRO CIA', 'SINIESTRO CIA', 'N DE DENUNCIA', 'NRO DE DENUNCIA', 'NRO DENUNCIA', 'N DENUNCIA', 'NUMERO DE DENUNCIA', 'DENUNCIA N', 'DENUNCIA NRO', 'N RECLAMO', 'NRO RECLAMO', 'NUMERO DE RECLAMO', 'N DE RECLAMO'],
+  descripcion: ['DESCRIPCION', 'HECHO', 'TIPO DE SINIESTRO', 'TIPO SINIESTRO', 'DANOS', 'DANO', 'RELATO', 'QUE PASO', 'DESCRIPCION DEL HECHO', 'DESCRIPCION DEL SINIESTRO', 'DETALLE DEL SINIESTRO', 'HECHOS', 'RELATO DEL HECHO', 'RELATO DEL SINIESTRO', 'DETALLE DEL HECHO', 'DESCRIPCION DEL DANO', 'DESCRIPCION SINIESTRO', 'SINIESTRO DESCRIPCION', 'MOTIVO DEL SINIESTRO', 'CAUSA DEL SINIESTRO', 'CLASE DE SINIESTRO', 'QUE OCURRIO', 'COMO OCURRIO', 'COMO PASO'],
   importe: ['IMPORTE', 'TOTAL', 'IMPORTE PAGADO', 'IMPORTE ABONADO', 'IMPORTE COBRADO', 'IMPORTES', 'MONTO PAGADO', 'MONTO ABONADO', 'SUMA PAGADA', 'IMPORTE $'],
   medio_pago: ['MEDIO', 'MEDIOS', 'VIA', 'CANAL', 'FORMA', 'MEDIO DE COBRO', 'COMO PAGO', 'COMO PAGA', 'PAGO POR', 'PAGO CON'],
   // El RESULTADO de la rendición mensual: vacío, IMPUTADO, OK, REVISAR o MAL.
@@ -159,6 +175,15 @@ const SINONIMOS: Record<Campo, string[]> = {
   tamano: ['TAMANO', 'PESO', 'BYTES'],
   sha256: ['SHA256', 'SHA-256', 'HUELLA DEL ARCHIVO'],
   texto: ['TEXTO', 'COMENTARIO', 'MENSAJE'],
+  subido: ['SUBIDO', 'SUBIDO EL', 'EN EL SERVIDOR', 'LLEGO AL SERVIDOR', 'SUBIDO AL SERVIDOR'],
+  vinculo_clave: ['VINCULO ID', 'ID DEL VINCULO', 'VINCULO CLAVE', 'CLAVE DEL VINCULO', 'VINCULO INTERNO'],
+  opciones_json: ['OPCIONES JSON', 'OPCIONES DETALLE', 'DETALLE DE OPCIONES', 'OPCIONES INTERNAS'],
+  abogado: ['ABOGADO', 'ABOGADOS', 'ESTUDIO JURIDICO', 'ESTUDIO', 'LETRADO', 'ABOGADO DEL SINIESTRO', 'ABOGADO A CARGO', 'LEGALES'],
+  tercero_compania: ['COMPANIA DEL TERCERO', 'CIA DEL TERCERO', 'CIA TERCERO', 'COMPANIA TERCERO', 'ASEGURADORA DEL TERCERO', 'ASEGURADORA TERCERO', 'CIA DEL OTRO', 'COMPANIA DEL OTRO', 'CIA CONTRARIA', 'COMPANIA CONTRARIA', 'COMPANIA 3RO', 'CIA 3RO'],
+  tercero_telefono: ['TELEFONO DEL TERCERO', 'TEL DEL TERCERO', 'TEL TERCERO', 'TELEFONO TERCERO', 'CELULAR DEL TERCERO', 'CEL DEL TERCERO', 'CEL TERCERO', 'TELEFONO DEL OTRO', 'TEL 3RO', 'TELEFONO 3RO', 'CONTACTO DEL TERCERO'],
+  tercero_patente: ['PATENTE DEL TERCERO', 'PATENTE TERCERO', 'DOMINIO DEL TERCERO', 'DOMINIO TERCERO', 'PATENTE DEL OTRO', 'PATENTE 3RO', 'DOMINIO 3RO', 'PATENTE CONTRARIA', 'PATENTE DEL OTRO AUTO'],
+  tercero_lesionados: ['TERCEROS LESIONADOS', 'LESIONADOS', 'HUBO LESIONADOS', 'HERIDOS', 'HUBO HERIDOS', 'LESIONES', 'HUBO LESIONES', 'CON LESIONADOS', 'LESIONADO'],
+  tercero_lesionados_detalle: ['QUIEN SE LESIONO', 'QUIEN SE LASTIMO', 'DETALLE DE LESIONADOS', 'DETALLE LESIONADOS', 'LESIONADOS DETALLE', 'QUIENES SE LESIONARON', 'DETALLE DE LOS LESIONADOS', 'DETALLE DE LAS LESIONES'],
 }
 
 /**
@@ -297,6 +322,7 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
     ARCHIVO: 'archivo',
     TAMANO: 'tamano',
     SHA256: 'sha256',
+    SUBIDO: 'subido',
   },
   APP_COMENTARIOS: {
     FECHA: 'fecha',
@@ -322,17 +348,42 @@ const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
   MENSUAL: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'sucursal', 'fecha_nacimiento', 'compania', 'numero_poliza', 'cobertura', 'prima', 'forma_pago', 'productor', 'estado', 'vigencia_desde', 'vigencia_hasta', 'alta', 'cuota', 'dia_vencimiento', 'aviso', 'fecha_envio', 'avisar_vto', 'pago', 'observaciones', 'marca', 'modelo', 'anio', 'patente', 'motor', 'chasis', 'tipo_vehiculo', 'uso', 'color', 'suma_asegurada'],
   BAJAS: ['nombre', 'documento', 'telefono', 'sucursal', 'compania', 'numero_poliza', 'cobertura', 'patente', 'marca', 'modelo', 'motivo', 'fecha_baja', 'mes', 'observaciones', 'cuota', 'productor'],
   RIESGOS_VARIOS: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'sucursal', 'emision', 'tipo_riesgo', 'descripcion', 'compania', 'numero_poliza', 'prima', 'cuota', 'vigencia_desde', 'vigencia_hasta', 'forma_pago', 'dia_vencimiento', 'aviso', 'pago', 'observaciones', 'productor', 'estado', 'patente', 'marca', 'modelo'],
-  SINIESTROS: ['fecha', 'fecha_carga', 'nombre', 'documento', 'telefono', 'sucursal', 'patente', 'marca', 'modelo', 'compania', 'numero_poliza', 'cobertura', 'numero_siniestro', 'descripcion', 'estado', 'importe', 'observaciones'],
+  SINIESTROS: [
+    'fecha',
+    'fecha_carga',
+    'nombre',
+    'documento',
+    'telefono',
+    'sucursal',
+    'patente',
+    'marca',
+    'modelo',
+    'compania',
+    'numero_poliza',
+    'cobertura',
+    'numero_siniestro',
+    'descripcion',
+    'estado',
+    'importe',
+    'observaciones',
+    // 12.7: los datos de la ficha que antes no tenían columna.
+    'abogado',
+    'tercero_compania',
+    'tercero_telefono',
+    'tercero_patente',
+    'tercero_lesionados',
+    'tercero_lesionados_detalle',
+  ],
   PAGOS: ['fecha', 'nombre', 'documento', 'sucursal', 'compania', 'numero_poliza', 'patente', 'importe', 'medio_pago', 'mes', 'observaciones', 'cuota', 'resultado', 'usuario', 'cobro'],
   COBERTURA: ['compania', 'cobertura', 'incluye', 'franquicia', 'detalle', 'observaciones', 'prima'],
   CONTADOR: 'todos',
   SEGUROS_ACT: 'todos',
   AMP: ['sucursal', 'fecha', 'nombre', 'documento', 'telefono', 'forma_pago', 'patente', 'marca', 'modelo', 'compania', 'numero_poliza', 'descripcion', 'dia_vencimiento', 'observaciones', 'resuelto'],
   APP_LEADS: ['fecha', 'sucursal', 'nombre', 'telefono', 'documento', 'email', 'origen', 'interes', 'tipo_vehiculo', 'estado', 'observaciones', 'usuario'],
-  APP_PRESUPUESTOS: ['fecha', 'numero_presupuesto', 'version', 'sucursal', 'nombre', 'telefono', 'documento', 'patente', 'marca', 'modelo', 'anio', 'tipo_vehiculo', 'opciones', 'precio', 'estado', 'observaciones', 'usuario'],
-  APP_TAREAS: ['fecha', 'titulo', 'descripcion', 'responsable', 'sucursal', 'vence', 'prioridad', 'estado', 'vinculo', 'usuario'],
+  APP_PRESUPUESTOS: ['fecha', 'numero_presupuesto', 'version', 'sucursal', 'nombre', 'telefono', 'documento', 'patente', 'marca', 'modelo', 'anio', 'tipo_vehiculo', 'opciones', 'precio', 'estado', 'observaciones', 'usuario', 'vinculo_clave', 'opciones_json'],
+  APP_TAREAS: ['fecha', 'titulo', 'descripcion', 'responsable', 'sucursal', 'vence', 'prioridad', 'estado', 'vinculo', 'usuario', 'vinculo_clave'],
   APP_RECHAZOS: ['fecha', 'sucursal', 'nombre', 'documento', 'telefono', 'compania', 'numero_poliza', 'patente', 'forma_pago', 'cuota', 'mes', 'motivo', 'observaciones', 'estado', 'usuario'],
-  APP_ADJUNTOS: ['fecha', 'tipo_registro', 'vinculo', 'descripcion', 'archivo_nombre', 'categoria', 'archivo', 'tamano', 'sha256', 'usuario'],
+  APP_ADJUNTOS: ['fecha', 'tipo_registro', 'vinculo', 'descripcion', 'archivo_nombre', 'categoria', 'archivo', 'tamano', 'sha256', 'usuario', 'subido'],
   APP_COMENTARIOS: ['fecha', 'tipo_registro', 'vinculo', 'usuario', 'texto'],
   OTRA: 'todos',
 }
@@ -616,4 +667,70 @@ export function primeraColumnaLibre(encabezados: string[]): number {
     if (limpiar(encabezado)) ultimaConDatos = indice
   })
   return ultimaConDatos + 1
+}
+
+// ---------------------------------------------------------------------------
+// Columnas que faltan (12.7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cómo se titula la columna cuando la aplicación tiene que AGREGARLA a una pestaña que no la tiene.
+ * Escritos como los escribiría la agencia («N° SINIESTRO», no «numero_siniestro»): la pestaña la
+ * mira gente desde Google. Lo que no está acá sale del primer sinónimo del campo.
+ */
+const ENCABEZADO_PARA_AGREGAR: Partial<Record<Campo, string>> = {
+  nombre: 'NOMBRE',
+  documento: 'DNI/CUIT',
+  telefono: 'TELEFONO',
+  sucursal: 'LOCAL',
+  compania: 'COMPAÑIA',
+  numero_poliza: 'N° POLIZA',
+  cobertura: 'COBERTURA',
+  patente: 'PATENTE',
+  fecha: 'FECHA',
+  fecha_carga: 'FECHA DE CARGA',
+  numero_siniestro: 'N° SINIESTRO',
+  descripcion: 'DESCRIPCION',
+  estado: 'ESTADO',
+  importe: 'IMPORTE',
+  observaciones: 'OBSERVACIONES',
+  abogado: 'ABOGADO',
+  tercero_compania: 'COMPAÑIA DEL TERCERO',
+  tercero_telefono: 'TELEFONO DEL TERCERO',
+  tercero_patente: 'PATENTE DEL TERCERO',
+  tercero_lesionados: 'TERCEROS LESIONADOS',
+  tercero_lesionados_detalle: 'QUIEN SE LESIONO',
+  subido: 'SUBIDO',
+  cobro: 'COBRO',
+  resultado: 'RESULTADO',
+  usuario: 'CARGADO POR',
+  categoria: 'CATEGORIA',
+  archivo: 'ARCHIVO',
+  tamano: 'TAMANO',
+  sha256: 'SHA256',
+  archivo_nombre: 'NOMBRE',
+  vinculo: 'VINCULO',
+  tipo_registro: 'TIPO',
+  texto: 'TEXTO',
+  vinculo_clave: 'VINCULO ID',
+  opciones_json: 'OPCIONES JSON',
+}
+
+/**
+ * El encabezado con el que agregar la columna de `campo` a una pestaña de ese tipo que ya tiene
+ * `existentes`, o null si no hay forma de titularla de manera que la aplicación la reconozca de vuelta
+ * como ese campo (un campo que ese tipo de pestaña no admite, o un título que con los ajustes del tipo
+ * cae en otro campo). Se comprueba de verdad, mapeando los encabezados con la columna agregada: lo que
+ * se escriba tiene que leerse igual en las cinco computadoras.
+ */
+export function encabezadoParaAgregar(campo: Campo, tipo: TipoPestana, existentes: string[]): string | null {
+  const permitidos = CAMPOS_POR_TIPO[tipo]
+  if (permitidos !== 'todos' && !permitidos.includes(campo)) return null
+  const candidatos = [ENCABEZADO_PARA_AGREGAR[campo], ...SINONIMOS[campo]].filter((c): c is string => !!c)
+  for (const candidato of candidatos) {
+    if (resolverCampo(candidato, tipo) !== campo) continue
+    const mapeo = mapearEncabezados([...existentes, candidato], tipo)
+    if (mapeo.porCampo.get(campo) === existentes.length) return candidato
+  }
+  return null
 }

@@ -23,14 +23,29 @@ function fechaCorta(iso: string): string {
 }
 
 /** Dónde está el archivo, en una palabra: para que se entienda por qué una foto tarda en abrir. */
-export function estadoDelAdjunto(a: { enElServidor: boolean; errorDelServidor: string | null; descargado: boolean; enDrive: boolean }): { texto: string; tono: 'ok' | 'aviso' | 'error' } {
+export interface EstadoDeAdjunto {
+  enElServidor: boolean
+  errorDelServidor: string | null
+  descargado: boolean
+  enDrive: boolean
+  /** Lo cargó otra computadora y todavía no se sabe si terminó de subirlo (12.7). */
+  enOtraComputadora?: boolean
+}
+
+/**
+ * Qué dice la etiqueta de cada documento. «Cargado en otra computadora» (12.7) es distinto de «en el
+ * servidor» a propósito: hasta la 12.6 se mostraban igual, y abrir uno que todavía no había terminado
+ * de subir terminaba en «ese adjunto no existe» sin explicación.
+ */
+export function estadoDelAdjunto(a: EstadoDeAdjunto): { texto: string; tono: 'ok' | 'aviso' | 'error' } {
   if (a.errorDelServidor && !a.enElServidor) return { texto: 'no subió', tono: 'error' }
   if (!a.enElServidor && a.descargado) return { texto: 'subiendo…', tono: 'aviso' }
+  if (!a.enElServidor && a.enOtraComputadora) return { texto: 'cargado en otra computadora', tono: 'aviso' }
   if (a.enElServidor && !a.descargado) return { texto: 'en el servidor', tono: 'ok' }
   return { texto: a.enDrive ? 'en el servidor y en Drive' : 'en el servidor', tono: 'ok' }
 }
 
-export function EtiquetaDeEstado({ adjunto }: { adjunto: { enElServidor: boolean; errorDelServidor: string | null; descargado: boolean; enDrive: boolean } }) {
+export function EtiquetaDeEstado({ adjunto }: { adjunto: EstadoDeAdjunto }) {
   const estado = estadoDelAdjunto(adjunto)
   return (
     <span

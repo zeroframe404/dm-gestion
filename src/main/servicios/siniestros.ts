@@ -85,10 +85,20 @@ function pestanaDeSiniestros(): string {
  */
 const PERIODO = `substr(COALESCE(s.fecha_carga_iso, s.fecha_iso), 1, 7)`
 
+/**
+ * El asegurado sale de la fila y, si la fila no lo trae, del cliente; y si tampoco hay cliente, del
+ * cliente de la póliza (12.7). Un siniestro que llegó de otra computadora con la póliza reconocida
+ * pero sin el nombre —la pestaña no tenía la columna— mostraba «—» donde las otras cuatro
+ * computadoras mostraban a la persona.
+ *
+ * El orden de desempate es el `fila_id`, que es el mismo en todas las computadoras; el `id` local no
+ * lo es, y con él dos siniestros del mismo día aparecían en distinto orden en cada mostrador.
+ */
 const SELECT_SINIESTRO = `
   SELECT s.id, s.fila_id, s.sucursal_texto AS sucursal, s.compania, s.numero_poliza, s.cobertura,
-         s.cliente_id, COALESCE(s.cliente_nombre, cl.nombre) AS cliente_nombre,
-         COALESCE(s.documento, cl.documento) AS documento, cl.telefono,
+         COALESCE(s.cliente_id, po.cliente_id) AS cliente_id,
+         COALESCE(s.cliente_nombre, cl.nombre, clp.nombre) AS cliente_nombre,
+         COALESCE(s.documento, cl.documento, clp.documento) AS documento, COALESCE(cl.telefono, clp.telefono) AS telefono,
          s.patente, s.fecha_carga, s.fecha_carga_iso, s.fecha, s.fecha_iso,
          s.numero_siniestro, s.descripcion, s.observaciones, s.importe, s.estado, s.creado_en_la_app,
          s.abogado, s.tercero_compania, s.tercero_telefono, s.tercero_patente,
@@ -99,7 +109,10 @@ const SELECT_SINIESTRO = `
          (SELECT COUNT(*) FROM tareas t WHERE t.siniestro_id = s.id AND t.estado <> 'hecha') AS tareas_pendientes
   FROM siniestros s
   LEFT JOIN clientes cl ON cl.id = s.cliente_id
+  LEFT JOIN polizas po ON po.id = s.poliza_id
+  LEFT JOIN clientes clp ON clp.id = po.cliente_id
 `
+const ORDEN_DEL_LISTADO = `ORDER BY COALESCE(s.fecha_carga_iso, s.fecha_iso, s.fecha) DESC, s.fila_id DESC, s.id DESC`
 
 interface FilaCruda {
   id: number
@@ -190,7 +203,7 @@ export function siniestrosDeCliente(clienteId: number): SiniestroDeCliente[] {
       `${SELECT_SINIESTRO}
        WHERE s.cliente_id = @cliente
           OR s.poliza_id IN (SELECT id FROM polizas WHERE cliente_id = @cliente)
-       ORDER BY COALESCE(s.fecha_iso, s.fecha) DESC, s.id DESC`,
+       ORDER BY COALESCE(s.fecha_iso, s.fecha) DESC, s.fila_id DESC, s.id DESC`,
     )
     .all({ cliente: clienteId }) as FilaCruda[]
   // Mismo criterio que `siniestrosDe` en clientes.ts: la ficha del cliente muestra uno de los cuatro
@@ -224,7 +237,7 @@ function normalizarFiltros(filtros: unknown): FiltrosSiniestros {
 
 export function listarSiniestros(filtros: unknown): ListadoSiniestros {
   const f = normalizarFiltros(filtros)
-  const todas = (db().prepare(`${SELECT_SINIESTRO} ORDER BY COALESCE(s.fecha_carga_iso, s.fecha_iso, s.fecha) DESC, s.id DESC`).all() as FilaCruda[]).map(
+  const todas = (db().prepare(`${SELECT_SINIESTRO} ${ORDEN_DEL_LISTADO}`).all() as FilaCruda[]).map(
     (cruda) => ({ cruda, fila: aFila(cruda) }),
   )
 
@@ -297,6 +310,7 @@ function aAdjuntoDeSiniestro(a: AdjuntoGenerico): AdjuntoDeSiniestro {
     enElServidor: a.enElServidor,
     errorDelServidor: a.errorDelServidor,
     descargado: a.descargado,
+    enOtraComputadora: a.enOtraComputadora,
     miniatura: a.miniatura,
     categoria: normalizarCategoria(a.categoria),
     categoriaDetalle: a.categoriaDetalle,
@@ -445,7 +459,27 @@ function camposParaLaHoja(fila: FilaCruda): Record<string, string> {
     estado: fila.estado ?? '',
     importe: fila.importe ?? '',
     observaciones: fila.observaciones ?? '',
+    // 12.7: los datos de la ficha que no tenían columna. Se mandan sólo si tienen valor: la subida
+    // agrega la columna a la pestaña la primera vez que hace falta (sincronizacion/columnas.ts).
+    ...conValor({
+      abogado: fila.abogado,
+      tercero_compania: fila.tercero_compania,
+      tercero_telefono: fila.tercero_telefono,
+      tercero_patente: fila.tercero_patente,
+      tercero_lesionados: fila.tercero_lesionados,
+      tercero_lesionados_detalle: fila.tercero_lesionados_detalle,
+    }),
   }
+}
+
+/** Sólo las entradas con algo escrito. */
+function conValor(campos: Record<string, string | null | undefined>): Record<string, string> {
+  return Object.fromEntries(Object.entries(campos).filter(([, valor]) => limpiar(valor) !== '').map(([campo, valor]) => [campo, limpiar(valor)]))
+}
+
+/** 'AAAA-MM-DD' → 'DD/MM/AAAA', que es como se escriben las fechas en la planilla. */
+function fechaComoEnLaHoja(iso: string): string {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 }
 
 function fechaObligatoria(valor: string, campo: string): { texto: string; iso: string } {
@@ -480,7 +514,9 @@ function insertarSiniestro(datos: DatosDeSiniestro, actor: SesionUsuario): numbe
   // si no viene es hoy, que es cuando se está cargando.
   const fecha = fechaObligatoria(String(d.fecha ?? ''), 'la fecha del siniestro')
   const cargaEscrita = limpiar(d.fechaCarga)
-  const carga = cargaEscrita ? fechaObligatoria(cargaEscrita, 'la fecha de carga') : { texto: hoyLocal(), iso: hoyLocal() }
+  // Sin fecha de carga escrita es hoy, y se escribe como en la planilla (día/mes/año): en el listado
+  // convivía con las de la hoja y era la única en «2026-09-04».
+  const carga = cargaEscrita ? fechaObligatoria(cargaEscrita, 'la fecha de carga') : { texto: fechaComoEnLaHoja(hoyLocal()), iso: hoyLocal() }
 
   // La póliza es optativa (a veces se denuncia antes de saber cuál), pero si viene tiene que ser del cliente.
   let poliza: { id: number; compania: string | null; numero: string | null; cobertura: string | null; patente: string | null } | null = null
@@ -613,13 +649,15 @@ export function cambiarEstadoDeSiniestro(siniestroId: number, estado: unknown, a
 /**
  * Qué campos de la ficha se corrigen a mano y cómo se llaman en la hoja.
  *
- * `campoDeLaHoja` en null es un campo que la pestaña SINIESTROS no tiene dónde guardar: se queda en
- * DM Gestión y no se encola (una entrada para una columna que no existe termina como fallida y no
- * arregla nada). Lo que sí viaja de ellos es el renglón que dejan en la línea de tiempo.
+ * Hasta la 12.6, `campoDeLaHoja` en null era un campo que la pestaña SINIESTROS no tenía dónde guardar
+ * (el abogado, los datos del tercero): se quedaba en DM Gestión y sólo viajaba como renglón de la
+ * línea de tiempo, así que la ficha de la otra computadora lo mostraba vacío. Desde la 12.7 la subida
+ * agrega la columna que falte, y esos campos viajan como cualquier otro; el renglón de la línea de
+ * tiempo se sigue escribiendo (`enLaLineaDeTiempo`), porque es el relato del trámite.
  */
 const CAMPOS_EDITABLES: Record<
   string,
-  { columna: string; campoDeLaHoja: string | null; nombre: string; esFecha?: boolean; opciones?: readonly string[] }
+  { columna: string; campoDeLaHoja: string | null; nombre: string; esFecha?: boolean; opciones?: readonly string[]; enLaLineaDeTiempo?: boolean }
 > = {
   numeroSiniestro: { columna: 'numero_siniestro', campoDeLaHoja: 'numero_siniestro', nombre: 'N° SINIESTRO' },
   descripcion: { columna: 'descripcion', campoDeLaHoja: 'descripcion', nombre: 'DESCRIPCION' },
@@ -629,17 +667,23 @@ const CAMPOS_EDITABLES: Record<
   patente: { columna: 'patente', campoDeLaHoja: 'patente', nombre: 'PATENTE' },
   fecha: { columna: 'fecha', campoDeLaHoja: 'fecha', nombre: 'FECHA DEL SINIESTRO', esFecha: true },
   fechaCarga: { columna: 'fecha_carga', campoDeLaHoja: 'fecha_carga', nombre: 'FECHA DE CARGA', esFecha: true },
-  abogado: { columna: 'abogado', campoDeLaHoja: null, nombre: 'ABOGADO' },
-  terceroCompania: { columna: 'tercero_compania', campoDeLaHoja: null, nombre: 'COMPANIA DEL TERCERO' },
-  terceroTelefono: { columna: 'tercero_telefono', campoDeLaHoja: null, nombre: 'TELEFONO DEL TERCERO' },
-  terceroPatente: { columna: 'tercero_patente', campoDeLaHoja: null, nombre: 'PATENTE DEL TERCERO' },
+  abogado: { columna: 'abogado', campoDeLaHoja: 'abogado', nombre: 'ABOGADO', enLaLineaDeTiempo: true },
+  terceroCompania: { columna: 'tercero_compania', campoDeLaHoja: 'tercero_compania', nombre: 'COMPANIA DEL TERCERO', enLaLineaDeTiempo: true },
+  terceroTelefono: { columna: 'tercero_telefono', campoDeLaHoja: 'tercero_telefono', nombre: 'TELEFONO DEL TERCERO', enLaLineaDeTiempo: true },
+  terceroPatente: { columna: 'tercero_patente', campoDeLaHoja: 'tercero_patente', nombre: 'PATENTE DEL TERCERO', enLaLineaDeTiempo: true },
   terceroLesionados: {
     columna: 'tercero_lesionados',
-    campoDeLaHoja: null,
+    campoDeLaHoja: 'tercero_lesionados',
     nombre: 'TERCEROS LESIONADOS',
     opciones: RESPUESTAS_DE_LESIONADOS,
+    enLaLineaDeTiempo: true,
   },
-  terceroLesionadosDetalle: { columna: 'tercero_lesionados_detalle', campoDeLaHoja: null, nombre: 'QUIEN SE LESIONO' },
+  terceroLesionadosDetalle: {
+    columna: 'tercero_lesionados_detalle',
+    campoDeLaHoja: 'tercero_lesionados_detalle',
+    nombre: 'QUIEN SE LESIONO',
+    enLaLineaDeTiempo: true,
+  },
 }
 
 /**
@@ -679,10 +723,10 @@ export function editarSiniestro(siniestroId: number, campo: unknown, valor: unkn
     valorNuevo: nuevo || null,
   })
 
-  if (destino.campoDeLaHoja) {
-    sincronizar(id, { [destino.campoDeLaHoja]: nuevo }, actor)
-  } else {
-    // El campo no tiene columna en la hoja: se anota en la línea de tiempo, que es lo que sí viaja.
+  if (destino.campoDeLaHoja) sincronizar(id, { [destino.campoDeLaHoja]: nuevo }, actor)
+  // El abogado y los datos del tercero además quedan contados en la línea de tiempo: es el relato del
+  // trámite, y para las computadoras con una versión anterior sigue siendo la forma de enterarse.
+  if (destino.enLaLineaDeTiempo || !destino.campoDeLaHoja) {
     anotarObservacion(id, `${nombreLegible(destino.nombre)}: ${nuevo || '(se borró)'}`, actor)
   }
   return fichaDeSiniestro(id)

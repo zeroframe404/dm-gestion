@@ -71,6 +71,9 @@ export const PESTANAS_DE_LA_APP: PestanaDeLaApp[] = [
       'ESTADO',
       'OBSERVACIONES',
       'CARGADO POR',
+      // 12.7: de qué consulta salió, y las opciones enteras para que la otra computadora las rearme.
+      'VINCULO ID',
+      'OPCIONES JSON',
       ENCABEZADO_ID,
     ],
   },
@@ -88,6 +91,9 @@ export const PESTANAS_DE_LA_APP: PestanaDeLaApp[] = [
       'ESTADO',
       'VINCULO',
       'CREADO POR',
+      // 12.7: la clave del vínculo («SINIESTRO:<_ID>», «POLIZA:<clave>»…), con la que la otra
+      // computadora engancha la tarea a su ficha. A una APP TAREAS vieja se la agrega la subida.
+      'VINCULO ID',
       ENCABEZADO_ID,
     ],
   },
@@ -149,7 +155,9 @@ export const PESTANAS_DE_LA_APP: PestanaDeLaApp[] = [
   {
     titulo: 'APP ADJUNTOS',
     tipo: 'APP_ADJUNTOS',
-    encabezados: ['FECHA', 'TIPO', 'VINCULO', 'DESCRIPCION', 'NOMBRE', 'CATEGORIA', 'ARCHIVO', 'TAMANO', 'SHA256', 'CARGADO POR', ENCABEZADO_ID],
+    // SUBIDO (12.7): cuándo llegó el archivo al servidor; vacío mientras no. A una APP ADJUNTOS armada
+    // antes de esta columna se la agrega la subida sola, al final (ver sincronizacion/columnas.ts).
+    encabezados: ['FECHA', 'TIPO', 'VINCULO', 'DESCRIPCION', 'NOMBRE', 'CATEGORIA', 'ARCHIVO', 'TAMANO', 'SHA256', 'CARGADO POR', 'SUBIDO', ENCABEZADO_ID],
   },
   // Los comentarios de una tarea y las observaciones de un siniestro, una fila cada uno. Hasta la
   // 12.5 quedaban en la PC donde se escribieron (el siniestro llevaba un resumen de 900 caracteres en

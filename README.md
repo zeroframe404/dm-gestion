@@ -943,8 +943,22 @@ momento, pero se puede cargar igual: el siniestro existe aunque la póliza esté
   Dos archivos con el mismo nombre no se pisan: el segundo queda como «(2)». Borrar un documento es
   definitivo, así que lo hacen sólo ADMIN y SUPER_ADMIN.
 - **Tareas vinculadas**, con responsable y vencimiento, contadas en el listado mientras estén pendientes.
+  Desde la 12.7 la tarea llega a las otras computadoras **enganchada al siniestro** (viaja con la clave
+  del vínculo, ver «Lo que viaja y lo que no»); hasta la 12.6 llegaba suelta y la ficha de la otra PC no
+  la mostraba.
 - Los datos de la hoja se corrigen con **doble clic**. El caso de todos los días es el número de
   siniestro: la compañía lo da dos días después de la denuncia.
+- **El abogado y los datos del tercero viajan** (12.7). Hasta la 12.6 vivían sólo en la PC que los
+  cargó y la otra los veía vacíos: ahora son columnas de la pestaña SINIESTROS (ABOGADO, COMPAÑIA DEL
+  TERCERO, TELEFONO DEL TERCERO, PATENTE DEL TERCERO, TERCEROS LESIONADOS, QUIEN SE LESIONO), que la
+  subida agrega sola la primera vez que hacen falta. El renglón en la línea de tiempo se sigue
+  escribiendo, y una PC que reciba sólo el renglón (uno viejo, o de una versión anterior) lo aplica a
+  la ficha igual.
+- **El asegurado nunca queda en blanco** (12.7). Un siniestro que llega de la base con la póliza
+  reconocida pero sin nombre (la pestaña no tenía columna para escribirlo) toma el titular de esa
+  póliza, al importar y también en una reparación que corre al arrancar. Y la PC que lo cargó vuelve a
+  mandar, al arrancar, los datos suyos que no habían llegado a la base (`reenviarSiniestrosIncompletos`,
+  en `servicios/reparaciones.ts`).
 
 Desde la pestaña Siniestros de la ficha del cliente se abre la ficha del siniestro con un clic.
 
@@ -1564,6 +1578,17 @@ tarea tampoco: la ficha viajaba por la base, lo que colgaba de ella se quedaba e
   credenciales se reintenta cuando aparecen.
 - **Lo cargado con versiones anteriores** se registra al arrancar (`registrarLoQueNoViajo`): recibe su
   `_ID`, sube al servidor y aparece en las otras computadoras.
+- **«En el servidor» quiere decir en el servidor** (12.7). La ficha del adjunto viaja apenas se adjunta
+  y el archivo en los ciclos siguientes; hasta la 12.6 la otra computadora daba el archivo por subido
+  con sólo ver la fila, y al abrirlo el servidor contestaba «ese adjunto no existe». Peor: la PROPIA
+  computadora que lo cargó, si corría una importación completa antes de terminar de subirlo, lo
+  marcaba como subido y no lo subía nunca más. Ahora la columna **SUBIDO** de APP ADJUNTOS la escribe
+  la computadora que subió el archivo, después de subirlo; hasta entonces la otra PC lo muestra como
+  «cargado en otra computadora», y si igual lo abre, el mensaje dice qué computadora lo tiene que
+  terminar de subir. Al arrancar, cada PC contrasta lo que cree de sus archivos con la lista del
+  servidor (`verificarAdjuntosContraElServidor`): lo que figuraba subido sin estarlo vuelve a subir
+  solo. Los archivos suben de a diez por ciclo (eran tres) y la subida no se congela mientras corre
+  una importación.
 
 Código: `src/main/servicios/adjuntos.ts` (la puerta de entrada y la subida), `src/main/sincronizacion/anexos.ts`
 (las filas de las dos pestañas, en los dos sentidos), `src/renderer/componentes/SelectorDeAdjuntos.tsx` y
@@ -1585,6 +1610,77 @@ Lo que se hizo para que el programa abra y la planilla aparezca antes:
 - Cada módulo de la interfaz se carga la primera vez que se abre (`React.lazy`): el ingreso ya no espera
   a que el navegador lea Marketing y Reportes. El panel de Sincronización se refresca cada 30 segundos en
   vez de 10 (igual se refresca solo con cada cambio de estado).
+
+Y en la 12.7, que es donde estaba el problema de verdad:
+
+- **La importación se acota a lo que cambió.** Hasta la 12.6, cada fila nueva que otra computadora
+  subía a la base (un siniestro, un pago, una tarea) disparaba en las otras cuatro una importación
+  COMPLETA: las 25 pestañas, las 28.000 filas, clientes, vehículos y pólizas de vuelta. Con cinco PCs
+  cargando, cada una pasaba buena parte del tiempo importando. Ahora la bajada dice en qué pestañas
+  aparecieron filas y la importación (`soloPestanas` en `ejecutarImportacion`) lee y decide todo como
+  siempre pero guarda sólo ésas. «Forzar bajada completa» y «Reimportar la base» siguen importando todo.
+- **Importar no congela el resto.** Mientras corre una importación, la subida de la cola, la subida de
+  archivos y el carril rápido siguen andando (candado `importando` en el motor, distinto de
+  `trabajando`). Antes quedaba todo parado hasta que terminara.
+- **Lo que se corrige acá no lo pisa la importación.** La importación toma la foto de «lo que esta
+  computadora tiene sin subir» antes de guardar cada pestaña (no una sola al principio) y respeta esa
+  foto en siniestros, riesgos, AMP, reglas y en los campos editables de la planilla del mes (cuota,
+  vencimiento, aviso, pago, observaciones). Antes, un pago recién anotado podía volver a «sin pagar» si
+  en el medio corría una importación.
+- Los tres relojes del motor (10 s, 30 s, 5 min) ya no vencen juntos, el buscador de Siniestros espera
+  200 ms antes de pedir el listado, y los adjuntos suben de a diez por ciclo.
+
+## Lo que viaja y lo que no (12.7)
+
+La regla, desde la 12.7, es una sola: **lo que se ve en una computadora se tiene que ver igual en las
+otras cuatro.** Lo que la 12.6 dejaba distinto en cada mostrador, y cómo se cerró:
+
+- **Un campo sin columna en la pestaña ya no se pierde.** La subida escribía sólo los campos para los
+  que la pestaña tenía columna; el resto quedaba en la PC de origen con un aviso («columna faltante»),
+  y las otras lo importaban en blanco. Así fue como los siniestros aparecieron sin asegurado y sin
+  fecha. Ahora la subida **agrega la columna** a la pestaña (`sincronizacion/columnas.ts`): escribe el
+  encabezado en la fila de encabezados, en la primera columna vacía en todos los renglones, con un
+  título que la aplicación reconoce de vuelta («NOMBRE», «FECHA», «N° SINIESTRO», «ABOGADO»…), y sigue
+  en el mismo ciclo. Las otras computadoras ven que la fila de encabezados cambió y rehacen el mapeo
+  antes de aplicar nada (`refrescarLayoutSiCambio`). Vale para cualquier pestaña con fila de
+  encabezados propia; una BAJAS que usa los encabezados prestados de otra no gana columnas.
+- **Las correcciones bajan enteras.** La bajada aplicaba, en filas ya conocidas, sólo un puñado de
+  campos por pestaña (`DESTINOS` en `sincronizacion/bajada.ts`); el resto quedaba en los datos crudos
+  hasta una reimportación. Ahora bajan todos los que la pantalla deja corregir: en SINIESTROS (fechas,
+  asegurado, cobertura, patente, sucursal, abogado, tercero), en RIESGOS VARIOS (los diecisiete), en
+  PAGOS (sucursal, mes, quién cobró), en APP RECHAZOS, y en la planilla del mes los que además describen
+  la póliza o el vehículo (cobertura, prima, vigencias, marca, modelo, año…) se escriben también en
+  `polizas` y `vehiculos`. El atajo que mandaba el teléfono a la ficha del cliente corre sólo en la
+  planilla del mes: en un riesgo o un aviso, el teléfono es el de esa fila.
+- **Las consultas y los presupuestos llegan.** APP LEADS y APP PRESUPUESTOS se escribían desde cada
+  computadora pero nunca se leían de vuelta: cada PC tenía sólo los que había cargado ella. Ahora el
+  importador los guarda (`guardarLead`, `guardarPresupuesto`), la bajada los mantiene al día y el ciclo
+  de cinco minutos los mira. Las notas del lead viajan por APP COMENTARIOS como las observaciones de un
+  siniestro (`LEAD:<_ID>`), y las opciones del presupuesto enteras en la columna OPCIONES JSON (el texto
+  legible de OPCIONES queda para Google). Ojo: el número «P-0007» lo elige cada computadora mirando su
+  base, así que dos presupuestos cargados a la vez en dos mostradores pueden llevar el mismo número.
+- **Las tareas llegan enganchadas.** VINCULO seguía siendo texto para leer («Siniestro S-123 · Pérez»);
+  la clave compartida va ahora en VINCULO ID (`SINIESTRO:<_ID>`, `POLIZA:<clave>`, `CLIENTE:<clave>`,
+  `LEAD:<_ID>`, `PRESUPUESTO:<_ID>`, `RENOVACION:<clave>|<vence>`, ver `sincronizacion/vinculos.ts`), y
+  con ella cada computadora engancha la tarea a su ficha. Las tareas de antes se mandan al arrancar.
+- **Lo que se borra allá se borra acá.** Cuando una fila desaparece de la base, la bajada sacaba sólo
+  cuotas, bajas y anexos; un siniestro, una tarea, un riesgo, un pago, un aviso, una consulta o un
+  presupuesto borrado en una PC seguía en las otras como fantasma. Ahora se va con lo que cuelga de él
+  (`alDesaparecerDeLaHoja` en `servicios/filas.ts`), salvo que esta computadora tenga un cambio suyo sin
+  subir.
+- **Una entrada fallida protege su fila.** La bajada salteaba sólo las filas con entradas pendientes;
+  las dadas por perdidas («no se pudo», tras ocho intentos) no, y al apretar «Volver a intentar» el valor
+  viejo pisaba en silencio el más nuevo de la otra computadora. Ahora cuentan las dos.
+- **El orden también es el mismo.** Los listados desempataban por el `id` local, que es distinto en
+  cada base; ahora desempatan por el `_ID` de la fila.
+- **Con dos pestañas del mismo tipo** («SINIESTROS» y «SINIESTROS 2025»), todas las computadoras
+  escriben en la misma: la que más renglones tiene, y a igual cantidad la primera por nombre.
+
+Lo que sigue siendo de cada computadora, a propósito: `visto_en` de las tareas (la campana es de cada
+persona), quién marcó visto o resuelto un rechazo, y el seguimiento de las renovaciones (que no tiene
+pestaña en la base).
+
+Pruebas: `pruebas/siniestros-entre-computadoras.prueba.ts` y `pruebas/comercial-entre-computadoras.prueba.ts`.
 
 ## Integración continua
 

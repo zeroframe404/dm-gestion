@@ -15,9 +15,12 @@
 //    dos cuotas del mismo período. Ahora la importación toma UNA sola planilla por mes (ver
 //    `elegirPlanillaPorPeriodo` en el importador) y acá se sacan las copias que ya habían entrado.
 import { db } from '../db/base'
+import { resolverCampo, type Campo } from '../importacion/encabezados'
+import { ahoraIso, limpiar } from '../importacion/normalizar'
 import { registrarLoQueNoViajo } from './adjuntos'
 import { anotarEvento, encolar } from '../sincronizacion/cola'
 import { filasConCambiosSinSubir, PESTANA_APP, PREFIJO_DE_BAJA } from './filas'
+import { claveDeVinculoDeTarea } from '../sincronizacion/vinculos'
 import { repararClientesDuplicados } from './duplicados'
 import { subirPagosRezagados } from './pagos'
 
@@ -267,6 +270,14 @@ export function repararAlArrancar(): void {
   const pagos = subirPagosRezagados()
   if (pagos > 0) anotarEvento('reparacion', `${pagos} pagos que habían quedado sólo en esta computadora se encolaron hacia la base.`)
   repararDuplicados()
+  // 12.7: los siniestros que llegaron sin asegurado toman el de su póliza, y los cargados acá cuyos
+  // datos no habían viajado (la pestaña no tenía la columna) se vuelven a mandar.
+  repararSiniestros()
+  try {
+    reenviarVinculosDeTareas()
+  } catch (error) {
+    console.error('[reparaciones] No se pudieron reenviar los vínculos de las tareas:', error)
+  }
   // 12.6: los adjuntos y comentarios de antes vivían sólo en esta PC. Ahora viajan como los nuevos.
   try {
     const anexos = registrarLoQueNoViajo()
@@ -276,4 +287,182 @@ export function repararAlArrancar(): void {
   } catch (error) {
     console.error('[reparaciones] No se pudieron registrar los adjuntos viejos:', error)
   }
+}
+
+// ---------------------------------------------------------------------------
+// Siniestros que llegaron incompletos (12.7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Un siniestro que entró de la base con la póliza reconocida pero sin cliente (la pestaña no tenía
+ * columna de nombre ni de documento) toma el cliente de la póliza, y con él el nombre y el documento
+ * que le faltaban. Es local, idempotente y barato: corre al arrancar y después de cada importación.
+ */
+export function repararSiniestrosSinCliente(): number {
+  const base = db()
+  const ahora = ahoraIso()
+  let cambios = 0
+  base.transaction(() => {
+    cambios += base
+      .prepare(
+        `UPDATE siniestros SET cliente_id = (SELECT cliente_id FROM polizas WHERE polizas.id = siniestros.poliza_id), actualizado_en = ?
+         WHERE cliente_id IS NULL AND poliza_id IS NOT NULL
+           AND (SELECT cliente_id FROM polizas WHERE polizas.id = siniestros.poliza_id) IS NOT NULL`,
+      )
+      .run(ahora).changes
+    cambios += base
+      .prepare(
+        `UPDATE siniestros SET cliente_nombre = (SELECT nombre FROM clientes WHERE clientes.id = siniestros.cliente_id), actualizado_en = ?
+         WHERE (cliente_nombre IS NULL OR TRIM(cliente_nombre) = '') AND cliente_id IS NOT NULL
+           AND (SELECT nombre FROM clientes WHERE clientes.id = siniestros.cliente_id) IS NOT NULL`,
+      )
+      .run(ahora).changes
+    cambios += base
+      .prepare(
+        `UPDATE siniestros SET documento = (SELECT documento FROM clientes WHERE clientes.id = siniestros.cliente_id), actualizado_en = ?
+         WHERE (documento IS NULL OR TRIM(documento) = '') AND cliente_id IS NOT NULL
+           AND (SELECT documento FROM clientes WHERE clientes.id = siniestros.cliente_id) IS NOT NULL`,
+      )
+      .run(ahora).changes
+  })()
+  if (cambios > 0) anotarEvento('reparacion', `${cambios} siniestros que estaban sin asegurado tomaron el titular de su póliza.`)
+  return cambios
+}
+
+/** Cómo se llama en la hoja cada columna de la tabla `siniestros` que puede viajar. */
+const CAMPOS_DEL_SINIESTRO: Array<{ columna: string; campo: Campo }> = [
+  { columna: 'fecha', campo: 'fecha' },
+  { columna: 'fecha_carga', campo: 'fecha_carga' },
+  { columna: 'cliente_nombre', campo: 'nombre' },
+  { columna: 'documento', campo: 'documento' },
+  { columna: 'sucursal_texto', campo: 'sucursal' },
+  { columna: 'patente', campo: 'patente' },
+  { columna: 'compania', campo: 'compania' },
+  { columna: 'numero_poliza', campo: 'numero_poliza' },
+  { columna: 'cobertura', campo: 'cobertura' },
+  { columna: 'numero_siniestro', campo: 'numero_siniestro' },
+  { columna: 'descripcion', campo: 'descripcion' },
+  { columna: 'estado', campo: 'estado' },
+  { columna: 'importe', campo: 'importe' },
+  { columna: 'observaciones', campo: 'observaciones' },
+  { columna: 'abogado', campo: 'abogado' },
+  { columna: 'tercero_compania', campo: 'tercero_compania' },
+  { columna: 'tercero_telefono', campo: 'tercero_telefono' },
+  { columna: 'tercero_patente', campo: 'tercero_patente' },
+  { columna: 'tercero_lesionados', campo: 'tercero_lesionados' },
+  { columna: 'tercero_lesionados_detalle', campo: 'tercero_lesionados_detalle' },
+]
+
+/**
+ * Los siniestros cargados en ESTA computadora cuyos datos no llegaron enteros a la base: hasta la
+ * 12.6 la subida descartaba los campos para los que la pestaña SINIESTROS no tenía columna (el
+ * asegurado, la fecha del siniestro, el abogado…), y las otras computadoras los importaban en blanco.
+ * Se compara lo que esta base sabe con lo que quedó escrito en la hoja (los datos crudos de la fila)
+ * y lo que falta se vuelve a encolar; la subida de la 12.7 agrega la columna si no está.
+ *
+ * Idempotente: lo que ya está en la hoja no se manda de nuevo, y una fila con cambios esperando en
+ * la cola se deja tranquila (se juntarían solos igual, pero no hace falta tocarla). Una fila cuyos
+ * datos crudos quedaron en «{}» (subida con una versión anterior, que no los anotaba) se manda
+ * entera UNA vez: la subida anota lo escrito y a la vuelta siguiente ya no falta nada.
+ */
+export function reenviarSiniestrosIncompletos(): number {
+  const base = db()
+  const sinSubir = filasConCambiosSinSubir(base)
+  const filas = base
+    .prepare(
+      `SELECT s.fila_id, fc.pestana, fc.datos_json,
+              s.fecha, s.fecha_carga, s.cliente_nombre, s.documento, s.sucursal_texto, s.patente, s.compania, s.numero_poliza,
+              s.cobertura, s.numero_siniestro, s.descripcion, s.estado, s.importe, s.observaciones,
+              s.abogado, s.tercero_compania, s.tercero_telefono, s.tercero_patente, s.tercero_lesionados, s.tercero_lesionados_detalle
+       FROM siniestros s
+       JOIN filas_crudas fc ON fc.fila_id = s.fila_id
+       WHERE s.creado_en_la_app = 1 AND fc.en_la_hoja = 1`,
+    )
+    .all() as Array<Record<string, string | null> & { fila_id: string; pestana: string; datos_json: string }>
+
+  let reenviados = 0
+  for (const fila of filas) {
+    if (sinSubir.has(fila.fila_id)) continue
+    let datos: Record<string, string>
+    try {
+      datos = JSON.parse(fila.datos_json) as Record<string, string>
+    } catch {
+      continue
+    }
+    // Qué dice la hoja de cada campo: se busca la columna por su encabezado, con el mismo mapeo que
+    // usa la importación, así «ASEGURADO» y «NOMBRE» cuentan como el mismo dato.
+    const enLaHoja = new Map<Campo, string>()
+    for (const [encabezado, valor] of Object.entries(datos)) {
+      const campo = resolverCampo(encabezado, 'SINIESTROS')
+      if (campo && !enLaHoja.has(campo) && limpiar(valor) !== '') enLaHoja.set(campo, limpiar(valor))
+    }
+    const faltan: Partial<Record<Campo, string>> = {}
+    for (const { columna, campo } of CAMPOS_DEL_SINIESTRO) {
+      const local = limpiar(fila[columna])
+      if (!local || enLaHoja.has(campo)) continue
+      faltan[campo] = local
+    }
+    if (Object.keys(faltan).length === 0) continue
+    encolar({ operacion: 'actualizar', pestana: fila.pestana, filaId: fila.fila_id, campos: faltan })
+    reenviados++
+  }
+  if (reenviados > 0) {
+    anotarEvento('reparacion', `${reenviados} siniestros cargados en esta computadora tenían datos que no habían llegado a la base: se vuelven a mandar.`, { filas: reenviados })
+  }
+  return reenviados
+}
+
+/** Las dos reparaciones de siniestros juntas: la local y la que vuelve a mandar lo que faltó. */
+export function repararSiniestros(): void {
+  try {
+    repararSiniestrosSinCliente()
+    reenviarSiniestrosIncompletos()
+  } catch (error) {
+    console.error('[reparaciones] No se pudieron reparar los siniestros:', error)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tareas que viajaron sin la clave de su vínculo (12.7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Las tareas cargadas antes de la 12.7 tienen su fila en APP TAREAS pero sin la columna VINCULO ID:
+ * en las otras computadoras llegaron sueltas. Se les calcula la clave de sus id locales, se guarda y
+ * se manda; la subida agrega la columna si la pestaña no la tiene. Una tarea suelta de verdad (sin
+ * cliente ni póliza ni nada) no tiene clave y no se toca.
+ */
+export function reenviarVinculosDeTareas(): number {
+  const base = db()
+  const sinSubir = filasConCambiosSinSubir(base)
+  const tareas = base
+    .prepare(
+      `SELECT id, fila_id, pestana, siniestro_id, renovacion_id, presupuesto_id, lead_id, poliza_id, cliente_id
+       FROM tareas
+       WHERE fila_id IS NOT NULL AND pestana IS NOT NULL AND (vinculo_clave IS NULL OR vinculo_clave = '')
+         AND (siniestro_id IS NOT NULL OR renovacion_id IS NOT NULL OR presupuesto_id IS NOT NULL
+              OR lead_id IS NOT NULL OR poliza_id IS NOT NULL OR cliente_id IS NOT NULL)`,
+    )
+    .all() as Array<{
+    id: number
+    fila_id: string
+    pestana: string
+    siniestro_id: number | null
+    renovacion_id: number | null
+    presupuesto_id: number | null
+    lead_id: number | null
+    poliza_id: number | null
+    cliente_id: number | null
+  }>
+  let reenviadas = 0
+  for (const tarea of tareas) {
+    const clave = claveDeVinculoDeTarea(base, tarea)
+    if (!clave) continue
+    base.prepare('UPDATE tareas SET vinculo_clave = ? WHERE id = ?').run(clave, tarea.id)
+    if (sinSubir.has(tarea.fila_id)) continue
+    encolar({ operacion: 'actualizar', pestana: tarea.pestana, filaId: tarea.fila_id, campos: { vinculo_clave: clave } })
+    reenviadas++
+  }
+  if (reenviadas > 0) anotarEvento('reparacion', `${reenviadas} tareas viajaban sin la clave de su vínculo: se manda ahora, así las otras computadoras las enganchan a su ficha.`)
+  return reenviadas
 }

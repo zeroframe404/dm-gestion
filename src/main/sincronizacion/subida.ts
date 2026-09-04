@@ -6,6 +6,7 @@ import type { CeldaAEscribir, FilaABorrar, FuenteHoja } from '../importacion/fue
 import { ahoraIso, limpiar } from '../importacion/normalizar'
 import { db } from '../db/base'
 import { anotarEvento, marcarFallidas, marcarListas, marcarSinArreglo, pendientes, type EntradaCola } from './cola'
+import { agregarColumnasFaltantes, refrescarLayoutSiCambio } from './columnas'
 import { columnaDelId, filasPorId, huellaDeFila, type ContextoHoja, type PestanaSincronizable } from './hoja'
 import { esPestanaDeLaApp, esPestanaDelMes } from './pestanasApp'
 
@@ -80,6 +81,28 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   llamadas++
   const valoresPorTitulo = new Map(lecturas.map((l) => [l.titulo, l.valores]))
 
+  // 12.7: antes de escribir, cada pestaña gana las columnas que le falten para lo que se va a escribir.
+  // Hasta la 12.6 un campo sin columna se descartaba con un aviso, y así fue como los siniestros
+  // llegaron a las otras computadoras sin asegurado: la pestaña no tenía dónde guardarlo. Si otra
+  // computadora ya agregó la columna, la fila de encabezados recién leída lo dice y el mapeo se rehace.
+  for (const titulo of titulos) {
+    const pestana = contexto.porTitulo.get(titulo)
+    const valores = valoresPorTitulo.get(titulo)
+    if (!pestana || !valores) continue
+    refrescarLayoutSiCambio(pestana, valores)
+    const necesarios = new Set<Campo>()
+    for (const entrada of entradas) {
+      if (entrada.pestana !== titulo || entrada.operacion === 'borrar') continue
+      for (const [campo, valor] of Object.entries(entrada.campos)) {
+        if (campo === '_id' || !limpiar(valor ?? '')) continue
+        if (!pestana.layout?.mapeo.porCampo.has(campo as Campo)) necesarios.add(campo as Campo)
+      }
+    }
+    if (necesarios.size === 0) continue
+    const agregadas = await agregarColumnasFaltantes(fuente, pestana, valores, necesarios)
+    if (agregadas.length > 0) llamadas += 2
+  }
+
   const celdas: CeldaAEscribir[] = []
   const aAgregar = new Map<string, Array<{ entrada: EntradaCola; fila: string[] }>>()
   const aBorrar = new Map<string, { sheetId: number; columnaId: number; filas: FilaABorrar[] }>()
@@ -124,7 +147,7 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
     if (entrada.operacion === 'crear' && filas.has(entrada.filaId)) {
       entrada.operacion = 'actualizar'
       entrada.campos = Object.fromEntries(Object.entries(entrada.campos).filter(([, valor]) => limpiar(valor ?? '') !== ''))
-      registrarFilaSubida(entrada.filaId, entrada.pestana, filas.get(entrada.filaId)!, valores[filas.get(entrada.filaId)! - 1] ?? [], columnaId)
+      registrarFilaSubida(entrada.filaId, entrada.pestana, filas.get(entrada.filaId)!, valores[filas.get(entrada.filaId)! - 1] ?? [], columnaId, pestana)
       if (Object.keys(entrada.campos).length === 0) {
         // No había nada con valor para escribir: la fila ya está, y con eso alcanza.
         hechas.push(entrada.id)
@@ -223,7 +246,7 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
         const numero = numeros[i] ?? null
         // Un null es una fila cuyo _ID ya estaba en la pestaña (el reintento de un agregado que sí se
         // había aplicado): ya está donde tiene que estar y la próxima bajada anota en qué renglón.
-        if (numero !== null) registrarFilaSubida(x.entrada.filaId, titulo, numero, x.fila, columnaIdPorPestana.get(titulo) ?? -1)
+        if (numero !== null) registrarFilaSubida(x.entrada.filaId, titulo, numero, x.fila, columnaIdPorPestana.get(titulo) ?? -1, contexto.porTitulo.get(titulo))
         else registrarFilaYaEnLaHoja(x.entrada.filaId, titulo)
       })
     }
@@ -282,11 +305,26 @@ function anotarConflicto(conflicto: Conflicto): void {
   )
 }
 
-/** Una fila nueva agregada a la hoja pasa a tener su lugar y su huella en la base local. */
-function registrarFilaSubida(filaId: string, pestana: string, numeroFila: number, celdas: string[], columnaId: number): void {
+/**
+ * Una fila nueva agregada a la hoja pasa a tener su lugar, su huella y sus datos crudos en la base
+ * local. Los datos crudos (12.7) son lo que la hoja tiene de esa fila, encabezado por encabezado: es
+ * con lo que después se sabe qué campos quedaron sin viajar (ver `reenviarSiniestrosIncompletos`).
+ * Hasta la 12.6 quedaban en «{}» para siempre, porque la bajada nunca vuelve a leer una fila cuya
+ * huella no cambió.
+ */
+function registrarFilaSubida(filaId: string, pestana: string, numeroFila: number, celdas: string[], columnaId: number, layoutDe?: PestanaSincronizable): void {
+  const encabezados = layoutDe?.layout?.mapeo.encabezados ?? []
+  const datos: Record<string, string> = {}
+  encabezados.forEach((encabezado, i) => {
+    if (encabezado && i !== columnaId) datos[encabezado] = limpiar(celdas[i])
+  })
   db()
-    .prepare(`UPDATE filas_crudas SET pestana = ?, numero_fila = ?, huella = ?, en_la_hoja = 1, actualizado_en = ? WHERE fila_id = ?`)
-    .run(pestana, numeroFila, huellaDeFila(celdas, columnaId), ahoraIso(), filaId)
+    .prepare(
+      `UPDATE filas_crudas SET pestana = ?, numero_fila = ?, huella = ?, en_la_hoja = 1, actualizado_en = ?,
+              datos_json = CASE WHEN ? = 1 THEN ? ELSE datos_json END
+       WHERE fila_id = ?`,
+    )
+    .run(pestana, numeroFila, huellaDeFila(celdas, columnaId), ahoraIso(), encabezados.length > 0 ? 1 : 0, JSON.stringify(datos), filaId)
 }
 
 /** La fila ya estaba en la pestaña con ese _ID: se anota que está, sin inventarle un renglón. */
