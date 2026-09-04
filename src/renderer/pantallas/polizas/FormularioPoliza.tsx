@@ -302,6 +302,15 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
         : ''
   const riesgoEsVehiculo = modoVehiculo === 'nuevo' ? esVehiculo(vehiculoNuevo.tipo) : vehiculoElegido ? esVehiculo(vehiculoElegido.tipo) : true
 
+  // Si en una edición se elige otro riesgo (u otro nuevo) que el que esta póliza ya tenía, guardar no
+  // agrega una póliza: reasigna ÉSTA, y el vehículo de antes se queda sin ella. Eso es lo que confunde a
+  // quien quiere sumarle al cliente un auto más — cree que está agregando y en realidad está moviendo.
+  const vehiculoOriginalId = poliza?.vehiculoId ?? null
+  const cambiandoElRiesgoDeLaPoliza =
+    enEdicion &&
+    vehiculoOriginalId !== null &&
+    ((modoVehiculo === 'existente' && vehiculoId !== null && vehiculoId !== vehiculoOriginalId) || modoVehiculo === 'nuevo')
+
   useEffect(() => {
     const compania = campos.compania.trim()
     const cobertura = campos.cobertura.trim()
@@ -546,6 +555,28 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
                   texto="Cargar uno nuevo"
                 />
               </div>
+
+              {cambiandoElRiesgoDeLaPoliza && (
+                <Alerta tono="aviso">
+                  <p>
+                    Estás cambiando el riesgo de <strong className="font-semibold">esta misma póliza</strong>. Al guardar, el
+                    vehículo que tenía hasta ahora se queda sin ella — no se crea una póliza aparte.
+                  </p>
+                  <Boton
+                    tamano="sm"
+                    variante="fantasma"
+                    icono="mas"
+                    className="mt-2"
+                    onClick={() => {
+                      if (!cliente) return
+                      alCerrar()
+                      ir('polizas', { nuevaPolizaPara: cliente.id })
+                    }}
+                  >
+                    Cargar una póliza nueva para este vehículo
+                  </Boton>
+                </Alerta>
+              )}
 
               {modoVehiculo === 'existente' ? (
                 <>
