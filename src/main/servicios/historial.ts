@@ -38,6 +38,9 @@ export type AccionHistorial =
   // Rebobinar la base a un respaldo del servidor (sólo el SUPER_ADMIN). Igual que el borrado, esta
   // entrada es lo único que queda de lo que se pisó: quién restauró, cuándo y a qué respaldo.
   | 'restauracion'
+  // Dos fichas de la misma persona que se juntan en una (Cartera → Duplicados, 12.6): queda anotado
+  // qué ficha se fue y adónde pasó todo lo suyo.
+  | 'fusion'
 
 export interface CambioARegistrar {
   accion: AccionHistorial

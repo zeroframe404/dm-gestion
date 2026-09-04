@@ -40,6 +40,14 @@ export interface ApiDm {
     vistaPrevia: Remota<'eliminacion:vistaPrevia'>
     borrar: Remota<'eliminacion:borrar'>
   }
+  duplicados: {
+    listar: Remota<'duplicados:listar'>
+    fusionarClientes: Remota<'duplicados:fusionarClientes'>
+    vistaPreviaCuota: Remota<'duplicados:vistaPreviaCuota'>
+    sacarCuota: Remota<'duplicados:sacarCuota'>
+    vistaPreviaBaja: Remota<'duplicados:vistaPreviaBaja'>
+    sacarBaja: Remota<'duplicados:sacarBaja'>
+  }
   config: {
     estadoGoogle: Remota<'config:estadoGoogle'>
     guardarGoogle: Remota<'config:guardarGoogle'>

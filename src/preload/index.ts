@@ -50,6 +50,14 @@ const api: ApiDm = {
     vistaPrevia: (tipo, id) => invocar('eliminacion:vistaPrevia', tipo, id),
     borrar: (tipo, id) => invocar('eliminacion:borrar', tipo, id),
   },
+  duplicados: {
+    listar: () => invocar('duplicados:listar'),
+    fusionarClientes: (sobrevivienteId, duplicadoId) => invocar('duplicados:fusionarClientes', sobrevivienteId, duplicadoId),
+    vistaPreviaCuota: (cuotaId) => invocar('duplicados:vistaPreviaCuota', cuotaId),
+    sacarCuota: (cuotaId) => invocar('duplicados:sacarCuota', cuotaId),
+    vistaPreviaBaja: (bajaId) => invocar('duplicados:vistaPreviaBaja', bajaId),
+    sacarBaja: (bajaId) => invocar('duplicados:sacarBaja', bajaId),
+  },
   config: {
     estadoGoogle: () => invocar('config:estadoGoogle'),
     guardarGoogle: (datos) => invocar('config:guardarGoogle', datos),

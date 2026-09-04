@@ -2755,6 +2755,117 @@ export interface EstadisticasDeCartera {
 }
 
 // ---------------------------------------------------------------------------
+// 12.6 · Duplicados: lo que la sincronización dejó repetido, a la vista y con botón
+// ---------------------------------------------------------------------------
+
+/** Una ficha de cliente dentro de un grupo de repetidas, con lo que cuelga de ella para elegir cuál queda. */
+export interface ClienteRepetido {
+  id: number
+  nombre: string
+  documento: string | null
+  sucursal: string | null
+  telefono: string | null
+  email: string | null
+  /** Lo que arrastra: para ver de un vistazo cuál es la ficha «de verdad». */
+  polizas: number
+  polizasActivas: number
+  cuotas: number
+  pagos: number
+  siniestros: number
+  tareas: number
+  creadoEn: string
+  /** La ficha que el programa sugiere conservar (la que tiene la clave del DNI, o la que más tiene). */
+  sugerida: boolean
+}
+
+export type MotivoDeClienteRepetido = 'dni' | 'nombre' | 'nombre+patente' | 'cuit-dni'
+
+export const NOMBRE_MOTIVO_REPETIDO: Record<MotivoDeClienteRepetido, string> = {
+  dni: 'Mismo DNI/CUIT',
+  nombre: 'Mismo nombre y sin documento',
+  'nombre+patente': 'Mismo nombre y misma patente',
+  'cuit-dni': 'Un CUIT que contiene el DNI de otra ficha (puede ser la empresa y su dueño)',
+}
+
+export interface GrupoDeClientesRepetidos {
+  motivo: MotivoDeClienteRepetido
+  clientes: ClienteRepetido[]
+}
+
+/** Un renglón de la planilla dentro de un grupo de repetidos de la misma póliza y el mismo mes. */
+export interface CuotaRepetida {
+  cuotaId: number
+  filaId: string
+  pestana: string
+  numeroFila: number
+  cuota: string | null
+  pago: string | null
+  sucursal: string | null
+  /** De esta fila cuelga un cobro, una baja o un aviso: ésa no se sugiere sacar. */
+  atada: boolean
+  /** La que el programa dejaría (la misma regla que la reparación automática). */
+  sugeridaParaQuedar: boolean
+}
+
+export interface GrupoDeCuotasRepetidas {
+  periodo: string
+  polizaId: number
+  clienteNombre: string | null
+  compania: string | null
+  numeroPoliza: string | null
+  patente: string | null
+  cuotas: CuotaRepetida[]
+}
+
+export interface BajaRepetida {
+  bajaId: number
+  filaId: string
+  motivo: string | null
+  fecha: string | null
+  hechaEnLaApp: boolean
+  sugeridaParaQuedar: boolean
+}
+
+export interface GrupoDeBajasRepetidas {
+  periodo: string
+  polizaId: number
+  clienteNombre: string | null
+  compania: string | null
+  numeroPoliza: string | null
+  bajas: BajaRepetida[]
+}
+
+/** Una póliza que en el mismo mes está en la planilla Y en Bajas: quedó a medio camino de una baja (o de una reactivación). */
+export interface PolizaEnLosDosLados {
+  periodo: string
+  polizaId: number
+  clienteNombre: string | null
+  compania: string | null
+  numeroPoliza: string | null
+  cuota: { cuotaId: number; filaId: string; pestana: string; pago: string | null }
+  baja: { bajaId: number; filaId: string; motivo: string | null; fecha: string | null; hechaEnLaApp: boolean }
+}
+
+export interface InformeDeDuplicados {
+  clientes: GrupoDeClientesRepetidos[]
+  cuotas: GrupoDeCuotasRepetidas[]
+  bajas: GrupoDeBajasRepetidas[]
+  enLosDosLados: PolizaEnLosDosLados[]
+  /** Cuántas cosas hay para mirar, para el contador de la pestaña. */
+  total: number
+  /** Cuándo se revisó. */
+  revisadoEn: string
+}
+
+export interface ResultadoDeFusion {
+  sobrevivienteId: number
+  eliminadoId: number
+  nombre: string
+  /** Qué se movió a la ficha que queda, contado. */
+  movido: Array<{ que: string; cuantos: number }>
+}
+
+// ---------------------------------------------------------------------------
 // Fase 9 · Reportes: el centro de exportación
 // ---------------------------------------------------------------------------
 

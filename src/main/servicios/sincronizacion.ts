@@ -33,7 +33,7 @@ import { FuenteVps } from '../vps/fuenteVps'
 import { cerrarMes, nombreDePestanaMensual, periodoACerrar } from './cartera'
 import { credencialesGoogle, credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
-import { repararAlArrancar, repararBajasDuplicadas, repararCuotasDuplicadas } from './reparaciones'
+import { repararAlArrancar, repararDuplicados } from './reparaciones'
 import { construirXlsx, type HojaXlsx } from './xlsx'
 
 let motor: MotorDeSincronizacion | null = null
@@ -102,9 +102,9 @@ async function importarTodo(): Promise<void> {
     .run(informe.terminadaEn, informe.estado, JSON.stringify(informe), id)
   // Si la base traía una baja repetida (dos renglones con el mismo _ID, de antes de la 12.2), la
   // importación le acaba de inventar un _ID al segundo: se saca acá, antes de que alguien lo vea. Lo
-  // mismo con las cuotas: un renglón repetido dentro de la planilla del mes deja la póliza dos veces.
-  repararBajasDuplicadas()
-  repararCuotasDuplicadas()
+  // mismo con las cuotas —un renglón repetido dentro de la planilla del mes deja la póliza dos veces—
+  // y con los clientes que quedaron dos veces con el mismo DNI.
+  repararDuplicados()
 }
 
 export function obtenerMotor(): MotorDeSincronizacion {

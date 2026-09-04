@@ -4,6 +4,8 @@ import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion }
 import type { MatrizPermisos } from './permisos'
 import type {
   AceptacionDePresupuesto,
+  InformeDeDuplicados,
+  ResultadoDeFusion,
   ComentarioDeRed,
   ConsultaDeAntiguedad,
   ConversacionDeRed,
@@ -210,6 +212,16 @@ export interface Canales {
   /** Qué se lleva puesto el borrado. Es lo que el cartel muestra antes de confirmar; no toca nada. */
   'eliminacion:vistaPrevia': (tipo: TipoEliminable, id: number) => Resultado<VistaPreviaDeEliminacion>
   'eliminacion:borrar': (tipo: TipoEliminable, id: number) => Resultado<ResultadoDeEliminacion>
+
+  // Cartera → Duplicados (12.6): lo que la sincronización dejó repetido. Mirar pide ver Cartera o
+  // Clientes; juntar dos fichas o sacar un renglón repetido pide editar, y lo puede hacer cualquier
+  // rol —lo pidió la agencia—, SÓLO sobre lo que el detector señaló (el servicio lo vuelve a mirar).
+  'duplicados:listar': () => Resultado<InformeDeDuplicados>
+  'duplicados:fusionarClientes': (sobrevivienteId: number, duplicadoId: number) => Resultado<ResultadoDeFusion>
+  'duplicados:vistaPreviaCuota': (cuotaId: number) => Resultado<VistaPreviaDeEliminacion>
+  'duplicados:sacarCuota': (cuotaId: number) => Resultado<ResultadoDeEliminacion>
+  'duplicados:vistaPreviaBaja': (bajaId: number) => Resultado<VistaPreviaDeEliminacion>
+  'duplicados:sacarBaja': (bajaId: number) => Resultado<ResultadoDeEliminacion>
 
   'config:estadoGoogle': () => Resultado<EstadoConexionGoogle>
   'config:guardarGoogle': (datos: DatosConexionGoogle) => Resultado<EstadoConexionGoogle>

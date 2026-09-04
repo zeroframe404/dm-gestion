@@ -8,13 +8,14 @@ import { useNavegacion } from '../../contexto/Navegacion'
 import { Imputados } from '../cobranzas/Imputados'
 import { Amp } from './Amp'
 import { Bajas } from './Bajas'
+import { Duplicados } from './Duplicados'
 import { Estadisticas } from './Estadisticas'
 import { PlanillaDelMes } from './PlanillaDelMes'
 import { Rechazos } from './Rechazos'
 import { ReglasCobertura } from './ReglasCobertura'
 import { RiesgosVarios } from './RiesgosVarios'
 
-type IdSeccion = 'planilla' | 'bajas' | 'rechazos' | 'riesgos' | 'amp' | 'imputados' | 'reglas' | 'estadisticas'
+type IdSeccion = 'planilla' | 'bajas' | 'rechazos' | 'riesgos' | 'amp' | 'imputados' | 'reglas' | 'estadisticas' | 'duplicados'
 
 const SECCIONES: ItemDePestana<IdSeccion>[] = [
   { id: 'planilla', nombre: 'Planilla del mes', icono: 'tabla', ayuda: 'cartera.planilla', excel: 'cartera' },
@@ -25,6 +26,7 @@ const SECCIONES: ItemDePestana<IdSeccion>[] = [
   { id: 'imputados', nombre: 'Imputados', icono: 'billete', ayuda: 'imputados' },
   { id: 'reglas', nombre: 'Reglas de cobertura', icono: 'polizas', ayuda: 'cartera.reglas' },
   { id: 'estadisticas', nombre: 'Estadísticas', icono: 'metricas', ayuda: 'cartera.estadisticas' },
+  { id: 'duplicados', nombre: 'Duplicados', icono: 'cuadricula', ayuda: 'cartera.duplicados' },
 ]
 
 export function Cartera() {
@@ -65,6 +67,7 @@ export function Cartera() {
         {seccion.id === 'imputados' && <Imputados />}
         {seccion.id === 'reglas' && <ReglasCobertura />}
         {seccion.id === 'estadisticas' && <Estadisticas />}
+        {seccion.id === 'duplicados' && <Duplicados />}
       </div>
     </div>
   )

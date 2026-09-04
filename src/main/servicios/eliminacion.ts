@@ -1104,6 +1104,15 @@ function avisosDeLaSincronizacion(tipo: TipoEliminable, renglones: number, archi
 export function vistaPreviaDeEliminacion(tipoCrudo: unknown, idCrudo: unknown, actor: SesionUsuario): VistaPreviaDeEliminacion {
   const { tipo, id } = pedido(tipoCrudo, idCrudo)
   exigirRolQuePuedaBorrar(actor, tipo)
+  return previsualizarEliminacion(tipo, id)
+}
+
+/**
+ * La vista previa sin el control del rol. La usa Cartera → Duplicados (12.6): sacar el renglón
+ * repetido de una póliza lo puede hacer cualquier rol —lo pidió la agencia—, pero SÓLO sobre lo que el
+ * detector de duplicados señaló; ese control está en duplicados.ts, que es quien llama acá.
+ */
+export function previsualizarEliminacion(tipo: TipoEliminable, id: number): VistaPreviaDeEliminacion {
   const plan = planDe(tipo, id)
   return {
     tipo,
@@ -1127,6 +1136,14 @@ export function vistaPreviaDeEliminacion(tipoCrudo: unknown, idCrudo: unknown, a
 export function eliminarRegistro(tipoCrudo: unknown, idCrudo: unknown, actor: SesionUsuario): ResultadoDeEliminacion {
   const { tipo, id } = pedido(tipoCrudo, idCrudo)
   exigirRolQuePuedaBorrar(actor, tipo)
+  return ejecutarEliminacion(tipo, id, actor)
+}
+
+/**
+ * El borrado sin el control del rol: la misma cascada, la misma transacción, el mismo historial. Ver
+ * `previsualizarEliminacion` para quién puede llamar acá sin pasar por `eliminarRegistro`.
+ */
+export function ejecutarEliminacion(tipo: TipoEliminable, id: number, actor: SesionUsuario): ResultadoDeEliminacion {
   const plan = planDe(tipo, id)
   const nombre = NOMBRE_ELIMINABLE[tipo]
   const resumen = resumenDeLoBorrado(plan.arrastra)

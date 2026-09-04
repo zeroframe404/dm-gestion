@@ -227,6 +227,14 @@ import {
   sincronizarAhora,
   volverAIntentar,
 } from './servicios/sincronizacion'
+import {
+  detectarDuplicados,
+  fusionarClientes,
+  sacarBajaRepetida,
+  sacarCuotaRepetida,
+  vistaPreviaDeSacarBaja,
+  vistaPreviaDeSacarCuota,
+} from './servicios/duplicados'
 import { eliminarRegistro, vistaPreviaDeEliminacion } from './servicios/eliminacion'
 import { ErrorDeNegocio } from './servicios/errores'
 import { estadoDelMesh } from './servicios/mesh'
@@ -405,6 +413,27 @@ export function registrarIpc(): void {
   // (cuántos pagos, cuántos siniestros) no tiene por qué salir de acá para quien no puede borrarlo.
   manejar('eliminacion:vistaPrevia', (tipo, id) => exito(vistaPreviaDeEliminacion(tipo, id, exigirBorrado(tipo))))
   manejar('eliminacion:borrar', (tipo, id) => exito(eliminarRegistro(tipo, id, exigirBorrado(tipo))))
+
+  // Cartera → Duplicados (12.6). Cualquier rol que edite la cartera (o Clientes, para las fichas)
+  // puede juntar o sacar lo repetido: la agencia pidió no depender del superadministrador para sacar
+  // una ficha cargada dos veces. Lo que acota es el detector: el servicio sólo toca lo que señaló.
+  manejar('duplicados:listar', () => {
+    exigirVista('cartera', 'clientes')
+    return exito(detectarDuplicados())
+  })
+  manejar('duplicados:fusionarClientes', (sobrevivienteId, duplicadoId) =>
+    exito(fusionarClientes(sobrevivienteId, duplicadoId, exigirEdicion('clientes', 'cartera'))),
+  )
+  manejar('duplicados:vistaPreviaCuota', (cuotaId) => {
+    exigirEdicion('cartera')
+    return exito(vistaPreviaDeSacarCuota(cuotaId))
+  })
+  manejar('duplicados:sacarCuota', (cuotaId) => exito(sacarCuotaRepetida(cuotaId, exigirEdicion('cartera'))))
+  manejar('duplicados:vistaPreviaBaja', (bajaId) => {
+    exigirEdicion('cartera')
+    return exito(vistaPreviaDeSacarBaja(bajaId))
+  })
+  manejar('duplicados:sacarBaja', (bajaId) => exito(sacarBajaRepetida(bajaId, exigirEdicion('cartera'))))
 
   // Conexión con Google: la MIRAN SUPER_ADMIN y ADMIN; la CARGA sólo el superadministrador, porque
   // desde la v12.4 lo que se carga acá viaja al resto de las computadoras (la sucursal que no tenía la

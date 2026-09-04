@@ -17,6 +17,7 @@
 import { db } from '../db/base'
 import { anotarEvento, encolar } from '../sincronizacion/cola'
 import { filasConCambiosSinSubir, PESTANA_APP, PREFIJO_DE_BAJA } from './filas'
+import { repararClientesDuplicados } from './duplicados'
 import { subirPagosRezagados } from './pagos'
 
 interface BajaRepetida {
@@ -98,9 +99,10 @@ interface CuotaRepetida {
   /** Dónde vive el renglón en la hoja, si está en ella; null si nunca viajó o ya no está. */
   pestana: string | null
   /**
-   * Peso de la pestaña de la que salió ésta: cuántas cuotas del mes tiene, y muy por encima de eso si
-   * son cuotas que abrió «Cerrar mes». La pestaña que la aplicación viene manteniendo es de donde
-   * cuelgan los pagos y los adelantos; la que tiene un puñado es la copia o la del nombre viejo.
+   * Peso de la pestaña de la que salió ésta: cuántos renglones tiene EN LA BASE (`filas_crudas` con
+   * `en_la_hoja = 1`), que es lo que todas las computadoras ven igual. La que tiene un puñado es la
+   * copia o la del nombre viejo. Hasta la 12.5 se contaban las cuotas de esta base, y dos
+   * computadoras con distinto historial podían elegir distinto y borrarse la fila una a la otra.
    */
   filas_de_la_pestana: number
   /** En qué renglón de la hoja está. El original está más arriba que la copia que alguien pegó debajo. */
@@ -153,8 +155,7 @@ export function repararCuotasDuplicadas(): number {
       `SELECT c.id, c.fila_id, c.poliza_id, c.periodo,
               CASE WHEN fc.en_la_hoja = 1 THEN fc.pestana ELSE NULL END AS pestana,
               COALESCE(fc.numero_fila, 0) AS numero_fila,
-              (SELECT COUNT(*) + 1000000 * COALESCE(SUM(h.creada_en_la_app), 0)
-                 FROM cuotas_mes h WHERE h.periodo = c.periodo AND h.pestana = c.pestana) AS filas_de_la_pestana,
+              (SELECT COUNT(*) FROM filas_crudas h WHERE h.pestana = c.pestana AND h.en_la_hoja = 1) AS filas_de_la_pestana,
               CASE WHEN EXISTS (SELECT 1 FROM pagos pg WHERE pg.cuota_fila_id = c.fila_id)
                      OR EXISTS (SELECT 1 FROM pagos pa WHERE pa.fila_id = 'PAGO:ADELANTO:' || c.fila_id)
                      OR EXISTS (SELECT 1 FROM bajas b WHERE b.cuota_fila_id = c.fila_id)
@@ -252,11 +253,17 @@ export function repararColaContraPestanaInexistente(): number {
   return recuperadas
 }
 
+/** Las reparaciones de duplicados: al arrancar, después de cada importación (automática o a mano). */
+export function repararDuplicados(): void {
+  repararBajasDuplicadas()
+  repararCuotasDuplicadas()
+  repararClientesDuplicados()
+}
+
 /** Lo que se repara cada vez que arranca la sincronización. */
 export function repararAlArrancar(): void {
   repararColaContraPestanaInexistente()
   const pagos = subirPagosRezagados()
   if (pagos > 0) anotarEvento('reparacion', `${pagos} pagos que habían quedado sólo en esta computadora se encolaron hacia la base.`)
-  repararBajasDuplicadas()
-  repararCuotasDuplicadas()
+  repararDuplicados()
 }
