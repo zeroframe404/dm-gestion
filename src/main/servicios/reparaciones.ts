@@ -15,6 +15,7 @@
 //    dos cuotas del mismo período. Ahora la importación toma UNA sola planilla por mes (ver
 //    `elegirPlanillaPorPeriodo` en el importador) y acá se sacan las copias que ya habían entrado.
 import { db } from '../db/base'
+import { registrarLoQueNoViajo } from './adjuntos'
 import { anotarEvento, encolar } from '../sincronizacion/cola'
 import { filasConCambiosSinSubir, PESTANA_APP, PREFIJO_DE_BAJA } from './filas'
 import { repararClientesDuplicados } from './duplicados'
@@ -266,4 +267,13 @@ export function repararAlArrancar(): void {
   const pagos = subirPagosRezagados()
   if (pagos > 0) anotarEvento('reparacion', `${pagos} pagos que habían quedado sólo en esta computadora se encolaron hacia la base.`)
   repararDuplicados()
+  // 12.6: los adjuntos y comentarios de antes vivían sólo en esta PC. Ahora viajan como los nuevos.
+  try {
+    const anexos = registrarLoQueNoViajo()
+    if (anexos.adjuntos > 0 || anexos.comentarios > 0) {
+      anotarEvento('reparacion', `${anexos.adjuntos} adjuntos y ${anexos.comentarios} comentarios que estaban sólo en esta computadora se encolaron hacia la base.`)
+    }
+  } catch (error) {
+    console.error('[reparaciones] No se pudieron registrar los adjuntos viejos:', error)
+  }
 }

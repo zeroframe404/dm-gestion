@@ -61,6 +61,7 @@ import {
 } from './layouts'
 import { clasificarPestanas, periodoDesdeTextoDeMes, revisarCoherenciaDePeriodos, type PestanaClasificada } from './pestanas'
 import { huellaDeFila } from '../sincronizacion/hoja'
+import { guardarAnexoDeLaHoja } from '../sincronizacion/anexos'
 import { alDesaparecerDeLaHoja, alLlegarUnaBaja, cuotaDelMesDeLaBaja, filasConCambiosSinSubir } from '../servicios/filas'
 import { normalizarEstadoDeCobro } from '../servicios/pagos'
 
@@ -1061,6 +1062,9 @@ class TrabajoDeImportacion {
       'APP_PRESUPUESTOS',
       'APP_TAREAS',
       'APP_RECHAZOS',
+      // Los anexos van después de todo lo que puede ser su ficha madre (pólizas, siniestros, tareas).
+      'APP_ADJUNTOS',
+      'APP_COMENTARIOS',
       'OTRA',
     ]
     for (const tipo of prioridad) {
@@ -1353,6 +1357,10 @@ class TrabajoDeImportacion {
               break
             case 'APP_TAREAS':
               this.guardarTarea(p, fila, resumen)
+              break
+            case 'APP_ADJUNTOS':
+            case 'APP_COMENTARIOS':
+              this.guardarAnexo(p, fila, resumen)
               break
             default:
               break
@@ -2328,6 +2336,21 @@ class TrabajoDeImportacion {
       ahora: this.ahora,
     })
     this.contar(resumen, 'tareas')
+  }
+
+  /**
+   * Una fila de APP ADJUNTOS o APP COMENTARIOS (12.6): la ficha de un archivo o un comentario que
+   * escribió otra computadora. Lo que sabe hacer con ella está en sincronizacion/anexos.ts, que es
+   * lo mismo que usa la bajada de todos los días; acá sólo se le acerca la fila. Si la ficha madre
+   * todavía no está (la póliza que la importación procesa en otra pestaña), queda para la próxima.
+   */
+  private guardarAnexo(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
+    if (this.sinDatosUtiles(p, fila)) return
+    if (this.sinSubir.has(fila.id)) return
+    if (p.tipo !== 'APP_ADJUNTOS' && p.tipo !== 'APP_COMENTARIOS') return
+    const resultado = guardarAnexoDeLaHoja(p.tipo, { filaId: fila.id, pestana: p.titulo, valor: (campo) => fila.valor(campo) }, this.db)
+    if (resultado === 'guardado') this.contar(resumen, p.tipo === 'APP_ADJUNTOS' ? 'adjuntos' : 'comentarios')
+    else if (resultado === 'sin-padre') this.contar(resumen, 'anexos_sin_ficha')
   }
 
   private guardarReglaCobertura(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {

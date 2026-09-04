@@ -1432,6 +1432,96 @@ export const MIGRACIONES: Migracion[] = [
       CREATE INDEX idx_clausulas_cobertura ON clausulas_coberturas (cobertura);
     `,
   },
+  {
+    version: 23,
+    descripcion: 'Adjuntos en el VPS, comentarios que viajan, fotos de pólizas e índices que faltaban',
+    sql: `
+      -- 12.6: los adjuntos dejan de vivir sólo en el disco de la PC donde se cargaron. El archivo se
+      -- sube al VPS (\`vps_id\` es su nombre allá) y la ficha viaja por la pestaña APP ADJUNTOS con
+      -- \`fila_id\` = 'ADJ:<vps_id>', como cualquier otra fila. En la computadora que lo recibe,
+      -- \`archivo\` queda VACÍO hasta que alguien lo abre y se baja (no hace falta que las cinco PC
+      -- tengan las fotos de todos los autos).
+      --
+      -- \`vps_intentos\` y \`vps_proximo_intento\` son la espera creciente de la subida: un archivo que
+      -- el servidor rechaza no se reintenta cada diez segundos para siempre. \`sha256\` es lo que el
+      -- servidor comprueba al recibirlo y lo que esta PC comprueba al bajarlo. \`miniatura\` es la
+      -- vista previa (un data: chico) que se calcula una vez, para que la ficha no la rehaga.
+      ALTER TABLE siniestro_adjuntos ADD COLUMN fila_id TEXT;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN tipo TEXT;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN sha256 TEXT;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN ancho INTEGER;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN alto INTEGER;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN miniatura TEXT;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN vps_id TEXT;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN vps_subido_en TEXT;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN vps_error TEXT;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN vps_intentos INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE siniestro_adjuntos ADD COLUMN vps_proximo_intento TEXT;
+      CREATE UNIQUE INDEX idx_siniestro_adjuntos_fila ON siniestro_adjuntos (fila_id) WHERE fila_id IS NOT NULL;
+      CREATE INDEX idx_siniestro_adjuntos_vps ON siniestro_adjuntos (vps_subido_en, vps_proximo_intento);
+
+      ALTER TABLE tarea_adjuntos ADD COLUMN fila_id TEXT;
+      ALTER TABLE tarea_adjuntos ADD COLUMN tipo TEXT;
+      ALTER TABLE tarea_adjuntos ADD COLUMN sha256 TEXT;
+      ALTER TABLE tarea_adjuntos ADD COLUMN ancho INTEGER;
+      ALTER TABLE tarea_adjuntos ADD COLUMN alto INTEGER;
+      ALTER TABLE tarea_adjuntos ADD COLUMN miniatura TEXT;
+      ALTER TABLE tarea_adjuntos ADD COLUMN vps_id TEXT;
+      ALTER TABLE tarea_adjuntos ADD COLUMN vps_subido_en TEXT;
+      ALTER TABLE tarea_adjuntos ADD COLUMN vps_error TEXT;
+      ALTER TABLE tarea_adjuntos ADD COLUMN vps_intentos INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE tarea_adjuntos ADD COLUMN vps_proximo_intento TEXT;
+      CREATE UNIQUE INDEX idx_tarea_adjuntos_fila ON tarea_adjuntos (fila_id) WHERE fila_id IS NOT NULL;
+      CREATE INDEX idx_tarea_adjuntos_vps ON tarea_adjuntos (vps_subido_en, vps_proximo_intento);
+
+      -- Las fotos y documentos de una póliza: el auto, la moto, el frente de la póliza, la cédula.
+      -- Mismo modelo que los otros dos, sin categoría (en una póliza el nombre alcanza).
+      CREATE TABLE poliza_adjuntos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        poliza_id INTEGER NOT NULL REFERENCES polizas(id),
+        fila_id TEXT,
+        nombre TEXT NOT NULL,
+        archivo TEXT NOT NULL DEFAULT '',
+        tipo TEXT,
+        tamano INTEGER NOT NULL DEFAULT 0,
+        sha256 TEXT,
+        ancho INTEGER,
+        alto INTEGER,
+        miniatura TEXT,
+        drive_id TEXT,
+        drive_error TEXT,
+        vps_id TEXT,
+        vps_subido_en TEXT,
+        vps_error TEXT,
+        vps_intentos INTEGER NOT NULL DEFAULT 0,
+        vps_proximo_intento TEXT,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        usuario_nombre TEXT NOT NULL,
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX idx_poliza_adjuntos ON poliza_adjuntos (poliza_id, id DESC);
+      CREATE UNIQUE INDEX idx_poliza_adjuntos_fila ON poliza_adjuntos (fila_id) WHERE fila_id IS NOT NULL;
+      CREATE INDEX idx_poliza_adjuntos_vps ON poliza_adjuntos (vps_subido_en, vps_proximo_intento);
+
+      -- Los comentarios de las tareas y las observaciones de los siniestros viajan por APP COMENTARIOS,
+      -- una fila cada uno, con \`fila_id\` = 'COM:<id>'. Los que ya estaban (sin fila_id) se registran
+      -- al arrancar (ver servicios/adjuntos.ts, \`registrarLoQueNoViajo\`).
+      ALTER TABLE tarea_comentarios ADD COLUMN fila_id TEXT;
+      CREATE UNIQUE INDEX idx_tarea_comentarios_fila ON tarea_comentarios (fila_id) WHERE fila_id IS NOT NULL;
+      ALTER TABLE siniestro_observaciones ADD COLUMN fila_id TEXT;
+      CREATE UNIQUE INDEX idx_siniestro_observaciones_fila ON siniestro_observaciones (fila_id) WHERE fila_id IS NOT NULL;
+
+      -- Índices que faltaban y que la planilla del mes, la cartera y las métricas recorrían a mano.
+      -- \`pagos(cuota_fila_id)\` es el peor: la planilla del mes hacía un EXISTS por fila sobre \`pagos\`
+      -- sin ningún índice que lo sostuviera.
+      CREATE INDEX IF NOT EXISTS idx_pagos_cuota_fila ON pagos (cuota_fila_id);
+      CREATE INDEX IF NOT EXISTS idx_cuotas_mes_periodo_baja ON cuotas_mes (periodo, dada_de_baja);
+      CREATE INDEX IF NOT EXISTS idx_polizas_compania ON polizas (compania);
+      CREATE INDEX IF NOT EXISTS idx_polizas_activa ON polizas (activa);
+      CREATE INDEX IF NOT EXISTS idx_polizas_anterior ON polizas (poliza_anterior_id);
+      CREATE INDEX IF NOT EXISTS idx_bajas_poliza_fecha ON bajas (poliza_id, fecha_baja_iso);
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

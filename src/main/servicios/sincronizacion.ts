@@ -31,7 +31,8 @@ import {
 } from '../sincronizacion/respaldo'
 import { FuenteVps } from '../vps/fuenteVps'
 import { cerrarMes, nombreDePestanaMensual, periodoACerrar } from './cartera'
-import { credencialesGoogle, credencialesVps } from './config'
+import { esAlmacenDeAdjuntos, hayAdjuntosPendientes, subirAdjuntosPendientes, usarAlmacenDeAdjuntos } from './adjuntos'
+import { credencialesGoogle, credencialesParaDrive, credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
 import { repararAlArrancar, repararDuplicados } from './reparaciones'
 import { construirXlsx, type HojaXlsx } from './xlsx'
@@ -116,10 +117,23 @@ export function obtenerMotor(): MotorDeSincronizacion {
       // El carril rápido de las tareas: cuando trae algo, la campana y el contador de la barra lateral
       // se enteran en el momento en vez de esperar a su propio reloj.
       alCambiarLasTareas: () => emitir('tareas:cambiaron', null),
+      // 12.6: los adjuntos suben al servidor en el mismo ciclo que la cola, después de ella.
+      hayArchivosPendientes: hayAdjuntosPendientes,
+      subirArchivos: () => subirAdjuntosPendientes(dadorDeTokenDeGoogle()),
     })
   }
   return motor
 }
+
+/**
+ * Dónde se guardan los archivos adjuntos: el VPS (que sabe subir y bajar archivos), o la hoja de
+ * prueba si tiene almacén (la simulada lo tiene). Google Sheets nunca lo tuvo: sin VPS los adjuntos
+ * quedan en esta PC, como hasta la 12.5.
+ */
+usarAlmacenDeAdjuntos(() => {
+  if (fuenteDePrueba) return esAlmacenDeAdjuntos(fuenteDePrueba) ? fuenteDePrueba : null
+  return crearFuenteVps()
+})
 
 /** Se llama al abrir sesión: enciende el motor y baja lo que haya. */
 export async function arrancarSincronizacion(): Promise<void> {
@@ -263,8 +277,20 @@ export function respaldos(): RespaldoGuardado[] {
  * después del corte al VPS mientras la cuenta de servicio quede cargada.
  */
 export function dadorDeTokenDeGoogle(): (() => Promise<string>) | null {
-  const fuente = fuenteGoogleDirecta()
-  if (!fuente) return null
+  // Para Drive no hace falta la URL de la hoja: alcanza con la cuenta de servicio. Hasta la 12.5 una
+  // PC con la cuenta pero sin URL quedaba sin Drive, y sin decirlo.
+  if (fuenteDePrueba) return null
+  let credenciales: ReturnType<typeof credencialesParaDrive>
+  try {
+    credenciales = credencialesParaDrive()
+  } catch {
+    return null
+  }
+  if (!credenciales) return null
+  const fuente = new FuenteGoogleSheets({
+    hojaId: (credenciales.urlHoja && extraerIdDeHoja(credenciales.urlHoja)) || 'sin-hoja',
+    cuentaServicio: credenciales.cuentaServicio,
+  })
   return () => fuente.obtenerToken()
 }
 

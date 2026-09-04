@@ -8,6 +8,7 @@
 import type { TipoPestana } from '../../shared/tipos'
 import { db, type BaseDeDatos } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
+import { borrarAnexoLocal, esPestanaDeAnexos } from '../sincronizacion/anexos'
 
 /**
  * Pestaña de origen que se le pone a lo que nació en la aplicación y todavía no tiene lugar en la
@@ -104,6 +105,9 @@ export function alDesaparecerDeLaHoja(
     if (sinSubir.has(fila.filaId)) continue
     if (fila.tipo === 'MENSUAL') darDeBaja.run(ahora, fila.filaId)
     else if (fila.tipo === 'BAJAS') olvidarBaja.run(fila.filaId)
+    // Un adjunto o un comentario que desapareció de su pestaña lo borraron desde otra computadora:
+    // se va de acá también, archivo incluido (12.6).
+    else if (esPestanaDeAnexos(fila.tipo)) borrarAnexoLocal(fila.filaId, base)
   }
 }
 

@@ -2,6 +2,7 @@
 // (estructura, lecturas, celdas, filas, pestañas, _ID), la migración inicial en tres fases, los
 // reintentos y la traducción de errores. No sale a internet, igual que el resto del banco.
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { VpsSimulado } from '../scripts/vps-simulado.mjs'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
@@ -283,6 +284,50 @@ test('fuente VPS: migración inicial y dos computadoras contra la misma base', a
     .prepare(`SELECT pago FROM cuotas_mes WHERE fila_id = ?`)
     .get(fila.fila_id) as { pago: string | null } | undefined
   assert.equal(pagoEnB?.pago, '28/08', 'el pago escrito por una computadora aparece en la otra')
+  } finally {
+    await simulador.cerrar()
+  }
+})
+
+// Los adjuntos (12.6) van por otro camino que la grilla: el archivo crudo en el cuerpo, los datos en
+// encabezados. Lo que se prueba es el contrato contra el simulador, que copia al servidor real:
+// idempotente por id + hash, 409 si el mismo id trae otro contenido, 400 si llegó dañado, 413 si
+// supera el tope, y 404 después de borrarlo.
+test('fuente VPS: los adjuntos suben crudos, bajan iguales y se borran', async () => {
+  const simulador = new VpsSimulado({ pestanas: [{ titulo: 'AGOSTO', valores: [['NOMBRE', '_ID']] }] })
+  await simulador.escuchar()
+  const fuente = fuenteDe(simulador)
+  try {
+    const contenido = Buffer.from('foto de prueba '.repeat(100))
+    const sha256 = createHash('sha256').update(contenido).digest('hex')
+    const id = 'a'.repeat(32)
+    const ficha = { id, nombre: 'Póliza Gómez.pdf', tipo: 'application/pdf', grupo: 'poliza-1', subidoPor: 'Fede', sha256 }
+
+    const primera = await fuente.subirAdjunto(ficha, contenido)
+    assert.equal(primera.yaEstaba, false)
+    const segunda = await fuente.subirAdjunto(ficha, contenido)
+    assert.equal(segunda.yaEstaba, true, 'repetir la misma subida es gratis')
+
+    const otro = Buffer.from('otra cosa')
+    await assert.rejects(
+      fuente.subirAdjunto({ ...ficha, sha256: createHash('sha256').update(otro).digest('hex') }, otro),
+      /no se reescribe/,
+      'el mismo id con otro contenido es un 409',
+    )
+    await assert.rejects(fuente.subirAdjunto({ ...ficha, id: 'b'.repeat(32), sha256: 'f'.repeat(64) }, contenido), /dañado/)
+
+    const bajado = await fuente.bajarAdjunto(id)
+    assert.equal(bajado.nombre, 'Póliza Gómez.pdf', 'el nombre vuelve con acentos')
+    assert.equal(bajado.tipo, 'application/pdf')
+    assert.equal(bajado.sha256, sha256)
+    assert.ok(bajado.contenido.equals(contenido), 'los bytes vuelven iguales')
+
+    simulador.topeDeAdjunto = 10
+    await assert.rejects(fuente.subirAdjunto({ ...ficha, id: 'c'.repeat(32) }, contenido), /supera el máximo/)
+
+    await fuente.borrarAdjunto(id)
+    await assert.rejects(fuente.bajarAdjunto(id), /no existe/)
+    await fuente.borrarAdjunto(id)
   } finally {
     await simulador.cerrar()
   }

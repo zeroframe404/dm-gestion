@@ -286,6 +286,10 @@ export type TipoPestana =
   | 'APP_PRESUPUESTOS'
   | 'APP_TAREAS'
   | 'APP_RECHAZOS'
+  // 12.6: los adjuntos (fotos y documentos de pólizas, siniestros y tareas) y los comentarios de
+  // tareas y observaciones de siniestros. Antes quedaban sólo en la PC donde se cargaron.
+  | 'APP_ADJUNTOS'
+  | 'APP_COMENTARIOS'
   | 'OTRA'
 
 export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
@@ -302,6 +306,8 @@ export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
   APP_PRESUPUESTOS: 'Presupuestos (la escribe DM Gestión)',
   APP_TAREAS: 'Tareas (la escribe DM Gestión)',
   APP_RECHAZOS: 'Rechazos de débito (la escribe DM Gestión)',
+  APP_ADJUNTOS: 'Adjuntos (la escribe DM Gestión)',
+  APP_COMENTARIOS: 'Comentarios y observaciones (la escribe DM Gestión)',
   OTRA: 'Sin clasificar (sólo crudo)',
 }
 
@@ -2119,6 +2125,13 @@ export interface AdjuntoDeSiniestro {
   enDrive: boolean
   /** Por qué no se pudo subir a Drive, si es el caso. El archivo local está guardado igual. */
   errorDeDrive: string | null
+  /** Lo que comparten todos los adjuntos desde la 12.6: si está en el servidor, si está en esta PC, la miniatura. */
+  tipo: string
+  enElServidor: boolean
+  errorDelServidor: string | null
+  /** false cuando lo cargó otra computadora y esta todavía no lo bajó (se baja al abrirlo). */
+  descargado: boolean
+  miniatura: string | null
 }
 
 export interface FichaSiniestro {
@@ -2517,6 +2530,46 @@ export interface AdjuntoDeTarea {
   /** true si además se subió a la carpeta «Adjuntos DM» del Drive. */
   enDrive: boolean
   errorDeDrive: string | null
+  tipo: string
+  enElServidor: boolean
+  errorDelServidor: string | null
+  descargado: boolean
+  miniatura: string | null
+}
+
+/**
+ * Un adjunto de una póliza (12.6): las fotos del auto o la moto, el frente de la póliza, la cédula.
+ * Mismo modelo que los de siniestros y tareas, sin categoría: en una póliza el nombre alcanza.
+ */
+export interface AdjuntoDePoliza {
+  id: number
+  nombre: string
+  tipo: string
+  tamano: number
+  creadoEn: string
+  usuarioNombre: string
+  enDrive: boolean
+  errorDeDrive: string | null
+  enElServidor: boolean
+  errorDelServidor: string | null
+  descargado: boolean
+  miniatura: string | null
+  ancho: number | null
+  alto: number | null
+}
+
+/**
+ * Un archivo que la pantalla manda para adjuntar: los bytes vienen de la ventana (arrastrar, pegar o
+ * elegir), no de una ruta del disco, porque la pantalla ya achicó la foto antes de mandarla.
+ */
+export interface ArchivoParaAdjuntar {
+  nombre: string
+  tipo: string
+  contenido: Uint8Array
+  ancho?: number | null
+  alto?: number | null
+  /** true si la pantalla lo recomprimió (una foto de 6 MB que llegó en 800 KB). */
+  optimizado?: boolean
 }
 
 export interface FilaTarea {

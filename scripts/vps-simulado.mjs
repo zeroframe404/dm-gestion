@@ -55,6 +55,10 @@ export class VpsSimulado {
     }
     /** Los respaldos guardados, del más nuevo al más viejo. */
     this.respaldos = []
+    /** Los adjuntos subidos (12.6): id → ficha + bytes. */
+    this.adjuntos = new Map()
+    /** El tope por archivo del servidor simulado: chico, para poder probar el 413. */
+    this.topeDeAdjunto = 8 * 1024 * 1024
     this.proximoRespaldoId = 1
     /** Los mensajes con los que se guardó la base de usuarios: lo que antes era el mensaje del commit. */
     this.mensajesDeUsuarios = []
@@ -188,16 +192,26 @@ export class VpsSimulado {
 
   async escuchar(puerto = 0) {
     this.servidor = createServer((pedido, respuesta) => {
-      let cuerpo = ''
-      pedido.on('data', (trozo) => (cuerpo += trozo))
+      const trozos = []
+      pedido.on('data', (trozo) => trozos.push(trozo))
       pedido.on('end', () => {
         if (this.colgar) return
-        const json = cuerpo ? JSON.parse(cuerpo) : {}
+        const crudo = Buffer.concat(trozos)
         const [ruta, consulta] = (pedido.url ?? '').split('?')
         this.intercambios.push({ metodo: pedido.method, ruta, autorizacion: pedido.headers.authorization ?? null })
         const responder = (estado, datos) => {
           respuesta.writeHead(estado, { 'content-type': 'application/json' })
           respuesta.end(JSON.stringify(datos))
+        }
+        // Los adjuntos van crudos (octet-stream), como en el servidor real: nada de JSON.parse acá.
+        const esCrudo = (pedido.headers['content-type'] ?? '').startsWith('application/octet-stream')
+        let json = {}
+        if (!esCrudo && crudo.length > 0) {
+          try {
+            json = JSON.parse(crudo.toString('utf8'))
+          } catch (error) {
+            return responder(400, { error: `El cuerpo del pedido no se pudo leer: ${error.message}` })
+          }
         }
 
         if (this.errorFijo) return responder(this.errorFijo.estado, { error: this.errorFijo.mensaje })
@@ -210,6 +224,7 @@ export class VpsSimulado {
         }
 
         try {
+          if (ruta.startsWith('/api/dmg/adjuntos')) return this.atenderAdjuntos(pedido, respuesta, ruta, crudo, responder)
           return this.atender(pedido.method ?? 'GET', ruta ?? '', json, responder, new URLSearchParams(consulta ?? ''))
         } catch (error) {
           return responder(500, { error: error instanceof Error ? error.message : String(error) })
@@ -229,6 +244,74 @@ export class VpsSimulado {
         'La base del GENERAL DE CLIENTES del VPS todavía no está inicializada. Hacé la migración desde DM Gestión (Administración → Base de datos).',
     })
     return false
+  }
+
+  /**
+   * Los adjuntos (12.6): `PUT /api/dmg/adjuntos/:id` con el archivo crudo y los datos en encabezados
+   * `x-dmg-*`, `GET` lo devuelve, `GET .../estado` la ficha, `DELETE` lo saca. Todo en memoria.
+   */
+  atenderAdjuntos(pedido, respuesta, ruta, crudo, responder) {
+    const metodo = pedido.method ?? 'GET'
+    const partes = /^\/api\/dmg\/adjuntos(?:\/([0-9a-f]{32}|[0-9a-f-]{36}))?(\/estado)?$/.exec(ruta)
+    if (!partes) return responder(400, { error: 'El id del adjunto no es válido.' })
+    const id = partes[1]
+    const leer = (clave) => {
+      const valor = pedido.headers[clave]
+      if (typeof valor !== 'string' || !valor) return null
+      try {
+        return decodeURIComponent(valor)
+      } catch {
+        return valor
+      }
+    }
+    if (metodo === 'GET' && !id) {
+      return responder(200, { adjuntos: [...this.adjuntos.values()].map((a) => a.ficha) })
+    }
+    if (!id) return responder(404, { error: `Ruta desconocida: ${metodo} ${ruta}` })
+    if (metodo === 'PUT') {
+      this.llamadas.adjuntosSubidos = (this.llamadas.adjuntosSubidos ?? 0) + 1
+      if (crudo.length === 0) return responder(400, { error: 'El adjunto llegó vacío.' })
+      if (crudo.length > this.topeDeAdjunto) return responder(413, { error: `El archivo supera el máximo que acepta el servidor (${Math.floor(this.topeDeAdjunto / (1024 * 1024))} MB).` })
+      const sha256 = createHash('sha256').update(crudo).digest('hex')
+      const esperado = (leer('x-dmg-sha256') ?? '').toLowerCase()
+      if (esperado && esperado !== sha256) return responder(400, { error: 'El adjunto llegó dañado: el contenido no coincide con lo que la aplicación calculó.' })
+      const previo = this.adjuntos.get(id)
+      if (previo) {
+        if (previo.ficha.sha256 !== sha256) return responder(409, { error: 'Ya hay un adjunto con ese id y otro contenido: un adjunto no se reescribe.' })
+        return responder(200, { ...previo.ficha, yaEstaba: true })
+      }
+      const ficha = {
+        id,
+        nombre: leer('x-dmg-nombre') ?? 'archivo',
+        tipo: leer('x-dmg-tipo') ?? 'application/octet-stream',
+        tamano: crudo.length,
+        sha256,
+        grupo: leer('x-dmg-grupo') ?? 'sin-grupo',
+        subidoPor: leer('x-dmg-subido-por'),
+        creadoEn: new Date().toISOString(),
+      }
+      this.adjuntos.set(id, { ficha, contenido: Buffer.from(crudo) })
+      return responder(201, { ...ficha, yaEstaba: false })
+    }
+    const guardado = this.adjuntos.get(id)
+    if (metodo === 'GET' && partes[2]) {
+      return responder(200, guardado ? { existe: true, ficha: guardado.ficha, enDisco: true } : { existe: false, ficha: null, enDisco: false })
+    }
+    if (metodo === 'GET') {
+      this.llamadas.adjuntosBajados = (this.llamadas.adjuntosBajados ?? 0) + 1
+      if (!guardado) return responder(404, { error: 'Ese adjunto no existe.' })
+      respuesta.writeHead(200, {
+        'content-type': guardado.ficha.tipo,
+        'content-length': String(guardado.contenido.length),
+        'x-dmg-sha256': guardado.ficha.sha256,
+        'x-dmg-nombre': encodeURIComponent(guardado.ficha.nombre),
+      })
+      return respuesta.end(guardado.contenido)
+    }
+    if (metodo === 'DELETE') {
+      return responder(200, { borrado: this.adjuntos.delete(id) })
+    }
+    return responder(404, { error: `Ruta desconocida: ${metodo} ${ruta}` })
   }
 
   atender(metodo, ruta, json, responder, busqueda = new URLSearchParams()) {

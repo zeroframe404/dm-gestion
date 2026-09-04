@@ -74,6 +74,15 @@ export type Campo =
   | 'vence'
   | 'prioridad'
   | 'vinculo'
+  // Las dos pestañas de la 12.6: APP ADJUNTOS (fotos y documentos) y APP COMENTARIOS (comentarios
+  // de tareas y observaciones de siniestros). Son columnas que sólo escribe y lee la aplicación.
+  | 'tipo_registro'
+  | 'archivo_nombre'
+  | 'categoria'
+  | 'archivo'
+  | 'tamano'
+  | 'sha256'
+  | 'texto'
 
 /** Sinónimos generales (normalizados). El orden importa: ante un sinónimo repetido gana el primer campo. */
 const SINONIMOS: Record<Campo, string[]> = {
@@ -143,6 +152,13 @@ const SINONIMOS: Record<Campo, string[]> = {
   vence: ['VENCE EL', 'FECHA LIMITE', 'PARA CUANDO', 'LIMITE'],
   prioridad: ['PRIORIDAD', 'URGENCIA', 'IMPORTANCIA'],
   vinculo: ['VINCULO', 'VINCULADA A', 'RELACIONADA CON', 'DE QUE FICHA'],
+  tipo_registro: ['TIPO DE REGISTRO', 'TIPO DE FICHA'],
+  archivo_nombre: ['NOMBRE DEL ARCHIVO', 'NOMBRE ARCHIVO'],
+  categoria: ['CATEGORIA', 'QUE DOCUMENTO ES', 'CLASE DE DOCUMENTO'],
+  archivo: ['ARCHIVO', 'ID DEL ARCHIVO', 'ARCHIVO EN EL SERVIDOR'],
+  tamano: ['TAMANO', 'PESO', 'BYTES'],
+  sha256: ['SHA256', 'SHA-256', 'HUELLA DEL ARCHIVO'],
+  texto: ['TEXTO', 'COMENTARIO', 'MENSAJE'],
 }
 
 /**
@@ -269,6 +285,26 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
     DETALLE: 'descripcion',
     ESTADO: 'estado',
   },
+  // En APP ADJUNTOS, TIPO es de qué ficha cuelga el archivo (POLIZA / SINIESTRO / TAREA) y NOMBRE es
+  // el nombre del archivo, no el de un cliente: acá no hay clientes, hay archivos.
+  APP_ADJUNTOS: {
+    FECHA: 'fecha',
+    TIPO: 'tipo_registro',
+    VINCULO: 'vinculo',
+    DESCRIPCION: 'descripcion',
+    NOMBRE: 'archivo_nombre',
+    CATEGORIA: 'categoria',
+    ARCHIVO: 'archivo',
+    TAMANO: 'tamano',
+    SHA256: 'sha256',
+  },
+  APP_COMENTARIOS: {
+    FECHA: 'fecha',
+    TIPO: 'tipo_registro',
+    VINCULO: 'vinculo',
+    USUARIO: 'usuario',
+    TEXTO: 'texto',
+  },
   // En los rechazos, FECHA es el día del aviso y MES el de la cuota que rebotó. ESTADO es en qué anda
   // el aviso (PENDIENTE / VISTO / RESUELTO), no el estado de la póliza.
   APP_RECHAZOS: {
@@ -296,6 +332,8 @@ const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
   APP_PRESUPUESTOS: ['fecha', 'numero_presupuesto', 'version', 'sucursal', 'nombre', 'telefono', 'documento', 'patente', 'marca', 'modelo', 'anio', 'tipo_vehiculo', 'opciones', 'precio', 'estado', 'observaciones', 'usuario'],
   APP_TAREAS: ['fecha', 'titulo', 'descripcion', 'responsable', 'sucursal', 'vence', 'prioridad', 'estado', 'vinculo', 'usuario'],
   APP_RECHAZOS: ['fecha', 'sucursal', 'nombre', 'documento', 'telefono', 'compania', 'numero_poliza', 'patente', 'forma_pago', 'cuota', 'mes', 'motivo', 'observaciones', 'estado', 'usuario'],
+  APP_ADJUNTOS: ['fecha', 'tipo_registro', 'vinculo', 'descripcion', 'archivo_nombre', 'categoria', 'archivo', 'tamano', 'sha256', 'usuario'],
+  APP_COMENTARIOS: ['fecha', 'tipo_registro', 'vinculo', 'usuario', 'texto'],
   OTRA: 'todos',
 }
 

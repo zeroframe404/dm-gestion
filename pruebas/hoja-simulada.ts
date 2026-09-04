@@ -14,6 +14,8 @@ import type {
   ResultadoDeTramos,
   TramoDeColumna,
 } from '../src/main/importacion/fuente'
+import type { AlmacenDeAdjuntos, ArchivoBajado, FichaParaElAlmacen } from '../src/main/servicios/adjuntos'
+import { ErrorDeNegocio } from '../src/main/servicios/errores'
 
 export interface PestanaSimulada {
   titulo: string
@@ -49,7 +51,7 @@ export interface OpcionesHojaSimulada {
   soloLectura?: boolean
 }
 
-export class HojaSimulada implements FuenteHoja {
+export class HojaSimulada implements FuenteHoja, AlmacenDeAdjuntos {
   readonly hojaId: string
   readonly titulo: string
   private readonly pestanas: PestanaInterna[] = []
@@ -58,6 +60,10 @@ export class HojaSimulada implements FuenteHoja {
   readonly llamadas = { estructura: 0, leerValores: 0, asegurarColumnas: 0, escribirColumna: 0, ocultarColumna: 0, leerVarias: 0, escribirCeldas: 0, agregarFilas: 0, borrarFilas: 0, crearPestana: 0 }
   /** false = sin internet: todas las llamadas fallan como en la vida real. */
   private conectada = true
+  /** El almacén de adjuntos del VPS, en memoria: id → ficha + bytes (12.6). */
+  readonly almacen = new Map<string, { ficha: FichaParaElAlmacen; contenido: Buffer }>()
+  /** Si está puesto, la próxima subida falla con este error (para probar los reintentos). */
+  fallaDeSubida: Error | null = null
 
   constructor(pestanas: PestanaSimulada[], opciones: OpcionesHojaSimulada = {}) {
     this.hojaId = opciones.hojaId ?? '1PRUEBAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
@@ -285,8 +291,12 @@ export class HojaSimulada implements FuenteHoja {
     if (this.pestanas.some((p) => p.titulo === titulo)) {
       throw Object.assign(new Error(`A sheet with the name "${titulo}" already exists.`), { status: 400 })
     }
+    // Un sheetId que no use ninguna otra pestaña. Antes era 100 + cantidad, y después de quitar una
+    // pestaña (las pruebas sacan IMPUTADOS) la nueva chocaba con la última: un borrado dirigido a la
+    // pestaña nueva caía en COBERTURA.
+    const siguiente = Math.max(100, ...this.pestanas.map((p) => p.sheetId + 1))
     const interna: PestanaInterna = {
-      sheetId: 100 + this.pestanas.length,
+      sheetId: siguiente,
       titulo,
       indice: this.pestanas.length,
       columnas: Math.max(encabezados.length + 4, 26),
@@ -316,6 +326,38 @@ export class HojaSimulada implements FuenteHoja {
 
   private exigirConexion(): void {
     if (!this.conectada) throw Object.assign(new Error('getaddrinfo ENOTFOUND sheets.googleapis.com'), { code: 'ENOTFOUND' })
+  }
+
+  // ---------------------------------------------------------------------------
+  // El almacén de adjuntos (la misma semántica que /api/dmg/adjuntos del VPS)
+  // ---------------------------------------------------------------------------
+
+  async subirAdjunto(ficha: FichaParaElAlmacen, contenido: Buffer): Promise<{ yaEstaba: boolean }> {
+    this.exigirConexion()
+    if (this.fallaDeSubida) {
+      const falla = this.fallaDeSubida
+      this.fallaDeSubida = null
+      throw falla
+    }
+    const previo = this.almacen.get(ficha.id)
+    if (previo) {
+      if (previo.ficha.sha256 !== ficha.sha256) throw new ErrorDeNegocio('Ya hay un adjunto con ese id y otro contenido: un adjunto no se reescribe.')
+      return { yaEstaba: true }
+    }
+    this.almacen.set(ficha.id, { ficha: { ...ficha }, contenido: Buffer.from(contenido) })
+    return { yaEstaba: false }
+  }
+
+  async bajarAdjunto(id: string): Promise<ArchivoBajado> {
+    this.exigirConexion()
+    const guardado = this.almacen.get(id)
+    if (!guardado) throw new ErrorDeNegocio('El servidor del VPS rechazó la operación (bajar el adjunto): Ese adjunto no existe.')
+    return { contenido: Buffer.from(guardado.contenido), nombre: guardado.ficha.nombre, tipo: guardado.ficha.tipo, sha256: guardado.ficha.sha256 }
+  }
+
+  async borrarAdjunto(id: string): Promise<void> {
+    this.exigirConexion()
+    this.almacen.delete(id)
   }
 
   // ---------------------------------------------------------------------------

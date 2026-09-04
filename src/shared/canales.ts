@@ -3,6 +3,8 @@
 import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion } from './eliminacion'
 import type { MatrizPermisos } from './permisos'
 import type {
+  AdjuntoDePoliza,
+  ArchivoParaAdjuntar,
   AceptacionDePresupuesto,
   InformeDeDuplicados,
   ResultadoDeFusion,
@@ -399,6 +401,17 @@ export interface Canales {
     categoria: CategoriaDeAdjunto,
     detalle?: string,
   ) => Resultado<FichaSiniestro>
+  /**
+   * Los archivos que vienen de la pantalla (arrastrados, pegados o elegidos, ya achicados si eran
+   * fotos): los bytes viajan por acá, no hay ruta en el disco. Es el camino de la 12.6.
+   */
+  'siniestros:adjuntarArchivos': (
+    siniestroId: number,
+    archivos: ArchivoParaAdjuntar[],
+    categoria: CategoriaDeAdjunto,
+    detalle?: string,
+  ) => Resultado<FichaSiniestro>
+  /** Abre el documento con el programa del sistema; si lo cargó otra computadora, lo baja del servidor antes. */
   'siniestros:abrirAdjunto': (adjuntoId: number) => Resultado<null>
   /** Borrar un documento es definitivo: sólo ADMIN y SUPER_ADMIN. */
   'siniestros:borrarAdjunto': (adjuntoId: number) => Resultado<FichaSiniestro>
@@ -425,6 +438,13 @@ export interface Canales {
   'polizas:crear': (datos: DatosDePoliza) => Resultado<PolizaDeCliente>
   'polizas:editar': (polizaId: number, datos: DatosDePoliza) => Resultado<PolizaDeCliente>
   'polizas:darDeBaja': (polizaId: number, datos: DatosDeBaja) => Resultado<null>
+  /** Fotos y documentos de la póliza (12.6): viven en el VPS y se ven desde cualquier computadora. */
+  'polizas:adjuntos': (polizaId: number) => Resultado<AdjuntoDePoliza[]>
+  'polizas:adjuntarArchivos': (polizaId: number, archivos: ArchivoParaAdjuntar[]) => Resultado<AdjuntoDePoliza[]>
+  /** Con rutas del disco (el explorador de archivos, o la prueba de humo); `null` abre el explorador. */
+  'polizas:adjuntar': (polizaId: number, rutas: string[] | null) => Resultado<AdjuntoDePoliza[]>
+  'polizas:abrirAdjunto': (adjuntoId: number) => Resultado<null>
+  'polizas:borrarAdjunto': (adjuntoId: number) => Resultado<AdjuntoDePoliza[]>
 
   // Reglas de cobertura: las ve todo el equipo, las edita sólo el SUPER_ADMIN.
   'reglas:matriz': () => Resultado<MatrizDeCobertura>
@@ -501,6 +521,7 @@ export interface Canales {
   'tareas:comentar': (tareaId: number, texto: string) => Resultado<FichaTarea>
   /** Con `rutas` en null abre el diálogo para elegir los archivos, que es lo que hace la pantalla. */
   'tareas:adjuntar': (tareaId: number, rutas: string[] | null) => Resultado<FichaTarea>
+  'tareas:adjuntarArchivos': (tareaId: number, archivos: ArchivoParaAdjuntar[]) => Resultado<FichaTarea>
   'tareas:abrirAdjunto': (adjuntoId: number) => Resultado<null>
   /** Borrar un documento es definitivo: sólo ADMIN y SUPER_ADMIN. */
   'tareas:borrarAdjunto': (adjuntoId: number) => Resultado<FichaTarea>

@@ -1,5 +1,5 @@
-// Las pestañas que DM Gestión agrega a la hoja: APP LEADS, APP PRESUPUESTOS, APP TAREAS, APP RECHAZOS
-// y APP PAGOS.
+// Las pestañas que DM Gestión agrega a la hoja: APP LEADS, APP PRESUPUESTOS, APP TAREAS, APP RECHAZOS,
+// APP PAGOS y, desde la 12.6, APP ADJUNTOS y APP COMENTARIOS.
 //
 // Leads, presupuestos, tareas y los avisos de rechazo del débito no existen en el Excel de la agencia.
 // Para que igual se puedan mirar desde Google —que es donde la agencia mira todo— la aplicación crea las
@@ -142,7 +142,28 @@ export const PESTANAS_DE_LA_APP: PestanaDeLaApp[] = [
       ENCABEZADO_ID,
     ],
   },
+  // 12.6: la ficha de cada foto o documento adjunto a una póliza, un siniestro o una tarea. El archivo
+  // en sí va al disco del VPS (`PUT /api/dmg/adjuntos/:id`); acá viaja lo que hace falta para que
+  // otra computadora sepa que existe, de quién es y cómo bajarlo. VINCULO es «POLIZA:<clave>»,
+  // «SINIESTRO:<_ID>» o «TAREA:<_ID>» (ver sincronizacion/anexos.ts), ARCHIVO es el id en el servidor.
+  {
+    titulo: 'APP ADJUNTOS',
+    tipo: 'APP_ADJUNTOS',
+    encabezados: ['FECHA', 'TIPO', 'VINCULO', 'DESCRIPCION', 'NOMBRE', 'CATEGORIA', 'ARCHIVO', 'TAMANO', 'SHA256', 'CARGADO POR', ENCABEZADO_ID],
+  },
+  // Los comentarios de una tarea y las observaciones de un siniestro, una fila cada uno. Hasta la
+  // 12.5 quedaban en la PC donde se escribieron (el siniestro llevaba un resumen de 900 caracteres en
+  // OBSERVACIONES, que la otra computadora no mostraba en su línea de tiempo).
+  {
+    titulo: 'APP COMENTARIOS',
+    tipo: 'APP_COMENTARIOS',
+    encabezados: ['FECHA', 'TIPO', 'VINCULO', 'USUARIO', 'TEXTO', ENCABEZADO_ID],
+  },
 ]
+
+/** Las pestañas de los adjuntos y los comentarios, por su título de fábrica. */
+export const PESTANA_ADJUNTOS_APP = 'APP ADJUNTOS'
+export const PESTANA_COMENTARIOS_APP = 'APP COMENTARIOS'
 
 /** La pestaña donde viajan los pagos de la aplicación cuando la base no tiene una IMPUTADOS usable. */
 export const PESTANA_PAGOS_APP = 'APP PAGOS'

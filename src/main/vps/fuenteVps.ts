@@ -17,6 +17,7 @@ import {
   type ResultadoDeTramos,
   type TramoDeColumna,
 } from '../importacion/fuente'
+import type { AlmacenDeAdjuntos, ArchivoBajado, FichaParaElAlmacen } from '../servicios/adjuntos'
 import { ErrorDeNegocio } from '../servicios/errores'
 
 /** Tiempo máximo por pedido; sin esto una conexión colgada bloquea la importación. */
@@ -206,7 +207,7 @@ function mensajeDelServidor(json: unknown, porDefecto: string): string {
   return porDefecto
 }
 
-export class FuenteVps implements FuenteHoja {
+export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
   private readonly urlBase: string
   private readonly token: string
   private readonly avisar: ((mensaje: string) => void) | null
@@ -312,6 +313,82 @@ export class FuenteVps implements FuenteHoja {
       return new ErrorDeNegocio(`El servidor del VPS rechazó la operación (${descripcion}): ${detalle}`)
     }
     return new Error(`Error ${respuesta.status} del VPS al ${descripcion}: ${detalle}`)
+  }
+
+  /**
+   * Un pedido con cuerpo o respuesta CRUDOS (los archivos adjuntos): sin JSON, sin reintentos
+   * automáticos (quien llama decide, porque un PUT de 40 MB que se cortó a la mitad no se repite
+   * cada 600 ms). Los 4xx se traducen a mensajes de negocio, como en `pedir`.
+   */
+  private async pedirCrudo(
+    descripcion: string,
+    metodo: 'GET' | 'PUT' | 'DELETE',
+    ruta: string,
+    opciones: { cuerpo?: Buffer; encabezados?: Record<string, string> } = {},
+  ): Promise<{ status: number; encabezados: Headers; cuerpo: Buffer }> {
+    const bruta = await fetch(this.urlBase + ruta, {
+      method: metodo,
+      headers: {
+        authorization: `Bearer ${this.token}`,
+        ...(opciones.cuerpo ? { 'content-type': 'application/octet-stream' } : {}),
+        ...(opciones.encabezados ?? {}),
+      },
+      body: opciones.cuerpo ? new Uint8Array(opciones.cuerpo) : undefined,
+      // Un archivo grande por una conexión lenta: diez minutos, no noventa segundos.
+      signal: AbortSignal.timeout(opciones.cuerpo ? 10 * 60_000 : TIEMPO_MAXIMO_MS),
+    })
+    const cuerpo = Buffer.from(await bruta.arrayBuffer())
+    if (bruta.status >= 200 && bruta.status < 300) return { status: bruta.status, encabezados: bruta.headers, cuerpo }
+    let json: unknown = null
+    try {
+      json = JSON.parse(cuerpo.toString('utf8'))
+    } catch {
+      json = null
+    }
+    throw this.traducirError({ status: bruta.status, json }, descripcion)
+  }
+
+  // --- AlmacenDeAdjuntos (12.6) ---------------------------------------------
+
+  async subirAdjunto(ficha: FichaParaElAlmacen, contenido: Buffer): Promise<{ yaEstaba: boolean }> {
+    const respuesta = await this.pedirCrudo(`subir el adjunto «${ficha.nombre}»`, 'PUT', `/api/dmg/adjuntos/${encodeURIComponent(ficha.id)}`, {
+      cuerpo: contenido,
+      encabezados: {
+        'x-dmg-nombre': encodeURIComponent(ficha.nombre),
+        'x-dmg-tipo': ficha.tipo,
+        'x-dmg-grupo': ficha.grupo,
+        'x-dmg-sha256': ficha.sha256,
+        ...(ficha.subidoPor ? { 'x-dmg-subido-por': encodeURIComponent(ficha.subidoPor) } : {}),
+      },
+    })
+    let json: { yaEstaba?: boolean } = {}
+    try {
+      json = JSON.parse(respuesta.cuerpo.toString('utf8')) as { yaEstaba?: boolean }
+    } catch {
+      json = {}
+    }
+    return { yaEstaba: json.yaEstaba === true }
+  }
+
+  async bajarAdjunto(id: string): Promise<ArchivoBajado> {
+    const respuesta = await this.pedirCrudo('bajar el adjunto', 'GET', `/api/dmg/adjuntos/${encodeURIComponent(id)}`)
+    const nombreCrudo = respuesta.encabezados.get('x-dmg-nombre') ?? ''
+    let nombre = 'adjunto'
+    try {
+      nombre = decodeURIComponent(nombreCrudo) || 'adjunto'
+    } catch {
+      nombre = nombreCrudo || 'adjunto'
+    }
+    return {
+      contenido: respuesta.cuerpo,
+      nombre,
+      tipo: respuesta.encabezados.get('content-type') ?? 'application/octet-stream',
+      sha256: respuesta.encabezados.get('x-dmg-sha256'),
+    }
+  }
+
+  async borrarAdjunto(id: string): Promise<void> {
+    await this.pedirCrudo('borrar el adjunto', 'DELETE', `/api/dmg/adjuntos/${encodeURIComponent(id)}`)
   }
 
   // --- FuenteHoja -----------------------------------------------------------

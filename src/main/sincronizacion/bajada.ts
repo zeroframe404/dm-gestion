@@ -16,6 +16,7 @@ import { ahoraIso, interpretarFecha, interpretarNumero, limpiar } from '../impor
 import { db } from '../db/base'
 import { anotarEvento } from './cola'
 import { repiteEncabezados } from '../importacion/encabezados'
+import { esPestanaDeAnexos, guardarAnexoDeLaHoja } from './anexos'
 import { alDesaparecerDeLaHoja, alReaparecerEnLaHoja } from '../servicios/filas'
 import { normalizarEstadoDeCobro } from '../servicios/pagos'
 import { estadoDeTareaDesdeTexto, prioridadDeTareaDesdeTexto } from '../../shared/tareas'
@@ -264,7 +265,13 @@ function aplicarPestana(
       const conocida = conocidas.get(id)
       const huella = huellaDeFila(celdas, columnaId)
       if (!conocida) {
-        // Tiene _ID pero no la conocemos: vino de otra computadora. La incorpora la importación.
+        // Tiene _ID pero no la conocemos: vino de otra computadora. La incorpora la importación… salvo
+        // que sea un adjunto o un comentario (12.6): ésos se guardan acá mismo, así un comentario
+        // escrito en la otra sucursal aparece con el carril rápido y no con la importación completa.
+        if (esPestanaDeAnexos(pestana.tipo) && incorporarAnexo(pestana, id, celdas, huella, r + 1, ahora)) {
+          resultado.filasNuevas++
+          continue
+        }
         resultado.filasNuevas++
         resultado.necesitaImportacion = true
         continue
@@ -323,6 +330,36 @@ function aplicarPestana(
       filasBloqueadas,
     )
   })()
+}
+
+/**
+ * Una fila nueva de APP ADJUNTOS / APP COMENTARIOS: se guarda el registro y la fila cruda sin pasar
+ * por la importación completa. Devuelve false si la ficha madre todavía no está en esta computadora:
+ * ahí sí hace falta la importación (que trae la ficha y, con ella, el anexo).
+ */
+function incorporarAnexo(pestana: PestanaSincronizable, id: string, celdas: string[], huella: string, numeroFila: number, ahora: string): boolean {
+  if (pestana.tipo !== 'APP_ADJUNTOS' && pestana.tipo !== 'APP_COMENTARIOS') return false
+  const porCampo = pestana.layout?.mapeo.porCampo ?? new Map<Campo, number>()
+  const valor = (campo: Campo): string => {
+    const columna = porCampo.get(campo)
+    return columna === undefined ? '' : limpiar(celdas[columna])
+  }
+  const resultado = guardarAnexoDeLaHoja(pestana.tipo, { filaId: id, pestana: pestana.titulo, valor }, db())
+  if (resultado === 'sin-padre') return false
+  const encabezados = pestana.layout?.mapeo.encabezados ?? []
+  const datos: Record<string, string> = {}
+  encabezados.forEach((encabezado, i) => {
+    if (encabezado) datos[encabezado] = limpiar(celdas[i])
+  })
+  db()
+    .prepare(
+      `INSERT INTO filas_crudas (fila_id, pestana, tipo_pestana, periodo, numero_fila, datos_json, en_la_hoja, vista_en, sheet_id, huella, creado_en, actualizado_en)
+       VALUES (?, ?, ?, NULL, ?, ?, 1, ?, ?, ?, ?, ?)
+       ON CONFLICT(fila_id) DO UPDATE SET pestana = excluded.pestana, numero_fila = excluded.numero_fila, datos_json = excluded.datos_json,
+         en_la_hoja = 1, vista_en = excluded.vista_en, sheet_id = excluded.sheet_id, huella = excluded.huella, actualizado_en = excluded.actualizado_en`,
+    )
+    .run(id, pestana.titulo, pestana.tipo, numeroFila, JSON.stringify(datos), ahora, pestana.sheetId, huella, ahora, ahora)
+  return true
 }
 
 /**

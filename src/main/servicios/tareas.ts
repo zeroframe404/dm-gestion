@@ -17,6 +17,7 @@ import {
   NOMBRE_ESTADO_TAREA,
   PRIORIDADES_DE_TAREA,
   type AdjuntoDeTarea,
+  type ArchivoParaAdjuntar,
   type AvisosDeTareas,
   type ComentarioDeTarea,
   type DatosDeEdicionDeTarea,
@@ -30,17 +31,21 @@ import {
   type SesionUsuario,
   type VinculoDeTarea,
 } from '../../shared/tipos'
+import path from 'node:path'
 import { db } from '../db/base'
 import { ahoraIso, generarId, limpiar, normalizarTexto } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANAS_DE_LA_APP } from '../sincronizacion/pestanasApp'
 import {
-  borrarArchivoDeAdjunto,
+  adjuntosDe as adjuntosGenericosDe,
+  asegurarAdjuntoLocal,
+  borrarAdjuntoRegistrado,
   carpetaDeAdjuntos,
-  copiarAdjuntoEn,
-  rutaDeAdjunto,
-  subirAdjuntoADriveComo,
+  copiarADrive,
+  registrarAdjunto,
+  type AdjuntoGenerico,
 } from './adjuntos'
+import { registrarComentarioNuevo } from '../sincronizacion/anexos'
 import { avisarTareaCompletada } from './avisos'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
@@ -294,31 +299,25 @@ function comentariosDe(tareaId: number): ComentarioDeTarea[] {
   ).map((c) => ({ id: c.id, texto: c.texto, usuarioNombre: c.usuario_nombre, creadoEn: c.creado_en }))
 }
 
-function adjuntosDe(tareaId: number): AdjuntoDeTarea[] {
-  return (
-    db()
-      .prepare(
-        `SELECT id, nombre, tamano, creado_en, usuario_nombre, drive_id, drive_error
-         FROM tarea_adjuntos WHERE tarea_id = ? ORDER BY id DESC`,
-      )
-      .all(tareaId) as Array<{
-      id: number
-      nombre: string
-      tamano: number
-      creado_en: string
-      usuario_nombre: string
-      drive_id: string | null
-      drive_error: string | null
-    }>
-  ).map((a) => ({
+function aAdjuntoDeTarea(a: AdjuntoGenerico): AdjuntoDeTarea {
+  return {
     id: a.id,
     nombre: a.nombre,
+    tipo: a.tipo,
     tamano: a.tamano,
-    creadoEn: a.creado_en,
-    usuarioNombre: a.usuario_nombre,
-    enDrive: a.drive_id !== null,
-    errorDeDrive: a.drive_error,
-  }))
+    creadoEn: a.creadoEn,
+    usuarioNombre: a.usuarioNombre,
+    enDrive: a.enDrive,
+    errorDeDrive: a.errorDeDrive,
+    enElServidor: a.enElServidor,
+    errorDelServidor: a.errorDelServidor,
+    descargado: a.descargado,
+    miniatura: a.miniatura,
+  }
+}
+
+function adjuntosDe(tareaId: number): AdjuntoDeTarea[] {
+  return adjuntosGenericosDe('tarea', tareaId).map(aAdjuntoDeTarea)
 }
 
 /**
@@ -624,10 +623,12 @@ export function agregarComentario(tareaId: number, textoDelComentario: unknown, 
   buscarTarea(id)
   const contenido = texto(textoDelComentario, 'El comentario', 1, 2000)
 
-  db()
-    .prepare('INSERT INTO tarea_comentarios (tarea_id, texto, usuario_id, usuario_nombre, creado_en) VALUES (?, ?, ?, ?, ?)')
-    .run(id, contenido, actor.id, actor.nombre, ahoraIso())
+  const { id: comentarioId } = db()
+    .prepare('INSERT INTO tarea_comentarios (tarea_id, texto, usuario_id, usuario_nombre, creado_en) VALUES (?, ?, ?, ?, ?) RETURNING id')
+    .get(id, contenido, actor.id, actor.nombre, ahoraIso()) as { id: number }
   db().prepare('UPDATE tareas SET actualizado_en = ? WHERE id = ?').run(ahoraIso(), id)
+  // 12.6: el comentario viaja por APP COMENTARIOS y aparece en la ficha de la tarea en las otras PC.
+  registrarComentarioNuevo('tarea', id, comentarioId, actor)
 
   registrarCambio(actor, {
     accion: 'tarea',
@@ -647,58 +648,82 @@ export function agregarComentario(tareaId: number, textoDelComentario: unknown, 
 
 export async function agregarAdjuntosDeTarea(tareaId: number, rutas: unknown, actor: SesionUsuario): Promise<FichaTarea> {
   const id = enteroPositivo(tareaId, 'La tarea')
-  const tarea = buscarTarea(id)
+  buscarTarea(id)
   if (!Array.isArray(rutas) || rutas.length === 0) throw new ErrorDeNegocio('No elegiste ningún archivo.')
-
   const dameToken = dadorDeTokenDeGoogle()
   for (const ruta of rutas) {
-    const copia = copiarAdjuntoEn(`tarea-${id}`, texto(ruta, 'La ruta del archivo', 1, 4096))
-    const drive = await subirAdjuntoADriveComo(dameToken, `tarea-${id}`, copia)
-    db()
-      .prepare(
-        `INSERT INTO tarea_adjuntos (tarea_id, nombre, archivo, tamano, drive_id, drive_error, usuario_id, usuario_nombre, creado_en)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(id, copia.nombre, copia.archivo, copia.tamano, drive.driveId, drive.error, actor.id, actor.nombre, ahoraIso())
-    registrarCambio(actor, {
-      accion: 'tarea',
-      tabla: 'tarea_adjuntos',
-      registroId: id,
-      filaId: tarea.fila_id,
-      campo: 'ADJUNTO',
-      valorAnterior: null,
-      valorNuevo: copia.nombre,
-    })
+    const adjunto = registrarAdjunto('tarea', id, { nombre: path.basename(texto(ruta, 'La ruta del archivo', 1, 4096)), ruta: String(ruta) }, actor)
+    await copiarADrive('tarea', adjunto.id, dameToken)
+    anotarAdjunto(id, adjunto.nombre, actor)
   }
   return fichaDeTarea(id, actor)
 }
 
-export function rutaDelAdjuntoDeTarea(adjuntoId: number): string {
-  const id = enteroPositivo(adjuntoId, 'El documento')
-  const adjunto = db().prepare('SELECT archivo FROM tarea_adjuntos WHERE id = ?').get(id) as { archivo: string } | undefined
-  if (!adjunto) throw new ErrorDeNegocio('No se encontró ese documento.')
-  return rutaDeAdjunto(adjunto.archivo)
+/**
+ * Los archivos que vienen de la pantalla (arrastrados, pegados o elegidos, ya achicados si eran fotos):
+ * los bytes viajan por IPC, no hay ruta en el disco. Es el camino de la 12.6; el de las rutas queda
+ * para la prueba de humo, que no puede manejar un diálogo del sistema.
+ */
+export async function agregarArchivosDeTarea(tareaId: number, archivos: unknown, actor: SesionUsuario): Promise<FichaTarea> {
+  const id = enteroPositivo(tareaId, 'La tarea')
+  buscarTarea(id)
+  const lista = archivosParaAdjuntar(archivos)
+  const dameToken = dadorDeTokenDeGoogle()
+  for (const archivo of lista) {
+    const adjunto = registrarAdjunto('tarea', id, archivo, actor)
+    await copiarADrive('tarea', adjunto.id, dameToken)
+    anotarAdjunto(id, adjunto.nombre, actor)
+  }
+  return fichaDeTarea(id, actor)
+}
+
+/** Lo que manda la pantalla, comprobado: nombre, tipo y bytes de cada archivo. */
+export function archivosParaAdjuntar(archivos: unknown): ArchivoParaAdjuntar[] {
+  if (!Array.isArray(archivos) || archivos.length === 0) throw new ErrorDeNegocio('No elegiste ningún archivo.')
+  return archivos.map((a) => {
+    const o = objeto(a, 'El archivo')
+    const contenido = o.contenido
+    if (!(contenido instanceof Uint8Array) || contenido.length === 0) throw new ErrorDeNegocio('Uno de los archivos llegó vacío.')
+    return {
+      nombre: texto(o.nombre, 'El nombre del archivo', 1, 255),
+      tipo: typeof o.tipo === 'string' ? o.tipo : '',
+      contenido,
+      ancho: typeof o.ancho === 'number' ? o.ancho : null,
+      alto: typeof o.alto === 'number' ? o.alto : null,
+    }
+  })
+}
+
+function anotarAdjunto(tareaId: number, nombre: string, actor: SesionUsuario): void {
+  registrarCambio(actor, {
+    accion: 'tarea',
+    tabla: 'tarea_adjuntos',
+    registroId: tareaId,
+    filaId: buscarTarea(tareaId).fila_id,
+    campo: 'ADJUNTO',
+    valorAnterior: null,
+    valorNuevo: nombre,
+  })
+}
+
+/** La ruta del archivo en esta computadora; si lo cargó otra, se baja del servidor antes. */
+export async function rutaDelAdjuntoDeTarea(adjuntoId: number): Promise<string> {
+  return asegurarAdjuntoLocal('tarea', enteroPositivo(adjuntoId, 'El documento'))
 }
 
 export function borrarAdjuntoDeTarea(adjuntoId: number, actor: SesionUsuario): FichaTarea {
   const id = enteroPositivo(adjuntoId, 'El documento')
-  const adjunto = db().prepare('SELECT id, tarea_id, nombre, archivo FROM tarea_adjuntos WHERE id = ?').get(id) as
-    | { id: number; tarea_id: number; nombre: string; archivo: string }
-    | undefined
-  if (!adjunto) throw new ErrorDeNegocio('No se encontró ese documento.')
-
-  db().prepare('DELETE FROM tarea_adjuntos WHERE id = ?').run(id)
-  borrarArchivoDeAdjunto(adjunto.archivo)
+  const { padreId, nombre } = borrarAdjuntoRegistrado('tarea', id, actor)
   registrarCambio(actor, {
     accion: 'tarea',
     tabla: 'tarea_adjuntos',
-    registroId: adjunto.tarea_id,
-    filaId: buscarTarea(adjunto.tarea_id).fila_id,
+    registroId: padreId,
+    filaId: buscarTarea(padreId).fila_id,
     campo: 'ADJUNTO BORRADO',
-    valorAnterior: adjunto.nombre,
+    valorAnterior: nombre,
     valorNuevo: null,
   })
-  return fichaDeTarea(adjunto.tarea_id, actor)
+  return fichaDeTarea(padreId, actor)
 }
 
 // ---------------------------------------------------------------------------

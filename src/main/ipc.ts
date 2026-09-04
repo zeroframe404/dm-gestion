@@ -96,6 +96,7 @@ import {
 } from './servicios/presupuestos'
 import {
   agregarAdjuntosDeTarea,
+  agregarArchivosDeTarea,
   agregarComentario,
   avisosDeTareas,
   borrarAdjuntoDeTarea,
@@ -141,6 +142,13 @@ import {
   vehiculosDeCliente,
   verPoliza,
 } from './servicios/polizas'
+import {
+  adjuntosDePoliza,
+  agregarAdjuntosDePoliza,
+  agregarArchivosDePoliza,
+  borrarAdjuntoDePoliza,
+  rutaDelAdjuntoDePoliza,
+} from './servicios/adjuntosDePoliza'
 import { borrarRegla, crearRegla, editarRegla, matrizDeCobertura, reglasVigentes } from './servicios/reglas'
 import {
   borrarClausula,
@@ -158,6 +166,7 @@ import {
 import { adoptarReferenciasDelVps, estadoCompartidoDeReferencias, publicarReferencias } from './servicios/referenciasCompartidas'
 import {
   agregarAdjuntos,
+  agregarArchivosDeSiniestro,
   agregarObservacion,
   altaDeSiniestro,
   borrarAdjunto,
@@ -865,9 +874,12 @@ export function registrarIpc(): void {
     if (elegido.canceled || elegido.filePaths.length === 0) return exito(fichaDeSiniestro(id))
     return exito(await agregarAdjuntos(id, elegido.filePaths, categoria, detalle, actor))
   })
+  manejar('siniestros:adjuntarArchivos', async (siniestroId, archivos, categoria, detalle) =>
+    exito(await agregarArchivosDeSiniestro(enteroPositivo(siniestroId, 'El siniestro'), archivos, categoria, detalle, exigirEdicion('siniestros'))),
+  )
   manejar('siniestros:abrirAdjunto', async (adjuntoId) => {
     exigirVista('siniestros')
-    const error = await shell.openPath(rutaDelAdjunto(adjuntoId))
+    const error = await shell.openPath(await rutaDelAdjunto(adjuntoId))
     if (error) throw new ErrorDeNegocio(`No se pudo abrir el documento: ${error}`)
     return exito(null)
   })
@@ -927,6 +939,43 @@ export function registrarIpc(): void {
   // cobertura: es una regla de negocio, no un permiso de pantalla.
   manejar('polizas:crear', (datos) => exito(crearPoliza(datos, exigirEdicion('polizas'))))
   manejar('polizas:editar', (polizaId, datos) => exito(editarPoliza(enteroPositivo(polizaId, 'La póliza'), datos, exigirEdicion('polizas'))))
+  // Fotos y documentos de la póliza (12.6). Ver los documentos de una póliza es ver la póliza; borrar
+  // uno es definitivo y queda para ADMIN y SUPER_ADMIN, como en siniestros y tareas.
+  manejar('polizas:adjuntos', (polizaId) => {
+    exigirVista('polizas')
+    return exito(adjuntosDePoliza(polizaId))
+  })
+  manejar('polizas:adjuntarArchivos', async (polizaId, archivos) =>
+    exito(await agregarArchivosDePoliza(enteroPositivo(polizaId, 'La póliza'), archivos, exigirEdicion('polizas'))),
+  )
+  manejar('polizas:adjuntar', async (polizaId, rutas) => {
+    const actor = exigirEdicion('polizas')
+    const id = enteroPositivo(polizaId, 'La póliza')
+    if (rutas !== null && rutas !== undefined) return exito(await agregarAdjuntosDePoliza(id, rutas, actor))
+    const ventana = ventanaActual()
+    const opciones = {
+      title: 'Elegí las fotos y documentos de la póliza',
+      buttonLabel: 'Adjuntar',
+      properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+      filters: [
+        { name: 'Fotos y documentos', extensions: ['jpg', 'jpeg', 'png', 'webp', 'heic', 'pdf', 'doc', 'docx', 'xls', 'xlsx'] },
+        { name: 'Todos los archivos', extensions: ['*'] },
+      ],
+    }
+    const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
+    if (elegido.canceled || elegido.filePaths.length === 0) return exito(adjuntosDePoliza(id))
+    return exito(await agregarAdjuntosDePoliza(id, elegido.filePaths, actor))
+  })
+  manejar('polizas:abrirAdjunto', async (adjuntoId) => {
+    exigirVista('polizas')
+    const error = await shell.openPath(await rutaDelAdjuntoDePoliza(adjuntoId))
+    if (error) throw new ErrorDeNegocio(`No se pudo abrir el documento: ${error}`)
+    return exito(null)
+  })
+  manejar('polizas:borrarAdjunto', (adjuntoId) => {
+    exigirEdicion('polizas')
+    return exito(borrarAdjuntoDePoliza(adjuntoId, exigirRol('SUPER_ADMIN', 'ADMIN')))
+  })
   manejar('polizas:darDeBaja', (polizaId, datos) =>
     exito(darDeBajaPoliza(enteroPositivo(polizaId, 'La póliza'), datos, exigirEdicion('polizas'))),
   )
@@ -1106,9 +1155,12 @@ export function registrarIpc(): void {
     if (elegido.canceled || elegido.filePaths.length === 0) return exito(fichaDeTarea(id, actor))
     return exito(await agregarAdjuntosDeTarea(id, elegido.filePaths, actor))
   })
+  manejar('tareas:adjuntarArchivos', async (tareaId, archivos) =>
+    exito(await agregarArchivosDeTarea(enteroPositivo(tareaId, 'La tarea'), archivos, exigirEdicion('tareas'))),
+  )
   manejar('tareas:abrirAdjunto', async (adjuntoId) => {
     exigirVista('tareas')
-    const error = await shell.openPath(rutaDelAdjuntoDeTarea(adjuntoId))
+    const error = await shell.openPath(await rutaDelAdjuntoDeTarea(adjuntoId))
     if (error) throw new ErrorDeNegocio(`No se pudo abrir el documento: ${error}`)
     return exito(null)
   })
