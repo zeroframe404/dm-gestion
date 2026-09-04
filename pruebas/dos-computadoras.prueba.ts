@@ -7,7 +7,7 @@ import test from 'node:test'
 import { abrirBaseDeDatos, cerrarBaseDeDatos, usarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
 import { ejecutarImportacion } from '../src/main/importacion/importador'
 import { ahoraIso } from '../src/main/importacion/normalizar'
-import { bajasDelMes, darDeBaja, deshacerBaja, planillaDelMes, registrarPago } from '../src/main/servicios/cartera'
+import { bajasDelMes, darDeBaja, deshacerBaja, editarCelda, planillaDelMes, registrarPago } from '../src/main/servicios/cartera'
 import { cajaDelDia, cambiarResultado, imputados } from '../src/main/servicios/cobranzas'
 import { PESTANA_APP } from '../src/main/servicios/filas'
 import { hojaDeImputados, subirPagosRezagados } from '../src/main/servicios/pagos'
@@ -177,6 +177,63 @@ test('una baja hecha en una computadora saca la cuota de la planilla de la otra,
   await lanus1.motor.ciclarBajada()
   await lanus1.importar()
   assert.equal(bajasDelMes('2026-08').filter((b) => b.clienteNombre === CLIENTES.martinez.nombre).length, 1, 'tampoco en la primera')
+  cerrarTodo()
+})
+
+test('dos computadoras borran en el mismo minuto: cada una saca SU renglón aunque la grilla se haya corrido (12.6)', async () => {
+  // El caso que duplicaba la cartera y la hacía distinta en cada PC. Lanús 1 lee la planilla, decide
+  // borrar el renglón de López por su número, y ANTES de que ese borrado llegue Lanús 2 borra un
+  // renglón más arriba: en la base todos los de abajo se corren uno. Hasta la 12.5 el número viejo
+  // borraba la póliza de al lado; ahora el borrado viaja con el _ID y cae donde tiene que caer.
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+  const idsAntes = hoja.idsDe('AGOSTO')
+  const renglonDe = (filaId: string) => [...idsAntes.entries()].find(([, id]) => id === filaId)?.[0] ?? -1
+
+  en(lanus1)
+  const lopez = exigirFila(CLIENTES.lopez.nombre)
+  const suarez = exigirFila(CLIENTES.suarez.nombre)
+  en(lanus2)
+  const gonzalez = exigirFila(CLIENTES.gonzalez.nombre)
+  assert.ok(renglonDe(gonzalez.filaId) < renglonDe(lopez.filaId), 'González está más arriba que López en la planilla')
+  assert.ok(renglonDe(lopez.filaId) < renglonDe(suarez.filaId), 'y Suárez, más abajo que López')
+
+  // Lanús 1: da de baja a López y además le anota un aviso a Suárez (una celda, no un borrado).
+  en(lanus1)
+  darDeBaja(lopez.filaId, { motivo: 'VENDIO', nota: '' }, MILAGROS)
+  editarCelda(suarez.filaId, 'observaciones', 'LLAMAR EL LUNES', MILAGROS)
+  // Lanús 2: da de baja a González, el renglón de más arriba.
+  en(lanus2)
+  darDeBaja(gonzalez.filaId, { motivo: 'VENDIO', nota: '' }, DAIANA)
+
+  // La carrera: Lanús 1 lee la planilla y, entre esa lectura y su escritura, Lanús 2 sube lo suyo.
+  const leerDeVerdad = hoja.leerVarias.bind(hoja)
+  hoja.leerVarias = async (titulos, hastaFila) => {
+    const lectura = await leerDeVerdad(titulos, hastaFila)
+    hoja.leerVarias = leerDeVerdad
+    await subirTodo(lanus2)
+    en(lanus1)
+    return lectura
+  }
+  await subirTodo(lanus1)
+
+  assert.equal(renglonesCon(hoja, 'AGOSTO', gonzalez.filaId), 0, 'González salió de la planilla')
+  assert.equal(renglonesCon(hoja, 'AGOSTO', lopez.filaId), 0, 'López salió de la planilla')
+  assert.equal(renglonesCon(hoja, 'AGOSTO', suarez.filaId), 1, 'Suárez sigue: no se borró el renglón de al lado')
+  assert.equal(hoja.idsDe('AGOSTO').size, idsAntes.size - 2, 'se fueron exactamente dos renglones')
+  assert.equal(celda(hoja, 'AGOSTO', suarez.filaId, 'OBS'), 'LLAMAR EL LUNES', 'el aviso cayó en el renglón de Suárez, no en el que ahora ocupa su número viejo')
+  for (const otro of [CLIENTES.perezAuto, CLIENTES.perezMoto, CLIENTES.rodriguez, CLIENTES.martinez]) {
+    en(lanus1)
+    assert.ok(fila(otro.nombre), `${otro.nombre} sigue en la planilla de Lanús 1`)
+  }
+
+  // Las dos computadoras terminan viendo lo mismo: dos bajas, ninguna fantasma.
+  for (const pc of [lanus1, lanus2]) {
+    en(pc)
+    await pc.motor.ciclarBajada()
+    assert.equal(planillaDelMes('2026-08').filas.length, idsAntes.size - 2, `${pc.nombre}: la planilla tiene dos filas menos`)
+    assert.equal(bajasDelMes('2026-08').length, 2, `${pc.nombre}: dos bajas, las dos de verdad`)
+    assert.ok(fila(CLIENTES.suarez.nombre), `${pc.nombre}: Suárez sigue vigente`)
+  }
   cerrarTodo()
 })
 

@@ -1,7 +1,19 @@
 // Hoja de cálculo simulada en memoria: implementa `FuenteHoja` igual que Google Sheets, incluidas sus
 // mañas (filas y celdas vacías del final que la API NO devuelve, grilla con ancho fijo, columnas ocultas).
 // Sirve para probar el importador entero sin tocar ninguna hoja real.
-import type { CeldaAEscribir, EstructuraHoja, FuenteHoja, LecturaDePestana, PestanaDeHoja, TramoDeColumna } from '../src/main/importacion/fuente'
+import type {
+  CeldaAEscribir,
+  EstructuraHoja,
+  FilaABorrar,
+  FuenteHoja,
+  LecturaDePestana,
+  PestanaDeHoja,
+  ResultadoDeAgregado,
+  ResultadoDeBorrado,
+  ResultadoDeCeldas,
+  ResultadoDeTramos,
+  TramoDeColumna,
+} from '../src/main/importacion/fuente'
 
 export interface PestanaSimulada {
   titulo: string
@@ -77,6 +89,35 @@ export class HojaSimulada implements FuenteHoja {
     return p
   }
 
+  // --- Renglones identificados por _ID (la misma semántica que la base del VPS, 12.6) -------------
+
+  /** La columna del _ID de una pestaña: la que dice quien llama, si no la del encabezado «_ID». */
+  private columnaIdInterna(p: PestanaInterna, pedida?: number | null): number | null {
+    if (Number.isInteger(pedida) && (pedida as number) >= 0) return pedida as number
+    for (const fila of p.valores.slice(0, 5)) {
+      const indice = fila.findIndex((celda) => (celda ?? '').trim().toUpperCase() === '_ID')
+      if (indice >= 0) return indice
+    }
+    return null
+  }
+
+  /** El primer renglón (base 1) que lleva cada _ID. */
+  private renglonesPorId(p: PestanaInterna, columnaId: number): Map<string, number> {
+    const mapa = new Map<string, number>()
+    p.valores.forEach((fila, indice) => {
+      const id = (fila[columnaId] ?? '').trim()
+      if (id && !mapa.has(id)) mapa.set(id, indice + 1)
+    })
+    return mapa
+  }
+
+  /** A qué renglón apunta de verdad un {numero, id}: al número si sigue llevando ese _ID, si no al que lo lleva hoy. */
+  private resolverRenglon(p: PestanaInterna, numero: number, id: string, columnaId: number | null): number | null {
+    if (!id || columnaId === null) return numero
+    if (((p.valores[numero - 1] ?? [])[columnaId] ?? '').trim() === id) return numero
+    return this.renglonesPorId(p, columnaId).get(id) ?? null
+  }
+
   async estructura(): Promise<EstructuraHoja> {
     this.llamadas.estructura++
     this.exigirConexion()
@@ -108,22 +149,32 @@ export class HojaSimulada implements FuenteHoja {
     if (cantidad > p.columnas) p.columnas = cantidad
   }
 
-  async escribirTramos(titulo: string, indiceColumna: number, tramos: TramoDeColumna[]): Promise<void> {
+  async escribirTramos(titulo: string, indiceColumna: number, tramos: TramoDeColumna[]): Promise<ResultadoDeTramos> {
     this.llamadas.escribirColumna++
     if (this.soloLectura) throw Object.assign(new Error('The caller does not have permission'), { status: 403 })
     const p = this.buscarPorTitulo(titulo)
     if (indiceColumna >= p.columnas) {
       throw Object.assign(new Error(`Range ('${titulo}'!) exceeds grid limits`), { status: 400 })
     }
+    const saltadas: number[] = []
     for (const tramo of tramos) {
       tramo.valores.forEach((valor, desplazamiento) => {
         const fila = tramo.fila - 1 + desplazamiento
+        // Con `previos`, se escribe sólo la celda que sigue diciendo lo que se vio (como la base del VPS).
+        if (Array.isArray(tramo.previos)) {
+          const actual = ((p.valores[fila] ?? [])[indiceColumna] ?? '').trim()
+          if (actual !== (tramo.previos[desplazamiento] ?? '').trim()) {
+            saltadas.push(fila + 1)
+            return
+          }
+        }
         while (p.valores.length <= fila) p.valores.push([])
         const destino = p.valores[fila]!
         while (destino.length <= indiceColumna) destino.push('')
         destino[indiceColumna] = valor
       })
     }
+    return { saltadas }
   }
 
   async ocultarColumna(sheetId: number, indiceColumna: number): Promise<void> {
@@ -153,21 +204,33 @@ export class HojaSimulada implements FuenteHoja {
     return filas
   }
 
-  async escribirCeldas(celdas: CeldaAEscribir[]): Promise<void> {
+  async escribirCeldas(celdas: CeldaAEscribir[], columnaIdPorTitulo: Record<string, number> = {}): Promise<ResultadoDeCeldas> {
     this.llamadas.escribirCeldas++
     this.exigirConexion()
     if (this.soloLectura) throw Object.assign(new Error('The caller does not have permission'), { status: 403 })
+    const noEncontradas: Array<{ titulo: string; id: string }> = []
     for (const celda of celdas) {
       const p = this.buscarPorTitulo(celda.titulo)
+      let fila = celda.fila
+      // Con _ID: el renglón se resuelve como en la base del VPS, y si ya no está NO se crea uno nuevo.
+      if (celda.id) {
+        const resuelto = this.resolverRenglon(p, celda.fila, celda.id, this.columnaIdInterna(p, columnaIdPorTitulo[celda.titulo]))
+        if (resuelto === null) {
+          if (!noEncontradas.some((n) => n.titulo === celda.titulo && n.id === celda.id)) noEncontradas.push({ titulo: celda.titulo, id: celda.id })
+          continue
+        }
+        fila = resuelto
+      }
       if (celda.columna >= p.columnas) p.columnas = celda.columna + 1
-      while (p.valores.length < celda.fila) p.valores.push([])
-      const destino = p.valores[celda.fila - 1]!
+      while (p.valores.length < fila) p.valores.push([])
+      const destino = p.valores[fila - 1]!
       while (destino.length <= celda.columna) destino.push('')
       destino[celda.columna] = celda.valor
     }
+    return { noEncontradas }
   }
 
-  async agregarFilas(titulo: string, filas: string[][]): Promise<number> {
+  async agregarFilas(titulo: string, filas: string[][]): Promise<ResultadoDeAgregado> {
     this.llamadas.agregarFilas++
     this.exigirConexion()
     if (this.soloLectura) throw Object.assign(new Error('The caller does not have permission'), { status: 403 })
@@ -175,19 +238,43 @@ export class HojaSimulada implements FuenteHoja {
     // Google agrega después de la última fila con datos, no después de la última fila de la grilla.
     while (p.valores.length > 0 && (p.valores[p.valores.length - 1] ?? []).every((v) => (v ?? '').trim() === '')) p.valores.pop()
     const primera = p.valores.length + 1
+    // Como la base del VPS: la fila cuyo _ID ya está en la pestaña (o repetido en la tanda) no entra.
+    const columnaId = this.columnaIdInterna(p)
+    const vistos = columnaId === null ? new Set<string>() : new Set(this.renglonesPorId(p, columnaId).keys())
+    const numeros: Array<number | null> = []
     for (const fila of filas) {
+      const id = columnaId === null ? '' : (fila[columnaId] ?? '').trim()
+      if (id && vistos.has(id)) {
+        numeros.push(null)
+        continue
+      }
+      if (id) vistos.add(id)
       p.valores.push([...fila])
+      numeros.push(p.valores.length)
       if (fila.length > p.columnas) p.columnas = fila.length
     }
-    return primera
+    return { primeraFila: numeros.some((n) => n !== null) ? primera : 0, numeros }
   }
 
-  async borrarFilas(sheetId: number, filas: number[]): Promise<void> {
+  async borrarFilas(sheetId: number, filas: Array<number | FilaABorrar>, columnaId: number | null = null): Promise<ResultadoDeBorrado> {
     this.llamadas.borrarFilas++
     this.exigirConexion()
     if (this.soloLectura) throw Object.assign(new Error('The caller does not have permission'), { status: 403 })
     const p = this.buscarPorId(sheetId)
-    for (const fila of [...new Set(filas)].sort((a, b) => b - a)) p.valores.splice(fila - 1, 1)
+    const columna = this.columnaIdInterna(p, columnaId)
+    const noEncontradas: string[] = []
+    const numeros: number[] = []
+    for (const fila of filas) {
+      if (typeof fila === 'number') {
+        numeros.push(fila)
+        continue
+      }
+      const resuelto = this.resolverRenglon(p, fila.numero, fila.id ?? '', columna)
+      if (resuelto === null) noEncontradas.push(fila.id ?? '')
+      else numeros.push(resuelto)
+    }
+    for (const fila of [...new Set(numeros)].sort((a, b) => b - a)) p.valores.splice(fila - 1, 1)
+    return { noEncontradas }
   }
 
   async crearPestana(titulo: string, encabezados: string[]): Promise<PestanaDeHoja> {

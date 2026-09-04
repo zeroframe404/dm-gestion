@@ -146,6 +146,36 @@ export class VpsSimulado {
     return valores
   }
 
+  // --- Renglones identificados por _ID (la misma semántica que el servidor real, 12.6) -------------
+
+  /** La columna del _ID de una pestaña: la que dice quien llama, si no la del encabezado «_ID». */
+  columnaIdDe(pestana, pedida) {
+    if (Number.isInteger(pedida) && pedida >= 0) return pedida
+    for (let numero = 1; numero <= 5; numero++) {
+      const fila = pestana.filas.get(numero) ?? []
+      const indice = fila.findIndex((celda) => comoTexto(celda).trim().toUpperCase() === '_ID')
+      if (indice >= 0) return indice
+    }
+    return null
+  }
+
+  /** El primer renglón que lleva cada _ID. */
+  renglonesPorId(pestana, columnaId) {
+    const mapa = new Map()
+    for (const numero of [...pestana.filas.keys()].sort((a, b) => a - b)) {
+      const id = comoTexto((pestana.filas.get(numero) ?? [])[columnaId]).trim()
+      if (id && !mapa.has(id)) mapa.set(id, numero)
+    }
+    return mapa
+  }
+
+  /** A qué renglón apunta un {numero, id}: al número si sigue llevando ese _ID, si no al que lo lleva hoy. */
+  resolverRenglon(pestana, numero, id, columnaId) {
+    if (!id || columnaId === null) return numero
+    if (comoTexto((pestana.filas.get(numero) ?? [])[columnaId]).trim() === id) return numero
+    return this.renglonesPorId(pestana, columnaId).get(id) ?? null
+  }
+
   /** «Otra computadora» (o el panel web) cambió una celda directamente en la base. */
   editarDirecto(titulo, fila, columna, valor) {
     const pestana = this.porTitulo(titulo)
@@ -248,13 +278,28 @@ export class VpsSimulado {
     if (metodo === 'POST' && ruta === '/api/dmg/celdas') {
       this.llamadas.celdas++
       if (!this.exigirInicializada(responder)) return
+      const columnaIdPorTitulo = json.columnaId && typeof json.columnaId === 'object' ? json.columnaId : {}
+      const noEncontradas = []
+      let escritas = 0
       for (const celda of json.celdas ?? []) {
         const pestana = this.porTitulo(String(celda.titulo))
         if (!pestana) return responder(400, { error: `La pestaña "${celda.titulo}" no existe en la hoja del VPS.` })
-        this.editarDirecto(pestana.titulo, celda.fila, celda.columna, celda.valor)
+        let fila = Number(celda.fila)
+        const id = typeof celda.id === 'string' ? celda.id.trim() : ''
+        if (id) {
+          // Con _ID: se resuelve contra la pestaña tal como está, y si ya no está NO se crea un renglón.
+          const resuelto = this.resolverRenglon(pestana, fila, id, this.columnaIdDe(pestana, columnaIdPorTitulo[pestana.titulo]))
+          if (resuelto === null) {
+            if (!noEncontradas.some((n) => n.titulo === pestana.titulo && n.id === id)) noEncontradas.push({ titulo: pestana.titulo, id })
+            continue
+          }
+          fila = resuelto
+        }
+        this.editarDirecto(pestana.titulo, fila, celda.columna, celda.valor)
         if (celda.columna + 1 > pestana.columnas) pestana.columnas = celda.columna + 1
+        escritas++
       }
-      return responder(200, { escritas: (json.celdas ?? []).length })
+      return responder(200, { escritas, noEncontradas })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/filas/agregar') {
       this.llamadas.agregar++
@@ -264,33 +309,62 @@ export class VpsSimulado {
       const filas = Array.isArray(json.filas) ? json.filas : []
       if (filas.length === 0) return responder(400, { error: 'No hay filas para agregar.' })
       const primeraFila = this.maxNumero(pestana) + 1
-      filas.forEach((fila, indice) => {
-        pestana.filas.set(primeraFila + indice, normalizarFila(fila))
-      })
-      return responder(200, { primeraFila })
+      // Como el servidor real: la fila cuyo _ID ya está en la pestaña (o repetido en la tanda) no entra,
+      // y la respuesta dice en qué renglón quedó cada una (null para la que se dejó afuera).
+      const columnaId = this.columnaIdDe(pestana, null)
+      const vistos = columnaId === null ? new Set() : new Set(this.renglonesPorId(pestana, columnaId).keys())
+      const numeros = []
+      let siguiente = primeraFila
+      let repetidas = 0
+      for (const fila of filas) {
+        const celdas = normalizarFila(fila)
+        const id = columnaId === null ? '' : comoTexto(celdas[columnaId]).trim()
+        if (id && vistos.has(id)) {
+          numeros.push(null)
+          repetidas++
+          continue
+        }
+        if (id) vistos.add(id)
+        pestana.filas.set(siguiente, celdas)
+        numeros.push(siguiente)
+        siguiente++
+      }
+      return responder(200, { primeraFila, agregadas: siguiente - primeraFila, repetidas, numeros })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/filas/borrar') {
       this.llamadas.borrar++
       if (!this.exigirInicializada(responder)) return
       const pestana = this.porSheetId(Number(json.sheetId))
       if (!pestana) return responder(400, { error: `No hay ninguna pestaña con sheetId ${json.sheetId} en la hoja del VPS.` })
-      const borradas = [...new Set((json.filas ?? []).map(Number))].sort((a, b) => a - b)
+      const columnaId = this.columnaIdDe(pestana, Number.isInteger(json.columnaId) ? json.columnaId : null)
+      const noEncontradas = []
+      // Con `objetivos` mandan ellos y `filas` se ignora (ver el servidor real): sumar los números
+      // borraría por posición el renglón que el _ID acaba de decir que ya no está.
+      const objetivos = Array.isArray(json.objetivos) ? json.objetivos : []
+      const numeros = objetivos.length > 0 ? [] : (json.filas ?? []).map(Number)
+      for (const objetivo of objetivos) {
+        const resuelto = this.resolverRenglon(pestana, Number(objetivo.numero), comoTexto(objetivo.id).trim(), columnaId)
+        if (resuelto === null) noEncontradas.push(comoTexto(objetivo.id))
+        else numeros.push(resuelto)
+      }
+      const borradas = [...new Set(numeros)].sort((a, b) => a - b)
       const habiaAlmacenadas = borradas.some((numero) => pestana.filas.has(numero))
       const restantes = [...pestana.filas.entries()].filter(([numero]) => !borradas.includes(numero)).sort((a, b) => a[0] - b[0])
-      if (!habiaAlmacenadas) return responder(200, { borradas: 0 })
+      if (!habiaAlmacenadas) return responder(200, { borradas: 0, noEncontradas })
       pestana.filas = new Map(
         restantes.map(([numero, celdas]) => {
           const corridas = borradas.filter((borrada) => borrada < numero).length
           return [numero - corridas, celdas]
         }),
       )
-      return responder(200, { borradas: borradas.length })
+      return responder(200, { borradas: borradas.length, noEncontradas })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/pestanas') {
       this.llamadas.pestanas++
       if (!this.exigirInicializada(responder)) return
       const titulo = String(json.titulo ?? '').trim()
-      if (this.porTitulo(titulo)) return responder(400, { error: `Ya existe una pestaña llamada "${titulo}".` })
+      // 409, como el servidor real: es el candado de «Cerrar mes» entre dos computadoras.
+      if (this.porTitulo(titulo)) return responder(409, { error: `Ya existe una pestaña llamada "${titulo}".` })
       const encabezados = normalizarFila(json.encabezados)
       this.cargarPestanaDirecto({ titulo, valores: encabezados.length > 0 ? [encabezados] : [] })
       const pestana = this.porTitulo(titulo)
@@ -316,15 +390,26 @@ export class VpsSimulado {
       const pestana = this.porTitulo(String(json.titulo))
       if (!pestana) return responder(400, { error: `La pestaña "${json.titulo}" no existe en la hoja del VPS.` })
       let escritas = 0
+      const saltadas = []
       for (const tramo of json.tramos ?? []) {
         const valores = Array.isArray(tramo.valores) ? tramo.valores : []
+        const previos = Array.isArray(tramo.previos) ? tramo.previos : null
         valores.forEach((valor, desplazamiento) => {
-          this.editarDirecto(pestana.titulo, Number(tramo.fila) + desplazamiento, Number(json.indiceColumna), valor)
+          const numero = Number(tramo.fila) + desplazamiento
+          // Con `previos`, sólo se escribe la celda que sigue diciendo lo que la computadora vio.
+          if (previos) {
+            const actual = comoTexto((pestana.filas.get(numero) ?? [])[Number(json.indiceColumna)]).trim()
+            if (actual !== comoTexto(previos[desplazamiento]).trim()) {
+              saltadas.push(numero)
+              return
+            }
+          }
+          this.editarDirecto(pestana.titulo, numero, Number(json.indiceColumna), valor)
           escritas++
         })
       }
       if (Number(json.indiceColumna) + 1 > pestana.columnas) pestana.columnas = Number(json.indiceColumna) + 1
-      return responder(200, { escritas })
+      return responder(200, { escritas, saltadas })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/columnas/ocultar') {
       if (!this.exigirInicializada(responder)) return

@@ -166,6 +166,7 @@ interface FilaConocida {
   fila_id: string
   pestana: string
   numero_fila: number
+  sheet_id: number | null
   datos_json: string
   huella: string | null
   en_la_hoja: number
@@ -225,7 +226,7 @@ function aplicarPestana(
   if (columnaId !== null) columnasId.add(columnaId)
   const primeraFila = (pestana.layout?.filaEncabezados ?? 0) + 2
   const conocidas = new Map(
-    (db().prepare('SELECT fila_id, pestana, numero_fila, datos_json, huella, en_la_hoja FROM filas_crudas WHERE pestana = ?').all(pestana.titulo) as FilaConocida[]).map(
+    (db().prepare('SELECT fila_id, pestana, numero_fila, sheet_id, datos_json, huella, en_la_hoja FROM filas_crudas WHERE pestana = ?').all(pestana.titulo) as FilaConocida[]).map(
       (f) => [f.fila_id, f],
     ),
   )
@@ -235,6 +236,7 @@ function aplicarPestana(
   const actualizarCruda = db().prepare(
     `UPDATE filas_crudas SET datos_json = ?, huella = ?, numero_fila = ?, sheet_id = ?, en_la_hoja = 1, vista_en = ?, actualizado_en = ? WHERE fila_id = ?`,
   )
+  const refrescarLugar = db().prepare(`UPDATE filas_crudas SET numero_fila = ?, sheet_id = ? WHERE fila_id = ?`)
 
   db().transaction(() => {
     for (let r = primeraFila - 1; r < valores.length; r++) {
@@ -267,7 +269,15 @@ function aplicarPestana(
         resultado.necesitaImportacion = true
         continue
       }
-      if (conocida.huella === huella && conocida.en_la_hoja === 1) continue
+      if (conocida.huella === huella && conocida.en_la_hoja === 1) {
+        // Sin cambios en el contenido, pero si otra computadora borró un renglón más arriba la fila
+        // ahora está en otro número: se anota, porque el número es lo que las reparaciones y los
+        // desempates usan para saber cuál es el renglón original. No cuenta como fila cambiada.
+        if (conocida.numero_fila !== r + 1 || conocida.sheet_id !== pestana.sheetId) {
+          refrescarLugar.run(r + 1, pestana.sheetId, id)
+        }
+        continue
+      }
 
       resultado.filasCambiadas++
       // Estaba marcada como fuera de la hoja y volvió: la deshicieron desde otra computadora.
