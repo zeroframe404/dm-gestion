@@ -56,9 +56,36 @@ export function notificarEnElSistema(titulo: string, cuerpo: string): void {
 }
 
 /**
- * Una tarea se dio por terminada: notificación del sistema y aviso al renderer para que suene.
- * Se llama sólo cuando el estado CAMBIÓ a «hecha»; volver a guardar una tarea que ya estaba hecha no
- * vuelve a avisar.
+ * Hace parpadear el ícono de la aplicación en la barra de tareas (Windows) o saltar el del dock
+ * (macOS) hasta que alguien le dé el foco a la ventana. Es el «nudge» de siempre —el de Messenger,
+ * el que hacía vibrar la ventana del chat— adaptado a lo que un programa de escritorio puede sacudir
+ * hoy sin asustar a nadie: no la pantalla, sino el ícono de la barra de tareas.
+ *
+ * Se llama junto con `notificarEnElSistema`, no en su lugar: el cartel dice QUÉ pasó, esto hace que
+ * se note que pasó algo aunque el cartel ya se haya cerrado solo y la persona ni siquiera esté mirando
+ * la barra de tareas en ese instante.
+ *
+ * Nunca falla hacia afuera, y no hace nada con una ventana que ya tiene el foco: ahí no hay ícono que
+ * hacer parpadear, porque ya se está mirando.
+ */
+export function llamarLaAtencion(): void {
+  try {
+    for (const ventana of ventanas()) {
+      if (ventana.isDestroyed() || ventana.isFocused()) continue
+      ventana.flashFrame(true)
+      // En Windows el parpadeo se apaga solo al recuperar el foco; en Linux hay que apagarlo a mano.
+      // `once` no está de más en Windows: Electron no vuelve a llamarlo, así que se pone siempre igual.
+      ventana.once('focus', () => ventana.flashFrame(false))
+    }
+  } catch (error) {
+    console.error('[avisos] No se pudo hacer parpadear la ventana:', error)
+  }
+}
+
+/**
+ * Una tarea se dio por terminada: notificación del sistema, parpadeo del ícono y aviso al renderer
+ * para que suene. Se llama sólo cuando el estado CAMBIÓ a «hecha»; volver a guardar una tarea que ya
+ * estaba hecha no vuelve a avisar.
  */
 export function avisarTareaCompletada(datos: TareaCompletada): void {
   // La notificación de Windows sale SÓLO con la aplicación detrás de otra ventana, que es cuando
@@ -68,6 +95,7 @@ export function avisarTareaCompletada(datos: TareaCompletada): void {
   const aLaVista = ventanas().some((ventana) => !ventana.isDestroyed() && ventana.isFocused())
   if (!aLaVista) {
     notificarEnElSistema('Tarea completada', `«${datos.titulo}» quedó marcada como hecha${datos.porQuien ? ` por ${datos.porQuien}` : ''}.`)
+    llamarLaAtencion()
   }
   emitir('tareas:completada', datos)
 }
