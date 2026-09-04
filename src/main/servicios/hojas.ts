@@ -72,8 +72,14 @@ export function buscarPestana(opciones: Opciones): PestanaDeLaHoja {
  * sube sola; si nunca aparece, la cola lo dice con nombre y apellido en Administración → Sincronización.
  */
 export function nombreDePestana(tipo: TipoPestana, porDefecto: string): string {
+  // La que más renglones tiene, y a igual cantidad la primera por nombre: con dos pestañas del mismo
+  // tipo («SINIESTROS» y «SINIESTROS 2025») cada computadora tiene que elegir la MISMA; hasta la
+  // 12.6 salía la que SQLite devolviera primero, que dependía del orden en que cada base importó.
   const existente = db()
-    .prepare(`SELECT pestana FROM filas_crudas WHERE tipo_pestana = ? AND en_la_hoja = 1 LIMIT 1`)
+    .prepare(
+      `SELECT pestana, COUNT(*) AS filas FROM filas_crudas WHERE tipo_pestana = ? AND en_la_hoja = 1
+       GROUP BY pestana ORDER BY filas DESC, pestana ASC LIMIT 1`,
+    )
     .get(tipo) as { pestana: string } | undefined
   return existente?.pestana ?? porDefecto
 }

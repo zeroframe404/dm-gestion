@@ -19,6 +19,7 @@ import {
   camposDeAdjunto,
   descripcionDelPadre,
   encolarBorradoDeAnexo,
+  encolarSubidoDeAnexo,
   PREFIJO_DE_ADJUNTO,
   registrarAnexoEnLaCola,
   registrarComentarioNuevo,
@@ -83,16 +84,34 @@ export interface ArchivoBajado {
   sha256: string | null
 }
 
+/** Lo que el servidor sabe de cada archivo que tiene, sin el archivo. */
+export interface FichaEnElAlmacen {
+  id: string
+  tamano: number
+  sha256: string | null
+}
+
 /** Lo que tiene que saber hacer quien guarda los archivos: el VPS (FuenteVps) o la hoja simulada en las pruebas. */
 export interface AlmacenDeAdjuntos {
   subirAdjunto(ficha: FichaParaElAlmacen, contenido: Buffer): Promise<{ yaEstaba: boolean }>
   bajarAdjunto(id: string): Promise<ArchivoBajado>
   borrarAdjunto(id: string): Promise<void>
+  /**
+   * Todos los archivos que el servidor tiene (12.7). `completa` en false avisa que la lista se cortó
+   * (el servidor devuelve de a 5.000) y no sirve para decidir que algo NO está.
+   */
+  listarAdjuntos(): Promise<{ fichas: FichaEnElAlmacen[]; completa: boolean }>
 }
 
 export function esAlmacenDeAdjuntos(valor: unknown): valor is AlmacenDeAdjuntos {
   const v = valor as Partial<AlmacenDeAdjuntos> | null
-  return !!v && typeof v.subirAdjunto === 'function' && typeof v.bajarAdjunto === 'function' && typeof v.borrarAdjunto === 'function'
+  return (
+    !!v &&
+    typeof v.subirAdjunto === 'function' &&
+    typeof v.bajarAdjunto === 'function' &&
+    typeof v.borrarAdjunto === 'function' &&
+    typeof v.listarAdjuntos === 'function'
+  )
 }
 
 let dameAlmacen: () => AlmacenDeAdjuntos | null = () => null
@@ -169,6 +188,12 @@ export interface AdjuntoGenerico {
   enElServidor: boolean
   errorDelServidor: string | null
   descargado: boolean
+  /**
+   * Lo cargó otra computadora y todavía no se sabe si terminó de subirlo (12.7). Se distingue de «en
+   * el servidor» a propósito: hasta la 12.6 los dos estados se mostraban igual, y abrir uno de éstos
+   * terminaba en «ese adjunto no existe».
+   */
+  enOtraComputadora: boolean
   miniatura: string | null
   ancho: number | null
   alto: number | null
@@ -189,6 +214,7 @@ function aGenerico(fila: FilaAdjunto): AdjuntoGenerico {
     enElServidor: fila.vps_subido_en !== null,
     errorDelServidor: fila.vps_error,
     descargado: fila.archivo !== '' && existsSync(rutaDeAdjunto(fila.archivo)),
+    enOtraComputadora: fila.archivo === '' && fila.vps_id !== null && fila.vps_subido_en === null,
     miniatura: fila.miniatura,
     ancho: fila.ancho,
     alto: fila.alto,
@@ -303,6 +329,7 @@ export function registrarAdjunto(
     tamano: copia.tamano,
     sha256,
     usuario: actor.nombre,
+    subidoEn: null,
   }, actor)
 
   return aGenerico(leerFila(tipo, id))
@@ -318,7 +345,7 @@ function encolarFichaDelAdjunto(
   tipo: TipoDeAnexo,
   padreId: number,
   filaId: string,
-  datos: { fecha: string; nombre: string; categoria: string | null; vpsId: string; tamano: number; sha256: string | null; usuario: string },
+  datos: { fecha: string; nombre: string; categoria: string | null; vpsId: string; tamano: number; sha256: string | null; usuario: string; subidoEn: string | null },
   actor: SesionUsuario | null,
 ): boolean {
   const vinculo = vinculoDelPadre(tipo, padreId)
@@ -380,7 +407,13 @@ export async function asegurarAdjuntoLocal(tipo: TipoDeAnexo, adjuntoId: number)
   } catch (error) {
     if (error instanceof ErrorDeNegocio && /no existe/i.test(error.message)) {
       throw new ErrorDeNegocio(
-        `«${fila.nombre}» todavía no llegó al servidor: la computadora que lo cargó no lo terminó de subir. Probá en un rato.`,
+        `«${fila.nombre}» todavía no llegó al servidor: la computadora que lo cargó (${fila.usuario_nombre}) no lo terminó de subir, o está apagada. ` +
+          'Se sube solo cuando esa computadora está prendida y con internet; probá en un rato.',
+      )
+    }
+    if (error instanceof ErrorDeNegocio && /ya no está en el disco/i.test(error.message)) {
+      throw new ErrorDeNegocio(
+        `«${fila.nombre}» se perdió en el servidor. La computadora que lo cargó (${fila.usuario_nombre}) lo vuelve a subir sola la próxima vez que abra el programa, si todavía lo tiene.`,
       )
     }
     throw error
@@ -443,17 +476,23 @@ export interface ResultadoDeSubidaDeAdjuntos {
  * (muy grande, dañado) cuenta, y al tercero se deja de intentar para siempre, con el motivo a la
  * vista en la ficha. Nunca lanza: lo que falla queda anotado en la fila y en la bitácora.
  */
-export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>) | null = null, limite = 3): Promise<ResultadoDeSubidaDeAdjuntos> {
+export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>) | null = null, limite = 10): Promise<ResultadoDeSubidaDeAdjuntos> {
   const resultado: ResultadoDeSubidaDeAdjuntos = { subidos: 0, fallidos: 0 }
   const almacen = dameAlmacen()
   if (!almacen) return resultado
   const ahora = ahoraIso()
+  // Hasta la 12.6 eran tres por ciclo: las seis fotos del choque tardaban medio minuto en llegar, y con
+  // una importación completa en el medio, mucho más. Ahora van de a diez, y la vuelta se corta a los
+  // veinte segundos para no comerse el ciclo siguiente.
+  const arranque = Date.now()
+  const hayTiempo = () => Date.now() - arranque < 20_000
 
   for (const [tipo, { tabla, grupo }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
     const pendientes = db()
       .prepare(`${selectDe(tipo)} WHERE ${CONDICION_PENDIENTE} ORDER BY creado_en LIMIT ?`)
       .all(ahora, limite) as FilaAdjunto[]
     for (const fila of pendientes) {
+      if (!hayTiempo()) return resultado
       const ruta = rutaDeAdjunto(fila.archivo)
       if (!existsSync(ruta)) {
         db().prepare(`UPDATE ${tabla} SET vps_error = ?, vps_proximo_intento = ? WHERE id = ?`).run('El archivo ya no está en esta computadora.', NUNCA, fila.id)
@@ -474,9 +513,12 @@ export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>)
           },
           contenido,
         )
+        const subidoEn = ahoraIso()
         db()
           .prepare(`UPDATE ${tabla} SET vps_subido_en = ?, vps_error = NULL, vps_proximo_intento = NULL, sha256 = COALESCE(sha256, ?) WHERE id = ?`)
-          .run(ahoraIso(), sha256, fila.id)
+          .run(subidoEn, sha256, fila.id)
+        // 12.7: se lo cuenta a las otras computadoras por la columna SUBIDO de su fila.
+        if (fila.fila_id) encolarSubidoDeAnexo(fila.fila_id, subidoEn)
         resultado.subidos++
       } catch (error) {
         const mensaje = (error instanceof Error ? error.message : String(error)).slice(0, 300)
@@ -498,6 +540,59 @@ export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>)
 
   // La copia a Drive de lo que quedó sin ella por falta de credenciales: si ahora hay, se sube.
   if (dameToken) await reintentarDrive(dameToken, limite)
+  return resultado
+}
+
+export interface ResultadoDeVerificacionDeAdjuntos {
+  /** Archivos que esta computadora daba por subidos y el servidor no tiene: vuelven a la cola de subida. */
+  reencolados: number
+  /** Archivos de otras computadoras que el servidor sí tiene: la ficha ya puede decir «en el servidor». */
+  confirmados: number
+}
+
+/**
+ * Contrasta lo que esta computadora cree de cada archivo con lo que el servidor tiene de verdad (12.7).
+ * Corre al arrancar, una vez, en segundo plano. Es la red de seguridad para lo que dejó la 12.6: los
+ * archivos que quedaron marcados como subidos sin estarlo (ver `guardarAdjuntoDeLaHoja`) vuelven a
+ * subir solos, y los que cargó otra computadora y ya llegaron dejan de decir «cargado en otra
+ * computadora». Nunca lanza por un archivo; una falla de red la propaga (quien llama la anota).
+ */
+export async function verificarAdjuntosContraElServidor(): Promise<ResultadoDeVerificacionDeAdjuntos> {
+  const resultado: ResultadoDeVerificacionDeAdjuntos = { reencolados: 0, confirmados: 0 }
+  const almacen = dameAlmacen()
+  if (!almacen) return resultado
+  const { fichas, completa } = await almacen.listarAdjuntos()
+  const enElServidor = new Set(fichas.map((ficha) => ficha.id))
+  const ahora = ahoraIso()
+
+  for (const [tipo, { tabla }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
+    const filas = db().prepare(`${selectDe(tipo)} WHERE vps_id IS NOT NULL`).all() as FilaAdjunto[]
+    for (const fila of filas) {
+      const esta = enElServidor.has(fila.vps_id!)
+      const tieneElArchivo = fila.archivo !== '' && existsSync(rutaDeAdjunto(fila.archivo))
+      if (esta && fila.vps_subido_en === null) {
+        // Está en el servidor aunque acá no figurara: se confirma, y si se había dado por perdido se olvida el motivo.
+        db().prepare(`UPDATE ${tabla} SET vps_subido_en = ?, vps_error = NULL, vps_proximo_intento = NULL WHERE id = ?`).run(ahora, fila.id)
+        resultado.confirmados++
+        continue
+      }
+      // Sólo con la lista entera se puede afirmar que algo NO está. Y sólo tiene sentido reencolar lo
+      // que esta computadora puede volver a subir: el archivo tiene que estar en su disco.
+      if (!esta && completa && fila.vps_subido_en !== null && tieneElArchivo) {
+        db()
+          .prepare(`UPDATE ${tabla} SET vps_subido_en = NULL, vps_error = NULL, vps_intentos = 0, vps_proximo_intento = NULL WHERE id = ?`)
+          .run(fila.id)
+        resultado.reencolados++
+      }
+    }
+  }
+  if (resultado.reencolados > 0) {
+    anotarEvento(
+      'reparacion',
+      `${resultado.reencolados} archivos adjuntos figuraban como subidos pero el servidor no los tenía: vuelven a subir solos.`,
+      { filas: resultado.reencolados },
+    )
+  }
   return resultado
 }
 
@@ -607,6 +702,7 @@ export function registrarLoQueNoViajo(): { adjuntos: number; comentarios: number
           tamano: contenido.length,
           sha256,
           usuario: fila.usuario_nombre,
+          subidoEn: null,
         },
         null,
       )
@@ -624,6 +720,11 @@ export function registrarLoQueNoViajo(): { adjuntos: number; comentarios: number
     .prepare(`SELECT o.id, o.siniestro_id FROM siniestro_observaciones o JOIN siniestros s ON s.id = o.siniestro_id WHERE o.fila_id IS NULL AND s.fila_id IS NOT NULL ORDER BY o.id`)
     .all() as Array<{ id: number; siniestro_id: number }>
   for (const o of siniestros) if (registrarComentarioNuevo('siniestro', o.siniestro_id, o.id, null)) comentarios++
+  // 12.7: las notas de las consultas también viajan.
+  const notas = db()
+    .prepare(`SELECT n.id, n.lead_id FROM lead_notas n JOIN leads l ON l.id = n.lead_id WHERE n.fila_id IS NULL AND l.fila_id IS NOT NULL ORDER BY n.id`)
+    .all() as Array<{ id: number; lead_id: number }>
+  for (const n of notas) if (registrarComentarioNuevo('lead', n.lead_id, n.id, null)) comentarios++
 
   return { adjuntos, comentarios }
 }

@@ -28,6 +28,7 @@ import {
 } from '../../shared/tipos'
 import { db } from '../db/base'
 import { ahoraIso, generarId, limpiar, normalizarDocumento, normalizarTexto } from '../importacion/normalizar'
+import { registrarComentarioNuevo } from '../sincronizacion/anexos'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANAS_DE_LA_APP } from '../sincronizacion/pestanasApp'
 import { telefonoParaWhatsapp } from './cartera'
@@ -341,9 +342,11 @@ export function crearLead(datos: DatosDeLead, actor: SesionUsuario): FichaLead {
     // completa cada cinco minutos, para siempre.
     registrarFilaDeLaApp({ filaId, pestana, tipoPestana: 'APP_LEADS', periodo: null })
     if (campos.nota) {
-      db()
-        .prepare('INSERT INTO lead_notas (lead_id, texto, usuario_id, usuario_nombre, creado_en) VALUES (?, ?, ?, ?, ?)')
-        .run(nuevo, campos.nota, actor.id, actor.nombre, ahora)
+      const { id: notaId } = db()
+        .prepare('INSERT INTO lead_notas (lead_id, texto, usuario_id, usuario_nombre, creado_en) VALUES (?, ?, ?, ?, ?) RETURNING id')
+        .get(nuevo, campos.nota, actor.id, actor.nombre, ahora) as { id: number }
+      // 12.7: la nota viaja entera por APP COMENTARIOS, así la otra computadora la ve en la ficha.
+      registrarComentarioNuevo('lead', nuevo, notaId, actor)
     }
     return nuevo
   })()
@@ -473,10 +476,12 @@ export function agregarNotaDeLead(leadId: number, textoDeLaNota: unknown, actor:
   const fila = buscarLead(id)
   const contenido = texto(textoDeLaNota, 'La nota', 1, 2000)
 
-  db()
-    .prepare('INSERT INTO lead_notas (lead_id, texto, usuario_id, usuario_nombre, creado_en) VALUES (?, ?, ?, ?, ?)')
-    .run(id, contenido, actor.id, actor.nombre, ahoraIso())
+  const { id: notaId } = db()
+    .prepare('INSERT INTO lead_notas (lead_id, texto, usuario_id, usuario_nombre, creado_en) VALUES (?, ?, ?, ?, ?) RETURNING id')
+    .get(id, contenido, actor.id, actor.nombre, ahoraIso()) as { id: number }
   db().prepare('UPDATE leads SET actualizado_en = ? WHERE id = ?').run(ahoraIso(), id)
+  // 12.7: la nota viaja entera por APP COMENTARIOS (la columna NOTAS de abajo es el resumen para Google).
+  registrarComentarioNuevo('lead', id, notaId, actor)
 
   // La columna NOTAS de la hoja recibe la charla entera: quien mire la hoja ve lo mismo que la ficha.
   sincronizar(id, { observaciones: notasParaLaHoja(id) }, actor)

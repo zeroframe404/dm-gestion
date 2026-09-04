@@ -14,7 +14,7 @@ import type {
   ResultadoDeTramos,
   TramoDeColumna,
 } from '../src/main/importacion/fuente'
-import type { AlmacenDeAdjuntos, ArchivoBajado, FichaParaElAlmacen } from '../src/main/servicios/adjuntos'
+import type { AlmacenDeAdjuntos, ArchivoBajado, FichaEnElAlmacen, FichaParaElAlmacen } from '../src/main/servicios/adjuntos'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
 
 export interface PestanaSimulada {
@@ -358,6 +358,12 @@ export class HojaSimulada implements FuenteHoja, AlmacenDeAdjuntos {
   async borrarAdjunto(id: string): Promise<void> {
     this.exigirConexion()
     this.almacen.delete(id)
+  }
+
+  async listarAdjuntos(): Promise<{ fichas: FichaEnElAlmacen[]; completa: boolean }> {
+    this.exigirConexion()
+    const fichas: FichaEnElAlmacen[] = [...this.almacen.values()].map(({ ficha, contenido }) => ({ id: ficha.id, tamano: contenido.length, sha256: ficha.sha256 }))
+    return { fichas, completa: true }
   }
 
   // ---------------------------------------------------------------------------

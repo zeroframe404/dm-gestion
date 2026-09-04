@@ -708,7 +708,7 @@ function siniestrosDe(clienteId: number): SiniestroDeCliente[] {
               descripcion, estado, importe
        FROM siniestros
        WHERE cliente_id = @cliente OR poliza_id IN (SELECT id FROM polizas WHERE cliente_id = @cliente)
-       ORDER BY COALESCE(fecha_iso, fecha) DESC, id DESC`,
+       ORDER BY COALESCE(fecha_iso, fecha) DESC, fila_id DESC, id DESC`,
     )
     .all({ cliente: clienteId }) as Array<{
     id: number

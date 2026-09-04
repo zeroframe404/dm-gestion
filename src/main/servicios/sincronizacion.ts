@@ -31,10 +31,10 @@ import {
 } from '../sincronizacion/respaldo'
 import { FuenteVps } from '../vps/fuenteVps'
 import { cerrarMes, nombreDePestanaMensual, periodoACerrar } from './cartera'
-import { esAlmacenDeAdjuntos, hayAdjuntosPendientes, subirAdjuntosPendientes, usarAlmacenDeAdjuntos } from './adjuntos'
+import { esAlmacenDeAdjuntos, hayAdjuntosPendientes, subirAdjuntosPendientes, usarAlmacenDeAdjuntos, verificarAdjuntosContraElServidor } from './adjuntos'
 import { credencialesGoogle, credencialesParaDrive, credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
-import { repararAlArrancar, repararDuplicados } from './reparaciones'
+import { repararAlArrancar, repararDuplicados, repararSiniestrosSinCliente } from './reparaciones'
 import { construirXlsx, type HojaXlsx } from './xlsx'
 
 let motor: MotorDeSincronizacion | null = null
@@ -90,14 +90,17 @@ export function fuenteGoogleDirecta(): FuenteGoogleSheets | null {
   return new FuenteGoogleSheets({ hojaId, cuentaServicio: credenciales.cuentaServicio })
 }
 
-/** Corre la importación completa: es la que sabe incorporar filas nuevas creadas a mano en la hoja. */
-async function importarTodo(): Promise<void> {
+/**
+ * Corre la importación que incorpora filas nuevas. Sin `pestanas` es la completa (lo que sabe crear
+ * clientes, vehículos y pólizas a partir de la hoja); con `pestanas` (12.7) se guardan sólo ésas.
+ */
+async function importarTodo(pestanas?: string[]): Promise<void> {
   const fuente = crearFuente()
   if (!fuente) return
   const { id } = db()
     .prepare(`INSERT INTO importaciones (iniciada_en, estado) VALUES (?, 'EN_CURSO') RETURNING id`)
     .get(ahoraIso()) as { id: number }
-  const informe = await ejecutarImportacion({ db: db(), fuente, importacionId: id })
+  const informe = await ejecutarImportacion({ db: db(), fuente, importacionId: id, soloPestanas: pestanas })
   db()
     .prepare('UPDATE importaciones SET terminada_en = ?, estado = ?, informe_json = ? WHERE id = ?')
     .run(informe.terminadaEn, informe.estado, JSON.stringify(informe), id)
@@ -106,6 +109,12 @@ async function importarTodo(): Promise<void> {
   // mismo con las cuotas —un renglón repetido dentro de la planilla del mes deja la póliza dos veces—
   // y con los clientes que quedaron dos veces con el mismo DNI.
   repararDuplicados()
+  // Un siniestro que entró con la póliza pero sin cliente toma el titular de la póliza (12.7).
+  try {
+    repararSiniestrosSinCliente()
+  } catch (error) {
+    console.error('[sincronizacion] No se pudieron reparar los siniestros sin cliente:', error)
+  }
 }
 
 export function obtenerMotor(): MotorDeSincronizacion {
@@ -145,6 +154,11 @@ export async function arrancarSincronizacion(): Promise<void> {
   // mismo ciclo.
   repararAlArrancar()
   await motor.sincronizarAhora()
+  // 12.7: lo que esta computadora cree de cada archivo adjunto se contrasta con lo que el servidor
+  // tiene de verdad, en segundo plano. Lo que figuraba subido sin estarlo vuelve a subir solo.
+  void verificarAdjuntosContraElServidor().catch((error: unknown) => {
+    console.error('[sincronizacion] No se pudieron verificar los adjuntos contra el servidor:', error)
+  })
   await respaldarSiCorresponde()
 }
 

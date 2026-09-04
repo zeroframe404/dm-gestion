@@ -34,6 +34,7 @@ function aAdjuntoDePoliza(a: AdjuntoGenerico): AdjuntoDePoliza {
     enElServidor: a.enElServidor,
     errorDelServidor: a.errorDelServidor,
     descargado: a.descargado,
+    enOtraComputadora: a.enOtraComputadora,
     miniatura: a.miniatura,
     ancho: a.ancho,
     alto: a.alto,

@@ -63,6 +63,14 @@ import { clasificarPestanas, periodoDesdeTextoDeMes, revisarCoherenciaDePeriodos
 import { huellaDeFila } from '../sincronizacion/hoja'
 import { guardarAnexoDeLaHoja } from '../sincronizacion/anexos'
 import { alDesaparecerDeLaHoja, alLlegarUnaBaja, cuotaDelMesDeLaBaja, filasConCambiosSinSubir } from '../servicios/filas'
+import {
+  estadoDeLeadDesdeTexto,
+  estadoDePresupuestoDesdeTexto,
+  guardarOpcionesDePresupuesto,
+  opcionesDesdeLaHoja,
+  origenDeLeadDesdeTexto,
+  resolverVinculoDeTarea,
+} from '../sincronizacion/vinculos'
 import { normalizarEstadoDeCobro } from '../servicios/pagos'
 
 interface PestanaParaDuenios {
@@ -127,6 +135,14 @@ export interface OpcionesImportacion {
   anioActual?: number
   /** El mes de hoy (1-12). Sólo lo usa el clasificador para anclar planillas sin año; las pruebas lo fijan. */
   mesActual?: number
+  /**
+   * Importación acotada (12.7): se lee y decide todo como siempre (qué planilla es la del mes, de qué
+   * pestaña es cada _ID), pero sólo se GUARDAN estas pestañas. Es lo que corre la bajada cuando en
+   * otra computadora apareció una fila nueva en SINIESTROS: hasta la 12.6 eso reimportaba las 25
+   * pestañas enteras, y con cinco computadoras cargando, casi todo el tiempo. Sin la planilla más
+   * nueva en la lista no se toca el estado activo/inactivo de las pólizas.
+   */
+  soloPestanas?: string[]
 }
 
 /** Cantidad máxima de problemas que se listan uno por uno; el resto sólo se cuenta. */
@@ -329,6 +345,8 @@ function prepararSentencias(db: BaseDeDatos) {
       WHERE id = @id AND (sucursal_texto IS NULL OR TRIM(sucursal_texto) = '')`),
 
     clientePorClave: db.prepare('SELECT id FROM clientes WHERE clave = ?'),
+    clientePorId: db.prepare('SELECT id, nombre, documento FROM clientes WHERE id = ?'),
+    clienteDeLaPoliza: db.prepare('SELECT cliente_id FROM polizas WHERE id = ?'),
     titularDeVehiculo: db.prepare('SELECT cliente_id FROM vehiculos WHERE clave = ?'),
     /** El riesgo que ya tiene la póliza de esa fila, si es de este cliente. Ver `riesgoSinVehiculo`. */
     riesgoDeLaFila: db.prepare(`
@@ -403,10 +421,21 @@ function prepararSentencias(db: BaseDeDatos) {
         -- oNulo() convierte las dos en NULL, así que sin este CASE una hoja a la que le falta la
         -- columna LOCAL dejaba sin sucursal, en silencio, a todas las filas que ya la tenían.
         sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE cuotas_mes.sucursal_texto END,
-        cuota = excluded.cuota, cuota_monto = excluded.cuota_monto, dia_vencimiento = excluded.dia_vencimiento,
-        dia_vencimiento_numero = excluded.dia_vencimiento_numero, aviso = excluded.aviso, aviso_enviado = excluded.aviso_enviado,
-        pago = excluded.pago, pago_fecha = excluded.pago_fecha, observaciones = excluded.observaciones,
-        forma_pago = excluded.forma_pago, fecha_envio = excluded.fecha_envio, avisar_vto = excluded.avisar_vto,
+        -- Lo que se corrige desde la planilla del mes (cuota, vencimiento, aviso, pago, observaciones…)
+        -- no se pisa mientras esta computadora tenga un cambio suyo esperando subir (12.7): la hoja va
+        -- atrás de lo local, y sin este freno un pago recién anotado volvía a «sin pagar» al reimportar.
+        cuota = CASE WHEN @sin_subir = 1 THEN cuotas_mes.cuota ELSE excluded.cuota END,
+        cuota_monto = CASE WHEN @sin_subir = 1 THEN cuotas_mes.cuota_monto ELSE excluded.cuota_monto END,
+        dia_vencimiento = CASE WHEN @sin_subir = 1 THEN cuotas_mes.dia_vencimiento ELSE excluded.dia_vencimiento END,
+        dia_vencimiento_numero = CASE WHEN @sin_subir = 1 THEN cuotas_mes.dia_vencimiento_numero ELSE excluded.dia_vencimiento_numero END,
+        aviso = CASE WHEN @sin_subir = 1 THEN cuotas_mes.aviso ELSE excluded.aviso END,
+        aviso_enviado = CASE WHEN @sin_subir = 1 THEN cuotas_mes.aviso_enviado ELSE excluded.aviso_enviado END,
+        pago = CASE WHEN @sin_subir = 1 THEN cuotas_mes.pago ELSE excluded.pago END,
+        pago_fecha = CASE WHEN @sin_subir = 1 THEN cuotas_mes.pago_fecha ELSE excluded.pago_fecha END,
+        observaciones = CASE WHEN @sin_subir = 1 THEN cuotas_mes.observaciones ELSE excluded.observaciones END,
+        forma_pago = CASE WHEN @sin_subir = 1 THEN cuotas_mes.forma_pago ELSE excluded.forma_pago END,
+        fecha_envio = CASE WHEN @sin_subir = 1 THEN cuotas_mes.fecha_envio ELSE excluded.fecha_envio END,
+        avisar_vto = CASE WHEN @sin_subir = 1 THEN cuotas_mes.avisar_vto ELSE excluded.avisar_vto END,
         -- La fila está en la planilla de la hoja, así que está vigente: si acá figuraba dada de baja es
         -- porque la baja se deshizo desde otra computadora. Salvo que sea esta computadora la que
         -- todavía no subió su cambio (la baja de recién, cuyo borrado espera su ventana): ahí manda lo local.
@@ -440,9 +469,11 @@ function prepararSentencias(db: BaseDeDatos) {
     // enciende la campana de quien la recibió.
     tarea: db.prepare(`
       INSERT INTO tareas (fila_id, pestana, titulo, detalle, responsable_id, responsable_nombre, sucursal_texto,
-                          vence_el, prioridad, estado, creado_por, visto_en, creado_en, actualizado_en)
+                          vence_el, prioridad, estado, creado_por, visto_en, creado_en, actualizado_en,
+                          vinculo_clave, siniestro_id, renovacion_id, presupuesto_id, lead_id, poliza_id, cliente_id)
       VALUES (@fila_id, @pestana, @titulo, @detalle, @responsable_id, @responsable_nombre, @sucursal_texto,
-              @vence_el, @prioridad, @estado, @creado_por, NULL, @creado_en, @ahora)
+              @vence_el, @prioridad, @estado, @creado_por, NULL, @creado_en, @ahora,
+              @vinculo_clave, @siniestro_id, @renovacion_id, @presupuesto_id, @lead_id, @poliza_id, @cliente_id)
       ON CONFLICT(fila_id) WHERE fila_id IS NOT NULL DO UPDATE SET
         pestana = excluded.pestana,
         titulo = excluded.titulo,
@@ -453,7 +484,59 @@ function prepararSentencias(db: BaseDeDatos) {
         vence_el = excluded.vence_el,
         prioridad = excluded.prioridad,
         estado = excluded.estado,
+        -- El vínculo (12.7): la clave viaja en la fila y de ella salen los id locales. Si la ficha
+        -- todavía no está en esta computadora, se conserva lo que ya se sabía.
+        vinculo_clave = COALESCE(excluded.vinculo_clave, tareas.vinculo_clave),
+        siniestro_id = COALESCE(excluded.siniestro_id, tareas.siniestro_id),
+        renovacion_id = COALESCE(excluded.renovacion_id, tareas.renovacion_id),
+        presupuesto_id = COALESCE(excluded.presupuesto_id, tareas.presupuesto_id),
+        lead_id = COALESCE(excluded.lead_id, tareas.lead_id),
+        poliza_id = COALESCE(excluded.poliza_id, tareas.poliza_id),
+        cliente_id = COALESCE(excluded.cliente_id, tareas.cliente_id),
         actualizado_en = excluded.actualizado_en`),
+
+    // Las consultas y los presupuestos (12.7): hasta la 12.6 se leían sólo a los datos crudos, así que
+    // cada computadora tenía únicamente los que había cargado ella. Lo que es de esta base (a qué cliente
+    // se convirtió el lead, la opción aceptada, la póliza que salió del presupuesto) no se toca.
+    lead: db.prepare(`
+      INSERT INTO leads (fila_id, pestana, nombre, telefono, documento, documento_normalizado, sucursal_id, sucursal_texto,
+                         interes, tipo_vehiculo, origen, estado, usuario_nombre, creado_en, actualizado_en)
+      VALUES (@fila_id, @pestana, @nombre, @telefono, @documento, @documento_normalizado, @sucursal_id, @sucursal_texto,
+              @interes, @tipo_vehiculo, @origen, @estado, @usuario_nombre, @creado_en, @ahora)
+      ON CONFLICT(fila_id) DO UPDATE SET
+        pestana = excluded.pestana, nombre = excluded.nombre, telefono = excluded.telefono,
+        documento = excluded.documento, documento_normalizado = excluded.documento_normalizado,
+        sucursal_id = COALESCE(excluded.sucursal_id, leads.sucursal_id),
+        sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE leads.sucursal_texto END,
+        interes = excluded.interes, tipo_vehiculo = excluded.tipo_vehiculo, origen = excluded.origen, estado = excluded.estado,
+        usuario_nombre = COALESCE(leads.usuario_nombre, excluded.usuario_nombre),
+        actualizado_en = excluded.actualizado_en`),
+
+    presupuesto: db.prepare(`
+      INSERT INTO presupuestos (fila_id, pestana, numero, version, presupuesto_anterior_id, vigente, lead_id, cliente_id, cliente_nombre,
+                                telefono, documento, sucursal_texto, patente, marca, modelo, anio, tipo_vehiculo, observaciones, estado,
+                                usuario_nombre, vinculo_clave, creado_en, actualizado_en)
+      VALUES (@fila_id, @pestana, @numero, @version,
+              (SELECT id FROM presupuestos WHERE numero = @numero AND version = @version - 1),
+              1, @lead_id, @cliente_id, @cliente_nombre,
+              @telefono, @documento, @sucursal_texto, @patente, @marca, @modelo, @anio, @tipo_vehiculo, @observaciones, @estado,
+              @usuario_nombre, @vinculo_clave, @creado_en, @ahora)
+      ON CONFLICT(fila_id) DO UPDATE SET
+        pestana = excluded.pestana, numero = excluded.numero, version = excluded.version,
+        lead_id = COALESCE(excluded.lead_id, presupuestos.lead_id),
+        cliente_id = COALESCE(excluded.cliente_id, presupuestos.cliente_id),
+        cliente_nombre = excluded.cliente_nombre, telefono = excluded.telefono, documento = excluded.documento,
+        sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE presupuestos.sucursal_texto END,
+        patente = excluded.patente, marca = excluded.marca, modelo = excluded.modelo, anio = excluded.anio,
+        tipo_vehiculo = CASE WHEN @hay_columna_tipo_vehiculo = 1 THEN excluded.tipo_vehiculo ELSE presupuestos.tipo_vehiculo END,
+        observaciones = excluded.observaciones, estado = excluded.estado,
+        usuario_nombre = COALESCE(presupuestos.usuario_nombre, excluded.usuario_nombre),
+        vinculo_clave = COALESCE(excluded.vinculo_clave, presupuestos.vinculo_clave),
+        actualizado_en = excluded.actualizado_en`),
+    /** Sólo la versión más alta de cada número queda vigente. */
+    vigenciaDePresupuestos: db.prepare(`
+      UPDATE presupuestos SET vigente = CASE WHEN version = (SELECT MAX(version) FROM presupuestos o WHERE o.numero = presupuestos.numero) THEN 1 ELSE 0 END
+      WHERE numero = @numero`),
 
     rechazo: db.prepare(`
       INSERT INTO rechazos_debito (fila_id, pestana, poliza_id, cliente_id, cliente_nombre, documento, telefono, compania,
@@ -515,10 +598,12 @@ function prepararSentencias(db: BaseDeDatos) {
       INSERT INTO siniestros (fila_id, pestana, cliente_id, poliza_id, fecha, fecha_iso, fecha_carga, fecha_carga_iso, cliente_nombre,
                               documento, patente, sucursal_texto,
                               compania, numero_poliza, cobertura, numero_siniestro, descripcion, estado, importe, observaciones,
+                              abogado, tercero_compania, tercero_telefono, tercero_patente, tercero_lesionados, tercero_lesionados_detalle,
                               creado_en, actualizado_en)
       VALUES (@fila_id, @pestana, @cliente_id, @poliza_id, @fecha, @fecha_iso, @fecha_carga, @fecha_carga_iso, @cliente_nombre,
               @documento, @patente, @sucursal_texto,
               @compania, @numero_poliza, @cobertura, @numero_siniestro, @descripcion, @estado, @importe, @observaciones,
+              @abogado, @tercero_compania, @tercero_telefono, @tercero_patente, @tercero_lesionados, @tercero_lesionados_detalle,
               @ahora, @ahora)
       -- Una columna que la pestaña NO tiene llega siempre vacía, y pisar con eso borra lo que se cargó
       -- desde la ficha. De ahí salía el «cargo la fecha y el número de siniestro y después no están»:
@@ -534,8 +619,10 @@ function prepararSentencias(db: BaseDeDatos) {
         fecha_iso = CASE WHEN @hay_columna_fecha = 1 THEN excluded.fecha_iso ELSE siniestros.fecha_iso END,
         fecha_carga = CASE WHEN @hay_columna_fecha_carga = 1 THEN excluded.fecha_carga ELSE siniestros.fecha_carga END,
         fecha_carga_iso = CASE WHEN @hay_columna_fecha_carga = 1 THEN excluded.fecha_carga_iso ELSE siniestros.fecha_carga_iso END,
-        cliente_nombre = CASE WHEN @hay_columna_nombre = 1 THEN excluded.cliente_nombre ELSE siniestros.cliente_nombre END,
-        documento = CASE WHEN @hay_columna_documento = 1 THEN excluded.documento ELSE siniestros.documento END,
+        -- Sin columna de nombre o documento, lo que ya se sabía manda; pero si no se sabía nada, entra
+        -- lo que se dedujo de la póliza (12.7): un siniestro sin asegurado no le sirve a nadie.
+        cliente_nombre = CASE WHEN @hay_columna_nombre = 1 THEN excluded.cliente_nombre ELSE COALESCE(siniestros.cliente_nombre, excluded.cliente_nombre) END,
+        documento = CASE WHEN @hay_columna_documento = 1 THEN excluded.documento ELSE COALESCE(siniestros.documento, excluded.documento) END,
         patente = CASE WHEN @hay_columna_patente = 1 THEN excluded.patente ELSE siniestros.patente END,
         sucursal_texto = CASE WHEN @sucursal_mapeada = 1 THEN excluded.sucursal_texto ELSE siniestros.sucursal_texto END,
         compania = CASE WHEN @hay_columna_compania = 1 THEN excluded.compania ELSE siniestros.compania END,
@@ -546,6 +633,13 @@ function prepararSentencias(db: BaseDeDatos) {
         estado = CASE WHEN @hay_columna_estado = 1 THEN excluded.estado ELSE siniestros.estado END,
         importe = CASE WHEN @hay_columna_importe = 1 THEN excluded.importe ELSE siniestros.importe END,
         observaciones = CASE WHEN @hay_columna_observaciones = 1 THEN excluded.observaciones ELSE siniestros.observaciones END,
+        -- 12.7: los datos de la ficha que ahora tienen columna. Mismo criterio: sin columna no se pisan.
+        abogado = CASE WHEN @hay_columna_abogado = 1 THEN excluded.abogado ELSE siniestros.abogado END,
+        tercero_compania = CASE WHEN @hay_columna_tercero_compania = 1 THEN excluded.tercero_compania ELSE siniestros.tercero_compania END,
+        tercero_telefono = CASE WHEN @hay_columna_tercero_telefono = 1 THEN excluded.tercero_telefono ELSE siniestros.tercero_telefono END,
+        tercero_patente = CASE WHEN @hay_columna_tercero_patente = 1 THEN excluded.tercero_patente ELSE siniestros.tercero_patente END,
+        tercero_lesionados = CASE WHEN @hay_columna_tercero_lesionados = 1 THEN excluded.tercero_lesionados ELSE siniestros.tercero_lesionados END,
+        tercero_lesionados_detalle = CASE WHEN @hay_columna_tercero_lesionados_detalle = 1 THEN excluded.tercero_lesionados_detalle ELSE siniestros.tercero_lesionados_detalle END,
         actualizado_en = excluded.actualizado_en`),
 
     regla: db.prepare(`
@@ -606,8 +700,13 @@ class TrabajoDeImportacion {
   private duenioDeId = new Map<string, string>()
   /** Marca de tiempo única de la corrida: todo lo que toca esta importación lleva este actualizado_en. */
   private readonly ahora = ahoraIso()
-  /** Filas con cambios locales que todavía no viajaron: sobre ellas la hoja no manda (ver filas.ts). */
-  private readonly sinSubir: Set<string>
+  /**
+   * Filas con cambios locales que todavía no viajaron: sobre ellas la hoja no manda (ver filas.ts).
+   * Se vuelve a tomar antes de guardar cada pestaña (12.7): la corrida dura y en el medio el mostrador
+   * sigue cargando; con una sola foto del principio, lo cargado durante la importación se pisaba.
+   */
+  private sinSubir: Set<string>
+  private readonly soloPestanas: Set<string> | null
   private readonly iniciadaEn = this.ahora
   private readonly sentencias: ReturnType<typeof prepararSentencias>
 
@@ -674,6 +773,12 @@ class TrabajoDeImportacion {
     this.mesActual = opciones.mesActual ?? new Date().getMonth() + 1
     this.sentencias = prepararSentencias(this.db)
     this.sinSubir = filasConCambiosSinSubir(this.db)
+    this.soloPestanas = opciones.soloPestanas && opciones.soloPestanas.length > 0 ? new Set(opciones.soloPestanas) : null
+  }
+
+  /** En una importación acotada, si la pestaña no está en la lista se lee (para decidir) pero no se guarda. */
+  private seGuarda(p: PestanaTrabajo): boolean {
+    return this.soloPestanas === null || this.soloPestanas.has(p.titulo)
   }
 
   async ejecutar(): Promise<InformeImportacion> {
@@ -686,9 +791,32 @@ class TrabajoDeImportacion {
           this.avisos.push('La importación se canceló: no se actualizó el estado activo/inactivo de las pólizas. Volvé a correrla completa.')
           break
         }
+        if (!this.seGuarda(pestana)) {
+          this.resumenes.push({
+            titulo: pestana.titulo,
+            tipo: pestana.tipo,
+            periodo: pestana.periodo,
+            estado: 'omitida',
+            filasLeidas: 0,
+            filasConDatos: 0,
+            idsNuevos: 0,
+            idsExistentes: 0,
+            columnaId: null,
+            columnas: [],
+            registros: {},
+            problemas: 0,
+            error: 'sin novedades en esta pasada',
+          })
+          this.actualizarPestana(pestana.titulo, 'omitida', null, 'sin novedades en esta pasada')
+          continue
+        }
         await this.procesarPestana(pestana)
       }
-      if (this.estado === 'EN_CURSO') {
+      if (this.estado === 'EN_CURSO' && this.soloPestanas !== null && !(this.masNueva && this.seGuarda(this.masNueva))) {
+        // Importación acotada sin la planilla del mes: lo que se decide de la cartera entera
+        // (activas/inactivas, planillas repetidas) queda para la próxima completa.
+        this.estado = this.resumenes.some((r) => r.estado === 'error') ? 'CON_ERRORES' : 'COMPLETA'
+      } else if (this.estado === 'EN_CURSO') {
         this.emitirProgreso('consolidando', 'Consolidando pólizas activas y totales…')
         // Segunda pasada sobre las planillas repetidas: al preparar, la planilla buena podía no estar
         // todavía en esta base (primera vez que se la lee) y sus gemelas no tenían con qué compararse.
@@ -1294,6 +1422,7 @@ class TrabajoDeImportacion {
 
       // --- Persistencia, una transacción por pestaña.
       this.actualizarPestana(p.titulo, 'guardando', resumen.filasConDatos, null)
+      this.sinSubir = filasConCambiosSinSubir(this.db)
       const filas: Fila[] = []
       let sinIdEstable = 0
       for (let r = primeraFila; r < valores.length; r++) {
@@ -1357,6 +1486,12 @@ class TrabajoDeImportacion {
               break
             case 'APP_TAREAS':
               this.guardarTarea(p, fila, resumen)
+              break
+            case 'APP_LEADS':
+              this.guardarLead(p, fila, resumen)
+              break
+            case 'APP_PRESUPUESTOS':
+              this.guardarPresupuesto(p, fila, resumen)
               break
             case 'APP_ADJUNTOS':
             case 'APP_COMENTARIOS':
@@ -2050,6 +2185,8 @@ class TrabajoDeImportacion {
 
   private guardarRiesgoVario(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
     if (this.sinDatosUtiles(p, fila)) return
+    // Con una corrección local esperando subir, la hoja va atrás de esta computadora (ver guardarSiniestro).
+    if (this.sinSubir.has(fila.id)) return
     const ident = this.identificar(p, fila)
     const cuota = fila.valor('cuota')
     const cuotaMonto = interpretarNumero(cuota)
@@ -2094,6 +2231,10 @@ class TrabajoDeImportacion {
 
   private guardarSiniestro(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
     if (this.sinDatosUtiles(p, fila)) return
+    // Un siniestro que esta computadora acaba de corregir y todavía no subió no se vuelve a leer de la
+    // hoja: le devolvería el valor viejo, y la corrección quedaría sólo en la hoja después de subir
+    // (la bajada no la trae de vuelta porque la huella ya coincide). Mismo criterio que las tareas.
+    if (this.sinSubir.has(fila.id)) return
     const ident = this.identificar(p, fila)
     const fechaTexto = fila.valor('fecha')
     const fecha = interpretarFecha(fechaTexto, null, this.anioActual)
@@ -2103,17 +2244,29 @@ class TrabajoDeImportacion {
     if (carga.problema) this.problema(p.titulo, fila.numero, fila.id, 'fecha de carga inválida', carga.problema)
     const sucursalTexto = this.sucursalDeLaFila(fila)
     this.resolverSucursal(p, fila, sucursalTexto)
+    const polizaId = this.buscarPoliza(ident)
+    let clienteId = this.buscarCliente(ident)
+    // 12.7: si la fila no trae con qué reconocer al cliente (la pestaña no tenía columna de nombre ni
+    // de documento) pero la póliza sí se reconoció por número o patente, el asegurado es el titular
+    // de esa póliza. Antes el siniestro entraba sin cliente y el listado lo mostraba sin asegurado.
+    if (clienteId === null && polizaId !== null) {
+      clienteId = (this.sentencias.clienteDeLaPoliza.get(polizaId) as { cliente_id: number | null } | undefined)?.cliente_id ?? null
+    }
+    const titular =
+      clienteId !== null && (!ident.nombre || !ident.documento)
+        ? (this.sentencias.clientePorId.get(clienteId) as { id: number; nombre: string; documento: string | null } | undefined)
+        : undefined
     this.sentencias.siniestro.run({
       fila_id: fila.id,
       pestana: p.titulo,
-      cliente_id: this.buscarCliente(ident),
-      poliza_id: this.buscarPoliza(ident),
+      cliente_id: clienteId,
+      poliza_id: polizaId,
       fecha: oNulo(fechaTexto),
       fecha_iso: fecha.iso,
       fecha_carga: oNulo(cargaTexto),
       fecha_carga_iso: carga.iso,
-      cliente_nombre: oNulo(ident.nombre),
-      documento: oNulo(ident.documento),
+      cliente_nombre: oNulo(ident.nombre) ?? titular?.nombre ?? null,
+      documento: oNulo(ident.documento) ?? titular?.documento ?? null,
       patente: oNulo(ident.patente),
       sucursal_texto: oNulo(sucursalTexto),
       sucursal_mapeada: fila.tieneColumna('sucursal') ? 1 : 0,
@@ -2125,6 +2278,12 @@ class TrabajoDeImportacion {
       estado: oNulo(fila.valor('estado')),
       importe: oNulo(fila.valor('importe')),
       observaciones: oNulo(fila.valor('observaciones')),
+      abogado: oNulo(fila.valor('abogado')),
+      tercero_compania: oNulo(fila.valor('tercero_compania')),
+      tercero_telefono: oNulo(fila.valor('tercero_telefono')),
+      tercero_patente: oNulo(fila.valor('tercero_patente')),
+      tercero_lesionados: oNulo(fila.valor('tercero_lesionados')),
+      tercero_lesionados_detalle: oNulo(fila.valor('tercero_lesionados_detalle')),
       // Qué columnas tiene realmente esta pestaña: las que no están no pisan lo que ya hay guardado.
       hay_columna_fecha: fila.tieneColumna('fecha') ? 1 : 0,
       hay_columna_fecha_carga: fila.tieneColumna('fecha_carga') ? 1 : 0,
@@ -2139,9 +2298,16 @@ class TrabajoDeImportacion {
       hay_columna_estado: fila.tieneColumna('estado') ? 1 : 0,
       hay_columna_importe: fila.tieneColumna('importe') ? 1 : 0,
       hay_columna_observaciones: fila.tieneColumna('observaciones') ? 1 : 0,
+      hay_columna_abogado: fila.tieneColumna('abogado') ? 1 : 0,
+      hay_columna_tercero_compania: fila.tieneColumna('tercero_compania') ? 1 : 0,
+      hay_columna_tercero_telefono: fila.tieneColumna('tercero_telefono') ? 1 : 0,
+      hay_columna_tercero_patente: fila.tieneColumna('tercero_patente') ? 1 : 0,
+      hay_columna_tercero_lesionados: fila.tieneColumna('tercero_lesionados') ? 1 : 0,
+      hay_columna_tercero_lesionados_detalle: fila.tieneColumna('tercero_lesionados_detalle') ? 1 : 0,
       ahora: this.ahora,
     })
     this.contar(resumen, 'siniestros')
+    if (clienteId === null) this.contar(resumen, 'siniestros_sin_cliente_en_cartera')
   }
 
   /**
@@ -2151,6 +2317,7 @@ class TrabajoDeImportacion {
    */
   private guardarAmp(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
     if (this.sinDatosUtiles(p, fila)) return
+    if (this.sinSubir.has(fila.id)) return
     const ident = this.identificar(p, fila)
     const fechaTexto = fila.valor('fecha')
     const fecha = interpretarFecha(fechaTexto, null, this.anioActual)
@@ -2318,6 +2485,10 @@ class TrabajoDeImportacion {
 
     const sucursalTexto = this.sucursalDeLaFila(fila)
     this.resolverSucursal(p, fila, sucursalTexto)
+    // 12.7: de qué ficha cuelga. La clave viaja en la fila; los id son los de esta computadora.
+    const clave = limpiar(fila.valor('vinculo_clave'))
+    const vinculo = clave ? resolverVinculoDeTarea(this.db, clave) : null
+    if (clave && !vinculo) this.contar(resumen, 'tareas_sin_ficha')
 
     this.sentencias.tarea.run({
       fila_id: fila.id,
@@ -2334,8 +2505,104 @@ class TrabajoDeImportacion {
       creado_por: limpiar(fila.valor('usuario')) || 'Sincronización',
       creado_en: fecha.iso ?? (limpiar(fechaTexto) || this.ahora.slice(0, 10)),
       ahora: this.ahora,
+      vinculo_clave: oNulo(clave),
+      siniestro_id: vinculo?.siniestro_id ?? null,
+      renovacion_id: vinculo?.renovacion_id ?? null,
+      presupuesto_id: vinculo?.presupuesto_id ?? null,
+      lead_id: vinculo?.lead_id ?? null,
+      poliza_id: vinculo?.poliza_id ?? null,
+      cliente_id: vinculo?.cliente_id ?? null,
     })
     this.contar(resumen, 'tareas')
+  }
+
+  /**
+   * Una consulta (lead) de la pestaña APP LEADS (12.7). Hasta la 12.6 la pestaña se leía sólo a los
+   * datos crudos: un lead cargado en Lanús no existía en Dock Sud. Las notas viajan aparte, por APP
+   * COMENTARIOS; la columna NOTAS de la pestaña es el resumen para mirar desde Google.
+   */
+  private guardarLead(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
+    if (this.sinDatosUtiles(p, fila)) return
+    if (this.sinSubir.has(fila.id)) return
+    const nombre = limpiar(fila.valor('nombre'))
+    if (!nombre) return
+    const fechaTexto = fila.valor('fecha')
+    const fecha = interpretarFecha(fechaTexto, null, this.anioActual)
+    const sucursalTexto = this.sucursalDeLaFila(fila)
+    const sucursalId = this.resolverSucursal(p, fila, sucursalTexto)
+    const documento = limpiar(fila.valor('documento'))
+    this.sentencias.lead.run({
+      fila_id: fila.id,
+      pestana: p.titulo,
+      nombre: nombre.slice(0, 160),
+      telefono: oNulo(fila.valor('telefono')),
+      documento: oNulo(documento),
+      documento_normalizado: normalizarDocumento(documento) || null,
+      sucursal_id: sucursalId,
+      sucursal_texto: oNulo(sucursalTexto),
+      sucursal_mapeada: fila.tieneColumna('sucursal') ? 1 : 0,
+      interes: oNulo(fila.valor('interes')),
+      tipo_vehiculo: oNulo(fila.valor('tipo_vehiculo')),
+      origen: origenDeLeadDesdeTexto(fila.valor('origen')),
+      estado: estadoDeLeadDesdeTexto(fila.valor('estado')),
+      usuario_nombre: oNulo(fila.valor('usuario')),
+      creado_en: fecha.iso ?? (limpiar(fechaTexto) || this.ahora.slice(0, 10)),
+      ahora: this.ahora,
+    })
+    this.contar(resumen, 'leads')
+  }
+
+  /**
+   * Un presupuesto de APP PRESUPUESTOS (12.7). Las opciones vienen enteras en OPCIONES JSON; si la
+   * fila es de antes, se rearman como se pueda del texto legible. La versión más alta de cada número
+   * es la vigente, como cuando se crea acá.
+   */
+  private guardarPresupuesto(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
+    if (this.sinDatosUtiles(p, fila)) return
+    if (this.sinSubir.has(fila.id)) return
+    const numero = limpiar(fila.valor('numero_presupuesto'))
+    if (!numero) return
+    const version = Number.parseInt(limpiar(fila.valor('version')), 10)
+    const ident = this.identificar(p, fila)
+    const fechaTexto = fila.valor('fecha')
+    const fecha = interpretarFecha(fechaTexto, null, this.anioActual)
+    const sucursalTexto = this.sucursalDeLaFila(fila)
+    this.resolverSucursal(p, fila, sucursalTexto)
+    const clave = limpiar(fila.valor('vinculo_clave'))
+    const vinculo = clave ? resolverVinculoDeTarea(this.db, clave) : null
+    this.sentencias.presupuesto.run({
+      fila_id: fila.id,
+      pestana: p.titulo,
+      numero: numero.slice(0, 40),
+      version: Number.isFinite(version) && version > 0 ? version : 1,
+      lead_id: vinculo?.lead_id ?? null,
+      cliente_id: this.buscarCliente(ident),
+      cliente_nombre: ident.nombre || 'Sin nombre',
+      telefono: oNulo(fila.valor('telefono')),
+      documento: oNulo(ident.documento),
+      sucursal_texto: oNulo(sucursalTexto),
+      sucursal_mapeada: fila.tieneColumna('sucursal') ? 1 : 0,
+      patente: oNulo(ident.patente),
+      marca: oNulo(fila.valor('marca')),
+      modelo: oNulo(fila.valor('modelo')),
+      anio: oNulo(fila.valor('anio')),
+      tipo_vehiculo: oNulo(fila.valor('tipo_vehiculo')),
+      hay_columna_tipo_vehiculo: fila.tieneColumna('tipo_vehiculo') ? 1 : 0,
+      observaciones: oNulo(fila.valor('observaciones')),
+      estado: estadoDePresupuestoDesdeTexto(fila.valor('estado')),
+      usuario_nombre: oNulo(fila.valor('usuario')),
+      vinculo_clave: oNulo(clave),
+      creado_en: fecha.iso ?? (limpiar(fechaTexto) || this.ahora.slice(0, 10)),
+      ahora: this.ahora,
+    })
+    this.sentencias.vigenciaDePresupuestos.run({ numero: numero.slice(0, 40) })
+    const presupuesto = this.db.prepare('SELECT id FROM presupuestos WHERE fila_id = ?').get(fila.id) as { id: number } | undefined
+    if (presupuesto) {
+      const companias = (this.db.prepare('SELECT DISTINCT compania FROM polizas WHERE compania IS NOT NULL').all() as Array<{ compania: string }>).map((c) => c.compania)
+      const opciones = opcionesDesdeLaHoja(fila.valor('opciones_json'), fila.valor('opciones'), companias)
+      if (opciones.length > 0 || fila.tieneColumna('opciones_json')) guardarOpcionesDePresupuesto(this.db, presupuesto.id, opciones)
+    }
+    this.contar(resumen, 'presupuestos')
   }
 
   /**
@@ -2355,6 +2622,7 @@ class TrabajoDeImportacion {
 
   private guardarReglaCobertura(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
     if (this.sinDatosUtiles(p, fila)) return
+    if (this.sinSubir.has(fila.id)) return
     this.sentencias.regla.run({
       fila_id: fila.id,
       pestana: p.titulo,

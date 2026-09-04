@@ -28,6 +28,7 @@ import { mismaSucursal } from '../../shared/sucursales'
 import { db } from '../db/base'
 import { ahoraIso, generarId, interpretarNumero, limpiar, normalizarPatente, normalizarTexto } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
+import { opcionesAJson } from '../sincronizacion/vinculos'
 import { PESTANAS_DE_LA_APP } from '../sincronizacion/pestanasApp'
 import { telefonoParaWhatsapp } from './cartera'
 import { ErrorDeNegocio } from './errores'
@@ -461,7 +462,18 @@ function camposParaLaHoja(f: FilaCruda, opciones: OpcionDePresupuesto[]): Record
     estado: f.estado,
     observaciones: f.observaciones ?? '',
     usuario: f.usuario_nombre ?? '',
+    tipo_vehiculo: f.tipo_vehiculo ?? '',
+    // 12.7: lo que la otra computadora necesita para rearmar el presupuesto entero: de qué consulta
+    // salió y las opciones una por una (el texto legible de arriba es para mirar desde Google).
+    vinculo_clave: claveDelLead(f.lead_id),
+    opciones_json: opcionesAJson(opciones.map((o) => ({ compania: o.compania, cobertura: o.cobertura, precio: o.precio, comentario: o.comentario ?? '' }))),
   }
+}
+
+function claveDelLead(leadId: number | null): string {
+  if (leadId === null) return ''
+  const lead = db().prepare('SELECT fila_id FROM leads WHERE id = ?').get(leadId) as { fila_id: string | null } | undefined
+  return lead?.fila_id ? `LEAD:${lead.fila_id}` : ''
 }
 
 /**

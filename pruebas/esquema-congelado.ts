@@ -39,4 +39,7 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // La 23 lleva los adjuntos al VPS (fila_id, vps_id, sha256, miniatura…), crea `poliza_adjuntos`, da
   // fila_id a comentarios y observaciones, y suma los índices que faltaban en pagos, cuotas y pólizas.
   23: '99b8f3649faab088',
+  // La 24 da a las tareas y a los presupuestos la clave de su vínculo («SINIESTRO:<_ID>», «LEAD:<_ID>»)
+  // y a las notas de los leads su fila en la base (viajan por APP COMENTARIOS).
+  24: '07924f5ab6b867a2',
 }

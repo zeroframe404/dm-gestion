@@ -17,7 +17,7 @@ import {
   type ResultadoDeTramos,
   type TramoDeColumna,
 } from '../importacion/fuente'
-import type { AlmacenDeAdjuntos, ArchivoBajado, FichaParaElAlmacen } from '../servicios/adjuntos'
+import type { AlmacenDeAdjuntos, ArchivoBajado, FichaEnElAlmacen, FichaParaElAlmacen } from '../servicios/adjuntos'
 import { ErrorDeNegocio } from '../servicios/errores'
 
 /** Tiempo máximo por pedido; sin esto una conexión colgada bloquea la importación. */
@@ -389,6 +389,22 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
 
   async borrarAdjunto(id: string): Promise<void> {
     await this.pedirCrudo('borrar el adjunto', 'DELETE', `/api/dmg/adjuntos/${encodeURIComponent(id)}`)
+  }
+
+  /** Todo lo que el servidor tiene guardado (de a 5.000 como mucho, que es lo que devuelve). */
+  async listarAdjuntos(): Promise<{ fichas: FichaEnElAlmacen[]; completa: boolean }> {
+    const datos = (await this.pedir('listar los adjuntos del servidor', 'GET', '/api/dmg/adjuntos', undefined, {
+      reintentarSinRespuesta: false,
+    })) as { adjuntos?: Array<{ id?: unknown; tamano?: unknown; sha256?: unknown }> } | null
+    const lista = Array.isArray(datos?.adjuntos) ? datos!.adjuntos! : []
+    const fichas: FichaEnElAlmacen[] = lista
+      .filter((ficha) => typeof ficha?.id === 'string')
+      .map((ficha) => ({
+        id: String(ficha.id),
+        tamano: Number(ficha.tamano) || 0,
+        sha256: typeof ficha.sha256 === 'string' ? ficha.sha256.toLowerCase() : null,
+      }))
+    return { fichas, completa: fichas.length < 5000 }
   }
 
   // --- FuenteHoja -----------------------------------------------------------

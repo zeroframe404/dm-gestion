@@ -410,8 +410,10 @@ test('la casa sobrevive al viaje de ida y vuelta por la hoja, y en otra computad
   assert.equal(releida.vehiculo, 'Hogar · Mitre 1234, Lanús')
   assert.equal(vehiculosDeCliente(cliente).find((v) => v.tipo === 'HOGAR')?.direccionRiesgo, 'Mitre 1234, Lanús')
 
-  // Otra computadora, que sólo tiene la hoja. La dirección no viaja (la planilla no tiene columna para
-  // eso) y la planilla de prueba tampoco tiene columna TIPO: la póliza llega, sin nada asegurado.
+  // Otra computadora, que sólo tiene la hoja. La planilla de prueba no tenía columna TIPO, pero la
+  // subida se la agregó (12.7): la póliza llega y al menos se sabe que es un hogar. La dirección del
+  // riesgo no viaja: la planilla no tiene campo para eso.
+  assert.ok(hoja.encabezadosDe('AGOSTO').includes('TIPO'), 'la subida le agregó la columna TIPO a la planilla')
   const otraBase = async () => {
     cerrarBaseDeDatos()
     const registrar = console.log
@@ -424,18 +426,15 @@ test('la casa sobrevive al viaje de ida y vuelta por la hoja, y en otra computad
     assert.equal(enLaOtra.patente, null)
     return enLaOtra
   }
-  assert.equal((await otraBase()).vehiculo, null)
+  assert.equal((await otraBase()).vehiculo, 'Hogar')
 
-  // Con una columna TIPO en la planilla (la hoja de la agencia la tiene), la otra computadora al menos
-  // sabe que es un hogar aunque no sepa la dirección.
+  // Si alguien borra el TIPO de la planilla, la otra computadora recibe la póliza sin nada asegurado.
   const encabezados = hoja.encabezadosDe('AGOSTO')
   const columnaPoliza = encabezados.findIndex((e) => /P[OÓ]LIZA/.test(e.trim().toUpperCase()))
   const filaDeLaCasa = hoja.filasDe('AGOSTO').findIndex((f) => (f[columnaPoliza] ?? '').trim() === '7000011')
   assert.ok(filaDeLaCasa > 0, 'la póliza de la casa está en la planilla del mes')
-  const columnaTipo = encabezados.length
-  hoja.editarCelda('AGOSTO', 1, columnaTipo, 'TIPO')
-  hoja.editarCelda('AGOSTO', filaDeLaCasa + 1, columnaTipo, 'HOGAR')
-  assert.equal((await otraBase()).vehiculo, 'Hogar')
+  hoja.editarCelda('AGOSTO', filaDeLaCasa + 1, encabezados.indexOf('TIPO'), '')
+  assert.equal((await otraBase()).vehiculo, null)
 })
 
 test('en un vehículo la cobertura sigue siendo obligatoria', async () => {
