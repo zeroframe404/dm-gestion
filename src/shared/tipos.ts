@@ -3168,11 +3168,16 @@ export interface ImagenDeReporte {
   vistaPrevia: string
 }
 
+/** Un reporte de error o una sugerencia de mejora (12.6): el mismo cuadro, el mismo camino, otra etiqueta en GitHub. */
+export type TipoDeReporte = 'error' | 'mejora'
+
 export interface ReporteDeError {
   titulo: string
   cuerpo: string
   /** Las capturas elegidas, por ruta. Vacío o ausente = un reporte sin imágenes, que es lo normal. */
   rutasDeImagenes?: string[]
+  /** Ausente = 'error', que es lo que mandaban las versiones anteriores. */
+  tipo?: TipoDeReporte
 }
 
 /** El issue que quedó creado. La URL es la que se le ofrece abrir a quien reportó. */

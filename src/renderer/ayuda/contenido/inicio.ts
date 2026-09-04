@@ -36,6 +36,13 @@ export const AYUDA_INICIO: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'Sugerir una mejora',
+        parrafos: [
+          'Al lado de «Reportar error» está «Sugerir mejora», también para cualquier rol. Es el mismo cuadro, pero para lo que NO es un error: un botón que falta, un paso de más, algo que se hace a mano y podría hacerse solo. Contá cómo lo hacés hoy, qué te complica y cómo te lo imaginás.',
+          'Las sugerencias quedan anotadas aparte de los errores, con su propia etiqueta, para que se puedan mirar y ordenar juntas. No todas se hacen, y las que sí llegan en una versión nueva del programa.',
+        ],
+      },
+      {
         titulo: 'El mapa de módulos',
         parrafos: [
           'Cada tarjeta representa un módulo de la aplicación (Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros, Cobranzas, Métricas, Reportes, Marketing y Tareas) con una descripción de una línea de qué hace. Hacer clic en cualquiera te lleva directo a ese módulo, es un acceso rápido más que la barra lateral. Un módulo que todavía no está disponible en esta versión aparece marcado «Próximamente».',

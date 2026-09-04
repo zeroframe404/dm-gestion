@@ -238,7 +238,9 @@ export function Redes() {
           <div className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
           {error && <Alerta tono="error">{error}</Alerta>}
           {aviso && <Alerta tono="exito">{aviso}</Alerta>}
-          {panel.ultimoError && !error && <Alerta tono="aviso">{panel.ultimoError}</Alerta>}
+          {/* Sin la app cargada, el aviso de la tarjeta de abajo ya dice qué falta: un segundo cartel
+              con el último error de Meta o del VPS sería ruido sobre una pantalla que no puede hacer nada. */}
+          {panel.ultimoError && !error && panel.appConfigurada && <Alerta tono="aviso">{panel.ultimoError}</Alerta>}
 
           {/* --- La cuenta ------------------------------------------------------ */}
           <Tarjeta

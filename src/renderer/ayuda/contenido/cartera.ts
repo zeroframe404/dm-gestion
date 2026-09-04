@@ -364,7 +364,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         ],
       },
     ],
-    glosario: [
+    conceptos: [
       {
         termino: 'Duplicado',
         explicacion: 'Dos registros para una sola cosa del mundo real: la misma persona, la misma póliza en el mismo mes, la misma baja. Los dejaba la sincronización cuando dos computadoras se pisaban; desde la 12.6 eso no vuelve a pasar, y esta pantalla es para limpiar lo que quedó.',

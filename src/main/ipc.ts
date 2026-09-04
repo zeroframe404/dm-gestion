@@ -1328,8 +1328,10 @@ export function registrarIpc(): void {
   // SUPER_ADMIN — no de cualquier administrador, a diferencia de antes.
   // Mirar la pestaña alcanza con ver Marketing: tiene que poder abrirse aunque no haya nada cargado,
   // para que la pantalla explique qué falta en vez de romperse.
+  // El panorama de las cuentas lo mira Marketing → Redes y también Administración → Redes sociales:
+  // un administrador sin Marketing tiene que poder verlo desde ahí (antes la tarjeta quedaba girando).
   manejar('redes:panel', async () => {
-    const actor = exigirVista('marketing')
+    const actor = exigirVista('marketing', 'administracion')
     return exito(await panelDeRedes(actor))
   })
   manejar('redes:estadoMeta', async () => {
