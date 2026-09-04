@@ -253,11 +253,21 @@ function FilaDeSiniestro({ fila, ve, alAbrir }: { fila: FilaSiniestro; ve: Set<s
       )}
       {ve.has('observaciones') && (
         <td className="max-w-80 px-3 py-2 text-slate-600">
-          {/* ROBO va en rojo, igual que en la hoja: en la agencia un robo se mira distinto que un choque. */}
-          {fila.esRobo && (
-            <span className="mr-1.5 inline-flex rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-extrabold tracking-wide text-red-700">ROBO</span>
-          )}
-          <span className="align-middle">{fila.descripcion ?? fila.observaciones ?? ''}</span>
+          {/* Una línea sola: `observaciones` es la línea de tiempo entera (cada adjunto que se sube deja
+              su propia entrada), y sin achicarla a una línea un siniestro con muchas fotos estira la
+              fila hasta tapar el resto de la tabla. El texto entero sigue disponible al pasar el mouse
+              y, sobre todo, al abrir la ficha. */}
+          <div className="flex min-w-0 items-center gap-1.5">
+            {/* ROBO va en rojo, igual que en la hoja: en la agencia un robo se mira distinto que un choque. */}
+            {fila.esRobo && (
+              <span className="inline-flex shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-extrabold tracking-wide text-red-700">
+                ROBO
+              </span>
+            )}
+            <span className="min-w-0 flex-1 truncate" title={fila.descripcion ?? fila.observaciones ?? undefined}>
+              {fila.descripcion ?? fila.observaciones ?? ''}
+            </span>
+          </div>
         </td>
       )}
       {ve.has('marcas') && (
