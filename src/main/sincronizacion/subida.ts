@@ -2,7 +2,7 @@
 // en la menor cantidad posible de llamadas: una lectura de las pestañas involucradas, una escritura de
 // celdas, un agregado por pestaña y un borrado por pestaña.
 import type { Campo } from '../importacion/encabezados'
-import type { CeldaAEscribir, FuenteHoja } from '../importacion/fuente'
+import type { CeldaAEscribir, FilaABorrar, FuenteHoja } from '../importacion/fuente'
 import { ahoraIso, limpiar } from '../importacion/normalizar'
 import { db } from '../db/base'
 import { anotarEvento, marcarFallidas, marcarListas, marcarSinArreglo, pendientes, type EntradaCola } from './cola'
@@ -82,7 +82,7 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
 
   const celdas: CeldaAEscribir[] = []
   const aAgregar = new Map<string, Array<{ entrada: EntradaCola; fila: string[] }>>()
-  const aBorrar = new Map<string, { sheetId: number; filas: number[] }>()
+  const aBorrar = new Map<string, { sheetId: number; columnaId: number; filas: FilaABorrar[] }>()
   const conflictos: Conflicto[] = []
   const hechas: number[] = []
   const fallidas: Array<{ id: number; motivo: string }> = []
@@ -163,8 +163,10 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
     }
 
     if (entrada.operacion === 'borrar') {
-      const previo = aBorrar.get(entrada.pestana) ?? { sheetId: pestana.sheetId, filas: [] }
-      previo.filas.push(numeroDeFila)
+      const previo = aBorrar.get(entrada.pestana) ?? { sheetId: pestana.sheetId, columnaId, filas: [] }
+      // Número Y _ID: la base del VPS comprueba que el número siga siendo ese renglón y, si otra
+      // computadora borró algo más arriba desde que se leyó, lo busca por el _ID (ver fuente.ts).
+      previo.filas.push({ numero: numeroDeFila, id: entrada.filaId })
       aBorrar.set(entrada.pestana, previo)
       hechas.push(entrada.id)
       continue
@@ -177,7 +179,7 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
     for (const [nombreCampo, valor] of Object.entries(entrada.campos)) {
       const nuevo = valor ?? ''
       if (nombreCampo === '_id') {
-        celdas.push({ titulo: entrada.pestana, fila: numeroDeFila, columna: columnaId, valor: nuevo })
+        celdas.push({ titulo: entrada.pestana, fila: numeroDeFila, columna: columnaId, valor: nuevo, id: entrada.filaId })
         algoQueEscribir = true
         continue
       }
@@ -192,7 +194,7 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
       if (anterior !== null && limpiar(anterior) !== remoto && remoto !== limpiar(nuevo)) {
         conflictos.push({ filaId: entrada.filaId, pestana: entrada.pestana, campo, valorLocal: nuevo, valorRemoto: remoto })
       }
-      celdas.push({ titulo: entrada.pestana, fila: numeroDeFila, columna, valor: nuevo })
+      celdas.push({ titulo: entrada.pestana, fila: numeroDeFila, columna, valor: nuevo, id: entrada.filaId })
       algoQueEscribir = true
     }
     if (algoQueEscribir) hechas.push(entrada.id)
@@ -200,24 +202,34 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   }
 
   // --- Ejecutar: escribir, agregar y recién al final borrar (borrar corre las filas de abajo).
+  // Los renglones que la base dice que ya no están (los borró otra computadora entre la lectura de
+  // arriba y esta escritura): sus celdas no se escribieron en ningún lado y sus entradas no se dan por
+  // subidas. Hasta la 12.5 esa celda creaba una fila fantasma al final de la pestaña.
+  const perdidas = new Set<string>()
   try {
     if (celdas.length > 0) {
-      await fuente.escribirCeldas(celdas)
+      const resultado = await fuente.escribirCeldas(celdas, Object.fromEntries(columnaIdPorPestana))
       llamadas++
+      for (const fila of resultado.noEncontradas) perdidas.add(`${fila.titulo}|${fila.id}`)
     }
     for (const [titulo, lista] of aAgregar) {
-      const primera = await fuente.agregarFilas(
+      const { numeros } = await fuente.agregarFilas(
         titulo,
         lista.map((x) => x.fila),
       )
       llamadas++
       lista.forEach((x, i) => {
         hechas.push(x.entrada.id)
-        registrarFilaSubida(x.entrada.filaId, titulo, primera + i, x.fila, columnaIdPorPestana.get(titulo) ?? -1)
+        const numero = numeros[i] ?? null
+        // Un null es una fila cuyo _ID ya estaba en la pestaña (el reintento de un agregado que sí se
+        // había aplicado): ya está donde tiene que estar y la próxima bajada anota en qué renglón.
+        if (numero !== null) registrarFilaSubida(x.entrada.filaId, titulo, numero, x.fila, columnaIdPorPestana.get(titulo) ?? -1)
+        else registrarFilaYaEnLaHoja(x.entrada.filaId, titulo)
       })
     }
-    for (const [, { sheetId, filas }] of aBorrar) {
-      await fuente.borrarFilas(sheetId, filas)
+    for (const [, { sheetId, columnaId, filas }] of aBorrar) {
+      // Un _ID que la base ya no tiene no borra nada en su lugar: el borrado ya estaba hecho.
+      await fuente.borrarFilas(sheetId, filas, columnaId)
       llamadas++
     }
   } catch (error) {
@@ -229,9 +241,17 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
     return { subidas: 0, conflictos: 0, llamadas, error: motivo }
   }
 
+  const celdasEscritas = celdas.filter((celda) => !perdidas.has(`${celda.titulo}|${celda.id ?? ''}`))
+  const entradasEscritas = entradas.filter((entrada) => {
+    if (entrada.operacion !== 'actualizar' || !perdidas.has(`${entrada.pestana}|${entrada.filaId}`)) return true
+    const posicion = hechas.indexOf(entrada.id)
+    if (posicion >= 0) hechas.splice(posicion, 1)
+    fallidas.push({ id: entrada.id, motivo: 'La fila ya no está en la base (la borraron desde otra computadora).' })
+    return false
+  })
+
   // --- Dejar la base local al día con lo que quedó en la hoja.
-  actualizarBaseLocal(contexto, valoresPorTitulo, entradas, celdas)
-  for (const [, { filas }] of aBorrar) void filas
+  actualizarBaseLocal(contexto, valoresPorTitulo, entradasEscritas, celdasEscritas)
   marcarListas(hechas)
   for (const { id, motivo } of fallidas) marcarSinArreglo([id], motivo)
   for (const conflicto of conflictos) anotarConflicto(conflicto)
@@ -267,6 +287,11 @@ function registrarFilaSubida(filaId: string, pestana: string, numeroFila: number
   db()
     .prepare(`UPDATE filas_crudas SET pestana = ?, numero_fila = ?, huella = ?, en_la_hoja = 1, actualizado_en = ? WHERE fila_id = ?`)
     .run(pestana, numeroFila, huellaDeFila(celdas, columnaId), ahoraIso(), filaId)
+}
+
+/** La fila ya estaba en la pestaña con ese _ID: se anota que está, sin inventarle un renglón. */
+function registrarFilaYaEnLaHoja(filaId: string, pestana: string): void {
+  db().prepare(`UPDATE filas_crudas SET pestana = ?, en_la_hoja = 1, actualizado_en = ? WHERE fila_id = ?`).run(pestana, ahoraIso(), filaId)
 }
 
 /**

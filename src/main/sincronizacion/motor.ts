@@ -67,6 +67,12 @@ export interface OpcionesMotor {
   pestanasDelCiclo?: (contexto: ContextoHoja) => string[]
   /** Se llama cuando el carril rápido trajo tareas nuevas o cambiadas, para avisar al renderer. */
   alCambiarLasTareas?: () => void
+  /**
+   * Los archivos adjuntos que todavía no llegaron al servidor (12.6). Se suben después de la cola,
+   * en el mismo ciclo de diez segundos; `hayArchivosPendientes` evita leer la base cuando no hay nada.
+   */
+  subirArchivos?: () => Promise<{ subidos: number; fallidos: number }>
+  hayArchivosPendientes?: () => boolean
 }
 
 /**
@@ -95,7 +101,9 @@ function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
       p.tipo === 'PAGOS' ||
       p.tipo === 'SINIESTROS' ||
       p.tipo === 'APP_RECHAZOS' ||
-      p.tipo === 'APP_TAREAS'
+      p.tipo === 'APP_TAREAS' ||
+      p.tipo === 'APP_ADJUNTOS' ||
+      p.tipo === 'APP_COMENTARIOS'
     ) {
       titulos.add(p.titulo)
     }
@@ -103,9 +111,15 @@ function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
   return [...titulos]
 }
 
-/** La pestaña del carril rápido. Vacío = la hoja todavía no tiene ninguna tarea y no hay nada que bajar. */
+/**
+ * Las pestañas del carril rápido: las tareas y, desde la 12.6, los comentarios y los adjuntos, que
+ * son la conversación alrededor de una tarea o un siniestro y merecen la misma inmediatez. Vacío = la
+ * base todavía no tiene ninguna de las tres y no hay nada que bajar.
+ */
 function pestanasDeTareas(contexto: ContextoHoja): string[] {
-  return contexto.pestanas.filter((p) => p.tipo === 'APP_TAREAS').map((p) => p.titulo)
+  return contexto.pestanas
+    .filter((p) => p.tipo === 'APP_TAREAS' || p.tipo === 'APP_COMENTARIOS' || p.tipo === 'APP_ADJUNTOS')
+    .map((p) => p.titulo)
 }
 
 export class MotorDeSincronizacion {
@@ -215,17 +229,38 @@ export class MotorDeSincronizacion {
     if (this.trabajando || !this.encendido) return 0
     // Lo que se puede intentar AHORA: las que están esperando un reintento no cuentan, si no cada ciclo
     // leía la hoja para no escribir nada.
-    if (cuantasListasParaSubir() === 0) return 0
+    const hayFilas = cuantasListasParaSubir() > 0
+    const hayArchivos = this.opciones.hayArchivosPendientes?.() ?? false
+    if (!hayFilas && !hayArchivos) return 0
     const fuente = this.opciones.crearFuente()
     if (!fuente) return 0
-    return this.seguir(this.correrSubida(fuente))
+    return this.seguir(this.correrSubida(fuente, hayFilas))
   }
 
-  private async correrSubida(fuente: FuenteHoja): Promise<number> {
+  private async correrSubida(fuente: FuenteHoja, hayFilas = true): Promise<number> {
     this.trabajando = true
     this.avisar()
     const arranque = Date.now()
     try {
+      const subidas = hayFilas ? await this.subirLaCola(fuente, arranque) : 0
+      // Los archivos van después de las filas: la ficha del adjunto ya está en la base cuando el
+      // archivo llega al servidor, y si el servidor no está, la cola ya lo dijo.
+      if (this.opciones.subirArchivos) {
+        const archivos = await this.opciones.subirArchivos()
+        if (archivos.subidos > 0) anotarEvento('subida', `Se subieron ${archivos.subidos} archivos adjuntos al servidor.`, { filas: archivos.subidos })
+      }
+      return subidas
+    } catch (error) {
+      this.registrarFalla(error, 'subida')
+      return 0
+    } finally {
+      this.trabajando = false
+      this.avisar()
+    }
+  }
+
+  private async subirLaCola(fuente: FuenteHoja, arranque: number): Promise<number> {
+    {
       let contexto = await this.conContexto(fuente)
       // Si lo que espera es para una pestaña que todavía no está en la base —una de la aplicación
       // (leads, presupuestos, tareas) o la del mes nuevo que dejó «Cerrar mes»— se crea ahora al
@@ -249,12 +284,6 @@ export class MotorDeSincronizacion {
         })
       }
       return resultado.subidas
-    } catch (error) {
-      this.registrarFalla(error, 'subida')
-      return 0
-    } finally {
-      this.trabajando = false
-      this.avisar()
     }
   }
 

@@ -1,5 +1,5 @@
 // Raíz de la interfaz: decide entre carga, login, cambio de contraseña obligatorio y el escritorio.
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { AvisoActualizacion } from './componentes/AvisoActualizacion'
 import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
 import { BarraLateral } from './componentes/BarraLateral'
@@ -13,24 +13,29 @@ import { ProveedorPermisos, usePermisos } from './contexto/Permisos'
 import { useSesion } from './contexto/Sesion'
 import { ProveedorTareas } from './contexto/Tareas'
 import { buscarModulo, esAreaDePermisos, type IdModulo } from './modulos'
-import { Administracion } from './pantallas/administracion/Administracion'
-import { Cartera } from './pantallas/cartera/Cartera'
-import { Companias } from './pantallas/companias/Companias'
-import { Clientes } from './pantallas/clientes/Clientes'
-import { Cobranzas } from './pantallas/cobranzas/Cobranzas'
-import { GeneralExcel } from './pantallas/excel/GeneralExcel'
-import { Leads } from './pantallas/leads/Leads'
-import { Marketing } from './pantallas/marketing/Marketing'
-import { Metricas } from './pantallas/metricas/Metricas'
-import { Presupuestos } from './pantallas/presupuestos/Presupuestos'
-import { Reportes } from './pantallas/reportes/Reportes'
-import { Tareas } from './pantallas/tareas/Tareas'
-import { Polizas } from './pantallas/polizas/Polizas'
-import { Renovaciones } from './pantallas/renovaciones/Renovaciones'
-import { Siniestros } from './pantallas/siniestros/Siniestros'
 import { CambiarClave } from './pantallas/CambiarClave'
 import { Inicio } from './pantallas/Inicio'
 import { Login } from './pantallas/Login'
+
+// Cada módulo se carga la primera vez que se abre (12.6). Antes los dieciséis venían en el mismo
+// paquete que el ingreso: la ventana no dibujaba nada hasta que el navegador terminaba de leer
+// Marketing y Reportes para mostrar el Login. Inicio y Login siguen viniendo de entrada, que es lo
+// que se ve primero.
+const Administracion = lazy(() => import('./pantallas/administracion/Administracion').then((m) => ({ default: m.Administracion })))
+const Cartera = lazy(() => import('./pantallas/cartera/Cartera').then((m) => ({ default: m.Cartera })))
+const Companias = lazy(() => import('./pantallas/companias/Companias').then((m) => ({ default: m.Companias })))
+const Clientes = lazy(() => import('./pantallas/clientes/Clientes').then((m) => ({ default: m.Clientes })))
+const Cobranzas = lazy(() => import('./pantallas/cobranzas/Cobranzas').then((m) => ({ default: m.Cobranzas })))
+const GeneralExcel = lazy(() => import('./pantallas/excel/GeneralExcel').then((m) => ({ default: m.GeneralExcel })))
+const Leads = lazy(() => import('./pantallas/leads/Leads').then((m) => ({ default: m.Leads })))
+const Marketing = lazy(() => import('./pantallas/marketing/Marketing').then((m) => ({ default: m.Marketing })))
+const Metricas = lazy(() => import('./pantallas/metricas/Metricas').then((m) => ({ default: m.Metricas })))
+const Presupuestos = lazy(() => import('./pantallas/presupuestos/Presupuestos').then((m) => ({ default: m.Presupuestos })))
+const Reportes = lazy(() => import('./pantallas/reportes/Reportes').then((m) => ({ default: m.Reportes })))
+const Tareas = lazy(() => import('./pantallas/tareas/Tareas').then((m) => ({ default: m.Tareas })))
+const Polizas = lazy(() => import('./pantallas/polizas/Polizas').then((m) => ({ default: m.Polizas })))
+const Renovaciones = lazy(() => import('./pantallas/renovaciones/Renovaciones').then((m) => ({ default: m.Renovaciones })))
+const Siniestros = lazy(() => import('./pantallas/siniestros/Siniestros').then((m) => ({ default: m.Siniestros })))
 
 export function App() {
   const { usuario, cargando } = useSesion()
@@ -128,8 +133,17 @@ function Escritorio() {
 
   return (
     <Marco moduloActivo={moduloActivo} titulo={modulo.nombre} alElegir={ir}>
-      {contenido}
+      <Suspense fallback={<CargandoModulo />}>{contenido}</Suspense>
     </Marco>
+  )
+}
+
+/** Lo que se ve el instante en que un módulo se abre por primera vez y su código todavía está llegando. */
+function CargandoModulo() {
+  return (
+    <div className="flex h-full items-center justify-center p-8 text-slate-400" role="status" aria-label="Cargando">
+      <Icono nombre="cargando" tamano={24} className="animate-spin" />
+    </div>
   )
 }
 

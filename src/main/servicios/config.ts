@@ -452,8 +452,10 @@ export function adoptarGoogle(valor: unknown): boolean {
   if (!valor || typeof valor !== 'object') return false
   const v = valor as { cuentaServicio?: unknown; urlHoja?: unknown }
   if (!v.cuentaServicio || typeof v.cuentaServicio !== 'object' || Array.isArray(v.cuentaServicio)) return false
+  // Sin URL de la hoja la cuenta sirve igual: desde la v12 la hoja es sólo la migración, y lo que las
+  // computadoras necesitan de Google es el token para Drive (respaldos y adjuntos). Hasta la 12.5 esto
+  // rechazaba el valor y la PC quedaba sin Drive sin decir nada.
   const urlHoja = typeof v.urlHoja === 'string' ? v.urlHoja.trim() : ''
-  if (!urlHoja) return false
   const cuenta = v.cuentaServicio as CuentaServicio
   // La misma comprobación mínima que hace la pantalla: sin `client_email` y `private_key` no se puede
   // firmar nada, y adoptarla dejaría a esta computadora peor de lo que estaba.
@@ -504,6 +506,18 @@ export function borrarMeta(): EstadoDeMeta {
 }
 
 /** Credenciales completas para el importador (nunca salen del proceso principal). */
+/**
+ * La cuenta de servicio para Drive, tenga o no URL de hoja: para firmar el token no hace falta la hoja.
+ * `credencialesGoogle` (la migración) sigue exigiendo las dos cosas.
+ */
+export function credencialesParaDrive(): { cuentaServicio: Record<string, unknown>; urlHoja: string | null } | null {
+  const google = leerConfig().google
+  if (!google?.cuentaServicio) return null
+  const cuenta = google.cuentaServicio as Record<string, unknown>
+  if (typeof cuenta.client_email !== 'string' || typeof cuenta.private_key !== 'string') return null
+  return { cuentaServicio: cuenta, urlHoja: google.urlHoja || null }
+}
+
 export function credencialesGoogle(): { cuentaServicio: Record<string, unknown>; urlHoja: string } | null {
   const google = leerConfig().google
   if (!google?.cuentaServicio || !google.urlHoja) return null

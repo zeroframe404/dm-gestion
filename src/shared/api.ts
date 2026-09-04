@@ -40,6 +40,14 @@ export interface ApiDm {
     vistaPrevia: Remota<'eliminacion:vistaPrevia'>
     borrar: Remota<'eliminacion:borrar'>
   }
+  duplicados: {
+    listar: Remota<'duplicados:listar'>
+    fusionarClientes: Remota<'duplicados:fusionarClientes'>
+    vistaPreviaCuota: Remota<'duplicados:vistaPreviaCuota'>
+    sacarCuota: Remota<'duplicados:sacarCuota'>
+    vistaPreviaBaja: Remota<'duplicados:vistaPreviaBaja'>
+    sacarBaja: Remota<'duplicados:sacarBaja'>
+  }
   config: {
     estadoGoogle: Remota<'config:estadoGoogle'>
     guardarGoogle: Remota<'config:guardarGoogle'>
@@ -123,6 +131,7 @@ export interface ApiDm {
     editar: Remota<'siniestros:editar'>
     agregarObservacion: Remota<'siniestros:agregarObservacion'>
     adjuntar: Remota<'siniestros:adjuntar'>
+    adjuntarArchivos: Remota<'siniestros:adjuntarArchivos'>
     abrirAdjunto: Remota<'siniestros:abrirAdjunto'>
     borrarAdjunto: Remota<'siniestros:borrarAdjunto'>
     crearTarea: Remota<'siniestros:crearTarea'>
@@ -147,6 +156,11 @@ export interface ApiDm {
     crear: Remota<'polizas:crear'>
     editar: Remota<'polizas:editar'>
     darDeBaja: Remota<'polizas:darDeBaja'>
+    adjuntos: Remota<'polizas:adjuntos'>
+    adjuntarArchivos: Remota<'polizas:adjuntarArchivos'>
+    adjuntar: Remota<'polizas:adjuntar'>
+    abrirAdjunto: Remota<'polizas:abrirAdjunto'>
+    borrarAdjunto: Remota<'polizas:borrarAdjunto'>
   }
   reglas: {
     matriz: Remota<'reglas:matriz'>
@@ -221,6 +235,7 @@ export interface ApiDm {
     cambiarEstado: Remota<'tareas:cambiarEstado'>
     comentar: Remota<'tareas:comentar'>
     adjuntar: Remota<'tareas:adjuntar'>
+    adjuntarArchivos: Remota<'tareas:adjuntarArchivos'>
     abrirAdjunto: Remota<'tareas:abrirAdjunto'>
     borrarAdjunto: Remota<'tareas:borrarAdjunto'>
     mias: Remota<'tareas:mias'>

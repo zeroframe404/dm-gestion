@@ -50,6 +50,14 @@ const api: ApiDm = {
     vistaPrevia: (tipo, id) => invocar('eliminacion:vistaPrevia', tipo, id),
     borrar: (tipo, id) => invocar('eliminacion:borrar', tipo, id),
   },
+  duplicados: {
+    listar: () => invocar('duplicados:listar'),
+    fusionarClientes: (sobrevivienteId, duplicadoId) => invocar('duplicados:fusionarClientes', sobrevivienteId, duplicadoId),
+    vistaPreviaCuota: (cuotaId) => invocar('duplicados:vistaPreviaCuota', cuotaId),
+    sacarCuota: (cuotaId) => invocar('duplicados:sacarCuota', cuotaId),
+    vistaPreviaBaja: (bajaId) => invocar('duplicados:vistaPreviaBaja', bajaId),
+    sacarBaja: (bajaId) => invocar('duplicados:sacarBaja', bajaId),
+  },
   config: {
     estadoGoogle: () => invocar('config:estadoGoogle'),
     guardarGoogle: (datos) => invocar('config:guardarGoogle', datos),
@@ -144,6 +152,8 @@ const api: ApiDm = {
     agregarObservacion: (siniestroId, texto) => invocar('siniestros:agregarObservacion', siniestroId, texto),
     adjuntar: (siniestroId, rutas, categoria, detalle) =>
       invocar('siniestros:adjuntar', siniestroId, rutas, categoria, detalle),
+    adjuntarArchivos: (siniestroId, archivos, categoria, detalle) =>
+      invocar('siniestros:adjuntarArchivos', siniestroId, archivos, categoria, detalle),
     abrirAdjunto: (adjuntoId) => invocar('siniestros:abrirAdjunto', adjuntoId),
     borrarAdjunto: (adjuntoId) => invocar('siniestros:borrarAdjunto', adjuntoId),
     crearTarea: (datos) => invocar('siniestros:crearTarea', datos),
@@ -168,6 +178,11 @@ const api: ApiDm = {
     crear: (datos) => invocar('polizas:crear', datos),
     editar: (polizaId, datos) => invocar('polizas:editar', polizaId, datos),
     darDeBaja: (polizaId, datos) => invocar('polizas:darDeBaja', polizaId, datos),
+    adjuntos: (polizaId) => invocar('polizas:adjuntos', polizaId),
+    adjuntarArchivos: (polizaId, archivos) => invocar('polizas:adjuntarArchivos', polizaId, archivos),
+    adjuntar: (polizaId, rutas) => invocar('polizas:adjuntar', polizaId, rutas),
+    abrirAdjunto: (adjuntoId) => invocar('polizas:abrirAdjunto', adjuntoId),
+    borrarAdjunto: (adjuntoId) => invocar('polizas:borrarAdjunto', adjuntoId),
   },
   reglas: {
     matriz: () => invocar('reglas:matriz'),
@@ -240,6 +255,7 @@ const api: ApiDm = {
     cambiarEstado: (tareaId, estado) => invocar('tareas:cambiarEstado', tareaId, estado),
     comentar: (tareaId, texto) => invocar('tareas:comentar', tareaId, texto),
     adjuntar: (tareaId, rutas) => invocar('tareas:adjuntar', tareaId, rutas),
+    adjuntarArchivos: (tareaId, archivos) => invocar('tareas:adjuntarArchivos', tareaId, archivos),
     abrirAdjunto: (adjuntoId) => invocar('tareas:abrirAdjunto', adjuntoId),
     borrarAdjunto: (adjuntoId) => invocar('tareas:borrarAdjunto', adjuntoId),
     mias: () => invocar('tareas:mias'),

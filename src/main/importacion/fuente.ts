@@ -18,6 +18,13 @@ export interface PestanaDeHoja {
 export interface TramoDeColumna {
   fila: number
   valores: string[]
+  /**
+   * Lo que había en cada celda cuando se decidió el tramo ('' para un renglón sin _ID). La base del
+   * VPS escribe sólo las celdas que siguen diciendo eso: si otra computadora borró un renglón en el
+   * medio y la grilla se corrió, estampar el _ID en la fila que ahora ocupa ese número sería ponerle
+   * el _ID a la póliza equivocada. Las que se saltan vuelven en `saltadas`.
+   */
+  previos?: string[]
 }
 
 /** Una celda suelta a escribir: fila y columna en base 1 y 0 respectivamente, como las usa el importador. */
@@ -28,6 +35,43 @@ export interface CeldaAEscribir {
   /** Índice de columna (0 = A). */
   columna: number
   valor: string
+  /**
+   * El _ID del renglón (12.6). Con él, la base del VPS comprueba que `fila` siga siendo ese renglón,
+   * lo busca por el _ID si la grilla se corrió, y si ya no está NO crea uno nuevo: lo devuelve en
+   * `noEncontradas`. Sin id se escribe por posición (Google, o un servidor viejo).
+   */
+  id?: string
+}
+
+/** Un renglón a borrar: por número, y desde la 12.6 también por su _ID (ver `CeldaAEscribir.id`). */
+export interface FilaABorrar {
+  numero: number
+  id?: string
+}
+
+export interface ResultadoDeCeldas {
+  /** Renglones que ya no están en la pestaña: la celda no se escribió en ningún lado. */
+  noEncontradas: Array<{ titulo: string; id: string }>
+}
+
+export interface ResultadoDeAgregado {
+  /** Número de la primera fila agregada (0 si no se agregó ninguna). */
+  primeraFila: number
+  /**
+   * En qué renglón quedó cada fila de la tanda, en el orden en que se mandaron; null para la que la
+   * base dejó afuera porque su _ID ya estaba (el reintento de un agregado que sí se había aplicado).
+   */
+  numeros: Array<number | null>
+}
+
+export interface ResultadoDeBorrado {
+  /** Los _ID que ya no estaban en la pestaña: no se borró nada en su lugar. */
+  noEncontradas: string[]
+}
+
+export interface ResultadoDeTramos {
+  /** Números de fila cuyo _ID no se escribió porque la celda ya no decía lo que se había visto. */
+  saltadas: number[]
 }
 
 export interface LecturaDePestana {
@@ -53,7 +97,7 @@ export interface FuenteHoja {
    * Escribe SÓLO los tramos indicados de una columna. No se pisa la columna entera a propósito: si
    * alguien insertó una fila mientras se leía, pisar todo correría los _ID de lugar.
    */
-  escribirTramos(titulo: string, indiceColumna: number, tramos: TramoDeColumna[]): Promise<void>
+  escribirTramos(titulo: string, indiceColumna: number, tramos: TramoDeColumna[]): Promise<ResultadoDeTramos>
   ocultarColumna(sheetId: number, indiceColumna: number): Promise<void>
 
   // --- Operaciones de la sincronización -------------------------------------
@@ -62,12 +106,19 @@ export interface FuenteHoja {
    * Con `hastaFila` se leen sólo las primeras filas (para averiguar los encabezados).
    */
   leerVarias(titulos: string[], hastaFila?: number): Promise<LecturaDePestana[]>
-  /** Escribe celdas sueltas de varias pestañas en una sola llamada. No toca formatos ni colores. */
-  escribirCeldas(celdas: CeldaAEscribir[]): Promise<void>
-  /** Agrega filas al final de la pestaña. Devuelve el número de la primera fila agregada. */
-  agregarFilas(titulo: string, filas: string[][]): Promise<number>
-  /** Borra filas de la pestaña (números de fila en base 1). */
-  borrarFilas(sheetId: number, filas: number[]): Promise<void>
+  /**
+   * Escribe celdas sueltas de varias pestañas en una sola llamada. No toca formatos ni colores.
+   * `columnaIdPorTitulo` dice en qué columna está el _ID de cada pestaña, para resolver las celdas
+   * que traen `id` (ver `CeldaAEscribir.id`).
+   */
+  escribirCeldas(celdas: CeldaAEscribir[], columnaIdPorTitulo?: Record<string, number>): Promise<ResultadoDeCeldas>
+  /** Agrega filas al final de la pestaña. Dice en qué renglón quedó cada una. */
+  agregarFilas(titulo: string, filas: string[][]): Promise<ResultadoDeAgregado>
+  /**
+   * Borra filas de la pestaña (números de fila en base 1, y desde la 12.6 también con el _ID de cada
+   * una, ver `FilaABorrar`). `columnaId` es la columna del _ID en esa pestaña.
+   */
+  borrarFilas(sheetId: number, filas: Array<number | FilaABorrar>, columnaId?: number | null): Promise<ResultadoDeBorrado>
   /**
    * Crea una pestaña nueva AL FINAL de la hoja con esos encabezados en la fila 1. La usan las tres
    * pestañas de la Fase 8 (APP LEADS, APP PRESUPUESTOS, APP TAREAS), que no existen en el Excel de la
@@ -97,6 +148,11 @@ function rangoDePestana(titulo: string, rango?: string): string {
 
 function esperar(ms: number): Promise<void> {
   return new Promise((resolver) => setTimeout(resolver, ms))
+}
+
+/** Los números de fila de una lista de borrados, vengan a secas o con su _ID. */
+export function numerosDeFilas(filas: Array<number | FilaABorrar>): number[] {
+  return filas.map((fila) => (typeof fila === 'number' ? fila : fila.numero))
 }
 
 /**
@@ -303,9 +359,11 @@ export class FuenteGoogleSheets implements FuenteHoja {
     this.columnasPorSheetId.set(sheetId, cantidad)
   }
 
-  async escribirTramos(titulo: string, indiceColumna: number, tramos: TramoDeColumna[]): Promise<void> {
+  // Google escribe por posición y nada más: los `id` y `previos` de la 12.6 son del puente con el VPS.
+  // Esta fuente sólo se usa para la migración inicial (una vez) y para Drive, así que no le hace falta.
+  async escribirTramos(titulo: string, indiceColumna: number, tramos: TramoDeColumna[]): Promise<ResultadoDeTramos> {
     const utiles = tramos.filter((t) => t.valores.length > 0)
-    if (utiles.length === 0) return
+    if (utiles.length === 0) return { saltadas: [] }
     const letra = letraColumna(indiceColumna)
     await this.conReintentos(`escribir la columna ${letra} de «${titulo}»`, () =>
       this.api.spreadsheets.values.batchUpdate({
@@ -320,6 +378,7 @@ export class FuenteGoogleSheets implements FuenteHoja {
         },
       }),
     )
+    return { saltadas: [] }
   }
 
   async leerVarias(titulos: string[], hastaFila?: number): Promise<LecturaDePestana[]> {
@@ -341,8 +400,8 @@ export class FuenteGoogleSheets implements FuenteHoja {
     }))
   }
 
-  async escribirCeldas(celdas: CeldaAEscribir[]): Promise<void> {
-    if (celdas.length === 0) return
+  async escribirCeldas(celdas: CeldaAEscribir[]): Promise<ResultadoDeCeldas> {
+    if (celdas.length === 0) return { noEncontradas: [] }
     await this.conReintentos(`escribir ${celdas.length} celdas`, () =>
       this.api.spreadsheets.values.batchUpdate({
         spreadsheetId: this.hojaId,
@@ -355,10 +414,11 @@ export class FuenteGoogleSheets implements FuenteHoja {
         },
       }),
     )
+    return { noEncontradas: [] }
   }
 
-  async agregarFilas(titulo: string, filas: string[][]): Promise<number> {
-    if (filas.length === 0) return 0
+  async agregarFilas(titulo: string, filas: string[][]): Promise<ResultadoDeAgregado> {
+    if (filas.length === 0) return { primeraFila: 0, numeros: [] }
     const respuesta = await this.conReintentos(
       `agregar ${filas.length} filas a «${titulo}»`,
       () =>
@@ -374,12 +434,12 @@ export class FuenteGoogleSheets implements FuenteHoja {
     )
     const rango = respuesta.data.updates?.updatedRange ?? ''
     const primera = Number(rango.match(/![A-Z]+(\d+)/)?.[1] ?? '0')
-    return primera
+    return { primeraFila: primera, numeros: filas.map((_, indice) => (primera > 0 ? primera + indice : null)) }
   }
 
-  async borrarFilas(sheetId: number, filas: number[]): Promise<void> {
-    if (filas.length === 0) return
-    const tramos = tramosDeFilas(filas)
+  async borrarFilas(sheetId: number, filas: Array<number | FilaABorrar>): Promise<ResultadoDeBorrado> {
+    if (filas.length === 0) return { noEncontradas: [] }
+    const tramos = tramosDeFilas(numerosDeFilas(filas))
     await this.conReintentos(
       `borrar ${filas.length} filas`,
       () =>
@@ -393,6 +453,7 @@ export class FuenteGoogleSheets implements FuenteHoja {
         }),
       { reintentarSinRespuesta: false },
     )
+    return { noEncontradas: [] }
   }
 
   /**

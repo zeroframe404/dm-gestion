@@ -32,11 +32,17 @@ export class VpsSimulado {
     | 'usuariosGuardados'
     | 'respaldosListados'
     | 'respaldosCreados'
-    | 'respaldosRestaurados',
+    | 'respaldosRestaurados'
+    | 'adjuntosSubidos'
+    | 'adjuntosBajados',
     number
   >
   /** Los respaldos guardados, del más nuevo al más viejo. */
   respaldos: Array<{ id: number; dia: string; motivo: string; fecha: string; hechoPor: string | null }>
+  /** Los adjuntos subidos (12.6): id → ficha + bytes. */
+  adjuntos: Map<string, { ficha: { id: string; nombre: string; tipo: string; tamano: number; sha256: string; grupo: string; subidoPor: string | null; creadoEn: string }; contenido: Buffer }>
+  /** El tope por archivo del servidor simulado, en bytes (8 MB por defecto; se baja para probar el 413). */
+  topeDeAdjunto: number
   /** La base de usuarios de la agencia, tal como quedó en el servidor. */
   usuarios: { texto: string; version: number; actualizadoEn: string; actualizadoPor: string | null; mensaje: string | null } | null
   /** Los mensajes con los que se guardó la base de usuarios, en orden. */

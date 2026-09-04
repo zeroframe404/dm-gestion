@@ -1,4 +1,8 @@
-// «Reportar error»: lo que el mostrador escribe termina en un issue del repositorio.
+// «Reportar error» y «Sugerir mejora»: lo que el mostrador escribe termina en un issue del repositorio.
+//
+// Desde la 12.6 el mismo cuadro sirve para sugerir una mejora: viaja con `tipo: 'mejora'` y el
+// servidor le pone la etiqueta «enhancement» en vez de «bug», así los pedidos y los errores no se
+// mezclan en la misma lista.
 //
 // El problema. Cuando algo falla en una sucursal, lo que llegaba era un mensaje de WhatsApp que decía
 // «no anda». Sin la pantalla, sin la versión, sin la sucursal y casi siempre sin la captura. Con eso no
@@ -119,7 +123,12 @@ export function imagenDelPortapapeles(): ImagenDeReporte | null {
  */
 export async function enviarReporteDeError(reporte: ReporteDeError, contexto: { quien: string; sucursal: string; version: string }): Promise<ReporteCreado> {
   const titulo = reporte.titulo.trim()
-  if (!titulo) throw new ErrorDeNegocio('Ponele un título al reporte: con qué pantalla o qué acción falló alcanza.')
+  const tipo = reporte.tipo === 'mejora' ? 'mejora' : 'error'
+  if (!titulo) {
+    throw new ErrorDeNegocio(
+      tipo === 'mejora' ? 'Ponele un título a la sugerencia: qué te gustaría que haga el programa, en una línea.' : 'Ponele un título al reporte: con qué pantalla o qué acción falló alcanza.',
+    )
+  }
 
   const rutas = (reporte.rutasDeImagenes ?? []).slice(0, MAXIMO_IMAGENES)
   const imagenes = rutas.map((ruta) => {
@@ -138,6 +147,7 @@ export async function enviarReporteDeError(reporte: ReporteDeError, contexto: { 
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({
         titulo,
+        tipo,
         cuerpo: reporte.cuerpo ?? '',
         imagenes,
         reportadoPor: contexto.quien,

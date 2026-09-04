@@ -14,6 +14,8 @@ import {
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
+import { SelectorDeAdjuntos } from '../../componentes/SelectorDeAdjuntos'
+import { EtiquetaDeEstado } from '../polizas/AdjuntosDePoliza'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Selector, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -55,6 +57,14 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
   useEffect(() => {
     void cargar()
   }, [cargar])
+
+  /** Abre el documento; si lo cargó otra computadora, se baja del servidor antes y la ficha se relee. */
+  const abrirAdjunto = async (adjuntoId: number) => {
+    setError(null)
+    const resultado = await window.dm.tareas.abrirAdjunto(adjuntoId)
+    if (!resultado.ok) setError(resultado.error)
+    else void cargar()
+  }
 
   const hacer = async (accion: () => Promise<{ ok: true; datos: Ficha } | { ok: false; error: string }>) => {
     setTrabajando(true)
@@ -213,36 +223,35 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
 
         <Tarjeta
           titulo="Documentos"
-          descripcion={`Se guardan en ${ficha.carpetaDeAdjuntos} y, si hay conexión con Google, se suben además a la carpeta «Adjuntos DM» del Drive.`}
+          descripcion="Suben al servidor de la agencia y se ven desde cualquier computadora. Las fotos se achican solas antes de subir."
           acciones={
-            <Boton icono="clip" cargando={trabajando} disabled={!puedeEditar} onClick={() => void hacer(() => window.dm.tareas.adjuntar(t.id, null))}>
-              Adjuntar
+            <Boton icono="clip" cargando={trabajando} disabled={!puedeEditar} onClick={() => void hacer(() => window.dm.tareas.adjuntar(t.id, null))} title="Elegir con el explorador de Windows">
+              Explorar…
             </Boton>
           }
         >
           {ficha.adjuntos.length === 0 ? (
-            <p className="py-4 text-center text-sm text-slate-500">Todavía no hay documentos adjuntos.</p>
+            <p className="py-3 text-center text-sm text-slate-500">Todavía no hay documentos adjuntos.</p>
           ) : (
             <ul className="flex flex-col divide-y divide-slate-100">
               {ficha.adjuntos.map((adjunto) => (
                 <li key={adjunto.id} className="flex items-center gap-3 py-2">
-                  <Icono nombre="carpeta" tamano={16} className="shrink-0 text-slate-400" />
+                  {adjunto.miniatura ? (
+                    <img src={adjunto.miniatura} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />
+                  ) : (
+                    <Icono nombre="carpeta" tamano={16} className="shrink-0 text-slate-400" />
+                  )}
                   <button
                     type="button"
-                    onClick={() => void window.dm.tareas.abrirAdjunto(adjunto.id)}
+                    onClick={() => void abrirAdjunto(adjunto.id)}
                     className="min-w-0 flex-1 text-left text-sm font-medium text-marino-700 hover:underline"
                   >
                     <span className="block truncate">{adjunto.nombre}</span>
                     <span className="block text-xs font-normal text-slate-500">
                       {pesoDeArchivo(adjunto.tamano)} · {fechaYHora(adjunto.creadoEn)} · {adjunto.usuarioNombre}
-                      {adjunto.enDrive && ' · en Drive'}
                     </span>
                   </button>
-                  {adjunto.errorDeDrive && (
-                    <span className="shrink-0 text-xs text-amber-700" title={adjunto.errorDeDrive}>
-                      sólo local
-                    </span>
-                  )}
+                  <EtiquetaDeEstado adjunto={adjunto} />
                   {puedeBorrarDocumentos && (
                     <button
                       type="button"
@@ -257,10 +266,18 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
               ))}
             </ul>
           )}
+          <div className="mt-2">
+            <SelectorDeAdjuntos
+              compacto
+              disabled={!puedeEditar}
+              ocupado={trabajando}
+              alElegir={(archivos) => hacer(() => window.dm.tareas.adjuntarArchivos(t.id, archivos))}
+            />
+          </div>
         </Tarjeta>
       </div>
 
-      <Tarjeta titulo="Comentarios" descripcion="Cómo viene. Queda con fecha y con quién lo escribió.">
+      <Tarjeta titulo="Comentarios" descripcion="Cómo viene. Queda con fecha y con quién lo escribió, y lo ven todas las computadoras.">
         <div className="flex flex-col gap-3">
           <AreaTexto
             etiqueta="Nuevo comentario"

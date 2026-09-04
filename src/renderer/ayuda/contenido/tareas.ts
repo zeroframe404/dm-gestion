@@ -24,7 +24,7 @@ export const AYUDA_TAREAS: Record<string, ContenidoDeAyuda> = {
         titulo: 'Crear y gestionar una tarea',
         parrafos: [
           '«Nueva tarea» pide qué hay que hacer, a quién se le asigna (por defecto, uno mismo), la sucursal, la fecha límite y la prioridad. Las tareas también se crean sin pasar por este botón: desde la ficha de un cliente, una póliza, un siniestro, una renovación o una consulta hay un botón «Nueva tarea» que ya deja el vínculo puesto solo.',
-          'Adentro de una tarea, todo se edita en el mismo lugar donde se ve —título, descripción, responsable, sucursal, fecha y prioridad— sin abrir ningún formulario aparte, porque una tarea cambia de dueño o de fecha seguido y no tiene sentido hacer varios clics para eso. El estado (pendiente, en curso, hecha) se cambia con un desplegable arriba de todo. También se pueden adjuntar documentos (fotos, presupuestos, lo que haga falta): quedan guardados en esta computadora y, si hay conexión con Google configurada, se suben además a una carpeta compartida en la nube.',
+          'Adentro de una tarea, todo se edita en el mismo lugar donde se ve —título, descripción, responsable, sucursal, fecha y prioridad— sin abrir ningún formulario aparte, porque una tarea cambia de dueño o de fecha seguido y no tiene sentido hacer varios clics para eso. El estado (pendiente, en curso, hecha) se cambia con un desplegable arriba de todo. También se pueden adjuntar documentos (fotos, presupuestos, lo que haga falta) arrastrándolos, pegándolos con Ctrl+V o eligiéndolos: suben al servidor de la agencia y, junto con los comentarios, se ven desde cualquier computadora. Hasta la 12.5 los comentarios y los adjuntos quedaban sólo en la PC donde se cargaron.',
         ],
       },
       {

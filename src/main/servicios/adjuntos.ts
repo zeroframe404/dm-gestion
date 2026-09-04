@@ -1,136 +1,523 @@
-// Documentos adjuntos de un siniestro: la denuncia, el presupuesto del taller, las fotos del granizo.
+// Documentos adjuntos de una póliza, un siniestro o una tarea: las fotos del auto, la denuncia, el
+// presupuesto del taller, el PDF que alguien dejó colgado de una tarea.
 //
-// Se guardan como archivos, no dentro de la base: %APPDATA%/dm-gestion/adjuntos/<siniestro>/. Así se
-// abren con doble clic desde la ficha, se pueden copiar a mano si hace falta y la base no engorda.
-// Si hay conexión con Google, además se sube una copia a la carpeta «Adjuntos DM» del Drive de la
-// cuenta de servicio; que eso falle nunca hace fracasar la carga, igual que con el respaldo diario.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
-import path from 'node:path'
-import { carpetaDatos } from '../rutas'
+// Cómo viven (12.6):
+//  - El archivo se guarda en esta computadora (%APPDATA%/dm-gestion/adjuntos/<grupo>/) para abrirse con
+//    doble clic, como siempre.
+//  - Se SUBE al VPS de la agencia (`PUT /api/dmg/adjuntos/<id>`), en segundo plano y con reintentos,
+//    y su ficha viaja por la pestaña APP ADJUNTOS de la base (ver sincronizacion/anexos.ts). Así lo ve
+//    cualquier computadora, que lo baja del servidor la primera vez que alguien lo abre allá.
+//  - Si hay conexión con Google, además se sube una copia a la carpeta «Adjuntos DM» del Drive. Es una
+//    copia y nada más: que falte Google nunca frena nada, pero desde la 12.6 se DICE que faltó, en vez
+//    de quedarse callado como hasta la 12.5.
+import { createHash, randomBytes } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import type { SesionUsuario } from '../../shared/tipos'
+import { db } from '../db/base'
+import { ahoraIso } from '../importacion/normalizar'
+import {
+  camposDeAdjunto,
+  descripcionDelPadre,
+  encolarBorradoDeAnexo,
+  PREFIJO_DE_ADJUNTO,
+  registrarAnexoEnLaCola,
+  registrarComentarioNuevo,
+  vinculoDelPadre,
+  type TipoDeAnexo,
+} from '../sincronizacion/anexos'
+import { anotarEvento } from '../sincronizacion/cola'
 import { subirArchivoADrive } from '../sincronizacion/respaldo'
+import {
+  copiarAdjuntoEn,
+  guardarBytesEn,
+  rutaDeAdjunto,
+  tipoDeArchivo,
+  borrarArchivoDeAdjunto,
+  type AdjuntoCopiado,
+} from './carpetaDeAdjuntos'
 import { ErrorDeNegocio } from './errores'
+import { miniaturaDe } from './miniaturas'
+import { esFallaDeRed } from './red'
+
+// Lo que ya existía sigue saliendo de acá: los servicios y las pruebas lo importan por este nombre.
+export {
+  TAMANO_MAXIMO,
+  borrarArchivoDeAdjunto,
+  carpetaDeAdjuntos,
+  carpetaDelGrupo,
+  carpetaDelSiniestro,
+  copiarAdjunto,
+  copiarAdjuntoEn,
+  guardarBytesEn,
+  nombreSeguro,
+  rutaDeAdjunto,
+  tipoDeArchivo,
+  usarCarpetaDeAdjuntosDePrueba,
+  type AdjuntoCopiado,
+} from './carpetaDeAdjuntos'
+export type { TipoDeAnexo } from '../sincronizacion/anexos'
 
 export const CARPETA_DE_ADJUNTOS_EN_DRIVE = 'Adjuntos DM'
+/** Lo que queda anotado junto al adjunto cuando esta PC no tiene las credenciales de Google. */
+export const MENSAJE_SIN_DRIVE = 'Google Drive no está configurado en esta computadora.'
+/** «Nunca»: la fecha del próximo intento de un archivo que el servidor rechazó para siempre. */
+const NUNCA = '9999-12-31T00:00:00.000Z'
 
-/** Más que esto no es un papel del siniestro: es un video o alguien se equivocó de archivo. */
-export const TAMANO_MAXIMO = 25 * 1024 * 1024
+// ---------------------------------------------------------------------------
+// El almacén: dónde se suben y de dónde se bajan los archivos
+// ---------------------------------------------------------------------------
 
-const TIPOS: Record<string, string> = {
-  '.pdf': 'application/pdf',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.webp': 'image/webp',
-  '.heic': 'image/heic',
-  '.gif': 'image/gif',
-  '.doc': 'application/msword',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.xls': 'application/vnd.ms-excel',
-  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  '.txt': 'text/plain',
-  '.eml': 'message/rfc822',
-  '.msg': 'application/vnd.ms-outlook',
-  '.zip': 'application/zip',
-}
-
-export function tipoDeArchivo(nombre: string): string {
-  return TIPOS[path.extname(nombre).toLowerCase()] ?? 'application/octet-stream'
-}
-
-/** En las pruebas se apunta a una carpeta temporal para no escribir en los datos de nadie. */
-let carpetaDePrueba: string | null = null
-
-export function usarCarpetaDeAdjuntosDePrueba(ruta: string | null): void {
-  carpetaDePrueba = ruta
-}
-
-export function carpetaDeAdjuntos(): string {
-  return carpetaDePrueba ?? path.join(carpetaDatos(), 'adjuntos')
-}
-
-export function carpetaDelSiniestro(siniestroId: number): string {
-  return carpetaDelGrupo(String(siniestroId))
-}
-
-/**
- * Carpeta de un grupo de adjuntos. Los siniestros usan el número a secas (así quedaron los de la Fase
- * 7 y no se les mueve el piso) y las tareas de la Fase 8 usan «tarea-<id>».
- */
-export function carpetaDelGrupo(grupo: string): string {
-  return path.join(carpetaDeAdjuntos(), grupo)
-}
-
-/** Ruta absoluta de un adjunto a partir de lo que guarda la base (`<grupo>/<archivo>`). */
-export function rutaDeAdjunto(relativa: string): string {
-  return path.join(carpetaDeAdjuntos(), relativa)
-}
-
-/**
- * Deja el nombre en algo que Windows acepte como archivo, sin perder de vista cuál era: se cambian los
- * caracteres prohibidos por guiones y se recorta si es larguísimo, conservando la extensión.
- */
-export function nombreSeguro(nombre: string): string {
-  const base = path.basename(nombre).replace(/[<>:"/\|?*]/g, '-').trim()
-  if (!base || base === '.' || base === '..') return 'adjunto'
-  const extension = path.extname(base)
-  const cuerpo = base.slice(0, base.length - extension.length)
-  return `${cuerpo.slice(0, 80) || 'adjunto'}${extension.slice(0, 12)}`
-}
-
-export interface AdjuntoCopiado {
-  /** Nombre para mostrar (el original). */
+export interface FichaParaElAlmacen {
+  id: string
   nombre: string
-  /** Ruta relativa a la carpeta de adjuntos: '<siniestro>/<archivo>'. */
+  tipo: string
+  grupo: string
+  subidoPor: string | null
+  sha256: string
+}
+
+export interface ArchivoBajado {
+  contenido: Buffer
+  nombre: string
+  tipo: string
+  sha256: string | null
+}
+
+/** Lo que tiene que saber hacer quien guarda los archivos: el VPS (FuenteVps) o la hoja simulada en las pruebas. */
+export interface AlmacenDeAdjuntos {
+  subirAdjunto(ficha: FichaParaElAlmacen, contenido: Buffer): Promise<{ yaEstaba: boolean }>
+  bajarAdjunto(id: string): Promise<ArchivoBajado>
+  borrarAdjunto(id: string): Promise<void>
+}
+
+export function esAlmacenDeAdjuntos(valor: unknown): valor is AlmacenDeAdjuntos {
+  const v = valor as Partial<AlmacenDeAdjuntos> | null
+  return !!v && typeof v.subirAdjunto === 'function' && typeof v.bajarAdjunto === 'function' && typeof v.borrarAdjunto === 'function'
+}
+
+let dameAlmacen: () => AlmacenDeAdjuntos | null = () => null
+
+/** Lo registra sincronizacion.ts: el VPS configurado, o la hoja de prueba si la hay. */
+export function usarAlmacenDeAdjuntos(dador: () => AlmacenDeAdjuntos | null): void {
+  dameAlmacen = dador
+}
+
+// ---------------------------------------------------------------------------
+// Las tres tablas, con la misma forma
+// ---------------------------------------------------------------------------
+
+const TABLAS: Record<TipoDeAnexo, { tabla: string; padre: string; grupo: (padreId: number) => string; etiqueta: string }> = {
+  poliza: { tabla: 'poliza_adjuntos', padre: 'poliza_id', grupo: (id) => `poliza-${id}`, etiqueta: 'poliza' },
+  // Los siniestros usan el número a secas: así quedaron los de la Fase 7 y no se les mueve el piso.
+  siniestro: { tabla: 'siniestro_adjuntos', padre: 'siniestro_id', grupo: (id) => String(id), etiqueta: 'siniestro' },
+  tarea: { tabla: 'tarea_adjuntos', padre: 'tarea_id', grupo: (id) => `tarea-${id}`, etiqueta: 'tarea' },
+}
+
+export function grupoDeAdjuntos(tipo: TipoDeAnexo, padreId: number): string {
+  return TABLAS[tipo].grupo(padreId)
+}
+
+interface FilaAdjunto {
+  id: number
+  padre_id: number
+  fila_id: string | null
+  nombre: string
   archivo: string
+  tipo: string | null
   tamano: number
+  sha256: string | null
+  ancho: number | null
+  alto: number | null
+  miniatura: string | null
+  drive_id: string | null
+  drive_error: string | null
+  vps_id: string | null
+  vps_subido_en: string | null
+  vps_error: string | null
+  vps_intentos: number
+  vps_proximo_intento: string | null
+  usuario_nombre: string
+  creado_en: string
+  categoria?: string | null
+  categoria_detalle?: string | null
+}
+
+function selectDe(tipo: TipoDeAnexo): string {
+  const { tabla, padre } = TABLAS[tipo]
+  return `SELECT id, ${padre} AS padre_id, fila_id, nombre, archivo, tipo, tamano, sha256, ancho, alto, miniatura,
+                 drive_id, drive_error, vps_id, vps_subido_en, vps_error, vps_intentos, vps_proximo_intento,
+                 usuario_nombre, creado_en${tipo === 'siniestro' ? ', categoria, categoria_detalle' : ''}
+          FROM ${tabla}`
+}
+
+function leerFila(tipo: TipoDeAnexo, adjuntoId: number): FilaAdjunto {
+  const fila = db().prepare(`${selectDe(tipo)} WHERE id = ?`).get(adjuntoId) as FilaAdjunto | undefined
+  if (!fila) throw new ErrorDeNegocio('No se encontró ese documento.')
+  return fila
+}
+
+/** Lo que las tres fichas muestran de un adjunto. Los siniestros agregan la categoría por su cuenta. */
+export interface AdjuntoGenerico {
+  id: number
+  nombre: string
+  tipo: string
+  tamano: number
+  creadoEn: string
+  usuarioNombre: string
+  enDrive: boolean
+  errorDeDrive: string | null
+  enElServidor: boolean
+  errorDelServidor: string | null
+  descargado: boolean
+  miniatura: string | null
+  ancho: number | null
+  alto: number | null
+  categoria: string | null
+  categoriaDetalle: string | null
+}
+
+function aGenerico(fila: FilaAdjunto): AdjuntoGenerico {
+  return {
+    id: fila.id,
+    nombre: fila.nombre,
+    tipo: fila.tipo ?? tipoDeArchivo(fila.nombre),
+    tamano: fila.tamano,
+    creadoEn: fila.creado_en,
+    usuarioNombre: fila.usuario_nombre,
+    enDrive: fila.drive_id !== null,
+    errorDeDrive: fila.drive_error,
+    enElServidor: fila.vps_subido_en !== null,
+    errorDelServidor: fila.vps_error,
+    descargado: fila.archivo !== '' && existsSync(rutaDeAdjunto(fila.archivo)),
+    miniatura: fila.miniatura,
+    ancho: fila.ancho,
+    alto: fila.alto,
+    categoria: fila.categoria ?? null,
+    categoriaDetalle: fila.categoria_detalle ?? null,
+  }
+}
+
+export function adjuntosDe(tipo: TipoDeAnexo, padreId: number): AdjuntoGenerico[] {
+  const { padre } = TABLAS[tipo]
+  return (db().prepare(`${selectDe(tipo)} WHERE ${padre} = ? ORDER BY id DESC`).all(padreId) as FilaAdjunto[]).map(aGenerico)
+}
+
+export function adjuntoPorId(tipo: TipoDeAnexo, adjuntoId: number): AdjuntoGenerico & { padreId: number } {
+  const fila = leerFila(tipo, adjuntoId)
+  return { ...aGenerico(fila), padreId: fila.padre_id }
+}
+
+// ---------------------------------------------------------------------------
+// Alta
+// ---------------------------------------------------------------------------
+
+/** Un archivo que entra: los bytes (vinieron de la pantalla o del servidor) o una ruta del disco. */
+export interface ArchivoEntrante {
+  nombre: string
+  tipo?: string | null
+  contenido?: Buffer | Uint8Array | null
+  ruta?: string | null
+  ancho?: number | null
+  alto?: number | null
+}
+
+export interface OpcionesDeAlta {
+  categoria?: string | null
+  categoriaDetalle?: string | null
+}
+
+function sha256De(contenido: Buffer): string {
+  return createHash('sha256').update(contenido).digest('hex')
 }
 
 /**
- * Copia el archivo a la carpeta del siniestro. Si ya había uno con ese nombre no lo pisa: le agrega
- * «(2)», «(3)»… porque dos fotos distintas pueden llamarse las dos IMG_0001.jpg y perder una sería
- * perder una prueba del reclamo.
+ * Guarda el archivo, lo anota en la tabla del tipo que sea, deja la ficha en camino a APP ADJUNTOS y
+ * el archivo en la cola de subida al servidor. Devuelve el adjunto tal como lo ve la ficha.
+ *
+ * Es la única puerta de entrada: la usan los siniestros, las tareas y las pólizas, con bytes que
+ * vienen de la pantalla (arrastrar, pegar, elegir) o con una ruta (el explorador de archivos).
  */
-export function copiarAdjunto(siniestroId: number, rutaOrigen: string): AdjuntoCopiado {
-  return copiarAdjuntoEn(String(siniestroId), rutaOrigen)
-}
+export function registrarAdjunto(
+  tipo: TipoDeAnexo,
+  padreId: number,
+  archivo: ArchivoEntrante,
+  actor: SesionUsuario,
+  opciones: OpcionesDeAlta = {},
+): AdjuntoGenerico {
+  const nombre = (archivo.nombre ?? '').trim()
+  if (!nombre) throw new ErrorDeNegocio('El archivo no tiene nombre.')
+  const grupo = grupoDeAdjuntos(tipo, padreId)
 
-/** El mismo copiado, para cualquier grupo de adjuntos (los siniestros y las tareas de la Fase 8). */
-export function copiarAdjuntoEn(grupo: string, rutaOrigen: string): AdjuntoCopiado {
-  if (!existsSync(rutaOrigen)) throw new ErrorDeNegocio(`No se encontró el archivo «${path.basename(rutaOrigen)}».`)
-  const info = statSync(rutaOrigen)
-  if (!info.isFile()) throw new ErrorDeNegocio(`«${path.basename(rutaOrigen)}» no es un archivo.`)
-  if (info.size > TAMANO_MAXIMO) {
-    throw new ErrorDeNegocio(
-      `«${path.basename(rutaOrigen)}» pesa ${Math.round(info.size / 1024 / 1024)} MB y el máximo son ${TAMANO_MAXIMO / 1024 / 1024} MB. Achicá la foto o subilo al Drive a mano.`,
+  let copia: AdjuntoCopiado
+  let contenido: Buffer
+  if (archivo.contenido && archivo.contenido.length > 0) {
+    contenido = Buffer.isBuffer(archivo.contenido) ? archivo.contenido : Buffer.from(archivo.contenido)
+    copia = guardarBytesEn(grupo, nombre, contenido)
+  } else if (archivo.ruta) {
+    copia = copiarAdjuntoEn(grupo, archivo.ruta)
+    contenido = readFileSync(rutaDeAdjunto(copia.archivo))
+  } else {
+    throw new ErrorDeNegocio(`«${nombre}» llegó vacío.`)
+  }
+
+  const tipoMime = archivo.tipo && archivo.tipo.includes('/') ? archivo.tipo.toLowerCase() : tipoDeArchivo(copia.nombre)
+  const sha256 = sha256De(contenido)
+  const medidas = miniaturaDe(rutaDeAdjunto(copia.archivo), tipoMime)
+  const vpsId = randomBytes(16).toString('hex')
+  const filaId = `${PREFIJO_DE_ADJUNTO}${vpsId}`
+  const ahora = ahoraIso()
+  const { tabla, padre } = TABLAS[tipo]
+  const conCategoria = tipo === 'siniestro'
+
+  const { id } = db()
+    .prepare(
+      `INSERT INTO ${tabla} (${padre}, fila_id, nombre, archivo, tipo, tamano, sha256, ancho, alto, miniatura,
+                             vps_id, usuario_id, usuario_nombre, creado_en${conCategoria ? ', categoria, categoria_detalle' : ''})
+       VALUES (@padre, @fila_id, @nombre, @archivo, @tipo, @tamano, @sha256, @ancho, @alto, @miniatura,
+               @vps_id, @usuario_id, @usuario_nombre, @creado_en${conCategoria ? ', @categoria, @categoria_detalle' : ''})
+       RETURNING id`,
     )
+    .get({
+      padre: padreId,
+      fila_id: filaId,
+      nombre: copia.nombre,
+      archivo: copia.archivo,
+      tipo: tipoMime,
+      tamano: copia.tamano,
+      sha256,
+      ancho: archivo.ancho ?? medidas.ancho,
+      alto: archivo.alto ?? medidas.alto,
+      miniatura: medidas.miniatura,
+      vps_id: vpsId,
+      usuario_id: actor.id > 0 ? actor.id : null,
+      usuario_nombre: actor.nombre,
+      creado_en: ahora,
+      ...(conCategoria ? { categoria: opciones.categoria ?? null, categoria_detalle: opciones.categoriaDetalle ?? null } : {}),
+    }) as { id: number }
+
+  encolarFichaDelAdjunto(tipo, padreId, filaId, {
+    fecha: ahora,
+    nombre: copia.nombre,
+    categoria: conCategoria ? nombreDeCategoria(opciones.categoria ?? null, opciones.categoriaDetalle ?? null) : null,
+    vpsId,
+    tamano: copia.tamano,
+    sha256,
+    usuario: actor.nombre,
+  }, actor)
+
+  return aGenerico(leerFila(tipo, id))
+}
+
+function nombreDeCategoria(categoria: string | null, detalle: string | null): string | null {
+  if (!categoria) return null
+  return detalle ? `${categoria}: ${detalle}` : categoria
+}
+
+/** La fila de APP ADJUNTOS, si la ficha madre tiene identidad en la base. Si no, el adjunto queda local. */
+function encolarFichaDelAdjunto(
+  tipo: TipoDeAnexo,
+  padreId: number,
+  filaId: string,
+  datos: { fecha: string; nombre: string; categoria: string | null; vpsId: string; tamano: number; sha256: string | null; usuario: string },
+  actor: SesionUsuario | null,
+): boolean {
+  const vinculo = vinculoDelPadre(tipo, padreId)
+  if (!vinculo) return false
+  registrarAnexoEnLaCola(
+    {
+      filaId,
+      tipoPestana: 'APP_ADJUNTOS',
+      campos: camposDeAdjunto({ ...datos, tipo, vinculo, descripcion: descripcionDelPadre(tipo, padreId) }),
+    },
+    actor,
+  )
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Baja
+// ---------------------------------------------------------------------------
+
+/**
+ * Borra el adjunto de esta computadora, de la base (la fila de APP ADJUNTOS) y del servidor. Devuelve
+ * de qué ficha era, para que el servicio la vuelva a leer. El borrado en el servidor es lo mejor
+ * posible: si no hay conexión queda el archivo huérfano allá, que es preferible a un borrado que no
+ * se puede hacer.
+ */
+export function borrarAdjuntoRegistrado(tipo: TipoDeAnexo, adjuntoId: number, actor: SesionUsuario): { padreId: number; nombre: string } {
+  const fila = leerFila(tipo, adjuntoId)
+  db().prepare(`DELETE FROM ${TABLAS[tipo].tabla} WHERE id = ?`).run(fila.id)
+  borrarArchivoDeAdjunto(fila.archivo)
+  if (fila.fila_id) encolarBorradoDeAnexo(fila.fila_id, 'APP_ADJUNTOS', actor)
+  if (fila.vps_id && fila.vps_subido_en) {
+    const almacen = dameAlmacen()
+    if (almacen) {
+      void almacen.borrarAdjunto(fila.vps_id).catch((error: unknown) => {
+        anotarEvento('error', `No se pudo borrar «${fila.nombre}» del servidor: ${error instanceof Error ? error.message : String(error)}`, { conError: true })
+      })
+    }
   }
+  return { padreId: fila.padre_id, nombre: fila.nombre }
+}
 
-  const carpeta = carpetaDelGrupo(grupo)
-  mkdirSync(carpeta, { recursive: true })
+// ---------------------------------------------------------------------------
+// Abrir: si el archivo no está en esta PC, se baja del servidor
+// ---------------------------------------------------------------------------
 
-  const original = nombreSeguro(path.basename(rutaOrigen))
-  const extension = path.extname(original)
-  const cuerpo = original.slice(0, original.length - extension.length)
-  let nombre = original
-  let intento = 2
-  while (existsSync(path.join(carpeta, nombre))) {
-    nombre = `${cuerpo} (${intento})${extension}`
-    intento++
+/** La ruta local del archivo, bajándolo del servidor si hace falta (lo cargó otra computadora). */
+export async function asegurarAdjuntoLocal(tipo: TipoDeAnexo, adjuntoId: number): Promise<string> {
+  const fila = leerFila(tipo, adjuntoId)
+  if (fila.archivo && existsSync(rutaDeAdjunto(fila.archivo))) return rutaDeAdjunto(fila.archivo)
+  if (!fila.vps_id) {
+    throw new ErrorDeNegocio('Este archivo quedó sólo en la computadora donde se cargó y no se subió al servidor.')
   }
+  const almacen = dameAlmacen()
+  if (!almacen) throw new ErrorDeNegocio('Sin conexión con la base de la agencia no se puede bajar el archivo.')
 
+  let bajado: ArchivoBajado
   try {
-    copyFileSync(rutaOrigen, path.join(carpeta, nombre))
+    bajado = await almacen.bajarAdjunto(fila.vps_id)
   } catch (error) {
-    const motivo = error instanceof Error ? error.message : String(error)
-    throw new ErrorDeNegocio(`No se pudo copiar «${path.basename(rutaOrigen)}»: ${motivo}`)
+    if (error instanceof ErrorDeNegocio && /no existe/i.test(error.message)) {
+      throw new ErrorDeNegocio(
+        `«${fila.nombre}» todavía no llegó al servidor: la computadora que lo cargó no lo terminó de subir. Probá en un rato.`,
+      )
+    }
+    throw error
   }
-  return { nombre: path.basename(rutaOrigen), archivo: `${grupo}/${nombre}`, tamano: info.size }
+  if (fila.sha256 && bajado.sha256 && bajado.sha256 !== fila.sha256) {
+    throw new ErrorDeNegocio(`«${fila.nombre}» bajó dañado del servidor (la huella no coincide). Volvé a intentar.`)
+  }
+  const copia = guardarBytesEn(grupoDeAdjuntos(tipo, fila.padre_id), fila.nombre, bajado.contenido)
+  const tipoMime = fila.tipo ?? (bajado.tipo.includes('/') ? bajado.tipo : tipoDeArchivo(fila.nombre))
+  const medidas = miniaturaDe(rutaDeAdjunto(copia.archivo), tipoMime)
+  db()
+    .prepare(
+      `UPDATE ${TABLAS[tipo].tabla}
+       SET archivo = ?, tipo = ?, tamano = ?, sha256 = COALESCE(sha256, ?), ancho = COALESCE(ancho, ?), alto = COALESCE(alto, ?),
+           miniatura = COALESCE(miniatura, ?), vps_subido_en = COALESCE(vps_subido_en, ?)
+       WHERE id = ?`,
+    )
+    .run(copia.archivo, tipoMime, copia.tamano, sha256De(bajado.contenido), medidas.ancho, medidas.alto, medidas.miniatura, ahoraIso(), fila.id)
+  return rutaDeAdjunto(copia.archivo)
 }
 
-/** Borra el archivo del disco. Que no esté no es un error: lo importante es que deje de figurar. */
-export function borrarArchivoDeAdjunto(relativa: string): void {
-  rmSync(rutaDeAdjunto(relativa), { force: true })
+// ---------------------------------------------------------------------------
+// La subida al servidor, en segundo plano
+// ---------------------------------------------------------------------------
+
+const CONDICION_PENDIENTE = `vps_id IS NOT NULL AND vps_subido_en IS NULL AND archivo <> '' AND (vps_proximo_intento IS NULL OR vps_proximo_intento <= ?)`
+
+export function hayAdjuntosPendientes(): boolean {
+  const ahora = ahoraIso()
+  for (const { tabla } of Object.values(TABLAS)) {
+    const fila = db().prepare(`SELECT 1 FROM ${tabla} WHERE ${CONDICION_PENDIENTE} LIMIT 1`).get(ahora)
+    if (fila) return true
+  }
+  return false
 }
+
+/** Cuántos adjuntos todavía no llegaron al servidor (para la pantalla de Sincronización). */
+export function adjuntosSinSubir(): number {
+  let total = 0
+  for (const { tabla } of Object.values(TABLAS)) {
+    total += (db().prepare(`SELECT COUNT(*) AS n FROM ${tabla} WHERE vps_id IS NOT NULL AND vps_subido_en IS NULL AND archivo <> ''`).get() as { n: number }).n
+  }
+  return total
+}
+
+/** Espera creciente: 1, 2, 4, 8… minutos, con tope de una hora. */
+function proximoIntento(intentos: number): string {
+  const minutos = Math.min(60, 2 ** Math.max(0, intentos - 1))
+  return new Date(Date.now() + minutos * 60_000).toISOString()
+}
+
+export interface ResultadoDeSubidaDeAdjuntos {
+  subidos: number
+  fallidos: number
+}
+
+/**
+ * Sube al servidor los archivos que todavía no están, de a pocos por vuelta (la llama el motor cada
+ * diez segundos). Un fallo de red corta la vuelta y no cuenta como intento; un rechazo del servidor
+ * (muy grande, dañado) cuenta, y al tercero se deja de intentar para siempre, con el motivo a la
+ * vista en la ficha. Nunca lanza: lo que falla queda anotado en la fila y en la bitácora.
+ */
+export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>) | null = null, limite = 3): Promise<ResultadoDeSubidaDeAdjuntos> {
+  const resultado: ResultadoDeSubidaDeAdjuntos = { subidos: 0, fallidos: 0 }
+  const almacen = dameAlmacen()
+  if (!almacen) return resultado
+  const ahora = ahoraIso()
+
+  for (const [tipo, { tabla, grupo }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
+    const pendientes = db()
+      .prepare(`${selectDe(tipo)} WHERE ${CONDICION_PENDIENTE} ORDER BY creado_en LIMIT ?`)
+      .all(ahora, limite) as FilaAdjunto[]
+    for (const fila of pendientes) {
+      const ruta = rutaDeAdjunto(fila.archivo)
+      if (!existsSync(ruta)) {
+        db().prepare(`UPDATE ${tabla} SET vps_error = ?, vps_proximo_intento = ? WHERE id = ?`).run('El archivo ya no está en esta computadora.', NUNCA, fila.id)
+        resultado.fallidos++
+        continue
+      }
+      const contenido = readFileSync(ruta)
+      const sha256 = fila.sha256 ?? sha256De(contenido)
+      try {
+        await almacen.subirAdjunto(
+          {
+            id: fila.vps_id!,
+            nombre: fila.nombre,
+            tipo: fila.tipo ?? tipoDeArchivo(fila.nombre),
+            grupo: grupo(fila.padre_id),
+            subidoPor: fila.usuario_nombre,
+            sha256,
+          },
+          contenido,
+        )
+        db()
+          .prepare(`UPDATE ${tabla} SET vps_subido_en = ?, vps_error = NULL, vps_proximo_intento = NULL, sha256 = COALESCE(sha256, ?) WHERE id = ?`)
+          .run(ahoraIso(), sha256, fila.id)
+        resultado.subidos++
+      } catch (error) {
+        const mensaje = (error instanceof Error ? error.message : String(error)).slice(0, 300)
+        if (esFallaDeRed(error)) {
+          // Sin conexión: se vuelve a mirar en un minuto y no se cuenta como intento fallido.
+          db().prepare(`UPDATE ${tabla} SET vps_proximo_intento = ? WHERE id = ?`).run(proximoIntento(1), fila.id)
+          return resultado
+        }
+        const intentos = fila.vps_intentos + 1
+        const definitivo = error instanceof ErrorDeNegocio && intentos >= 3
+        db()
+          .prepare(`UPDATE ${tabla} SET vps_intentos = ?, vps_error = ?, vps_proximo_intento = ? WHERE id = ?`)
+          .run(intentos, mensaje, definitivo ? NUNCA : proximoIntento(intentos), fila.id)
+        anotarEvento('error', `No se pudo subir «${fila.nombre}» al servidor${definitivo ? ' (no se vuelve a intentar)' : ''}: ${mensaje}`, { conError: true })
+        resultado.fallidos++
+      }
+    }
+  }
+
+  // La copia a Drive de lo que quedó sin ella por falta de credenciales: si ahora hay, se sube.
+  if (dameToken) await reintentarDrive(dameToken, limite)
+  return resultado
+}
+
+async function reintentarDrive(dameToken: () => Promise<string>, limite: number): Promise<void> {
+  for (const [tipo, { tabla, etiqueta }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
+    const sinDrive = db()
+      .prepare(`${selectDe(tipo)} WHERE drive_id IS NULL AND drive_error = ? AND archivo <> '' ORDER BY creado_en LIMIT ?`)
+      .all(MENSAJE_SIN_DRIVE, limite) as FilaAdjunto[]
+    for (const fila of sinDrive) {
+      if (!existsSync(rutaDeAdjunto(fila.archivo))) continue
+      const drive = await subirAdjuntoADriveComo(dameToken, `${etiqueta}-${fila.padre_id}`, { nombre: fila.nombre, archivo: fila.archivo, tamano: fila.tamano })
+      db().prepare(`UPDATE ${tabla} SET drive_id = ?, drive_error = ? WHERE id = ?`).run(drive.driveId, drive.error, fila.id)
+      if (!drive.driveId) return
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Drive: la copia opcional
+// ---------------------------------------------------------------------------
 
 export interface ResultadoDeDrive {
   driveId: string | null
@@ -149,13 +536,15 @@ export async function subirAdjuntoADrive(
   return subirAdjuntoADriveComo(dameToken, `siniestro-${siniestroId}`, copia)
 }
 
-/** La misma subida, con la etiqueta que lleva el archivo en el Drive («siniestro-12», «tarea-40»). */
+/** La misma subida, con la etiqueta que lleva el archivo en el Drive («siniestro-12», «tarea-40», «poliza-7»). */
 export async function subirAdjuntoADriveComo(
   dameToken: (() => Promise<string>) | null,
   etiqueta: string,
   copia: AdjuntoCopiado,
 ): Promise<ResultadoDeDrive> {
-  if (!dameToken) return { driveId: null, error: null }
+  // Hasta la 12.5 esto devolvía error null y el adjunto quedaba «sólo local» sin decir por qué: parecía
+  // que había subido. Ahora se dice, y `subirAdjuntosPendientes` lo reintenta si Google aparece.
+  if (!dameToken) return { driveId: null, error: MENSAJE_SIN_DRIVE }
   try {
     const token = await dameToken()
     const contenido = readFileSync(rutaDeAdjunto(copia.archivo))
@@ -165,4 +554,76 @@ export async function subirAdjuntoADriveComo(
   } catch (error) {
     return { driveId: null, error: (error instanceof Error ? error.message : String(error)).slice(0, 300) }
   }
+}
+
+/** Sube la copia a Drive de un adjunto ya registrado y anota el resultado en su fila. */
+export async function copiarADrive(tipo: TipoDeAnexo, adjuntoId: number, dameToken: (() => Promise<string>) | null): Promise<ResultadoDeDrive> {
+  const fila = leerFila(tipo, adjuntoId)
+  const drive = await subirAdjuntoADriveComo(dameToken, `${TABLAS[tipo].etiqueta}-${fila.padre_id}`, {
+    nombre: fila.nombre,
+    archivo: fila.archivo,
+    tamano: fila.tamano,
+  })
+  db().prepare(`UPDATE ${TABLAS[tipo].tabla} SET drive_id = ?, drive_error = ? WHERE id = ?`).run(drive.driveId, drive.error, fila.id)
+  return drive
+}
+
+// ---------------------------------------------------------------------------
+// Lo que quedó de antes de la 12.6
+// ---------------------------------------------------------------------------
+
+/**
+ * Los adjuntos y comentarios cargados con versiones anteriores no tienen fila en la base: quedaron en
+ * la PC donde se cargaron. Al arrancar se les da identidad y se los manda, igual que a los nuevos. Se
+ * llama desde `repararAlArrancar`, sin actor (es la aplicación, no una persona).
+ */
+export function registrarLoQueNoViajo(): { adjuntos: number; comentarios: number } {
+  let adjuntos = 0
+  for (const [tipo, { tabla, padre }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
+    const viejos = db()
+      .prepare(`${selectDe(tipo)} WHERE fila_id IS NULL AND archivo <> '' ORDER BY id`)
+      .all() as FilaAdjunto[]
+    for (const fila of viejos) {
+      const ruta = rutaDeAdjunto(fila.archivo)
+      if (!existsSync(ruta)) continue
+      const contenido = readFileSync(ruta)
+      const sha256 = fila.sha256 ?? sha256De(contenido)
+      const tipoMime = fila.tipo ?? tipoDeArchivo(fila.nombre)
+      const medidas = fila.miniatura ? { miniatura: fila.miniatura, ancho: fila.ancho, alto: fila.alto } : miniaturaDe(ruta, tipoMime)
+      const vpsId = randomBytes(16).toString('hex')
+      const filaId = `${PREFIJO_DE_ADJUNTO}${vpsId}`
+      db()
+        .prepare(`UPDATE ${tabla} SET fila_id = ?, vps_id = ?, sha256 = ?, tipo = ?, tamano = ?, miniatura = ?, ancho = ?, alto = ? WHERE id = ?`)
+        .run(filaId, vpsId, sha256, tipoMime, contenido.length, medidas.miniatura, medidas.ancho, medidas.alto, fila.id)
+      const enCamino = encolarFichaDelAdjunto(
+        tipo,
+        fila.padre_id,
+        filaId,
+        {
+          fecha: fila.creado_en,
+          nombre: fila.nombre,
+          categoria: tipo === 'siniestro' ? nombreDeCategoria(fila.categoria ?? null, fila.categoria_detalle ?? null) : null,
+          vpsId,
+          tamano: contenido.length,
+          sha256,
+          usuario: fila.usuario_nombre,
+        },
+        null,
+      )
+      if (enCamino) adjuntos++
+    }
+    void padre
+  }
+
+  let comentarios = 0
+  const tareas = db()
+    .prepare(`SELECT c.id, c.tarea_id FROM tarea_comentarios c JOIN tareas t ON t.id = c.tarea_id WHERE c.fila_id IS NULL AND t.fila_id IS NOT NULL ORDER BY c.id`)
+    .all() as Array<{ id: number; tarea_id: number }>
+  for (const c of tareas) if (registrarComentarioNuevo('tarea', c.tarea_id, c.id, null)) comentarios++
+  const siniestros = db()
+    .prepare(`SELECT o.id, o.siniestro_id FROM siniestro_observaciones o JOIN siniestros s ON s.id = o.siniestro_id WHERE o.fila_id IS NULL AND s.fila_id IS NOT NULL ORDER BY o.id`)
+    .all() as Array<{ id: number; siniestro_id: number }>
+  for (const o of siniestros) if (registrarComentarioNuevo('siniestro', o.siniestro_id, o.id, null)) comentarios++
+
+  return { adjuntos, comentarios }
 }

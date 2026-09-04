@@ -3,14 +3,21 @@
 // dmartinezseguros.com: el importador y el motor de sincronización no cambian nada.
 // Sólo corre en el proceso principal, igual que la fuente de Google.
 import type { EstadoBaseVps } from '../../shared/tipos'
-import type {
-  CeldaAEscribir,
-  EstructuraHoja,
-  FuenteHoja,
-  LecturaDePestana,
-  PestanaDeHoja,
-  TramoDeColumna,
+import {
+  numerosDeFilas,
+  type CeldaAEscribir,
+  type EstructuraHoja,
+  type FilaABorrar,
+  type FuenteHoja,
+  type LecturaDePestana,
+  type PestanaDeHoja,
+  type ResultadoDeAgregado,
+  type ResultadoDeBorrado,
+  type ResultadoDeCeldas,
+  type ResultadoDeTramos,
+  type TramoDeColumna,
 } from '../importacion/fuente'
+import type { AlmacenDeAdjuntos, ArchivoBajado, FichaParaElAlmacen } from '../servicios/adjuntos'
 import { ErrorDeNegocio } from '../servicios/errores'
 
 /** Tiempo máximo por pedido; sin esto una conexión colgada bloquea la importación. */
@@ -20,6 +27,11 @@ const MAXIMO_INTENTOS = 5
 export interface OpcionesFuenteVps {
   urlBase: string
   token: string
+  /**
+   * A quién avisarle (una sola vez) que el servidor es anterior a la 12.6 y todavía escribe por
+   * posición: la app sigue funcionando como hasta ahora, pero conviene actualizar el VPS.
+   */
+  avisar?: (mensaje: string) => void
 }
 
 export type { EstadoBaseVps }
@@ -195,13 +207,16 @@ function mensajeDelServidor(json: unknown, porDefecto: string): string {
   return porDefecto
 }
 
-export class FuenteVps implements FuenteHoja {
+export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
   private readonly urlBase: string
   private readonly token: string
+  private readonly avisar: ((mensaje: string) => void) | null
+  private servidorViejoAvisado = false
 
   constructor(opciones: OpcionesFuenteVps) {
     this.urlBase = opciones.urlBase.replace(/\/+$/, '')
     this.token = opciones.token
+    this.avisar = opciones.avisar ?? null
     // El token viaja como Bearer: por http plano sólo contra esta misma máquina (el simulador).
     if (!/^https:/i.test(this.urlBase) && !/^http:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/i.test(this.urlBase)) {
       throw new ErrorDeNegocio(
@@ -300,6 +315,82 @@ export class FuenteVps implements FuenteHoja {
     return new Error(`Error ${respuesta.status} del VPS al ${descripcion}: ${detalle}`)
   }
 
+  /**
+   * Un pedido con cuerpo o respuesta CRUDOS (los archivos adjuntos): sin JSON, sin reintentos
+   * automáticos (quien llama decide, porque un PUT de 40 MB que se cortó a la mitad no se repite
+   * cada 600 ms). Los 4xx se traducen a mensajes de negocio, como en `pedir`.
+   */
+  private async pedirCrudo(
+    descripcion: string,
+    metodo: 'GET' | 'PUT' | 'DELETE',
+    ruta: string,
+    opciones: { cuerpo?: Buffer; encabezados?: Record<string, string> } = {},
+  ): Promise<{ status: number; encabezados: Headers; cuerpo: Buffer }> {
+    const bruta = await fetch(this.urlBase + ruta, {
+      method: metodo,
+      headers: {
+        authorization: `Bearer ${this.token}`,
+        ...(opciones.cuerpo ? { 'content-type': 'application/octet-stream' } : {}),
+        ...(opciones.encabezados ?? {}),
+      },
+      body: opciones.cuerpo ? new Uint8Array(opciones.cuerpo) : undefined,
+      // Un archivo grande por una conexión lenta: diez minutos, no noventa segundos.
+      signal: AbortSignal.timeout(opciones.cuerpo ? 10 * 60_000 : TIEMPO_MAXIMO_MS),
+    })
+    const cuerpo = Buffer.from(await bruta.arrayBuffer())
+    if (bruta.status >= 200 && bruta.status < 300) return { status: bruta.status, encabezados: bruta.headers, cuerpo }
+    let json: unknown = null
+    try {
+      json = JSON.parse(cuerpo.toString('utf8'))
+    } catch {
+      json = null
+    }
+    throw this.traducirError({ status: bruta.status, json }, descripcion)
+  }
+
+  // --- AlmacenDeAdjuntos (12.6) ---------------------------------------------
+
+  async subirAdjunto(ficha: FichaParaElAlmacen, contenido: Buffer): Promise<{ yaEstaba: boolean }> {
+    const respuesta = await this.pedirCrudo(`subir el adjunto «${ficha.nombre}»`, 'PUT', `/api/dmg/adjuntos/${encodeURIComponent(ficha.id)}`, {
+      cuerpo: contenido,
+      encabezados: {
+        'x-dmg-nombre': encodeURIComponent(ficha.nombre),
+        'x-dmg-tipo': ficha.tipo,
+        'x-dmg-grupo': ficha.grupo,
+        'x-dmg-sha256': ficha.sha256,
+        ...(ficha.subidoPor ? { 'x-dmg-subido-por': encodeURIComponent(ficha.subidoPor) } : {}),
+      },
+    })
+    let json: { yaEstaba?: boolean } = {}
+    try {
+      json = JSON.parse(respuesta.cuerpo.toString('utf8')) as { yaEstaba?: boolean }
+    } catch {
+      json = {}
+    }
+    return { yaEstaba: json.yaEstaba === true }
+  }
+
+  async bajarAdjunto(id: string): Promise<ArchivoBajado> {
+    const respuesta = await this.pedirCrudo('bajar el adjunto', 'GET', `/api/dmg/adjuntos/${encodeURIComponent(id)}`)
+    const nombreCrudo = respuesta.encabezados.get('x-dmg-nombre') ?? ''
+    let nombre = 'adjunto'
+    try {
+      nombre = decodeURIComponent(nombreCrudo) || 'adjunto'
+    } catch {
+      nombre = nombreCrudo || 'adjunto'
+    }
+    return {
+      contenido: respuesta.cuerpo,
+      nombre,
+      tipo: respuesta.encabezados.get('content-type') ?? 'application/octet-stream',
+      sha256: respuesta.encabezados.get('x-dmg-sha256'),
+    }
+  }
+
+  async borrarAdjunto(id: string): Promise<void> {
+    await this.pedirCrudo('borrar el adjunto', 'DELETE', `/api/dmg/adjuntos/${encodeURIComponent(id)}`)
+  }
+
   // --- FuenteHoja -----------------------------------------------------------
 
   async estructura(): Promise<EstructuraHoja> {
@@ -347,22 +438,63 @@ export class FuenteVps implements FuenteHoja {
     }))
   }
 
-  async escribirCeldas(celdas: CeldaAEscribir[]): Promise<void> {
-    if (celdas.length === 0) return
-    await this.pedir('escribir celdas', 'POST', '/api/dmg/celdas', { celdas })
+  /**
+   * Un servidor anterior a la 12.6 no contesta `noEncontradas`/`saltadas`: escribe por posición, como
+   * siempre. La app sigue andando (los campos viejos van en cada pedido), pero se avisa una vez.
+   */
+  private comprobarServidorAlDia(contesta: boolean, hacianFaltaIds: boolean): void {
+    if (contesta || !hacianFaltaIds || this.servidorViejoAvisado) return
+    this.servidorViejoAvisado = true
+    this.avisar?.(
+      'El servidor del VPS es anterior a la 12.6 y todavía escribe por número de renglón. Funciona, pero dos computadoras ' +
+        'sincronizando a la vez pueden pisarse: conviene actualizar el servidor.',
+    )
   }
 
-  async agregarFilas(titulo: string, filas: string[][]): Promise<number> {
-    if (filas.length === 0) return 0
+  async escribirCeldas(celdas: CeldaAEscribir[], columnaIdPorTitulo: Record<string, number> = {}): Promise<ResultadoDeCeldas> {
+    if (celdas.length === 0) return { noEncontradas: [] }
+    const datos = (await this.pedir('escribir celdas', 'POST', '/api/dmg/celdas', { celdas, columnaId: columnaIdPorTitulo })) as {
+      escritas?: number
+      noEncontradas?: Array<{ titulo?: unknown; id?: unknown }>
+    } | null
+    const contesta = Array.isArray(datos?.noEncontradas)
+    this.comprobarServidorAlDia(contesta, celdas.some((celda) => Boolean(celda.id)))
+    return {
+      noEncontradas: contesta
+        ? datos!.noEncontradas!.map((fila) => ({ titulo: String(fila.titulo ?? ''), id: String(fila.id ?? '') }))
+        : [],
+    }
+  }
+
+  async agregarFilas(titulo: string, filas: string[][]): Promise<ResultadoDeAgregado> {
+    if (filas.length === 0) return { primeraFila: 0, numeros: [] }
     const datos = (await this.pedir('agregar filas', 'POST', '/api/dmg/filas/agregar', { titulo, filas }, {
       reintentarSinRespuesta: false,
-    })) as { primeraFila: number }
-    return datos.primeraFila
+    })) as { primeraFila: number; numeros?: Array<number | null> }
+    const primeraFila = Number(datos.primeraFila) || 0
+    // Un servidor viejo no dice en qué renglón quedó cada una: se supone «primeraFila + i», como antes.
+    const numeros = Array.isArray(datos.numeros)
+      ? filas.map((_, indice) => (Number.isInteger(datos.numeros![indice]) ? Number(datos.numeros![indice]) : null))
+      : filas.map((_, indice) => (primeraFila > 0 ? primeraFila + indice : null))
+    return { primeraFila, numeros }
   }
 
-  async borrarFilas(sheetId: number, filas: number[]): Promise<void> {
-    if (filas.length === 0) return
-    await this.pedir('borrar filas', 'POST', '/api/dmg/filas/borrar', { sheetId, filas }, { reintentarSinRespuesta: false })
+  async borrarFilas(sheetId: number, filas: Array<number | FilaABorrar>, columnaId: number | null = null): Promise<ResultadoDeBorrado> {
+    if (filas.length === 0) return { noEncontradas: [] }
+    // Los dos campos viajan juntos: `filas` (números) para un servidor viejo, `objetivos` (número + _ID)
+    // para el de la 12.6, que los resuelve contra la pestaña tal como está en ese momento y con eso
+    // ignora `filas`. Un renglón sin _ID va con id '' y el servidor lo borra por posición.
+    const objetivos = filas.map((fila) => (typeof fila === 'number' ? { numero: fila, id: '' } : { numero: fila.numero, id: fila.id ?? '' }))
+    const datos = (await this.pedir(
+      'borrar filas',
+      'POST',
+      '/api/dmg/filas/borrar',
+      { sheetId, filas: numerosDeFilas(filas), objetivos, columnaId },
+      { reintentarSinRespuesta: false },
+    )) as { borradas?: number; noEncontradas?: unknown[] } | null
+    const contesta = Array.isArray(datos?.noEncontradas)
+    this.comprobarServidorAlDia(contesta, objetivos.some((objetivo) => objetivo.id !== ''))
+    return { noEncontradas: contesta ? datos!.noEncontradas!.map(String) : [] }
   }
 
   async crearPestana(titulo: string, encabezados: string[]): Promise<PestanaDeHoja> {
@@ -375,9 +507,15 @@ export class FuenteVps implements FuenteHoja {
     await this.pedir('agrandar la grilla', 'POST', '/api/dmg/columnas/asegurar', { sheetId, cantidad })
   }
 
-  async escribirTramos(titulo: string, indiceColumna: number, tramos: TramoDeColumna[]): Promise<void> {
-    if (tramos.length === 0) return
-    await this.pedir('escribir la columna _ID', 'POST', '/api/dmg/tramos', { titulo, indiceColumna, tramos })
+  async escribirTramos(titulo: string, indiceColumna: number, tramos: TramoDeColumna[]): Promise<ResultadoDeTramos> {
+    if (tramos.length === 0) return { saltadas: [] }
+    const datos = (await this.pedir('escribir la columna _ID', 'POST', '/api/dmg/tramos', { titulo, indiceColumna, tramos })) as {
+      escritas?: number
+      saltadas?: unknown[]
+    } | null
+    const contesta = Array.isArray(datos?.saltadas)
+    this.comprobarServidorAlDia(contesta, tramos.some((tramo) => Array.isArray(tramo.previos)))
+    return { saltadas: contesta ? datos!.saltadas!.map(Number).filter(Number.isInteger) : [] }
   }
 
   async ocultarColumna(sheetId: number, indiceColumna: number): Promise<void> {

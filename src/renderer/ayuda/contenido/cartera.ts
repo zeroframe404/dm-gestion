@@ -339,6 +339,38 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'cartera.duplicados': {
+    clave: 'cartera.duplicados',
+    titulo: 'Cartera → Duplicados',
+    resumen: 'Lo que quedó repetido en la base —fichas de cliente, renglones de la planilla, bajas— a la vista y con el botón para juntarlo o sacarlo.',
+    secciones: [
+      {
+        titulo: 'Qué muestra',
+        parrafos: [
+          'Cuatro listas. Fichas de cliente que son (o pueden ser) la misma persona: mismo DNI, mismo nombre sin documento, mismo nombre con la misma patente, o un CUIT que contiene el DNI de otra ficha. La misma póliza dos veces en el mismo mes. La misma baja dos veces. Y la póliza que está en la planilla y en Bajas a la vez, que es una baja (o una reactivación) que quedó a medio camino.',
+          'Cada grupo dice cuál dejaría el programa: la ficha que tiene la clave del DNI o la que más arrastra, el renglón que tiene un cobro colgando o el de más arriba en la base, la baja que se hizo en el programa.',
+        ],
+      },
+      {
+        titulo: 'Qué se arregla solo y qué no',
+        parrafos: [
+          'Las fichas con el mismo DNI y el mismo nombre se juntan solas al arrancar el programa y después de cada importación, y lo mismo pasa con los renglones y las bajas repetidas que no tienen nada colgando. Lo que queda en esta pantalla es lo que necesita una decisión: dos nombres iguales pueden ser dos personas, y un renglón con un cobro no se saca sin mirar.',
+          'Lo puede usar cualquiera que edite la Cartera (o Clientes, para las fichas): la agencia pidió no depender del superadministrador para sacar una ficha cargada dos veces. Lo que se junta o se saca acá viaja a las otras computadoras con la sincronización.',
+        ],
+        lista: [
+          '«Fusionar»: todo lo de una ficha (pólizas, cuotas, pagos, siniestros, tareas, notas) pasa a la otra y la que sobra se borra. Se elige cuál queda con el círculo de al lado del nombre.',
+          '«Sacar este renglón» y «Sacar esta baja»: el mismo cartel y los mismos cinco segundos que la papelera, con la cuenta de lo que se lleva puesto.',
+          'En «los dos lados» hay que decidir: si la póliza se fue, se saca de la planilla; si sigue, se saca la baja. Si acaban de darla de baja o de reactivarla, esperá un minuto y volvé a revisar.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Duplicado',
+        explicacion: 'Dos registros para una sola cosa del mundo real: la misma persona, la misma póliza en el mismo mes, la misma baja. Los dejaba la sincronización cuando dos computadoras se pisaban; desde la 12.6 eso no vuelve a pasar, y esta pantalla es para limpiar lo que quedó.',
+      },
+    ],
+  },
   'cartera.estadisticas': {
     clave: 'cartera.estadisticas',
     titulo: 'Cartera → Estadísticas',
@@ -354,7 +386,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Qué se compara',
         parrafos: [
-          'Muestra activos y altas por compañía (y por otros cortes según lo que traiga la pantalla), con los totales al pie. Si el mes elegido no tiene un mes anterior importado, las altas quedan en cero, porque para calcular una alta hace falta comparar contra el mes de antes; en cuanto se importe ese mes anterior, el número aparece solo.',
+          'Muestra activos y altas por compañía (y por otros cortes según lo que traiga la pantalla), con los totales al pie. Si el mes elegido no tiene un mes anterior importado, las altas muestran un guion (no un cero), porque para calcular una alta hace falta comparar contra el mes de antes; en cuanto se importe ese mes anterior, el número aparece solo. Cada póliza se cuenta una sola vez aunque figure en dos renglones.',
         ],
       },
     ],

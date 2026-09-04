@@ -1273,7 +1273,12 @@ export function darDeBajaPoliza(polizaId: number, datos: DatosDeBaja, actor: Ses
   // se hace acá, mínima. No hay fila que sacar de la planilla, sólo el renglón de BAJAS que deja
   // constancia de por qué se fue.
   const periodo = periodoAbierto() ?? periodoDeHoy()
-  const bajaFilaId = `BAJA:${fila.fila_id ?? `POL${fila.id}`}`
+  // El _ID de la baja tiene que ser el MISMO en todas las computadoras: sale del _ID de la fila y, si
+  // la póliza nunca tuvo renglón, de su clave (compañía y número), que la grilla define igual en todas.
+  // Hasta la 12.5 caía en el id local de la póliza, y dos computadoras dando de baja la misma póliza
+  // dejaban dos renglones distintos en BAJAS.
+  const clave = (db().prepare('SELECT clave FROM polizas WHERE id = ?').get(fila.id) as { clave: string | null } | undefined)?.clave
+  const bajaFilaId = `BAJA:${fila.fila_id ?? clave ?? `POL${fila.id}`}`
   const hoy = hoyLocal()
   const ahora = ahoraIso()
 

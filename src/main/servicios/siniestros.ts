@@ -34,6 +34,7 @@ import {
   type SiniestroDeCliente,
   type TareaDeCliente,
 } from '../../shared/tipos'
+import path from 'node:path'
 import { db } from '../db/base'
 import {
   ahoraIso,
@@ -47,7 +48,16 @@ import {
   sinRepetirTexto,
 } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
-import { borrarArchivoDeAdjunto, carpetaDeAdjuntos, copiarAdjunto, rutaDeAdjunto, subirAdjuntoADrive } from './adjuntos'
+import { registrarComentarioNuevo } from '../sincronizacion/anexos'
+import {
+  adjuntosDe as adjuntosGenericosDe,
+  asegurarAdjuntoLocal,
+  borrarAdjuntoRegistrado,
+  carpetaDeAdjuntos,
+  copiarADrive,
+  registrarAdjunto,
+  type AdjuntoGenerico,
+} from './adjuntos'
 import { avisarTareaCompletada } from './avisos'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
@@ -56,7 +66,7 @@ import { nombreDePestana } from './hojas'
 import { polizasDeCliente } from './polizas'
 import { dadorDeTokenDeGoogle } from './sincronizacion'
 import { sucursalesParaElegir } from './sucursales'
-import { registrarTareaNueva } from './tareas'
+import { archivosParaAdjuntar, registrarTareaNueva } from './tareas'
 import { enteroPositivo, objeto, texto } from './validacion'
 
 /** Cómo se llama en la hoja la pestaña de siniestros: la que ya existe, o el nombre por defecto. */
@@ -274,35 +284,27 @@ function observacionesDe(siniestroId: number): ObservacionDeSiniestro[] {
   ).map((o) => ({ id: o.id, texto: o.texto, usuarioNombre: o.usuario_nombre, creadoEn: o.creado_en }))
 }
 
-function adjuntosDe(siniestroId: number): AdjuntoDeSiniestro[] {
-  return (
-    db()
-      .prepare(
-        `SELECT id, nombre, tamano, creado_en, usuario_nombre, drive_id, drive_error, categoria, categoria_detalle
-         FROM siniestro_adjuntos WHERE siniestro_id = ? ORDER BY id DESC`,
-      )
-      .all(siniestroId) as Array<{
-      id: number
-      nombre: string
-      tamano: number
-      creado_en: string
-      usuario_nombre: string
-      drive_id: string | null
-      drive_error: string | null
-      categoria: string | null
-      categoria_detalle: string | null
-    }>
-  ).map((a) => ({
+function aAdjuntoDeSiniestro(a: AdjuntoGenerico): AdjuntoDeSiniestro {
+  return {
     id: a.id,
     nombre: a.nombre,
+    tipo: a.tipo,
     tamano: a.tamano,
-    creadoEn: a.creado_en,
-    usuarioNombre: a.usuario_nombre,
-    enDrive: a.drive_id !== null,
-    errorDeDrive: a.drive_error,
+    creadoEn: a.creadoEn,
+    usuarioNombre: a.usuarioNombre,
+    enDrive: a.enDrive,
+    errorDeDrive: a.errorDeDrive,
+    enElServidor: a.enElServidor,
+    errorDelServidor: a.errorDelServidor,
+    descargado: a.descargado,
+    miniatura: a.miniatura,
     categoria: normalizarCategoria(a.categoria),
-    categoriaDetalle: a.categoria_detalle,
-  }))
+    categoriaDetalle: a.categoriaDetalle,
+  }
+}
+
+function adjuntosDe(siniestroId: number): AdjuntoDeSiniestro[] {
+  return adjuntosGenericosDe('siniestro', siniestroId).map(aAdjuntoDeSiniestro)
 }
 
 /** La categoría guardada, si sigue siendo una de la lista. Los adjuntos viejos no tienen ninguna. */
@@ -727,12 +729,16 @@ export function observacionesParaLaHoja(siniestroId: number): string {
 
 /** Escribe la entrada en la línea de tiempo y deja la hoja al día. No valida: es de uso interno. */
 function anotarObservacion(siniestroId: number, textoDeLaObservacion: string, actor: SesionUsuario): void {
-  db()
+  const { id: observacionId } = db()
     .prepare(
       `INSERT INTO siniestro_observaciones (siniestro_id, texto, usuario_id, usuario_nombre, creado_en)
-       VALUES (?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?) RETURNING id`,
     )
-    .run(siniestroId, textoDeLaObservacion, actor.id, actor.nombre, ahoraIso())
+    .get(siniestroId, textoDeLaObservacion, actor.id, actor.nombre, ahoraIso()) as { id: number }
+  // 12.6: la observación viaja entera por APP COMENTARIOS y aparece en la línea de tiempo de las
+  // otras computadoras. El resumen de la columna OBSERVACIONES se sigue escribiendo para quien mira
+  // la planilla desde Google.
+  registrarComentarioNuevo('siniestro', siniestroId, observacionId, actor)
 
   const resumen = observacionesParaLaHoja(siniestroId)
   db().prepare('UPDATE siniestros SET observaciones = ?, actualizado_en = ? WHERE id = ?').run(resumen, ahoraIso(), siniestroId)
@@ -793,77 +799,78 @@ export async function agregarAdjuntos(
   actor: SesionUsuario,
 ): Promise<FichaSiniestro> {
   const id = enteroPositivo(siniestroId, 'El siniestro')
-  const fila = buscarSiniestro(id)
+  buscarSiniestro(id)
   if (!Array.isArray(rutas) || rutas.length === 0) throw new ErrorDeNegocio('No elegiste ningún archivo.')
   const elegida = elegirCategoria(categoria, categoriaDetalle)
-  const etiqueta = nombreDeCategoria(elegida.categoria, elegida.detalle)
-
   const dameToken = dadorDeTokenDeGoogle()
   for (const ruta of rutas) {
-    const copia = copiarAdjunto(id, texto(ruta, 'La ruta del archivo', 1, 4096))
-    const drive = await subirAdjuntoADrive(dameToken, id, copia)
-    db()
-      .prepare(
-        `INSERT INTO siniestro_adjuntos (siniestro_id, nombre, archivo, tamano, drive_id, drive_error,
-                                         usuario_id, usuario_nombre, creado_en, categoria, categoria_detalle)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        copia.nombre,
-        copia.archivo,
-        copia.tamano,
-        drive.driveId,
-        drive.error,
-        actor.id,
-        actor.nombre,
-        ahoraIso(),
-        elegida.categoria,
-        elegida.detalle,
-      )
-
-    registrarCambio(actor, {
-      accion: 'siniestro',
-      tabla: 'siniestro_adjuntos',
-      registroId: id,
-      filaId: fila.fila_id,
-      campo: 'ADJUNTO',
-      valorAnterior: null,
-      valorNuevo: `${etiqueta} · ${copia.nombre}`,
-    })
-    anotarObservacion(id, `Se adjuntó «${copia.nombre}» (${etiqueta})`, actor)
+    const origen = texto(ruta, 'La ruta del archivo', 1, 4096)
+    await adjuntarUno(id, { nombre: path.basename(origen), ruta: origen }, elegida, dameToken, actor)
   }
   return fichaDeSiniestro(id)
 }
 
-/** La ruta del archivo en el disco, para que el proceso principal lo abra con el programa del sistema. */
-export function rutaDelAdjunto(adjuntoId: number): string {
-  const id = enteroPositivo(adjuntoId, 'El documento')
-  const adjunto = db().prepare('SELECT archivo FROM siniestro_adjuntos WHERE id = ?').get(id) as { archivo: string } | undefined
-  if (!adjunto) throw new ErrorDeNegocio('No se encontró ese documento.')
-  return rutaDeAdjunto(adjunto.archivo)
+/**
+ * Los archivos que vienen de la pantalla (arrastrados, pegados o elegidos, ya achicados si eran fotos).
+ * Es el camino de la 12.6; el de las rutas queda para la prueba de humo.
+ */
+export async function agregarArchivosDeSiniestro(
+  siniestroId: number,
+  archivos: unknown,
+  categoria: unknown,
+  categoriaDetalle: unknown,
+  actor: SesionUsuario,
+): Promise<FichaSiniestro> {
+  const id = enteroPositivo(siniestroId, 'El siniestro')
+  buscarSiniestro(id)
+  const elegida = elegirCategoria(categoria, categoriaDetalle)
+  const lista = archivosParaAdjuntar(archivos)
+  const dameToken = dadorDeTokenDeGoogle()
+  for (const archivo of lista) await adjuntarUno(id, archivo, elegida, dameToken, actor)
+  return fichaDeSiniestro(id)
+}
+
+async function adjuntarUno(
+  siniestroId: number,
+  archivo: { nombre: string; ruta?: string | null; tipo?: string | null; contenido?: Uint8Array | null; ancho?: number | null; alto?: number | null },
+  elegida: { categoria: CategoriaDeAdjunto; detalle: string | null },
+  dameToken: (() => Promise<string>) | null,
+  actor: SesionUsuario,
+): Promise<void> {
+  const etiqueta = nombreDeCategoria(elegida.categoria, elegida.detalle)
+  const adjunto = registrarAdjunto('siniestro', siniestroId, archivo, actor, { categoria: elegida.categoria, categoriaDetalle: elegida.detalle })
+  await copiarADrive('siniestro', adjunto.id, dameToken)
+  registrarCambio(actor, {
+    accion: 'siniestro',
+    tabla: 'siniestro_adjuntos',
+    registroId: siniestroId,
+    filaId: buscarSiniestro(siniestroId).fila_id,
+    campo: 'ADJUNTO',
+    valorAnterior: null,
+    valorNuevo: `${etiqueta} · ${adjunto.nombre}`,
+  })
+  anotarObservacion(siniestroId, `Se adjuntó «${adjunto.nombre}» (${etiqueta})`, actor)
+}
+
+/** La ruta del archivo en esta computadora; si lo cargó otra, se baja del servidor antes. */
+export async function rutaDelAdjunto(adjuntoId: number): Promise<string> {
+  return asegurarAdjuntoLocal('siniestro', enteroPositivo(adjuntoId, 'El documento'))
 }
 
 export function borrarAdjunto(adjuntoId: number, actor: SesionUsuario): FichaSiniestro {
   const id = enteroPositivo(adjuntoId, 'El documento')
-  const adjunto = db().prepare('SELECT id, siniestro_id, nombre, archivo FROM siniestro_adjuntos WHERE id = ?').get(id) as
-    | { id: number; siniestro_id: number; nombre: string; archivo: string }
-    | undefined
-  if (!adjunto) throw new ErrorDeNegocio('No se encontró ese documento.')
-
-  db().prepare('DELETE FROM siniestro_adjuntos WHERE id = ?').run(id)
-  borrarArchivoDeAdjunto(adjunto.archivo)
+  const { padreId, nombre } = borrarAdjuntoRegistrado('siniestro', id, actor)
   registrarCambio(actor, {
     accion: 'siniestro',
     tabla: 'siniestro_adjuntos',
-    registroId: adjunto.siniestro_id,
-    filaId: buscarSiniestro(adjunto.siniestro_id).fila_id,
+    registroId: padreId,
+    filaId: buscarSiniestro(padreId).fila_id,
     campo: 'ADJUNTO BORRADO',
-    valorAnterior: adjunto.nombre,
+    valorAnterior: nombre,
     valorNuevo: null,
   })
-  anotarObservacion(adjunto.siniestro_id, `Se borró el documento «${adjunto.nombre}»`, actor)
-  return fichaDeSiniestro(adjunto.siniestro_id)
+  anotarObservacion(padreId, `Se borró el documento «${nombre}»`, actor)
+  return fichaDeSiniestro(padreId)
 }
 
 // --- Tareas vinculadas ---

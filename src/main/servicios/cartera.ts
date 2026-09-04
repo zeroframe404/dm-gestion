@@ -90,17 +90,25 @@ export const SELECT_PLANILLA = `
     COALESCE(p.activa, 1) AS poliza_activa,
     -- Un pago cargado en la aplicación que deja la fila paga. No cuenta un cobro IMPUTADO (el cliente
     -- todavía debe) ni un pago adelantado PENDIENTE que nadie imputó todavía a esta fila.
-    EXISTS (
-      SELECT 1 FROM pagos pg
-      WHERE (pg.cuota_fila_id = c.fila_id OR (pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo))
-        AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
-        -- COALESCE a propósito: con adelanto_modo NULL, «NOT (NULL AND ...)» es NULL y el pago desaparecería.
-        AND NOT (COALESCE(pg.adelanto_modo, '') = 'PENDIENTE' AND pg.cuota_fila_id IS NULL)
+    -- Dos EXISTS y no uno con OR: con el OR SQLite recorría «pagos» entera por cada fila de la
+    -- planilla; así cada uno usa su índice (cuota_fila_id, o poliza_id + periodo).
+    (
+      EXISTS (
+        SELECT 1 FROM pagos pg
+        WHERE pg.cuota_fila_id = c.fila_id
+          AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
+      )
+      OR EXISTS (
+        SELECT 1 FROM pagos pg
+        WHERE pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo
+          AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
+          -- COALESCE a propósito: con adelanto_modo NULL, «NOT (NULL AND ...)» es NULL y el pago desaparecería.
+          AND NOT (COALESCE(pg.adelanto_modo, '') = 'PENDIENTE' AND pg.cuota_fila_id IS NULL)
+      )
     ) AS pago_registrado,
-    EXISTS (
-      SELECT 1 FROM pagos pg
-      WHERE (pg.cuota_fila_id = c.fila_id OR (pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo))
-        AND pg.estado_cobro = 'IMPUTADO'
+    (
+      EXISTS (SELECT 1 FROM pagos pg WHERE pg.cuota_fila_id = c.fila_id AND pg.estado_cobro = 'IMPUTADO')
+      OR EXISTS (SELECT 1 FROM pagos pg WHERE pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo AND pg.estado_cobro = 'IMPUTADO')
     ) AS pago_imputado,
     pa.id AS pago_adelantado_id, pa.fecha AS pago_adelantado_fecha, pa.importe AS pago_adelantado_importe,
     pa.medio AS pago_adelantado_medio, pa.adelanto_modo AS pago_adelantado_modo,
@@ -1386,7 +1394,12 @@ export function bajasDelMes(periodo: string | null): FilaBaja[] {
  * Crea las cuotas del mes siguiente copiando las pólizas activas, igual que cuando se duplica la hoja:
  * se conservan cuota, vencimiento, forma de pago y observaciones, y se vacían el pago y el aviso.
  */
-export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
+/**
+ * Qué mes se cierra y cuál se abre, con los tres frenos de siempre. Está aparte para que
+ * `cerrarMesConLaBase` (sincronizacion.ts) pueda comprobarlos ANTES de crear la pestaña en la base:
+ * si fallaran después, la base quedaría con una pestaña vacía del mes que viene.
+ */
+export function periodoACerrar(): { actual: string; nuevo: string } {
   const periodos = periodosDisponibles()
   const actual = periodos[0]?.periodo
   if (!actual) throw new ErrorDeNegocio('Todavía no hay ninguna planilla cargada: importá la hoja de Google primero.')
@@ -1395,6 +1408,19 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
   if (nuevo > periodoSiguiente(periodoDeHoy())) {
     throw new ErrorDeNegocio(`Ya está abierto ${actual}, que es el mes que viene. Esperá a que llegue para abrir ${nuevo}.`)
   }
+  return { actual, nuevo }
+}
+
+export interface OpcionesDeCierre {
+  /**
+   * El título de la pestaña del mes nuevo, cuando quien llama ya lo decidió mirando la base (ver
+   * `cerrarMesConLaBase`). Sin esto se deduce de lo que esta computadora recuerda.
+   */
+  pestana?: string
+}
+
+export function cerrarMes(actor: SesionUsuario, opciones: OpcionesDeCierre = {}): ResumenCierreDeMes {
+  const { actual, nuevo } = periodoACerrar()
 
   // La sucursal se arrastra RESUELTA (la de la fila si la tiene, si no la del cliente), igual que la
   // muestra la planilla. Si se copiara la columna cruda, un mes que quedó sin sucursal se la pasaría al
@@ -1413,7 +1439,7 @@ export function cerrarMes(actor: SesionUsuario): ResumenCierreDeMes {
   if (origen.length === 0) throw new ErrorDeNegocio(`La planilla de ${actual} no tiene pólizas activas para copiar.`)
 
   const ahora = ahoraIso()
-  const pestanaDelMesNuevo = nombreParaPestanaNueva(nombreDePestanaMensual(nuevo), nuevo)
+  const pestanaDelMesNuevo = opciones.pestana ?? nombreParaPestanaNueva(nombreDePestanaMensual(nuevo), nuevo)
 
   // Los pagos adelantados que esperaban este mes: se cobraron en el mes que se cierra para el que se
   // abre. Los ACREDITAR dejan la fila nueva paga; los PENDIENTE quedan a la vista para imputarlos a

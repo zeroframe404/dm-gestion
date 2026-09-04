@@ -13,6 +13,7 @@ import { ahoraIso } from '../importacion/normalizar'
 import { clasificarPestanas, elegirMasNueva } from '../importacion/pestanas'
 import { carpetaDatos } from '../rutas'
 import { ErrorDeNegocio } from './errores'
+import { repararDuplicados } from './reparaciones'
 import { crearFuenteVps } from './sincronizacion'
 
 interface ImportacionEnCurso {
@@ -128,6 +129,14 @@ async function correr(id: number, fuente: FuenteHoja): Promise<void> {
     // ejecutarImportacion ya captura todo; esto es por si falla antes de arrancar.
     console.error('[importacion] Falla inesperada:', error)
     informe = informeMinimo(id, ahoraIso(), 'FALLIDA', error instanceof Error ? error.message : String(error))
+  }
+  // Las mismas reparaciones que corren tras la importación automática (12.6): hasta la 12.5 este
+  // camino —«Reimportar la base», que es justamente lo que alguien prueba cuando ve repetidos— era
+  // el único que las salteaba, y dejaba a la vista lo que la importación acababa de duplicar.
+  try {
+    repararDuplicados()
+  } catch (error) {
+    console.error('[importacion] No se pudieron correr las reparaciones:', error)
   }
 
   const texto = generarTextoDeInforme(informe)

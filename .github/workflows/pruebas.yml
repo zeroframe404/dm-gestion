@@ -1,0 +1,43 @@
+# El banco de pruebas en cada push y en cada pull request, sin esperar a publicar.
+#
+# `publicar.yml` ya corre `npm run prueba` antes de armar el instalador, pero sólo cuando se empuja un
+# tag `v*`: un cambio que rompía una prueba se descubría el día de publicar, con la versión ya
+# decidida. Acá corre con cada cambio, en Linux, que alcanza: el banco de pruebas no toca Electron ni
+# el instalador (better-sqlite3 trae binarios para Linux también).
+name: Pruebas
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Traer el código
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Verificar los tipos
+        run: npm run typecheck
+
+      - name: Correr el banco de pruebas
+        run: npm run prueba

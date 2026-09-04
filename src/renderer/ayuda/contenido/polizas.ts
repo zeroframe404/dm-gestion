@@ -15,6 +15,13 @@ export const AYUDA_POLIZAS: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'Fotos y documentos de la póliza',
+        parrafos: [
+          'Abajo a la derecha del formulario, en «Fotos y documentos», se le adjuntan a la póliza las fotos del auto o la moto, el frente de la póliza, la cédula, lo que haga falta: se arrastran a la ventana, se pegan con Ctrl+V o se eligen con «Elegir archivos». Sin límite de cantidad. Las fotos se achican solas antes de subir (una de 6 MB queda en menos de 1 MB) sin que se note la diferencia; los PDF y documentos van tal cual.',
+          'Todo sube al servidor de la agencia y se ve desde cualquier computadora: una foto cargada en Lanús se abre en Dock Sud con un clic (la primera vez se baja del servidor). Las fotos se muestran como miniaturas y se abren con el visor de Windows. Borrar un archivo es definitivo y queda para administradores.',
+        ],
+      },
+      {
         titulo: 'Los tres estados de una póliza',
         parrafos: [
           'El estado se calcula solo, no lo elige nadie a mano. Una póliza está Activa mientras no se le puso una fecha de baja y su vigencia no pasó (o no tiene vigencia cargada, en cuyo caso se la sigue considerando activa). Pasa a Vencida cuando su fecha de vigencia «hasta» ya quedó atrás pero nadie la dio de baja: sigue siendo parte de la cartera, sólo que hay que renovarla o resolverla, por eso se marca en ámbar y no en rojo. Pasa a Baja únicamente cuando alguien la dio de baja a propósito, con un motivo.',

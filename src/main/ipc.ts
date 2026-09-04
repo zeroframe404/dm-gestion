@@ -11,7 +11,6 @@ import { cambiarClave, ingresar, salir } from './servicios/auth'
 import { comprobarAcceso, conectarEmisor, estadoDeAcceso, estadoDeUsuarios, subirLocales } from './servicios/baseDeUsuarios'
 import {
   bajasDelMes,
-  cerrarMes,
   cuotasDelClienteEnElMes,
   darDeBaja,
   deshacerBaja,
@@ -97,6 +96,7 @@ import {
 } from './servicios/presupuestos'
 import {
   agregarAdjuntosDeTarea,
+  agregarArchivosDeTarea,
   agregarComentario,
   avisosDeTareas,
   borrarAdjuntoDeTarea,
@@ -142,6 +142,13 @@ import {
   vehiculosDeCliente,
   verPoliza,
 } from './servicios/polizas'
+import {
+  adjuntosDePoliza,
+  agregarAdjuntosDePoliza,
+  agregarArchivosDePoliza,
+  borrarAdjuntoDePoliza,
+  rutaDelAdjuntoDePoliza,
+} from './servicios/adjuntosDePoliza'
 import { borrarRegla, crearRegla, editarRegla, matrizDeCobertura, reglasVigentes } from './servicios/reglas'
 import {
   borrarClausula,
@@ -159,6 +166,7 @@ import {
 import { adoptarReferenciasDelVps, estadoCompartidoDeReferencias, publicarReferencias } from './servicios/referenciasCompartidas'
 import {
   agregarAdjuntos,
+  agregarArchivosDeSiniestro,
   agregarObservacion,
   altaDeSiniestro,
   borrarAdjunto,
@@ -220,6 +228,7 @@ import { guardarPlantillaDeAviso, plantillaDeAviso } from './servicios/plantilla
 import { historialDeFila } from './servicios/historial'
 import {
   arrancarSincronizacion,
+  cerrarMesConLaBase,
   detenerSincronizacion,
   estadoDeSincronizacion,
   panelDeSincronizacion,
@@ -227,6 +236,14 @@ import {
   sincronizarAhora,
   volverAIntentar,
 } from './servicios/sincronizacion'
+import {
+  detectarDuplicados,
+  fusionarClientes,
+  sacarBajaRepetida,
+  sacarCuotaRepetida,
+  vistaPreviaDeSacarBaja,
+  vistaPreviaDeSacarCuota,
+} from './servicios/duplicados'
 import { eliminarRegistro, vistaPreviaDeEliminacion } from './servicios/eliminacion'
 import { ErrorDeNegocio } from './servicios/errores'
 import { estadoDelMesh } from './servicios/mesh'
@@ -406,6 +423,27 @@ export function registrarIpc(): void {
   manejar('eliminacion:vistaPrevia', (tipo, id) => exito(vistaPreviaDeEliminacion(tipo, id, exigirBorrado(tipo))))
   manejar('eliminacion:borrar', (tipo, id) => exito(eliminarRegistro(tipo, id, exigirBorrado(tipo))))
 
+  // Cartera → Duplicados (12.6). Cualquier rol que edite la cartera (o Clientes, para las fichas)
+  // puede juntar o sacar lo repetido: la agencia pidió no depender del superadministrador para sacar
+  // una ficha cargada dos veces. Lo que acota es el detector: el servicio sólo toca lo que señaló.
+  manejar('duplicados:listar', () => {
+    exigirVista('cartera', 'clientes')
+    return exito(detectarDuplicados())
+  })
+  manejar('duplicados:fusionarClientes', (sobrevivienteId, duplicadoId) =>
+    exito(fusionarClientes(sobrevivienteId, duplicadoId, exigirEdicion('clientes', 'cartera'))),
+  )
+  manejar('duplicados:vistaPreviaCuota', (cuotaId) => {
+    exigirEdicion('cartera')
+    return exito(vistaPreviaDeSacarCuota(cuotaId))
+  })
+  manejar('duplicados:sacarCuota', (cuotaId) => exito(sacarCuotaRepetida(cuotaId, exigirEdicion('cartera'))))
+  manejar('duplicados:vistaPreviaBaja', (bajaId) => {
+    exigirEdicion('cartera')
+    return exito(vistaPreviaDeSacarBaja(bajaId))
+  })
+  manejar('duplicados:sacarBaja', (bajaId) => exito(sacarBajaRepetida(bajaId, exigirEdicion('cartera'))))
+
   // Conexión con Google: la MIRAN SUPER_ADMIN y ADMIN; la CARGA sólo el superadministrador, porque
   // desde la v12.4 lo que se carga acá viaja al resto de las computadoras (la sucursal que no tenía la
   // cuenta no subía los adjuntos de los siniestros y nadie se enteraba hasta que hacían falta).
@@ -525,12 +563,10 @@ export function registrarIpc(): void {
   manejar('cartera:cerrarMes', async () => {
     exigirEdicion('cartera')
     const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
-    // Antes de cerrar se fuerza una sincronización completa: si otra computadora ya cerró el mes
-    // hace un rato, la bajada trae sus filas y el «ya existe» corta acá, en vez de generar una
-    // planilla entera duplicada. Sin conexión se sigue igual que siempre (se cierra local y sube
-    // después): el freno es el de siempre, los períodos que esta computadora conoce.
-    await sincronizarAhora(true).catch(() => undefined)
-    return exito(cerrarMes(actor))
+    // La base es el árbitro (12.6): se sincroniza, se mira si el mes ya está abierto y se crea la
+    // pestaña ANTES de copiar las filas, así dos computadoras no pueden cerrar el mismo mes. Sin
+    // conexión no se cierra, y el mensaje lo dice (ver `cerrarMesConLaBase`).
+    return exito(await cerrarMesConLaBase(actor))
   })
   manejar('cartera:historialDeFila', (filaId) => {
     exigirVista('cartera')
@@ -838,9 +874,12 @@ export function registrarIpc(): void {
     if (elegido.canceled || elegido.filePaths.length === 0) return exito(fichaDeSiniestro(id))
     return exito(await agregarAdjuntos(id, elegido.filePaths, categoria, detalle, actor))
   })
+  manejar('siniestros:adjuntarArchivos', async (siniestroId, archivos, categoria, detalle) =>
+    exito(await agregarArchivosDeSiniestro(enteroPositivo(siniestroId, 'El siniestro'), archivos, categoria, detalle, exigirEdicion('siniestros'))),
+  )
   manejar('siniestros:abrirAdjunto', async (adjuntoId) => {
     exigirVista('siniestros')
-    const error = await shell.openPath(rutaDelAdjunto(adjuntoId))
+    const error = await shell.openPath(await rutaDelAdjunto(adjuntoId))
     if (error) throw new ErrorDeNegocio(`No se pudo abrir el documento: ${error}`)
     return exito(null)
   })
@@ -900,6 +939,43 @@ export function registrarIpc(): void {
   // cobertura: es una regla de negocio, no un permiso de pantalla.
   manejar('polizas:crear', (datos) => exito(crearPoliza(datos, exigirEdicion('polizas'))))
   manejar('polizas:editar', (polizaId, datos) => exito(editarPoliza(enteroPositivo(polizaId, 'La póliza'), datos, exigirEdicion('polizas'))))
+  // Fotos y documentos de la póliza (12.6). Ver los documentos de una póliza es ver la póliza; borrar
+  // uno es definitivo y queda para ADMIN y SUPER_ADMIN, como en siniestros y tareas.
+  manejar('polizas:adjuntos', (polizaId) => {
+    exigirVista('polizas')
+    return exito(adjuntosDePoliza(polizaId))
+  })
+  manejar('polizas:adjuntarArchivos', async (polizaId, archivos) =>
+    exito(await agregarArchivosDePoliza(enteroPositivo(polizaId, 'La póliza'), archivos, exigirEdicion('polizas'))),
+  )
+  manejar('polizas:adjuntar', async (polizaId, rutas) => {
+    const actor = exigirEdicion('polizas')
+    const id = enteroPositivo(polizaId, 'La póliza')
+    if (rutas !== null && rutas !== undefined) return exito(await agregarAdjuntosDePoliza(id, rutas, actor))
+    const ventana = ventanaActual()
+    const opciones = {
+      title: 'Elegí las fotos y documentos de la póliza',
+      buttonLabel: 'Adjuntar',
+      properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+      filters: [
+        { name: 'Fotos y documentos', extensions: ['jpg', 'jpeg', 'png', 'webp', 'heic', 'pdf', 'doc', 'docx', 'xls', 'xlsx'] },
+        { name: 'Todos los archivos', extensions: ['*'] },
+      ],
+    }
+    const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
+    if (elegido.canceled || elegido.filePaths.length === 0) return exito(adjuntosDePoliza(id))
+    return exito(await agregarAdjuntosDePoliza(id, elegido.filePaths, actor))
+  })
+  manejar('polizas:abrirAdjunto', async (adjuntoId) => {
+    exigirVista('polizas')
+    const error = await shell.openPath(await rutaDelAdjuntoDePoliza(adjuntoId))
+    if (error) throw new ErrorDeNegocio(`No se pudo abrir el documento: ${error}`)
+    return exito(null)
+  })
+  manejar('polizas:borrarAdjunto', (adjuntoId) => {
+    exigirEdicion('polizas')
+    return exito(borrarAdjuntoDePoliza(adjuntoId, exigirRol('SUPER_ADMIN', 'ADMIN')))
+  })
   manejar('polizas:darDeBaja', (polizaId, datos) =>
     exito(darDeBajaPoliza(enteroPositivo(polizaId, 'La póliza'), datos, exigirEdicion('polizas'))),
   )
@@ -1079,9 +1155,12 @@ export function registrarIpc(): void {
     if (elegido.canceled || elegido.filePaths.length === 0) return exito(fichaDeTarea(id, actor))
     return exito(await agregarAdjuntosDeTarea(id, elegido.filePaths, actor))
   })
+  manejar('tareas:adjuntarArchivos', async (tareaId, archivos) =>
+    exito(await agregarArchivosDeTarea(enteroPositivo(tareaId, 'La tarea'), archivos, exigirEdicion('tareas'))),
+  )
   manejar('tareas:abrirAdjunto', async (adjuntoId) => {
     exigirVista('tareas')
-    const error = await shell.openPath(rutaDelAdjuntoDeTarea(adjuntoId))
+    const error = await shell.openPath(await rutaDelAdjuntoDeTarea(adjuntoId))
     if (error) throw new ErrorDeNegocio(`No se pudo abrir el documento: ${error}`)
     return exito(null)
   })
@@ -1301,8 +1380,10 @@ export function registrarIpc(): void {
   // SUPER_ADMIN — no de cualquier administrador, a diferencia de antes.
   // Mirar la pestaña alcanza con ver Marketing: tiene que poder abrirse aunque no haya nada cargado,
   // para que la pantalla explique qué falta en vez de romperse.
+  // El panorama de las cuentas lo mira Marketing → Redes y también Administración → Redes sociales:
+  // un administrador sin Marketing tiene que poder verlo desde ahí (antes la tarjeta quedaba girando).
   manejar('redes:panel', async () => {
-    const actor = exigirVista('marketing')
+    const actor = exigirVista('marketing', 'administracion')
     return exito(await panelDeRedes(actor))
   })
   manejar('redes:estadoMeta', async () => {

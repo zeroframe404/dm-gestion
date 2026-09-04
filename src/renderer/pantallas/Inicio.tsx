@@ -20,6 +20,7 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
   const usuario = useUsuarioActual()
   const { puedeVer } = usePermisos()
   const [reportando, setReportando] = useState(false)
+  const [sugiriendo, setSugiriendo] = useState(false)
   // El mapa de módulos muestra sólo los que esta persona puede abrir: ofrecer un atajo a una pantalla
   // que después dice «no tenés permiso» no le sirve a nadie.
   const modulosDeTrabajo = MODULOS.filter(
@@ -46,10 +47,16 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
           <Boton icono="alerta" onClick={() => setReportando(true)}>
             Reportar error
           </Boton>
+          {/* Y al lado, para cualquier rol, el pedido que no es un error: lo que al mostrador le
+              gustaría que el programa haga. Va por el mismo camino y queda etiquetado aparte. */}
+          <Boton icono="info" onClick={() => setSugiriendo(true)}>
+            Sugerir mejora
+          </Boton>
         </div>
       </section>
 
       <DialogoReportarError abierto={reportando} alCerrar={() => setReportando(false)} />
+      <DialogoReportarError abierto={sugiriendo} alCerrar={() => setSugiriendo(false)} variante="mejora" />
 
       {/* La conexión con Google es obligatoria desde la 12.5 y sin ella no se suben los respaldos ni
           los adjuntos de los siniestros. El cartel va acá, arriba de todo y para todo el equipo: es la

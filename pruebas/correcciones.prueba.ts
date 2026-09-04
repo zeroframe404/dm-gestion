@@ -213,9 +213,9 @@ test('duplicar la pestaña del mes no le roba los _ID a la original', async () =
   const pestanas = construirHojaDePrueba()
   pestanas.push({ titulo: 'SEPTIEMBRE', valores: copia, columnas: copia[0]!.length })
   const hoja2 = new HojaSimulada(pestanas)
-  // La hoja nueva ya trae los _ID de agosto en las dos pestañas.
+  // La hoja nueva ya trae los _ID de agosto en las dos pestañas, con su encabezado «_ID» y todo:
+  // es la columna oculta que viaja con la copia.
   copia.forEach((fila, i) => {
-    if (i === 0) return
     hoja2.editarCelda('AGOSTO', i + 1, copia[0]!.length - 1, fila[copia[0]!.length - 1] ?? '')
   })
 
@@ -226,10 +226,58 @@ test('duplicar la pestaña del mes no le roba los _ID a la original', async () =
   const idsFinalesAgosto = [...hoja2.idsDe('AGOSTO').values()]
   const idsFinalesSeptiembre = [...hoja2.idsDe('SEPTIEMBRE').values()]
   assert.equal(new Set([...idsFinalesAgosto, ...idsFinalesSeptiembre]).size, idsFinalesAgosto.length + idsFinalesSeptiembre.length, 'ninguna fila puede compartir _ID con otra')
+  // El original se queda con los suyos aunque la copia sea la planilla más nueva y se procese primero:
+  // el dueño de un _ID es la pestaña del período más viejo que lo lleva, según la grilla.
+  assert.deepEqual(idsFinalesAgosto, idsAgosto, 'AGOSTO conserva exactamente sus _ID; los nuevos son para la copia')
   assert.equal(informe.estado === 'COMPLETA' || informe.estado === 'CON_ERRORES', true)
   assert.ok(idsAgosto.length > 0)
   db.close()
   db2.close()
+})
+
+test('renombrar una pestaña no le cambia el _ID a ninguna fila ni escribe nada en la base (12.6)', async () => {
+  const hoja = new HojaSimulada(construirHojaDePrueba())
+  const db = baseDePrueba()
+  await importar(db, hoja)
+  const idsAntes = [...hoja.idsDe('AGOSTO').values()]
+  const cuotasAntes = contar(db, 'cuotas_mes', `periodo = '2026-08' AND dada_de_baja = 0`)
+  const escriturasAntes = hoja.llamadas.escribirColumna
+
+  // La agencia le pone el año a la pestaña. Hasta la 12.5 esta base recordaba los _ID en «AGOSTO» y,
+  // al verlos en «AGOSTO 2026», les inventaba otros y los escribía en la base compartida: en todas las
+  // demás computadoras la fila vieja desaparecía (baja fantasma) y la nueva aparecía (cuota repetida).
+  hoja.restaurarPestana(Object.assign(hoja.quitarPestana('AGOSTO'), { titulo: 'AGOSTO 2026' }))
+  const { informe } = await importar(db, hoja)
+
+  assert.deepEqual([...hoja.idsDe('AGOSTO 2026').values()], idsAntes, 'todos los _ID siguen siendo los mismos')
+  assert.equal(hoja.llamadas.escribirColumna, escriturasAntes, 'no se escribió ningún _ID')
+  assert.equal(problemasDeTipo(informe, '_ID de otra pestaña').length, 0)
+  assert.equal(contar(db, 'cuotas_mes', `periodo = '2026-08' AND dada_de_baja = 0`), cuotasAntes, 'la planilla del mes tiene las mismas filas')
+  assert.equal(contar(db, 'cuotas_mes', `periodo = '2026-08' AND dada_de_baja = 1`), 0, 'ninguna cuota quedó como baja fantasma')
+  assert.equal(contar(db, 'filas_crudas', `pestana = 'AGOSTO 2026' AND en_la_hoja = 1`), idsAntes.length, 'las filas ahora viven en la pestaña renombrada')
+  assert.equal(contar(db, 'filas_crudas', `pestana = 'AGOSTO'`), 0)
+  db.close()
+})
+
+test('con dos planillas del mismo mes gana la que más filas tiene en la base, sin importar qué cuotas tenía esta computadora (12.6)', async () => {
+  // Primero esta computadora conoce sólo una copia chica del mes («AGOSTO 2026», con tres filas)…
+  const pestanas = construirHojaDePrueba()
+  const agosto = pestanas.find((p) => p.titulo === 'AGOSTO')!
+  const copiaChica = { titulo: 'AGOSTO 2026', valores: agosto.valores.slice(0, 4).map((fila) => [...fila]), columnas: agosto.columnas }
+  const hojaChica = new HojaSimulada([...pestanas.filter((p) => p.titulo !== 'AGOSTO'), copiaChica])
+  const db = baseDePrueba()
+  await importar(db, hojaChica)
+  assert.equal(contar(db, 'cuotas_mes', `periodo = '2026-08' AND pestana = 'AGOSTO 2026'`), 3)
+
+  // …y después aparece la planilla completa a la izquierda. Hasta la 12.5 se quedaba con la copia,
+  // porque era la que tenía las cuotas en ESTA base, mientras otra computadora se quedaba con la
+  // completa: cada una con una planilla distinta del mismo mes, para siempre.
+  const hojaCompleta = new HojaSimulada([...pestanas.filter((p) => p.titulo !== 'AGOSTO'), agosto, { ...copiaChica, valores: hojaChica.filasDe('AGOSTO 2026') }])
+  const { informe } = await importar(db, hojaCompleta)
+  assert.ok(informe.avisos.some((aviso) => aviso.includes('se toma «AGOSTO»') && aviso.includes('«AGOSTO 2026»')), `se toma la completa: ${informe.avisos.join(' | ')}`)
+  assert.equal(contar(db, 'cuotas_mes', `periodo = '2026-08' AND pestana = 'AGOSTO' AND dada_de_baja = 0`), agosto.valores.length - 1)
+  assert.equal(contar(db, 'cuotas_mes', `periodo = '2026-08' AND pestana = 'AGOSTO 2026'`), 0, 'las cuotas de la copia se sacaron')
+  db.close()
 })
 
 // ---------------------------------------------------------------------------

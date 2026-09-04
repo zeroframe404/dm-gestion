@@ -75,7 +75,7 @@ export function Metricas() {
       {!datos.hayMesAnterior && (
         <Alerta tono="info">
           Las altas se cuentan comparando contra el mes anterior, y de {nombreDePeriodo(datos.periodo)} no hay mes anterior cargado:
-          por eso van en cero. En cuanto se importe el mes previo aparecen solas.
+          por eso figuran con un guion, no con un cero. En cuanto se importe el mes previo aparecen solas.
         </Alerta>
       )}
 
@@ -86,7 +86,12 @@ export function Metricas() {
           detalle={`Filas de la planilla de ${alcance}`}
           tono="marca"
         />
-        <TarjetaGrande etiqueta="Altas del mes" valor={numero(datos.altas)} detalle="Están este mes y no estaban el anterior" tono="exito" />
+        <TarjetaGrande
+          etiqueta="Altas del mes"
+          valor={datos.altas === null ? '—' : numero(datos.altas)}
+          detalle={datos.altas === null ? 'Sin mes anterior cargado no se pueden deducir' : 'Están este mes y no estaban el anterior'}
+          tono="exito"
+        />
         <TarjetaGrande etiqueta="Bajas del mes" valor={numero(datos.bajas)} detalle={resumenDeMotivos(datos)} tono="peligro" />
         {/* Las dos de plata sólo para quien ve los números de la agencia. Cuando no, en su lugar va la
             CANTIDAD de cuotas, que es lo mismo en términos de trabajo hecho y por hacer, y es lo que
@@ -151,7 +156,7 @@ export function Metricas() {
             titulo="Altas y bajas por mes"
             nombrePrimera="Altas"
             nombreSegunda="Bajas"
-            meses={datos.evolucion.map((mes) => ({ periodo: mes.periodo, primera: mes.altas, segunda: mes.bajas }))}
+            meses={datos.evolucion.map((mes) => ({ periodo: mes.periodo, primera: mes.altas ?? 0, segunda: mes.bajas }))}
           />
         </Tarjeta>
 

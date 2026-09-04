@@ -13,6 +13,7 @@ hoja de Google dejó de ser la fuente de verdad. Ver «La base en el VPS (Fase 1
 npm install       # instala dependencias (better-sqlite3 trae binarios listos, no compila nada)
 npm run dev       # desarrollo con recarga automática (usuarios locales: sin DM_GESTION_VPS_URL no toca ningún servidor)
 npm run prueba    # las pruebas propias, sin tocar ninguna base real ni GitHub
+npm run prueba:sola -- pruebas/duplicados.prueba.ts   # un solo archivo del banco de pruebas (empaqueta y corre ése)
 npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
 npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador
 npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
@@ -137,7 +138,9 @@ Todo queda en la carpeta `%APPDATA%/dm-gestion/`:
   la migración inicial y Drive) y, opcionalmente, un bloque `vps` que pisa la URL o el token del
   puente con el servidor. Nunca va al repositorio.
 - `informes/`: una copia en texto de cada informe de importación.
-- `adjuntos/<siniestro>/`: los documentos de cada siniestro (la denuncia, el presupuesto del taller, las fotos).
+- `adjuntos/<siniestro>/`, `adjuntos/tarea-<id>/` y `adjuntos/poliza-<id>/`: los documentos de cada siniestro, tarea y
+  póliza. Desde la 12.6 son una COPIA: el archivo vive en el VPS y las otras computadoras lo bajan cuando lo abren
+  (ver «Adjuntos en el VPS»).
 - `respaldos/`: los últimos 30 respaldos diarios de la hoja en `.xlsx`.
 
 ### Migraciones: una versión publicada NO se edita
@@ -433,6 +436,33 @@ calculado solo y las acciones de un clic.
   escapó) sin depender de que el mes siga abierto. **Cerrar mes** (ADMIN/SUPER_ADMIN) crea el mes
   siguiente copiando las pólizas activas, igual que duplicar la hoja: conserva cuota, vencimiento, forma
   de pago y observaciones, y vacía el pago y el aviso.
+
+### Duplicados (Cartera → Duplicados, 12.6)
+
+Lo repetido, a la vista y con botón, **para todos los roles** (pedido de la agencia: «que se puedan
+borrar clientes repetidos, todos pueden»). La pantalla lista cuatro cosas:
+
+- **Clientes repetidos**: mismo DNI, un CUIT que envuelve el DNI de otro (20-12345678-3 y 12345678),
+  o mismo nombre y misma patente. «Fusionar» elige una ficha que queda y le pasa TODO lo de la otra
+  (vehículos, pólizas, cuotas, bajas, pagos, siniestros, tareas, notas, leads, presupuestos…), completa
+  lo que la ficha que queda tenía vacío y borra la repetida. Queda en el historial como `fusion`.
+- **Cuotas repetidas**: la misma póliza dos veces en el mismo mes (dos renglones en la planilla).
+- **Bajas repetidas**: la misma póliza dos veces en BAJAS del mismo mes.
+- **En los dos lados**: una póliza que está viva en la planilla del mes Y en sus bajas. Se lista y se
+  elige a mano cuál sacar; no se toca sola, porque es exactamente lo que deshacer una baja deja por un
+  minuto mientras el borrado viaja.
+
+Lo que se repara solo, al arrancar y después de cada importación: los clientes con **exactamente el
+mismo DNI y el mismo nombre** se fusionan, y las cuotas y bajas repetidas se dejan en una (siempre la
+misma en las cinco computadoras: se decide con la grilla de la base, no con lo que recuerda cada PC).
+
+De dónde salían: hasta la 12.5 cada computadora borraba y escribía en la base **por número de
+renglón**, con una foto que podía tener un minuto; si otra PC borraba un renglón más arriba en ese
+minuto, la primera pisaba al vecino. Desde la 12.6 todo se escribe **por `_ID`** (el servidor
+comprueba que el renglón siga siendo ése y, si se corrió, lo busca), «Cerrar mes» crea la pestaña del
+mes que viene contra la base y no contra la memoria local (la segunda PC recibe «otra computadora
+acaba de cerrar el mes»), y las métricas cuentan pólizas distintas, no renglones. Con eso agosto ya no
+puede tener más bajas que altas por un renglón duplicado, y los números dejan de variar según la PC.
 
 ### Rechazos del débito automático (Cartera → Rechazos)
 
@@ -904,11 +934,14 @@ momento, pero se puede cargar igual: el siniestro existe aunque la póliza esté
   ni se borran: se agregan. La denuncia misma es la primera entrada, así la ficha nunca arranca vacía.
   El resumen de la línea de tiempo se escribe en la columna OBSERVACIONES de la hoja (hasta 900
   caracteres), para que quien mire la planilla vea lo mismo que quien mira la ficha.
-- **Documentos adjuntos**: se copian a `%APPDATA%/dm-gestion/adjuntos/<siniestro>/` y se abren con un
-  clic. Si hay conexión con Google se sube además una copia a la carpeta **«Adjuntos DM»** del Drive de
-  la cuenta de servicio; que eso falle no pierde nada —el archivo local ya está guardado y el motivo
-  queda a la vista en la ficha. Dos archivos con el mismo nombre no se pisan: el segundo queda como
-  «(2)». Borrar un documento es definitivo, así que lo hacen sólo ADMIN y SUPER_ADMIN.
+- **Documentos adjuntos**: se arrastran a la ventana, se pegan con `Ctrl+V` o se eligen, y **suben al
+  VPS** (ver «Adjuntos en el VPS»): se ven y se abren desde cualquier computadora, y la línea de tiempo
+  del siniestro también viaja entera (antes sólo un resumen de 900 caracteres iba a la columna
+  OBSERVACIONES, y la otra PC no lo mostraba en su ficha). La copia local queda en
+  `%APPDATA%/dm-gestion/adjuntos/<siniestro>/`. Si hay conexión con Google se sube además una copia a la
+  carpeta **«Adjuntos DM»** del Drive; si no la hay, la ficha lo dice (hasta la 12.5 se quedaba callada).
+  Dos archivos con el mismo nombre no se pisan: el segundo queda como «(2)». Borrar un documento es
+  definitivo, así que lo hacen sólo ADMIN y SUPER_ADMIN.
 - **Tareas vinculadas**, con responsable y vencimiento, contadas en el listado mientras estén pendientes.
 - Los datos de la hoja se corrigen con **doble clic**. El caso de todos los días es el número de
   siniestro: la compañía lo da dos días después de la denuncia.
@@ -1010,7 +1043,9 @@ Los pendientes del equipo. La tabla existía desde la Fase 5 (se crean desde la 
 siniestro); acá está el módulo propio.
 
 - **Lo que tiene**: título, descripción, asignado a, sucursal, vence, prioridad (ALTA / NORMAL / BAJA),
-  estado (PENDIENTE / EN CURSO / HECHA), comentarios y adjuntos.
+  estado (PENDIENTE / EN CURSO / HECHA), comentarios y adjuntos. Desde la 12.6 los comentarios y los
+  adjuntos viajan con la tarea: lo que se escribe o se cuelga en un mostrador se ve en el otro (antes
+  quedaban sólo en la PC donde se cargaron).
 - **El orden no se elige**: primero lo abierto, después lo urgente, después lo que vence antes. Es el
   orden en que hay que hacer las cosas. La pantalla arranca con «Las mías» puesto.
 - **Sueltas o vinculadas**: una tarea puede colgar de un cliente, una póliza, un siniestro, una
@@ -1480,6 +1515,11 @@ título, la descripción y hasta **cuatro capturas**, que se pegan con `Ctrl+V` 
 apretar Impr Pant— o se buscan con el explorador. El programa agrega solo quién reporta, desde qué
 sucursal, con qué versión y en qué sistema.
 
+**«Sugerir mejora»** (12.6) está al lado, también para cualquier rol, y va por el mismo camino: abre
+un issue en GitHub, pero con la etiqueta `enhancement` en vez de `bug`, el título con «Sugerencia: » y
+una línea que dice que no es un error. Así el pedido de «estaría bueno que…» no se pierde en un
+WhatsApp ni se mezcla con las fallas.
+
 **El programa nunca habla con GitHub.** Manda el reporte al VPS (`POST /api/dmg/incidencias`, con el
 token del puente que ya tenía) y **el servidor** abre el issue con un token que vive en su `.env`
 (`DMG_INCIDENCIAS_TOKEN`, permiso «Issues: Read and write» y ninguno más). Es la misma lección que dejó
@@ -1495,6 +1535,62 @@ frontera se vea y no quede escondida entre los que sí piden token.
 
 Código: `src/main/servicios/soporte.ts` y `src/renderer/componentes/DialogoReportarError.tsx` de este
 lado; `server/src/modules/dmg/incidencias.service.ts` del otro.
+
+## Adjuntos en el VPS (12.6)
+
+Hasta la 12.5 la foto del choque adjuntada en Lanús no existía en Dock Sud, y el comentario de una
+tarea tampoco: la ficha viajaba por la base, lo que colgaba de ella se quedaba en la PC. Desde la 12.6:
+
+- **El archivo sube al VPS** (`PUT /api/dmg/adjuntos/<id>`, al disco del servidor, bajo el mismo volumen
+  que las subidas de la web) en segundo plano, después de la cola, cada diez segundos. Si el servidor
+  lo rechaza (muy grande, dañado), espera 1, 2, 4… minutos entre reintentos y al tercero se rinde con el
+  motivo a la vista en la ficha («no subió»). Sin conexión, espera sin contar intentos.
+- **La ficha viaja por la base**, en dos pestañas nuevas: **APP ADJUNTOS** (fecha, tipo, VINCULO,
+  descripción, nombre, categoría, id del archivo, tamaño, SHA-256, quién) y **APP COMENTARIOS** (los
+  comentarios de tareas y las observaciones de siniestros). VINCULO es lo que ata el archivo a su ficha
+  con una identidad que TODAS las computadoras comparten: `POLIZA:<clave>`, `SINIESTRO:<_ID>` o
+  `TAREA:<_ID>`; nunca el id local de la tabla, que es distinto en cada PC. Las lee la importación y
+  también el carril rápido de 30 segundos, que las guarda sin pasar por la importación completa.
+- **La otra computadora lo baja cuando alguien lo abre** (la primera vez; después queda en su carpeta).
+  La ficha muestra si está «en el servidor», «subiendo…» o «no subió». Borrarlo en una PC lo saca de la
+  base, del servidor y de las demás. Borrar la ficha madre (una tarea, un siniestro, una póliza) se
+  lleva sus adjuntos y comentarios con ella.
+- **Fotos en las pólizas**: «Fotos y documentos» en el formulario de la póliza, sin límite de cantidad.
+  La pantalla achica las fotos antes de mandarlas (lado largo 2560 px, JPEG al 86 %: una de 6 MB queda en
+  menos de 1 MB sin que se note) y las muestra como miniaturas. Los PDF y documentos van tal cual; el
+  tope local es de 200 MB por archivo.
+- **Drive queda como copia opcional.** La cuenta de Google sirve para Drive aunque no tenga URL de hoja
+  (antes se rechazaba y la PC quedaba sin Drive sin decirlo), y lo que quedó sin copia por falta de
+  credenciales se reintenta cuando aparecen.
+- **Lo cargado con versiones anteriores** se registra al arrancar (`registrarLoQueNoViajo`): recibe su
+  `_ID`, sube al servidor y aparece en las otras computadoras.
+
+Código: `src/main/servicios/adjuntos.ts` (la puerta de entrada y la subida), `src/main/sincronizacion/anexos.ts`
+(las filas de las dos pestañas, en los dos sentidos), `src/renderer/componentes/SelectorDeAdjuntos.tsx` y
+`src/renderer/imagenes.ts` (arrastrar, pegar, elegir y achicar), `server/src/modules/dmg/adjuntos.service.ts`
+del lado del VPS. Pruebas: `pruebas/adjuntos.prueba.ts` (dos computadoras) y el caso de adjuntos en
+`pruebas/fuente-vps.prueba.ts`.
+
+## Velocidad (12.6)
+
+Lo que se hizo para que el programa abra y la planilla aparezca antes:
+
+- La base abre con `synchronous = NORMAL` (seguro con WAL), 64 MB de caché y el archivo mapeado en
+  memoria, y la revisión del esquema —que armaba una base entera en memoria en cada arranque— corre una
+  vez por versión del programa (se anota una huella de las migraciones en `estado_sync`).
+- Índices que faltaban: `pagos(cuota_fila_id)`, `cuotas_mes(periodo, dada_de_baja)`, `polizas(compania)`,
+  `polizas(activa)`, `polizas(poliza_anterior_id)` y `bajas(poliza_id, fecha_baja_iso)`; y la planilla del
+  mes pregunta por los pagos con dos EXISTS que usan esos índices en vez de uno con OR que recorría
+  `pagos` entera por cada fila.
+- Cada módulo de la interfaz se carga la primera vez que se abre (`React.lazy`): el ingreso ya no espera
+  a que el navegador lea Marketing y Reportes. El panel de Sincronización se refresca cada 30 segundos en
+  vez de 10 (igual se refresca solo con cada cambio de estado).
+
+## Integración continua
+
+`.github/workflows/pruebas.yml` corre `npm run typecheck` y `npm run prueba` en cada push y en cada pull
+request, en Linux (el banco de pruebas no toca Electron ni el instalador). `publicar.yml` sigue corriendo
+el banco antes de armar el instalador con cada tag `v*`.
 
 ## Permisos por rol (Administración → Permisos)
 

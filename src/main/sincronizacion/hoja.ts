@@ -62,12 +62,16 @@ export function columnaDelId(pestana: PestanaSincronizable, valores: string[][])
   return columnaIdPorContenido(valores)
 }
 
-/** Número de fila (base 1) de cada _ID de la pestaña. */
+/**
+ * Número de fila (base 1) de cada _ID de la pestaña. Si un _ID aparece dos veces manda el PRIMER
+ * renglón, igual que en la base del VPS y en el importador (que le da un _ID nuevo al segundo): así
+ * la subida, el servidor y la importación hablan del mismo renglón.
+ */
 export function filasPorId(valores: string[][], columnaId: number, desdeFila: number): Map<string, number> {
   const mapa = new Map<string, number>()
   for (let r = desdeFila - 1; r < valores.length; r++) {
     const id = limpiar(valores[r]?.[columnaId])
-    if (id) mapa.set(id, r + 1)
+    if (id && !mapa.has(id)) mapa.set(id, r + 1)
   }
   return mapa
 }

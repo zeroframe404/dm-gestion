@@ -242,7 +242,7 @@ export function DialogoEliminar({
  * previa de un cliente grande, que tarda, alcanzaba con estar apoyando el clic para borrar sin haber
  * esperado nada. Calculándolo, mientras no arrancó faltan los cinco segundos enteros y punto.
  */
-function useCuentaRegresiva(desde: number | null): number {
+export function useCuentaRegresiva(desde: number | null): number {
   const [arranque, setArranque] = useState<number | null>(null)
   // Sólo para volver a dibujar cuatro veces por segundo: la cuenta sale del reloj, no de acá.
   const [, latir] = useState(0)

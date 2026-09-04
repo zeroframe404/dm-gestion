@@ -4,17 +4,21 @@
 // Tres definiciones que conviene tener claras, porque son las que hacen que los números coincidan con
 // la planilla y no con otra cosa:
 //
-//  1. ACTIVOS de un mes = las filas de la planilla de ese mes que no están dadas de baja. Es
-//     exactamente lo que cuentan los COUNTIF de SEGUROS ACT: la pestaña del mes, una fila por póliza.
-//     No se filtra por `polizas.activa` a propósito: `activa` dice cómo está la póliza HOY, y con eso
-//     un mes viejo mostraría menos pólizas de las que realmente tuvo.
+//  1. ACTIVOS de un mes = las PÓLIZAS de la planilla de ese mes que no están dadas de baja. Es lo que
+//     cuentan los COUNTIF de SEGUROS ACT: la pestaña del mes, una fila por póliza. No se filtra por
+//     `polizas.activa` a propósito: `activa` dice cómo está la póliza HOY, y con eso un mes viejo
+//     mostraría menos pólizas de las que realmente tuvo. Y se cuenta UNA vez por póliza (12.6): si la
+//     planilla trae la misma póliza en dos renglones —lo que dejaban los duplicados de la
+//     sincronización—, el tablero no la cuenta dos veces mientras la reparación la acomoda.
 //
 //  2. ALTAS de un mes = las que están en ese mes y no estaban en el anterior. Es la cuenta que hace
 //     el contador comparando dos pestañas, y es la única que se puede hacer sobre datos importados:
 //     la columna ALTA de la hoja está llena a medias y con fechas de todos los formatos. Si no hay mes
-//     anterior cargado no se puede deducir nada y las altas van en cero, dicho en la pantalla.
+//     anterior cargado no se puede deducir nada y las altas van en null —un guion en la pantalla—,
+//     nunca en cero: un cero al lado de veinte bajas se lee «se fueron veinte y no entró nadie».
 //
-//  3. BAJAS de un mes = las filas de la pestaña de BAJAS de ese mes, con su MOTIVO.
+//  3. BAJAS de un mes = las pólizas de la pestaña de BAJAS de ese mes, con su MOTIVO, también una vez
+//     por póliza.
 import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { normalizarEstadoSiniestro } from '../../shared/siniestros'
 import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
@@ -53,10 +57,25 @@ const PERIODO_DEL_PAGO = `COALESCE(p.periodo, substr(p.fecha_iso, 1, 7))`
 // pantalla se armara la suya, el mismo pago volvería a contar en una y a faltar en la otra.
 
 /**
- * Identidad de una fila entre un mes y el siguiente. La póliza es lo que manda; para las filas que el
- * importador no pudo enganchar a ninguna se arma una clave con lo que tienen escrito.
+ * Identidad de una fila entre un mes y el siguiente. La póliza es lo que manda, por su CLAVE
+ * («POL:<cía>|<número>», que sale de la planilla y es la misma en todas las computadoras) y no por su
+ * id local, que es distinto en cada base; para las filas que el importador no pudo enganchar a
+ * ninguna se arma una clave con lo que tienen escrito.
  */
-const IDENTIDAD_DE_LA_CUOTA = `COALESCE('P' || c.poliza_id, 'X' || COALESCE(c.numero_poliza, '') || '|' || COALESCE(c.patente, '') || '|' || COALESCE(c.documento, ''))`
+const IDENTIDAD_DE_LA_CUOTA = `COALESCE('P:' || p.clave, 'X' || COALESCE(c.numero_poliza, '') || '|' || COALESCE(c.patente, '') || '|' || COALESCE(c.documento, ''))`
+
+/** La misma identidad para una baja: por la clave de su póliza, si la tiene, y si no por su renglón. */
+const IDENTIDAD_DE_LA_BAJA = `COALESCE('P:' || p.clave, 'B:' || b.fila_id)`
+
+/** Una vez por identidad, conservando el orden en que vinieron. */
+function unaPorIdentidad<T extends { identidad: string }>(filas: T[]): T[] {
+  const vistas = new Set<string>()
+  return filas.filter((fila) => {
+    if (vistas.has(fila.identidad)) return false
+    vistas.add(fila.identidad)
+    return true
+  })
+}
 
 // La sucursal se compara con `mismaSucursal` de shared y no con el texto normalizado: el desplegable de
 // arriba lo arma `catalogos().sucursales`, que pliega «AVELLANEDA» y «DOCKSUD» dentro de «Dock Sud». Si
@@ -131,7 +150,10 @@ function cuotasDelMes(periodo: string, sucursales: string[]): CuotaDelMes[] {
          FROM cuotas_mes c
          LEFT JOIN clientes cl ON cl.id = c.cliente_id
          LEFT JOIN polizas p ON p.id = c.poliza_id
-        WHERE c.periodo = ? AND c.dada_de_baja = 0`,
+        WHERE c.periodo = ? AND c.dada_de_baja = 0
+        -- Con dos renglones de la misma póliza se queda el que está pago (cuenta como cobrado) y, a
+        -- igualdad, el del _ID más chico: el mismo en todas las computadoras.
+        ORDER BY pagada DESC, c.fila_id`,
     )
     .all(periodo) as Array<{
     identidad: string
@@ -143,7 +165,7 @@ function cuotasDelMes(periodo: string, sucursales: string[]): CuotaDelMes[] {
     pagada: number
   }>
 
-  return filas
+  return unaPorIdentidad(filas)
     .filter((fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal))
     .map((fila) => ({
       identidad: fila.identidad,
@@ -162,6 +184,7 @@ function identidadesDelMes(periodo: string, sucursales: string[]): Set<string> {
 }
 
 interface BajaDelMes {
+  identidad: string
   motivo: string | null
   compania: string | null
   sucursal: string | null
@@ -170,13 +193,16 @@ interface BajaDelMes {
 function bajasDelMes(periodo: string, sucursales: string[]): BajaDelMes[] {
   const filas = db()
     .prepare(
-      `SELECT b.motivo, b.compania, COALESCE(NULLIF(TRIM(b.sucursal_texto), ''), cl.sucursal_texto) AS sucursal
+      `SELECT ${IDENTIDAD_DE_LA_BAJA} AS identidad, b.motivo, b.compania,
+              COALESCE(NULLIF(TRIM(b.sucursal_texto), ''), cl.sucursal_texto) AS sucursal
          FROM bajas b
          LEFT JOIN clientes cl ON cl.id = b.cliente_id
-        WHERE b.periodo = ?`,
+         LEFT JOIN polizas p ON p.id = b.poliza_id
+        WHERE b.periodo = ?
+        ORDER BY b.hecha_en_la_app DESC, b.fila_id`,
     )
     .all(periodo) as BajaDelMes[]
-  return filas.filter((fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal))
+  return unaPorIdentidad(filas).filter((fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal))
 }
 
 interface PagoDelMes {
@@ -245,7 +271,7 @@ function evolucion(periodo: string, sucursales: string[], disponibles: string[],
   for (const mes of meses) {
     const cuotas = cuotasDelMes(mes, sucursales)
     const anteriores = identidadesDelMes(periodoAnterior(mes), sucursales)
-    const altas = anteriores.size === 0 ? 0 : cuotas.filter((cuota) => !anteriores.has(cuota.identidad)).length
+    const altas = anteriores.size === 0 ? null : cuotas.filter((cuota) => !anteriores.has(cuota.identidad)).length
     filas.push({
       periodo: mes,
       activos: cuotas.length,
@@ -333,7 +359,7 @@ export function tableroDeMetricas(filtros: FiltrosMetricas, conNumeros: boolean)
     activosPorCompania: aPorciones(porCompania, cuotas.length),
     activosPorSucursal: aPorciones(porSucursal, cuotas.length),
 
-    altas: hayMesAnterior ? cuotas.filter((cuota) => !identidadesAnteriores.has(cuota.identidad)).length : 0,
+    altas: hayMesAnterior ? cuotas.filter((cuota) => !identidadesAnteriores.has(cuota.identidad)).length : null,
     bajas: bajas.length,
     bajasPorMotivo,
     hayMesAnterior,
@@ -358,8 +384,9 @@ export function tableroDeMetricas(filtros: FiltrosMetricas, conNumeros: boolean)
  * viaja o no. Sumar `number | null` obligaría a un `?? 0` en cada paso, y ese cero terminaría
  * confundiéndose con un cobro real.
  */
-interface Acumulador extends Omit<FilaEstadistica, 'cobrado'> {
+interface Acumulador extends Omit<FilaEstadistica, 'cobrado' | 'altas'> {
   clave: string
+  altas: number
   cobrado: number
 }
 
@@ -373,9 +400,9 @@ function tomar(mapa: Map<string, Acumulador>, valor: string | null, vacio: strin
   return nuevo
 }
 
-function ordenar(mapa: Map<string, Acumulador>, conNumeros: boolean): FilaEstadistica[] {
+function ordenar(mapa: Map<string, Acumulador>, conNumeros: boolean, hayMesAnterior: boolean): FilaEstadistica[] {
   return [...mapa.values()]
-    .map(({ clave: _clave, cobrado, ...fila }) => ({ ...fila, cobrado: conNumeros ? cobrado : null }))
+    .map(({ clave: _clave, cobrado, altas, ...fila }) => ({ ...fila, altas: hayMesAnterior ? altas : null, cobrado: conNumeros ? cobrado : null }))
     .sort((a, b) => b.activos - a.activos || a.etiqueta.localeCompare(b.etiqueta, 'es'))
 }
 
@@ -420,7 +447,7 @@ export function estadisticasDeCartera(
     }
   }
 
-  const porCompania = ordenar(companias, conNumeros)
+  const porCompania = ordenar(companias, conNumeros, hayMesAnterior)
   // El total sale del acumulador y no de las filas ya recortadas: si no, con los números ocultos el
   // total sumaría nulls y daría cero.
   const totalCobrado = [...companias.values()].reduce((suma, fila) => suma + fila.cobrado, 0)
@@ -430,12 +457,12 @@ export function estadisticasDeCartera(
     sucursalesElegidas: sucursales,
     sucursales: disponiblesDeSucursal,
     porCompania,
-    porSucursal: ordenar(sucursalesMapa, conNumeros),
+    porSucursal: ordenar(sucursalesMapa, conNumeros, hayMesAnterior),
     // El total sale de las filas por compañía: cada cuota, baja y pago cae en una sola.
     totales: {
       etiqueta: 'Total',
       activos: porCompania.reduce((suma, fila) => suma + fila.activos, 0),
-      altas: porCompania.reduce((suma, fila) => suma + fila.altas, 0),
+      altas: hayMesAnterior ? porCompania.reduce((suma, fila) => suma + (fila.altas ?? 0), 0) : null,
       bajas: porCompania.reduce((suma, fila) => suma + fila.bajas, 0),
       pagos: porCompania.reduce((suma, fila) => suma + fila.pagos, 0),
       cobrado: conNumeros ? totalCobrado : null,

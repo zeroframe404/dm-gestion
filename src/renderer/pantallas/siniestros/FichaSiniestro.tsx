@@ -5,6 +5,7 @@
 // de tiempo está en el medio y ocupa lugar: es el relato del trámite, no un campo de notas.
 import { useCallback, useEffect, useState } from 'react'
 import {
+  type ArchivoParaAdjuntar,
   CATEGORIAS_DE_ADJUNTO,
   CATEGORIA_DE_ADJUNTO_OTRAS,
   ESTADOS_DE_SINIESTRO,
@@ -16,6 +17,8 @@ import {
 import { NOMBRE_ESTADO_TAREA } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
+import { SelectorDeAdjuntos } from '../../componentes/SelectorDeAdjuntos'
+import { EtiquetaDeEstado } from '../polizas/AdjuntosDePoliza'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Dialogo, Selector, Tarjeta, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -52,6 +55,14 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
 
   // Sin permiso de edición la ficha se lee entera, pero no se toca nada: como estar guardando.
   const bloqueado = trabajando || !puedeEditar
+
+  /** Abre el documento; si lo cargó otra computadora, se baja del servidor antes y la ficha se relee. */
+  const abrirAdjunto = async (adjuntoId: number) => {
+    setError(null)
+    const resultado = await window.dm.siniestros.abrirAdjunto(adjuntoId)
+    if (!resultado.ok) setError(resultado.error)
+    else void cargar()
+  }
 
   const cargar = useCallback(async () => {
     const resultado = await window.dm.siniestros.ficha(siniestroId)
@@ -279,7 +290,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
         {/* --- Documentos --- */}
         <Tarjeta
           titulo="Documentos"
-          descripcion={`Se guardan en ${ficha.carpetaDeAdjuntos} y, si hay conexión con Google, se suben además a la carpeta «Adjuntos DM» del Drive.`}
+          descripcion="Suben al servidor de la agencia y se ven desde cualquier computadora. Las fotos se achican solas antes de subir."
           acciones={
             <Boton icono="clip" cargando={trabajando} disabled={!puedeEditar} onClick={() => setAdjuntarAbierto(true)}>
               Adjuntar
@@ -292,18 +303,22 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
             <ul className="flex flex-col divide-y divide-slate-100">
               {ficha.adjuntos.map((adjunto) => (
                 <li key={adjunto.id} className="flex items-center gap-3 py-2">
-                  <Icono nombre="carpeta" tamano={16} className="shrink-0 text-slate-400" />
+                  {adjunto.miniatura ? (
+                    <img src={adjunto.miniatura} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />
+                  ) : (
+                    <Icono nombre="carpeta" tamano={16} className="shrink-0 text-slate-400" />
+                  )}
                   <button
                     type="button"
-                    onClick={() => void window.dm.siniestros.abrirAdjunto(adjunto.id)}
+                    onClick={() => void abrirAdjunto(adjunto.id)}
                     className="min-w-0 flex-1 text-left text-sm font-medium text-marino-700 hover:underline"
                   >
                     <span className="block truncate">{adjunto.nombre}</span>
                     <span className="block text-xs font-normal text-slate-500">
                       {pesoDeArchivo(adjunto.tamano)} · {fechaYHora(adjunto.creadoEn)} · {adjunto.usuarioNombre}
-                      {adjunto.enDrive && ' · en Drive'}
                     </span>
                   </button>
+                  <EtiquetaDeEstado adjunto={adjunto} />
                   <span
                     className={cx(
                       'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold',
@@ -312,11 +327,6 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
                   >
                     {adjunto.categoria ? adjunto.categoriaDetalle ?? adjunto.categoria : 'Sin categoría'}
                   </span>
-                  {adjunto.errorDeDrive && (
-                    <span className="shrink-0 text-xs text-amber-700" title={adjunto.errorDeDrive}>
-                      sólo local
-                    </span>
-                  )}
                   {puedeBorrarDocumentos && (
                     <button
                       type="button"
@@ -479,7 +489,10 @@ function DialogoAdjuntar({
   const [guardando, setGuardando] = useState(false)
   const pideDetalle = categoria === CATEGORIA_DE_ADJUNTO_OTRAS
 
-  const adjuntar = async () => {
+  const listo = !pideDetalle || detalle.trim() !== ''
+
+  /** El explorador de Windows: para HEIC y archivos grandes, que la zona de arrastre no decodifica. */
+  const explorar = async () => {
     setGuardando(true)
     setError(null)
     const resultado = await window.dm.siniestros.adjuntar(siniestroId, null, categoria, detalle)
@@ -488,27 +501,26 @@ function DialogoAdjuntar({
     else setError(resultado.error)
   }
 
+  const adjuntarArchivos = async (archivos: ArchivoParaAdjuntar[]) => {
+    setGuardando(true)
+    setError(null)
+    const resultado = await window.dm.siniestros.adjuntarArchivos(siniestroId, archivos, categoria, detalle)
+    setGuardando(false)
+    if (resultado.ok) alAdjuntar(resultado.datos)
+    else setError(resultado.error)
+    return resultado.ok
+  }
+
   return (
     <Dialogo
       abierto
       titulo="Adjuntar documentos"
-      descripcion="Decí qué documento es y después elegí los archivos."
+      descripcion="Decí qué documento es y después arrastrá, pegá o elegí los archivos. Suben al servidor y se ven desde cualquier computadora."
       alCerrar={alCerrar}
       pie={
-        <>
-          <Boton onClick={alCerrar} disabled={guardando}>
-            Cancelar
-          </Boton>
-          <Boton
-            variante="primario"
-            icono="clip"
-            onClick={() => void adjuntar()}
-            cargando={guardando}
-            disabled={pideDetalle && !detalle.trim()}
-          >
-            Elegir archivos…
-          </Boton>
-        </>
+        <Boton onClick={alCerrar} disabled={guardando}>
+          Cancelar
+        </Boton>
       }
     >
       <div className="flex flex-col gap-3">
@@ -529,6 +541,13 @@ function DialogoAdjuntar({
             ayuda="Presupuesto del taller, telegrama, acta de la compañía…"
           />
         )}
+        <SelectorDeAdjuntos
+          disabled={!listo}
+          ocupado={guardando}
+          texto={listo ? 'arrastrá las fotos o los documentos acá, o pegalos con Ctrl+V' : 'primero indicá qué documento es'}
+          alElegir={adjuntarArchivos}
+          alExplorar={() => void explorar()}
+        />
       </div>
     </Dialogo>
   )

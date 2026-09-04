@@ -31,6 +31,8 @@ export function RedesSociales() {
   const [aviso, setAviso] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
   const [cuentas, setCuentas] = useState<VinculoConMeta[] | null>(null)
+  /** Por qué no se pudo traer el panorama de las cuentas (sin servidor, sin permiso): se dice, no se deja girando. */
+  const [cuentasError, setCuentasError] = useState<string | null>(null)
 
   const cargar = useCallback(async () => {
     const resultado = await window.dm.redes.estadoMeta()
@@ -42,9 +44,17 @@ export function RedesSociales() {
       setError(resultado.error)
     }
     // Sólo para mostrar el panorama: vincular o desvincular se hace desde Marketing → Redes, donde
-    // ya está el contexto de «para qué sucursal» y el diálogo para elegir la página.
+    // ya está el contexto de «para qué sucursal» y el diálogo para elegir la página. Que esto falle
+    // (sin conexión con el VPS, por ejemplo) no es un error de la pantalla: la app de Meta se puede
+    // cargar igual, y la tarjeta de abajo dice por qué no muestra las cuentas.
     const panel = await window.dm.redes.panel()
-    if (panel.ok) setCuentas(panel.datos.cuentas)
+    if (panel.ok) {
+      setCuentas(panel.datos.cuentas)
+      setCuentasError(panel.datos.cuentas.length === 0 && panel.datos.ultimoError && panel.datos.appConfigurada ? panel.datos.ultimoError : null)
+    } else {
+      setCuentas([])
+      setCuentasError(panel.error)
+    }
   }, [])
 
   useEffect(() => {
@@ -177,6 +187,7 @@ export function RedesSociales() {
         titulo="Cuentas vinculadas por sucursal"
         descripcion="Cada sucursal tiene su propia Página de Facebook e Instagram. Se vinculan y se desvinculan desde Marketing → Redes, eligiendo ahí la sucursal; acá se ve el panorama de las cuatro."
       >
+        {cuentasError && <Alerta tono="aviso">No se pudo traer el panorama de las cuentas: {cuentasError}</Alerta>}
         {cuentas === null ? (
           <Cargando />
         ) : (

@@ -7,11 +7,12 @@ import test from 'node:test'
 import { abrirBaseDeDatos, cerrarBaseDeDatos, usarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
 import { ejecutarImportacion } from '../src/main/importacion/importador'
 import { ahoraIso } from '../src/main/importacion/normalizar'
-import { bajasDelMes, darDeBaja, deshacerBaja, planillaDelMes, registrarPago } from '../src/main/servicios/cartera'
+import { bajasDelMes, darDeBaja, deshacerBaja, editarCelda, periodosDisponibles, planillaDelMes, registrarPago } from '../src/main/servicios/cartera'
 import { cajaDelDia, cambiarResultado, imputados } from '../src/main/servicios/cobranzas'
 import { PESTANA_APP } from '../src/main/servicios/filas'
 import { hojaDeImputados, subirPagosRezagados } from '../src/main/servicios/pagos'
 import { repararBajasDuplicadas, repararColaContraPestanaInexistente, repararCuotasDuplicadas } from '../src/main/servicios/reparaciones'
+import { cerrarMesConLaBase } from '../src/main/servicios/sincronizacion'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes } from '../src/main/sincronizacion/cola'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { PESTANA_PAGOS_APP } from '../src/main/sincronizacion/pestanasApp'
@@ -177,6 +178,118 @@ test('una baja hecha en una computadora saca la cuota de la planilla de la otra,
   await lanus1.motor.ciclarBajada()
   await lanus1.importar()
   assert.equal(bajasDelMes('2026-08').filter((b) => b.clienteNombre === CLIENTES.martinez.nombre).length, 1, 'tampoco en la primera')
+  cerrarTodo()
+})
+
+test('dos computadoras borran en el mismo minuto: cada una saca SU renglón aunque la grilla se haya corrido (12.6)', async () => {
+  // El caso que duplicaba la cartera y la hacía distinta en cada PC. Lanús 1 lee la planilla, decide
+  // borrar el renglón de López por su número, y ANTES de que ese borrado llegue Lanús 2 borra un
+  // renglón más arriba: en la base todos los de abajo se corren uno. Hasta la 12.5 el número viejo
+  // borraba la póliza de al lado; ahora el borrado viaja con el _ID y cae donde tiene que caer.
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+  const idsAntes = hoja.idsDe('AGOSTO')
+  const renglonDe = (filaId: string) => [...idsAntes.entries()].find(([, id]) => id === filaId)?.[0] ?? -1
+
+  en(lanus1)
+  const lopez = exigirFila(CLIENTES.lopez.nombre)
+  const suarez = exigirFila(CLIENTES.suarez.nombre)
+  en(lanus2)
+  const gonzalez = exigirFila(CLIENTES.gonzalez.nombre)
+  assert.ok(renglonDe(gonzalez.filaId) < renglonDe(lopez.filaId), 'González está más arriba que López en la planilla')
+  assert.ok(renglonDe(lopez.filaId) < renglonDe(suarez.filaId), 'y Suárez, más abajo que López')
+
+  // Lanús 1: da de baja a López y además le anota un aviso a Suárez (una celda, no un borrado).
+  en(lanus1)
+  darDeBaja(lopez.filaId, { motivo: 'VENDIO', nota: '' }, MILAGROS)
+  editarCelda(suarez.filaId, 'observaciones', 'LLAMAR EL LUNES', MILAGROS)
+  // Lanús 2: da de baja a González, el renglón de más arriba.
+  en(lanus2)
+  darDeBaja(gonzalez.filaId, { motivo: 'VENDIO', nota: '' }, DAIANA)
+
+  // La carrera: Lanús 1 lee la planilla y, entre esa lectura y su escritura, Lanús 2 sube lo suyo.
+  const leerDeVerdad = hoja.leerVarias.bind(hoja)
+  hoja.leerVarias = async (titulos, hastaFila) => {
+    const lectura = await leerDeVerdad(titulos, hastaFila)
+    hoja.leerVarias = leerDeVerdad
+    await subirTodo(lanus2)
+    en(lanus1)
+    return lectura
+  }
+  await subirTodo(lanus1)
+
+  assert.equal(renglonesCon(hoja, 'AGOSTO', gonzalez.filaId), 0, 'González salió de la planilla')
+  assert.equal(renglonesCon(hoja, 'AGOSTO', lopez.filaId), 0, 'López salió de la planilla')
+  assert.equal(renglonesCon(hoja, 'AGOSTO', suarez.filaId), 1, 'Suárez sigue: no se borró el renglón de al lado')
+  assert.equal(hoja.idsDe('AGOSTO').size, idsAntes.size - 2, 'se fueron exactamente dos renglones')
+  assert.equal(celda(hoja, 'AGOSTO', suarez.filaId, 'OBS'), 'LLAMAR EL LUNES', 'el aviso cayó en el renglón de Suárez, no en el que ahora ocupa su número viejo')
+  for (const otro of [CLIENTES.perezAuto, CLIENTES.perezMoto, CLIENTES.rodriguez, CLIENTES.martinez]) {
+    en(lanus1)
+    assert.ok(fila(otro.nombre), `${otro.nombre} sigue en la planilla de Lanús 1`)
+  }
+
+  // Las dos computadoras terminan viendo lo mismo: dos bajas, ninguna fantasma.
+  for (const pc of [lanus1, lanus2]) {
+    en(pc)
+    await pc.motor.ciclarBajada()
+    assert.equal(planillaDelMes('2026-08').filas.length, idsAntes.size - 2, `${pc.nombre}: la planilla tiene dos filas menos`)
+    assert.equal(bajasDelMes('2026-08').length, 2, `${pc.nombre}: dos bajas, las dos de verdad`)
+    assert.ok(fila(CLIENTES.suarez.nombre), `${pc.nombre}: Suárez sigue vigente`)
+  }
+  cerrarTodo()
+})
+
+test('dos computadoras cierran el mes: sólo una crea la planilla nueva y la otra recibe un aviso claro (12.6)', async () => {
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+  en(lanus1)
+  const filasDeAgosto = planillaDelMes('2026-08').filas.length
+  const resumen = await cerrarMesConLaBase(DANIEL, { fuente: hoja, sincronizar: () => lanus1.motor.sincronizarAhora(true) })
+  assert.equal(resumen.periodo, '2026-09')
+  assert.ok(hoja.titulos().includes('SEPTIEMBRE'), 'la pestaña se creó en la base ANTES de copiar las filas: es el candado')
+  await subirTodo(lanus1)
+  assert.equal(hoja.filasDe('SEPTIEMBRE').length - 1, filasDeAgosto, 'una fila por póliza activa')
+
+  // Lanús 2 leyó la estructura antes de que Lanús 1 creara la pestaña (los dos pasan el «¿ya está
+  // abierto?»): la base es la que dice que no, y acá no se copia nada.
+  en(lanus2)
+  const estructuraDeVerdad = hoja.estructura.bind(hoja)
+  hoja.estructura = async () => {
+    const estructura = await estructuraDeVerdad()
+    return { ...estructura, pestanas: estructura.pestanas.filter((p) => p.titulo !== 'SEPTIEMBRE') }
+  }
+  await assert.rejects(cerrarMesConLaBase(DANIEL, { fuente: hoja, sincronizar: async () => undefined }), /Otra computadora acaba de cerrar el mes/)
+  hoja.estructura = estructuraDeVerdad
+  assert.equal(periodosDisponibles().some((p) => p.periodo === '2026-09'), false, 'Lanús 2 no copió ninguna fila')
+
+  // Con la base a la vista, el freno es «ya está abierto en la base».
+  await assert.rejects(cerrarMesConLaBase(DANIEL, { fuente: hoja, sincronizar: async () => undefined }), /ya está abierto en la base/)
+  assert.equal(hoja.filasDe('SEPTIEMBRE').length - 1, filasDeAgosto, 'la planilla nueva sigue con una fila por póliza')
+  // Y la sincronización de verdad le trae a Lanús 2 el mes nuevo tal como lo cerró Lanús 1.
+  await lanus2.motor.sincronizarAhora(true)
+  assert.equal(planillaDelMes('2026-09').filas.length, filasDeAgosto, 'Lanús 2 ve el mes nuevo con una fila por póliza')
+  assert.equal(planillaDelMes('2026-09').filas.filter((f) => f.nombre === CLIENTES.lopez.nombre).length, 1, 'y a cada póliza una sola vez')
+
+  // Sin conexión con la base no se cierra: el candado vive en la base.
+  await assert.rejects(cerrarMesConLaBase(DANIEL, { fuente: null }), /Sin conexión con la base/)
+  cerrarTodo()
+})
+
+test('renombrar una pestaña no le cambia el _ID a nadie en ninguna computadora (12.6)', async () => {
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+  const idsAntes = [...hoja.idsDe('AGOSTO').values()]
+  const escriturasAntes = hoja.llamadas.escribirColumna
+  en(lanus1)
+  const filasAntes = planillaDelMes('2026-08').filas.length
+  const bajasAntes = bajasDelMes('2026-08').length
+
+  hoja.restaurarPestana(Object.assign(hoja.quitarPestana('AGOSTO'), { titulo: 'AGOSTO 2026' }))
+  for (const pc of [lanus1, lanus2]) {
+    en(pc)
+    await pc.importar()
+    assert.equal(planillaDelMes('2026-08').filas.length, filasAntes, `${pc.nombre}: la planilla tiene las mismas filas`)
+    assert.equal(bajasDelMes('2026-08').length, bajasAntes, `${pc.nombre}: ninguna baja fantasma`)
+  }
+  assert.deepEqual([...hoja.idsDe('AGOSTO 2026').values()], idsAntes, 'los _ID son los mismos de antes')
+  assert.equal(hoja.llamadas.escribirColumna, escriturasAntes, 'ninguna computadora escribió un _ID')
   cerrarTodo()
 })
 

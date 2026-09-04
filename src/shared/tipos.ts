@@ -286,6 +286,10 @@ export type TipoPestana =
   | 'APP_PRESUPUESTOS'
   | 'APP_TAREAS'
   | 'APP_RECHAZOS'
+  // 12.6: los adjuntos (fotos y documentos de pólizas, siniestros y tareas) y los comentarios de
+  // tareas y observaciones de siniestros. Antes quedaban sólo en la PC donde se cargaron.
+  | 'APP_ADJUNTOS'
+  | 'APP_COMENTARIOS'
   | 'OTRA'
 
 export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
@@ -302,6 +306,8 @@ export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
   APP_PRESUPUESTOS: 'Presupuestos (la escribe DM Gestión)',
   APP_TAREAS: 'Tareas (la escribe DM Gestión)',
   APP_RECHAZOS: 'Rechazos de débito (la escribe DM Gestión)',
+  APP_ADJUNTOS: 'Adjuntos (la escribe DM Gestión)',
+  APP_COMENTARIOS: 'Comentarios y observaciones (la escribe DM Gestión)',
   OTRA: 'Sin clasificar (sólo crudo)',
 }
 
@@ -2119,6 +2125,13 @@ export interface AdjuntoDeSiniestro {
   enDrive: boolean
   /** Por qué no se pudo subir a Drive, si es el caso. El archivo local está guardado igual. */
   errorDeDrive: string | null
+  /** Lo que comparten todos los adjuntos desde la 12.6: si está en el servidor, si está en esta PC, la miniatura. */
+  tipo: string
+  enElServidor: boolean
+  errorDelServidor: string | null
+  /** false cuando lo cargó otra computadora y esta todavía no lo bajó (se baja al abrirlo). */
+  descargado: boolean
+  miniatura: string | null
 }
 
 export interface FichaSiniestro {
@@ -2517,6 +2530,46 @@ export interface AdjuntoDeTarea {
   /** true si además se subió a la carpeta «Adjuntos DM» del Drive. */
   enDrive: boolean
   errorDeDrive: string | null
+  tipo: string
+  enElServidor: boolean
+  errorDelServidor: string | null
+  descargado: boolean
+  miniatura: string | null
+}
+
+/**
+ * Un adjunto de una póliza (12.6): las fotos del auto o la moto, el frente de la póliza, la cédula.
+ * Mismo modelo que los de siniestros y tareas, sin categoría: en una póliza el nombre alcanza.
+ */
+export interface AdjuntoDePoliza {
+  id: number
+  nombre: string
+  tipo: string
+  tamano: number
+  creadoEn: string
+  usuarioNombre: string
+  enDrive: boolean
+  errorDeDrive: string | null
+  enElServidor: boolean
+  errorDelServidor: string | null
+  descargado: boolean
+  miniatura: string | null
+  ancho: number | null
+  alto: number | null
+}
+
+/**
+ * Un archivo que la pantalla manda para adjuntar: los bytes vienen de la ventana (arrastrar, pegar o
+ * elegir), no de una ruta del disco, porque la pantalla ya achicó la foto antes de mandarla.
+ */
+export interface ArchivoParaAdjuntar {
+  nombre: string
+  tipo: string
+  contenido: Uint8Array
+  ancho?: number | null
+  alto?: number | null
+  /** true si la pantalla lo recomprimió (una foto de 6 MB que llegó en 800 KB). */
+  optimizado?: boolean
 }
 
 export interface FilaTarea {
@@ -2675,7 +2728,8 @@ export interface BajaPorMotivo {
 export interface MesDeEvolucion {
   periodo: string
   activos: number
-  altas: number
+  /** null cuando no hay mes anterior cargado: sin él las altas no se pueden deducir (no es un cero). */
+  altas: number | null
   bajas: number
   /** null cuando quien mira no ve los números de la agencia. Un cero diría «no se cobró nada». */
   cobrado: number | null
@@ -2710,10 +2764,11 @@ export interface TableroMetricas {
   activosPorCompania: PorcionMetrica[]
   activosPorSucursal: PorcionMetrica[]
 
-  altas: number
+  /** null si no hay mes anterior cargado (ver `hayMesAnterior`): la pantalla muestra un guion, no un cero. */
+  altas: number | null
   bajas: number
   bajasPorMotivo: BajaPorMotivo[]
-  /** false si no hay mes anterior cargado: sin él las altas no se pueden deducir y van en 0. */
+  /** false si no hay mes anterior cargado: sin él las altas no se pueden deducir y van en null. */
   hayMesAnterior: boolean
 
   evolucion: MesDeEvolucion[]
@@ -2729,7 +2784,8 @@ export interface TableroMetricas {
 export interface FilaEstadistica {
   etiqueta: string
   activos: number
-  altas: number
+  /** null cuando no hay mes anterior cargado: la columna muestra un guion. */
+  altas: number | null
   bajas: number
   /** Cuántos pagos entraron en el mes. La cantidad la ve todo el mundo. */
   pagos: number
@@ -2749,6 +2805,117 @@ export interface EstadisticasDeCartera {
   totales: FilaEstadistica
   hayMesAnterior: boolean
   hoy: string
+}
+
+// ---------------------------------------------------------------------------
+// 12.6 · Duplicados: lo que la sincronización dejó repetido, a la vista y con botón
+// ---------------------------------------------------------------------------
+
+/** Una ficha de cliente dentro de un grupo de repetidas, con lo que cuelga de ella para elegir cuál queda. */
+export interface ClienteRepetido {
+  id: number
+  nombre: string
+  documento: string | null
+  sucursal: string | null
+  telefono: string | null
+  email: string | null
+  /** Lo que arrastra: para ver de un vistazo cuál es la ficha «de verdad». */
+  polizas: number
+  polizasActivas: number
+  cuotas: number
+  pagos: number
+  siniestros: number
+  tareas: number
+  creadoEn: string
+  /** La ficha que el programa sugiere conservar (la que tiene la clave del DNI, o la que más tiene). */
+  sugerida: boolean
+}
+
+export type MotivoDeClienteRepetido = 'dni' | 'nombre' | 'nombre+patente' | 'cuit-dni'
+
+export const NOMBRE_MOTIVO_REPETIDO: Record<MotivoDeClienteRepetido, string> = {
+  dni: 'Mismo DNI/CUIT',
+  nombre: 'Mismo nombre y sin documento',
+  'nombre+patente': 'Mismo nombre y misma patente',
+  'cuit-dni': 'Un CUIT que contiene el DNI de otra ficha (puede ser la empresa y su dueño)',
+}
+
+export interface GrupoDeClientesRepetidos {
+  motivo: MotivoDeClienteRepetido
+  clientes: ClienteRepetido[]
+}
+
+/** Un renglón de la planilla dentro de un grupo de repetidos de la misma póliza y el mismo mes. */
+export interface CuotaRepetida {
+  cuotaId: number
+  filaId: string
+  pestana: string
+  numeroFila: number
+  cuota: string | null
+  pago: string | null
+  sucursal: string | null
+  /** De esta fila cuelga un cobro, una baja o un aviso: ésa no se sugiere sacar. */
+  atada: boolean
+  /** La que el programa dejaría (la misma regla que la reparación automática). */
+  sugeridaParaQuedar: boolean
+}
+
+export interface GrupoDeCuotasRepetidas {
+  periodo: string
+  polizaId: number
+  clienteNombre: string | null
+  compania: string | null
+  numeroPoliza: string | null
+  patente: string | null
+  cuotas: CuotaRepetida[]
+}
+
+export interface BajaRepetida {
+  bajaId: number
+  filaId: string
+  motivo: string | null
+  fecha: string | null
+  hechaEnLaApp: boolean
+  sugeridaParaQuedar: boolean
+}
+
+export interface GrupoDeBajasRepetidas {
+  periodo: string
+  polizaId: number
+  clienteNombre: string | null
+  compania: string | null
+  numeroPoliza: string | null
+  bajas: BajaRepetida[]
+}
+
+/** Una póliza que en el mismo mes está en la planilla Y en Bajas: quedó a medio camino de una baja (o de una reactivación). */
+export interface PolizaEnLosDosLados {
+  periodo: string
+  polizaId: number
+  clienteNombre: string | null
+  compania: string | null
+  numeroPoliza: string | null
+  cuota: { cuotaId: number; filaId: string; pestana: string; pago: string | null }
+  baja: { bajaId: number; filaId: string; motivo: string | null; fecha: string | null; hechaEnLaApp: boolean }
+}
+
+export interface InformeDeDuplicados {
+  clientes: GrupoDeClientesRepetidos[]
+  cuotas: GrupoDeCuotasRepetidas[]
+  bajas: GrupoDeBajasRepetidas[]
+  enLosDosLados: PolizaEnLosDosLados[]
+  /** Cuántas cosas hay para mirar, para el contador de la pestaña. */
+  total: number
+  /** Cuándo se revisó. */
+  revisadoEn: string
+}
+
+export interface ResultadoDeFusion {
+  sobrevivienteId: number
+  eliminadoId: number
+  nombre: string
+  /** Qué se movió a la ficha que queda, contado. */
+  movido: Array<{ que: string; cuantos: number }>
 }
 
 // ---------------------------------------------------------------------------
@@ -3054,11 +3221,16 @@ export interface ImagenDeReporte {
   vistaPrevia: string
 }
 
+/** Un reporte de error o una sugerencia de mejora (12.6): el mismo cuadro, el mismo camino, otra etiqueta en GitHub. */
+export type TipoDeReporte = 'error' | 'mejora'
+
 export interface ReporteDeError {
   titulo: string
   cuerpo: string
   /** Las capturas elegidas, por ruta. Vacío o ausente = un reporte sin imágenes, que es lo normal. */
   rutasDeImagenes?: string[]
+  /** Ausente = 'error', que es lo que mandaban las versiones anteriores. */
+  tipo?: TipoDeReporte
 }
 
 /** El issue que quedó creado. La URL es la que se le ofrece abrir a quien reportó. */

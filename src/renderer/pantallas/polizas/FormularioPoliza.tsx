@@ -30,6 +30,7 @@ import { DialogoRechazo } from '../../componentes/DialogoRechazo'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Icono } from '../../componentes/Icono'
 import { SelectorDeVehiculo } from '../../componentes/SelectorDeVehiculo'
+import { AdjuntosDePoliza } from './AdjuntosDePoliza'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Selector } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
@@ -790,6 +791,11 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
               />
             </div>
           </Grupo>
+
+          {/* --- Fotos y documentos (12.6) --- */}
+          <Grupo titulo="Fotos y documentos" icono="clip">
+            <AdjuntosDePoliza polizaId={polizaId} puedeEditar={puedeEditar} puedeBorrar={puedeEditar && usuario.rol !== 'EMPLEADO'} />
+          </Grupo>
         </div>
       </div>
 
@@ -843,7 +849,7 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
  * Agrupador compacto. No se usa `Tarjeta` de ui.tsx porque su encabezado es grande y esta pantalla
  * tiene que entrar entera en una ventana: acá el título es un rótulo, no un titular.
  */
-function Grupo({ titulo, icono, children }: { titulo: string; icono: 'clientes' | 'escudo' | 'polizas' | 'reloj'; children: ReactNode }) {
+function Grupo({ titulo, icono, children }: { titulo: string; icono: 'clientes' | 'escudo' | 'polizas' | 'reloj' | 'clip'; children: ReactNode }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-suave">
       <header className="flex items-center gap-2 border-b border-slate-200 px-4 py-2.5 text-slate-500">

@@ -2,6 +2,7 @@
 // (estructura, lecturas, celdas, filas, pestañas, _ID), la migración inicial en tres fases, los
 // reintentos y la traducción de errores. No sale a internet, igual que el resto del banco.
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { VpsSimulado } from '../scripts/vps-simulado.mjs'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
@@ -63,8 +64,9 @@ test('fuente VPS: el contrato de grilla de punta a punta', async (t) => {
     await fuente.escribirCeldas([{ titulo: 'AGOSTO', fila: 2, columna: 2, valor: '16000' }])
     assert.equal(simulador.valoresDe('AGOSTO')![1]![2], '16000')
 
-    const primera = await fuente.agregarFilas('AGOSTO', [['ONLINE', 'NUEVO CLIENTE', '5000', 'fresh0000001']])
-    assert.equal(primera, 5)
+    const { primeraFila, numeros } = await fuente.agregarFilas('AGOSTO', [['ONLINE', 'NUEVO CLIENTE', '5000', 'fresh0000001']])
+    assert.equal(primeraFila, 5)
+    assert.deepEqual(numeros, [5])
 
     const estructura = await fuente.estructura()
     await fuente.borrarFilas(estructura.pestanas[0]!.sheetId, [3])
@@ -72,6 +74,40 @@ test('fuente VPS: el contrato de grilla de punta a punta', async (t) => {
     assert.equal(valores.length, 4)
     assert.equal(valores[2]![1], 'LOPEZ RAUL', 'la fila de abajo se corrió al lugar de la borrada')
     assert.equal(valores[3]![1], 'NUEVO CLIENTE')
+  })
+
+  await t.test('borrar y escribir por _ID: la grilla corrida no engaña al borrado ni a la celda (12.6)', async () => {
+    // La pestaña quedó: 1 encabezados, 2 PEREZ (abc123def456), 3 LOPEZ (mno345pqr678), 4 NUEVO CLIENTE (fresh0000001).
+    const estructura = await fuente.estructura()
+    const sheetId = estructura.pestanas[0]!.sheetId
+    // La computadora leyó a NUEVO CLIENTE en la fila 5 (antes de que se borrara la 3): el número está
+    // viejo, pero el _ID lo encuentra igual en la 4.
+    const borrado = await fuente.borrarFilas(sheetId, [{ numero: 5, id: 'fresh0000001' }], 3)
+    assert.deepEqual(borrado.noEncontradas, [])
+    assert.equal(simulador.valoresDe('AGOSTO')!.length, 3)
+    assert.equal(simulador.valoresDe('AGOSTO')![2]![1], 'LOPEZ RAUL', 'se borró NUEVO CLIENTE y no LOPEZ')
+
+    // Un _ID que ya no está: no se borra nada en su lugar y se avisa.
+    const otra = await fuente.borrarFilas(sheetId, [{ numero: 3, id: 'fresh0000001' }], 3)
+    assert.deepEqual(otra.noEncontradas, ['fresh0000001'])
+    assert.equal(simulador.valoresDe('AGOSTO')!.length, 3, 'LOPEZ sigue en la fila 3')
+
+    // Una celda con _ID dirigida a un número viejo cae en el renglón correcto...
+    const celdas = await fuente.escribirCeldas([{ titulo: 'AGOSTO', fila: 9, columna: 2, valor: '7777', id: 'mno345pqr678' }], { AGOSTO: 3 })
+    assert.deepEqual(celdas.noEncontradas, [])
+    assert.equal(simulador.valoresDe('AGOSTO')![2]![2], '7777')
+    // ...y una dirigida a un renglón que ya no existe NO crea una fila fantasma.
+    const perdida = await fuente.escribirCeldas([{ titulo: 'AGOSTO', fila: 9, columna: 2, valor: '1', id: 'yanoesta' }], { AGOSTO: 3 })
+    assert.deepEqual(perdida.noEncontradas, [{ titulo: 'AGOSTO', id: 'yanoesta' }])
+    assert.equal(simulador.valoresDe('AGOSTO')!.length, 3, 'la pestaña no creció')
+
+    // Agregar una fila cuyo _ID ya está no la repite, y la respuesta dice cuál quedó afuera.
+    const agregado = await fuente.agregarFilas('AGOSTO', [
+      ['ONLINE', 'REPETIDA', '1', 'mno345pqr678'],
+      ['ONLINE', 'NUEVA DE VERDAD', '2', 'nueva0000002'],
+    ])
+    assert.deepEqual(agregado.numeros, [null, 4])
+    assert.equal(simulador.valoresDe('AGOSTO')!.length, 4)
   })
 
   await t.test('pestañas nuevas, tramos de _ID y columna oculta', async () => {
@@ -85,6 +121,11 @@ test('fuente VPS: el contrato de grilla de punta a punta', async (t) => {
     await fuente.asegurarColumnas(agosto.sheetId, 40)
     await fuente.escribirTramos('AGOSTO', 39, [{ fila: 2, valores: ['id-a', 'id-b'] }])
     assert.equal(simulador.valoresDe('AGOSTO')![1]![39], 'id-a')
+    // Con `previos`, la celda que ya no dice lo que se vio se salta: la grilla se corrió en el medio.
+    const tramo = await fuente.escribirTramos('AGOSTO', 39, [{ fila: 2, valores: ['id-x', 'id-y'], previos: ['', 'id-b'] }])
+    assert.deepEqual(tramo.saltadas, [2])
+    assert.equal(simulador.valoresDe('AGOSTO')![1]![39], 'id-a', 'la fila 2 no se pisó')
+    assert.equal(simulador.valoresDe('AGOSTO')![2]![39], 'id-y')
     await fuente.ocultarColumna(agosto.sheetId, 39)
   })
 
@@ -243,6 +284,50 @@ test('fuente VPS: migración inicial y dos computadoras contra la misma base', a
     .prepare(`SELECT pago FROM cuotas_mes WHERE fila_id = ?`)
     .get(fila.fila_id) as { pago: string | null } | undefined
   assert.equal(pagoEnB?.pago, '28/08', 'el pago escrito por una computadora aparece en la otra')
+  } finally {
+    await simulador.cerrar()
+  }
+})
+
+// Los adjuntos (12.6) van por otro camino que la grilla: el archivo crudo en el cuerpo, los datos en
+// encabezados. Lo que se prueba es el contrato contra el simulador, que copia al servidor real:
+// idempotente por id + hash, 409 si el mismo id trae otro contenido, 400 si llegó dañado, 413 si
+// supera el tope, y 404 después de borrarlo.
+test('fuente VPS: los adjuntos suben crudos, bajan iguales y se borran', async () => {
+  const simulador = new VpsSimulado({ pestanas: [{ titulo: 'AGOSTO', valores: [['NOMBRE', '_ID']] }] })
+  await simulador.escuchar()
+  const fuente = fuenteDe(simulador)
+  try {
+    const contenido = Buffer.from('foto de prueba '.repeat(100))
+    const sha256 = createHash('sha256').update(contenido).digest('hex')
+    const id = 'a'.repeat(32)
+    const ficha = { id, nombre: 'Póliza Gómez.pdf', tipo: 'application/pdf', grupo: 'poliza-1', subidoPor: 'Fede', sha256 }
+
+    const primera = await fuente.subirAdjunto(ficha, contenido)
+    assert.equal(primera.yaEstaba, false)
+    const segunda = await fuente.subirAdjunto(ficha, contenido)
+    assert.equal(segunda.yaEstaba, true, 'repetir la misma subida es gratis')
+
+    const otro = Buffer.from('otra cosa')
+    await assert.rejects(
+      fuente.subirAdjunto({ ...ficha, sha256: createHash('sha256').update(otro).digest('hex') }, otro),
+      /no se reescribe/,
+      'el mismo id con otro contenido es un 409',
+    )
+    await assert.rejects(fuente.subirAdjunto({ ...ficha, id: 'b'.repeat(32), sha256: 'f'.repeat(64) }, contenido), /dañado/)
+
+    const bajado = await fuente.bajarAdjunto(id)
+    assert.equal(bajado.nombre, 'Póliza Gómez.pdf', 'el nombre vuelve con acentos')
+    assert.equal(bajado.tipo, 'application/pdf')
+    assert.equal(bajado.sha256, sha256)
+    assert.ok(bajado.contenido.equals(contenido), 'los bytes vuelven iguales')
+
+    simulador.topeDeAdjunto = 10
+    await assert.rejects(fuente.subirAdjunto({ ...ficha, id: 'c'.repeat(32) }, contenido), /supera el máximo/)
+
+    await fuente.borrarAdjunto(id)
+    await assert.rejects(fuente.bajarAdjunto(id), /no existe/)
+    await fuente.borrarAdjunto(id)
   } finally {
     await simulador.cerrar()
   }

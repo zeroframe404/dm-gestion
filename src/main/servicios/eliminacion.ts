@@ -46,6 +46,7 @@ import { periodosDisponibles } from './cartera'
 import { ahoraIso } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { borrarArchivoDeAdjunto, rutaDeAdjunto } from './adjuntos'
+import { encolarBorradoDeAnexo } from '../sincronizacion/anexos'
 import { ErrorDeNegocio } from './errores'
 import { PESTANA_APP } from './filas'
 import { registrarCambio } from './historial'
@@ -179,7 +180,7 @@ function dondeIria(filaId: unknown, pestanaDeLaTabla: unknown): Renglon | null {
 }
 
 /** Los adjuntos de un grupo de siniestros o de tareas, con la ruta relativa que guarda `adjuntos.ts`. */
-function archivosDe(tabla: 'siniestro_adjuntos' | 'tarea_adjuntos', columna: string, listaIds: number[]): string[] {
+function archivosDe(tabla: 'siniestro_adjuntos' | 'tarea_adjuntos' | 'poliza_adjuntos', columna: string, listaIds: number[]): string[] {
   if (listaIds.length === 0) return []
   return todas(`SELECT archivo FROM ${tabla} WHERE ${columna} IN ${enLista(listaIds.length)}`, ...listaIds)
     .map((f) => algo(f.archivo))
@@ -344,9 +345,24 @@ function cancelarPendientes(filaIds: string[]): void {
 // Cascadas reutilizables. Van SIEMPRE de hijos a padres: las claves foráneas están en ON.
 // ---------------------------------------------------------------------------
 
+/**
+ * Los adjuntos y comentarios (12.6) tienen renglón propio en APP ADJUNTOS / APP COMENTARIOS: al borrar
+ * la ficha madre, sus renglones salen también de la base, si no las otras computadoras los conservan
+ * colgando de una ficha que ya no existe. Va antes del DELETE, que es cuando todavía se sabe cuáles son.
+ */
+function sacarAnexosDeLaBase(tabla: string, columna: string, listaIds: number[], tipoPestana: 'APP_ADJUNTOS' | 'APP_COMENTARIOS'): void {
+  if (listaIds.length === 0) return
+  for (const f of todas(`SELECT fila_id FROM ${tabla} WHERE ${columna} IN ${enLista(listaIds.length)} AND fila_id IS NOT NULL`, ...listaIds)) {
+    const filaId = algo(f.fila_id)
+    if (filaId) encolarBorradoDeAnexo(filaId, tipoPestana, null)
+  }
+}
+
 function borrarTareas(listaIds: number[]): void {
   if (listaIds.length === 0) return
   const marca = enLista(listaIds.length)
+  sacarAnexosDeLaBase('tarea_comentarios', 'tarea_id', listaIds, 'APP_COMENTARIOS')
+  sacarAnexosDeLaBase('tarea_adjuntos', 'tarea_id', listaIds, 'APP_ADJUNTOS')
   corre(`DELETE FROM tarea_comentarios WHERE tarea_id IN ${marca}`, ...listaIds)
   corre(`DELETE FROM tarea_adjuntos WHERE tarea_id IN ${marca}`, ...listaIds)
   corre(`DELETE FROM tareas WHERE id IN ${marca}`, ...listaIds)
@@ -356,6 +372,8 @@ function borrarSiniestros(listaIds: number[]): void {
   if (listaIds.length === 0) return
   const marca = enLista(listaIds.length)
   borrarTareas(ids(`SELECT id FROM tareas WHERE siniestro_id IN ${marca}`, ...listaIds))
+  sacarAnexosDeLaBase('siniestro_observaciones', 'siniestro_id', listaIds, 'APP_COMENTARIOS')
+  sacarAnexosDeLaBase('siniestro_adjuntos', 'siniestro_id', listaIds, 'APP_ADJUNTOS')
   corre(`DELETE FROM siniestro_observaciones WHERE siniestro_id IN ${marca}`, ...listaIds)
   corre(`DELETE FROM siniestro_adjuntos WHERE siniestro_id IN ${marca}`, ...listaIds)
   corre(`DELETE FROM siniestros WHERE id IN ${marca}`, ...listaIds)
@@ -384,6 +402,8 @@ function borrarPolizas(listaIds: number[]): void {
   )
   corre(`DELETE FROM renovaciones WHERE poliza_id IN ${marca}`, ...listaIds)
   corre(`DELETE FROM rechazos_debito WHERE poliza_id IN ${marca}`, ...listaIds)
+  sacarAnexosDeLaBase('poliza_adjuntos', 'poliza_id', listaIds, 'APP_ADJUNTOS')
+  corre(`DELETE FROM poliza_adjuntos WHERE poliza_id IN ${marca}`, ...listaIds)
   corre(`DELETE FROM amp WHERE poliza_id IN ${marca}`, ...listaIds)
   corre(`DELETE FROM pagos WHERE poliza_id IN ${marca}`, ...listaIds)
   corre(`DELETE FROM bajas WHERE poliza_id IN ${marca}`, ...listaIds)
@@ -492,6 +512,7 @@ function planDeCliente(id: number): Plan {
     arrastra: contarGrupos(grupos),
     ...deLaHoja(grupos),
     archivos: [
+      ...archivosDe('poliza_adjuntos', 'poliza_id', ids('SELECT id FROM polizas WHERE cliente_id = ?', id)),
       ...archivosDe('siniestro_adjuntos', 'siniestro_id', siniestroIds),
       ...archivosDe('tarea_adjuntos', 'tarea_id', tareaIds),
     ],
@@ -588,6 +609,7 @@ function planDePoliza(id: number): Plan {
     arrastra: contarGrupos(grupos),
     ...deLaHoja(grupos),
     archivos: [
+      ...archivosDe('poliza_adjuntos', 'poliza_id', [id]),
       ...archivosDe('siniestro_adjuntos', 'siniestro_id', siniestroIds),
       ...archivosDe('tarea_adjuntos', 'tarea_id', tareaIds),
     ],
@@ -1104,6 +1126,15 @@ function avisosDeLaSincronizacion(tipo: TipoEliminable, renglones: number, archi
 export function vistaPreviaDeEliminacion(tipoCrudo: unknown, idCrudo: unknown, actor: SesionUsuario): VistaPreviaDeEliminacion {
   const { tipo, id } = pedido(tipoCrudo, idCrudo)
   exigirRolQuePuedaBorrar(actor, tipo)
+  return previsualizarEliminacion(tipo, id)
+}
+
+/**
+ * La vista previa sin el control del rol. La usa Cartera → Duplicados (12.6): sacar el renglón
+ * repetido de una póliza lo puede hacer cualquier rol —lo pidió la agencia—, pero SÓLO sobre lo que el
+ * detector de duplicados señaló; ese control está en duplicados.ts, que es quien llama acá.
+ */
+export function previsualizarEliminacion(tipo: TipoEliminable, id: number): VistaPreviaDeEliminacion {
   const plan = planDe(tipo, id)
   return {
     tipo,
@@ -1127,6 +1158,14 @@ export function vistaPreviaDeEliminacion(tipoCrudo: unknown, idCrudo: unknown, a
 export function eliminarRegistro(tipoCrudo: unknown, idCrudo: unknown, actor: SesionUsuario): ResultadoDeEliminacion {
   const { tipo, id } = pedido(tipoCrudo, idCrudo)
   exigirRolQuePuedaBorrar(actor, tipo)
+  return ejecutarEliminacion(tipo, id, actor)
+}
+
+/**
+ * El borrado sin el control del rol: la misma cascada, la misma transacción, el mismo historial. Ver
+ * `previsualizarEliminacion` para quién puede llamar acá sin pasar por `eliminarRegistro`.
+ */
+export function ejecutarEliminacion(tipo: TipoEliminable, id: number, actor: SesionUsuario): ResultadoDeEliminacion {
   const plan = planDe(tipo, id)
   const nombre = NOMBRE_ELIMINABLE[tipo]
   const resumen = resumenDeLoBorrado(plan.arrastra)

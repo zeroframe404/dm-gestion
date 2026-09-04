@@ -65,7 +65,7 @@ export function Estadisticas() {
       {error && <Alerta tono="error">{error}</Alerta>}
       {!datos.hayMesAnterior && (
         <Alerta tono="info">
-          Sin el mes anterior cargado no se pueden deducir las altas: la columna queda en cero hasta que se importe.
+          Sin el mes anterior cargado no se pueden deducir las altas: la columna muestra un guion hasta que se importe.
         </Alerta>
       )}
 
@@ -136,8 +136,8 @@ function TablaDeEstadisticas({ titulo, encabezadoDeFila, filas, totales, vacio }
               <tr key={fila.etiqueta} className="border-b border-slate-100 last:border-b-0">
                 <td className="px-3 py-2 font-medium text-slate-900">{fila.etiqueta}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(fila.activos)}</td>
-                <td className={cx('px-3 py-2 text-right tabular-nums', fila.altas > 0 ? 'text-green-700' : 'text-slate-300')}>
-                  {fila.altas > 0 ? numero(fila.altas) : '—'}
+                <td className={cx('px-3 py-2 text-right tabular-nums', (fila.altas ?? 0) > 0 ? 'text-green-700' : 'text-slate-300')}>
+                  {fila.altas !== null && fila.altas > 0 ? numero(fila.altas) : '—'}
                 </td>
                 <td className={cx('px-3 py-2 text-right tabular-nums', fila.bajas > 0 ? 'text-red-700' : 'text-slate-300')}>
                   {fila.bajas > 0 ? numero(fila.bajas) : '—'}
@@ -152,7 +152,7 @@ function TablaDeEstadisticas({ titulo, encabezadoDeFila, filas, totales, vacio }
               <tr className="border-t border-slate-200 bg-slate-50 font-semibold">
                 <td className="px-3 py-2 text-slate-900">Total</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(totales.activos)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(totales.altas)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-slate-900">{totales.altas === null ? '—' : numero(totales.altas)}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(totales.bajas)}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(totales.pagos)}</td>
                 {totales.cobrado !== null && <td className="px-3 py-2 text-right tabular-nums text-slate-900">{pesos(totales.cobrado)}</td>}

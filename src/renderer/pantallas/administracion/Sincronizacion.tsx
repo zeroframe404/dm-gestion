@@ -57,7 +57,9 @@ export function Sincronizacion() {
 
   useEffect(() => {
     void cargar()
-    const reloj = setInterval(() => void cargar(), 10_000)
+    // Cada medio minuto: el panel también se refresca solo con cada cambio de estado del motor, así
+    // que el reloj es la red de seguridad, no la fuente. A 10 segundos leía la cola entera sin parar.
+    const reloj = setInterval(() => void cargar(), 30_000)
     return () => clearInterval(reloj)
   }, [cargar])
 
