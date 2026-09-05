@@ -18,7 +18,7 @@ import {
   registrarPagoManual,
 } from '../src/main/servicios/cobranzas'
 import { editarCompania, listarCompanias } from '../src/main/servicios/companias'
-import { hojaDeImputados, normalizarResultado } from '../src/main/servicios/pagos'
+import { hojaDeImputados, normalizarResultado, PAGO_QUE_CUBRE_LA_CUOTA } from '../src/main/servicios/pagos'
 import { historialDeFila } from '../src/main/servicios/historial'
 import { mismaSucursal, SUCURSALES } from '../src/shared/sucursales'
 import type { FilaCartera, FiltrosMora, SesionUsuario } from '../src/shared/tipos'
@@ -859,5 +859,94 @@ test('pagar las dos cuotas juntas cobra la de este mes y deja la del mes que vie
     /acreditarla al mes siguiente o dejarla pendiente/,
   )
   assert.equal(buscar(CLIENTES.martinez.nombre).pagoRegistrado, false, 'no quedó cobrada media operación')
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Rendimiento: «esta cuota ya tiene un pago» tiene que entrar por índice
+// ---------------------------------------------------------------------------
+
+// Hasta la 12.7 era un solo EXISTS con el OR adentro: SQLite no podía usar ningún índice y recorría
+// `pagos` entera por cada cuota. Partido en dos EXISTS, cada uno entra por el suyo. Esto se mira con
+// EXPLAIN QUERY PLAN y no con un cronómetro porque un plan no depende de cuán rápida sea la máquina.
+test('la condición «pago que cubre la cuota» entra por índice y no recorre pagos entera', async () => {
+  const db = await cobranzasDePrueba()
+  const plan = filas<{ detail: string }>(
+    db,
+    `EXPLAIN QUERY PLAN SELECT c.fila_id FROM cuotas_mes c WHERE NOT ${PAGO_QUE_CUBRE_LA_CUOTA}`,
+  ).map((f) => f.detail)
+  const sobrePagos = plan.filter((detalle) => / pg\b/.test(detalle))
+  assert.equal(sobrePagos.length, 2, `tienen que ser dos EXISTS sobre pagos: ${plan.join(' | ')}`)
+  assert.ok(
+    sobrePagos.every((detalle) => detalle.startsWith('SEARCH') && detalle.includes('USING INDEX')),
+    `ninguno puede quedar como SCAN de pagos: ${plan.join(' | ')}`,
+  )
+  assert.ok(
+    sobrePagos.some((detalle) => detalle.includes('idx_pagos_cuota_fila')),
+    `el EXISTS por cuota tiene que entrar por idx_pagos_cuota_fila: ${plan.join(' | ')}`,
+  )
+  assert.ok(
+    sobrePagos.some((detalle) => detalle.includes('poliza_id=?') && detalle.includes('periodo=?')),
+    `el EXISTS por póliza y período tiene que entrar por índice: ${plan.join(' | ')}`,
+  )
+  cerrarBaseDeDatos()
+})
+
+// El OR quedó a nivel de condición, así que la constante viene entre paréntesis: sin ellos el `AND NOT`
+// de la mora y de los deudores negaría sólo el primer EXISTS (en SQL el NOT ata más fuerte que el OR).
+test('un pago imputado a la cuota por póliza y período sigue tapando la mora', async () => {
+  const db = await cobranzasDePrueba()
+  const fila = buscar(CLIENTES.suarez.nombre)
+  const enMoraAntes = mora(SIN_FILTROS, HOY).filas.some((f) => f.filaId === fila.filaId)
+  assert.equal(enMoraAntes, true, 'la fila arranca en mora')
+
+  // Un pago que no apunta a la cuota (cuota_fila_id NULL) pero sí a su póliza y su período: es la
+  // segunda rama de la condición.
+  db.prepare(
+    `INSERT INTO pagos (fila_id, pestana, cliente_id, poliza_id, fecha, fecha_iso, cliente_nombre, importe,
+                        importe_monto, medio, periodo, usuario_id, usuario_nombre, hecho_en_la_app, creado_en, actualizado_en)
+     SELECT 'PAGO:SUELTO', 'APP PAGOS', c.cliente_id, c.poliza_id, ?, ?, c.cliente_nombre, '$ 1', 1, 'EFECTIVO',
+            c.periodo, 1, 'Daniel Martínez', 1, ?, ?
+       FROM cuotas_mes c WHERE c.fila_id = ?`,
+  ).run(DIA_DE_CAJA, DIA_DE_CAJA, DIA_DE_CAJA, DIA_DE_CAJA, fila.filaId)
+
+  assert.equal(
+    mora(SIN_FILTROS, HOY).filas.some((f) => f.filaId === fila.filaId),
+    false,
+    'con el pago por póliza y período la fila sale de la mora',
+  )
+  cerrarBaseDeDatos()
+})
+
+// La diferencia a propósito entre esta condición y el `pago_registrado` de SELECT_PLANILLA, que salvo
+// por esto son gemelas (ver el comentario de PAGO_QUE_CUBRE_LA_CUOTA en servicios/pagos.ts).
+test('un adelanto PENDIENTE sin imputar deja la fila impaga en la planilla, pero no la manda a la mora', async () => {
+  const db = await cobranzasDePrueba()
+  const fila = buscar(CLIENTES.suarez.nombre)
+  assert.equal(mora(SIN_FILTROS, HOY).filas.some((f) => f.filaId === fila.filaId), true, 'la fila arranca en mora')
+
+  // El adelanto que dejó `cerrarMes` «para imputar a mano»: la plata YA entró (se cobró el mes pasado),
+  // pero todavía nadie lo enganchó a esta fila.
+  db.prepare(
+    `INSERT INTO pagos (fila_id, pestana, cliente_id, poliza_id, fecha, fecha_iso, cliente_nombre, importe,
+                        importe_monto, medio, periodo, adelanto_modo, cuota_fila_id, usuario_id, usuario_nombre,
+                        hecho_en_la_app, creado_en, actualizado_en)
+     SELECT 'PAGO:ADELANTO:SUELTO', 'APP PAGOS', c.cliente_id, c.poliza_id, ?, ?, c.cliente_nombre, '$ 10.000', 10000,
+            'EFECTIVO', c.periodo, 'PENDIENTE', NULL, 1, 'Daniel Martínez', 1, ?, ?
+       FROM cuotas_mes c WHERE c.fila_id = ?`,
+  ).run(DIA_DE_CAJA, DIA_DE_CAJA, DIA_DE_CAJA, DIA_DE_CAJA, fila.filaId)
+
+  // En la planilla la fila sigue impaga: para eso está el modo PENDIENTE, para que alguien lo impute
+  // cuando controle el general del mes.
+  const enLaPlanilla = buscar(CLIENTES.suarez.nombre)
+  assert.equal(enLaPlanilla.pagoRegistrado, false)
+  assert.ok(enLaPlanilla.pagoAdelantado, 'y el adelanto le queda a la vista para imputarlo')
+
+  // Pero no se persigue a quien ya pagó: la mora es «a quién hay que llamar», y a este no.
+  assert.equal(
+    mora(SIN_FILTROS, HOY).filas.some((f) => f.filaId === fila.filaId),
+    false,
+    'con el adelanto cobrado la fila sale de la mora aunque la planilla la muestre impaga',
+  )
   cerrarBaseDeDatos()
 })

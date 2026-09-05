@@ -37,6 +37,7 @@ import {
   interpretarFechaDePeriodo,
   interpretarNumero,
   limpiar,
+  normalizarDocumento,
   normalizarPatente,
   normalizarTexto,
 } from '../importacion/normalizar'
@@ -383,11 +384,101 @@ interface DestinoDeCampo {
   soloLocal?: boolean
 }
 
+/**
+ * La misma convención que clientes.ts (`claveDeCliente`) y el importador (`claveCliente`):
+ * 'DOC:<dígitos normalizados>' si hay documento y 'NOM:<nombre normalizado>' si no. Importa que sea
+ * idéntica: es el ancla con la que la próxima importación reconoce a esta persona en la hoja.
+ */
+function claveDeCliente(nombre: string, documentoNormalizado: string): string {
+  const documentoValido = documentoNormalizado.length >= 6 && documentoNormalizado.length <= 11
+  if (documentoValido) return `DOC:${documentoNormalizado}`
+  const normalizado = normalizarTexto(nombre)
+  return normalizado ? `NOM:${normalizado}` : ''
+}
+
+/**
+ * Corregir el DOCUMENTO desde la planilla tiene que rehacer lo que se deriva de él, igual que
+ * clientes.editarCliente: el `documento_normalizado` —con el que la ficha de clientes busca por DNI— y
+ * la clave 'DOC:<normalizado>'. Sin esto los dos quedaban con el número viejo: el DNI corregido no se
+ * encontraba buscando y la importación siguiente no reconocía a la persona y la duplicaba.
+ *
+ * La clave sólo se mueve si la actual sigue la convención, la nueva no está vacía y todavía está
+ * libre (ver `claveDisponibleParaMover`). Y como acá se recalcula el normalizado, también viaja con
+ * él la regla de la ficha: dos clientes no pueden compartir documento.
+ */
+function derivadasDelDocumento(valor: string, fila: FilaCruda): Record<string, unknown> {
+  const normalizado = normalizarDocumento(valor)
+  const derivadas: Record<string, unknown> = { documento_normalizado: normalizado || null }
+  const clienteId = fila.cliente_id
+  if (clienteId === null) return derivadas
+  const actual = db()
+    .prepare('SELECT clave, nombre, documento_normalizado FROM clientes WHERE id = ?')
+    .get(clienteId) as { clave: string; nombre: string; documento_normalizado: string | null } | undefined
+  if (!actual) return derivadas
+
+  // LA regla del pliego, la misma que clientes.editarCliente: el mismo documento no puede estar en dos
+  // fichas. Hace falta acá porque desde que la planilla rehace el `documento_normalizado` es una puerta
+  // de atrás para dejar la base en un estado que la ficha no deja armar, y el estropicio es callado:
+  // `crearCliente` deduplica con «documento_normalizado = ? ORDER BY id LIMIT 1» y devolvería la ficha
+  // equivocada, y lo mismo hacen el alta de riesgos y la de siniestros al enganchar el cliente.
+  // Tirar desde acá es seguro: las derivadas se calculan antes del UPDATE, así que no queda a medias.
+  if (normalizado && normalizado !== (actual.documento_normalizado ?? '')) {
+    const otro = db()
+      .prepare('SELECT nombre FROM clientes WHERE documento_normalizado = ? AND id <> ? LIMIT 1')
+      .get(normalizado, clienteId) as { nombre: string } | undefined
+    if (otro) throw new ErrorDeNegocio(`No se puede guardar: ese documento ya es de ${otro.nombre}. Revisá el número.`)
+  }
+
+  const claveNueva = claveDeCliente(actual.nombre, normalizado)
+  if (claveDisponibleParaMover(actual.clave, claveNueva)) derivadas.clave = claveNueva
+  return derivadas
+}
+
+/**
+ * Corregir el NOMBRE tiene el mismo problema que el documento para el cliente que se identifica por
+ * nombre (clave 'NOM:<nombre>'): sin esto la clave se quedaba con el nombre viejo y dejaba de ser el
+ * ancla de la importación. Al que tiene documento no lo toca: su clave es 'DOC:<número>' y el nombre
+ * no entra en ella (`claveDeCliente`), así que la clave nueva es la misma y no se mueve nada.
+ */
+function derivadasDelNombre(valor: string, fila: FilaCruda): Record<string, unknown> {
+  const clienteId = fila.cliente_id
+  if (clienteId === null) return {}
+  const actual = db()
+    .prepare('SELECT clave, documento_normalizado FROM clientes WHERE id = ?')
+    .get(clienteId) as { clave: string; documento_normalizado: string | null } | undefined
+  if (!actual) return {}
+  const claveNueva = claveDeCliente(valor, actual.documento_normalizado ?? '')
+  return claveDisponibleParaMover(actual.clave, claveNueva) ? { clave: claveNueva } : {}
+}
+
+/**
+ * Si la clave se puede mover a la nueva: sólo cuando la actual sigue la convención, la nueva no está
+ * vacía, es otra y todavía está libre. La columna es única y no poder guardar la corrección sería
+ * peor que perder el ancla, así que ante la duda la clave se queda como está.
+ */
+function claveDisponibleParaMover(claveActual: string, claveNueva: string): boolean {
+  const sigueLaConvencion = claveActual.startsWith('DOC:') || claveActual.startsWith('NOM:')
+  if (!sigueLaConvencion || claveNueva === '' || claveNueva === claveActual) return false
+  return db().prepare('SELECT 1 FROM clientes WHERE clave = ?').get(claveNueva) === undefined
+}
+
 const DESTINOS: Record<CampoEditable, DestinoDeCampo> = {
   sucursal: { tabla: 'clientes', columna: 'sucursal_texto', respaldoEnLaCuota: 'sucursal_texto', columnaEnLaCuota: 'sucursal_texto' },
-  nombre: { tabla: 'clientes', columna: 'nombre', respaldoEnLaCuota: 'cliente_nombre', columnaEnLaCuota: 'cliente_nombre' },
+  nombre: {
+    tabla: 'clientes',
+    columna: 'nombre',
+    derivadas: derivadasDelNombre,
+    respaldoEnLaCuota: 'cliente_nombre',
+    columnaEnLaCuota: 'cliente_nombre',
+  },
   telefono: { tabla: 'clientes', columna: 'telefono' },
-  documento: { tabla: 'clientes', columna: 'documento', respaldoEnLaCuota: 'documento', columnaEnLaCuota: 'documento' },
+  documento: {
+    tabla: 'clientes',
+    columna: 'documento',
+    derivadas: derivadasDelDocumento,
+    respaldoEnLaCuota: 'documento',
+    columnaEnLaCuota: 'documento',
+  },
   email: { tabla: 'clientes', columna: 'email' },
   direccion: { tabla: 'clientes', columna: 'direccion' },
   localidad: { tabla: 'clientes', columna: 'localidad' },

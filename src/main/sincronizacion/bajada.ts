@@ -10,10 +10,11 @@
 //    como «pisado por sincronización».
 //  - Si aparecen filas nuevas (a mano en la hoja, sin _ID) se corre la importación completa, que es la
 //    que les escribe el _ID en la hoja y sabe crear clientes, vehículos y pólizas.
+import type { Statement } from 'better-sqlite3'
 import type { Campo } from '../importacion/encabezados'
 import type { FuenteHoja } from '../importacion/fuente'
 import { ahoraIso, interpretarFecha, interpretarNumero, limpiar } from '../importacion/normalizar'
-import { db } from '../db/base'
+import { db, type BaseDeDatos } from '../db/base'
 import { anotarEvento } from './cola'
 import { repiteEncabezados } from '../importacion/encabezados'
 import { esPestanaDeAnexos, guardarAnexoDeLaHoja } from './anexos'
@@ -44,8 +45,24 @@ export interface ResultadoBajada {
   necesitaImportacion: boolean
   /** En qué pestañas aparecieron (12.7): la importación puede acotarse a ésas en vez de leer todo. */
   pestanasConFilasNuevas: string[]
+  /**
+   * Pestañas que volvieron vacías y por eso NO propagaron ningún borrado en este ciclo. Va en el
+   * resultado, y no sólo en la bitácora, porque mientras dure eso la bajada está con los borrados
+   * congelados y quien mire la sincronización tiene que poder enterarse en cualquier momento, no
+   * sólo en el instante en que se anotó el evento.
+   */
+  pestanasVaciasIgnoradas: string[]
   llamadas: number
 }
+
+/**
+ * Cada cuánto se REPITE el aviso de una pestaña que sigue volviendo vacía. Avisar una sola vez para
+ * siempre era avisar por unos minutos y nunca más: la bitácora guarda 500 eventos y la pantalla
+ * muestra 50, así que un respaldo restaurado un viernes el lunes ya no se veía en ninguna parte, con
+ * los borrados de esa pestaña congelados sin que nadie lo supiera. Repetirlo en cada ciclo tampoco
+ * sirve: el carril rápido pasa cada 30 segundos y taparía la bitácora con el mismo renglón.
+ */
+const MINUTOS_ENTRE_AVISOS_DE_PESTANA_VACIA = 15
 
 interface DestinoDeBajada {
   tabla: string
@@ -226,6 +243,44 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
 }
 
 /**
+ * Lo que la bajada recuerda de cada base abierta: las sentencias ya preparadas y las pestañas que
+ * vinieron vacías y ya se avisaron. Va por instancia de base —no en variables del módulo— porque
+ * las pruebas alternan varias bases sobre el mismo módulo (`usarBaseDeDatos`) y una sentencia
+ * preparada sirve sólo para la base donde se preparó.
+ */
+interface MemoriaDeLaBase {
+  sentencias: Map<string, Statement>
+  /** Título de la pestaña → cuándo se avisó por última vez que volvió vacía (milisegundos). */
+  pestanasVaciasAvisadas: Map<string, number>
+}
+const memoriaPorBase = new WeakMap<BaseDeDatos, MemoriaDeLaBase>()
+
+function memoria(base: BaseDeDatos = db()): MemoriaDeLaBase {
+  let m = memoriaPorBase.get(base)
+  if (!m) {
+    m = { sentencias: new Map(), pestanasVaciasAvisadas: new Map() }
+    memoriaPorBase.set(base, m)
+  }
+  return m
+}
+
+/**
+ * La sentencia preparada para ese SQL, sobre la base activa. Preparar cuesta más que correr: el
+ * carril rápido pasa cada 30 segundos por APP TAREAS, COMENTARIOS y ADJUNTOS, y hasta la 12.6 cada
+ * campo aplicado y cada fila desaparecida preparaba la suya de nuevo.
+ */
+function sentencia(sql: string): Statement {
+  const base = db()
+  const { sentencias } = memoria(base)
+  let preparada = sentencias.get(sql)
+  if (!preparada) {
+    preparada = base.prepare(sql)
+    sentencias.set(sql, preparada)
+  }
+  return preparada
+}
+
+/**
  * El id del usuario que se llama así, si hay exactamente uno activo. Con ninguno o con dos devuelve
  * null: una tarea sin dueño se ve igual en el listado y se puede reasignar; una asignada a la persona
  * equivocada desaparece de la vista de quien tenía que hacerla.
@@ -233,7 +288,7 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
 function idDeResponsablePorNombre(nombre: string): number | null {
   const buscado = limpiar(nombre)
   if (!buscado) return null
-  const iguales = db().prepare('SELECT id FROM usuarios WHERE activo = 1 AND nombre = ?').all(buscado) as Array<{ id: number }>
+  const iguales = sentencia('SELECT id FROM usuarios WHERE activo = 1 AND nombre = ?').all(buscado) as Array<{ id: number }>
   return iguales.length === 1 ? (iguales[0]?.id ?? null) : null
 }
 
@@ -246,12 +301,14 @@ const DESTINOS_DEL_CLIENTE: Partial<Record<Campo, string>> = {
   fecha_nacimiento: 'fecha_nacimiento',
 }
 
+/**
+ * Lo que se sabe de una fila sin su JSON: `datos_json` (las 40 columnas de cada una de miles de
+ * filas) se lee aparte y sólo para las que cambiaron, que en un ciclo normal son ninguna o un puñado.
+ */
 interface FilaConocida {
   fila_id: string
-  pestana: string
   numero_fila: number
   sheet_id: number | null
-  datos_json: string
   huella: string | null
   en_la_hoja: number
 }
@@ -279,6 +336,7 @@ export async function bajarCambios(
     pisados: 0,
     necesitaImportacion: false,
     pestanasConFilasNuevas: [],
+    pestanasVaciasIgnoradas: [],
     llamadas: 0,
   }
   const aLeer = titulos.filter((t) => contexto.porTitulo.has(t))
@@ -305,7 +363,13 @@ function aplicarPestana(
   // 12.7: si otra computadora le agregó una columna a la pestaña desde que se leyó la estructura, la
   // fila de encabezados recién leída lo dice. El mapeo se rehace ANTES de mirar las filas, si no el
   // dato de la columna nueva quedaba en los datos crudos y nunca llegaba a su tabla.
-  refrescarLayoutSiCambio(pestana, valores)
+  //
+  // Salvo que la fila de encabezados venga VACÍA: eso es una pestaña recreada o un respaldo a medio
+  // restaurar, la misma lectura que más abajo se decide ignorar. Rehacer el mapeo con eso dejaba el
+  // layout compartido de `contexto.porTitulo` —que dura cinco minutos y también usa la subida— sin
+  // encabezados ni columna _ID, por una lectura en la que no se confía.
+  const filaDeEncabezados = valores[pestana.layout?.filaEncabezados ?? 0] ?? []
+  if (filaDeEncabezados.some((celda) => limpiar(celda) !== '')) refrescarLayoutSiCambio(pestana, valores)
   const columnaId = columnaDelId(pestana, valores)
   // Todas las columnas tituladas _ID, no sólo la que manda: si una pestaña arrastra una segunda columna
   // _ID de cuando la duplicaron, sus valores no son datos de la fila. El importador usa el mismo criterio,
@@ -315,17 +379,21 @@ function aplicarPestana(
   if (columnaId !== null) columnasId.add(columnaId)
   const primeraFila = (pestana.layout?.filaEncabezados ?? 0) + 2
   const conocidas = new Map(
-    (db().prepare('SELECT fila_id, pestana, numero_fila, sheet_id, datos_json, huella, en_la_hoja FROM filas_crudas WHERE pestana = ?').all(pestana.titulo) as FilaConocida[]).map(
+    // Sin `pestana`: es la columna del WHERE, así que su valor ya se sabe, y ésta es justamente la
+    // consulta que corre cada 30 segundos sobre miles de filas.
+    (sentencia('SELECT fila_id, numero_fila, sheet_id, huella, en_la_hoja FROM filas_crudas WHERE pestana = ?').all(pestana.titulo) as FilaConocida[]).map(
       (f) => [f.fila_id, f],
     ),
   )
   const vistas = new Set<string>()
   const ahora = ahoraIso()
 
-  const actualizarCruda = db().prepare(
+  const leerDatos = sentencia('SELECT datos_json FROM filas_crudas WHERE fila_id = ?')
+  const actualizarCruda = sentencia(
     `UPDATE filas_crudas SET datos_json = ?, huella = ?, numero_fila = ?, sheet_id = ?, en_la_hoja = 1, vista_en = ?, actualizado_en = ? WHERE fila_id = ?`,
   )
-  const refrescarLugar = db().prepare(`UPDATE filas_crudas SET numero_fila = ?, sheet_id = ? WHERE fila_id = ?`)
+  const refrescarLugar = sentencia(`UPDATE filas_crudas SET numero_fila = ?, sheet_id = ? WHERE fila_id = ?`)
+  const marcarDesaparecida = sentencia('UPDATE filas_crudas SET en_la_hoja = 0, actualizado_en = ? WHERE fila_id = ?')
 
   db().transaction(() => {
     for (let r = primeraFila - 1; r < valores.length; r++) {
@@ -379,7 +447,7 @@ function aplicarPestana(
       resultado.filasCambiadas++
       // Estaba marcada como fuera de la hoja y volvió: la deshicieron desde otra computadora.
       if (conocida.en_la_hoja === 0) alReaparecerEnLaHoja(db(), id, pestana.tipo)
-      const anteriores = JSON.parse(conocida.datos_json) as Record<string, string>
+      const anteriores = JSON.parse((leerDatos.get(id) as { datos_json: string } | undefined)?.datos_json ?? '{}') as Record<string, string>
       const encabezados = pestana.layout?.mapeo.encabezados ?? []
       const nuevos: Record<string, string> = { ...anteriores }
 
@@ -418,12 +486,39 @@ function aplicarPestana(
       actualizarCruda.run(JSON.stringify(nuevos), huella, r + 1, pestana.sheetId, ahora, ahora, id)
     }
 
+    // Una pestaña que vuelve VACÍA —ni una fila con _ID— cuando acá se conocían varias no es que
+    // se borraron todas: es un respaldo restaurado o una pestaña recreada. Darlas por desaparecidas
+    // sería borrar en TODAS las computadoras lo que representaban (los archivos de APP ADJUNTOS, los
+    // siniestros, las tareas) por un accidente del servidor. Se avisa y se sigue; cuando la pestaña
+    // vuelva con sus filas, las huellas dirán qué cambió. Con UNA sola fila conocida no se distingue
+    // de un borrado común (la última tarea, el último adjunto, el último siniestro de la pestaña) y
+    // perder un registro no es grave; con `> 0`, en cambio, ese borrado no viajaría NUNCA más, porque
+    // la pestaña quedaría vacía para siempre: ahí sí se aplica. El importador usa `> 0` porque él
+    // corre después y sobre lo que la bajada ya dejó marcado.
+    const presentes = [...conocidas.values()].filter((c) => c.en_la_hoja === 1).length
+    const { pestanasVaciasAvisadas } = memoria()
+    if (vistas.size === 0 && presentes > 1) {
+      // El aviso viaja SIEMPRE en el resultado; en la bitácora se repite cada tanto, no una sola vez.
+      if (!resultado.pestanasVaciasIgnoradas.includes(pestana.titulo)) resultado.pestanasVaciasIgnoradas.push(pestana.titulo)
+      const ultimoAviso = pestanasVaciasAvisadas.get(pestana.titulo) ?? 0
+      if (Date.now() - ultimoAviso >= MINUTOS_ENTRE_AVISOS_DE_PESTANA_VACIA * 60_000) {
+        pestanasVaciasAvisadas.set(pestana.titulo, Date.now())
+        anotarEvento(
+          'bajada',
+          `La pestaña «${pestana.titulo}» vino vacía y acá se conocían ${presentes} filas: no se da ninguna por borrada (parece un respaldo restaurado o una pestaña recreada).`,
+          { conError: true },
+        )
+      }
+      return
+    }
+    pestanasVaciasAvisadas.delete(pestana.titulo)
+
     // Filas que estaban y ya no: quedan marcadas, nunca se borran. Lo que sí cambia es lo que la
     // fila representaba (la cuota sale de la planilla, la baja deshecha se olvida): ver filas.ts.
     const desaparecidas: string[] = []
     for (const [id, conocida] of conocidas) {
       if (vistas.has(id) || conocida.en_la_hoja === 0) continue
-      db().prepare('UPDATE filas_crudas SET en_la_hoja = 0, actualizado_en = ? WHERE fila_id = ?').run(ahora, id)
+      marcarDesaparecida.run(ahora, id)
       resultado.filasQueYaNoEstan++
       desaparecidas.push(id)
     }
@@ -464,14 +559,12 @@ function incorporarAnexo(
   encabezados.forEach((encabezado, i) => {
     if (encabezado) datos[encabezado] = limpiar(celdas[i])
   })
-  db()
-    .prepare(
-      `INSERT INTO filas_crudas (fila_id, pestana, tipo_pestana, periodo, numero_fila, datos_json, en_la_hoja, vista_en, sheet_id, huella, creado_en, actualizado_en)
+  sentencia(
+    `INSERT INTO filas_crudas (fila_id, pestana, tipo_pestana, periodo, numero_fila, datos_json, en_la_hoja, vista_en, sheet_id, huella, creado_en, actualizado_en)
        VALUES (?, ?, ?, NULL, ?, ?, 1, ?, ?, ?, ?, ?)
        ON CONFLICT(fila_id) DO UPDATE SET pestana = excluded.pestana, numero_fila = excluded.numero_fila, datos_json = excluded.datos_json,
          en_la_hoja = 1, vista_en = excluded.vista_en, sheet_id = excluded.sheet_id, huella = excluded.huella, actualizado_en = excluded.actualizado_en`,
-    )
-    .run(id, pestana.titulo, pestana.tipo, numeroFila, JSON.stringify(datos), ahora, pestana.sheetId, huella, ahora, ahora)
+  ).run(id, pestana.titulo, pestana.tipo, numeroFila, JSON.stringify(datos), ahora, pestana.sheetId, huella, ahora, ahora)
   return true
 }
 
@@ -518,23 +611,21 @@ function aplicarALaPolizaDelMes(filaId: string, campo: Campo, valor: string): vo
   const enPoliza = DESTINOS_DE_LA_POLIZA[campo]
   const enVehiculo = DESTINOS_DEL_VEHICULO[campo]
   if (!enPoliza && !enVehiculo) return
-  const cuota = db()
-    .prepare(
-      `SELECT c.poliza_id, p.vehiculo_id FROM cuotas_mes c JOIN polizas p ON p.id = c.poliza_id
+  const cuota = sentencia(
+    `SELECT c.poliza_id, p.vehiculo_id FROM cuotas_mes c JOIN polizas p ON p.id = c.poliza_id
        WHERE c.fila_id = ? AND c.periodo = (SELECT MAX(periodo) FROM cuotas_mes)`,
-    )
-    .get(filaId) as { poliza_id: number; vehiculo_id: number | null } | undefined
+  ).get(filaId) as { poliza_id: number; vehiculo_id: number | null } | undefined
   if (!cuota) return
   const ahora = ahoraIso()
   if (enPoliza) {
     const derivadas = enPoliza.derivadas?.(valor) ?? {}
     const asignaciones = [`${enPoliza.columna} = @valor`, ...Object.keys(derivadas).map((c) => `${c} = @${c}`), 'actualizado_en = @ahora']
-    db().prepare(`UPDATE polizas SET ${asignaciones.join(', ')} WHERE id = @id`).run({ valor: valor || null, ...derivadas, ahora, id: cuota.poliza_id })
+    sentencia(`UPDATE polizas SET ${asignaciones.join(', ')} WHERE id = @id`).run({ valor: valor || null, ...derivadas, ahora, id: cuota.poliza_id })
   }
   if (enVehiculo && cuota.vehiculo_id !== null) {
     const derivadas = enVehiculo.derivadas?.(valor) ?? {}
     const asignaciones = [`${enVehiculo.columna} = @valor`, ...Object.keys(derivadas).map((c) => `${c} = @${c}`), 'actualizado_en = @ahora']
-    db().prepare(`UPDATE vehiculos SET ${asignaciones.join(', ')} WHERE id = @id`).run({ valor: valor || null, ...derivadas, ahora, id: cuota.vehiculo_id })
+    sentencia(`UPDATE vehiculos SET ${asignaciones.join(', ')} WHERE id = @id`).run({ valor: valor || null, ...derivadas, ahora, id: cuota.vehiculo_id })
   }
 }
 
@@ -544,14 +635,12 @@ function aplicarCampo(pestana: PestanaSincronizable, filaId: string, campo: Camp
   // se los comía y nunca llegaban a su tabla.
   const columnaCliente = pestana.tipo === 'MENSUAL' ? DESTINOS_DEL_CLIENTE[campo] : undefined
   if (columnaCliente) {
-    const cliente = db()
-      .prepare(
-        `SELECT c.id, c.${columnaCliente} AS valor FROM clientes c
+    const cliente = sentencia(
+      `SELECT c.id, c.${columnaCliente} AS valor FROM clientes c
          JOIN cuotas_mes q ON q.cliente_id = c.id WHERE q.fila_id = ?`,
-      )
-      .get(filaId) as { id: number; valor: string | null } | undefined
+    ).get(filaId) as { id: number; valor: string | null } | undefined
     if (!cliente) return null
-    db().prepare(`UPDATE clientes SET ${columnaCliente} = ?, actualizado_en = ? WHERE id = ?`).run(valor || null, ahoraIso(), cliente.id)
+    sentencia(`UPDATE clientes SET ${columnaCliente} = ?, actualizado_en = ? WHERE id = ?`).run(valor || null, ahoraIso(), cliente.id)
     return cliente.valor ?? ''
   }
 
@@ -560,16 +649,14 @@ function aplicarCampo(pestana: PestanaSincronizable, filaId: string, campo: Camp
     if (pestana.tipo === 'MENSUAL') aplicarALaPolizaDelMes(filaId, campo, valor)
     return null
   }
-  const actual = db().prepare(`SELECT ${destino.columna} AS valor FROM ${destino.tabla} WHERE fila_id = ?`).get(filaId) as
+  const actual = sentencia(`SELECT ${destino.columna} AS valor FROM ${destino.tabla} WHERE fila_id = ?`).get(filaId) as
     | { valor: string | null }
     | undefined
   if (!actual) return null
   const derivadas = destino.derivadas?.(valor) ?? {}
   const guardado = destino.normalizar ? destino.normalizar(valor) : valor
   const asignaciones = [`${destino.columna} = @valor`, ...Object.keys(derivadas).map((c) => `${c} = @${c}`), 'actualizado_en = @ahora']
-  db()
-    .prepare(`UPDATE ${destino.tabla} SET ${asignaciones.join(', ')} WHERE fila_id = @fila_id`)
-    .run({ valor: destino.normalizar ? guardado : valor || null, ...derivadas, ahora: ahoraIso(), fila_id: filaId })
+  sentencia(`UPDATE ${destino.tabla} SET ${asignaciones.join(', ')} WHERE fila_id = @fila_id`).run({ valor: destino.normalizar ? guardado : valor || null, ...derivadas, ahora: ahoraIso(), fila_id: filaId })
   if (pestana.tipo === 'MENSUAL') aplicarALaPolizaDelMes(filaId, campo, valor)
   return actual.valor ?? ''
 }
@@ -579,18 +666,16 @@ function aplicarCampo(pestana: PestanaSincronizable, filaId: string, campo: Camp
  * reemplazan las de acá. No entra en DESTINOS porque no es una columna, es una tabla.
  */
 function aplicarOpcionesDePresupuesto(filaId: string, json: string, textoLegible: string): void {
-  const presupuesto = db().prepare('SELECT id FROM presupuestos WHERE fila_id = ?').get(filaId) as { id: number } | undefined
+  const presupuesto = sentencia('SELECT id FROM presupuestos WHERE fila_id = ?').get(filaId) as { id: number } | undefined
   if (!presupuesto) return
-  const companias = (db().prepare('SELECT DISTINCT compania FROM polizas WHERE compania IS NOT NULL').all() as Array<{ compania: string }>).map((c) => c.compania)
+  const companias = (sentencia('SELECT DISTINCT compania FROM polizas WHERE compania IS NOT NULL').all() as Array<{ compania: string }>).map((c) => c.compania)
   guardarOpcionesDePresupuesto(db(), presupuesto.id, opcionesDesdeLaHoja(json, textoLegible, companias))
 }
 
 function anotarPisado(pestana: string, filaId: string, campo: string, valorLocal: string, valorRemoto: string): void {
-  db()
-    .prepare(
-      `INSERT INTO historial (fecha, usuario_id, usuario_nombre, accion, tabla, registro_id, fila_id, campo, valor_anterior, valor_nuevo)
+  sentencia(
+    `INSERT INTO historial (fecha, usuario_id, usuario_nombre, accion, tabla, registro_id, fila_id, campo, valor_anterior, valor_nuevo)
        VALUES (?, NULL, 'Sincronización', 'sincronizacion', ?, NULL, ?, ?, ?, ?)`,
-    )
-    .run(ahoraIso(), pestana, filaId, `${campo} (pisado por sincronización)`, valorLocal, valorRemoto)
+  ).run(ahoraIso(), pestana, filaId, `${campo} (pisado por sincronización)`, valorLocal, valorRemoto)
   anotarEvento('conflicto', `«${campo}» de la fila ${filaId} cambió en la base: se pisó el valor local («${valorLocal}» → «${valorRemoto}»).`)
 }

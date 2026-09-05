@@ -9,9 +9,14 @@ import {
   cerrarMes,
   darDeBaja,
   editarCelda,
+  // Importado acá y no con un `await import(...)` dentro de la prueba: el import dinámico hacía que el
+  // empaquetador partiera cartera.ts en un chunk aparte y se cayera al re-exportar una constante.
+  nombreParaPestanaNueva,
   planillaDelMes,
   registrarPago,
 } from '../src/main/servicios/cartera'
+import { ErrorDeNegocio } from '../src/main/servicios/errores'
+import { ErrorDelServidorVps } from '../src/main/vps/fuenteVps'
 import { avisarRechazo, avisosDeRechazos, listarRechazos } from '../src/main/servicios/rechazos'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes, encolar, esperaDeReintento } from '../src/main/sincronizacion/cola'
 import { leerContexto } from '../src/main/sincronizacion/hoja'
@@ -228,7 +233,6 @@ test('cerrar el mes crea solo la pestaña nueva en la base y sube las filas', as
 
   // Cambio de año: si el nombre pelado ya lo usa OTRO período (la «ENERO» de este año cuando se
   // cierre diciembre), la pestaña nueva sale con el año para no caer en la planilla vieja.
-  const { nombreParaPestanaNueva } = await import('../src/main/servicios/cartera')
   assert.equal(nombreParaPestanaNueva('ENERO', '2027-01'), 'ENERO 27', 'ENERO de 2027 no pisa la ENERO de 2026')
   assert.equal(nombreParaPestanaNueva('BAJAS ENERO', '2027-01'), 'BAJAS ENERO 27')
   assert.equal(nombreParaPestanaNueva('OCTUBRE', '2026-10'), 'OCTUBRE', 'sin choque, el nombre pelado de siempre')
@@ -486,6 +490,161 @@ test('el estado que ve la barra superior cuenta lo que falta subir', async () =>
 
   motor.apagar()
   assert.equal(motor.estado().situacion, 'apagado')
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// La cola frente a lo que se crea y se borra antes de subir, y frente a las otras computadoras
+// ---------------------------------------------------------------------------
+
+test('una ficha creada y borrada sin internet no deja una fila fantasma en la base', async () => {
+  const { hoja, motor, db } = await escenario()
+  const filasAntes = hoja.filasDe('BAJAS AGOSTO').length
+  const columnaId = hoja.columnaIdDe('BAJAS AGOSTO')
+  hoja.desconectar()
+
+  // Como adjuntar un archivo y borrarlo antes de que la cola se vacíe: el «crear» todavía está en la
+  // cola, así que se cancela (y con él los «actualizar» que se le juntaron adentro), pero el «borrar»
+  // se encola igual, porque nadie puede saber desde acá si ese «crear» ya se aplicó allá.
+  encolar({ operacion: 'crear', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: { nombre: 'NADIE', motivo: 'VENDIO' } }, DANIEL)
+  encolar({ operacion: 'actualizar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: { motivo: 'ANULA' } }, DANIEL)
+  assert.equal(cuantasPendientes(), 1)
+  encolar({ operacion: 'borrar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: {} }, DANIEL, { sinEspera: true })
+  const deLaPrimera = db.prepare(`SELECT operacion FROM cola_sync WHERE estado = 'pendiente' AND fila_id = 'FANTASMA0001'`).all() as Array<{
+    operacion: string
+  }>
+  assert.deepEqual(deLaPrimera.map((e) => e.operacion), ['borrar'], 'el «crear» se cancela y queda sólo el «borrar»')
+
+  // El caso que de verdad deja la ficha fantasma: el «crear» SÍ viajó y se aplicó, pero la respuesta se
+  // perdió en el camino, así que la entrada sigue en la cola y la fila YA está en la base. Los intentos
+  // no sirven para distinguirlo: al juntarle el «actualizar» de abajo (el {subido} de un adjunto que
+  // terminó de subir) vuelven a cero. Si el «borrar» no se encolara, nadie sacaría más ese renglón.
+  encolar({ operacion: 'crear', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0002', campos: { nombre: 'NADIE', motivo: 'VENDIO' } }, DANIEL)
+  db.prepare(`UPDATE cola_sync SET intentos = 1, ultimo_error = 'socket hang up' WHERE fila_id = 'FANTASMA0002'`).run()
+  const renglon: string[] = []
+  while (renglon.length <= columnaId) renglon.push('')
+  renglon[columnaId] = 'FANTASMA0002'
+  hoja.agregarFila('BAJAS AGOSTO', renglon)
+  encolar({ operacion: 'actualizar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0002', campos: { motivo: 'ANULA' } }, DANIEL)
+  assert.equal(
+    (db.prepare(`SELECT intentos FROM cola_sync WHERE fila_id = 'FANTASMA0002'`).get() as { intentos: number }).intentos,
+    0,
+    'juntar campos contra un «crear» le borra los intentos: por eso no se los puede usar para saber si salió',
+  )
+  encolar({ operacion: 'borrar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0002', campos: {} }, DANIEL, { sinEspera: true })
+  assert.equal(hoja.filasDe('BAJAS AGOSTO').length, filasAntes + 1, 'la fila del «crear» aplicado está en la base')
+
+  hoja.conectar()
+  await motor.ciclarSubida()
+  assert.equal(cuantasPendientes(), 0)
+  assert.equal(cuantasFallidas(), 0)
+  assert.equal(hoja.filasDe('BAJAS AGOSTO').length, filasAntes, 'ninguna de las dos fichas quedó en la base')
+  assert.ok(![...hoja.idsDe('BAJAS AGOSTO').values()].some((id) => id.startsWith('FANTASMA')), 'ni quedó su _ID en la pestaña')
+  cerrarBaseDeDatos()
+})
+
+test('si otra computadora pisa el título de la columna recién agregada, el dato va a una columna propia y no a la ajena', async () => {
+  const { hoja, motor, db } = await escenario()
+  const filaId = [...hoja.idsDe('RIESGOS VARIOS').values()][0]
+  assert.ok(filaId, 'RIESGOS VARIOS tiene filas con _ID')
+  assert.ok(!hoja.encabezadosDe('RIESGOS VARIOS').includes('PATENTE'), 'la pestaña no tiene columna para la patente')
+  encolar({ operacion: 'actualizar', pestana: 'RIESGOS VARIOS', filaId, campos: { patente: 'AB123CD' } }, DANIEL)
+
+  // La carrera: las dos computadoras eligen la misma columna libre en el mismo ciclo, y la otra escribe
+  // su título («MARCA») justo después que ésta. El servidor traba la pestaña sólo mientras escribe,
+  // así que la última escritura gana. Hasta ahora esta computadora escribía la patente en esa columna
+  // creyendo que era la suya: la patente aparecía como marca en todas las demás.
+  const escribirDeVerdad = hoja.escribirCeldas.bind(hoja)
+  let pisadas = 0
+  hoja.escribirCeldas = async (celdas, columnaIdPorTitulo) => {
+    const resultado = await escribirDeVerdad(celdas, columnaIdPorTitulo)
+    const titulo = celdas.find((c) => c.titulo === 'RIESGOS VARIOS' && c.fila === 1 && c.valor === 'PATENTE')
+    if (titulo && pisadas === 0) {
+      pisadas++
+      hoja.editarCelda('RIESGOS VARIOS', 1, titulo.columna, 'MARCA')
+    }
+    return resultado
+  }
+  await motor.ciclarSubida()
+  hoja.escribirCeldas = escribirDeVerdad
+
+  assert.equal(cuantasPendientes(), 0)
+  assert.equal(cuantasFallidas(), 0)
+  const encabezados = hoja.encabezadosDe('RIESGOS VARIOS')
+  const columnaMarca = encabezados.indexOf('MARCA')
+  const columnaPatente = encabezados.indexOf('PATENTE')
+  assert.ok(columnaMarca >= 0, 'el título de la otra computadora quedó donde lo escribió')
+  assert.ok(columnaPatente > columnaMarca, 'y PATENTE se volvió a agregar en la columna libre siguiente')
+  assert.equal(enLaHoja(hoja, 'RIESGOS VARIOS', filaId, 'PATENTE'), 'AB123CD', 'la patente está bajo SU título')
+  assert.equal(enLaHoja(hoja, 'RIESGOS VARIOS', filaId, 'MARCA'), '', 'y la columna ajena quedó vacía')
+  assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM eventos_sync WHERE tipo = 'columna faltante'`).get() as { n: number }).n, 0, 'ningún dato se descartó')
+  cerrarBaseDeDatos()
+})
+
+test('una celda que el servidor rechaza no arrastra a «no se pudo» a las demás de su tanda', async () => {
+  const { hoja, motor, db } = await escenario()
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  const lopez = fila(CLIENTES.lopez.nombre)
+  const rodriguez = fila(CLIENTES.rodriguez.nombre)
+  editarCelda(gonzalez.filaId, 'observaciones', 'Pasa el lunes', DANIEL)
+  editarCelda(lopez.filaId, 'observaciones', 'ESTO LA BASE NO LO ACEPTA', DANIEL)
+  editarCelda(rodriguez.filaId, 'observaciones', 'Pasa el martes', DANIEL)
+  assert.equal(cuantasPendientes(), 3)
+
+  // El servidor rechaza cualquier tanda que traiga la celda de López (un 4xx, no un corte de red).
+  const escribirDeVerdad = hoja.escribirCeldas.bind(hoja)
+  hoja.escribirCeldas = async (celdas, columnaIdPorTitulo) => {
+    // Un 400: el servidor se queja del CONTENIDO, que es lo único que se puede achacar a una celda.
+    if (celdas.some((c) => c.id === lopez.filaId))
+      throw new ErrorDelServidorVps('El servidor del VPS rechazó la operación (escribir celdas): valor inválido.', 400)
+    return escribirDeVerdad(celdas, columnaIdPorTitulo)
+  }
+
+  // Hasta la 12.6 cada tanda rechazada le sumaba un intento a las tres y a la octava las tres quedaban en
+  // «no se pudo». Ahora la tanda se va partiendo hasta que la mala queda sola: las buenas viajan igual.
+  for (let ciclo = 0; ciclo < 5; ciclo++) await motor.ciclarSubida()
+  hoja.escribirCeldas = escribirDeVerdad
+
+  assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'OBS'), 'Pasa el lunes', 'la buena de antes de la mala llegó')
+  assert.equal(enLaHoja(hoja, 'AGOSTO', rodriguez.filaId, 'OBS'), 'Pasa el martes', 'y la de después también')
+  assert.equal(cuantasFallidas(), 0)
+  const deLopez = db.prepare(`SELECT estado, intentos FROM cola_sync WHERE fila_id = ?`).get(lopez.filaId) as { estado: string; intentos: number }
+  assert.equal(deLopez.estado, 'pendiente', 'la mala sigue esperando su reintento')
+  assert.equal(deLopez.intentos, 1, 'y el intento se le contó a ella sola, cuando quedó sola en la tanda')
+  const buenas = db.prepare(`SELECT intentos FROM cola_sync WHERE fila_id IN (?, ?)`).all(gonzalez.filaId, rodriguez.filaId) as Array<{ intentos: number }>
+  assert.deepEqual(buenas.map((b) => b.intentos), [0, 0], 'a las buenas no se les contó ningún intento')
+  cerrarBaseDeDatos()
+})
+
+test('un error de cuota o de credenciales hace esperar a toda la tanda, en vez de reintentar sin parar', async () => {
+  const { hoja, motor, db } = await escenario()
+  editarCelda(fila(CLIENTES.gonzalez.nombre).filaId, 'observaciones', 'Pasa el lunes', DANIEL)
+  editarCelda(fila(CLIENTES.lopez.nombre).filaId, 'observaciones', 'Pasa el martes', DANIEL)
+  editarCelda(fila(CLIENTES.rodriguez.nombre).filaId, 'observaciones', 'Pasa el miércoles', DANIEL)
+
+  // Un límite de cuota (o un token vencido, o la hoja que no está) no es culpa de ninguna celda: es del
+  // pedido entero y lo que pide es esperar. Google los manda como `ErrorDeNegocio` sin código, así que
+  // si se los tomara por «una celda mala» la cola se partiría en pedazos y volvería a escribir cada
+  // diez segundos, sin espera, justo contra el servidor que está pidiendo que la aplicación afloje.
+  let escrituras = 0
+  hoja.escribirCeldas = async () => {
+    escrituras++
+    throw new ErrorDeNegocio('Google limitó la cantidad de pedidos (cuota) al escribir celdas. Esperá un minuto.')
+  }
+  await motor.ciclarSubida()
+  assert.equal(escrituras, 1, 'una sola escritura intentada')
+  const enLaCola = db.prepare(`SELECT intentos, proximo_intento FROM cola_sync WHERE estado = 'pendiente'`).all() as Array<{
+    intentos: number
+    proximo_intento: string | null
+  }>
+  assert.equal(enLaCola.length, 3)
+  assert.ok(
+    enLaCola.every((e) => e.intentos === 1 && e.proximo_intento !== null),
+    'a las tres se les contó el intento y las tres esperan su turno',
+  )
+
+  await motor.ciclarSubida()
+  assert.equal(escrituras, 1, 'y el ciclo siguiente ni siquiera lo intenta: está esperando')
   cerrarBaseDeDatos()
 })
 

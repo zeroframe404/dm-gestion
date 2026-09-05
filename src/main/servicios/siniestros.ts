@@ -62,7 +62,7 @@ import { avisarTareaCompletada } from './avisos'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
-import { nombreDePestana } from './hojas'
+import { nombreDePestana, pestanaDeLaFila } from './hojas'
 import { polizasDeCliente } from './polizas'
 import { dadorDeTokenDeGoogle } from './sincronizacion'
 import { sucursalesParaElegir } from './sucursales'
@@ -616,10 +616,15 @@ export function altaDeSiniestro(datos: DatosDeSiniestro, actor: SesionUsuario): 
 // La ficha: estado, línea de tiempo, documentos y tareas
 // ---------------------------------------------------------------------------
 
-/** Sube a la hoja los campos que cambiaron. */
+/**
+ * Sube a la hoja los campos que cambiaron. La corrección va a la pestaña donde el siniestro VIVE, no a
+ * la principal del tipo: con dos pestañas de siniestros («SINIESTROS» y «SINIESTROS 2024») el que está
+ * en la segunda encolaba contra la primera y la subida lo rebotaba con «La fila ya no está en la base».
+ */
 function sincronizar(siniestroId: number, campos: Record<string, string>, actor: SesionUsuario): void {
   const fila = buscarSiniestro(siniestroId)
-  encolar({ operacion: 'actualizar', pestana: pestanaDeSiniestros(), filaId: fila.fila_id, campos }, actor)
+  const pestana = pestanaDeLaFila(fila.fila_id, 'SINIESTROS', 'SINIESTROS')
+  encolar({ operacion: 'actualizar', pestana, filaId: fila.fila_id, campos }, actor)
 }
 
 export function cambiarEstadoDeSiniestro(siniestroId: number, estado: unknown, actor: SesionUsuario): FichaSiniestro {

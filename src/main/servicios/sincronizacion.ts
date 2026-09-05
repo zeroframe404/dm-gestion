@@ -17,6 +17,7 @@ import { db } from '../db/base'
 import { extraerIdDeHoja, FuenteGoogleSheets, type FuenteHoja } from '../importacion/fuente'
 import { ejecutarImportacion } from '../importacion/importador'
 import { ahoraIso } from '../importacion/normalizar'
+import { clasificarPestana } from '../importacion/pestanas'
 import { carpetaDatos } from '../rutas'
 import { anotarEvento, reintentarFallidas } from '../sincronizacion/cola'
 import { leerContexto } from '../sincronizacion/hoja'
@@ -34,6 +35,7 @@ import { cerrarMes, nombreDePestanaMensual, periodoACerrar } from './cartera'
 import { esAlmacenDeAdjuntos, hayAdjuntosPendientes, subirAdjuntosPendientes, usarAlmacenDeAdjuntos, verificarAdjuntosContraElServidor } from './adjuntos'
 import { credencialesGoogle, credencialesParaDrive, credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
+import { reservarImportacionAutomatica, tipoDeImportacionEnCurso } from './importacion'
 import { repararAlArrancar, repararDuplicados, repararSiniestrosSinCliente } from './reparaciones'
 import { construirXlsx, type HojaXlsx } from './xlsx'
 
@@ -43,7 +45,9 @@ let fuenteDePrueba: FuenteHoja | null = null
 let servicioDeRespaldoDePrueba: ServicioDeRespaldo | null = null
 
 function emitir<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
-  for (const ventana of BrowserWindow.getAllWindows()) {
+  // Fuera de Electron (las pruebas, que usan el motor del programa) no hay ventanas a las que avisar.
+  const ventanas = (BrowserWindow as typeof BrowserWindow | undefined)?.getAllWindows() ?? []
+  for (const ventana of ventanas) {
     if (!ventana.isDestroyed()) ventana.webContents.send(evento, datos)
   }
 }
@@ -97,23 +101,53 @@ export function fuenteGoogleDirecta(): FuenteGoogleSheets | null {
 async function importarTodo(pestanas?: string[]): Promise<void> {
   const fuente = crearFuente()
   if (!fuente) return
+  // Con «Reimportar la base» andando no se arranca otra encima (12.7): las dos escribirían la misma
+  // base y la misma hoja a la vez. Se saltea; si las filas siguen sin conocerse, la próxima bajada
+  // vuelve a pedirla. Y mientras ésta corre, es el botón el que se rechaza (ver `iniciarImportacion`).
+  const yaCorriendo = tipoDeImportacionEnCurso()
+  if (yaCorriendo) {
+    const cual = yaCorriendo === 'manual' ? 'hay una importación manual en curso' : 'la anterior todavía está corriendo'
+    anotarEvento('bajada', `La importación automática se salteó: ${cual}. Se vuelve a intentar en la próxima bajada.`)
+    return
+  }
   const { id } = db()
     .prepare(`INSERT INTO importaciones (iniciada_en, estado) VALUES (?, 'EN_CURSO') RETURNING id`)
     .get(ahoraIso()) as { id: number }
-  const informe = await ejecutarImportacion({ db: db(), fuente, importacionId: id, soloPestanas: pestanas })
-  db()
-    .prepare('UPDATE importaciones SET terminada_en = ?, estado = ?, informe_json = ? WHERE id = ?')
-    .run(informe.terminadaEn, informe.estado, JSON.stringify(informe), id)
-  // Si la base traía una baja repetida (dos renglones con el mismo _ID, de antes de la 12.2), la
-  // importación le acaba de inventar un _ID al segundo: se saca acá, antes de que alguien lo vea. Lo
-  // mismo con las cuotas —un renglón repetido dentro de la planilla del mes deja la póliza dos veces—
-  // y con los clientes que quedaron dos veces con el mismo DNI.
-  repararDuplicados()
-  // Un siniestro que entró con la póliza pero sin cliente toma el titular de la póliza (12.7).
+  // Entre la pregunta de arriba y esta reserva no se cede el hilo, así que no puede fallar; el tipo lo
+  // pide. Si algún día pasara, la fila recién insertada se cierra: una que queda en EN_CURSO se vuelve
+  // una FALLIDA fantasma en el próximo arranque (ver `marcarImportacionesInterrumpidas`) y la pantalla
+  // la muestra como «última importación».
+  const reserva = reservarImportacionAutomatica(id)
+  if (!reserva) {
+    db().prepare(`UPDATE importaciones SET estado = 'CANCELADA', terminada_en = ? WHERE id = ?`).run(ahoraIso(), id)
+    return
+  }
   try {
-    repararSiniestrosSinCliente()
-  } catch (error) {
-    console.error('[sincronizacion] No se pudieron reparar los siniestros sin cliente:', error)
+    const informe = await ejecutarImportacion({ db: db(), fuente, importacionId: id, soloPestanas: pestanas, estaCancelada: reserva.estaCancelada })
+    db()
+      .prepare('UPDATE importaciones SET terminada_en = ?, estado = ?, informe_json = ? WHERE id = ?')
+      .run(informe.terminadaEn, informe.estado, JSON.stringify(informe), id)
+    // Tras una importación acotada (12.7), sólo las reparaciones que tocan lo que se guardó: buscar
+    // clientes repetidos carga la cartera entera, y después de incorporar dos siniestros es trabajo
+    // pesado para nada. Sin lista (la completa) corren todas, como siempre.
+    // Lista vacía = completa, la misma regla que usa el importador (`soloPestanas`): si no, una
+    // importarTodo([]) correría la completa sin ninguna reparación.
+    const tipos = pestanas && pestanas.length > 0 ? new Set(pestanas.map((titulo) => clasificarPestana(titulo).tipo)) : null
+    // Si la base traía una baja repetida (dos renglones con el mismo _ID, de antes de la 12.2), la
+    // importación le acaba de inventar un _ID al segundo: se saca acá, antes de que alguien lo vea. Lo
+    // mismo con las cuotas —un renglón repetido dentro de la planilla del mes deja la póliza dos veces—
+    // y con los clientes que quedaron dos veces con el mismo DNI.
+    if (tipos === null || tipos.has('MENSUAL') || tipos.has('BAJAS')) repararDuplicados()
+    // Un siniestro que entró con la póliza pero sin cliente toma el titular de la póliza (12.7).
+    if (tipos === null || tipos.has('SINIESTROS')) {
+      try {
+        repararSiniestrosSinCliente()
+      } catch (error) {
+        console.error('[sincronizacion] No se pudieron reparar los siniestros sin cliente:', error)
+      }
+    }
+  } finally {
+    reserva.liberar()
   }
 }
 

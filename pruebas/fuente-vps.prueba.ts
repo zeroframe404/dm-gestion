@@ -7,7 +7,7 @@ import test from 'node:test'
 import { VpsSimulado } from '../scripts/vps-simulado.mjs'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
 import { esFallaDeRed } from '../src/main/servicios/red'
-import { FuenteVps } from '../src/main/vps/fuenteVps'
+import { ErrorDelServidorVps, FuenteVps } from '../src/main/vps/fuenteVps'
 import { contar, importar, baseDePrueba } from './ayuda'
 import { construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
@@ -149,6 +149,8 @@ test('fuente VPS: errores y reintentos', async (t) => {
       const fuente = fuenteDe(simulador, 'token-equivocado')
       await assert.rejects(fuente.estructura(), (error: Error) => {
         assert.ok(error instanceof ErrorDeNegocio)
+        assert.ok(error instanceof ErrorDelServidorVps)
+        assert.equal(error.status, 401, '12.7: el código viaja con el error')
         assert.match(error.message, /token/i)
         return true
       })
@@ -314,7 +316,20 @@ test('fuente VPS: los adjuntos suben crudos, bajan iguales y se borran', async (
       /no se reescribe/,
       'el mismo id con otro contenido es un 409',
     )
-    await assert.rejects(fuente.subirAdjunto({ ...ficha, id: 'b'.repeat(32), sha256: 'f'.repeat(64) }, contenido), /dañado/)
+    // 12.7: el código HTTP viaja con el error, porque quien sube decide con él si el rechazo es del
+    // archivo (413, 400 dañado: rendirse al tercero) o de otra cosa (401, 503: esperar y reintentar).
+    await assert.rejects(fuente.subirAdjunto({ ...ficha, id: 'b'.repeat(32), sha256: 'f'.repeat(64) }, contenido), (error: Error) => {
+      assert.ok(error instanceof ErrorDelServidorVps)
+      assert.match(error.message, /dañado/)
+      assert.equal(error.status, 400)
+      // El mensaje lleva adentro el nombre del archivo; el detalle es lo que dijo el servidor y nada
+      // más. Quien decide por palabras (`esRechazoDelArchivo`) mira el detalle, para que un adjunto
+      // llamado «hash.pdf» o «dañado.pdf» no se dé por rechazado con cualquier 400 pasajero.
+      assert.match(error.message, /subir el adjunto «Póliza Gómez\.pdf»/)
+      assert.doesNotMatch(error.detalle, /Póliza Gómez/)
+      assert.match(error.detalle, /dañado/)
+      return true
+    })
 
     const bajado = await fuente.bajarAdjunto(id)
     assert.equal(bajado.nombre, 'Póliza Gómez.pdf', 'el nombre vuelve con acentos')
@@ -323,10 +338,20 @@ test('fuente VPS: los adjuntos suben crudos, bajan iguales y se borran', async (
     assert.ok(bajado.contenido.equals(contenido), 'los bytes vuelven iguales')
 
     simulador.topeDeAdjunto = 10
-    await assert.rejects(fuente.subirAdjunto({ ...ficha, id: 'c'.repeat(32) }, contenido), /supera el máximo/)
+    await assert.rejects(fuente.subirAdjunto({ ...ficha, id: 'c'.repeat(32) }, contenido), (error: Error) => {
+      assert.ok(error instanceof ErrorDelServidorVps)
+      assert.match(error.message, /supera el máximo/)
+      assert.equal(error.status, 413)
+      return true
+    })
 
     await fuente.borrarAdjunto(id)
-    await assert.rejects(fuente.bajarAdjunto(id), /no existe/)
+    await assert.rejects(fuente.bajarAdjunto(id), (error: Error) => {
+      assert.ok(error instanceof ErrorDelServidorVps)
+      assert.match(error.message, /no existe/)
+      assert.equal(error.status, 404)
+      return true
+    })
     await fuente.borrarAdjunto(id)
   } finally {
     await simulador.cerrar()

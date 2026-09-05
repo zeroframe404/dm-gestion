@@ -5,7 +5,12 @@ import test from 'node:test'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
 import { baseDePrueba, contar, filas, importar, problemasDeTipo, resumenDe, unico } from './ayuda'
+import type { BaseDeDatos } from '../src/main/db/base'
+import type { LecturaDePestana } from '../src/main/importacion/fuente'
+import { ejecutarImportacion } from '../src/main/importacion/importador'
 import { generarTextoDeInforme } from '../src/main/importacion/informe'
+import { ahoraIso } from '../src/main/importacion/normalizar'
+import type { InformeImportacion } from '../src/shared/tipos'
 
 const TITULOS_ESPERADOS = [
   'DICIEMBRE25',
@@ -475,6 +480,189 @@ test('una pestaña vacía o sin encabezados conocidos no frena ni define la cart
   assert.equal(informe.pestanaMasNueva, 'AGOSTO', 'una planilla vacía no puede definir la cartera')
   assert.ok(informe.avisos.some((a) => /SEPTIEMBRE/.test(a)))
   assert.equal(contar(db, 'polizas', 'activa = 1'), 7)
+
+  db.close()
+})
+
+// ---------------------------------------------------------------------------
+// 12.7: lecturas en tanda, dueños de los _ID en la importación acotada y pestañas que vuelven vacías
+// ---------------------------------------------------------------------------
+
+test('lee las cabeceras en una llamada y la grilla en tandas, sin pedir ninguna pestaña suelta', async () => {
+  const hoja = hojaCompleta()
+  const db = baseDePrueba()
+  const { informe } = await importar(db, hoja)
+  assert.equal(informe.estado, 'COMPLETA', `estado inesperado: ${informe.error ?? ''}`)
+
+  // Una llamada para las cabeceras de todas las pestañas y una por cada tanda de seis para los
+  // valores: hasta la 12.6 eran dos viajes por pestaña, uno atrás del otro, antes de guardar nada.
+  assert.equal(hoja.llamadas.leerVarias, 1 + Math.ceil(TITULOS_ESPERADOS.length / 6))
+  assert.equal(hoja.llamadas.leerValores, 0, 'ninguna pestaña se pidió suelta')
+
+  db.close()
+})
+
+/**
+ * Una hoja a la que se le puede hacer ilegible una pestaña: la lectura en tanda que la incluye falla
+ * (así se cae la tanda entera en el VPS cuando una de las seis pestañas se renombró o se borró). Con
+ * `tambienSuelta` falla también el pedido de a una, que es el reintento.
+ */
+class HojaConPestanaIlegible extends HojaSimulada {
+  ilegible: string | null = null
+  tambienSuelta = false
+
+  override async leerVarias(titulos: string[], hastaFila?: number): Promise<LecturaDePestana[]> {
+    if (this.ilegible !== null && hastaFila === undefined && titulos.includes(this.ilegible)) {
+      throw new Error(`no se pudo leer «${this.ilegible}»`)
+    }
+    return super.leerVarias(titulos, hastaFila)
+  }
+
+  override async leerValores(titulo: string): Promise<string[][]> {
+    if (this.tambienSuelta && titulo === this.ilegible) throw new Error(`no se pudo leer «${titulo}»`)
+    return super.leerValores(titulo)
+  }
+}
+
+/** Duplica una pestaña con sus _ID, que es como se arma el mes nuevo (o se guardan los viejos aparte). */
+function duplicarPestana(hoja: HojaSimulada, titulo: string, copia: string): void {
+  hoja.restaurarPestana({ sheetId: 990, titulo: copia, indice: 99, columnas: 26, valores: hoja.filasDe(titulo), ocultas: new Set(), oculta: false })
+}
+
+test('si se cae la tanda, la pestaña se pide suelta y no pierde sus _ID', async () => {
+  const hoja = new HojaConPestanaIlegible(construirHojaDePrueba())
+  const db = baseDePrueba()
+  await importar(db, hoja)
+  const idsSiniestros = [...hoja.idsDe('SINIESTROS').values()]
+  const enLaBase = `fila_id IN (${idsSiniestros.map((id) => `'${id}'`).join(', ')})`
+
+  // Se duplicó SINIESTROS con su columna _ID y, en la corrida completa siguiente, la tanda que
+  // incluye a la original se cae entera. Si SINIESTROS quedara fuera de la grilla, la copia se
+  // quedaría con sus _ID, la original recibiría identificadores nuevos en la hoja y cada siniestro
+  // quedaría dos veces en la base.
+  duplicarPestana(hoja, 'SINIESTROS', 'SINIESTROS VIEJOS')
+  hoja.ilegible = 'SINIESTROS'
+  const llamadasSueltasAntes = hoja.llamadas.leerValores
+  const { informe } = await importar(db, hoja)
+  assert.equal(informe.estado, 'COMPLETA', `estado inesperado: ${informe.error ?? ''}`)
+  assert.ok(hoja.llamadas.leerValores > llamadasSueltasAntes, 'la pestaña de la tanda que falló se pidió suelta')
+
+  for (const id of idsSiniestros) {
+    assert.equal(unico<string>(db, 'SELECT pestana FROM filas_crudas WHERE fila_id = ?', id), 'SINIESTROS')
+  }
+  assert.deepEqual([...hoja.idsDe('SINIESTROS').values()], idsSiniestros, 'la original conserva sus _ID')
+  assert.equal([...hoja.idsDe('SINIESTROS VIEJOS').values()].filter((id) => idsSiniestros.includes(id)).length, 0)
+  // Los siniestros de la original siguen colgando de sus _ID (la copia suma los suyos: duplicar una
+  // pestaña agrega renglones de verdad, eso es lo esperado; lo que no puede pasar es que la original
+  // pierda los propios).
+  assert.equal(contar(db, 'siniestros', enLaBase), 3)
+
+  db.close()
+})
+
+test('una pestaña que no se pudo leer de ninguna forma no le regala sus _ID a la copia', async () => {
+  const hoja = new HojaConPestanaIlegible(construirHojaDePrueba())
+  const db = baseDePrueba()
+  await importar(db, hoja)
+  const idsSiniestros = [...hoja.idsDe('SINIESTROS').values()]
+  const enLaBase = `fila_id IN (${idsSiniestros.map((id) => `'${id}'`).join(', ')})`
+
+  duplicarPestana(hoja, 'SINIESTROS', 'SINIESTROS VIEJOS')
+  hoja.ilegible = 'SINIESTROS'
+  hoja.tambienSuelta = true
+  const { informe } = await importar(db, hoja)
+
+  // La grilla no dice nada de SINIESTROS, así que manda lo que esta base recuerda: sus filas crudas
+  // no cambian de pestaña y la copia arranca con identificadores propios.
+  for (const id of idsSiniestros) {
+    assert.equal(unico<string>(db, 'SELECT pestana FROM filas_crudas WHERE fila_id = ?', id), 'SINIESTROS')
+    assert.equal(unico<number>(db, 'SELECT en_la_hoja FROM filas_crudas WHERE fila_id = ?', id), 1)
+  }
+  assert.equal(resumenDe(informe, 'SINIESTROS VIEJOS').idsNuevos, 3)
+  assert.equal(problemasDeTipo(informe, '_ID de otra pestaña').length, 3)
+  assert.equal(contar(db, 'siniestros', enLaBase), 3, 'los siniestros de la original siguen con su _ID')
+
+  db.close()
+})
+
+/** La importación acotada que dispara la bajada: se guardan sólo las pestañas de la lista. */
+async function importarSolo(db: BaseDeDatos, hoja: HojaSimulada, pestanas: string[]): Promise<InformeImportacion> {
+  const { id } = db.prepare(`INSERT INTO importaciones (iniciada_en, estado) VALUES (?, 'EN_CURSO') RETURNING id`).get(ahoraIso()) as { id: number }
+  return ejecutarImportacion({ db, fuente: hoja, importacionId: id, anioActual: 2026, soloPestanas: pestanas })
+}
+
+test('en una importación acotada, un _ID de una pestaña que no se pudo leer sigue siendo de esa pestaña', async () => {
+  const hoja = new HojaConPestanaIlegible(construirHojaDePrueba())
+  const db = baseDePrueba()
+  await importar(db, hoja)
+  const idsSiniestros = [...hoja.idsDe('SINIESTROS').values()]
+  assert.equal(idsSiniestros.length, 3)
+
+  // Alguien duplicó SINIESTROS entera (con su columna _ID) para guardar los viejos aparte…
+  duplicarPestana(hoja, 'SINIESTROS', 'SINIESTROS VIEJOS')
+  // …y la bajada pidió importar sólo la pestaña nueva, justo cuando la original no se pudo leer.
+  hoja.ilegible = 'SINIESTROS'
+  hoja.tambienSuelta = true
+  const informe = await importarSolo(db, hoja, ['SINIESTROS VIEJOS'])
+  assert.equal(informe.estado, 'COMPLETA', `estado inesperado: ${informe.error ?? ''}`)
+
+  // La base recuerda que esos _ID son de SINIESTROS: la copia recibe identificadores propios y las
+  // filas crudas de la original no cambian de pestaña (si cambiaran, la próxima bajada de SINIESTROS
+  // las vería como nuevas y pediría otra importación, y así para siempre).
+  for (const id of idsSiniestros) {
+    assert.equal(unico<string>(db, 'SELECT pestana FROM filas_crudas WHERE fila_id = ?', id), 'SINIESTROS')
+    assert.equal(unico<number>(db, 'SELECT en_la_hoja FROM filas_crudas WHERE fila_id = ?', id), 1)
+  }
+  assert.equal(resumenDe(informe, 'SINIESTROS VIEJOS').idsNuevos, 3)
+  assert.equal(problemasDeTipo(informe, '_ID de otra pestaña').length, 3)
+  const idsCopia = [...hoja.idsDe('SINIESTROS VIEJOS').values()]
+  assert.equal(idsCopia.filter((id) => idsSiniestros.includes(id)).length, 0, 'la copia no se quedó con ningún _ID de la original')
+
+  db.close()
+})
+
+test('una pestaña que vuelve vacía no da de baja lo que la base le conocía', async () => {
+  const hoja = hojaCompleta()
+  const db = baseDePrueba()
+  await importar(db, hoja)
+  assert.equal(contar(db, 'filas_crudas', "pestana = 'SINIESTROS' AND en_la_hoja = 1"), 3)
+
+  // Un borrado de verdad (queda alguna fila con _ID) se da de baja, como siempre.
+  hoja.borrarFila('SINIESTROS', hoja.filasDe('SINIESTROS').length)
+  const conUnBorrado = await importar(db, hoja)
+  assert.equal(resumenDe(conUnBorrado.informe, 'SINIESTROS').registros.filas_que_ya_no_estan, 1)
+  assert.equal(contar(db, 'filas_crudas', "pestana = 'SINIESTROS' AND en_la_hoja = 1"), 2)
+
+  // Pero si la pestaña vuelve sin NINGUNA fila con _ID (se restauró un respaldo, se recreó la pestaña)
+  // no son borrados: no se toca nada y el informe lo dice.
+  for (let n = hoja.filasDe('SINIESTROS').length; n >= 2; n--) hoja.borrarFila('SINIESTROS', n)
+  const { informe } = await importar(db, hoja)
+  assert.equal(contar(db, 'filas_crudas', "pestana = 'SINIESTROS' AND en_la_hoja = 1"), 2)
+  assert.equal(resumenDe(informe, 'SINIESTROS').registros.filas_que_ya_no_estan ?? 0, 0)
+  assert.equal(problemasDeTipo(informe, 'pestaña que volvió vacía').length, 1)
+  assert.ok(informe.avisos.some((a) => /«SINIESTROS» volvió vacía/.test(a)), informe.avisos.join(' | '))
+
+  db.close()
+})
+
+test('una pestaña llena pero sin _ID avisa que puede haber quedado todo duplicado', async () => {
+  const hoja = hojaCompleta()
+  const db = baseDePrueba()
+  await importar(db, hoja)
+  const columna = hoja.columnaIdDe('SINIESTROS')
+  const filasConId = [...hoja.idsDe('SINIESTROS').keys()]
+  assert.equal(filasConId.length, 3)
+
+  // Alguien pegó los datos de nuevo sin la columna _ID: las filas siguen ahí, pero ninguna trae su
+  // identificador. No se da de baja nada (no son borrados), y como esas filas se guardan como nuevas
+  // el aviso tiene que decir que quedó todo duplicado, no que «la pestaña volvió vacía».
+  for (const fila of filasConId) hoja.editarCelda('SINIESTROS', fila, columna, '')
+  const { informe } = await importar(db, hoja)
+  assert.equal(resumenDe(informe, 'SINIESTROS').registros.filas_que_ya_no_estan ?? 0, 0)
+  assert.equal(contar(db, 'filas_crudas', "pestana = 'SINIESTROS' AND en_la_hoja = 1"), 6, 'las viejas siguen y se sumaron las nuevas')
+  assert.equal(problemasDeTipo(informe, 'pestaña que volvió vacía').length, 0)
+  assert.equal(problemasDeTipo(informe, 'pestaña que volvió sin _ID').length, 1)
+  assert.ok(informe.avisos.some((a) => /«SINIESTROS» volvió SIN la columna _ID/.test(a) && /duplicado/.test(a)), informe.avisos.join(' | '))
 
   db.close()
 })

@@ -32,7 +32,7 @@ import { calcularAlerta, periodoDeHoy, periodoSiguiente } from '../src/shared/se
 import type { FilaCartera, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
-import { importar, unico } from './ayuda'
+import { filas, importar, unico } from './ayuda'
 
 const DANIEL: SesionUsuario = {
   id: 1,
@@ -474,13 +474,20 @@ test('«poner vigente» devuelve a la cartera al cliente que se fue y volvió, s
   assert.equal(vuelto.formaPago, fila.formaPago)
   assert.equal(vuelto.polizaActiva, true)
 
-  // La baja sale de la lista y de la hoja.
+  // La baja sale de la lista y de la hoja: hay que pedirle a la hoja que saque el renglón de BAJAS, o
+  // el cliente queda en los dos lados. Desde la 12.7 `encolar` además cancela el «crear» de ese
+  // renglón si todavía estaba esperando —no tiene sentido escribir una fila que se está borrando— pero
+  // el «borrar» se encola IGUAL, porque el «crear» puede haber salido y perdido la respuesta (ver el
+  // comentario de `encolar` en sincronizacion/cola.ts). Por eso queda una sola entrada, y es el borrado.
   assert.equal(bajasDelMes('2026-08').some((b) => b.id === baja.id), false)
-  assert.equal(
-    unico<number>(db, `SELECT COUNT(*) FROM cola_sync WHERE operacion = 'borrar' AND fila_id = ?`, baja.filaId),
-    1,
-    'se le pide a la hoja que saque el renglón de BAJAS',
+  const pendientes = filas<{ operacion: string; pestana: string }>(
+    db,
+    `SELECT operacion, pestana FROM cola_sync WHERE estado = 'pendiente' AND fila_id = ? ORDER BY id`,
+    baja.filaId,
   )
+  assert.equal(pendientes.length, 1, 'el renglón de BAJAS no puede quedar camino a la hoja')
+  assert.equal(pendientes[0]!.operacion, 'borrar')
+  assert.match(pendientes[0]!.pestana, /BAJAS/i)
   cerrarBaseDeDatos()
 })
 
@@ -678,5 +685,120 @@ test('un adelanto que llega cuando la fila del mes que viene ya existe se acredi
   assert.equal(actualizada.pagoRegistrado, false, 'sólo se adelantó la cuota de octubre: la de septiembre sigue sin pagar')
   assert.equal(actualizada.adelantoSiguiente?.periodo, '2026-10')
   assert.equal(actualizada.adelantoSiguiente?.imputado, false)
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Corregir el DOCUMENTO desde la planilla (12.7)
+// ---------------------------------------------------------------------------
+
+test('corregir el DOCUMENTO desde la planilla rehace el normalizado y la clave del cliente', async () => {
+  const db = await carteraDePrueba()
+  const fila = buscar(planillaDelMes(null).filas, CLIENTES.lopez.nombre)
+  assert.ok(fila.clienteId)
+  const antes = db.prepare('SELECT clave, documento_normalizado FROM clientes WHERE id = ?').get(fila.clienteId) as {
+    clave: string
+    documento_normalizado: string | null
+  }
+  assert.equal(antes.clave, `DOC:${CLIENTES.lopez.dniPlano}`)
+
+  const corregida = editarCelda(fila.filaId, 'documento', '30.111.444', DANIEL)
+  assert.equal(corregida.documento, '30.111.444')
+
+  const despues = db.prepare('SELECT clave, documento, documento_normalizado FROM clientes WHERE id = ?').get(fila.clienteId) as {
+    clave: string
+    documento: string
+    documento_normalizado: string
+  }
+  assert.equal(despues.documento, '30.111.444')
+  // Sin esto la búsqueda por DNI seguía encontrando el número viejo…
+  assert.equal(despues.documento_normalizado, '30111444')
+  // …y la próxima importación no reconocía a la persona y la duplicaba.
+  assert.equal(despues.clave, 'DOC:30111444')
+  assert.notEqual(despues.clave, antes.clave)
+
+  // La copia de la fila del mes también se corrige, como siempre.
+  assert.equal(unico<string>(db, 'SELECT documento FROM cuotas_mes WHERE fila_id = ?', fila.filaId), '30.111.444')
+  cerrarBaseDeDatos()
+})
+
+test('ponerle desde la planilla el documento de otro cliente se rechaza, como en la ficha', async () => {
+  const db = await carteraDePrueba()
+  const fila = buscar(planillaDelMes(null).filas, CLIENTES.lopez.nombre)
+  assert.ok(fila.clienteId)
+
+  // La regla del pliego: el mismo documento no puede estar en dos fichas. Desde que la planilla rehace
+  // el normalizado, dejarla pasar era peor que el bug viejo: la base quedaba con dos clientes con el
+  // mismo DNI —un estado que la ficha no deja armar— y el alta de riesgos y siniestros engancha «el
+  // primero por id», o sea el equivocado.
+  assert.throws(() => editarCelda(fila.filaId, 'documento', CLIENTES.suarez.dni, DANIEL), /ya es de .*SUAREZ/i)
+
+  // Y el rechazo no dejó nada a medio guardar: ni el documento, ni el normalizado, ni la clave.
+  const despues = db.prepare('SELECT clave, documento, documento_normalizado FROM clientes WHERE id = ?').get(fila.clienteId) as {
+    clave: string
+    documento: string
+    documento_normalizado: string
+  }
+  assert.equal(despues.documento, CLIENTES.lopez.dni)
+  assert.equal(despues.documento_normalizado, CLIENTES.lopez.dniPlano)
+  assert.equal(despues.clave, `DOC:${CLIENTES.lopez.dniPlano}`)
+  assert.equal(unico<string>(db, 'SELECT documento FROM cuotas_mes WHERE fila_id = ?', fila.filaId), CLIENTES.lopez.dni)
+  assert.equal(unico<number>(db, `SELECT COUNT(*) FROM clientes WHERE documento_normalizado = ?`, CLIENTES.suarez.dniPlano), 1)
+  cerrarBaseDeDatos()
+})
+
+test('quitarle el documento devuelve el ancla al nombre, y corregir el nombre la mueve con él', async () => {
+  const db = await carteraDePrueba()
+  const fila = buscar(planillaDelMes(null).filas, CLIENTES.lopez.nombre)
+  assert.ok(fila.clienteId)
+
+  // Sin documento, la clave del cliente es su nombre (`claveDeCliente`): es el ancla con la que la
+  // importación siguiente lo reconoce en la hoja.
+  editarCelda(fila.filaId, 'documento', '', DANIEL)
+  const sinDni = db.prepare('SELECT clave, documento_normalizado FROM clientes WHERE id = ?').get(fila.clienteId) as {
+    clave: string
+    documento_normalizado: string | null
+  }
+  assert.equal(sinDni.documento_normalizado, null)
+  assert.equal(sinDni.clave, `NOM:${CLIENTES.lopez.nombre}`)
+
+  // Y si a ese cliente le corrigen el nombre, la clave tiene que acompañar: si no, se queda apuntando a
+  // un nombre que ya no está en ninguna parte y la importación siguiente lo carga otra vez, duplicado.
+  editarCelda(fila.filaId, 'nombre', 'LOPEZ CARLOS ALBERTO JOSE', DANIEL)
+  const conOtroNombre = db.prepare('SELECT clave, nombre FROM clientes WHERE id = ?').get(fila.clienteId) as {
+    clave: string
+    nombre: string
+  }
+  assert.equal(conOtroNombre.nombre, 'LOPEZ CARLOS ALBERTO JOSE')
+  assert.equal(conOtroNombre.clave, 'NOM:LOPEZ CARLOS ALBERTO JOSE')
+
+  // Al que se identifica por documento, en cambio, cambiarle el nombre no le toca la clave: el nombre
+  // no entra en 'DOC:<número>'.
+  const conDni = buscar(planillaDelMes(null).filas, CLIENTES.suarez.nombre)
+  editarCelda(conDni.filaId, 'nombre', 'SUAREZ NATALIA BEATRIZ', DANIEL)
+  assert.equal(
+    unico<string>(db, 'SELECT clave FROM clientes WHERE id = ?', conDni.clienteId!),
+    `DOC:${CLIENTES.suarez.dniPlano}`,
+  )
+  cerrarBaseDeDatos()
+})
+
+test('si la clave que le tocaría ya está ocupada, el dato se guarda igual y la clave no se mueve', async () => {
+  const db = await carteraDePrueba()
+  // Dos clientes sin documento que se llaman igual: el segundo no puede quedarse con la clave del
+  // primero —la columna es única— y perder el ancla es preferible a no poder guardar la corrección.
+  const lopez = buscar(planillaDelMes(null).filas, CLIENTES.lopez.nombre)
+  editarCelda(lopez.filaId, 'documento', '', DANIEL)
+  assert.equal(unico<string>(db, 'SELECT clave FROM clientes WHERE id = ?', lopez.clienteId!), `NOM:${CLIENTES.lopez.nombre}`)
+
+  const rodriguez = buscar(planillaDelMes(null).filas, CLIENTES.rodriguez.nombre)
+  editarCelda(rodriguez.filaId, 'documento', '', DANIEL)
+  const corregida = editarCelda(rodriguez.filaId, 'nombre', CLIENTES.lopez.nombre, DANIEL)
+  assert.equal(corregida.nombre, CLIENTES.lopez.nombre, 'el nombre se guarda igual')
+  assert.equal(
+    unico<string>(db, 'SELECT clave FROM clientes WHERE id = ?', rodriguez.clienteId!),
+    `NOM:${CLIENTES.rodriguez.nombre}`,
+    'la clave se queda donde estaba',
+  )
   cerrarBaseDeDatos()
 })

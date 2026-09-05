@@ -12,8 +12,9 @@ import { ahoraIso } from '../src/main/importacion/normalizar'
 import { usarCarpetaDeAdjuntosDePrueba } from '../src/main/servicios/adjuntos'
 import { ejecutarEliminacion } from '../src/main/servicios/eliminacion'
 import { agregarNotaDeLead, crearLead, fichaDeLead, listarLeads } from '../src/main/servicios/leads'
+import { estadoDelImportador, hayImportacionEnCurso, iniciarImportacion, reservarImportacionAutomatica } from '../src/main/servicios/importacion'
 import { crearPresupuesto, fichaDePresupuesto } from '../src/main/servicios/presupuestos'
-import { usarFuenteDePrueba } from '../src/main/servicios/sincronizacion'
+import { obtenerMotor, usarFuenteDePrueba } from '../src/main/servicios/sincronizacion'
 import { crearTareaDeSiniestro, fichaDeSiniestro, listarSiniestros } from '../src/main/servicios/siniestros'
 import { crearTareaCompleta, fichaDeTarea, listarTareas } from '../src/main/servicios/tareas'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes } from '../src/main/sincronizacion/cola'
@@ -331,5 +332,64 @@ test('una tarea borrada en una computadora desaparece de la otra', async () => {
   en(dockSud)
   await dockSud.motor.ciclarTareas()
   assert.ok(!listarTareas(FILTROS_COMERCIALES).filas.some((t) => t.titulo === 'Ordenar el archivo'), 'la tarea borrada allá ya no está acá')
+  cerrarTodo()
+})
+
+// ---------------------------------------------------------------------------
+// La importación automática y el botón «Reimportar la base» no se pisan
+// ---------------------------------------------------------------------------
+
+test('la importación automática figura como en curso y se saltea mientras corre una manual', async () => {
+  const { hoja, lanus, dockSud } = await dosComputadoras()
+  en(lanus)
+  crearLead({ ...LEAD_VACIO, nombre: 'Rosa Quiroga', telefono: '11 4444-1111', origen: 'WHATSAPP' }, MILAGROS)
+  await subirTodo(lanus)
+
+  // En Dock Sud baja el motor del programa, que es el que corre la importación automática.
+  en(dockSud)
+  const motor = obtenerMotor()
+  motor.encender()
+  const enCursoAlLeer: boolean[] = []
+  const estructura = hoja.estructura.bind(hoja)
+  hoja.estructura = async () => {
+    enCursoAlLeer.push(hayImportacionEnCurso())
+    return estructura()
+  }
+  // La reserva y el parche de `estructura` se sueltan sí o sí: si una aserción del medio falla, dejar
+  // el «en curso» tomado hace fallar todas las pruebas siguientes con «Ya hay una importación en curso»
+  // y tapa la falla de verdad.
+  let otra: ReturnType<typeof reservarImportacionAutomatica> = null
+  try {
+    // Alguien tiene una importación corriendo: la automática no arranca encima y queda para la
+    // próxima bajada; y al revés, el botón se rechaza mientras hay una en curso.
+    otra = reservarImportacionAutomatica(-1)
+    assert.ok(otra, 'sin nada en curso, la reserva se concede')
+    assert.throws(() => iniciarImportacion(DANIEL), /Ya hay una importación en curso/)
+    // La automática no se le muestra a la pantalla de Importar: ésa lee el estado una sola vez al
+    // abrirse y quedaría pegada en «Importación en curso…» aunque la automática ya haya terminado.
+    assert.equal(estadoDelImportador().enCurso, false, 'la automática no figura en la pantalla de Importar')
+    const enCursoAntes = (dockSud.db.prepare(`SELECT count(*) AS n FROM importaciones WHERE estado = 'EN_CURSO'`).get() as { n: number }).n
+    const salteada = await motor.ciclarBajada()
+    assert.ok(salteada)
+    assert.equal(salteada.necesitaImportacion, true, 'la consulta nueva pide importar…')
+    assert.ok(!listarLeads(FILTROS_COMERCIALES).filas.some((l) => l.nombre === 'Rosa Quiroga'), '…pero con otra importación en curso, la automática se saltea')
+    assert.ok(dockSud.db.prepare(`SELECT 1 FROM eventos_sync WHERE detalle LIKE '%se salteó%'`).get(), 'y queda anotado en el panel')
+    otra.liberar()
+    assert.equal(hayImportacionEnCurso(), false)
+    // Y no deja una importación colgada en EN_CURSO: en el próximo arranque se volvería una FALLIDA
+    // fantasma que la pantalla muestra como «última importación».
+    assert.equal((dockSud.db.prepare(`SELECT count(*) AS n FROM importaciones WHERE estado = 'EN_CURSO'`).get() as { n: number }).n, enCursoAntes)
+
+    // Liberada, la bajada siguiente importa; mientras corre, quien pregunte ve la importación en curso.
+    enCursoAlLeer.length = 0
+    await motor.ciclarBajada()
+    assert.ok(listarLeads(FILTROS_COMERCIALES).filas.some((l) => l.nombre === 'Rosa Quiroga'), 'la consulta llegó con la importación automática')
+    assert.ok(enCursoAlLeer.includes(true), 'la importación automática tiene que figurar como en curso mientras corre')
+    assert.equal(hayImportacionEnCurso(), false, 'y liberarse al terminar')
+  } finally {
+    otra?.liberar()
+    hoja.estructura = estructura
+    motor.apagar()
+  }
   cerrarTodo()
 })

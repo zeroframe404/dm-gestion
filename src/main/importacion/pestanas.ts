@@ -88,7 +88,9 @@ export function clasificarPestana(titulo: string): ClasificacionPestana {
 
   if (/\bBAJAS?\b/.test(t)) return { tipo: 'BAJAS', mes, anio }
   if (t.includes('RIESGO')) return { tipo: 'RIESGOS_VARIOS', mes: null, anio: null }
-  if (t.includes('SINIESTRO')) return { tipo: 'SINIESTROS', mes: null, anio: null }
+  // «STROS» y «DENUNCIAS» sólo como palabra entera: «REGISTRO» y «MAESTRO» no son pestañas de siniestros.
+  // El corte es contra letras y no \b, porque la normalización deja los años pegados al título («STROS26»).
+  if (t.includes('SINIESTRO') || /(?<![A-Z])(STROS?|DENUNCIAS?)(?![A-Z])/.test(t)) return { tipo: 'SINIESTROS', mes: null, anio: null }
   if (t.includes('IMPUTADO') || t.includes('IMPUTACION') || /^PAGOS?\b/.test(t)) return { tipo: 'PAGOS', mes: null, anio: null }
   if (t.includes('COBERTURA')) return { tipo: 'COBERTURA', mes: null, anio: null }
   if (t.includes('CONTADOR')) return { tipo: 'CONTADOR', mes: null, anio: null }

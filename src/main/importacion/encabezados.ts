@@ -102,7 +102,7 @@ export type Campo =
 
 /** Sinónimos generales (normalizados). El orden importa: ante un sinónimo repetido gana el primer campo. */
 const SINONIMOS: Record<Campo, string[]> = {
-  nombre: ['NOMBRE', 'APELLIDO Y NOMBRE', 'NOMBRE Y APELLIDO', 'APELLIDO NOMBRE', 'NOMBRE APELLIDO', 'APELLIDOS Y NOMBRES', 'NOMBRES Y APELLIDOS', 'ASEGURADO', 'ASEGURADO A', 'ASEG', 'ASEG A', 'CLIENTE', 'TOMADOR', 'TITULAR', 'APELLIDO', 'NOMBRE COMPLETO', 'RAZON SOCIAL', 'CLIENTES', 'ASEGURADOS', 'NOMBRE DEL ASEGURADO', 'NOMBRE ASEGURADO', 'ASEGURADO NOMBRE', 'APELLIDO Y NOMBRE DEL ASEGURADO', 'NOMBRE Y APELLIDO DEL ASEGURADO', 'NOMBRE DEL CLIENTE', 'NOMBRE CLIENTE', 'NOMBRE DEL TITULAR', 'TITULAR DE LA POLIZA', 'ASEGURADO TITULAR', 'DENUNCIANTE', 'NOMBRE DEL DENUNCIANTE'],
+  nombre: ['NOMBRE', 'APELLIDO Y NOMBRE', 'NOMBRE Y APELLIDO', 'APELLIDO NOMBRE', 'NOMBRE APELLIDO', 'APELLIDOS Y NOMBRES', 'NOMBRES Y APELLIDOS', 'ASEGURADO', 'ASEGURADO A', 'ASEG', 'ASEG A', 'CLIENTE', 'TOMADOR', 'TITULAR', 'APELLIDO', 'NOMBRE COMPLETO', 'RAZON SOCIAL', 'CLIENTES', 'ASEGURADOS', 'NOMBRE DEL ASEGURADO', 'NOMBRE ASEGURADO', 'ASEGURADO NOMBRE', 'APELLIDO Y NOMBRE DEL ASEGURADO', 'NOMBRE Y APELLIDO DEL ASEGURADO', 'NOMBRE DEL CLIENTE', 'NOMBRE CLIENTE', 'NOMBRE DEL TITULAR', 'TITULAR DE LA POLIZA', 'ASEGURADO TITULAR', 'DENUNCIANTE', 'NOMBRE DEL DENUNCIANTE', 'APELLIDO Y NOMBRES', 'APELLIDOS Y NOMBRE', 'NOMBRES Y APELLIDO', 'NOMBRE DEL ASEGURADO A', 'APELLIDO Y NOMBRE ASEGURADO', 'NOMBRE Y APELLIDO ASEGURADO', 'APELLIDO Y NOMBRE DEL CLIENTE', 'NOMBRE Y APELLIDO DEL CLIENTE', 'CLIENTE ASEGURADO', 'ASEGURADO CLIENTE', 'DATOS DEL ASEGURADO', 'NOMBRE ASEG', 'PROPIETARIO'],
   documento: ['DNI', 'CUIT', 'CUIL', 'DNI CUIT', 'DNI O CUIT', 'DNI CUIL', 'CUIT CUIL', 'DNI CUIT CUIL', 'DOCUMENTO', 'DOC', 'NRO DOC', 'N DOC', 'NRO DOCUMENTO', 'NUMERO DE DOCUMENTO', 'N DOCUMENTO', 'DNI N', 'NRO DNI', 'N DNI'],
   telefono: ['TELEFONO', 'TELEFONOS', 'TEL', 'CELULAR', 'CEL', 'WHATSAPP', 'WSP', 'WPP', 'CONTACTO', 'TELEFONO CELULAR', 'TEL CEL', 'NRO TELEFONO', 'N TELEFONO', 'TE', 'NUMERO DE TELEFONO'],
   email: ['EMAIL', 'E MAIL', 'MAIL', 'CORREO', 'CORREO ELECTRONICO', 'EMAILS'],
@@ -141,12 +141,14 @@ const SINONIMOS: Record<Campo, string[]> = {
   fecha_baja: ['FECHA DE BAJA', 'FECHA BAJA', 'BAJA', 'F BAJA', 'FECHA DE LA BAJA', 'DIA DE BAJA', 'BAJA EL'],
   mes: ['MES', 'PERIODO', 'MES DE BAJA', 'MES BAJA', 'MES PAGO', 'MES DE PAGO', 'MES ABONADO', 'MES QUE PAGA', 'MES CUOTA', 'PERIODO PAGADO'],
   tipo_riesgo: ['RIESGO', 'TIPO DE RIESGO', 'RAMO', 'BIEN ASEGURADO', 'BIEN', 'SEGURO', 'PRODUCTO', 'TIPO RIESGO', 'RIESGOS', 'RUBRO'],
-  fecha: ['FECHA', 'FECHA SINIESTRO', 'FECHA DEL SINIESTRO', 'FECHA DE SINIESTRO', 'FECHA IMPUTACION', 'FECHA DE IMPUTACION', 'FECHA DE OCURRENCIA', 'FECHA OCURRENCIA', 'FECHA DENUNCIA', 'FECHA DE DENUNCIA', 'FECHA DE COBRO', 'FECHA DEL HECHO', 'FECHA HECHO', 'FECHA DEL ACCIDENTE', 'FECHA ACCIDENTE', 'FECHA DEL STRO', 'FECHA STRO', 'F SINIESTRO', 'F DEL SINIESTRO', 'F STRO', 'DIA DEL SINIESTRO', 'DIA SINIESTRO', 'OCURRENCIA', 'OCURRIDO', 'OCURRIDO EL', 'FECHA OCURRIDO', 'FECHA DE OCURRIDO', 'FECHA EN QUE OCURRIO', 'CUANDO OCURRIO', 'CUANDO PASO', 'FECHA SINIESTRO OCURRIDO', 'FECHA DE SINIESTRO OCURRIDO'],
+  fecha: ['FECHA', 'FECHA SINIESTRO', 'FECHA DEL SINIESTRO', 'FECHA DE SINIESTRO', 'FECHA IMPUTACION', 'FECHA DE IMPUTACION', 'FECHA DE OCURRENCIA', 'FECHA OCURRENCIA', 'FECHA DENUNCIA', 'FECHA DE DENUNCIA', 'FECHA DE COBRO', 'FECHA DEL HECHO', 'FECHA HECHO', 'FECHA DEL ACCIDENTE', 'FECHA ACCIDENTE', 'FECHA DEL STRO', 'FECHA STRO', 'F SINIESTRO', 'F DEL SINIESTRO', 'F STRO', 'DIA DEL SINIESTRO', 'DIA SINIESTRO', 'OCURRENCIA', 'OCURRIDO', 'OCURRIDO EL', 'FECHA OCURRIDO', 'FECHA DE OCURRIDO', 'FECHA EN QUE OCURRIO', 'CUANDO OCURRIO', 'CUANDO PASO', 'FECHA SINIESTRO OCURRIDO', 'FECHA DE SINIESTRO OCURRIDO', 'FECHA Y HORA DEL SINIESTRO', 'FECHA Y HORA', 'FECHA DEL SINIESTRO DD MM AA', 'FECHA DE OCURRENCIA DEL SINIESTRO', 'FECHA SINIESTRO DENUNCIA', 'FECHA DEL EVENTO', 'FECHA EVENTO', 'FEC SINIESTRO', 'FEC STRO', 'FECHA SINI'],
   // Cuándo se cargó el siniestro en la agencia, que no es cuándo pasó: son dos columnas distintas.
-  fecha_carga: ['FECHA DE CARGA', 'FECHA CARGA', 'CARGA', 'CARGADO EL', 'FECHA DE LA CARGA', 'F CARGA', 'FECHA DE ALTA DEL SINIESTRO', 'FECHA CARGADO', 'FECHA DE CARGADO', 'FECHA DE INGRESO DEL SINIESTRO', 'INGRESADO EL', 'FECHA INGRESADO', 'CARGADO'],
+  // «FECHA DE ALTA» y «FECHA DE INGRESO» también están en `alta` (la de la póliza, en las mensuales):
+  // acá van después, así en SINIESTROS, donde `alta` no existe, caen en la fecha de carga.
+  fecha_carga: ['FECHA DE CARGA', 'FECHA CARGA', 'CARGA', 'CARGADO EL', 'FECHA DE LA CARGA', 'F CARGA', 'FECHA DE ALTA DEL SINIESTRO', 'FECHA CARGADO', 'FECHA DE CARGADO', 'FECHA DE INGRESO DEL SINIESTRO', 'INGRESADO EL', 'FECHA INGRESADO', 'CARGADO', 'FECHA DE ALTA', 'FECHA ALTA', 'FECHA DE INGRESO', 'FECHA INGRESO', 'FECHA DE APERTURA', 'FECHA APERTURA', 'FECHA DE RECEPCION', 'FECHA RECEPCION'],
   emision: ['EMISION', 'FECHA DE EMISION', 'FECHA EMISION', 'EMITIDA', 'EMITIDO', 'F EMISION', 'EMISION POLIZA'],
   resuelto: ['RESUELTO', 'RESUELTA', 'RESUELTOS', 'LISTO', 'HECHO', 'TERMINADO', 'FINALIZADO'],
-  numero_siniestro: ['SINIESTRO', 'N SINIESTRO', 'NRO SINIESTRO', 'NUMERO DE SINIESTRO', 'NUMERO SINIESTRO', 'N DE SINIESTRO', 'NRO DE SINIESTRO', 'STRO', 'N STRO', 'NRO STRO', 'SINIESTRO N', 'SINIESTRO NRO', 'N DE STRO', 'NRO DE STRO', 'NUMERO DE STRO', 'NUMERO STRO', 'STRO N', 'STRO NRO', 'NUM SINIESTRO', 'NUM DE SINIESTRO', 'NO SINIESTRO', 'NO DE SINIESTRO', 'SINIESTRO NUMERO', 'N SINIESTRO CIA', 'NRO SINIESTRO CIA', 'NUMERO DE SINIESTRO CIA', 'N DE SINIESTRO CIA', 'SINIESTRO CIA', 'N DE DENUNCIA', 'NRO DE DENUNCIA', 'NRO DENUNCIA', 'N DENUNCIA', 'NUMERO DE DENUNCIA', 'DENUNCIA N', 'DENUNCIA NRO', 'N RECLAMO', 'NRO RECLAMO', 'NUMERO DE RECLAMO', 'N DE RECLAMO'],
+  numero_siniestro: ['SINIESTRO', 'N SINIESTRO', 'NRO SINIESTRO', 'NUMERO DE SINIESTRO', 'NUMERO SINIESTRO', 'N DE SINIESTRO', 'NRO DE SINIESTRO', 'STRO', 'N STRO', 'NRO STRO', 'SINIESTRO N', 'SINIESTRO NRO', 'N DE STRO', 'NRO DE STRO', 'NUMERO DE STRO', 'NUMERO STRO', 'STRO N', 'STRO NRO', 'NUM SINIESTRO', 'NUM DE SINIESTRO', 'NO SINIESTRO', 'NO DE SINIESTRO', 'SINIESTRO NUMERO', 'N SINIESTRO CIA', 'NRO SINIESTRO CIA', 'NUMERO DE SINIESTRO CIA', 'N DE SINIESTRO CIA', 'SINIESTRO CIA', 'N DE DENUNCIA', 'NRO DE DENUNCIA', 'NRO DENUNCIA', 'N DENUNCIA', 'NUMERO DE DENUNCIA', 'DENUNCIA N', 'DENUNCIA NRO', 'N RECLAMO', 'NRO RECLAMO', 'NUMERO DE RECLAMO', 'N DE RECLAMO', 'N SINIESTRO COMPANIA', 'NRO SINIESTRO COMPANIA', 'NUMERO DE SINIESTRO COMPANIA'],
   descripcion: ['DESCRIPCION', 'HECHO', 'TIPO DE SINIESTRO', 'TIPO SINIESTRO', 'DANOS', 'DANO', 'RELATO', 'QUE PASO', 'DESCRIPCION DEL HECHO', 'DESCRIPCION DEL SINIESTRO', 'DETALLE DEL SINIESTRO', 'HECHOS', 'RELATO DEL HECHO', 'RELATO DEL SINIESTRO', 'DETALLE DEL HECHO', 'DESCRIPCION DEL DANO', 'DESCRIPCION SINIESTRO', 'SINIESTRO DESCRIPCION', 'MOTIVO DEL SINIESTRO', 'CAUSA DEL SINIESTRO', 'CLASE DE SINIESTRO', 'QUE OCURRIO', 'COMO OCURRIO', 'COMO PASO'],
   importe: ['IMPORTE', 'TOTAL', 'IMPORTE PAGADO', 'IMPORTE ABONADO', 'IMPORTE COBRADO', 'IMPORTES', 'MONTO PAGADO', 'MONTO ABONADO', 'SUMA PAGADA', 'IMPORTE $'],
   medio_pago: ['MEDIO', 'MEDIOS', 'VIA', 'CANAL', 'FORMA', 'MEDIO DE COBRO', 'COMO PAGO', 'COMO PAGA', 'PAGO POR', 'PAGO CON'],
@@ -388,19 +390,28 @@ const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
   OTRA: 'todos',
 }
 
-/** Índice inverso sinónimo → campo (se arma una sola vez). */
-const INDICE_GENERAL = new Map<string, Campo>()
+/**
+ * Índice inverso sinónimo → campos que lo reclaman, en el orden en que están declarados (se arma una
+ * sola vez). Gana el primero, salvo que ese primero no tenga sentido en el tipo de pestaña: «HECHO» es
+ * `resuelto` en AMP, pero en SINIESTROS ese campo no existe y la columna es la descripción del hecho.
+ * Con un solo campo por sinónimo, «HECHO» en SINIESTROS quedaba sin mapear.
+ */
+const INDICE_GENERAL = new Map<string, Campo[]>()
 /**
  * Segundo índice, sin los espacios: la normalización convierte la puntuación en espacios, así que
  * «D.N.I.» llega como "D N I" y «C.U.I.T.» como "C U I T". Comparando también sin espacios, esas
  * variantes caen en DNI y CUIT. Se consulta sólo si falló la coincidencia exacta.
  */
-const INDICE_COMPACTO = new Map<string, Campo>()
+const INDICE_COMPACTO = new Map<string, Campo[]>()
+function anotarEnIndice(indice: Map<string, Campo[]>, clave: string, campo: Campo): void {
+  const lista = indice.get(clave)
+  if (!lista) indice.set(clave, [campo])
+  else if (!lista.includes(campo)) lista.push(campo)
+}
 for (const [campo, sinonimos] of Object.entries(SINONIMOS) as Array<[Campo, string[]]>) {
   for (const sinonimo of sinonimos) {
-    if (!INDICE_GENERAL.has(sinonimo)) INDICE_GENERAL.set(sinonimo, campo)
-    const compacto = sinonimo.replace(/ /g, '')
-    if (!INDICE_COMPACTO.has(compacto)) INDICE_COMPACTO.set(compacto, campo)
+    anotarEnIndice(INDICE_GENERAL, sinonimo, campo)
+    anotarEnIndice(INDICE_COMPACTO, sinonimo.replace(/ /g, ''), campo)
   }
 }
 
@@ -443,6 +454,109 @@ const PREFERENCIAS: Partial<Record<Campo, string[]>> = {
   aviso: ['OB AVISOS', 'AVISO ENVIADO', 'AVISO', 'AVISOS'],
   nombre: ['APELLIDO Y NOMBRE', 'NOMBRE Y APELLIDO', 'NOMBRE COMPLETO', 'ASEGURADO', 'TITULAR', 'CLIENTE', 'NOMBRE'],
   documento: ['DNI CUIT', 'DNI', 'CUIT', 'DOCUMENTO'],
+  // «SINIESTRO» a secas suele ser el relato del hecho; si al lado hay un «N° SINIESTRO», el número es ése.
+  // Ésta sí vale para todos los tipos: la lista tiene TODOS los sinónimos del campo, así que ninguna
+  // columna se queda sin rango y las genéricas («STRO», «SINIESTRO») están al final.
+  numero_siniestro: [
+    'N SINIESTRO',
+    'NRO SINIESTRO',
+    'NUMERO DE SINIESTRO',
+    'NUMERO SINIESTRO',
+    'N DE SINIESTRO',
+    'NRO DE SINIESTRO',
+    'NUM SINIESTRO',
+    'NUM DE SINIESTRO',
+    'NO SINIESTRO',
+    'NO DE SINIESTRO',
+    'SINIESTRO N',
+    'SINIESTRO NRO',
+    'SINIESTRO NUMERO',
+    'N SINIESTRO CIA',
+    'NRO SINIESTRO CIA',
+    'NUMERO DE SINIESTRO CIA',
+    'N DE SINIESTRO CIA',
+    'N SINIESTRO COMPANIA',
+    'NRO SINIESTRO COMPANIA',
+    'NUMERO DE SINIESTRO COMPANIA',
+    'N STRO',
+    'NRO STRO',
+    'N DE STRO',
+    'NRO DE STRO',
+    'NUMERO DE STRO',
+    'NUMERO STRO',
+    'STRO N',
+    'STRO NRO',
+    'N DENUNCIA',
+    'NRO DENUNCIA',
+    'N DE DENUNCIA',
+    'NRO DE DENUNCIA',
+    'NUMERO DE DENUNCIA',
+    'DENUNCIA N',
+    'DENUNCIA NRO',
+    'N RECLAMO',
+    'NRO RECLAMO',
+    'N DE RECLAMO',
+    'NUMERO DE RECLAMO',
+    'SINIESTRO CIA',
+    'STRO',
+    'SINIESTRO',
+  ],
+}
+
+/**
+ * Preferencias que valen SÓLO en un tipo de pestaña. La lista de `fecha` es vocabulario de siniestros
+ * («FECHA DEL HECHO», «OCURRENCIA», «FEC. STRO»): puesta en la lista general le ganaba a la «FECHA DE
+ * PAGO» de una pestaña de imputados, que es otra cosa. Se consulta antes que PREFERENCIAS.
+ *
+ * Ojo: la columna genérica «FECHA» NO va en la lista. Un encabezado que no está listado no tiene rango,
+ * así que ya pierde contra cualquiera de éstos esté donde esté; listarlo, en cambio, lo haría ganarle a
+ * toda columna de fecha que no estuviera en la lista (p. ej. «FECHA IMPUTACION»), que es al revés.
+ */
+const PREFERENCIAS_POR_TIPO: Partial<Record<TipoPestana, Partial<Record<Campo, string[]>>>> = {
+  // En SINIESTROS conviven «FECHA» (la de carga o la del ajuste) y «FECHA SINIESTRO»: la que dice de
+  // qué fecha habla tiene que ganar aunque esté más a la derecha. Todas en su forma normalizada.
+  SINIESTROS: {
+    fecha: [
+      'FECHA SINIESTRO',
+      'FECHA DEL SINIESTRO',
+      'FECHA DE SINIESTRO',
+      'FECHA Y HORA DEL SINIESTRO',
+      'FECHA DEL SINIESTRO DD MM AA',
+      'FECHA DE OCURRENCIA DEL SINIESTRO',
+      'FECHA SINIESTRO OCURRIDO',
+      'FECHA DE SINIESTRO OCURRIDO',
+      'FECHA SINIESTRO DENUNCIA',
+      'FECHA DEL HECHO',
+      'FECHA HECHO',
+      'FECHA DEL ACCIDENTE',
+      'FECHA ACCIDENTE',
+      'FECHA DEL EVENTO',
+      'FECHA EVENTO',
+      'FECHA DE OCURRENCIA',
+      'FECHA OCURRENCIA',
+      'OCURRENCIA',
+      'F SINIESTRO',
+      'F DEL SINIESTRO',
+      'FEC SINIESTRO',
+      'FECHA SINI',
+      'FECHA DEL STRO',
+      'FECHA STRO',
+      'F STRO',
+      'FEC STRO',
+      'DIA DEL SINIESTRO',
+      'DIA SINIESTRO',
+      'OCURRIDO EL',
+      'OCURRIDO',
+      'FECHA OCURRIDO',
+      'FECHA DE OCURRIDO',
+      'FECHA EN QUE OCURRIO',
+      'CUANDO OCURRIO',
+      'CUANDO PASO',
+      'FECHA DENUNCIA',
+      'FECHA DE DENUNCIA',
+      'FECHA Y HORA',
+    ],
+  },
 }
 
 /**
@@ -474,8 +588,10 @@ const CAMPOS_CON_RESPALDO: Campo[] = [
 ]
 
 /** Qué tan preferido es un encabezado para un campo: más chico, mejor. */
-function rangoDePreferencia(campo: Campo, encabezado: string): number {
-  const lista = PREFERENCIAS[campo]
+function rangoDePreferencia(campo: Campo, encabezado: string, tipo: TipoPestana): number {
+  // Si el tipo de pestaña tiene su propia lista para el campo, manda ésa y no la general: son
+  // vocabularios distintos y mezclar los rangos de las dos daría un orden sin sentido.
+  const lista = PREFERENCIAS_POR_TIPO[tipo]?.[campo] ?? PREFERENCIAS[campo]
   if (!lista) return Number.MAX_SAFE_INTEGER
   const normalizado = normalizarTexto(encabezado)
   const posicion = lista.indexOf(normalizado)
@@ -500,11 +616,13 @@ export function resolverCampo(encabezado: string, tipo: TipoPestana): Campo | nu
   const compacta = clave.replace(/ /g, '')
   const ajustes = AJUSTES_POR_TIPO[tipo]
   const ajuste = ajustes?.[clave] ?? ajustes?.[compacta]
-  const campo = ajuste ?? INDICE_GENERAL.get(clave) ?? INDICE_COMPACTO.get(compacta) ?? null
-  if (!campo) return null
   const permitidos = CAMPOS_POR_TIPO[tipo]
-  if (permitidos !== 'todos' && !permitidos.includes(campo)) return null
-  return campo
+  const admitido = (campo: Campo) => permitidos === 'todos' || permitidos.includes(campo)
+  if (ajuste) return admitido(ajuste) ? ajuste : null
+  // Del índice general se toma el primer campo que el tipo admita: el que gana en general puede no
+  // existir en esta pestaña («HECHO» → resuelto, que SINIESTROS no tiene, y ahí es la descripción).
+  const candidatos = INDICE_GENERAL.get(clave) ?? INDICE_COMPACTO.get(compacta) ?? []
+  return candidatos.find(admitido) ?? null
 }
 
 /**
@@ -549,7 +667,7 @@ export function mapearEncabezados(filaEncabezados: string[], tipo: TipoPestana):
       if (seSuman(campo, encabezados[yaAsignada] ?? '', encabezado)) {
         extras.set(campo, [...(extras.get(campo) ?? []), indice])
         columnas.push({ columna, encabezado, campo, nota: `se suma al campo ${campo} de la columna ${letraColumna(yaAsignada)}` })
-      } else if (rangoDePreferencia(campo, encabezado) < rangoDePreferencia(campo, encabezados[yaAsignada] ?? '')) {
+      } else if (rangoDePreferencia(campo, encabezado, tipo) < rangoDePreferencia(campo, encabezados[yaAsignada] ?? '', tipo)) {
         // Ésta describe mejor el campo: pasa a ser la principal y la anterior se corre.
         porCampo.set(campo, indice)
         if (CAMPOS_CON_RESPALDO.includes(campo)) alternativas.set(campo, [yaAsignada, ...(alternativas.get(campo) ?? [])])
@@ -717,6 +835,18 @@ const ENCABEZADO_PARA_AGREGAR: Partial<Record<Campo, string>> = {
 }
 
 /**
+ * Títulos que dependen de la pestaña, por encima de los generales. En SINIESTROS una columna «FECHA»
+ * no dice de qué fecha habla (¿la del hecho o la de carga?) y «NOMBRE» no dice de quién: se agregan
+ * con el nombre que la agencia entiende de un vistazo. Lo que no está acá sigue saliendo de arriba.
+ */
+const ENCABEZADO_PARA_AGREGAR_POR_TIPO: Partial<Record<TipoPestana, Partial<Record<Campo, string>>>> = {
+  SINIESTROS: {
+    fecha: 'FECHA SINIESTRO',
+    nombre: 'ASEGURADO',
+  },
+}
+
+/**
  * El encabezado con el que agregar la columna de `campo` a una pestaña de ese tipo que ya tiene
  * `existentes`, o null si no hay forma de titularla de manera que la aplicación la reconozca de vuelta
  * como ese campo (un campo que ese tipo de pestaña no admite, o un título que con los ajustes del tipo
@@ -726,7 +856,7 @@ const ENCABEZADO_PARA_AGREGAR: Partial<Record<Campo, string>> = {
 export function encabezadoParaAgregar(campo: Campo, tipo: TipoPestana, existentes: string[]): string | null {
   const permitidos = CAMPOS_POR_TIPO[tipo]
   if (permitidos !== 'todos' && !permitidos.includes(campo)) return null
-  const candidatos = [ENCABEZADO_PARA_AGREGAR[campo], ...SINONIMOS[campo]].filter((c): c is string => !!c)
+  const candidatos = [ENCABEZADO_PARA_AGREGAR_POR_TIPO[tipo]?.[campo], ENCABEZADO_PARA_AGREGAR[campo], ...SINONIMOS[campo]].filter((c): c is string => !!c)
   for (const candidato of candidatos) {
     if (resolverCampo(candidato, tipo) !== campo) continue
     const mapeo = mapearEncabezados([...existentes, candidato], tipo)

@@ -219,7 +219,10 @@ export function registrarAnexoEnLaCola(
 export function encolarBorradoDeAnexo(filaId: string, tipoPestana: 'APP_ADJUNTOS' | 'APP_COMENTARIOS', actor: SesionUsuario | null, base: BaseDeDatos = db()): void {
   const conocida = base.prepare('SELECT pestana FROM filas_crudas WHERE fila_id = ?').get(filaId) as { pestana: string } | undefined
   const pestana = conocida?.pestana ?? (tipoPestana === 'APP_ADJUNTOS' ? pestanaDeAdjuntos() : pestanaDeComentarios())
-  encolar({ operacion: 'borrar', pestana, filaId, campos: {} }, actor)
+  // 12.7: la fila de un adjunto sale en el ciclo siguiente, sin la ventana de agrupado de un minuto.
+  // El archivo ya se borró del servidor, y si esta computadora se cierra en ese minuto las otras
+  // siguen viendo la fila «en el servidor» y reciben un 404 al abrirla.
+  encolar({ operacion: 'borrar', pestana, filaId, campos: {} }, actor, { sinEspera: tipoPestana === 'APP_ADJUNTOS' })
 }
 
 /**

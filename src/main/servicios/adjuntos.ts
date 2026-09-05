@@ -63,6 +63,17 @@ export const CARPETA_DE_ADJUNTOS_EN_DRIVE = 'Adjuntos DM'
 export const MENSAJE_SIN_DRIVE = 'Google Drive no está configurado en esta computadora.'
 /** «Nunca»: la fecha del próximo intento de un archivo que el servidor rechazó para siempre. */
 const NUNCA = '9999-12-31T00:00:00.000Z'
+/**
+ * Lo que queda anotado en `vps_error` cuando esta computadora contrastó el archivo contra el servidor
+ * y el servidor NO lo tiene (12.7). Es una marca para adentro: la ficha no la muestra como error, sólo
+ * deja de decir «está en el servidor».
+ *
+ * Hace falta porque el desmarcado no puede vivir sólo en `vps_subido_en`: `guardarAdjuntoDeLaHoja`
+ * vuelve a copiar la columna SUBIDO de la fila en CADA importación completa, y sin la marca lo que
+ * `verificarAdjuntosContraElServidor` había corregido al arrancar volvía a mentir apenas entraba una
+ * importación (y la ficha volvía a dar 404 al abrir el adjunto).
+ */
+export const FALTA_EN_EL_SERVIDOR = 'El servidor no tiene este archivo.'
 
 // ---------------------------------------------------------------------------
 // El almacén: dónde se suben y de dónde se bajan los archivos
@@ -169,6 +180,22 @@ function selectDe(tipo: TipoDeAnexo): string {
           FROM ${tabla}`
 }
 
+/** Lo que hace falta para subir, verificar o volver a registrar un adjunto: todo menos la miniatura y lo de Drive. */
+type FilaAdjuntoLiviana = Omit<FilaAdjunto, 'miniatura' | 'ancho' | 'alto' | 'drive_id' | 'drive_error'>
+
+/**
+ * El mismo SELECT sin la miniatura (12.7). Es un base64 de 15 a 40 KB por foto, y los recorridos en
+ * segundo plano (la subida cada 10 s, la verificación al arrancar sobre TODAS las filas con vps_id)
+ * no la necesitan para nada: con `selectDe` se leían megabytes por vuelta.
+ */
+function selectLivianoDe(tipo: TipoDeAnexo): string {
+  const { tabla, padre } = TABLAS[tipo]
+  return `SELECT id, ${padre} AS padre_id, fila_id, nombre, archivo, tipo, tamano, sha256,
+                 vps_id, vps_subido_en, vps_error, vps_intentos, vps_proximo_intento,
+                 usuario_nombre, creado_en${tipo === 'siniestro' ? ', categoria, categoria_detalle' : ''}
+          FROM ${tabla}`
+}
+
 function leerFila(tipo: TipoDeAnexo, adjuntoId: number): FilaAdjunto {
   const fila = db().prepare(`${selectDe(tipo)} WHERE id = ?`).get(adjuntoId) as FilaAdjunto | undefined
   if (!fila) throw new ErrorDeNegocio('No se encontró ese documento.')
@@ -202,6 +229,9 @@ export interface AdjuntoGenerico {
 }
 
 function aGenerico(fila: FilaAdjunto): AdjuntoGenerico {
+  // Esta computadora ya le preguntó al servidor y el archivo no estaba: aunque la fila de la base
+  // vuelva a traer la columna SUBIDO en la próxima importación, acá se sabe que no está.
+  const faltaEnElServidor = fila.vps_error === FALTA_EN_EL_SERVIDOR
   return {
     id: fila.id,
     nombre: fila.nombre,
@@ -211,10 +241,12 @@ function aGenerico(fila: FilaAdjunto): AdjuntoGenerico {
     usuarioNombre: fila.usuario_nombre,
     enDrive: fila.drive_id !== null,
     errorDeDrive: fila.drive_error,
-    enElServidor: fila.vps_subido_en !== null,
-    errorDelServidor: fila.vps_error,
+    enElServidor: fila.vps_subido_en !== null && !faltaEnElServidor,
+    // La marca no es un error para mostrar: si se mostrara, la ficha diría «no subió» en rojo en vez
+    // de «cargado en otra computadora», que es lo que pasa de verdad.
+    errorDelServidor: faltaEnElServidor ? null : fila.vps_error,
     descargado: fila.archivo !== '' && existsSync(rutaDeAdjunto(fila.archivo)),
-    enOtraComputadora: fila.archivo === '' && fila.vps_id !== null && fila.vps_subido_en === null,
+    enOtraComputadora: fila.archivo === '' && fila.vps_id !== null && (fila.vps_subido_en === null || faltaEnElServidor),
     miniatura: fila.miniatura,
     ancho: fila.ancho,
     alto: fila.alto,
@@ -294,6 +326,13 @@ export function registrarAdjunto(
   const ahora = ahoraIso()
   const { tabla, padre } = TABLAS[tipo]
   const conCategoria = tipo === 'siniestro'
+  // Si la ficha madre todavía no tiene identidad en la base (una tarea vieja sin fila), la fila de APP
+  // ADJUNTOS no puede salir: el `fila_id` entra en NULL desde el vamos para que `registrarLoQueNoViajo`
+  // lo vuelva a intentar cuando la ficha la gane. Se pregunta ANTES del INSERT y no se arregla después
+  // con un UPDATE: entre las dos sentencias no hay transacción, y una caída ahí en el medio dejaba
+  // justo el estado que esto evita (un fila_id puesto que nadie encoló, invisible para siempre). El
+  // `vps_id` se pone igual: el archivo puede ir subiendo mientras tanto.
+  const conVinculo = vinculoDelPadre(tipo, padreId) !== null
 
   const { id } = db()
     .prepare(
@@ -305,7 +344,7 @@ export function registrarAdjunto(
     )
     .get({
       padre: padreId,
-      fila_id: filaId,
+      fila_id: conVinculo ? filaId : null,
       nombre: copia.nombre,
       archivo: copia.archivo,
       tipo: tipoMime,
@@ -321,16 +360,18 @@ export function registrarAdjunto(
       ...(conCategoria ? { categoria: opciones.categoria ?? null, categoria_detalle: opciones.categoriaDetalle ?? null } : {}),
     }) as { id: number }
 
-  encolarFichaDelAdjunto(tipo, padreId, filaId, {
-    fecha: ahora,
-    nombre: copia.nombre,
-    categoria: conCategoria ? nombreDeCategoria(opciones.categoria ?? null, opciones.categoriaDetalle ?? null) : null,
-    vpsId,
-    tamano: copia.tamano,
-    sha256,
-    usuario: actor.nombre,
-    subidoEn: null,
-  }, actor)
+  if (conVinculo) {
+    encolarFichaDelAdjunto(tipo, padreId, filaId, {
+      fecha: ahora,
+      nombre: copia.nombre,
+      categoria: conCategoria ? nombreDeCategoria(opciones.categoria ?? null, opciones.categoriaDetalle ?? null) : null,
+      vpsId,
+      tamano: copia.tamano,
+      sha256,
+      usuario: actor.nombre,
+      subidoEn: null,
+    }, actor)
+  }
 
   return aGenerico(leerFila(tipo, id))
 }
@@ -376,15 +417,25 @@ export function borrarAdjuntoRegistrado(tipo: TipoDeAnexo, adjuntoId: number, ac
   db().prepare(`DELETE FROM ${TABLAS[tipo].tabla} WHERE id = ?`).run(fila.id)
   borrarArchivoDeAdjunto(fila.archivo)
   if (fila.fila_id) encolarBorradoDeAnexo(fila.fila_id, 'APP_ADJUNTOS', actor)
-  if (fila.vps_id && fila.vps_subido_en) {
-    const almacen = dameAlmacen()
-    if (almacen) {
-      void almacen.borrarAdjunto(fila.vps_id).catch((error: unknown) => {
-        anotarEvento('error', `No se pudo borrar «${fila.nombre}» del servidor: ${error instanceof Error ? error.message : String(error)}`, { conError: true })
-      })
-    }
-  }
+  if (fila.vps_id && fila.vps_subido_en) borrarAdjuntosDelServidor([{ vpsId: fila.vps_id, nombre: fila.nombre }])
   return { padreId: fila.padre_id, nombre: fila.nombre }
+}
+
+/**
+ * Saca del servidor los archivos de fichas que ya no existen acá, lo mejor posible y sin esperar:
+ * si no hay conexión queda el archivo huérfano allá, que es preferible a un borrado que no se puede
+ * hacer. Lo usa el borrado de un adjunto suelto y el de una ficha entera con sus adjuntos (12.7:
+ * hasta la 12.6 eliminar un siniestro dejaba sus fotos en el servidor para siempre).
+ */
+export function borrarAdjuntosDelServidor(lista: Array<{ vpsId: string; nombre: string }>): void {
+  if (lista.length === 0) return
+  const almacen = dameAlmacen()
+  if (!almacen) return
+  for (const { vpsId, nombre } of lista) {
+    void almacen.borrarAdjunto(vpsId).catch((error: unknown) => {
+      anotarEvento('error', `No se pudo borrar «${nombre}» del servidor: ${error instanceof Error ? error.message : String(error)}`, { conError: true })
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +467,11 @@ export async function asegurarAdjuntoLocal(tipo: TipoDeAnexo, adjuntoId: number)
         `«${fila.nombre}» se perdió en el servidor. La computadora que lo cargó (${fila.usuario_nombre}) lo vuelve a subir sola la próxima vez que abra el programa, si todavía lo tiene.`,
       )
     }
+    // 12.7: un corte o una descarga que tardó más de lo que se espera (ver `pedirCrudo`) no es un
+    // «error inesperado»: se dice qué pasó y qué hacer.
+    if (esTimeout(error) || esFallaDeRed(error)) {
+      throw new ErrorDeNegocio(`La descarga de «${fila.nombre}» se cortó o tardó demasiado; probá de nuevo con mejor conexión.`)
+    }
     throw error
   }
   if (fila.sha256 && bajado.sha256 && bajado.sha256 !== fila.sha256) {
@@ -426,9 +482,11 @@ export async function asegurarAdjuntoLocal(tipo: TipoDeAnexo, adjuntoId: number)
   const medidas = miniaturaDe(rutaDeAdjunto(copia.archivo), tipoMime)
   db()
     .prepare(
+      // El archivo bajó del servidor: cualquier cosa que dijera `vps_error` de este archivo y el
+      // servidor (la marca de «no lo tiene», un rechazo viejo) quedó desmentida por los hechos.
       `UPDATE ${TABLAS[tipo].tabla}
        SET archivo = ?, tipo = ?, tamano = ?, sha256 = COALESCE(sha256, ?), ancho = COALESCE(ancho, ?), alto = COALESCE(alto, ?),
-           miniatura = COALESCE(miniatura, ?), vps_subido_en = COALESCE(vps_subido_en, ?)
+           miniatura = COALESCE(miniatura, ?), vps_subido_en = COALESCE(vps_subido_en, ?), vps_error = NULL
        WHERE id = ?`,
     )
     .run(copia.archivo, tipoMime, copia.tamano, sha256De(bajado.contenido), medidas.ancho, medidas.alto, medidas.miniatura, ahoraIso(), fila.id)
@@ -470,11 +528,55 @@ export interface ResultadoDeSubidaDeAdjuntos {
   fallidos: number
 }
 
+/** El pedido se cortó por el reloj (`AbortSignal.timeout`): el servidor no dijo nada, pero el tiempo pasó. */
+function esTimeout(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
+}
+
+/**
+ * Si el servidor rechazó el ARCHIVO en sí (demasiado grande, tipo no admitido, vacío, dañado, sin
+ * nombre): reintentarlo no cambia nada y al tercer rechazo se deja de intentar. Todo lo demás que el
+ * servidor conteste (token vencido, 429, 409, 503, un 5xx) se arregla sin tocar el archivo, así que
+ * nunca es definitivo: hasta la 12.6 cualquier 4xx mandaba el archivo a «nunca» aunque la culpa fuera
+ * del token. Con `status` se decide por el código; sin él (el almacén de las pruebas), por el mensaje.
+ */
+const PALABRAS_DE_RECHAZO = /vac[ií]o|nombre|hash|sha256|dañad|supera el m[aá]ximo|demasiado grande|tipo no admitido/i
+
+function esRechazoDelArchivo(error: unknown): boolean {
+  if (!(error instanceof ErrorDeNegocio)) return false
+  const status = (error as { status?: unknown }).status
+  if (typeof status === 'number') {
+    if (status === 413 || status === 415 || status === 422) return true
+    if (status !== 400) return false
+  }
+  // Por palabras se mira el DETALLE del servidor, no el mensaje armado: el mensaje lleva adentro el
+  // nombre del archivo («…(subir el adjunto «hash.pdf»): el cuerpo no se pudo leer»), y con eso un
+  // adjunto llamado «hash.pdf» o «dañado.pdf» se daba por rechazado con cualquier 400 transitorio.
+  const detalle = (error as { detalle?: unknown }).detalle
+  return PALABRAS_DE_RECHAZO.test(typeof detalle === 'string' ? detalle : error.message)
+}
+
+/**
+ * El 409 («ya hay un adjunto con ese id y otro contenido: un adjunto no se reescribe») no se arregla
+ * esperando: ni el id ni el sha256 de la fila cambian nunca, así que el mismo PUT —que puede ser de
+ * decenas de MB— volvería cada hora para siempre. Al tercero se para. Si algún día ese archivo
+ * desaparece del servidor, `verificarAdjuntosContraElServidor` lo vuelve a poner en la cola.
+ */
+function esConflictoDeId(error: unknown): boolean {
+  return error instanceof ErrorDeNegocio && (error as { status?: unknown }).status === 409
+}
+
 /**
  * Sube al servidor los archivos que todavía no están, de a pocos por vuelta (la llama el motor cada
- * diez segundos). Un fallo de red corta la vuelta y no cuenta como intento; un rechazo del servidor
- * (muy grande, dañado) cuenta, y al tercero se deja de intentar para siempre, con el motivo a la
- * vista en la ficha. Nunca lanza: lo que falla queda anotado en la fila y en la bitácora.
+ * diez segundos). Un fallo de red no cuenta como intento: ESA fila espera un minuto y se sigue con la
+ * siguiente, y sólo con dos fallas de red seguidas se corta la vuelta (ahí sí no hay conexión). Un
+ * timeout cuenta como intento, con espera creciente. Un rechazo del servidor cuenta, y si es del
+ * archivo en sí (ver `esRechazoDelArchivo`), al tercero se deja de intentar para siempre, con el motivo
+ * a la vista en la ficha. Nunca lanza: lo que falla queda anotado en la fila y en la bitácora.
+ *
+ * Hasta la 12.6 la primera falla de red cortaba la vuelta entera sin contar el intento, y como los
+ * pendientes salían por fecha, el mismo archivo (uno que siempre tardaba más de diez minutos, por
+ * ejemplo) volvía a ser el primero en cada vuelta: los que vinieron después no se intentaban jamás.
  */
 export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>) | null = null, limite = 10): Promise<ResultadoDeSubidaDeAdjuntos> {
   const resultado: ResultadoDeSubidaDeAdjuntos = { subidos: 0, fallidos: 0 }
@@ -486,11 +588,14 @@ export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>)
   // veinte segundos para no comerse el ciclo siguiente.
   const arranque = Date.now()
   const hayTiempo = () => Date.now() - arranque < 20_000
+  // Fallas de red seguidas en esta vuelta: con dos, no hay conexión y no vale la pena seguir.
+  let fallasDeRedSeguidas = 0
 
   for (const [tipo, { tabla, grupo }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
+    // Los que ya fallaron van al fondo: un archivo que no pasa no puede tapar a los que vinieron después.
     const pendientes = db()
-      .prepare(`${selectDe(tipo)} WHERE ${CONDICION_PENDIENTE} ORDER BY creado_en LIMIT ?`)
-      .all(ahora, limite) as FilaAdjunto[]
+      .prepare(`${selectLivianoDe(tipo)} WHERE ${CONDICION_PENDIENTE} ORDER BY vps_intentos, creado_en LIMIT ?`)
+      .all(ahora, limite) as FilaAdjuntoLiviana[]
     for (const fila of pendientes) {
       if (!hayTiempo()) return resultado
       const ruta = rutaDeAdjunto(fila.archivo)
@@ -499,7 +604,21 @@ export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>)
         resultado.fallidos++
         continue
       }
-      const contenido = readFileSync(ruta)
+      let contenido: Buffer
+      try {
+        contenido = readFileSync(ruta)
+      } catch (error) {
+        // Abierto por otro programa (EBUSY), sin permiso (EPERM): es un fallo de ESTE archivo, con su
+        // espera creciente. Hasta la 12.6 la excepción tumbaba la vuelta entera, cada diez segundos.
+        const intentos = fila.vps_intentos + 1
+        const mensaje = `No se pudo leer el archivo: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300)
+        db()
+          .prepare(`UPDATE ${tabla} SET vps_intentos = ?, vps_error = ?, vps_proximo_intento = ? WHERE id = ?`)
+          .run(intentos, mensaje, proximoIntento(intentos), fila.id)
+        anotarEvento('error', `No se pudo subir «${fila.nombre}» al servidor: ${mensaje}`, { conError: true })
+        resultado.fallidos++
+        continue
+      }
       const sha256 = fila.sha256 ?? sha256De(contenido)
       try {
         await almacen.subirAdjunto(
@@ -520,15 +639,29 @@ export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>)
         // 12.7: se lo cuenta a las otras computadoras por la columna SUBIDO de su fila.
         if (fila.fila_id) encolarSubidoDeAnexo(fila.fila_id, subidoEn)
         resultado.subidos++
+        fallasDeRedSeguidas = 0
       } catch (error) {
-        const mensaje = (error instanceof Error ? error.message : String(error)).slice(0, 300)
-        if (esFallaDeRed(error)) {
-          // Sin conexión: se vuelve a mirar en un minuto y no se cuenta como intento fallido.
+        const timeout = esTimeout(error)
+        // El timeout matchea `esFallaDeRed` («aborted»), pero se mira primero: el servidor estaba ahí y
+        // el archivo no llegó a tiempo, así que cuenta como intento. Si no contara, el que siempre
+        // tarda más de diez minutos volvería a ser el primero de cada vuelta.
+        if (!timeout && esFallaDeRed(error)) {
+          // Sin conexión: ESTA fila se vuelve a mirar en un minuto, no cuenta como intento fallido, y
+          // se sigue con la siguiente. Dos seguidas es que no hay internet, y ahí se corta.
           db().prepare(`UPDATE ${tabla} SET vps_proximo_intento = ? WHERE id = ?`).run(proximoIntento(1), fila.id)
-          return resultado
+          fallasDeRedSeguidas++
+          if (fallasDeRedSeguidas >= 2) return resultado
+          continue
         }
+        fallasDeRedSeguidas = 0
+        const mensaje = (timeout
+          ? 'La subida tardó más de diez minutos y se cortó; se vuelve a intentar más tarde.'
+          : error instanceof Error
+            ? error.message
+            : String(error)
+        ).slice(0, 300)
         const intentos = fila.vps_intentos + 1
-        const definitivo = error instanceof ErrorDeNegocio && intentos >= 3
+        const definitivo = (esRechazoDelArchivo(error) || esConflictoDeId(error)) && intentos >= 3
         db()
           .prepare(`UPDATE ${tabla} SET vps_intentos = ?, vps_error = ?, vps_proximo_intento = ? WHERE id = ?`)
           .run(intentos, mensaje, definitivo ? NUNCA : proximoIntento(intentos), fila.id)
@@ -544,10 +677,18 @@ export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>)
 }
 
 export interface ResultadoDeVerificacionDeAdjuntos {
-  /** Archivos que esta computadora daba por subidos y el servidor no tiene: vuelven a la cola de subida. */
+  /**
+   * Archivos que vuelven a la cola de subida: los que esta computadora daba por subidos y el servidor
+   * no tiene, y los que una versión anterior dio por perdidos sin que la culpa fuera del archivo.
+   */
   reencolados: number
   /** Archivos de otras computadoras que el servidor sí tiene: la ficha ya puede decir «en el servidor». */
   confirmados: number
+  /**
+   * Archivos de otras computadoras que figuraban «en el servidor» y el servidor no tiene (12.7): la
+   * ficha vuelve a decir «cargado en otra computadora», que es la verdad, en vez de dar un 404 al abrir.
+   */
+  desmarcados: number
 }
 
 /**
@@ -558,31 +699,65 @@ export interface ResultadoDeVerificacionDeAdjuntos {
  * computadora». Nunca lanza por un archivo; una falla de red la propaga (quien llama la anota).
  */
 export async function verificarAdjuntosContraElServidor(): Promise<ResultadoDeVerificacionDeAdjuntos> {
-  const resultado: ResultadoDeVerificacionDeAdjuntos = { reencolados: 0, confirmados: 0 }
+  const resultado: ResultadoDeVerificacionDeAdjuntos = { reencolados: 0, confirmados: 0, desmarcados: 0 }
   const almacen = dameAlmacen()
   if (!almacen) return resultado
   const { fichas, completa } = await almacen.listarAdjuntos()
   const enElServidor = new Set(fichas.map((ficha) => ficha.id))
   const ahora = ahoraIso()
 
-  for (const [tipo, { tabla }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
-    const filas = db().prepare(`${selectDe(tipo)} WHERE vps_id IS NOT NULL`).all() as FilaAdjunto[]
+  for (const { tabla } of Object.values(TABLAS)) {
+    // Sólo lo que hace falta para decidir: son TODAS las filas con vps_id, en cada arranque.
+    const filas = db()
+      .prepare(`SELECT id, vps_id, archivo, vps_subido_en, vps_error, vps_proximo_intento FROM ${tabla} WHERE vps_id IS NOT NULL`)
+      .all() as Array<Pick<FilaAdjunto, 'id' | 'vps_id' | 'archivo' | 'vps_subido_en' | 'vps_error' | 'vps_proximo_intento'>>
     for (const fila of filas) {
       const esta = enElServidor.has(fila.vps_id!)
       const tieneElArchivo = fila.archivo !== '' && existsSync(rutaDeAdjunto(fila.archivo))
-      if (esta && fila.vps_subido_en === null) {
-        // Está en el servidor aunque acá no figurara: se confirma, y si se había dado por perdido se olvida el motivo.
-        db().prepare(`UPDATE ${tabla} SET vps_subido_en = ?, vps_error = NULL, vps_proximo_intento = NULL WHERE id = ?`).run(ahora, fila.id)
-        resultado.confirmados++
+      if (esta) {
+        if (fila.vps_subido_en === null) {
+          // Está en el servidor aunque acá no figurara: se confirma, y si se había dado por perdido se olvida el motivo.
+          db().prepare(`UPDATE ${tabla} SET vps_subido_en = ?, vps_error = NULL, vps_proximo_intento = NULL WHERE id = ?`).run(ahora, fila.id)
+          resultado.confirmados++
+        } else if (fila.vps_error === FALTA_EN_EL_SERVIDOR) {
+          // La marca quedó vieja: cuando se desmarcó el archivo no estaba y ahora sí (la computadora
+          // que lo tenía terminó de subirlo). Se saca la marca y la ficha vuelve a decir «en el servidor».
+          db().prepare(`UPDATE ${tabla} SET vps_error = NULL WHERE id = ?`).run(fila.id)
+          resultado.confirmados++
+        }
         continue
       }
-      // Sólo con la lista entera se puede afirmar que algo NO está. Y sólo tiene sentido reencolar lo
-      // que esta computadora puede volver a subir: el archivo tiene que estar en su disco.
-      if (!esta && completa && fila.vps_subido_en !== null && tieneElArchivo) {
-        db()
-          .prepare(`UPDATE ${tabla} SET vps_subido_en = NULL, vps_error = NULL, vps_intentos = 0, vps_proximo_intento = NULL WHERE id = ?`)
-          .run(fila.id)
+      // Sólo con la lista entera se puede afirmar que algo NO está.
+      if (!completa) continue
+      if (fila.vps_subido_en === null && fila.vps_proximo_intento === NUNCA && tieneElArchivo && !PALABRAS_DE_RECHAZO.test(fila.vps_error ?? '')) {
+        // El rescate de lo que la 12.6 dio por perdido: tres 401 con el token vencido (o tres 503)
+        // mandaban el archivo a «nunca» aunque la culpa no fuera del archivo, y ahí quedaba muerto para
+        // siempre con el archivo sano en el disco. Si el servidor no lo tiene y acá está, se vuelve a
+        // intentar desde cero. Lo que el servidor rechazó por el archivo en sí (413, 415, 422, un 400
+        // por el nombre o la huella) no se rescata: volvería a fallar igual.
+        db().prepare(`UPDATE ${tabla} SET vps_error = NULL, vps_intentos = 0, vps_proximo_intento = NULL WHERE id = ?`).run(fila.id)
         resultado.reencolados++
+        continue
+      }
+      if (fila.vps_subido_en !== null) {
+        // Sólo tiene sentido reencolar lo que esta computadora puede volver a subir: el archivo tiene
+        // que estar en su disco.
+        if (tieneElArchivo) {
+          db()
+            .prepare(`UPDATE ${tabla} SET vps_subido_en = NULL, vps_error = NULL, vps_intentos = 0, vps_proximo_intento = NULL WHERE id = ?`)
+            .run(fila.id)
+          resultado.reencolados++
+        } else if (fila.archivo === '') {
+          // Lo cargó otra computadora y la columna SUBIDO decía que estaba, pero no está (se borró del
+          // servidor, o la otra PC lo dio por subido sin estarlo). Sin el archivo acá no hay nada que
+          // reencolar: sólo se deja de afirmar «en el servidor», con la marca que aguanta la próxima
+          // importación completa (ver `FALTA_EN_EL_SERVIDOR`).
+          db().prepare(`UPDATE ${tabla} SET vps_subido_en = NULL, vps_error = ? WHERE id = ?`).run(FALTA_EN_EL_SERVIDOR, fila.id)
+          resultado.desmarcados++
+        }
+        // Si el archivo es de esta computadora (`archivo <> ''`) y ya no está en el disco, no se toca:
+        // desmarcarlo lo dejaba pendiente de subida y en la vuelta siguiente iba a «nunca» con «el
+        // archivo ya no está en esta computadora», contado para siempre como adjunto sin subir.
       }
     }
   }
@@ -593,14 +768,21 @@ export async function verificarAdjuntosContraElServidor(): Promise<ResultadoDeVe
       { filas: resultado.reencolados },
     )
   }
+  if (resultado.desmarcados > 0) {
+    anotarEvento(
+      'reparacion',
+      `${resultado.desmarcados} archivos adjuntos de otras computadoras figuraban en el servidor y no están: la ficha vuelve a decir «cargado en otra computadora».`,
+      { filas: resultado.desmarcados },
+    )
+  }
   return resultado
 }
 
 async function reintentarDrive(dameToken: () => Promise<string>, limite: number): Promise<void> {
   for (const [tipo, { tabla, etiqueta }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
     const sinDrive = db()
-      .prepare(`${selectDe(tipo)} WHERE drive_id IS NULL AND drive_error = ? AND archivo <> '' ORDER BY creado_en LIMIT ?`)
-      .all(MENSAJE_SIN_DRIVE, limite) as FilaAdjunto[]
+      .prepare(`${selectLivianoDe(tipo)} WHERE drive_id IS NULL AND drive_error = ? AND archivo <> '' ORDER BY creado_en LIMIT ?`)
+      .all(MENSAJE_SIN_DRIVE, limite) as FilaAdjuntoLiviana[]
     for (const fila of sinDrive) {
       if (!existsSync(rutaDeAdjunto(fila.archivo))) continue
       const drive = await subirAdjuntoADriveComo(dameToken, `${etiqueta}-${fila.padre_id}`, { nombre: fila.nombre, archivo: fila.archivo, tamano: fila.tamano })
@@ -681,11 +863,25 @@ export function registrarLoQueNoViajo(): { adjuntos: number; comentarios: number
     for (const fila of viejos) {
       const ruta = rutaDeAdjunto(fila.archivo)
       if (!existsSync(ruta)) continue
-      const contenido = readFileSync(ruta)
+      // Si la ficha madre todavía no tiene identidad en la base, no hay nada que mandar: se lo deja
+      // como está (sin fila_id) y se vuelve a mirar en el próximo arranque. Hasta la 12.6 se le ponía
+      // el fila_id igual y quedaba para siempre como «ya registrado» sin haber viajado.
+      if (!vinculoDelPadre(tipo, fila.padre_id)) continue
+      let contenido: Buffer
+      try {
+        contenido = readFileSync(ruta)
+      } catch (error) {
+        // Un archivo ilegible (abierto por otro programa, sin permiso) no puede frenar el registro de los demás.
+        anotarEvento('error', `No se pudo leer «${fila.nombre}» para registrarlo: ${error instanceof Error ? error.message : String(error)}`, { conError: true })
+        continue
+      }
       const sha256 = fila.sha256 ?? sha256De(contenido)
       const tipoMime = fila.tipo ?? tipoDeArchivo(fila.nombre)
       const medidas = fila.miniatura ? { miniatura: fila.miniatura, ancho: fila.ancho, alto: fila.alto } : miniaturaDe(ruta, tipoMime)
-      const vpsId = randomBytes(16).toString('hex')
+      // Un adjunto que ya tenía id en el servidor (lo cargó esta PC cuando su ficha madre todavía no
+      // tenía identidad, ver `registrarAdjunto`) lo conserva: pudo haber subido con ese id, y su ficha
+      // tiene que decirlo.
+      const vpsId = fila.vps_id ?? randomBytes(16).toString('hex')
       const filaId = `${PREFIJO_DE_ADJUNTO}${vpsId}`
       db()
         .prepare(`UPDATE ${tabla} SET fila_id = ?, vps_id = ?, sha256 = ?, tipo = ?, tamano = ?, miniatura = ?, ancho = ?, alto = ? WHERE id = ?`)
@@ -702,7 +898,7 @@ export function registrarLoQueNoViajo(): { adjuntos: number; comentarios: number
           tamano: contenido.length,
           sha256,
           usuario: fila.usuario_nombre,
-          subidoEn: null,
+          subidoEn: fila.vps_subido_en,
         },
         null,
       )

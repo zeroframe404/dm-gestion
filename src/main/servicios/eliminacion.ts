@@ -45,7 +45,7 @@ import { db } from '../db/base'
 import { periodosDisponibles } from './cartera'
 import { ahoraIso } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
-import { borrarArchivoDeAdjunto, rutaDeAdjunto } from './adjuntos'
+import { borrarAdjuntosDelServidor, borrarArchivoDeAdjunto, rutaDeAdjunto } from './adjuntos'
 import { encolarBorradoDeAnexo } from '../sincronizacion/anexos'
 import { ErrorDeNegocio } from './errores'
 import { PESTANA_APP } from './filas'
@@ -356,7 +356,25 @@ function sacarAnexosDeLaBase(tabla: string, columna: string, listaIds: number[],
     const filaId = algo(f.fila_id)
     if (filaId) encolarBorradoDeAnexo(filaId, tipoPestana, null)
   }
+  if (tipoPestana !== 'APP_ADJUNTOS') return
+  // Los archivos que ya están en el servidor se anotan acá (todavía existen las filas) y se piden
+  // borrar recién después de que la transacción cerró bien: ver `ejecutarEliminacion`.
+  for (const f of todas(
+    `SELECT vps_id, nombre FROM ${tabla} WHERE ${columna} IN ${enLista(listaIds.length)} AND vps_id IS NOT NULL AND vps_subido_en IS NOT NULL`,
+    ...listaIds,
+  )) {
+    const vpsId = algo(f.vps_id)
+    if (vpsId) adjuntosDelServidorPorBorrar.push({ vpsId, nombre: algo(f.nombre) ?? 'adjunto' })
+  }
 }
+
+/**
+ * Los archivos del servidor que el borrado en curso deja sin ficha (12.7). Se junta mientras corre la
+ * transacción (es sincrónica: no hay dos borrados a la vez) y se vacía al terminar, se haya
+ * confirmado o no: si hubo ROLLBACK, las fichas siguen y sus archivos también tienen que seguir.
+ * Hasta la 12.6 eliminar un siniestro dejaba sus fotos en el servidor para siempre.
+ */
+let adjuntosDelServidorPorBorrar: Array<{ vpsId: string; nombre: string }> = []
 
 function borrarTareas(listaIds: number[]): void {
   if (listaIds.length === 0) return
@@ -1170,6 +1188,7 @@ export function ejecutarEliminacion(tipo: TipoEliminable, id: number, actor: Ses
   const nombre = NOMBRE_ELIMINABLE[tipo]
   const resumen = resumenDeLoBorrado(plan.arrastra)
 
+  adjuntosDelServidorPorBorrar = []
   try {
     db().transaction(() => {
       plan.ejecutar()
@@ -1197,8 +1216,15 @@ export function ejecutarEliminacion(tipo: TipoEliminable, id: number, actor: Ses
       })
     })()
   } catch (error) {
+    adjuntosDelServidorPorBorrar = []
     throw new ErrorDeNegocio(porQueNoSePudo(tipo, error))
   }
+
+  // Los archivos del servidor: lo mejor posible, sin esperar y sin frenar nada (igual que al borrar un
+  // adjunto suelto). Si no hay conexión quedan huérfanos allá; es preferible a un borrado que no se hizo.
+  const delServidor = adjuntosDelServidorPorBorrar
+  adjuntosDelServidorPorBorrar = []
+  borrarAdjuntosDelServidor(delServidor)
 
   // Los archivos, al final y sin poder voltear nada: el registro YA se borró y la transacción cerró.
   // En Windows un adjunto abierto en otro programa hace fallar el borrado del archivo (EBUSY), y dejar

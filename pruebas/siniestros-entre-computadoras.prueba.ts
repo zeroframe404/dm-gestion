@@ -210,11 +210,11 @@ test('un siniestro cargado en una computadora llega a la otra con asegurado y fe
 
   // La subida le agregó a la pestaña las columnas que le faltaban, al final, y escribió los datos ahí.
   const encabezados = hoja.encabezadosDe('SINIESTROS')
-  for (const titulo of ['NOMBRE', 'DNI/CUIT', 'FECHA', 'COBERTURA']) {
+  for (const titulo of ['ASEGURADO', 'DNI/CUIT', 'FECHA SINIESTRO', 'COBERTURA']) {
     assert.ok(encabezados.includes(titulo), `la pestaña ganó la columna ${titulo}: ${encabezados.join(' | ')}`)
   }
-  assert.equal(celda(hoja, 'SINIESTROS', filaId, 'NOMBRE'), CLIENTES.perezAuto.nombre)
-  assert.equal(celda(hoja, 'SINIESTROS', filaId, 'FECHA'), '18/08/2026')
+  assert.equal(celda(hoja, 'SINIESTROS', filaId, 'ASEGURADO'), CLIENTES.perezAuto.nombre)
+  assert.equal(celda(hoja, 'SINIESTROS', filaId, 'FECHA SINIESTRO'), '18/08/2026')
   assert.equal(celda(hoja, 'SINIESTROS', filaId, 'COBERTURA'), 'TERCEROS COMPLETO')
   assert.equal(celda(hoja, 'SINIESTROS', filaId, 'PATENTE'), CLIENTES.perezAuto.patente, 'lo que ya tenía columna sigue en su lugar')
   const eventos = lanus.db.prepare(`SELECT detalle FROM eventos_sync WHERE tipo = 'columna faltante'`).all()
@@ -274,8 +274,8 @@ test('lo que se cargó antes del arreglo y no había viajado se vuelve a mandar 
   assert.equal(reenviarSiniestrosIncompletos(), 1, 'un siniestro tenía datos sin viajar')
   assert.equal(reenviarSiniestrosIncompletos(), 0, 'y no se encola dos veces mientras espera')
   await subirTodo(lanus)
-  assert.equal(celda(hoja, 'SINIESTROS', filaId, 'NOMBRE'), CLIENTES.perezAuto.nombre)
-  assert.equal(celda(hoja, 'SINIESTROS', filaId, 'FECHA'), '18/08/2026')
+  assert.equal(celda(hoja, 'SINIESTROS', filaId, 'ASEGURADO'), CLIENTES.perezAuto.nombre)
+  assert.equal(celda(hoja, 'SINIESTROS', filaId, 'FECHA SINIESTRO'), '18/08/2026')
   assert.equal(reenviarSiniestrosIncompletos(), 0, 'una vez en la hoja, no hay nada que volver a mandar')
 
   en(dockSud)
@@ -471,7 +471,7 @@ test('lo que figuraba subido sin estarlo vuelve a subir al contrastar con el ser
   assert.equal(hoja.almacen.size, 0)
 
   const verificacion = await verificarAdjuntosContraElServidor()
-  assert.deepEqual(verificacion, { reencolados: 1, confirmados: 0 })
+  assert.deepEqual(verificacion, { reencolados: 1, confirmados: 0, desmarcados: 0 })
   assert.equal(hayAdjuntosPendientes(), true, 'vuelve a la cola de subida')
   await subirAdjuntosPendientes(null)
   assert.equal(hoja.almacen.size, 1, 'y sube')
@@ -483,7 +483,7 @@ test('lo que figuraba subido sin estarlo vuelve a subir al contrastar con el ser
   await dockSud.motor.ciclarBajada(true)
   const idAlla = siniestroPorFila(dockSud.db, robo.filaId)
   assert.equal(fichaDeSiniestro(idAlla).adjuntos[0]!.enOtraComputadora, true)
-  assert.deepEqual(await verificarAdjuntosContraElServidor(), { reencolados: 0, confirmados: 1 })
+  assert.deepEqual(await verificarAdjuntosContraElServidor(), { reencolados: 0, confirmados: 1, desmarcados: 0 })
   assert.equal(fichaDeSiniestro(idAlla).adjuntos[0]!.enElServidor, true)
   await rutaDelAdjunto(fichaDeSiniestro(idAlla).adjuntos[0]!.id)
   cerrarTodo()

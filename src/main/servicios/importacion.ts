@@ -20,9 +20,35 @@ interface ImportacionEnCurso {
   id: number
   cancelada: boolean
   progreso: ProgresoImportacion
+  /** La disparó la bajada (ver `importarTodo` en sincronizacion.ts), no el botón «Reimportar la base». */
+  automatica: boolean
 }
 
 let enCurso: ImportacionEnCurso | null = null
+
+/**
+ * Reserva el «en curso» para la importación automática de la sincronización. Hasta la 12.7 esa
+ * corrida no lo marcaba: «Reimportar la base» arrancaba en paralelo y las dos escribían la misma base
+ * (y la misma hoja) a la vez. Devuelve null si ya hay una corriendo —la automática entonces se saltea,
+ * y la próxima bajada la vuelve a pedir si sigue haciendo falta—; si no, cómo saber si la cancelaron
+ * y cómo liberarla (siempre, en un finally).
+ */
+export function reservarImportacionAutomatica(id: number): { estaCancelada: () => boolean; liberar: () => void } | null {
+  if (enCurso) return null
+  const reserva: ImportacionEnCurso = {
+    id,
+    cancelada: false,
+    automatica: true,
+    progreso: { importacionId: id, fase: 'preparando', porcentaje: 0, mensaje: 'Importación automática de la sincronización en curso…', pestanas: [] },
+  }
+  enCurso = reserva
+  return {
+    estaCancelada: () => reserva.cancelada,
+    liberar: () => {
+      if (enCurso === reserva) enCurso = null
+    },
+  }
+}
 
 function emitir<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
   for (const ventana of BrowserWindow.getAllWindows()) {
@@ -50,6 +76,15 @@ function crearFuente(): { fuente: FuenteHoja; hojaId: string } {
 
 export function hayImportacionEnCurso(): boolean {
   return enCurso !== null
+}
+
+/**
+ * Cuál de las dos está corriendo, para que el que se saltea pueda decir el motivo de verdad: la
+ * automática de la sincronización o «Reimportar la base» que apretó alguien.
+ */
+export function tipoDeImportacionEnCurso(): 'manual' | 'automatica' | null {
+  if (!enCurso) return null
+  return enCurso.automatica ? 'automatica' : 'manual'
 }
 
 /** Informe mínimo para corridas que no llegaron a producir uno (falla temprana o cierre de la app). */
@@ -95,6 +130,9 @@ function marcaDeTiempo(iso: string): string {
 }
 
 export function iniciarImportacion(actor: SesionUsuario): { importacionId: number } {
+  if (enCurso?.automatica) {
+    throw new ErrorDeNegocio('Ya hay una importación en curso: la sincronización está incorporando filas nuevas de la base. Probá de nuevo en un rato.')
+  }
   if (enCurso) throw new ErrorDeNegocio('Ya hay una importación en curso. Esperá a que termine o cancelala.')
   const { fuente } = crearFuente()
 
@@ -105,6 +143,7 @@ export function iniciarImportacion(actor: SesionUsuario): { importacionId: numbe
   enCurso = {
     id: fila.id,
     cancelada: false,
+    automatica: false,
     progreso: { importacionId: fila.id, fase: 'preparando', porcentaje: 0, mensaje: 'Conectando con la base del VPS…', pestanas: [] },
   }
   emitir('importacion:progreso', enCurso.progreso)
@@ -182,7 +221,13 @@ function ultimaImportacion(): InformeImportacion | null {
 }
 
 export function estadoDelImportador(): EstadoImportador {
-  return { enCurso: enCurso !== null, progreso: enCurso?.progreso ?? null, ultima: ultimaImportacion() }
+  // La corrida automática NO se muestra como en curso: no emite progreso ni «terminada», y la pantalla
+  // de Importar lee este estado una sola vez al abrirse (ver ImportarGoogle.tsx). Si la reportáramos,
+  // la tarjeta quedaría pegada en «Importación en curso…» con los botones apagados hasta salir y
+  // volver a entrar. Los botones quedan habilitados y, si los aprietan mientras corre, `iniciarImportacion`
+  // rechaza con el mensaje que lo explica. `hayImportacionEnCurso()` sí la cuenta (cierre de ventana, etc.).
+  const visible = enCurso && !enCurso.automatica ? enCurso : null
+  return { enCurso: visible !== null, progreso: visible?.progreso ?? null, ultima: ultimaImportacion() }
 }
 
 /**

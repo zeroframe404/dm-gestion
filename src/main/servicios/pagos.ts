@@ -513,11 +513,32 @@ export const SELECT_PAGOS = `
  * «Esta cuota tiene un pago que la cubre»: la condición que comparten la mora, los deudores y las
  * métricas para no perseguir a quien ya pagó. Espera la planilla como `c`. Un cobro IMPUTADO no
  * cuenta: la agencia le pagó a la compañía, pero el cliente todavía debe.
+ *
+ * Dos EXISTS unidos por OR y no un EXISTS con el OR adentro, por lo mismo que SELECT_PLANILLA
+ * (ver el comentario de cartera.ts): con el OR adentro SQLite no puede usar ningún índice y recorre
+ * `pagos` entera por cada cuota. Partido en dos, cada uno entra por el suyo —idx_pagos_cuota_fila
+ * (cuota_fila_id) y idx_pagos_adelanto (poliza_id, periodo, …)— y la mora de un mes deja de ser
+ * cuadrática. Va entre paréntesis porque quien lo usa lo niega (`AND NOT ...`): en SQL el NOT ata
+ * más fuerte que el OR y sin ellos sólo negaría el primer EXISTS.
+ *
+ * A propósito NO lleva el «AND NOT (adelanto_modo = 'PENDIENTE' AND cuota_fila_id IS NULL)» que sí
+ * tiene el `pago_registrado` de SELECT_PLANILLA, aunque el resto sea idéntico. Las dos preguntas son
+ * distintas: `pago_registrado` es «¿esta fila está paga?» y un adelanto PENDIENTE justamente nace sin
+ * imputar para que alguien lo impute a mano, así que la fila tiene que seguir viéndose impaga en la
+ * planilla. Esto de acá es «¿hay que perseguir a este cliente?», y la plata de ese adelanto YA entró:
+ * llamarlo para cobrarle lo que pagó el mes pasado sería el peor error de los dos.
  */
-export const PAGO_QUE_CUBRE_LA_CUOTA = `EXISTS (
-  SELECT 1 FROM pagos pg
-  WHERE (pg.cuota_fila_id = c.fila_id OR (pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo))
-    AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
+export const PAGO_QUE_CUBRE_LA_CUOTA = `(
+  EXISTS (
+    SELECT 1 FROM pagos pg
+    WHERE pg.cuota_fila_id = c.fila_id
+      AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
+  )
+  OR EXISTS (
+    SELECT 1 FROM pagos pg
+    WHERE pg.poliza_id = c.poliza_id AND pg.periodo = c.periodo
+      AND COALESCE(pg.estado_cobro, 'PAGO') <> 'IMPUTADO'
+  )
 )`
 
 /** La hora del cobro sale de cuándo se registró; los pagos importados de la hoja no la tienen. */

@@ -1,13 +1,20 @@
 // Pruebas de los arreglos que salieron de la revisión: cada bloque es un problema concreto que se
 // encontró leyendo el código y que no tiene que volver.
 import assert from 'node:assert/strict'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
 import { baseDePrueba, contar, filas, importar, problemasDeTipo, resumenDe, unico } from './ayuda'
+import { cerrarBaseDeDatos, usarBaseDeDatos } from '../src/main/db/base'
 import { mapearEncabezados, resolverCampo } from '../src/main/importacion/encabezados'
 import { clasificarPestana, clasificarPestanas, revisarCoherenciaDePeriodos } from '../src/main/importacion/pestanas'
 import { generarTextoDeInforme, informeParaArchivo } from '../src/main/importacion/informe'
+import { rutaDeAdjunto, usarCarpetaDeAdjuntosDePrueba } from '../src/main/servicios/carpetaDeAdjuntos'
+import { bajarCambios } from '../src/main/sincronizacion/bajada'
+import { leerContexto } from '../src/main/sincronizacion/hoja'
 
 // ---------------------------------------------------------------------------
 // Mapeo de encabezados
@@ -441,4 +448,185 @@ test('un problema sistemático no tapa a los demás en el detalle', async () => 
   assert.ok(problemasDeTipo(informe, 'sucursal fuera de catálogo').length <= 200, 'el detalle se recorta por tipo')
   assert.equal(problemasDeTipo(informe, 'fecha de pago inválida').length, 1, 'la fecha imposible tiene que seguir estando en el detalle')
   db.close()
+})
+
+// ---------------------------------------------------------------------------
+// La bajada: una pestaña que vuelve vacía, y el costo de mirar miles de filas
+// ---------------------------------------------------------------------------
+
+const ENC_ADJUNTOS = ['FECHA', 'TIPO', 'VINCULO', 'DESCRIPCION', 'NOMBRE', 'CATEGORIA', 'ARCHIVO', 'TAMANO', 'SHA256', 'CARGADO POR', 'SUBIDO', '_ID']
+
+/** Una carpeta temporal para los archivos de los adjuntos, que se limpia al salir. */
+function carpetaDeAdjuntosTemporal(): string {
+  const carpeta = mkdtempSync(path.join(tmpdir(), 'dm-correcciones-'))
+  process.on('exit', () => rmSync(carpeta, { recursive: true, force: true }))
+  return carpeta
+}
+
+test('una pestaña de adjuntos que vuelve vacía no borra los adjuntos locales; un borrado de a uno sí (ADJ-08)', async () => {
+  const hoja = new HojaSimulada([...construirHojaDePrueba(), { titulo: 'APP ADJUNTOS', valores: [ENC_ADJUNTOS] }])
+  const db = baseDePrueba()
+  usarBaseDeDatos(db)
+  usarCarpetaDeAdjuntosDePrueba(carpetaDeAdjuntosTemporal())
+  await importar(db, hoja)
+
+  // Dos fotos de un siniestro, cargadas desde otra computadora: llegan por la bajada, no por la importación.
+  const siniestro = filas<{ id: number; fila_id: string }>(db, 'SELECT id, fila_id FROM siniestros WHERE fila_id IS NOT NULL ORDER BY id LIMIT 1')[0]!
+  for (const n of [1, 2]) {
+    hoja.agregarFila('APP ADJUNTOS', ['2026-09-01', 'SINIESTRO', `SINIESTRO:${siniestro.fila_id}`, '', `foto-${n}.jpg`, 'FOTOS', `srv-${n}`, '100', '', 'Fede', '2026-09-01T10:00:00.000Z', `ADJ:srv-${n}`])
+  }
+  const contexto = await leerContexto(hoja)
+  const llegada = await bajarCambios(hoja, contexto, ['APP ADJUNTOS'])
+  assert.equal(llegada.filasNuevas, 2)
+  assert.equal(llegada.necesitaImportacion, false, 'los adjuntos se incorporan sin importación completa')
+  assert.equal(contar(db, 'siniestro_adjuntos', `siniestro_id = ${siniestro.id}`), 2)
+  // Esta computadora ya los bajó: tiene el archivo en su disco.
+  const archivos: string[] = []
+  for (const n of [1, 2]) {
+    const relativa = `${siniestro.id}/foto-${n}.jpg`
+    mkdirSync(path.dirname(rutaDeAdjunto(relativa)), { recursive: true })
+    writeFileSync(rutaDeAdjunto(relativa), 'foto')
+    db.prepare('UPDATE siniestro_adjuntos SET archivo = ? WHERE fila_id = ?').run(relativa, `ADJ:srv-${n}`)
+    archivos.push(rutaDeAdjunto(relativa))
+  }
+
+  // La pestaña vuelve VACÍA (un respaldo restaurado, una pestaña recreada): hasta ahora la bajada lo
+  // leía como «se borraron todos los adjuntos» y tiraba los archivos de todas las computadoras.
+  hoja.borrarFila('APP ADJUNTOS', 3)
+  hoja.borrarFila('APP ADJUNTOS', 2)
+  assert.equal(hoja.filasDe('APP ADJUNTOS').length, 1, 'quedó sólo el encabezado')
+  const eventosAntes = contar(db, 'eventos_sync')
+  const vacia = await bajarCambios(hoja, contexto, ['APP ADJUNTOS'])
+  assert.equal(vacia.filasQueYaNoEstan, 0, 'ninguna fila se da por desaparecida')
+  assert.equal(contar(db, 'siniestro_adjuntos', `siniestro_id = ${siniestro.id}`), 2, 'los adjuntos siguen en la base')
+  assert.ok(archivos.every((archivo) => existsSync(archivo)), 'y los archivos siguen en el disco')
+  assert.equal(contar(db, 'filas_crudas', `pestana = 'APP ADJUNTOS' AND en_la_hoja = 1`), 2, 'las filas siguen dadas por presentes')
+  assert.equal(contar(db, 'eventos_sync'), eventosAntes + 1, 'queda un aviso en la bitácora, uno solo por pestaña')
+  assert.match(unico<string>(db, 'SELECT detalle FROM eventos_sync ORDER BY id DESC LIMIT 1'), /APP ADJUNTOS/)
+  assert.deepEqual(vacia.pestanasVaciasIgnoradas, ['APP ADJUNTOS'], 'el resultado dice qué pestaña quedó con los borrados congelados')
+  // Mientras siga vacía no se repite el aviso en cada ciclo (el carril rápido pasa cada 30 segundos),
+  // pero el resultado lo sigue diciendo en TODOS los ciclos: si no, después de unos minutos no queda
+  // ninguna señal de que esa pestaña dejó de propagar borrados.
+  const otroCiclo = await bajarCambios(hoja, contexto, ['APP ADJUNTOS'])
+  assert.equal(contar(db, 'eventos_sync'), eventosAntes + 1)
+  assert.deepEqual(otroCiclo.pestanasVaciasIgnoradas, ['APP ADJUNTOS'])
+
+  // Una pestaña recreada puede volver hasta sin la fila de encabezados. Esa lectura, que la bajada
+  // decide ignorar, tampoco puede pisar el mapeo del contexto (lo comparte la subida, y dura cinco
+  // minutos): si quedara sin encabezados ni columna _ID, lo que se subiera después iría a ciegas.
+  const enElContexto = contexto.porTitulo.get('APP ADJUNTOS')!
+  const columnaIdAntes = enElContexto.layout?.mapeo.columnaId ?? null
+  assert.equal(typeof columnaIdAntes, 'number', 'la pestaña tenía su columna _ID mapeada')
+  hoja.borrarFila('APP ADJUNTOS', 1)
+  assert.equal(hoja.filasDe('APP ADJUNTOS').length, 0, 'la pestaña volvió del todo vacía')
+  const sinEncabezados = await bajarCambios(hoja, contexto, ['APP ADJUNTOS'])
+  assert.equal(sinEncabezados.filasQueYaNoEstan, 0)
+  assert.equal(enElContexto.layout?.mapeo.columnaId ?? null, columnaIdAntes, 'el mapeo del contexto queda como estaba')
+  assert.ok((enElContexto.layout?.mapeo.encabezados ?? []).length > 0, 'y con sus encabezados')
+  hoja.agregarFila('APP ADJUNTOS', ENC_ADJUNTOS)
+
+  // La pestaña vuelve con sus filas: nada cambió, y el aviso queda listo para la próxima vez.
+  for (const n of [1, 2]) {
+    hoja.agregarFila('APP ADJUNTOS', ['2026-09-01', 'SINIESTRO', `SINIESTRO:${siniestro.fila_id}`, '', `foto-${n}.jpg`, 'FOTOS', `srv-${n}`, '100', '', 'Fede', '2026-09-01T10:00:00.000Z', `ADJ:srv-${n}`])
+  }
+  const devuelta = await bajarCambios(hoja, contexto, ['APP ADJUNTOS'])
+  assert.equal(devuelta.filasNuevas, 0)
+  assert.equal(devuelta.filasCambiadas, 0)
+  assert.deepEqual(devuelta.pestanasVaciasIgnoradas, [], 'con sus filas de vuelta no hay nada congelado')
+
+  // Un borrado común —una sola foto— sí se aplica: la fila se va con su archivo, la otra queda.
+  hoja.borrarFila('APP ADJUNTOS', 2)
+  const unBorrado = await bajarCambios(hoja, contexto, ['APP ADJUNTOS'])
+  assert.equal(unBorrado.filasQueYaNoEstan, 1)
+  assert.equal(contar(db, 'siniestro_adjuntos', `siniestro_id = ${siniestro.id}`), 1)
+  assert.equal(existsSync(archivos[0]!), false, 'el archivo de la foto borrada se fue')
+  assert.equal(existsSync(archivos[1]!), true, 'el de la otra sigue')
+
+  // Y borrar la ÚLTIMA que quedaba también se aplica, aunque la pestaña quede vacía: con una sola
+  // fila conocida no se distingue de un respaldo restaurado, y con el corte en «0 conocidas» ese
+  // borrado no viajaría nunca más (la pestaña quedaría vacía para siempre). Por eso el corte está en
+  // «más de una»: si alguien lo cambia a «más de cero», esta prueba lo frena.
+  const eventosAntesDelUltimo = contar(db, 'eventos_sync')
+  hoja.borrarFila('APP ADJUNTOS', 2)
+  assert.equal(hoja.filasDe('APP ADJUNTOS').length, 1, 'quedó sólo el encabezado')
+  const ultimoBorrado = await bajarCambios(hoja, contexto, ['APP ADJUNTOS'])
+  assert.equal(ultimoBorrado.filasQueYaNoEstan, 1, 'el borrado de la última fila sí se propaga')
+  assert.deepEqual(ultimoBorrado.pestanasVaciasIgnoradas, [], 'y no se lo trata como pestaña que volvió vacía')
+  assert.equal(contar(db, 'siniestro_adjuntos', `siniestro_id = ${siniestro.id}`), 0)
+  assert.equal(existsSync(archivos[1]!), false, 'el archivo de la última foto también se fue')
+  assert.equal(contar(db, 'eventos_sync'), eventosAntesDelUltimo, 'y no se anota ningún aviso de pestaña vacía')
+
+  // Y una bajada normal sigue aplicando los campos que cambiaron en otra pestaña.
+  const filaSiniestro = hoja.filasDe('SINIESTROS').findIndex((f) => f.includes('CHOQUE EN CADENA'))
+  assert.ok(filaSiniestro > 0)
+  hoja.editarCelda('SINIESTROS', filaSiniestro + 1, hoja.encabezadosDe('SINIESTROS').indexOf('DESCRIPCION'), 'CHOQUE EN CADENA EN LA AUTOPISTA')
+  const conCampo = await bajarCambios(hoja, contexto, ['SINIESTROS'])
+  assert.equal(conCampo.filasCambiadas, 1)
+  assert.equal(conCampo.camposAplicados, 1)
+  assert.equal(contar(db, 'siniestros', `descripcion = 'CHOQUE EN CADENA EN LA AUTOPISTA'`), 1)
+  usarCarpetaDeAdjuntosDePrueba(null)
+  cerrarBaseDeDatos()
+})
+
+test('una bajada sobre 3000 filas sin cambios no relee el JSON de cada una, y aplica la única que cambió (R4)', async (t) => {
+  const encabezados = ['APELLIDO Y NOMBRE', 'DNI', 'CIA', 'NRO DE POLIZA', 'CUOTA', 'DIA DE VTO', 'OBSERVACIONES']
+  const filasHoja: string[][] = [encabezados]
+  for (let i = 0; i < 3000; i++) {
+    filasHoja.push([`CLIENTE ${i}`, String(20000000 + i), 'SANCOR', String(300000 + i), '$ 10.000', '10', ''])
+  }
+  const hoja = new HojaSimulada([{ titulo: 'AGOSTO', valores: filasHoja, columnas: encabezados.length }])
+  const db = baseDePrueba()
+  usarBaseDeDatos(db)
+  await importar(db, hoja)
+  assert.equal(contar(db, 'cuotas_mes'), 3000)
+  const contexto = await leerContexto(hoja)
+
+  // Lo que se mide no es el reloj (en una máquina cargada eso es una prueba que falla sola) sino qué
+  // consulta arma la bajada y cuántas veces lee el JSON: se espía `prepare` desde acá.
+  const preparadas: string[] = []
+  let lecturasDeJson = 0
+  const prepararDeVerdad = db.prepare.bind(db)
+  const espiar = (sql: string): unknown => {
+    preparadas.push(sql)
+    const preparada = prepararDeVerdad(sql)
+    if (!/SELECT datos_json FROM filas_crudas WHERE fila_id/i.test(sql)) return preparada
+    return new Proxy(preparada, {
+      get(destino, propiedad) {
+        const valor = Reflect.get(destino, propiedad, destino) as unknown
+        if (typeof valor !== 'function') return valor
+        const metodo = valor as (...argumentos: unknown[]) => unknown
+        return (...argumentos: unknown[]): unknown => {
+          if (propiedad === 'get') lecturasDeJson++
+          return metodo.apply(destino, argumentos)
+        }
+      },
+    })
+  }
+  Object.assign(db, { prepare: espiar })
+
+  // Ciclos sin cambios: lo que cuesta es armar `conocidas`; el JSON de las filas no hace falta.
+  const arranque = Date.now()
+  for (let i = 0; i < 5; i++) {
+    const sinCambios = await bajarCambios(hoja, contexto, ['AGOSTO'])
+    assert.equal(sinCambios.filasCambiadas, 0)
+    assert.equal(sinCambios.filasNuevas, 0)
+  }
+  t.diagnostic(`cinco bajadas sin cambios sobre 3000 filas: ${Date.now() - arranque} ms`)
+
+  const deLasConocidas = preparadas.filter((sql) => /FROM filas_crudas WHERE pestana = \?/i.test(sql))
+  assert.equal(deLasConocidas.length, 1, 'la consulta de `conocidas` se prepara una sola vez para toda la corrida')
+  assert.ok(!/datos_json/i.test(deLasConocidas[0]!), `«conocidas» no puede traer el JSON de las 3000 filas: ${deLasConocidas[0]}`)
+  assert.equal(lecturasDeJson, 0, 'sin cambios no se lee el JSON de ninguna fila')
+
+  // Cambia una sola observación en la hoja: se aplica esa y nada más.
+  hoja.editarCelda('AGOSTO', 1501, encabezados.indexOf('OBSERVACIONES'), 'LLAMAR EL LUNES')
+  const unaSola = await bajarCambios(hoja, contexto, ['AGOSTO'])
+  assert.equal(unaSola.filasCambiadas, 1)
+  assert.equal(unaSola.camposAplicados, 1)
+  assert.equal(unaSola.filasQueYaNoEstan, 0)
+  assert.equal(contar(db, 'cuotas_mes', `observaciones = 'LLAMAR EL LUNES'`), 1)
+  assert.equal(unico<string>(db, `SELECT cliente_nombre FROM cuotas_mes WHERE observaciones = 'LLAMAR EL LUNES'`), 'CLIENTE 1499')
+  assert.equal(lecturasDeJson, 1, 'el JSON se lee sólo para la fila cuya huella cambió')
+  Object.assign(db, { prepare: prepararDeVerdad })
+  cerrarBaseDeDatos()
 })
