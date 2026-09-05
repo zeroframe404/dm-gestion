@@ -5,7 +5,19 @@ import type { Campo } from '../importacion/encabezados'
 import type { CeldaAEscribir, FilaABorrar, FuenteHoja } from '../importacion/fuente'
 import { ahoraIso, limpiar } from '../importacion/normalizar'
 import { db } from '../db/base'
-import { anotarEvento, marcarFallidas, marcarListas, marcarSinArreglo, pendientes, type EntradaCola } from './cola'
+import { ErrorDeNegocio } from '../servicios/errores'
+import {
+  achicarProximaTanda,
+  anotarErrorSinContar,
+  anotarEvento,
+  biseccionAtascada,
+  marcarFallidas,
+  marcarListas,
+  marcarSinArreglo,
+  pendientes,
+  restablecerTanda,
+  type EntradaCola,
+} from './cola'
 import { agregarColumnasFaltantes, refrescarLayoutSiCambio } from './columnas'
 import { columnaDelId, filasPorId, huellaDeFila, type ContextoHoja, type PestanaSincronizable } from './hoja'
 import { esPestanaDeLaApp, esPestanaDelMes } from './pestanasApp'
@@ -60,7 +72,10 @@ function valorBase(base: FilaBase | undefined, pestana: PestanaSincronizable, ca
  */
 export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, limite = 200): Promise<ResultadoSubida> {
   const entradas = pendientes(limite)
-  if (entradas.length === 0) return { subidas: 0, conflictos: 0, llamadas: 0, error: null }
+  if (entradas.length === 0) {
+    restablecerTanda()
+    return { subidas: 0, conflictos: 0, llamadas: 0, error: null }
+  }
 
   const titulos = [...new Set(entradas.map((e) => e.pestana))].filter((t) => contexto.porTitulo.has(t))
   const desconocidas = entradas.filter((e) => !contexto.porTitulo.has(e.pestana))
@@ -74,7 +89,13 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
       marcarSinArreglo([entrada.id], `La pestaña «${entrada.pestana}» no existe en la base del GENERAL DE CLIENTES.`)
     }
   }
-  if (titulos.length === 0) return { subidas: 0, conflictos: 0, llamadas: 0, error: null }
+  // El tope provisorio se restablece también acá: si quedó en 1 por un rechazo y la única entrada que
+  // devolvió `pendientes` es de una pestaña que todavía no existe, nadie iba a restablecerlo nunca y la
+  // cola se quedaba subiendo de a una para siempre.
+  if (titulos.length === 0) {
+    restablecerTanda()
+    return { subidas: 0, conflictos: 0, llamadas: 0, error: null }
+  }
 
   let llamadas = 0
   const lecturas = await fuente.leerVarias(titulos)
@@ -85,6 +106,9 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   // Hasta la 12.6 un campo sin columna se descartaba con un aviso, y así fue como los siniestros
   // llegaron a las otras computadoras sin asegurado: la pestaña no tenía dónde guardarlo. Si otra
   // computadora ya agregó la columna, la fila de encabezados recién leída lo dice y el mapeo se rehace.
+  // El orden importa: primero se refresca el mapeo, después se agregan las columnas (que releen los
+  // encabezados y sólo dejan en `pestana.layout` las que quedaron de verdad en la base, ver columnas.ts)
+  // y recién con ese layout confirmado se arman, más abajo, las celdas y las filas a escribir.
   for (const titulo of titulos) {
     const pestana = contexto.porTitulo.get(titulo)
     const valores = valoresPorTitulo.get(titulo)
@@ -99,8 +123,11 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
       }
     }
     if (necesarios.size === 0) continue
-    const agregadas = await agregarColumnasFaltantes(fuente, pestana, valores, necesarios)
-    if (agregadas.length > 0) llamadas += 2
+    // Las llamadas las cuenta la propia función: son tres por vuelta y puede haber hasta tres vueltas,
+    // y hasta las vueltas que no confirmaron ninguna columna gastaron cuota (ver columnas.ts).
+    const contador = { llamadas: 0 }
+    await agregarColumnasFaltantes(fuente, pestana, valores, necesarios, contador)
+    llamadas += contador.llamadas
   }
 
   const celdas: CeldaAEscribir[] = []
@@ -175,6 +202,21 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
       lista.push({ entrada, fila })
       aAgregar.set(entrada.pestana, lista)
       continue
+    }
+
+    // Un «borrar» de una fila que ESTA MISMA tanda iba a agregar (12.7): la fila no está en la base y
+    // ya no tiene que estar. Se saca del agregado y los dos se dan por hechos. Sin esto el «borrar»
+    // no la encontraba, se daba por hecho, y el agregado de abajo la creaba igual: una ficha fantasma
+    // (`encolar` ya cancela el caso común; acá se cubre el «crear» que se reintenta, ver allá).
+    if (entrada.operacion === 'borrar') {
+      const lista = aAgregar.get(entrada.pestana) ?? []
+      const posicion = lista.findIndex((x) => x.entrada.filaId === entrada.filaId)
+      if (posicion >= 0) {
+        hechas.push(lista[posicion]!.entrada.id, entrada.id)
+        lista.splice(posicion, 1)
+        if (lista.length === 0) aAgregar.delete(entrada.pestana)
+        continue
+      }
     }
 
     const numeroDeFila = filas.get(entrada.filaId)
@@ -257,12 +299,28 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
     }
   } catch (error) {
     const motivo = error instanceof Error ? error.message : String(error)
-    marcarFallidas(
-      entradas.map((e) => e.id),
-      motivo,
-    )
+    // Un rechazo del CONTENIDO a una tanda de varias no cuenta como intento de ninguna: la que sigue
+    // sale más chica, hasta que la entrada mala quede sola (ver `achicarProximaTanda` en cola.ts). Todo
+    // lo demás —corte de red, 5xx, credenciales, cuota, o una sola entrada rechazada— se marca como
+    // siempre, así la espera exponencial entra en vez de martillar al servidor cada diez segundos. Y si
+    // la bisección ya se partió muchas veces sin que ninguna tanda pase, el rechazo no era de una celda
+    // sola: se cuenta el intento igual.
+    if (esRechazoDelContenido(error) && entradas.length > 1 && !biseccionAtascada()) {
+      anotarErrorSinContar(
+        entradas.map((e) => e.id),
+        motivo,
+      )
+      achicarProximaTanda(entradas.length)
+    } else {
+      marcarFallidas(
+        entradas.map((e) => e.id),
+        motivo,
+      )
+      restablecerTanda()
+    }
     return { subidas: 0, conflictos: 0, llamadas, error: motivo }
   }
+  restablecerTanda()
 
   const celdasEscritas = celdas.filter((celda) => !perdidas.has(`${celda.titulo}|${celda.id ?? ''}`))
   const entradasEscritas = entradas.filter((entrada) => {
@@ -289,6 +347,23 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   }
 
   return { subidas: hechas.length, conflictos: conflictos.length, llamadas, error: null }
+}
+
+/**
+ * El servidor rechazó EL CONTENIDO de lo que se le mandó: un 400 o un 422, que es lo que devuelve
+ * cuando un valor no le sirve. Sólo esos dos códigos son «la culpa es de una celda».
+ *
+ * Todo el resto de los 4xx son del pedido entero y transitorios —401/403 (credenciales o token
+ * vencido), 404 (la hoja no está), 409 (otra computadora tocó la fila), 429 (cuota)— y lo que piden es
+ * esperar; partir la tanda ahí dejaría a la cola reintentando cada diez segundos sin espera, justo
+ * contra un servidor que está pidiendo que la aplicación afloje. Un `ErrorDeNegocio` sin código
+ * (todos los de la fuente de Google, ver fuente.ts, incluidos los de cuota y credenciales) tampoco
+ * dice de qué se queja: se trata como los demás.
+ */
+function esRechazoDelContenido(error: unknown): boolean {
+  if (!(error instanceof ErrorDeNegocio)) return false
+  const status = (error as { status?: number }).status
+  return status === 400 || status === 422
 }
 
 /** Deja anotado en el historial el valor que había en la hoja y quedó pisado por el cambio local. */

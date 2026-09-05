@@ -31,7 +31,7 @@ import {
 import { usarFuenteDePrueba } from '../src/main/servicios/sincronizacion'
 import { mencionaRobo, normalizarEstadoSiniestro } from '../src/shared/siniestros'
 import type { FiltrosSiniestros, SesionUsuario } from '../src/shared/tipos'
-import { filas, importar } from './ayuda'
+import { filas, importar, unico } from './ayuda'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
 
@@ -71,6 +71,12 @@ let hojaActual: HojaSimulada | null = null
 
 async function baseImportada(): Promise<BaseDeDatos> {
   cerrarBaseDeDatos()
+  // La carpeta de adjuntos es un estado GLOBAL del módulo y la fija cada archivo de pruebas para sí:
+  // el de arriba corre durante los imports, o sea antes que cualquier prueba, y basta con que otro
+  // archivo del banco la deje en null al terminar para que acá se busque la carpeta de datos de
+  // verdad (que sale de electron.app, que en las pruebas no existe). Se vuelve a fijar en cada
+  // escenario para que el resultado sea el mismo corriendo este archivo solo o dentro del banco.
+  usarCarpetaDeAdjuntosDePrueba(CARPETA_DE_ADJUNTOS)
   const registrar = console.log
   console.log = () => undefined
   const db = abrirBaseDeDatos(':memory:')
@@ -777,4 +783,110 @@ test('una base de la Fase 6 se actualiza a la Fase 7 sin perder los siniestros q
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM siniestro_observaciones').get() as { n: number }).n, 0)
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM amp').get() as { n: number }).n, 0)
   db.close()
+})
+
+// ---------------------------------------------------------------------------
+// Dos pestañas del mismo tipo: la corrección va donde la fila VIVE (12.7)
+// ---------------------------------------------------------------------------
+
+const ENC_SINIESTROS_VIEJA = ['LOCAL', 'FECHA DE CARGA', 'FECHA', 'NOMBRE', 'DNI', 'PATENTE', 'CIA', 'N° POLIZA', 'COBERTURA', 'N° SINIESTRO', 'DESCRIPCION', 'ESTADO', 'IMPORTE', 'OBSERVACIONES']
+const ENC_RIESGOS_VIEJA = ['NOMBRE', 'DNI', 'TEL', 'LOCAL', 'RIESGO', 'DETALLE', 'CIA', 'N° POLIZA', 'PRIMA', 'CUOTA', 'VTO', 'AVISO', 'PAGO', 'OBSERVACIONES']
+
+/**
+ * La hoja de siempre más un archivo del año pasado: «SINIESTROS 2024» y «RIESGOS VARIOS 2024», con una
+ * fila cada una. Las dos tienen menos renglones que la pestaña principal de su tipo, así que
+ * `nombreDePestana` sigue eligiendo «SINIESTROS» y «RIESGOS VARIOS»: es justo el caso que rompía.
+ */
+async function baseConArchivoDelAnioPasado(): Promise<BaseDeDatos> {
+  cerrarBaseDeDatos()
+  usarCarpetaDeAdjuntosDePrueba(CARPETA_DE_ADJUNTOS) // ver el comentario de baseImportada()
+  const registrar = console.log
+  console.log = () => undefined
+  const db = abrirBaseDeDatos(':memory:')
+  console.log = registrar
+  const pestanas = construirHojaDePrueba()
+  pestanas.push({
+    titulo: 'SINIESTROS 2024',
+    valores: [
+      ENC_SINIESTROS_VIEJA,
+      ['LANUS', '10/05/2024', '09/05/2024', CLIENTES.rodriguez.nombre, CLIENTES.rodriguez.dni, CLIENTES.rodriguez.patente, 'ZURICH', '555444', 'TODO RIESGO', 'S-2024-0509', 'INCENDIO DEL MOTOR', 'ABIERTO', '$ 90.000', ''],
+    ],
+  })
+  pestanas.push({
+    titulo: 'RIESGOS VARIOS 2024',
+    valores: [
+      ENC_RIESGOS_VIEJA,
+      [CLIENTES.rodriguez.nombre, CLIENTES.rodriguez.dni, '11-9999-8888', 'LANUS', 'MOTO ROBADA', 'GALPON DE VALENTIN ALSINA', 'ZURICH', 'RV-2024-77', '$ 30.000', '$ 3.000', '20', 'NO', '', ''],
+    ],
+  })
+  const hoja = new HojaSimulada(pestanas)
+  hojaActual = hoja
+  await importar(db, hoja)
+  usarFuenteDePrueba(hoja)
+  return db
+}
+
+test('corregir un siniestro que vive en «SINIESTROS 2024» encola contra esa pestaña, no contra la principal', async () => {
+  const db = await baseConArchivoDelAnioPasado()
+  const fila = listarSiniestros({ ...SIN_FILTROS, busqueda: 'INCENDIO DEL MOTOR' }).filas[0]!
+  assert.equal(
+    unico<string>(db, 'SELECT pestana FROM filas_crudas WHERE fila_id = ?', fila.filaId),
+    'SINIESTROS 2024',
+    'el siniestro vive en la pestaña del archivo',
+  )
+
+  cambiarEstadoDeSiniestro(fila.id, 'CERRADO', DANIEL)
+
+  const cola = filas<{ pestana: string; operacion: string }>(
+    db,
+    `SELECT pestana, operacion FROM cola_sync WHERE fila_id = ? ORDER BY id`,
+    fila.filaId,
+  )
+  assert.equal(cola.length, 1)
+  assert.equal(cola[0]!.operacion, 'actualizar')
+  // Contra «SINIESTROS» la subida lo rebotaba con «La fila ya no está en la base».
+  assert.equal(cola[0]!.pestana, 'SINIESTROS 2024')
+  assert.equal(colaDeSiniestros(db).length, 0, 'nada quedó camino a la pestaña principal')
+  cerrarBaseDeDatos()
+})
+
+test('corregir un riesgo que vive en «RIESGOS VARIOS 2024» encola contra esa pestaña', async () => {
+  const db = await baseConArchivoDelAnioPasado()
+  const riesgo = listarRiesgos().filas.find((f) => f.tipoRiesgo === 'MOTO ROBADA')!
+  assert.equal(unico<string>(db, 'SELECT pestana FROM filas_crudas WHERE fila_id = ?', riesgo.filaId), 'RIESGOS VARIOS 2024')
+
+  editarRiesgo(riesgo.id, 'formaPago', 'CBU', DANIEL)
+
+  const cola = filas<{ pestana: string }>(db, `SELECT pestana FROM cola_sync WHERE fila_id = ? ORDER BY id`, riesgo.filaId)
+  assert.equal(cola.length, 1)
+  assert.equal(cola[0]!.pestana, 'RIESGOS VARIOS 2024')
+  cerrarBaseDeDatos()
+})
+
+test('el ALTA sigue yendo a la pestaña principal del tipo, aunque haya una segunda', async () => {
+  const db = await baseConArchivoDelAnioPasado()
+  const candidato = buscarParaSiniestro(CLIENTES.perezAuto.patente)[0]!
+  const ficha = altaDeSiniestro(
+    {
+      clienteId: candidato.clienteId,
+      polizaId: candidato.polizaId,
+      fecha: '2026-08-18',
+      numeroSiniestro: '',
+      descripcion: 'ROTURA DE PARABRISAS',
+      estado: 'CARGADO',
+      importe: '',
+      observaciones: '',
+      sucursal: 'LANUS',
+    },
+    DANIEL,
+  )
+  const cola = filas<{ pestana: string; operacion: string }>(
+    db,
+    `SELECT pestana, operacion FROM cola_sync WHERE fila_id = ? ORDER BY id`,
+    ficha.siniestro.filaId,
+  )
+  assert.ok(cola.length >= 1)
+  assert.equal(cola[0]!.operacion, 'crear')
+  assert.equal(cola[0]!.pestana, 'SINIESTROS')
+  cerrarBaseDeDatos()
 })

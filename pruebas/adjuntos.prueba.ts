@@ -15,9 +15,11 @@ import {
   MENSAJE_SIN_DRIVE,
   adjuntosSinSubir,
   hayAdjuntosPendientes,
+  nombreSeguro,
   registrarLoQueNoViajo,
   subirAdjuntosPendientes,
   usarCarpetaDeAdjuntosDePrueba,
+  verificarAdjuntosContraElServidor,
 } from '../src/main/servicios/adjuntos'
 import { adjuntosDePoliza, agregarArchivosDePoliza, borrarAdjuntoDePoliza, rutaDelAdjuntoDePoliza } from '../src/main/servicios/adjuntosDePoliza'
 import { ejecutarEliminacion } from '../src/main/servicios/eliminacion'
@@ -34,6 +36,7 @@ import {
 } from '../src/main/servicios/tareas'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes } from '../src/main/sincronizacion/cola'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
+import { ErrorDelServidorVps } from '../src/main/vps/fuenteVps'
 import type { DatosDeTareaCompleta, FiltrosSiniestros, SesionUsuario } from '../src/shared/tipos'
 import { construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
@@ -478,10 +481,12 @@ test('eliminar una tarea saca sus adjuntos y comentarios de la base, y de la otr
   assert.equal(fichaDeTarea(idAlla, MILAGROS).adjuntos.length, 1)
 
   en(lanus)
+  assert.equal(hoja.almacen.size, 1)
   ejecutarEliminacion('tarea', tarea.id, DANIEL)
   await subirTodo(lanus)
   assert.equal(filasDeAnexos(hoja, 'APP ADJUNTOS').length, 0, 'la fila del adjunto se fue con la tarea')
   assert.equal(filasDeAnexos(hoja, 'APP COMENTARIOS').length, 0, 'y la del comentario')
+  assert.equal(hoja.almacen.size, 0, '12.7: el archivo también se fue del servidor, no quedó huérfano')
 
   en(dockSud)
   await dockSud.motor.ciclarBajada(true)
@@ -489,4 +494,404 @@ test('eliminar una tarea saca sus adjuntos y comentarios de la base, y de la otr
   assert.equal(contar('tarea_adjuntos'), 0, 'el adjunto se fue de la otra computadora')
   assert.equal(contar('tarea_comentarios'), 0, 'y el comentario también')
   cerrarTodo()
+})
+
+// ---------------------------------------------------------------------------
+// 12.7: la vuelta de subida no se traba con un archivo, y el servidor no manda a «nunca» por el token
+// ---------------------------------------------------------------------------
+
+interface EstadoDeSubida {
+  id: number
+  nombre: string
+  vps_id: string
+  vps_subido_en: string | null
+  vps_error: string | null
+  vps_intentos: number
+  vps_proximo_intento: string | null
+}
+
+function estadoDeLosAdjuntos(db: BaseDeDatos, tareaId: number): Record<string, EstadoDeSubida> {
+  const filas = db
+    .prepare('SELECT id, nombre, vps_id, vps_subido_en, vps_error, vps_intentos, vps_proximo_intento FROM tarea_adjuntos WHERE tarea_id = ? ORDER BY id')
+    .all(tareaId) as EstadoDeSubida[]
+  return Object.fromEntries(filas.map((fila) => [fila.nombre, fila]))
+}
+
+function fallaDeRed(): Error {
+  return Object.assign(new Error('fetch failed'), { code: 'ECONNRESET' })
+}
+
+function timeout(): Error {
+  const error = new Error('The operation was aborted due to timeout')
+  error.name = 'TimeoutError'
+  return error
+}
+
+test('una falla de red en un archivo no frena a los que vienen después, y un timeout cuenta como intento', async () => {
+  const { hoja, lanus } = await dosComputadoras()
+  en(lanus)
+  const tarea = crearTareaCompleta({ ...TAREA_VACIA, titulo: 'Fotos del choque', responsableId: FEDE.id }, FEDE)
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'primera.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'segunda.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  // Las fechas bien separadas: la primera es la primera, no importa el reloj.
+  lanus.db.prepare(`UPDATE tarea_adjuntos SET creado_en = '2026-08-01T10:00:00.000Z' WHERE nombre = 'primera.pdf'`).run()
+  lanus.db.prepare(`UPDATE tarea_adjuntos SET creado_en = '2026-08-01T10:01:00.000Z' WHERE nombre = 'segunda.pdf'`).run()
+
+  // La primera se cae por la red: hasta la 12.6 esto cortaba la vuelta y la segunda no salía jamás.
+  hoja.fallaDeSubida = fallaDeRed()
+  let resultado = await subirAdjuntosPendientes(null)
+  assert.deepEqual(resultado, { subidos: 1, fallidos: 0 }, 'la segunda subió igual')
+  let estado = estadoDeLosAdjuntos(lanus.db, tarea.id)
+  assert.equal(estado['primera.pdf']!.vps_intentos, 0, 'una falla de red no es un intento')
+  assert.equal(estado['primera.pdf']!.vps_subido_en, null)
+  assert.ok(estado['primera.pdf']!.vps_proximo_intento! > ahoraIso(), 'pero esa fila espera un minuto')
+  assert.ok(estado['segunda.pdf']!.vps_subido_en, 'la segunda está en el servidor')
+  assert.equal(hoja.almacen.size, 1)
+
+  // Un timeout del PUT SÍ cuenta: un archivo que siempre tarda más de diez minutos no puede pasar
+  // primero para siempre.
+  lanus.db.prepare('UPDATE tarea_adjuntos SET vps_proximo_intento = NULL').run()
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'tercera.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  hoja.fallaDeSubida = timeout()
+  resultado = await subirAdjuntosPendientes(null)
+  assert.deepEqual(resultado, { subidos: 1, fallidos: 1 })
+  estado = estadoDeLosAdjuntos(lanus.db, tarea.id)
+  assert.equal(estado['primera.pdf']!.vps_intentos, 1, 'el timeout cuenta como intento')
+  assert.match(estado['primera.pdf']!.vps_error ?? '', /diez minutos/)
+  assert.ok(estado['primera.pdf']!.vps_proximo_intento! > ahoraIso())
+  assert.ok(!estado['primera.pdf']!.vps_proximo_intento!.startsWith('9999'), 'y no es definitivo')
+  assert.ok(estado['tercera.pdf']!.vps_subido_en, 'la tercera pasó por delante de la que ya falló')
+
+  // Los que fallaron van al fondo: con una nueva y la que ya tiene un intento, sale primero la nueva.
+  // Y sin internet de verdad (dos fallas de red seguidas) la vuelta se corta sin contar intentos.
+  lanus.db.prepare('UPDATE tarea_adjuntos SET vps_proximo_intento = NULL').run()
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'cuarta.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  hoja.desconectar()
+  resultado = await subirAdjuntosPendientes(null)
+  assert.deepEqual(resultado, { subidos: 0, fallidos: 0 })
+  estado = estadoDeLosAdjuntos(lanus.db, tarea.id)
+  assert.equal(estado['cuarta.pdf']!.vps_intentos, 0)
+  assert.ok(estado['cuarta.pdf']!.vps_proximo_intento! > ahoraIso(), 'la nueva se intentó (y espera)')
+  assert.equal(estado['primera.pdf']!.vps_intentos, 1, 'la que ya había fallado no sumó intentos')
+  assert.ok(estado['primera.pdf']!.vps_proximo_intento! > ahoraIso())
+  hoja.conectar()
+
+  // Con conexión, las dos suben.
+  lanus.db.prepare('UPDATE tarea_adjuntos SET vps_proximo_intento = NULL').run()
+  resultado = await subirAdjuntosPendientes(null)
+  assert.deepEqual(resultado, { subidos: 2, fallidos: 0 })
+  assert.equal(hoja.almacen.size, 4)
+  assert.equal(hayAdjuntosPendientes(), false)
+  cerrarTodo()
+})
+
+test('un 401 o un 503 del servidor nunca mandan el archivo a «nunca»; un 413 sí, al tercero, y un 409 también', async () => {
+  const { hoja, lanus } = await dosComputadoras()
+  en(lanus)
+  const tarea = crearTareaCompleta({ ...TAREA_VACIA, titulo: 'Con el token vencido', responsableId: FEDE.id }, FEDE)
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'denuncia.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  const leer = () => estadoDeLosAdjuntos(lanus.db, tarea.id)['denuncia.pdf']!
+
+  const rechazos = [
+    new ErrorDelServidorVps('El servidor del VPS rechazó el token de DM Gestión.', 401),
+    new ErrorDelServidorVps('El servidor del VPS rechazó el token de DM Gestión.', 401),
+    new ErrorDelServidorVps('Falta DMG_SYNC_TOKEN en el servidor.', 503),
+    new ErrorDelServidorVps('El servidor del VPS rechazó la operación (subir el adjunto): demasiados pedidos', 429),
+  ]
+  for (const [indice, rechazo] of rechazos.entries()) {
+    lanus.db.prepare('UPDATE tarea_adjuntos SET vps_proximo_intento = NULL').run()
+    hoja.fallaDeSubida = rechazo
+    const resultado = await subirAdjuntosPendientes(null)
+    assert.deepEqual(resultado, { subidos: 0, fallidos: 1 })
+    const fila = leer()
+    assert.equal(fila.vps_intentos, indice + 1, 'cada rechazo cuenta como intento')
+    assert.ok(fila.vps_proximo_intento! > ahoraIso(), 'con espera creciente')
+    assert.ok(!fila.vps_proximo_intento!.startsWith('9999'), `un ${rechazo.status} no es culpa del archivo: no se rinde (intento ${indice + 1})`)
+  }
+  // La espera tiene tope de una hora: con cuatro intentos son 8 minutos, nunca más de 60.
+  const dentroDeUnaHora = new Date(Date.now() + 61 * 60_000).toISOString()
+  assert.ok(leer().vps_proximo_intento! < dentroDeUnaHora)
+
+  // Cuando el token se arregla, sube como si nada.
+  lanus.db.prepare('UPDATE tarea_adjuntos SET vps_proximo_intento = NULL').run()
+  assert.deepEqual(await subirAdjuntosPendientes(null), { subidos: 1, fallidos: 0 })
+  assert.equal(leer().vps_error, null)
+
+  // Un 413 (demasiado grande) sí es del archivo: al tercero, «nunca».
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'video.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  for (let vuelta = 1; vuelta <= 3; vuelta++) {
+    lanus.db.prepare('UPDATE tarea_adjuntos SET vps_proximo_intento = NULL').run()
+    hoja.fallaDeSubida = new ErrorDelServidorVps('El archivo supera el máximo que acepta el servidor (1024 MB).', 413)
+    await subirAdjuntosPendientes(null)
+  }
+  const video = estadoDeLosAdjuntos(lanus.db, tarea.id)['video.pdf']!
+  assert.equal(video.vps_intentos, 3)
+  assert.ok(video.vps_proximo_intento!.startsWith('9999'), 'un 413 tres veces es definitivo')
+
+  // Un 409 tampoco se arregla esperando: el id y la huella de la fila no cambian nunca, así que sin
+  // esto el archivo entero (pueden ser decenas de MB) volvía a salir cada hora para siempre.
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'repetido.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  for (let vuelta = 1; vuelta <= 3; vuelta++) {
+    lanus.db.prepare(`UPDATE tarea_adjuntos SET vps_proximo_intento = NULL WHERE nombre = 'repetido.pdf'`).run()
+    hoja.fallaDeSubida = new ErrorDelServidorVps('Ya hay un adjunto con ese id y otro contenido: un adjunto no se reescribe.', 409)
+    await subirAdjuntosPendientes(null)
+  }
+  const repetido = estadoDeLosAdjuntos(lanus.db, tarea.id)['repetido.pdf']!
+  assert.equal(repetido.vps_intentos, 3)
+  assert.ok(repetido.vps_proximo_intento!.startsWith('9999'), 'un 409 tres veces también se deja de intentar')
+  cerrarTodo()
+})
+
+test('un 400 no se decide por el nombre del archivo: «hash.pdf» con un error transitorio se sigue intentando', async () => {
+  const { hoja, lanus } = await dosComputadoras()
+  en(lanus)
+  const tarea = crearTareaCompleta({ ...TAREA_VACIA, titulo: 'Con nombres traicioneros', responsableId: FEDE.id }, FEDE)
+  // El mensaje que ve la ficha lleva adentro el nombre del archivo: «…(subir el adjunto «hash.pdf»):
+  // el cuerpo del pedido no se pudo leer». Si se decidiera por ese texto, la palabra «hash» del NOMBRE
+  // alcanzaría para dar el archivo por rechazado y no volver a intentarlo nunca.
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'hash.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  for (let vuelta = 1; vuelta <= 3; vuelta++) {
+    lanus.db.prepare('UPDATE tarea_adjuntos SET vps_proximo_intento = NULL').run()
+    hoja.fallaDeSubida = new ErrorDelServidorVps(
+      'El servidor del VPS rechazó la operación (subir el adjunto «hash.pdf»): el cuerpo del pedido no se pudo leer',
+      400,
+      'el cuerpo del pedido no se pudo leer',
+    )
+    await subirAdjuntosPendientes(null)
+  }
+  const hash = estadoDeLosAdjuntos(lanus.db, tarea.id)['hash.pdf']!
+  assert.equal(hash.vps_intentos, 3)
+  assert.ok(!hash.vps_proximo_intento!.startsWith('9999'), 'el 400 era del pedido, no del archivo: se sigue intentando')
+
+  // Y un 400 que sí es del archivo (lo dice el servidor, no el nombre) se rinde al tercero.
+  lanus.db.prepare('UPDATE tarea_adjuntos SET vps_intentos = 0, vps_error = NULL, vps_proximo_intento = NULL').run()
+  for (let vuelta = 1; vuelta <= 3; vuelta++) {
+    lanus.db.prepare('UPDATE tarea_adjuntos SET vps_proximo_intento = NULL').run()
+    hoja.fallaDeSubida = new ErrorDelServidorVps(
+      'El servidor del VPS rechazó la operación (subir el adjunto «hash.pdf»): el archivo llegó vacío',
+      400,
+      'el archivo llegó vacío',
+    )
+    await subirAdjuntosPendientes(null)
+  }
+  assert.ok(estadoDeLosAdjuntos(lanus.db, tarea.id)['hash.pdf']!.vps_proximo_intento!.startsWith('9999'))
+  cerrarTodo()
+})
+
+test('el archivo que una versión anterior dio por perdido por el token vuelve a la cola al verificar', async () => {
+  const { hoja, lanus } = await dosComputadoras()
+  en(lanus)
+  const tarea = crearTareaCompleta({ ...TAREA_VACIA, titulo: 'Lo que perdió la 12.6', responsableId: FEDE.id }, FEDE)
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'rescatable.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'gigante.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  // Así quedaban en la 12.6: tres 401 seguidos con el token vencido mandaban el archivo a «nunca»
+  // aunque el archivo estuviera perfecto en el disco, y ahí se moría para siempre.
+  lanus.db
+    .prepare(`UPDATE tarea_adjuntos SET vps_intentos = 3, vps_error = ?, vps_proximo_intento = '9999-12-31T00:00:00.000Z' WHERE nombre = 'rescatable.pdf'`)
+    .run('El servidor del VPS rechazó el token de DM Gestión.')
+  // Éste sí es culpa del archivo: reintentarlo no cambia nada, así que se queda donde está.
+  lanus.db
+    .prepare(`UPDATE tarea_adjuntos SET vps_intentos = 3, vps_error = ?, vps_proximo_intento = '9999-12-31T00:00:00.000Z' WHERE nombre = 'gigante.pdf'`)
+    .run('El archivo supera el máximo que acepta el servidor (1024 MB).')
+  assert.equal(hayAdjuntosPendientes(), false, 'los dos están fuera de la cola')
+
+  assert.deepEqual(await verificarAdjuntosContraElServidor(), { reencolados: 1, confirmados: 0, desmarcados: 0 })
+  const estado = estadoDeLosAdjuntos(lanus.db, tarea.id)
+  assert.equal(estado['rescatable.pdf']!.vps_intentos, 0, 'vuelve a empezar de cero')
+  assert.equal(estado['rescatable.pdf']!.vps_error, null)
+  assert.equal(estado['rescatable.pdf']!.vps_proximo_intento, null)
+  assert.ok(estado['gigante.pdf']!.vps_proximo_intento!.startsWith('9999'), 'lo que el servidor rechazó por el archivo no se rescata')
+
+  await subirTodo(lanus)
+  assert.equal(hoja.almacen.size, 1, 'el rescatado subió; el otro no se volvió a intentar')
+  cerrarTodo()
+})
+
+test('un archivo que no se puede leer no tumba la vuelta ni el registro de los demás', async () => {
+  const { hoja, lanus } = await dosComputadoras()
+  en(lanus)
+  const tarea = crearTareaCompleta({ ...TAREA_VACIA, titulo: 'Con uno trabado', responsableId: FEDE.id }, FEDE)
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'trabado.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'sano.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  lanus.db.prepare(`UPDATE tarea_adjuntos SET creado_en = '2026-08-01T10:00:00.000Z' WHERE nombre = 'trabado.pdf'`).run()
+  lanus.db.prepare(`UPDATE tarea_adjuntos SET creado_en = '2026-08-01T10:01:00.000Z' WHERE nombre = 'sano.pdf'`).run()
+  // Un archivo que existe pero no se deja leer: acá, una carpeta con su nombre (EISDIR); en Windows,
+  // el PDF abierto en otro programa (EBUSY) o sin permiso (EPERM).
+  const rutaTrabada = path.join(lanus.carpeta, `tarea-${tarea.id}`, 'trabado.pdf')
+  rmSync(rutaTrabada)
+  mkdirSync(rutaTrabada)
+
+  const resultado = await subirAdjuntosPendientes(null)
+  assert.deepEqual(resultado, { subidos: 1, fallidos: 1 }, 'la vuelta siguió y el sano subió')
+  const estado = estadoDeLosAdjuntos(lanus.db, tarea.id)
+  assert.equal(estado['trabado.pdf']!.vps_intentos, 1, 'no poder leerlo cuenta como intento')
+  assert.match(estado['trabado.pdf']!.vps_error ?? '', /No se pudo leer el archivo/)
+  assert.ok(estado['trabado.pdf']!.vps_proximo_intento! > ahoraIso())
+  assert.ok(!estado['trabado.pdf']!.vps_proximo_intento!.startsWith('9999'))
+  assert.ok(estado['sano.pdf']!.vps_subido_en)
+  assert.equal(hoja.almacen.size, 1)
+
+  // Lo mismo al registrar lo de versiones anteriores: uno ilegible no aborta el registro de los otros.
+  const carpeta = path.join(lanus.carpeta, `tarea-${tarea.id}`)
+  mkdirSync(path.join(carpeta, 'vieja-trabada.pdf'))
+  writeFileSync(path.join(carpeta, 'vieja-sana.pdf'), PDF)
+  const alta = lanus.db.prepare(`INSERT INTO tarea_adjuntos (tarea_id, nombre, archivo, tamano, usuario_id, usuario_nombre, creado_en) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+  alta.run(tarea.id, 'vieja-trabada.pdf', `tarea-${tarea.id}/vieja-trabada.pdf`, PDF.length, FEDE.id, FEDE.nombre, '2026-06-01T10:00:00.000Z')
+  alta.run(tarea.id, 'vieja-sana.pdf', `tarea-${tarea.id}/vieja-sana.pdf`, PDF.length, FEDE.id, FEDE.nombre, '2026-06-01T10:01:00.000Z')
+  assert.deepEqual(registrarLoQueNoViajo(), { adjuntos: 1, comentarios: 0 })
+  const viejas = lanus.db.prepare(`SELECT nombre, fila_id FROM tarea_adjuntos WHERE nombre LIKE 'vieja-%' ORDER BY nombre`).all() as Array<{ nombre: string; fila_id: string | null }>
+  assert.equal(viejas.find((v) => v.nombre === 'vieja-sana.pdf')!.fila_id?.startsWith('ADJ:'), true)
+  assert.equal(viejas.find((v) => v.nombre === 'vieja-trabada.pdf')!.fila_id, null, 'la ilegible queda para el próximo arranque')
+  cerrarTodo()
+})
+
+test('un adjunto de una ficha sin identidad queda sin fila_id y viaja cuando la ficha la gana', async () => {
+  const { hoja, lanus } = await dosComputadoras()
+  en(lanus)
+  const tarea = crearTareaCompleta({ ...TAREA_VACIA, titulo: 'Tarea sin fila', responsableId: FEDE.id }, FEDE)
+  await subirTodo(lanus)
+  // Una tarea como las de antes de la 12.6: sin fila en la base.
+  const filaIdTarea = filaIdDeTarea(lanus.db, tarea.id)
+  lanus.db.prepare('UPDATE tareas SET fila_id = NULL WHERE id = ?').run(tarea.id)
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'huérfano.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  const leer = () =>
+    lanus.db.prepare('SELECT fila_id, vps_id, vps_subido_en FROM tarea_adjuntos WHERE tarea_id = ?').get(tarea.id) as { fila_id: string | null; vps_id: string; vps_subido_en: string | null }
+  assert.equal(leer().fila_id, null, 'sin ficha madre en la base no hay fila que mandar: fila_id queda en NULL')
+  assert.ok(leer().vps_id, 'pero el archivo tiene id y puede ir subiendo')
+  assert.equal(cuantasPendientes(), 0, 'nada en la cola para APP ADJUNTOS')
+
+  await subirTodo(lanus)
+  assert.equal(hoja.almacen.size, 1, 'el archivo subió')
+  assert.equal(filasDeAnexos(hoja, 'APP ADJUNTOS').length, 0, 'sin fila todavía')
+  const vpsId = leer().vps_id
+
+  // La tarea gana identidad: al arrancar, el adjunto se registra con el MISMO id de archivo y con su
+  // fecha de subida, así las otras computadoras lo ven «en el servidor» y lo pueden abrir.
+  lanus.db.prepare('UPDATE tareas SET fila_id = ? WHERE id = ?').run(filaIdTarea, tarea.id)
+  assert.deepEqual(registrarLoQueNoViajo(), { adjuntos: 1, comentarios: 0 })
+  assert.equal(leer().fila_id, `ADJ:${vpsId}`)
+  assert.equal(leer().vps_id, vpsId, 'conserva el id con el que ya subió')
+  await subirTodo(lanus)
+  const filas = filasDeAnexos(hoja, 'APP ADJUNTOS')
+  assert.equal(filas.length, 1)
+  assert.equal(celdaDe(hoja, 'APP ADJUNTOS', filas[0]!, 'ARCHIVO'), vpsId)
+  assert.equal(celdaDe(hoja, 'APP ADJUNTOS', filas[0]!, 'SUBIDO'), leer().vps_subido_en, 'la fila ya dice que está en el servidor')
+  cerrarTodo()
+})
+
+test('verificar contra el servidor desmarca lo que otra computadora dio por subido y ya no está', async () => {
+  const { hoja, lanus, dockSud } = await dosComputadoras()
+  en(lanus)
+  const tarea = crearTareaCompleta({ ...TAREA_VACIA, titulo: 'Para verificar', responsableId: FEDE.id }, FEDE)
+  const filaIdTarea = filaIdDeTarea(lanus.db, tarea.id)
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'perdido.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  await subirTodo(lanus)
+  en(dockSud)
+  await dockSud.motor.ciclarBajada(true)
+  const idAlla = tareaPorFila(dockSud.db, filaIdTarea)
+  assert.equal(fichaDeTarea(idAlla, MILAGROS).adjuntos[0]!.enElServidor, true, 'la columna SUBIDO lo dice')
+
+  // El archivo desaparece del servidor (se borró a mano, o nunca terminó de subir).
+  hoja.almacen.clear()
+  let resultado = await verificarAdjuntosContraElServidor()
+  assert.deepEqual(resultado, { reencolados: 0, confirmados: 0, desmarcados: 1 })
+  const alla = fichaDeTarea(idAlla, MILAGROS).adjuntos[0]!
+  assert.equal(alla.enElServidor, false, 'ya no se afirma que está en el servidor')
+  assert.equal(alla.enOtraComputadora, true, 'la ficha dice «cargado en otra computadora»')
+  assert.deepEqual(await verificarAdjuntosContraElServidor(), { reencolados: 0, confirmados: 0, desmarcados: 0 }, 'la segunda vez no hay nada que hacer')
+
+  // Y aguanta una importación completa: la fila de APP ADJUNTOS sigue teniendo su columna SUBIDO
+  // escrita, y hasta ahora eso volvía a marcar el adjunto como «en el servidor» apenas entraba una
+  // importación (que corre sola cuando aparecen filas nuevas), o sea que el arreglo duraba minutos.
+  await dockSud.motor.ciclarBajada(true)
+  en(dockSud)
+  assert.ok(
+    (dockSud.db.prepare('SELECT vps_subido_en FROM tarea_adjuntos WHERE tarea_id = ?').get(idAlla) as { vps_subido_en: string | null }).vps_subido_en,
+    'la importación vuelve a copiar la columna SUBIDO (por eso el desmarcado no puede vivir sólo en esa columna)',
+  )
+  const despues = fichaDeTarea(idAlla, MILAGROS).adjuntos[0]!
+  assert.equal(despues.enElServidor, false, 'la importación no lo vuelve a dar por subido')
+  assert.equal(despues.enOtraComputadora, true)
+  assert.equal(despues.errorDelServidor, null, 'no se muestra como «no subió»: sigue siendo un archivo de otra computadora')
+
+  // La computadora que SÍ tiene el archivo lo reencola y lo vuelve a subir (esto ya andaba: no se rompe).
+  en(lanus)
+  resultado = await verificarAdjuntosContraElServidor()
+  assert.deepEqual(resultado, { reencolados: 1, confirmados: 0, desmarcados: 0 })
+  assert.equal(hayAdjuntosPendientes(), true)
+  await subirTodo(lanus)
+  assert.equal(hoja.almacen.size, 1)
+
+  // Y la otra, al verificar, lo confirma.
+  en(dockSud)
+  assert.deepEqual(await verificarAdjuntosContraElServidor(), { reencolados: 0, confirmados: 1, desmarcados: 0 })
+  assert.equal(fichaDeTarea(idAlla, MILAGROS).adjuntos[0]!.enElServidor, true)
+  cerrarTodo()
+})
+
+test('bajar un adjunto sin conexión o con la descarga cortada da un mensaje claro, no un error inesperado', async () => {
+  const { hoja, lanus, dockSud } = await dosComputadoras()
+  en(lanus)
+  const tarea = crearTareaCompleta({ ...TAREA_VACIA, titulo: 'Para bajar', responsableId: FEDE.id }, FEDE)
+  const filaIdTarea = filaIdDeTarea(lanus.db, tarea.id)
+  await agregarArchivosDeTarea(tarea.id, [{ nombre: 'pesado.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  await subirTodo(lanus)
+  en(dockSud)
+  await dockSud.motor.ciclarBajada(true)
+  const adjunto = fichaDeTarea(tareaPorFila(dockSud.db, filaIdTarea), MILAGROS).adjuntos[0]!
+
+  const esMensajeClaro = (error: unknown) => {
+    assert.ok(error instanceof ErrorDeNegocio, 'es un error de negocio, con mensaje para la pantalla')
+    assert.match(error.message, /«pesado\.pdf» se cortó o tardó demasiado/)
+    return true
+  }
+  hoja.desconectar()
+  await assert.rejects(rutaDelAdjuntoDeTarea(adjunto.id), esMensajeClaro)
+  hoja.conectar()
+
+  // La descarga que el reloj cortó (ver `pedirCrudo`): mismo mensaje.
+  const bajarDeVerdad = hoja.bajarAdjunto.bind(hoja)
+  hoja.bajarAdjunto = async () => {
+    throw timeout()
+  }
+  await assert.rejects(rutaDelAdjuntoDeTarea(adjunto.id), esMensajeClaro)
+  hoja.bajarAdjunto = bajarDeVerdad
+  assert.ok(readFileSync(await rutaDelAdjuntoDeTarea(adjunto.id)).equals(PDF), 'con conexión baja bien')
+  cerrarTodo()
+})
+
+test('borrar un adjunto deja su fila lista para salir en el ciclo siguiente, sin la ventana de agrupado', async () => {
+  const { hoja, lanus } = await dosComputadoras()
+  en(lanus)
+  const tarea = crearTareaCompleta({ ...TAREA_VACIA, titulo: 'Para borrar rápido', responsableId: FEDE.id }, FEDE)
+  const conAdjunto = await agregarArchivosDeTarea(tarea.id, [{ nombre: 'borrar.pdf', tipo: 'application/pdf', contenido: new Uint8Array(PDF) }], FEDE)
+  await subirTodo(lanus)
+  assert.equal(hoja.almacen.size, 1)
+  const { fila_id } = lanus.db.prepare('SELECT fila_id FROM tarea_adjuntos WHERE tarea_id = ?').get(tarea.id) as { fila_id: string }
+
+  borrarAdjuntoDeTarea(conAdjunto.adjuntos[0]!.id, DANIEL)
+  const entrada = lanus.db
+    .prepare(`SELECT proximo_intento FROM cola_sync WHERE fila_id = ? AND operacion = 'borrar' AND estado = 'pendiente'`)
+    .get(fila_id) as { proximo_intento: string | null } | undefined
+  assert.ok(entrada, 'el borrado está en la cola')
+  assert.equal(entrada.proximo_intento, null, 'sin espera: el archivo ya no está en el servidor y la fila no puede quedar un minuto diciendo que sí')
+  // Sin `apurarAgrupadas`: sale en el ciclo siguiente por sí sola.
+  await lanus.motor.ciclarSubida()
+  assert.equal(filasDeAnexos(hoja, 'APP ADJUNTOS').length, 0)
+  assert.equal(hoja.almacen.size, 0)
+  cerrarTodo()
+})
+
+test('los nombres reservados de Windows se guardan con un guion bajo adelante', () => {
+  assert.equal(nombreSeguro('CON'), '_CON')
+  assert.equal(nombreSeguro('con.pdf'), '_con.pdf')
+  assert.equal(nombreSeguro('Nul.jpg'), '_Nul.jpg')
+  assert.equal(nombreSeguro('LPT1.txt'), '_LPT1.txt')
+  assert.equal(nombreSeguro('com9'), '_com9')
+  // Windows abre el dispositivo por lo que va antes del PRIMER punto, no antes de la extensión.
+  assert.equal(nombreSeguro('con.txt.pdf'), '_con.txt.pdf')
+  assert.equal(nombreSeguro('nul.tar.gz'), '_nul.tar.gz')
+  assert.equal(nombreSeguro('console.pdf'), 'console.pdf', 'sólo el nombre exacto, no lo que empieza igual')
+  assert.equal(nombreSeguro('com0.pdf'), 'com0.pdf')
+  assert.equal(nombreSeguro('contrato.pdf'), 'contrato.pdf')
 })

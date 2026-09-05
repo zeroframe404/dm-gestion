@@ -83,3 +83,20 @@ export function nombreDePestana(tipo: TipoPestana, porDefecto: string): string {
     .get(tipo) as { pestana: string } | undefined
   return existente?.pestana ?? porDefecto
 }
+
+/**
+ * La pestaña REAL de una fila que ya existe, para corregirla donde vive. `nombreDePestana` elige la
+ * pestaña «principal» del tipo, que es lo que corresponde para un ALTA (todavía no vive en ninguna),
+ * pero para una CORRECCIÓN estaba mal: con dos pestañas del mismo tipo («SINIESTROS» y «SINIESTROS
+ * 2024»), un siniestro que vive en la segunda encolaba contra la primera y la subida lo rebotaba con
+ * «La fila ya no está en la base».
+ *
+ * Se exige que el tipo coincida: si el _ID quedó en una pestaña de otro tipo (una fila movida a mano
+ * en la hoja) es más seguro caer en la pestaña por defecto que escribir en una tabla que no es.
+ */
+export function pestanaDeLaFila(filaId: string, tipo: TipoPestana, porDefecto: string): string {
+  const cruda = db().prepare('SELECT pestana FROM filas_crudas WHERE fila_id = ? AND tipo_pestana = ?').get(filaId, tipo) as
+    | { pestana: string }
+    | undefined
+  return cruda?.pestana ?? nombreDePestana(tipo, porDefecto)
+}

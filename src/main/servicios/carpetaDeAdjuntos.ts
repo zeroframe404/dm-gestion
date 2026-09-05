@@ -66,6 +66,8 @@ export function rutaDeAdjunto(relativa: string): string {
   return path.join(carpetaDeAdjuntos(), relativa)
 }
 
+const NOMBRE_RESERVADO_DE_WINDOWS = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i
+
 /**
  * Deja el nombre en algo que Windows acepte como archivo, sin perder de vista cuál era: se cambian los
  * caracteres prohibidos por guiones y se recorta si es larguísimo, conservando la extensión.
@@ -75,7 +77,12 @@ export function nombreSeguro(nombre: string): string {
   if (!base || base === '.' || base === '..') return 'adjunto'
   const extension = path.extname(base)
   const cuerpo = base.slice(0, base.length - extension.length)
-  return `${cuerpo.slice(0, 80) || 'adjunto'}${extension.slice(0, 12)}`
+  // Los nombres reservados de Windows (CON, PRN, AUX, NUL, COM1-9, LPT1-9), con o sin extensión y en
+  // cualquier caja: «con.pdf» no se puede crear en NTFS. Un guion bajo adelante y listo (12.7).
+  // Windows reserva el dispositivo por lo que va ANTES DEL PRIMER punto, no antes de la extensión:
+  // «con.txt.pdf» y «nul.tar.gz» también abren el dispositivo, así que se mira ese primer pedazo.
+  const seguro = NOMBRE_RESERVADO_DE_WINDOWS.test(base.split('.')[0] ?? '') ? `_${cuerpo}` : cuerpo
+  return `${seguro.slice(0, 80) || 'adjunto'}${extension.slice(0, 12)}`
 }
 
 export interface AdjuntoCopiado {

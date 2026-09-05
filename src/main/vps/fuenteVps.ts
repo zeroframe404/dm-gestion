@@ -22,7 +22,38 @@ import { ErrorDeNegocio } from '../servicios/errores'
 
 /** Tiempo máximo por pedido; sin esto una conexión colgada bloquea la importación. */
 const TIEMPO_MAXIMO_MS = 90_000
+/**
+ * Tiempo máximo para un archivo crudo, en los dos sentidos (12.7). Diez minutos y no noventa segundos:
+ * un PDF escaneado de 40 MB por la conexión del celular tarda eso, y cortarlo antes sólo hace que se
+ * vuelva a empezar. Quien sube lo cuenta como un intento más (ver `subirAdjuntosPendientes`), así un
+ * archivo que SIEMPRE tarda más que esto no pasa primero para siempre.
+ */
+const TIEMPO_MAXIMO_DE_ARCHIVO_MS = 10 * 60_000
 const MAXIMO_INTENTOS = 5
+
+/**
+ * Lo que el servidor contestó con un código HTTP (12.7). Es un `ErrorDeNegocio` (el mensaje se muestra
+ * tal cual) que además conserva el `status`, porque no es lo mismo un 413 («el archivo es demasiado
+ * grande»: no va a cambiar por reintentarlo) que un 401 o un 503 (el token o el servidor: se arreglan
+ * sin tocar el archivo). Hasta la 12.6 los dos llegaban iguales y la subida se rendía con cualquiera.
+ */
+export class ErrorDelServidorVps extends ErrorDeNegocio {
+  readonly status: number
+  /**
+   * Lo que dijo el servidor, sin el envoltorio que arma `traducirError` (12.7). El mensaje que se
+   * muestra lleva adentro el nombre del archivo («…rechazó la operación (subir el adjunto «hash.pdf»):
+   * …»), así que quien decide por palabras —`esRechazoDelArchivo`, en adjuntos.ts— tiene que mirar
+   * esto y no el mensaje: si no, un archivo llamado «hash.pdf» o «dañado.pdf» se daba por rechazado.
+   */
+  readonly detalle: string
+
+  constructor(mensaje: string, status: number, detalle: string = mensaje) {
+    super(mensaje)
+    this.name = 'ErrorDelServidorVps'
+    this.status = status
+    this.detalle = detalle
+  }
+}
 
 export interface OpcionesFuenteVps {
   urlBase: string
@@ -303,16 +334,21 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
   private traducirError(respuesta: RespuestaHttp, descripcion: string): Error {
     const detalle = mensajeDelServidor(respuesta.json, `error ${respuesta.status}`)
     if (respuesta.status === 401) {
-      return new ErrorDeNegocio(
+      return new ErrorDelServidorVps(
         'El servidor del VPS rechazó el token de DM Gestión. El token del programa y el DMG_SYNC_TOKEN del servidor tienen que ser el mismo: actualizá la aplicación o corregí el .env del VPS.',
+        401,
+        detalle,
       )
     }
-    if (respuesta.status === 503) return new ErrorDeNegocio(detalle)
-    if (respuesta.status === 409) return new ErrorDeNegocio(detalle)
+    if (respuesta.status === 503) return new ErrorDelServidorVps(detalle, 503, detalle)
+    if (respuesta.status === 409) return new ErrorDelServidorVps(detalle, 409, detalle)
     if (respuesta.status >= 400 && respuesta.status < 500) {
-      return new ErrorDeNegocio(`El servidor del VPS rechazó la operación (${descripcion}): ${detalle}`)
+      return new ErrorDelServidorVps(`El servidor del VPS rechazó la operación (${descripcion}): ${detalle}`, respuesta.status, detalle)
     }
-    return new Error(`Error ${respuesta.status} del VPS al ${descripcion}: ${detalle}`)
+    // Un 5xx no es de negocio (el servidor se cayó, no dijo que no), pero el código viaja igual.
+    const error = new Error(`Error ${respuesta.status} del VPS al ${descripcion}: ${detalle}`)
+    ;(error as Error & { status?: number }).status = respuesta.status
+    return error
   }
 
   /**
@@ -334,9 +370,13 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
         ...(opciones.encabezados ?? {}),
       },
       body: opciones.cuerpo ? new Uint8Array(opciones.cuerpo) : undefined,
-      // Un archivo grande por una conexión lenta: diez minutos, no noventa segundos.
-      signal: AbortSignal.timeout(opciones.cuerpo ? 10 * 60_000 : TIEMPO_MAXIMO_MS),
+      // Un archivo grande por una conexión lenta: diez minutos, no noventa segundos. También para el
+      // GET (12.7): hasta la 12.6 la bajada de un PDF grande se cortaba a los 90 s con un TimeoutError
+      // que llegaba a la pantalla como «error inesperado». El DELETE va con el tope común.
+      signal: AbortSignal.timeout(metodo === 'DELETE' ? TIEMPO_MAXIMO_MS : TIEMPO_MAXIMO_DE_ARCHIVO_MS),
     })
+    // El cuerpo entero (los bytes del archivo) también corre contra el mismo reloj: un timeout a la
+    // mitad de la descarga sale por acá con el mismo nombre (`TimeoutError`).
     const cuerpo = Buffer.from(await bruta.arrayBuffer())
     if (bruta.status >= 200 && bruta.status < 300) return { status: bruta.status, encabezados: bruta.headers, cuerpo }
     let json: unknown = null

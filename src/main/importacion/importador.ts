@@ -151,6 +151,9 @@ const LIMITE_PROBLEMAS_LISTADOS = 3000
 /** Cuántos problemas del MISMO tipo se listan uno por uno (el resto sólo se cuenta). */
 const LIMITE_PROBLEMAS_POR_TIPO = 200
 
+/** Cuántas pestañas se piden por llamada al leer la grilla entera (ver `leerTodasLasPestanas`). */
+const PESTANAS_POR_LECTURA = 6
+
 type PestanaTrabajo = PestanaDeHoja & PestanaClasificada
 
 function mensajeDe(error: unknown): string {
@@ -912,6 +915,7 @@ class TrabajoDeImportacion {
         valores: this.valoresCacheados.get(p.titulo) ?? [],
       })),
     )
+    this.respetarDueniosDePestanasNoLeidas()
 
     this.masNueva = await this.elegirMasNuevaConDatos()
     if (!this.masNueva) {
@@ -934,6 +938,36 @@ class TrabajoDeImportacion {
     const porTitulo = new Map(this.progresoPestanas.map((p) => [p.titulo, p]))
     this.progresoPestanas = this.ordenDeProceso().map((p) => porTitulo.get(p.titulo) ?? { titulo: p.titulo, tipo: p.tipo, estado: 'pendiente', filas: null, detalle: null })
     this.emitirProgreso('pestanas', `Planilla más nueva: ${this.masNueva?.titulo ?? '(ninguna)'}.`)
+  }
+
+  /**
+   * La grilla que se vio puede estar incompleta —una pestaña de la estructura que no se pudo leer, o
+   * una importación acotada (12.7) que no las lee todas— y un _ID de esa pestaña que también esté en
+   * una de las que se guardan quedaría como propio de ésta: `filaCruda` le cambiaría la pestaña a la
+   * fila cruda de la original, y en la próxima bajada de la original ese _ID «no estaría» ⇒ fila
+   * nueva ⇒ otra importación, en bucle. Para esos _ID —y SÓLO para los de pestañas que esta corrida
+   * no pudo leer— vale lo que esta base recuerda: si dice que es de una pestaña que sigue en la hoja
+   * y la fila sigue en_la_hoja, es ajeno (la fila que lo trae recibe uno propio, como haría la
+   * corrida que ve la grilla entera). Una pestaña que ya no existe en la hoja (renombrada) no cuenta:
+   * ahí manda la grilla, que es lo que la 12.6 arregló.
+   *
+   * Para las pestañas que SÍ se leyeron la regla sigue siendo sólo la grilla (ver `duenioDeCadaId`):
+   * lo que cada base recuerda no sirve para decidir lo que las cinco computadoras tienen que decidir
+   * igual. Acá la grilla no dice nada, y lo que la base recuerda es mejor que dejar que otra pestaña
+   * se quede con esos _ID.
+   */
+  private respetarDueniosDePestanasNoLeidas(): void {
+    const noLeidas = this.pestanas.filter((p) => !this.valoresCacheados.has(p.titulo)).map((p) => p.titulo)
+    if (noLeidas.length === 0) return
+    const recordadas = this.db
+      .prepare(`SELECT fila_id, pestana FROM filas_crudas WHERE en_la_hoja = 1 AND pestana IN (${noLeidas.map(() => '?').join(', ')})`)
+      .all(...noLeidas) as Array<{ fila_id: string; pestana: string }>
+    for (const { fila_id, pestana } of recordadas) {
+      const duenio = this.duenioDeId.get(fila_id)
+      // Si la grilla leída ya se lo atribuye a una pestaña que no se guarda en esta pasada, no cambia nada.
+      if (duenio !== undefined && this.soloPestanas !== null && !this.soloPestanas.has(duenio)) continue
+      this.duenioDeId.set(fila_id, pestana)
+    }
   }
 
   /**
@@ -1095,8 +1129,27 @@ class TrabajoDeImportacion {
    */
   private async resolverLayouts(): Promise<void> {
     const entradas: PestanaParaLayout[] = []
+    if (this.estaCancelada()) return
+    // Las cabeceras de todas las pestañas en UNA llamada (12.7), como hace la bajada: con 25 pestañas
+    // eran 25 viajes al VPS, uno atrás del otro, antes de leer un solo dato. Si la tanda falla se
+    // vuelve a pedir de a una, que es lo que sabe informar el problema pestaña por pestaña.
+    let cabeceras = new Map<string, string[][]>()
+    try {
+      const lecturas = await this.fuente.leerVarias(
+        this.pestanas.map((p) => p.titulo),
+        FILAS_PARA_ENCABEZADOS,
+      )
+      cabeceras = new Map(lecturas.map((lectura) => [lectura.titulo, lectura.valores]))
+    } catch {
+      // Sin cabeceras en tanda: el bucle de abajo las pide de a una.
+    }
     for (const p of this.pestanas) {
       if (this.estaCancelada()) return
+      const filas = cabeceras.get(p.titulo)
+      if (filas !== undefined) {
+        entradas.push({ titulo: p.titulo, tipo: p.tipo, filas })
+        continue
+      }
       try {
         entradas.push({ titulo: p.titulo, tipo: p.tipo, filas: await this.fuente.leerPrimerasFilas(p.titulo, FILAS_PARA_ENCABEZADOS) })
       } catch (error) {
@@ -1112,18 +1165,47 @@ class TrabajoDeImportacion {
     }
   }
 
-  /** Lee todas las pestañas de la grilla y las deja en la caché, de a una, mostrando el avance. */
+  /**
+   * Lee todas las pestañas de la grilla y las deja en la caché, en tandas de unas pocas por llamada
+   * (12.7), mostrando el avance. Hasta la 12.6 era un viaje al VPS por pestaña; la tanda no es la
+   * grilla entera de una vez porque una respuesta con 28.000 filas se pasa del tiempo por pedido.
+   */
   private async leerTodasLasPestanas(): Promise<void> {
-    for (const p of this.pestanas) {
+    const pendientes = this.pestanas.filter((p) => !this.valoresCacheados.has(p.titulo))
+    for (let desde = 0; desde < pendientes.length; desde += PESTANAS_POR_LECTURA) {
       if (this.estaCancelada()) return
-      if (this.valoresCacheados.has(p.titulo)) continue
-      this.actualizarPestana(p.titulo, 'leyendo', null, 'leyendo la grilla')
+      const tanda = pendientes.slice(desde, desde + PESTANAS_POR_LECTURA)
+      for (const p of tanda) this.actualizarPestana(p.titulo, 'leyendo', null, 'leyendo la grilla')
+      let faltantes = tanda
       try {
-        this.valoresCacheados.set(p.titulo, await this.fuente.leerValores(p.titulo))
-        this.actualizarPestana(p.titulo, 'pendiente', null, null)
-      } catch (error) {
-        // Se anota y la pestaña se vuelve a intentar al procesarla, que es donde el error se informa.
-        this.actualizarPestana(p.titulo, 'pendiente', null, mensajeDe(error))
+        const lecturas = await this.fuente.leerVarias(tanda.map((p) => p.titulo))
+        const porTitulo = new Map(lecturas.map((lectura) => [lectura.titulo, lectura.valores]))
+        for (const p of tanda) {
+          const valores = porTitulo.get(p.titulo)
+          if (valores !== undefined) {
+            this.valoresCacheados.set(p.titulo, valores)
+            this.actualizarPestana(p.titulo, 'pendiente', null, null)
+          }
+        }
+        faltantes = tanda.filter((p) => !this.valoresCacheados.has(p.titulo))
+      } catch {
+        // La tanda entera se cae por una sola pestaña: una pestaña renombrada o borrada entre la
+        // estructura y la lectura devuelve 400 para todo el pedido (lo mismo hace el batchGet de
+        // Google con un rango inválido). Las otras cinco se piden de a una acá abajo.
+      }
+      // Quedar fuera de la caché no es sólo un dato que falta: la pestaña queda fuera de
+      // `duenioDeCadaId`, y si es la original de una pestaña duplicada la copia se queda con sus _ID
+      // y a la original se le escriben identificadores nuevos en la hoja. Por eso se reintenta de a
+      // una antes de rendirse (y lo que igual no se pueda leer lo cubre `respetarDueniosDePestanasNoLeidas`).
+      for (const p of faltantes) {
+        if (this.estaCancelada()) return
+        try {
+          this.valoresCacheados.set(p.titulo, await this.fuente.leerValores(p.titulo))
+          this.actualizarPestana(p.titulo, 'pendiente', null, null)
+        } catch (error) {
+          // Se anota y la pestaña se vuelve a intentar al procesarla, que es donde el error se informa.
+          this.actualizarPestana(p.titulo, 'pendiente', null, mensajeDe(error))
+        }
       }
     }
   }
@@ -1348,6 +1430,8 @@ class TrabajoDeImportacion {
 
       const ids: string[] = []
       let encabezadosRepetidos = 0
+      /** Filas con datos que traían un _ID en la hoja (aunque después se les asigne otro): 0 = la pestaña volvió vacía. */
+      let filasConIdLeido = 0
       /**
        * Tramos contiguos de filas cuyo _ID hay que escribir en la hoja (no se pisa la columna entera).
        * `previos` lleva lo que la celda decía al decidirlo: la base escribe sólo si sigue diciendo eso,
@@ -1380,6 +1464,7 @@ class TrabajoDeImportacion {
         }
         resumen.filasConDatos++
         const previo = existente
+        if (previo) filasConIdLeido++
         if (existente) {
           // Duplicar la pestaña del mes es el flujo normal para armar el mes nuevo: el _ID se lo queda
           // la pestaña dueña según la grilla (la del período más viejo, ver `duenioDeCadaId`) y la
@@ -1506,6 +1591,28 @@ class TrabajoDeImportacion {
         const desaparecidas = (this.sentencias.filasQueYaNoEstan.all({ pestana: p.titulo, ahora: this.ahora }) as Array<{ fila_id: string }>).map(
           (cruda) => cruda.fila_id,
         )
+        // Una pestaña que vuelve sin NINGUNA fila con _ID cuando la base le conocía filas en la hoja no
+        // son cien borrados a la vez: es un respaldo restaurado o una pestaña recreada. Darlas de baja
+        // sacaría las cuotas del mes de todas las pólizas de golpe; se deja todo como está y se avisa.
+        if (filasConIdLeido === 0 && desaparecidas.length > 0) {
+          // Dos casos distintos, y al usuario le importa cuál: la pestaña vacía de verdad (respaldo
+          // restaurado, pestaña recreada) y la pestaña LLENA pero sin _ID (alguien pegó los datos sin
+          // la columna, o le borró el encabezado). En la segunda las filas que se acaban de leer se
+          // guardaron con _ID nuevos y las viejas siguen en_la_hoja: la misma póliza, cuota o siniestro
+          // quedó dos veces y hay que mirarlo antes de seguir.
+          if (resumen.filasConDatos > 0) {
+            const detalle = `«${p.titulo}» volvió con ${resumen.filasConDatos} filas y ninguna con _ID, y la base le conocía ${desaparecidas.length} en la hoja: no se dio de baja nada, pero esas filas se guardaron como nuevas (¿se pegaron los datos sin la columna _ID?)`
+            this.problema(p.titulo, null, null, 'pestaña que volvió sin _ID', detalle)
+            this.avisos.push(
+              `La pestaña «${p.titulo}» volvió SIN la columna _ID: sus ${resumen.filasConDatos} filas se guardaron como nuevas y las ${desaparecidas.length} que la aplicación ya le conocía siguen en la base, así que puede haber quedado todo duplicado. Revisala antes de seguir cargando.`,
+            )
+          } else {
+            const detalle = `«${p.titulo}» volvió sin ninguna fila con _ID y la base le conocía ${desaparecidas.length} en la hoja: no se dio de baja nada (¿se restauró un respaldo o se recreó la pestaña?)`
+            this.problema(p.titulo, null, null, 'pestaña que volvió vacía', detalle)
+            this.avisos.push(`La pestaña «${p.titulo}» volvió vacía: no se dio de baja nada. Revisala en la base: la aplicación le conocía ${desaparecidas.length} filas.`)
+          }
+          return
+        }
         const yaNoEstan = this.sentencias.marcarFilasQueYaNoEstan.run({ pestana: p.titulo, ahora: this.ahora }).changes
         alDesaparecerDeLaHoja(
           this.db,

@@ -73,7 +73,28 @@ export function encolar(
   opciones: { sinEspera?: boolean } = {},
 ): void {
   const base = db()
-  if (entrada.operacion !== 'borrar') {
+  if (entrada.operacion === 'borrar') {
+    // Un «borrar» de una fila cuyo «crear» todavía está esperando en la cola (12.7): ese «crear» no
+    // tiene que salir —la fila se está borrando— así que se saca de la cola, y con él los «actualizar»
+    // que se le habían juntado adentro (eran cambios de una fila que ya no existe, es lo correcto).
+    // Sin esto, adjuntar un archivo y borrarlo sin internet dejaba una ficha fantasma: las dos entradas
+    // caían en la misma tanda, el «borrar» no encontraba la fila (todavía no estaba) y se daba por
+    // hecho, y recién después se ejecutaba el agregado, que la dejaba en la base para siempre.
+    //
+    // El «borrar» se encola IGUAL, y es a propósito: es el mismo criterio que eliminacion.ts documenta
+    // para esta carrera. Sacar la entrada de la cola no le saca los datos a una subida que está en
+    // vuelo con esa fila en la mano (el proceso es de un solo hilo y este borrado puede entrar justo
+    // mientras `subirTanda` espera la respuesta del servidor), y tampoco deshace un «crear» que ya se
+    // aplicó y cuya respuesta se perdió: en los dos casos el renglón queda en la base y, sin el
+    // «borrar», no queda nadie que lo saque. Si el «crear» de verdad nunca salió, el «borrar» no cuesta
+    // nada: no encuentra la fila y se da por hecho en el mismo ciclo (ver `subirTanda`).
+    //
+    // Lo que NO se usa es `intentos` para adivinar si el «crear» salió alguna vez: al juntarle campos,
+    // más abajo, los intentos vuelven a cero, así que un cero no prueba nada.
+    base
+      .prepare(`DELETE FROM cola_sync WHERE estado = 'pendiente' AND operacion = 'crear' AND fila_id = ? AND pestana = ?`)
+      .run(entrada.filaId, entrada.pestana)
+  } else {
     // Se mira la ÚLTIMA entrada pendiente de esa fila, sea de la operación que sea: si en el medio
     // quedó un «borrar» (una baja sin subir todavía), juntarse con algo anterior lo saltearía.
     const ultima = base
@@ -106,8 +127,51 @@ export function encolar(
     .run(ahoraIso(), entrada.operacion, entrada.pestana, entrada.filaId, JSON.stringify(entrada.campos), espera, actor?.nombre ?? null)
 }
 
+/**
+ * Tope provisorio de la tanda, cuando el servidor rechazó una tanda de varias entradas (12.7).
+ *
+ * Cuando el servidor rechaza el CONTENIDO (un 400: un valor que la base no acepta) el problema casi
+ * siempre es de UNA celda, pero venía en una tanda de hasta 200 y hasta la 12.6 se les sumaba un
+ * intento a todas: a la octava vuelta las 200 pasaban a «no se pudo», con la mala adentro y las buenas
+ * también. Ahora esa tanda no cuenta como intento de nadie: se anota el error y la próxima sale con la
+ * mitad de entradas. Si esa pasa, el tope vuelve a lo normal y la mitad siguiente se intenta sola; si
+ * no pasa, se vuelve a partir. En pocos ciclos la entrada mala queda sola en su tanda, se le suma el
+ * intento a ella nada más y las buenas siguen viajando.
+ *
+ * Ojo: esto vale SÓLO para el rechazo del contenido (ver `esRechazoDelContenido` en subida.ts). Un
+ * corte de red, un 5xx, un token vencido o un 429 de cuota son del pedido entero y piden esperar: ahí
+ * se marca fallida la tanda como siempre, para que la espera exponencial entre.
+ */
+let topeProvisorio: number | null = null
+
+/**
+ * Cuántas veces seguidas se puede partir la tanda sin que ninguna llegue a pasar. Si se llega a este
+ * número, la bisección no está identificando nada (el rechazo no era de una celda sola) y hay que
+ * contar el intento igual: si no, la cola reintentaría cada diez segundos para siempre, sin espera.
+ */
+const MAXIMO_DE_BISECCIONES = 6
+let biseccionesSeguidas = 0
+
+/** Después de que el servidor rechazó el contenido de una tanda de `cuantas`: la próxima sale con la mitad. */
+export function achicarProximaTanda(cuantas: number): void {
+  topeProvisorio = Math.max(1, Math.floor(cuantas / 2))
+  biseccionesSeguidas++
+}
+
+/** Vuelve al tope normal y da por terminada la bisección: la llama toda tanda que salió bien. */
+export function restablecerTanda(): void {
+  topeProvisorio = null
+  biseccionesSeguidas = 0
+}
+
+/** La bisección no progresa: hay que contar el intento y dejar que la espera exponencial haga lo suyo. */
+export function biseccionAtascada(): boolean {
+  return biseccionesSeguidas >= MAXIMO_DE_BISECCIONES
+}
+
 /** Entradas listas para intentar ahora (las que fallaron esperan su turno). */
 export function pendientes(limite = 200): EntradaCola[] {
+  if (topeProvisorio !== null) limite = Math.min(limite, topeProvisorio)
   const ahora = ahoraIso()
   const listas = db()
     .prepare(
@@ -238,6 +302,18 @@ export function marcarFallidas(ids: number[], error: string): void {
       const proximo = new Date(Date.now() + esperaDeReintento(intentos)).toISOString()
       actualizar.run(intentos, agotada ? null : proximo, error.slice(0, 500), agotada ? 'fallido' : 'pendiente', id)
     }
+  })()
+}
+
+/**
+ * Deja anotado el error en las entradas SIN sumarles un intento ni hacerlas esperar: es para la tanda
+ * de varias que el servidor rechazó, donde todavía no se sabe cuál fue la mala (ver `achicarProximaTanda`).
+ */
+export function anotarErrorSinContar(ids: number[], error: string): void {
+  if (ids.length === 0) return
+  const anotar = db().prepare(`UPDATE cola_sync SET ultimo_error = ? WHERE id = ?`)
+  db().transaction(() => {
+    for (const id of ids) anotar.run(error.slice(0, 500), id)
   })()
 }
 

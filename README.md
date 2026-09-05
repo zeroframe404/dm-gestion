@@ -1682,6 +1682,84 @@ pestaña en la base).
 
 Pruebas: `pruebas/siniestros-entre-computadoras.prueba.ts` y `pruebas/comercial-entre-computadoras.prueba.ts`.
 
+## La segunda pasada: los caminos que quedaban abiertos (12.7.1)
+
+La 12.7 cerró el agujero grande. Esta pasada revisó, uno por uno, los caminos por los que un dato
+todavía podía llegar distinto a cada mostrador, o no llegar. Lo que se arregló:
+
+**Los encabezados de la pestaña.** Un título de columna que la aplicación no reconocía dejaba el dato
+afuera igual que antes, sólo que sin aviso.
+
+- «HECHO» en una pestaña de siniestros no mapeaba a nada: el índice de sinónimos lo daba por «resuelto»,
+  que en SINIESTROS no existe, y ahí se cortaba. Ahora, cuando el primer campo no corresponde a ese tipo
+  de pestaña, se sigue buscando entre los demás que usan ese mismo título (`resolverCampo`).
+- Con dos columnas de fecha («FECHA» y «FECHA SINIESTRO») ganaba la de más a la izquierda. Ahora hay
+  preferencias **por tipo de pestaña**: en SINIESTROS gana la específica; en PAGOS y en la planilla del
+  mes nada cambia (la lista de fechas del siniestro no se aplica ahí).
+- Cuarenta títulos más que usa una agencia argentina y antes quedaban en blanco: «APELLIDO Y NOMBRES»,
+  «DATOS DEL ASEGURADO», «PROPIETARIO», «FECHA Y HORA DEL SINIESTRO», «FEC. STRO», «FECHA DE ALTA»,
+  «N° SINIESTRO COMPAÑÍA», «N° DENUNCIA»…
+- La columna que la aplicación agrega a una pestaña de siniestros ya no se llama «FECHA» ni «NOMBRE»
+  (ambiguo al lado de «FECHA DE CARGA»), sino **«FECHA SINIESTRO»** y **«ASEGURADO»**.
+- Una pestaña titulada «STROS», «STROS 2026» o «DENUNCIAS» ahora se reconoce como de siniestros. «REGISTRO»
+  y «MAESTRO» siguen siendo otra cosa.
+
+**Los archivos adjuntos.**
+
+- Un archivo que no terminaba de subir se quedaba primero en la fila para siempre y **frenaba a todos los
+  demás**: la vuelta se cortaba al primer error de red. Ahora los que fallaron van al fondo, un corte de
+  red no cuenta como intento pero tampoco frena a los que siguen, y una subida que tarda más de diez
+  minutos cuenta como intento en vez de repetirse eternamente.
+- Un 401, un 429 o un servidor a medio desplegar marcaban el archivo «no subió, no se vuelve a intentar»
+  a los tres intentos. Ahora sólo un rechazo del archivo en sí (demasiado grande, tipo no admitido,
+  dañado) es definitivo; lo demás espera y reintenta, y lo que la 12.6 dio por perdido se rescata.
+- Un archivo ilegible en el disco (abierto por otro programa, antivirus, carpeta de OneDrive «sólo en la
+  nube») tumbaba la vuelta entera cada diez segundos.
+- Si el servidor no tiene un archivo que la ficha daba por subido, la ficha vuelve a decir «cargado en
+  otra computadora» en vez de prometer algo que no está y dar error al abrirlo.
+- Adjuntar y borrar sin internet dejaba una ficha fantasma en la base que nadie podía abrir. Y al borrar
+  un siniestro, una póliza o una tarea, ahora también se borran sus archivos del servidor.
+- Bajar un archivo grande por una conexión lenta cortaba a los noventa segundos con «error inesperado»:
+  ahora tiene diez minutos y, si falla, lo dice con todas las letras.
+- Nombres reservados de Windows («NUL.pdf», «con.jpg») ya no rompen la descarga en la otra computadora.
+
+**La cola y las columnas nuevas.**
+
+- Si dos computadoras agregaban una columna en el mismo ciclo, las dos elegían el mismo lugar y una
+  escribía sus datos bajo el encabezado de la otra. Ahora, después de escribir el título, se relee la
+  fila de encabezados y sólo se dan por buenas las columnas que quedaron; si otra ganó, se rehace el
+  mapeo y se busca lugar de nuevo.
+- Un error del servidor sobre una sola celda marcaba fallidas las doscientas entradas de la tanda. Ahora
+  una tanda rechazada se parte al medio hasta aislar a la culpable, y las buenas siguen viajando.
+
+**La importación.**
+
+- Las cabeceras de las veinticinco pestañas se piden en **una** llamada y la grilla en tandas, en vez de
+  cincuenta y una llamadas seguidas.
+- Una pestaña que vuelve **vacía** (un respaldo restaurado, una pestaña recreada) ya no da de baja todo
+  lo que había: se avisa y no se toca nada. Antes, en el peor caso, borraba los archivos locales de las
+  cinco computadoras.
+- La importación acotada ya no le roba el _ID a una pestaña que no leyó (eso disparaba importaciones en
+  bucle), la automática figura como «en curso» (antes se podía largar una manual encima) y las
+  reparaciones pesadas corren sólo cuando la pasada tocó algo que las necesita.
+
+**La bajada.** Ya no trae el JSON completo de todas las filas conocidas en cada vuelta (el carril rápido
+lo hacía cada 30 segundos sobre pestañas que crecen sin tope), y las consultas se preparan una vez.
+
+**La planilla y la base.** La pregunta «¿esta cuota está paga?» se parte en dos EXISTS que usan índice en
+vez de uno con OR que recorría la tabla de pagos entera por cada fila (mora, deudores y métricas). Cambiar
+el DNI desde la planilla ahora recalcula el documento normalizado y la clave del cliente, así el buscador
+lo encuentra y la próxima importación no lo duplica. Y una corrección se encola contra la pestaña **real**
+de esa fila: con dos pestañas de siniestros, la corrección ya no se pierde.
+
+**El servidor de la agencia.** Escribir una tanda hacía dos consultas por celda dentro de una transacción
+de cinco segundos: con doscientas filas de quince campos, la transacción expiraba y la tanda entera
+volvía como fallida. Ahora se agrupa por renglón (una lectura y una escritura por fila) y las
+transacciones que traban una pestaña tienen un minuto.
+
+Pruebas nuevas: `pruebas/encabezados-siniestros.prueba.ts`, más las que se agregaron en
+`sincronizacion`, `importador`, `correcciones`, `adjuntos`, `cartera` y `cobranzas`.
+
 ## Integración continua
 
 `.github/workflows/pruebas.yml` corre `npm run typecheck` y `npm run prueba` en cada push y en cada pull

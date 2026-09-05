@@ -26,7 +26,7 @@ import { encolar } from '../sincronizacion/cola'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
-import { buscarPestana, nombreDePestana } from './hojas'
+import { buscarPestana, nombreDePestana, pestanaDeLaFila } from './hojas'
 import { sucursalesParaElegir } from './sucursales'
 import { enteroPositivo, objeto, texto } from './validacion'
 
@@ -189,7 +189,10 @@ export function editarRiesgo(riesgoId: number, campo: unknown, valor: unknown, a
     .prepare(`UPDATE riesgos_varios SET ${asignaciones.join(', ')}, actualizado_en = @ahora WHERE id = @id`)
     .run({ valor: nuevo || null, ...derivadas, ahora: ahoraIso(), id: fila.id })
 
-  encolar({ operacion: 'actualizar', pestana: pestanaDeRiesgos(), filaId: fila.fila_id, campos: { [destino.campoDeLaHoja]: nuevo } }, actor)
+  // A la pestaña donde el riesgo VIVE, no a la principal del tipo: con dos pestañas de riesgos la
+  // corrección de una fila de la segunda encolaba contra la primera y la subida no la encontraba.
+  const pestana = pestanaDeLaFila(fila.fila_id, 'RIESGOS_VARIOS', NOMBRE_POR_DEFECTO)
+  encolar({ operacion: 'actualizar', pestana, filaId: fila.fila_id, campos: { [destino.campoDeLaHoja]: nuevo } }, actor)
   registrarCambio(actor, {
     accion: 'edicion',
     tabla: 'riesgos_varios',
