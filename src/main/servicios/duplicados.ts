@@ -384,6 +384,7 @@ interface PolizaCruda {
   numero: string | null
   numero_normalizado: string | null
   propuesta: string | null
+  poliza_anterior_id: number | null
   cobertura: string | null
   vigencia_desde: string | null
   vigencia_hasta: string | null
@@ -396,13 +397,13 @@ interface PolizaCruda {
 // lleva nada que se pueda contar después: lo que cuelga de cada póliza y su sucursal se piden sólo
 // para las que quedaron agrupadas, que son un puñado.
 const SELECT_POLIZAS_CON_PATENTE = `
-  SELECT p.id, p.clave, p.cliente_id, p.compania, p.numero, p.numero_normalizado, p.propuesta, p.cobertura,
+  SELECT p.id, p.clave, p.cliente_id, p.compania, p.numero, p.numero_normalizado, p.propuesta, p.poliza_anterior_id, p.cobertura,
          p.vigencia_desde, p.vigencia_hasta, p.creado_en,
          cl.nombre AS cliente_nombre, v.patente, v.patente_normalizada
     FROM polizas p
     JOIN vehiculos v ON v.id = p.vehiculo_id
     LEFT JOIN clientes cl ON cl.id = p.cliente_id
-   WHERE p.activa = 1 AND TRIM(COALESCE(v.patente_normalizada, '')) <> ''
+   WHERE p.activa = 1 AND TRIM(COALESCE(v.patente_normalizada, '')) <> '' AND TRIM(COALESCE(p.compania, '')) <> ''
    ORDER BY p.id`
 
 interface CuentasDePoliza {
@@ -429,8 +430,14 @@ function cuentasDePoliza(id: number): CuentasDePoliza & { sucursal_texto: string
 /**
  * Cuál de las pólizas del mismo auto conviene conservar: la que tiene número propio (su clave es
  * `POL:<cía>|<número>`, que es con la que el importador la va a volver a reconocer en la planilla del
- * mes que viene), después la que más cosas arrastra, después la del número más completo
- * («40-02-357878» antes que «357878») y, a igualdad de todo, la de clave más chica.
+ * mes que viene), después la que más cosas arrastra, después la del número más largo y, a igualdad de
+ * todo, la de clave más chica.
+ *
+ * Lo del número más largo es un desempate, no una regla de parecido: los dos números pueden no tener
+ * NADA que ver entre sí («40-02-357878» y «261005» es el caso real), y el más largo suele ser el que
+ * viene con el formato completo de la compañía, mientras que el corto suele ser un número tipeado a
+ * medias o una propuesta. Nadie compara los números para DETECTAR: eso lo hacen la patente, la
+ * compañía, el cliente y el mes.
  *
  * El último desempate es por la CLAVE y no por el `id` a propósito: el id lo pone cada base, así que
  * dos computadoras podrían sugerir pólizas distintas para el mismo grupo. La clave sale de la hoja y
@@ -458,6 +465,25 @@ function periodosEnConflicto(polizaIds: number[]): string[] {
   return filas.map((f) => f.periodo)
 }
 
+/**
+ * ¿Alguna de estas pólizas es la renovación de otra del grupo? Entonces no hay nada repetido.
+ *
+ * Renovar con la anterior «activa» deja las dos vigentes A PROPÓSITO, y las dos con su renglón en el
+ * mes: son dos pólizas distintas y las dos hay que cobrarlas (lo dice `renovar` en renovaciones.ts,
+ * donde la fila vieja NO se da de baja cuando el destino es «activa»). Es exactamente el estado que
+ * este detector busca, así que sin este freno toda renovación de ésas aparecería como duplicada y
+ * juntarlas se llevaría puesta una póliza de verdad.
+ *
+ * Se descarta el grupo ENTERO, no sólo el par: es lo conservador. Si en el mismo auto conviven una
+ * renovación y un duplicado —que sería mucha casualidad—, preferimos no mostrarlo antes que ofrecer
+ * juntar algo que no se puede deshacer. La cadena de tres (A renovada en B, B en C, todas activas)
+ * queda cubierta porque alcanza con que un eslabón esté adentro del grupo.
+ */
+function esCadenaDeRenovacion(grupo: PolizaCruda[]): boolean {
+  const ids = new Set(grupo.map((p) => p.id))
+  return grupo.some((p) => p.poliza_anterior_id !== null && ids.has(p.poliza_anterior_id))
+}
+
 /** Grupos de pólizas que aseguran el mismo auto y se pisan en algún mes. */
 export function polizasDelMismoRiesgo(): GrupoDePolizasDelMismoRiesgo[] {
   const todas = db().prepare(SELECT_POLIZAS_CON_PATENTE).all() as PolizaCruda[]
@@ -470,6 +496,7 @@ export function polizasDelMismoRiesgo(): GrupoDePolizasDelMismoRiesgo[] {
   const grupos: GrupoDePolizasDelMismoRiesgo[] = []
   for (const grupo of porRiesgo.values()) {
     if (grupo.length < 2) continue
+    if (esCadenaDeRenovacion(grupo)) continue
     const periodos = periodosEnConflicto(grupo.map((p) => p.id))
     if (periodos.length === 0) continue
     const conCuentas = grupo.map((p) => ({ ...p, ...cuentasDePoliza(p.id) }))
