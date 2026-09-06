@@ -7,7 +7,10 @@
 #
 #   git tag v1.0.4 && git push origin v1.0.4
 #
-# También se puede correr a mano desde la pestaña Actions (Run workflow), eligiendo el tag.
+# También se puede correr a mano desde la pestaña Actions (Run workflow), eligiendo el tag. Y si lo que
+# hace falta es subir la versión (no sólo repetir la que ya está en el package.json), el input
+# `subir_version` hace ese paso también acá: elegí `patch`/`minor`/`major`, y el workflow sube la
+# versión, la commitea, crea el tag y sigue con el instalador y el Release — sin tocar ninguna PC.
 name: Publicar
 
 on:
@@ -15,6 +18,16 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      subir_version:
+        description: 'Subir la versión antes de publicar (dejar en blanco para publicar la que ya está en el package.json)'
+        type: choice
+        options:
+          - ''
+          - patch
+          - minor
+          - major
+        default: ''
 
 # `scripts/publicar.mjs` crea el Release con `gh`: necesita permiso de escritura sobre el contenido.
 permissions:
@@ -43,6 +56,18 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+
+      # Sólo corre al lanzar a mano con un tipo de versión elegido. `npm version` corre el
+      # preversion/postversion de package.json: verifica que esta copia esté al día con `master` y,
+      # si lo está, sube el número de versión, commitea y empuja el commit y el tag a `master` (el
+      # push va a `master` explícito porque el checkout de este workflow queda en HEAD despegado).
+      - name: Subir la versión
+        if: github.event_name == 'workflow_dispatch' && inputs.subir_version != ''
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          npm version "${{ inputs.subir_version }}"
 
       - name: Instalar dependencias
         run: npm ci

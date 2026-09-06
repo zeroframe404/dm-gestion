@@ -1291,7 +1291,12 @@ git tag v1.0.4 && git push origin v1.0.4  # esto dispara la publicación
 
 El tag y el `package.json` tienen que decir la misma versión: el workflow lo verifica antes de compilar
 y corta si no coinciden. También se puede lanzar a mano desde la pestaña **Actions → Publicar → Run
-workflow**. No hace falta configurar ningún secreto: usa el `GITHUB_TOKEN` de la propia corrida.
+workflow**, y ahí mismo hay un desplegable **subir_version** (`patch`/`minor`/`major`) para que el propio
+workflow suba la versión, la commitee y cree el tag antes de compilar — así no hace falta tocar
+`package.json` ni la terminal para nada, todo el ciclo (subir versión, banco de pruebas, instalador,
+Release) se dispara desde GitHub. Dejando ese desplegable en blanco, publica la versión que ya está en
+`package.json`, igual que antes. No hace falta configurar ningún secreto: usa el `GITHUB_TOKEN` de la
+propia corrida.
 
 **b) Desde una PC con Windows**, si preferís tener el instalador a mano:
 
