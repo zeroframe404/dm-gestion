@@ -17,6 +17,7 @@ import {
   vistaPreviaDeSacarCuota,
 } from '../src/main/servicios/duplicados'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
+import { renovar } from '../src/main/servicios/renovaciones'
 import type { SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
@@ -401,5 +402,107 @@ test('juntar pólizas exige dos distintas y que el detector las haya señalado',
   // Son de compañías distintas: el detector no las señaló, así que el servicio no las junta aunque se lo pidan.
   assert.throws(() => fusionarPolizas(ids[0]!, ids[1]!, FEDE), /ya no figuran como el mismo auto/)
   assert.throws(() => fusionarPolizas(ids[0]!, 999999, FEDE), /ya no figuran como el mismo auto/)
+  db.close()
+})
+
+test('juntar una póliza que viene de una renovación vieja no revienta contra las claves foráneas', async () => {
+  const { db } = await baseCon(septiembreConLeonDosVeces())
+  const grupo = polizasDelMismoRiesgo()[0]!
+  const queda = grupo.polizas.find((p) => p.sugerida)!
+  const seVa = grupo.polizas.find((p) => !p.sugerida)!
+  const ahora = ahoraIso()
+
+  // La repetida viene de una renovación del año pasado: la póliza vieja salió de la cartera (activa = 0,
+  // así que no arma grupo con éstas) pero la sigue nombrando desde `renovaciones.poliza_nueva_id`, y la
+  // repetida la nombra a ella desde `polizas.poliza_anterior_id`. Las dos columnas apuntan a polizas(id)
+  // y no cuelgan de `poliza_id`, así que el borrado se cae contra ellas si nadie las suelta antes.
+  const vieja = db
+    .prepare(
+      `INSERT INTO polizas (clave, cliente_id, compania, numero, activa, periodo_origen, pestana_origen, creado_en, actualizado_en)
+       VALUES ('POL:RIVADAVIA|VIEJA', (SELECT cliente_id FROM polizas WHERE id = ?), 'RIVADAVIA', 'VIEJA', 0, '2025-09', 'SEPTIEMBRE25', ?, ?)
+       RETURNING id`,
+    )
+    .get(seVa.id, ahora, ahora) as { id: number }
+  db.prepare(
+    `INSERT INTO renovaciones (poliza_id, poliza_nueva_id, vence_el, estado, creado_en, actualizado_en)
+     VALUES (?, ?, '2026-09-01', 'renovada', ?, ?)`,
+  ).run(vieja.id, seVa.id, ahora, ahora)
+  db.prepare('UPDATE polizas SET poliza_anterior_id = ? WHERE id = ?').run(vieja.id, seVa.id)
+
+  assert.equal(polizasDelMismoRiesgo().length, 1, 'la póliza vieja está fuera de la cartera: el grupo sigue en pie')
+  const resultado = fusionarPolizas(queda.id, seVa.id, FEDE)
+  assert.equal(resultado.eliminadaId, seVa.id)
+  assert.equal(contar(db, 'polizas', `id = ${seVa.id}`), 0)
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), [], 'ninguna columna quedó apuntando a la que se fue')
+  assert.equal(
+    unico<number>(db, `SELECT poliza_nueva_id FROM renovaciones WHERE poliza_id = ${vieja.id}`),
+    queda.id,
+    'la renovación vieja ahora apunta a la que queda',
+  )
+  db.close()
+})
+
+test('el vínculo de una tarea sigue a la póliza que queda: no apunta a una clave borrada', async () => {
+  const { db } = await baseCon(septiembreConLeonDosVeces())
+  const grupo = polizasDelMismoRiesgo()[0]!
+  const queda = grupo.polizas.find((p) => p.sugerida)!
+  const seVa = grupo.polizas.find((p) => !p.sugerida)!
+  const claveQueSeVa = unico<string>(db, `SELECT clave FROM polizas WHERE id = ${seVa.id}`)
+  const claveQueQueda = unico<string>(db, `SELECT clave FROM polizas WHERE id = ${queda.id}`)
+  const ahora = ahoraIso()
+
+  // Una tarea colgada de la póliza repetida, y otra colgada de su renovación: las dos guardan la
+  // clave de la póliza, no su id.
+  db.prepare(
+    `INSERT INTO tareas (titulo, estado, poliza_id, vinculo_clave, creado_por, creado_en, actualizado_en)
+     VALUES ('LLAMAR AL CLIENTE', 'pendiente', ?, ?, 'Fede', ?, ?)`,
+  ).run(seVa.id, `POLIZA:${claveQueSeVa}`, ahora, ahora)
+  db.prepare(
+    `INSERT INTO tareas (titulo, estado, poliza_id, vinculo_clave, creado_por, creado_en, actualizado_en)
+     VALUES ('AVISAR EL VENCIMIENTO', 'pendiente', ?, ?, 'Fede', ?, ?)`,
+  ).run(seVa.id, `RENOVACION:${claveQueSeVa}|2026-12-01`, ahora, ahora)
+
+  fusionarPolizas(queda.id, seVa.id, FEDE)
+
+  assert.equal(contar(db, 'tareas', `vinculo_clave LIKE '%${claveQueSeVa}%'`), 0, 'ninguna tarea nombra la clave que se borró')
+  assert.equal(contar(db, 'tareas', `vinculo_clave = 'POLIZA:${claveQueQueda}'`), 1)
+  assert.equal(contar(db, 'tareas', `vinculo_clave = 'RENOVACION:${claveQueQueda}|2026-12-01'`), 1, 'la fecha del vencimiento se conserva')
+  assert.equal(contar(db, 'tareas', `poliza_id = ${queda.id}`), 2)
+  db.close()
+})
+
+test('renovar dejando la anterior ACTIVA no es un duplicado: son dos pólizas y las dos se cobran', async () => {
+  // El caso que más se le parece al bug y NO lo es. `renovar` con destino «activa» deja las dos
+  // pólizas vigentes a propósito, las dos del mismo auto, la misma compañía y el mismo cliente, y las
+  // dos con su renglón en el mes: es la única forma legítima de ver dos veces el mismo auto.
+  const { db } = await baseCon([{ titulo: 'SEPTIEMBRE', renglones: [renglon({ poliza: '40-02-357878' })] }])
+  const polizaId = unico<number>(db, `SELECT id FROM polizas`)
+
+  renovar(
+    polizaId,
+    {
+      vigenciaDesde: '2026-09-15',
+      vigenciaHasta: '2027-09-15',
+      cuota: '$ 52.000',
+      numero: '40-02-357879',
+      propuesta: '',
+      observaciones: '',
+      destinoDeLaAnterior: 'activa',
+    },
+    DANIEL,
+  )
+
+  assert.equal(contar(db, 'polizas', 'activa = 1'), 2, 'las dos quedan vigentes')
+  assert.equal(contar(db, 'cuotas_mes', `periodo = '2026-09' AND dada_de_baja = 0`), 2, 'y las dos con renglón en el mes')
+  assert.equal(polizasDelMismoRiesgo().length, 0, 'pero es una renovación, no un duplicado: no se lista')
+  db.close()
+})
+
+test('dos pólizas del mismo auto sin compañía cargada no se listan: no hay con qué decir que son la misma', async () => {
+  const { db } = await baseCon([
+    { titulo: 'SEPTIEMBRE', renglones: [renglon({ poliza: '40-02-357878', cia: '' }), renglon({ poliza: '261005', cia: '' })] },
+  ])
+  assert.equal(contar(db, 'polizas'), 2)
+  assert.equal(polizasDelMismoRiesgo().length, 0)
   db.close()
 })

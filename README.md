@@ -447,7 +447,8 @@ borrar clientes repetidos, todos pueden»). La pantalla lista cinco cosas:
   (vehículos, pólizas, cuotas, bajas, pagos, siniestros, tareas, notas, leads, presupuestos…), completa
   lo que la ficha que queda tenía vacío y borra la repetida. Queda en el historial como `fusion`.
 - **El mismo auto asegurado dos veces** (12.7.2): dos pólizas del mismo cliente, el mismo dominio y la
-  misma compañía, las dos con renglón vivo en el mismo mes. Es la misma póliza cargada con el número
+  misma compañía (cargada: sin compañía no se agrupa), las dos con renglón vivo en el mismo mes y
+  ninguna renovación de la otra. Es la misma póliza cargada con el número
   escrito de dos formas —«40-02-357878» en un renglón y «357878» en el otro, las dos correctas—: como
   la póliza se identifica por su número (`POL:<cía>|<número>`), el importador la toma por dos y el auto
   aparece dos veces en la planilla. «Juntar» deja una sola póliza con todo lo de las dos (renglones,
@@ -463,7 +464,11 @@ Lo que se repara solo, al arrancar y después de cada importación: los clientes
 mismo DNI y el mismo nombre** se fusionan, y las cuotas y bajas repetidas se dejan en una (siempre la
 misma en las cinco computadoras: se decide con la grilla de la base, no con lo que recuerda cada PC).
 Las pólizas del mismo auto **no** se juntan solas: dos pólizas del mismo dominio en la misma compañía
-pueden ser una renovación hecha a mitad de mes, y eso lo mira una persona. Por lo mismo el detector no
+pueden ser una renovación hecha a mitad de mes, y eso lo mira una persona. La renovación que se hace
+dejando la anterior **Activa** queda excluida del detector por las suyas: ahí las dos pólizas están
+vigentes a propósito y las dos hay que cobrarlas, así que el mes muestra dos filas que no son un
+duplicado. Se reconocen porque la nueva apunta a la vieja (`poliza_anterior_id`), y alcanza con que un
+eslabón de la cadena esté en el grupo para descartarlo entero. Por lo mismo el detector no
 compara los números entre sí —que sean distintos es el síntoma, y adivinar que uno «contiene» al otro
 juntaría mal dos pólizas de verdad—: mira dominio, compañía, cliente y que choquen en un mes.
 

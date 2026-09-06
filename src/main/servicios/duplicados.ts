@@ -383,6 +383,8 @@ interface PolizaCruda {
   compania: string | null
   numero: string | null
   numero_normalizado: string | null
+  propuesta: string | null
+  poliza_anterior_id: number | null
   cobertura: string | null
   vigencia_desde: string | null
   vigencia_hasta: string | null
@@ -395,13 +397,13 @@ interface PolizaCruda {
 // lleva nada que se pueda contar después: lo que cuelga de cada póliza y su sucursal se piden sólo
 // para las que quedaron agrupadas, que son un puñado.
 const SELECT_POLIZAS_CON_PATENTE = `
-  SELECT p.id, p.clave, p.cliente_id, p.compania, p.numero, p.numero_normalizado, p.cobertura,
+  SELECT p.id, p.clave, p.cliente_id, p.compania, p.numero, p.numero_normalizado, p.propuesta, p.poliza_anterior_id, p.cobertura,
          p.vigencia_desde, p.vigencia_hasta, p.creado_en,
          cl.nombre AS cliente_nombre, v.patente, v.patente_normalizada
     FROM polizas p
     JOIN vehiculos v ON v.id = p.vehiculo_id
     LEFT JOIN clientes cl ON cl.id = p.cliente_id
-   WHERE p.activa = 1 AND TRIM(COALESCE(v.patente_normalizada, '')) <> ''
+   WHERE p.activa = 1 AND TRIM(COALESCE(v.patente_normalizada, '')) <> '' AND TRIM(COALESCE(p.compania, '')) <> ''
    ORDER BY p.id`
 
 interface CuentasDePoliza {
@@ -428,8 +430,14 @@ function cuentasDePoliza(id: number): CuentasDePoliza & { sucursal_texto: string
 /**
  * Cuál de las pólizas del mismo auto conviene conservar: la que tiene número propio (su clave es
  * `POL:<cía>|<número>`, que es con la que el importador la va a volver a reconocer en la planilla del
- * mes que viene), después la que más cosas arrastra, después la del número más completo
- * («40-02-357878» antes que «357878») y, a igualdad de todo, la de clave más chica.
+ * mes que viene), después la que más cosas arrastra, después la del número más largo y, a igualdad de
+ * todo, la de clave más chica.
+ *
+ * Lo del número más largo es un desempate, no una regla de parecido: los dos números pueden no tener
+ * NADA que ver entre sí («40-02-357878» y «261005» es el caso real), y el más largo suele ser el que
+ * viene con el formato completo de la compañía, mientras que el corto suele ser un número tipeado a
+ * medias o una propuesta. Nadie compara los números para DETECTAR: eso lo hacen la patente, la
+ * compañía, el cliente y el mes.
  *
  * El último desempate es por la CLAVE y no por el `id` a propósito: el id lo pone cada base, así que
  * dos computadoras podrían sugerir pólizas distintas para el mismo grupo. La clave sale de la hoja y
@@ -457,6 +465,25 @@ function periodosEnConflicto(polizaIds: number[]): string[] {
   return filas.map((f) => f.periodo)
 }
 
+/**
+ * ¿Alguna de estas pólizas es la renovación de otra del grupo? Entonces no hay nada repetido.
+ *
+ * Renovar con la anterior «activa» deja las dos vigentes A PROPÓSITO, y las dos con su renglón en el
+ * mes: son dos pólizas distintas y las dos hay que cobrarlas (lo dice `renovar` en renovaciones.ts,
+ * donde la fila vieja NO se da de baja cuando el destino es «activa»). Es exactamente el estado que
+ * este detector busca, así que sin este freno toda renovación de ésas aparecería como duplicada y
+ * juntarlas se llevaría puesta una póliza de verdad.
+ *
+ * Se descarta el grupo ENTERO, no sólo el par: es lo conservador. Si en el mismo auto conviven una
+ * renovación y un duplicado —que sería mucha casualidad—, preferimos no mostrarlo antes que ofrecer
+ * juntar algo que no se puede deshacer. La cadena de tres (A renovada en B, B en C, todas activas)
+ * queda cubierta porque alcanza con que un eslabón esté adentro del grupo.
+ */
+function esCadenaDeRenovacion(grupo: PolizaCruda[]): boolean {
+  const ids = new Set(grupo.map((p) => p.id))
+  return grupo.some((p) => p.poliza_anterior_id !== null && ids.has(p.poliza_anterior_id))
+}
+
 /** Grupos de pólizas que aseguran el mismo auto y se pisan en algún mes. */
 export function polizasDelMismoRiesgo(): GrupoDePolizasDelMismoRiesgo[] {
   const todas = db().prepare(SELECT_POLIZAS_CON_PATENTE).all() as PolizaCruda[]
@@ -469,6 +496,7 @@ export function polizasDelMismoRiesgo(): GrupoDePolizasDelMismoRiesgo[] {
   const grupos: GrupoDePolizasDelMismoRiesgo[] = []
   for (const grupo of porRiesgo.values()) {
     if (grupo.length < 2) continue
+    if (esCadenaDeRenovacion(grupo)) continue
     const periodos = periodosEnConflicto(grupo.map((p) => p.id))
     if (periodos.length === 0) continue
     const conCuentas = grupo.map((p) => ({ ...p, ...cuentasDePoliza(p.id) }))
@@ -484,6 +512,7 @@ export function polizasDelMismoRiesgo(): GrupoDePolizasDelMismoRiesgo[] {
         (p): PolizaRepetida => ({
           id: p.id,
           numero: p.numero,
+          propuesta: p.propuesta,
           cobertura: p.cobertura,
           vigenciaDesde: p.vigencia_desde,
           vigenciaHasta: p.vigencia_hasta,
@@ -573,6 +602,34 @@ export function fusionarPolizas(sobrevivienteCrudo: unknown, duplicadaCruda: unk
     const renovaciones = db().prepare('UPDATE OR IGNORE renovaciones SET poliza_id = ? WHERE poliza_id = ?').run(sobrevivienteId, duplicadaId).changes
     if (renovaciones > 0) movido.push({ que: 'renovación en seguimiento', cuantos: renovaciones })
     db().prepare('DELETE FROM renovaciones WHERE poliza_id = ?').run(duplicadaId)
+
+    // Otras dos columnas apuntan a `polizas(id)` y NO cuelgan de `poliza_id`: la renovación que dio
+    // origen a esta póliza (`renovaciones.poliza_nueva_id`) y la póliza que la nombra como su anterior
+    // (`polizas.poliza_anterior_id`). Con `foreign_keys = ON` el borrado se cae contra ellas, así que
+    // primero pasan a la que queda —es la misma póliza, ahora con un solo número—; y si eso dejara a
+    // una póliza siendo su propia anterior, o a una renovación renovándose a sí misma, el vínculo se
+    // suelta, que es lo que corresponde: la renovación de una póliza consigo misma no existe.
+    db().prepare('UPDATE renovaciones SET poliza_nueva_id = ? WHERE poliza_nueva_id = ?').run(sobrevivienteId, duplicadaId)
+    db().prepare('UPDATE renovaciones SET poliza_nueva_id = NULL WHERE poliza_id = ? AND poliza_nueva_id = ?').run(sobrevivienteId, sobrevivienteId)
+    db().prepare('UPDATE polizas SET poliza_anterior_id = ? WHERE poliza_anterior_id = ?').run(sobrevivienteId, duplicadaId)
+    db().prepare('UPDATE polizas SET poliza_anterior_id = NULL WHERE id = ? AND poliza_anterior_id = ?').run(sobrevivienteId, sobrevivienteId)
+
+    // Las tareas y los presupuestos guardan a quién cuelgan por CLAVE, no por id: «POLIZA:<clave>» y
+    // «RENOVACION:<clave>|<vence>» (ver `claveDeVinculoDeTarea`). Se mudaron por `poliza_id`, pero esa
+    // clave todavía nombra a la que se va, y `resolverVinculoDeTarea` la busca por texto: si queda
+    // como está, el vínculo apunta a una póliza que ya no existe. El puntero sigue al dato.
+    const claveQueLlega = String(queda.clave)
+    const claveQueSeVa = String(seVa.clave)
+    for (const tabla of ['tareas', 'presupuestos'] as const) {
+      db().prepare(`UPDATE ${tabla} SET vinculo_clave = ? WHERE vinculo_clave = ?`).run(`POLIZA:${claveQueLlega}`, `POLIZA:${claveQueSeVa}`)
+      const renovadas = db()
+        .prepare(`SELECT id, vinculo_clave FROM ${tabla} WHERE vinculo_clave LIKE ?`)
+        .all(`RENOVACION:${claveQueSeVa}|%`) as Array<{ id: number; vinculo_clave: string }>
+      for (const fila of renovadas) {
+        const vence = fila.vinculo_clave.slice(`RENOVACION:${claveQueSeVa}|`.length)
+        db().prepare(`UPDATE ${tabla} SET vinculo_clave = ? WHERE id = ?`).run(`RENOVACION:${claveQueLlega}|${vence}`, fila.id)
+      }
+    }
 
     db().prepare('DELETE FROM polizas WHERE id = ?').run(duplicadaId)
     db().prepare('UPDATE polizas SET actualizado_en = ? WHERE id = ?').run(ahora, sobrevivienteId)
