@@ -440,12 +440,19 @@ calculado solo y las acciones de un clic.
 ### Duplicados (Cartera → Duplicados, 12.6)
 
 Lo repetido, a la vista y con botón, **para todos los roles** (pedido de la agencia: «que se puedan
-borrar clientes repetidos, todos pueden»). La pantalla lista cuatro cosas:
+borrar clientes repetidos, todos pueden»). La pantalla lista cinco cosas:
 
 - **Clientes repetidos**: mismo DNI, un CUIT que envuelve el DNI de otro (20-12345678-3 y 12345678),
   o mismo nombre y misma patente. «Fusionar» elige una ficha que queda y le pasa TODO lo de la otra
   (vehículos, pólizas, cuotas, bajas, pagos, siniestros, tareas, notas, leads, presupuestos…), completa
   lo que la ficha que queda tenía vacío y borra la repetida. Queda en el historial como `fusion`.
+- **El mismo auto asegurado dos veces** (12.7.2): dos pólizas del mismo cliente, el mismo dominio y la
+  misma compañía, las dos con renglón vivo en el mismo mes. Es la misma póliza cargada con el número
+  escrito de dos formas —«40-02-357878» en un renglón y «357878» en el otro, las dos correctas—: como
+  la póliza se identifica por su número (`POL:<cía>|<número>`), el importador la toma por dos y el auto
+  aparece dos veces en la planilla. «Juntar» deja una sola póliza con todo lo de las dos (renglones,
+  pagos, bajas, siniestros, ampliaciones, presupuestos, tareas, adjuntos y la renovación en
+  seguimiento) y borra la repetida; queda en el historial como `fusion`.
 - **Cuotas repetidas**: la misma póliza dos veces en el mismo mes (dos renglones en la planilla).
 - **Bajas repetidas**: la misma póliza dos veces en BAJAS del mismo mes.
 - **En los dos lados**: una póliza que está viva en la planilla del mes Y en sus bajas. Se lista y se
@@ -455,6 +462,16 @@ borrar clientes repetidos, todos pueden»). La pantalla lista cuatro cosas:
 Lo que se repara solo, al arrancar y después de cada importación: los clientes con **exactamente el
 mismo DNI y el mismo nombre** se fusionan, y las cuotas y bajas repetidas se dejan en una (siempre la
 misma en las cinco computadoras: se decide con la grilla de la base, no con lo que recuerda cada PC).
+Las pólizas del mismo auto **no** se juntan solas: dos pólizas del mismo dominio en la misma compañía
+pueden ser una renovación hecha a mitad de mes, y eso lo mira una persona. Por lo mismo el detector no
+compara los números entre sí —que sean distintos es el síntoma, y adivinar que uno «contiene» al otro
+juntaría mal dos pólizas de verdad—: mira dominio, compañía, cliente y que choquen en un mes.
+
+Juntar dos pólizas arregla la base de esa computadora, pero **los dos renglones siguen en la hoja**: la
+próxima importación volvería a crear la repetida. Por eso el paso que sigue es sacar el renglón que
+sobra, que ahora aparece en «La misma póliza dos veces en el mismo mes» —los dos cuelgan de la misma
+póliza— y es lo que viaja a la hoja y a las otras cuatro computadoras. Sacarlo ya no avisa que la
+póliza se queda fuera de la planilla, porque no se queda: le sigue quedando el otro renglón.
 
 De dónde salían: hasta la 12.5 cada computadora borraba y escribía en la base **por número de
 renglón**, con una foto que podía tener un minuto; si otra PC borraba un renglón más arriba en ese

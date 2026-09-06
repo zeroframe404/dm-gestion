@@ -8,6 +8,7 @@ import type {
   AceptacionDePresupuesto,
   InformeDeDuplicados,
   ResultadoDeFusion,
+  ResultadoDeFusionDePolizas,
   ComentarioDeRed,
   ConsultaDeAntiguedad,
   ConversacionDeRed,
@@ -220,6 +221,7 @@ export interface Canales {
   // rol —lo pidió la agencia—, SÓLO sobre lo que el detector señaló (el servicio lo vuelve a mirar).
   'duplicados:listar': () => Resultado<InformeDeDuplicados>
   'duplicados:fusionarClientes': (sobrevivienteId: number, duplicadoId: number) => Resultado<ResultadoDeFusion>
+  'duplicados:fusionarPolizas': (sobrevivienteId: number, duplicadaId: number) => Resultado<ResultadoDeFusionDePolizas>
   'duplicados:vistaPreviaCuota': (cuotaId: number) => Resultado<VistaPreviaDeEliminacion>
   'duplicados:sacarCuota': (cuotaId: number) => Resultado<ResultadoDeEliminacion>
   'duplicados:vistaPreviaBaja': (bajaId: number) => Resultado<VistaPreviaDeEliminacion>

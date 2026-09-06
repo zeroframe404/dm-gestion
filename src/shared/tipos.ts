@@ -2894,6 +2894,43 @@ export interface GrupoDeBajasRepetidas {
   bajas: BajaRepetida[]
 }
 
+/**
+ * Una de las pólizas de un grupo que asegura el mismo auto, con lo que cuelga de ella para poder
+ * elegir cuál conviene conservar.
+ */
+export interface PolizaRepetida {
+  id: number
+  numero: string | null
+  cobertura: string | null
+  vigenciaDesde: string | null
+  vigenciaHasta: string | null
+  sucursal: string | null
+  /** Lo que arrastra: para ver de un vistazo cuál es la póliza «de verdad». */
+  cuotas: number
+  pagos: number
+  siniestros: number
+  adjuntos: number
+  creadoEn: string
+  /** La que el programa sugiere conservar (la que tiene número propio, la que más arrastra, la más vieja). */
+  sugerida: boolean
+}
+
+/**
+ * El mismo auto, en la misma compañía y a nombre del mismo cliente, asegurado por DOS pólizas que en
+ * algún mes tienen las dos su renglón vivo en la planilla. Es la misma póliza cargada con el número
+ * escrito de dos formas («40-02-357878» y «357878»): como el número es lo que la identifica, el
+ * programa las tomó por dos y la agencia ve al cliente dos veces.
+ */
+export interface GrupoDePolizasDelMismoRiesgo {
+  clienteId: number
+  clienteNombre: string | null
+  compania: string | null
+  patente: string | null
+  /** Los meses en los que las dos tienen renglón vivo a la vez: es lo que se ve doble en la planilla. */
+  periodosEnConflicto: string[]
+  polizas: PolizaRepetida[]
+}
+
 /** Una póliza que en el mismo mes está en la planilla Y en Bajas: quedó a medio camino de una baja (o de una reactivación). */
 export interface PolizaEnLosDosLados {
   periodo: string
@@ -2907,6 +2944,7 @@ export interface PolizaEnLosDosLados {
 
 export interface InformeDeDuplicados {
   clientes: GrupoDeClientesRepetidos[]
+  polizasDelMismoRiesgo: GrupoDePolizasDelMismoRiesgo[]
   cuotas: GrupoDeCuotasRepetidas[]
   bajas: GrupoDeBajasRepetidas[]
   enLosDosLados: PolizaEnLosDosLados[]
@@ -2922,6 +2960,17 @@ export interface ResultadoDeFusion {
   nombre: string
   /** Qué se movió a la ficha que queda, contado. */
   movido: Array<{ que: string; cuantos: number }>
+}
+
+export interface ResultadoDeFusionDePolizas {
+  sobrevivienteId: number
+  eliminadaId: number
+  /** Cómo nombrarla en el cartel: cliente · compañía · número. */
+  titulo: string
+  /** Qué se movió a la póliza que queda, contado. */
+  movido: Array<{ que: string; cuantos: number }>
+  /** Cuántos renglones de la planilla quedaron ahora colgando de la misma póliza (el paso que sigue). */
+  renglonesQueQuedanJuntos: number
 }
 
 // ---------------------------------------------------------------------------

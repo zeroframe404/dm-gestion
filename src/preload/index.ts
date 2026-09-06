@@ -53,6 +53,7 @@ const api: ApiDm = {
   duplicados: {
     listar: () => invocar('duplicados:listar'),
     fusionarClientes: (sobrevivienteId, duplicadoId) => invocar('duplicados:fusionarClientes', sobrevivienteId, duplicadoId),
+    fusionarPolizas: (sobrevivienteId, duplicadaId) => invocar('duplicados:fusionarPolizas', sobrevivienteId, duplicadaId),
     vistaPreviaCuota: (cuotaId) => invocar('duplicados:vistaPreviaCuota', cuotaId),
     sacarCuota: (cuotaId) => invocar('duplicados:sacarCuota', cuotaId),
     vistaPreviaBaja: (bajaId) => invocar('duplicados:vistaPreviaBaja', bajaId),

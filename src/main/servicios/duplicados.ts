@@ -5,12 +5,14 @@
 // sacarlos desde el programa —«que estén repetidos, todos pueden»—, así que acá hay tres cosas:
 //
 //   1. El DETECTOR: qué está repetido y por qué. Clientes (mismo DNI; mismo nombre sin documento;
-//      mismo nombre y misma patente; un CUIT que contiene el DNI de otra ficha), la misma póliza dos
-//      veces en el mismo mes, la misma baja dos veces, y la póliza que está en la planilla Y en Bajas
-//      a la vez, que es lo que deja una baja a medio camino.
-//   2. La FUSIÓN de dos fichas de cliente: todo lo del duplicado pasa a la que queda, y el duplicado
-//      se borra. Los del mismo DNI se fusionan solos al arrancar y después de cada importación; los
-//      demás los decide una persona, porque dos homónimos son gente distinta.
+//      mismo nombre y misma patente; un CUIT que contiene el DNI de otra ficha), el mismo auto
+//      asegurado por dos pólizas a la vez (la 12.7.2), la misma póliza dos veces en el mismo mes, la
+//      misma baja dos veces, y la póliza que está en la planilla Y en Bajas a la vez, que es lo que
+//      deja una baja a medio camino.
+//   2. La FUSIÓN de dos fichas de cliente —y, desde la 12.7.2, la de dos pólizas del mismo auto—:
+//      todo lo del duplicado pasa a la que queda, y el duplicado se borra. Los clientes del mismo DNI
+//      se fusionan solos al arrancar y después de cada importación; los demás los decide una persona,
+//      porque dos homónimos son gente distinta y dos pólizas del mismo auto pueden ser una renovación.
 //   3. SACAR un renglón repetido con la misma cascada de la papelera, pero sin el control del rol:
 //      lo puede hacer cualquiera que edite la cartera, SÓLO sobre lo que el detector señaló, y el
 //      servicio lo vuelve a comprobar en el momento (el renderer no es confiable).
@@ -22,10 +24,13 @@ import type {
   GrupoDeBajasRepetidas,
   GrupoDeClientesRepetidos,
   GrupoDeCuotasRepetidas,
+  GrupoDePolizasDelMismoRiesgo,
   InformeDeDuplicados,
   MotivoDeClienteRepetido,
   PolizaEnLosDosLados,
+  PolizaRepetida,
   ResultadoDeFusion,
+  ResultadoDeFusionDePolizas,
 } from '../../shared/tipos'
 import type { ResultadoDeEliminacion, VistaPreviaDeEliminacion } from '../../shared/eliminacion'
 import { db } from '../db/base'
@@ -343,6 +348,262 @@ const SISTEMA: SesionUsuario = {
 }
 
 // ---------------------------------------------------------------------------
+// El mismo auto asegurado dos veces: la misma póliza con el número escrito de dos formas
+// ---------------------------------------------------------------------------
+//
+// Lo que contó la agencia: «en Rivadavia aparecen duplicados por la póliza; Leon Alejandro, ambos
+// tienen misma patente pero diferente formato de póliza». Un renglón de la planilla dice
+// «40-02-357878» y el otro «261005» —los dos correctos, es la misma póliza escrita de dos maneras—.
+// Como la póliza se identifica por su número (`POL:<cía>|<número>`, ver `guardarPoliza`), el
+// importador las tomó por dos pólizas distintas, y el mismo auto quedó con dos renglones en la
+// planilla del mes. Al detector de cuotas repetidas se le escapa: agrupa por `poliza_id`, y acá los
+// `poliza_id` son dos.
+//
+// El detector NO compara los números: que sean distintos es justamente el síntoma, y adivinar que uno
+// «contiene» al otro juntaría mal dos pólizas de verdad. Mira lo que sí es seguro, y las cuatro cosas
+// juntas:
+//   - la MISMA PATENTE. El vehículo se identifica por dominio (`PAT:<patente>`), así que las dos
+//     pólizas terminan apuntando al mismo vehículo. Sin patente no se agrupa nada: un «0KM», un «EN
+//     TRÁMITE» o un riesgo de hogar no tienen dominio, y juntarlos por eso sería juntar cosas
+//     distintas.
+//   - la MISMA COMPAÑÍA: el mismo auto en dos compañías es un cambio de aseguradora, no un duplicado.
+//   - el MISMO CLIENTE: si son dos fichas distintas, lo repetido es la ficha, y de eso se ocupa el
+//     detector de arriba. Cuando una persona junta las fichas, este detector ve el grupo recién ahí.
+//   - y que CHOQUEN EN UN MES: las dos con renglón vivo en la misma planilla. Sin esta condición una
+//     renovación —la póliza vieja y la nueva del mismo auto— se leería como un duplicado, y no lo es.
+//
+// No se fusionan solas. Dos pólizas del mismo auto en la misma compañía pueden ser una renovación
+// hecha a mitad de mes, y eso lo tiene que mirar una persona.
+
+interface PolizaCruda {
+  id: number
+  clave: string
+  cliente_id: number
+  cliente_nombre: string | null
+  compania: string | null
+  numero: string | null
+  numero_normalizado: string | null
+  cobertura: string | null
+  vigencia_desde: string | null
+  vigencia_hasta: string | null
+  patente: string | null
+  patente_normalizada: string
+  creado_en: string
+}
+
+// Esta consulta la recorre entera la cartera (una fila por póliza vigente con dominio), así que no
+// lleva nada que se pueda contar después: lo que cuelga de cada póliza y su sucursal se piden sólo
+// para las que quedaron agrupadas, que son un puñado.
+const SELECT_POLIZAS_CON_PATENTE = `
+  SELECT p.id, p.clave, p.cliente_id, p.compania, p.numero, p.numero_normalizado, p.cobertura,
+         p.vigencia_desde, p.vigencia_hasta, p.creado_en,
+         cl.nombre AS cliente_nombre, v.patente, v.patente_normalizada
+    FROM polizas p
+    JOIN vehiculos v ON v.id = p.vehiculo_id
+    LEFT JOIN clientes cl ON cl.id = p.cliente_id
+   WHERE p.activa = 1 AND TRIM(COALESCE(v.patente_normalizada, '')) <> ''
+   ORDER BY p.id`
+
+interface CuentasDePoliza {
+  cuotas: number
+  pagos: number
+  siniestros: number
+  adjuntos: number
+}
+
+function cuentasDePoliza(id: number): CuentasDePoliza & { sucursal_texto: string | null } {
+  const cuantos = (sql: string) => (db().prepare(sql).get(id) as { n: number }).n
+  const sucursal = db()
+    .prepare(`SELECT sucursal_texto FROM cuotas_mes WHERE poliza_id = ? AND dada_de_baja = 0 ORDER BY periodo DESC LIMIT 1`)
+    .get(id) as { sucursal_texto: string | null } | undefined
+  return {
+    cuotas: cuantos('SELECT COUNT(*) AS n FROM cuotas_mes WHERE poliza_id = ? AND dada_de_baja = 0'),
+    pagos: cuantos('SELECT COUNT(*) AS n FROM pagos WHERE poliza_id = ?'),
+    siniestros: cuantos('SELECT COUNT(*) AS n FROM siniestros WHERE poliza_id = ?'),
+    adjuntos: cuantos('SELECT COUNT(*) AS n FROM poliza_adjuntos WHERE poliza_id = ?'),
+    sucursal_texto: sucursal?.sucursal_texto ?? null,
+  }
+}
+
+/**
+ * Cuál de las pólizas del mismo auto conviene conservar: la que tiene número propio (su clave es
+ * `POL:<cía>|<número>`, que es con la que el importador la va a volver a reconocer en la planilla del
+ * mes que viene), después la que más cosas arrastra, después la del número más completo
+ * («40-02-357878» antes que «357878») y, a igualdad de todo, la de clave más chica.
+ *
+ * El último desempate es por la CLAVE y no por el `id` a propósito: el id lo pone cada base, así que
+ * dos computadoras podrían sugerir pólizas distintas para el mismo grupo. La clave sale de la hoja y
+ * es la misma en las cinco.
+ */
+export function elegirPolizaQueQueda<T extends { clave: string; numero_normalizado: string | null } & Partial<CuentasDePoliza>>(grupo: T[]): T {
+  const conNumero = (p: T) => (p.clave.startsWith('POL:') ? 1 : 0)
+  const arrastra = (p: T) => (p.cuotas ?? 0) + (p.pagos ?? 0) + (p.siniestros ?? 0) + (p.adjuntos ?? 0)
+  const largoDelNumero = (p: T) => (p.numero_normalizado ?? '').length
+  return [...grupo].sort(
+    (a, b) => conNumero(b) - conNumero(a) || arrastra(b) - arrastra(a) || largoDelNumero(b) - largoDelNumero(a) || a.clave.localeCompare(b.clave),
+  )[0]!
+}
+
+/** Los meses en los que más de una de estas pólizas tiene renglón vivo en la planilla. */
+function periodosEnConflicto(polizaIds: number[]): string[] {
+  const marcas = polizaIds.map(() => '?').join(', ')
+  const filas = db()
+    .prepare(
+      `SELECT periodo FROM (
+         SELECT DISTINCT periodo, poliza_id FROM cuotas_mes WHERE dada_de_baja = 0 AND poliza_id IN (${marcas})
+       ) GROUP BY periodo HAVING COUNT(*) > 1 ORDER BY periodo DESC`,
+    )
+    .all(...polizaIds) as Array<{ periodo: string }>
+  return filas.map((f) => f.periodo)
+}
+
+/** Grupos de pólizas que aseguran el mismo auto y se pisan en algún mes. */
+export function polizasDelMismoRiesgo(): GrupoDePolizasDelMismoRiesgo[] {
+  const todas = db().prepare(SELECT_POLIZAS_CON_PATENTE).all() as PolizaCruda[]
+  const porRiesgo = new Map<string, PolizaCruda[]>()
+  for (const p of todas) {
+    const clave = `${p.cliente_id}|${p.patente_normalizada}|${normalizarTexto(p.compania)}`
+    porRiesgo.set(clave, [...(porRiesgo.get(clave) ?? []), p])
+  }
+
+  const grupos: GrupoDePolizasDelMismoRiesgo[] = []
+  for (const grupo of porRiesgo.values()) {
+    if (grupo.length < 2) continue
+    const periodos = periodosEnConflicto(grupo.map((p) => p.id))
+    if (periodos.length === 0) continue
+    const conCuentas = grupo.map((p) => ({ ...p, ...cuentasDePoliza(p.id) }))
+    const queda = elegirPolizaQueQueda(conCuentas)
+    const primera = grupo[0]!
+    grupos.push({
+      clienteId: primera.cliente_id,
+      clienteNombre: primera.cliente_nombre,
+      compania: primera.compania,
+      patente: primera.patente,
+      periodosEnConflicto: periodos,
+      polizas: conCuentas.map(
+        (p): PolizaRepetida => ({
+          id: p.id,
+          numero: p.numero,
+          cobertura: p.cobertura,
+          vigenciaDesde: p.vigencia_desde,
+          vigenciaHasta: p.vigencia_hasta,
+          sucursal: p.sucursal_texto,
+          cuotas: p.cuotas,
+          pagos: p.pagos,
+          siniestros: p.siniestros,
+          adjuntos: p.adjuntos,
+          creadoEn: p.creado_en,
+          sugerida: p.id === queda.id,
+        }),
+      ),
+    })
+  }
+  return grupos
+}
+
+/** Las tablas que apuntan a una póliza por `poliza_id` y se mudan enteras a la que queda. */
+const TABLAS_DE_LA_POLIZA = ['cuotas_mes', 'bajas', 'pagos', 'amp', 'siniestros', 'rechazos_debito', 'presupuestos', 'tareas', 'poliza_adjuntos'] as const
+
+const NOMBRE_DE_TABLA_DE_POLIZA: Record<(typeof TABLAS_DE_LA_POLIZA)[number], string> = {
+  cuotas_mes: 'renglón de la planilla',
+  bajas: 'baja',
+  pagos: 'pago',
+  amp: 'ampliación',
+  siniestros: 'siniestro',
+  rechazos_debito: 'aviso de rechazo',
+  presupuestos: 'presupuesto',
+  tareas: 'tarea',
+  poliza_adjuntos: 'adjunto',
+}
+
+const NO_SON_DEL_MISMO_RIESGO =
+  'Esas dos pólizas ya no figuran como el mismo auto asegurado dos veces: alguien las acomodó desde otra computadora. Actualizá la pantalla.'
+
+/** ¿Estas dos pólizas están hoy en el mismo grupo del detector? Se mira en el momento. */
+function polizasSenaladas(unaId: number, otraId: number): boolean {
+  return polizasDelMismoRiesgo().some((g) => {
+    const ids = g.polizas.map((p) => p.id)
+    return ids.includes(unaId) && ids.includes(otraId)
+  })
+}
+
+/**
+ * Junta dos pólizas del mismo auto en una: todo lo que colgaba de la repetida (renglones de la
+ * planilla, pagos, bajas, siniestros, ampliaciones, presupuestos, tareas, adjuntos y la renovación en
+ * seguimiento) pasa a la que queda, y la repetida se borra. Queda en el historial con la foto de la
+ * que se fue.
+ *
+ * Lo que esto arregla y lo que NO. Arregla la base de ESTA computadora: deja de haber dos pólizas
+ * para un auto, y los dos renglones del mes pasan a colgar de la misma. Recién ahí los ve el detector
+ * de cuotas repetidas, que es el que tiene el botón para sacar el que sobra —y, cuando los dos
+ * renglones cuelgan de la misma póliza, ese botón ya no avisa que la póliza va a quedar fuera de la
+ * planilla, porque no queda: le sigue quedando el otro renglón—.
+ *
+ * Lo que NO arregla es la hoja: los dos renglones siguen ahí, y la próxima importación volvería a
+ * crear la póliza repetida. La fusión dura cuando se saca el renglón que sobra, que es lo que viaja a
+ * la hoja y a las otras cuatro computadoras. Por eso el resultado dice cuántos renglones quedaron
+ * juntos: es el paso que sigue.
+ *
+ * Los campos de la póliza que queda no se tocan: la próxima importación los reescribe enteros desde su
+ * renglón de la hoja, así que copiarlos ahora duraría hasta esa importación y nada más.
+ */
+export function fusionarPolizas(sobrevivienteCrudo: unknown, duplicadaCruda: unknown, actor: SesionUsuario): ResultadoDeFusionDePolizas {
+  const sobrevivienteId = enteroPositivo(sobrevivienteCrudo, 'La póliza que queda')
+  const duplicadaId = enteroPositivo(duplicadaCruda, 'La póliza repetida')
+  if (sobrevivienteId === duplicadaId) throw new ErrorDeNegocio('Elegí dos pólizas distintas: la que queda y la que se junta con ella.')
+  // El renderer no es confiable: se vuelve a comprobar acá que las dos sean, ahora mismo, el mismo auto.
+  if (!polizasSenaladas(sobrevivienteId, duplicadaId)) throw new ErrorDeNegocio(NO_SON_DEL_MISMO_RIESGO)
+
+  const leer = db().prepare('SELECT * FROM polizas WHERE id = ?')
+  const queda = leer.get(sobrevivienteId) as Record<string, unknown> | undefined
+  const seVa = leer.get(duplicadaId) as Record<string, unknown> | undefined
+  if (!queda || !seVa) throw new ErrorDeNegocio('Alguna de las dos pólizas ya no está. Actualizá la pantalla y probá de nuevo.')
+
+  const movido: Array<{ que: string; cuantos: number }> = []
+  const ahora = ahoraIso()
+
+  db().transaction(() => {
+    for (const tabla of TABLAS_DE_LA_POLIZA) {
+      const cambios = db().prepare(`UPDATE ${tabla} SET poliza_id = ? WHERE poliza_id = ?`).run(sobrevivienteId, duplicadaId).changes
+      if (cambios > 0) movido.push({ que: NOMBRE_DE_TABLA_DE_POLIZA[tabla], cuantos: cambios })
+    }
+    // Las renovaciones tienen índice único por (póliza, vencimiento): si las dos pólizas tenían la
+    // misma renovación en seguimiento, la de la repetida no entra, y la que queda ya la tiene. Por eso
+    // el OR IGNORE y el borrado de lo que no llegó a mudarse.
+    const renovaciones = db().prepare('UPDATE OR IGNORE renovaciones SET poliza_id = ? WHERE poliza_id = ?').run(sobrevivienteId, duplicadaId).changes
+    if (renovaciones > 0) movido.push({ que: 'renovación en seguimiento', cuantos: renovaciones })
+    db().prepare('DELETE FROM renovaciones WHERE poliza_id = ?').run(duplicadaId)
+
+    db().prepare('DELETE FROM polizas WHERE id = ?').run(duplicadaId)
+    db().prepare('UPDATE polizas SET actualizado_en = ? WHERE id = ?').run(ahora, sobrevivienteId)
+
+    registrarCambio(actor, {
+      accion: 'fusion',
+      tabla: 'polizas',
+      registroId: sobrevivienteId,
+      campo: 'FUSIÓN DE PÓLIZAS DEL MISMO AUTO',
+      valorAnterior: `${limpiar(seVa.compania)} ${limpiar(seVa.numero)} (id ${duplicadaId})\n${JSON.stringify(seVa).slice(0, 3000)}`,
+      valorNuevo: `${limpiar(queda.compania)} ${limpiar(queda.numero)} (id ${sobrevivienteId}) · ${movido.map((m) => `${m.cuantos} ${m.que}`).join(', ') || 'nada que mover'}`,
+    })
+  })()
+
+  // Cuántos renglones quedaron colgando de la misma póliza en un mismo mes: es lo que la pantalla de
+  // cuotas repetidas va a mostrar ahora, y el paso que le falta a la agencia para que no vuelvan.
+  const renglonesQueQuedanJuntos = (
+    db()
+      .prepare(
+        `SELECT COALESCE(MAX(n), 0) AS n FROM (
+           SELECT COUNT(*) AS n FROM cuotas_mes WHERE poliza_id = ? AND dada_de_baja = 0 GROUP BY periodo
+         )`,
+      )
+      .get(sobrevivienteId) as { n: number }
+  ).n
+
+  const titulo = [limpiar(queda.compania), limpiar(queda.numero)].filter((t) => t !== '').join(' ')
+  return { sobrevivienteId, eliminadaId: duplicadaId, titulo, movido, renglonesQueQuedanJuntos }
+}
+
+// ---------------------------------------------------------------------------
 // Cuotas y bajas repetidas, y la póliza que está en los dos lados
 // ---------------------------------------------------------------------------
 
@@ -528,15 +789,17 @@ export function polizasEnLosDosLados(): PolizaEnLosDosLados[] {
 
 export function detectarDuplicados(): InformeDeDuplicados {
   const clientes = clientesRepetidos()
+  const delMismoRiesgo = polizasDelMismoRiesgo()
   const cuotas = cuotasRepetidas()
   const bajas = bajasRepetidas()
   const enLosDosLados = polizasEnLosDosLados()
   return {
     clientes,
+    polizasDelMismoRiesgo: delMismoRiesgo,
     cuotas,
     bajas,
     enLosDosLados,
-    total: clientes.length + cuotas.length + bajas.length + enLosDosLados.length,
+    total: clientes.length + delMismoRiesgo.length + cuotas.length + bajas.length + enLosDosLados.length,
     revisadoEn: ahoraIso(),
   }
 }

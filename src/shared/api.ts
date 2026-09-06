@@ -43,6 +43,7 @@ export interface ApiDm {
   duplicados: {
     listar: Remota<'duplicados:listar'>
     fusionarClientes: Remota<'duplicados:fusionarClientes'>
+    fusionarPolizas: Remota<'duplicados:fusionarPolizas'>
     vistaPreviaCuota: Remota<'duplicados:vistaPreviaCuota'>
     sacarCuota: Remota<'duplicados:sacarCuota'>
     vistaPreviaBaja: Remota<'duplicados:vistaPreviaBaja'>
