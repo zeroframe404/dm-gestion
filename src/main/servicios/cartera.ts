@@ -38,6 +38,7 @@ import {
   interpretarNumero,
   limpiar,
   normalizarDocumento,
+  normalizarNumeroPoliza,
   normalizarPatente,
   normalizarTexto,
 } from '../importacion/normalizar'
@@ -45,6 +46,7 @@ import { diasCoberturaPorCompania, diasPorDefectoDe, sincronizarCompanias } from
 import { aplicarPlantilla, plantillaDeAviso, saludoDe } from './plantillas'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
+import { claveDePoliza } from './identidad'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANA_APP, registrarFilaDeLaApp } from './filas'
 import { guardarPago, normalizarModoDeAdelanto, normalizarResultado } from './pagos'
@@ -462,6 +464,75 @@ function claveDisponibleParaMover(claveActual: string, claveNueva: string): bool
   return db().prepare('SELECT 1 FROM clientes WHERE clave = ?').get(claveNueva) === undefined
 }
 
+/**
+ * Corregir el NÚMERO DE PÓLIZA desde la planilla tiene que rehacer lo que se deriva de él, igual que
+ * hace `editarPoliza` (polizas.ts): el `numero_normalizado` —la columna con la que el importador
+ * engancha las filas de las planillas históricas con su póliza, y con la que la ficha de clientes
+ * busca por número— y la clave. Sin esto el número quedaba corregido a la vista y la póliza seguía
+ * sin encontrarse por el número nuevo hasta la próxima importación completa.
+ */
+function derivadasDelNumeroDePoliza(valor: string, fila: FilaCruda): Record<string, unknown> {
+  return { numero_normalizado: normalizarNumeroPoliza(valor) || null, ...claveMovidaDeLaPoliza(fila, { numero: valor }) }
+}
+
+/** La compañía también entra en la clave ('POL:<cía>|<número>'), así que cambiarla la mueve igual. */
+function derivadasDeLaCompania(valor: string, fila: FilaCruda): Record<string, unknown> {
+  return claveMovidaDeLaPoliza(fila, { compania: valor })
+}
+
+interface PolizaParaLaClave {
+  clave: string
+  fila_id: string | null
+  compania: string | null
+  numero: string | null
+  documento: string | null
+  nombre: string | null
+  patente: string | null
+}
+
+/**
+ * La clave nueva de la póliza cuando el cambio la mueve, o {} si se queda donde está. La clave es la
+ * identidad que comparten las cinco computadoras ('POL:<cía>|<número>'): si el número cambia y ella
+ * no, deja de ser el ancla con la que la importación siguiente reconoce a esta póliza en la hoja.
+ *
+ * Se calcula con lo que tiene la PÓLIZA —su compañía, su cliente, su vehículo— y no con lo que muestra
+ * la fila del mes, que puede tener copias propias: tiene que salir idéntica a la que arma el importador.
+ *
+ * Si la clave que le tocaría ya es de otra póliza se corta acá con el mismo mensaje que la ficha: la
+ * columna es única, y dos pólizas con el mismo número en la misma compañía es algo para mirar en la
+ * hoja, no algo para guardar callado. Tirar desde acá es seguro, como en el documento: las derivadas
+ * se calculan antes del UPDATE, así que no queda nada a medias.
+ */
+function claveMovidaDeLaPoliza(fila: FilaCruda, cambio: { compania?: string; numero?: string }): Record<string, unknown> {
+  const polizaId = fila.poliza_id
+  if (polizaId === null) return {}
+  const actual = db()
+    .prepare(
+      `SELECT p.clave, p.fila_id, p.compania, p.numero, cl.documento, cl.nombre, v.patente
+         FROM polizas p
+         LEFT JOIN clientes cl ON cl.id = p.cliente_id
+         LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
+        WHERE p.id = ?`,
+    )
+    .get(polizaId) as PolizaParaLaClave | undefined
+  if (!actual) return {}
+
+  const compania = cambio.compania ?? limpiar(actual.compania)
+  const numero = cambio.numero ?? limpiar(actual.numero)
+  const claveNueva = claveDePoliza(compania, numero, actual.documento, actual.nombre, actual.patente, actual.fila_id ?? `POL${polizaId}`)
+  if (claveNueva === actual.clave) return {}
+
+  const ocupada = db().prepare('SELECT 1 FROM polizas WHERE clave = ? AND id <> ?').get(claveNueva, polizaId)
+  if (ocupada) {
+    throw new ErrorDeNegocio(
+      claveNueva.startsWith('POL:')
+        ? `Ya hay otra póliza cargada con el número ${numero} en ${compania}.`
+        : 'Sin número, esta póliza queda con la misma identidad que otra del mismo cliente. Escribí el número que le corresponde.',
+    )
+  }
+  return { clave: claveNueva }
+}
+
 const DESTINOS: Record<CampoEditable, DestinoDeCampo> = {
   sucursal: { tabla: 'clientes', columna: 'sucursal_texto', respaldoEnLaCuota: 'sucursal_texto', columnaEnLaCuota: 'sucursal_texto' },
   nombre: {
@@ -516,8 +587,20 @@ const DESTINOS: Record<CampoEditable, DestinoDeCampo> = {
   color: { tabla: 'vehiculos', columna: 'color' },
 
   cobertura: { tabla: 'polizas', columna: 'cobertura' },
-  compania: { tabla: 'polizas', columna: 'compania', respaldoEnLaCuota: 'compania', columnaEnLaCuota: 'compania' },
-  numeroPoliza: { tabla: 'polizas', columna: 'numero', respaldoEnLaCuota: 'numero_poliza', columnaEnLaCuota: 'numero_poliza' },
+  compania: {
+    tabla: 'polizas',
+    columna: 'compania',
+    derivadas: derivadasDeLaCompania,
+    respaldoEnLaCuota: 'compania',
+    columnaEnLaCuota: 'compania',
+  },
+  numeroPoliza: {
+    tabla: 'polizas',
+    columna: 'numero',
+    derivadas: derivadasDelNumeroDePoliza,
+    respaldoEnLaCuota: 'numero_poliza',
+    columnaEnLaCuota: 'numero_poliza',
+  },
   propuesta: { tabla: 'polizas', columna: 'propuesta', soloLocal: true },
   vigenciaDesde: { tabla: 'polizas', columna: 'vigencia_desde' },
   vigenciaHasta: { tabla: 'polizas', columna: 'vigencia_hasta' },

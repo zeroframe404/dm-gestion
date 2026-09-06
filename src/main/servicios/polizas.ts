@@ -57,6 +57,7 @@ import { sincronizarCompanias } from './companias'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
+import { claveDePoliza } from './identidad'
 import { reglasVigentes } from './reglas'
 import { sucursalesParaElegir } from './sucursales'
 import { enteroPositivo, objeto, texto } from './validacion'
@@ -564,24 +565,6 @@ function validarDatos(datos: DatosDePoliza): DatosValidados {
 // ---------------------------------------------------------------------------
 // Claves de identidad (las mismas que arma el importador)
 // ---------------------------------------------------------------------------
-
-/**
- * La clave con la que el importador reconoce una póliza de un mes al otro. Se calcula igual acá para
- * que una póliza cargada en la aplicación y después leída de la hoja sea la misma póliza y no dos.
- */
-function claveDePoliza(compania: string, numero: string, documento: string | null, nombre: string | null, patente: string | null, filaId: string): string {
-  const numeroNormalizado = normalizarNumeroPoliza(numero)
-  if (numeroNormalizado.length >= 3 && /\d/.test(numeroNormalizado)) {
-    return `POL:${normalizarTexto(compania)}|${numeroNormalizado}`
-  }
-  const patenteNormalizada = normalizarPatente(patente)
-  const documentoNormalizado = normalizarDocumento(documento)
-  const documentoValido = documentoNormalizado.length >= 6 && documentoNormalizado.length <= 11
-  if (documentoValido && patenteNormalizada) return `DOCPAT:${documentoNormalizado}|${patenteNormalizada}`
-  const nombreNormalizado = normalizarTexto(nombre)
-  if (nombreNormalizado && patenteNormalizada) return `NOMPAT:${nombreNormalizado}|${patenteNormalizada}`
-  return `FILA:${filaId}`
-}
 
 /** Igual que el importador: por patente si la hay, y si no por cliente + marca + modelo + motor/chasis. */
 function claveDeVehiculo(clienteId: number, patente: string, marca: string, modelo: string, motor: string, chasis: string): string {
