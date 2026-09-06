@@ -1,9 +1,11 @@
 // Cartera → Duplicados: lo que la sincronización dejó repetido, a la vista y con botón.
 //
-// Cuatro listas, de más grave a menos: fichas de cliente que son la misma persona (se juntan en una
-// con «Fusionar»), la misma póliza dos veces en un mes, la misma baja dos veces, y la póliza que está
-// en la planilla Y en Bajas a la vez. Las de mismo DNI el programa las junta solo; el resto lo decide
-// una persona, porque dos homónimos son gente distinta.
+// Cinco listas, de más grave a menos: fichas de cliente que son la misma persona (se juntan en una
+// con «Fusionar»), el mismo auto asegurado por dos pólizas a la vez (la misma póliza con el número
+// escrito de dos formas: se juntan con «Juntar»), la misma póliza dos veces en un mes, la misma baja
+// dos veces, y la póliza que está en la planilla Y en Bajas a la vez. Las fichas de mismo DNI el
+// programa las junta solo; el resto lo decide una persona, porque dos homónimos son gente distinta y
+// dos pólizas del mismo auto pueden ser una renovación.
 //
 // Lo puede usar cualquier rol que edite la cartera (o Clientes, para las fichas): lo pidió la agencia
 // —«que estén repetidos, todos pueden»— y lo que acota es que sólo se toca lo que el detector señaló.
@@ -17,8 +19,10 @@ import {
   type GrupoDeBajasRepetidas,
   type GrupoDeClientesRepetidos,
   type GrupoDeCuotasRepetidas,
+  type GrupoDePolizasDelMismoRiesgo,
   type InformeDeDuplicados,
   type PolizaEnLosDosLados,
+  type PolizaRepetida,
 } from '../../../shared/tipos'
 import { useCuentaRegresiva } from '../../componentes/BotonEliminar'
 import { BotonAyuda } from '../../componentes/Ayuda'
@@ -71,6 +75,14 @@ export function Duplicados() {
       <SeccionClientes
         grupos={informe.clientes}
         puedeFusionar={puedeTocarClientes}
+        alFusionar={(mensaje) => {
+          setAviso(mensaje)
+          void cargar()
+        }}
+      />
+      <SeccionMismoRiesgo
+        grupos={informe.polizasDelMismoRiesgo}
+        puedeFusionar={puedeTocarCartera}
         alFusionar={(mensaje) => {
           setAviso(mensaje)
           void cargar()
@@ -247,6 +259,206 @@ function DialogoFusionar({
           la que esté mal.
         </Alerta>
         <p className="text-xs text-slate-500">Queda anotado en el historial: quién fusionó, cuándo y qué decía la ficha que se fue.</p>
+      </div>
+    </Dialogo>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// El mismo auto asegurado dos veces
+// ---------------------------------------------------------------------------
+
+function loQueArrastra(p: PolizaRepetida): string {
+  return [
+    `${p.cuotas} renglón(es) en la planilla`,
+    p.pagos > 0 ? `${p.pagos} pago(s)` : null,
+    p.siniestros > 0 ? `${p.siniestros} siniestro(s)` : null,
+    p.adjuntos > 0 ? `${p.adjuntos} adjunto(s)` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function SeccionMismoRiesgo({
+  grupos,
+  puedeFusionar,
+  alFusionar,
+}: {
+  grupos: GrupoDePolizasDelMismoRiesgo[]
+  puedeFusionar: boolean
+  alFusionar: (mensaje: string) => void
+}) {
+  return (
+    <Tarjeta
+      titulo={`El mismo auto asegurado dos veces${grupos.length > 0 ? ` (${grupos.length})` : ''}`}
+      descripcion="La misma póliza cargada con el número escrito de dos formas («40-02-357878» y «357878»): como el número es lo que la identifica, el programa la tomó por dos, y el auto aparece dos veces en la planilla. «Juntar» deja una sola póliza con todo lo de las dos; después, en «La misma póliza dos veces en el mismo mes», se saca el renglón que sobra, que es lo que viaja a la hoja y a las otras computadoras."
+    >
+      {grupos.length === 0 ? (
+        <p className="text-sm text-slate-500">Ningún auto asegurado dos veces.</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {grupos.map((grupo) => (
+            <GrupoDelMismoRiesgo
+              key={grupo.polizas.map((p) => p.id).join('-')}
+              grupo={grupo}
+              puedeFusionar={puedeFusionar}
+              alFusionar={alFusionar}
+            />
+          ))}
+        </div>
+      )}
+    </Tarjeta>
+  )
+}
+
+function GrupoDelMismoRiesgo({
+  grupo,
+  puedeFusionar,
+  alFusionar,
+}: {
+  grupo: GrupoDePolizasDelMismoRiesgo
+  puedeFusionar: boolean
+  alFusionar: (mensaje: string) => void
+}) {
+  const sugerida = grupo.polizas.find((p) => p.sugerida) ?? grupo.polizas[0]!
+  const [quedaId, setQuedaId] = useState<number>(sugerida.id)
+  const [confirmando, setConfirmando] = useState<PolizaRepetida | null>(null)
+  const queda = grupo.polizas.find((p) => p.id === quedaId) ?? sugerida
+  const otras = grupo.polizas.filter((p) => p.id !== queda.id)
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-slate-900">{grupo.clienteNombre ?? 'Sin nombre'}</span>
+        {grupo.compania && <Etiqueta>{grupo.compania}</Etiqueta>}
+        {grupo.patente && <Etiqueta>{grupo.patente}</Etiqueta>}
+        {grupo.periodosEnConflicto.map((periodo) => (
+          <Etiqueta key={periodo} tono="aviso">
+            Doble en {nombreDePeriodo(periodo)}
+          </Etiqueta>
+        ))}
+      </div>
+      <p className="mb-2 text-xs text-slate-500">Elegí cuál queda; la otra se junta con ésa. Conviene dejar la del número más completo.</p>
+      <div className="grid gap-2 md:grid-cols-2">
+        {grupo.polizas.map((p) => (
+          <label
+            key={p.id}
+            className={cx(
+              'flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-sm',
+              p.id === queda.id ? 'border-marino-500 bg-marino-50' : 'border-slate-200 bg-white hover:border-slate-300',
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <input type="radio" name={`poliza-queda-${grupo.polizas.map((x) => x.id).join('-')}`} checked={p.id === queda.id} onChange={() => setQuedaId(p.id)} />
+              <span className="font-semibold text-slate-900">{p.numero ?? 'Sin número'}</span>
+              {p.sugerida && <Etiqueta tono="marca">Sugerida</Etiqueta>}
+            </div>
+            <div className="text-xs text-slate-600">
+              {[p.cobertura, p.sucursal, p.vigenciaDesde ? `desde ${p.vigenciaDesde}` : null, p.vigenciaHasta ? `hasta ${p.vigenciaHasta}` : null]
+                .filter(Boolean)
+                .join(' · ') || 'sin cobertura ni vigencia cargadas'}
+            </div>
+            <div className="text-xs text-slate-500">{loQueArrastra(p)}</div>
+          </label>
+        ))}
+      </div>
+      {puedeFusionar && otras.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {otras.map((otra) => (
+            <Boton key={otra.id} tamano="sm" variante="peligro" icono="enlace" onClick={() => setConfirmando(otra)}>
+              Juntar «{otra.numero ?? 'sin número'}» con «{queda.numero ?? 'sin número'}»
+            </Boton>
+          ))}
+        </div>
+      )}
+      {confirmando && (
+        <DialogoJuntarPolizas
+          grupo={grupo}
+          queda={queda}
+          seVa={confirmando}
+          alCerrar={() => setConfirmando(null)}
+          alFusionar={(mensaje) => {
+            setConfirmando(null)
+            alFusionar(mensaje)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function DialogoJuntarPolizas({
+  grupo,
+  queda,
+  seVa,
+  alCerrar,
+  alFusionar,
+}: {
+  grupo: GrupoDePolizasDelMismoRiesgo
+  queda: PolizaRepetida
+  seVa: PolizaRepetida
+  alCerrar: () => void
+  alFusionar: (mensaje: string) => void
+}) {
+  const [error, setError] = useState<string | null>(null)
+  const [trabajando, setTrabajando] = useState(false)
+  const yaSalio = useRef(false)
+  const restante = useCuentaRegresiva(SEGUNDOS_PARA_CONFIRMAR)
+
+  const fusionar = async () => {
+    if (yaSalio.current) return
+    yaSalio.current = true
+    setTrabajando(true)
+    const resultado = await window.dm.duplicados.fusionarPolizas(queda.id, seVa.id)
+    setTrabajando(false)
+    if (resultado.ok) {
+      const movido = resumenDeLoBorrado(resultado.datos.movido)
+      const juntos = resultado.datos.renglonesQueQuedanJuntos
+      alFusionar(
+        `Quedó una sola póliza (${resultado.datos.titulo})${movido ? ` con ${movido}` : ''}.` +
+          (juntos > 1
+            ? ` Ahora los ${juntos} renglones cuelgan de ella: sacá el que sobra en «La misma póliza dos veces en el mismo mes», acá abajo, para que no vuelvan con la próxima importación.`
+            : ''),
+      )
+      return
+    }
+    yaSalio.current = false
+    setError(resultado.error)
+  }
+
+  return (
+    <Dialogo
+      abierto
+      ancho="sm"
+      titulo="Juntar dos pólizas del mismo auto"
+      descripcion={`${grupo.compania ?? ''} ${grupo.patente ?? ''} · «${seVa.numero ?? 'sin número'}» se junta con «${queda.numero ?? 'sin número'}»`.trim()}
+      alCerrar={trabajando ? () => undefined : alCerrar}
+      pie={
+        <>
+          <Boton onClick={alCerrar} disabled={trabajando}>
+            Cancelar
+          </Boton>
+          <Boton variante="peligro" icono="enlace" onClick={() => void fusionar()} disabled={restante > 0 || trabajando} cargando={trabajando}>
+            {restante > 0 && !trabajando ? `Esperá ${restante} s…` : 'Juntar'}
+          </Boton>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 text-sm text-slate-700">
+        {error && <Alerta tono="error">{error}</Alerta>}
+        <p>
+          Todo lo de <strong>{seVa.numero ?? 'la póliza sin número'}</strong> —{loQueArrastra(seVa)}— pasa a{' '}
+          <strong>{queda.numero ?? 'la póliza sin número'}</strong>, y la otra póliza se borra. El cliente y el vehículo no se tocan.
+        </p>
+        <Alerta tono="aviso">
+          No se puede deshacer. Si no es la misma póliza escrita de dos formas —por ejemplo, si una es la renovación de la otra— no las juntes:
+          dale de baja a la que ya no corre desde Pólizas.
+        </Alerta>
+        <p className="text-xs text-slate-500">
+          Con esto la póliza deja de estar dos veces en esta computadora. Para que no vuelva con la próxima importación falta sacar el renglón
+          que sobra de la planilla, que es lo que viaja a la hoja y a las otras computadoras. Queda anotado en el historial: quién la juntó,
+          cuándo y qué decía la que se fue.
+        </p>
       </div>
     </Dialogo>
   )

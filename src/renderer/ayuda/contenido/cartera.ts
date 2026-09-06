@@ -347,8 +347,9 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Qué muestra',
         parrafos: [
-          'Cuatro listas. Fichas de cliente que son (o pueden ser) la misma persona: mismo DNI, mismo nombre sin documento, mismo nombre con la misma patente, o un CUIT que contiene el DNI de otra ficha. La misma póliza dos veces en el mismo mes. La misma baja dos veces. Y la póliza que está en la planilla y en Bajas a la vez, que es una baja (o una reactivación) que quedó a medio camino.',
+          'Cinco listas. Fichas de cliente que son (o pueden ser) la misma persona: mismo DNI, mismo nombre sin documento, mismo nombre con la misma patente, o un CUIT que contiene el DNI de otra ficha. El mismo auto asegurado por dos pólizas a la vez. La misma póliza dos veces en el mismo mes. La misma baja dos veces. Y la póliza que está en la planilla y en Bajas a la vez, que es una baja (o una reactivación) que quedó a medio camino.',
           'Cada grupo dice cuál dejaría el programa: la ficha que tiene la clave del DNI o la que más arrastra, el renglón que tiene un cobro colgando o el de más arriba en la base, la baja que se hizo en el programa.',
+          'El mismo auto dos veces es lo que pasa cuando la misma póliza está cargada con el número escrito de dos formas: «40-02-357878» en un renglón y «357878» en el otro. Los dos números son correctos, pero el programa identifica la póliza por su número, así que la toma por dos pólizas distintas y el auto aparece dos veces en la planilla del mes. Sólo se listan cuando son el mismo cliente, el mismo dominio y la misma compañía, y las dos tienen renglón vivo en el mismo mes: así una renovación —la póliza vieja y la nueva del mismo auto— no se confunde con un duplicado.',
         ],
       },
       {
@@ -359,6 +360,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         ],
         lista: [
           '«Fusionar»: todo lo de una ficha (pólizas, cuotas, pagos, siniestros, tareas, notas) pasa a la otra y la que sobra se borra. Se elige cuál queda con el círculo de al lado del nombre.',
+          '«Juntar»: deja una sola póliza para el auto, con todo lo de las dos (renglones, pagos, siniestros, adjuntos). Se elige cuál queda con el círculo; conviene la del número más completo. Eso arregla esta computadora, pero los dos renglones siguen en la hoja: para que no vuelvan con la próxima importación hay que sacar el que sobra en «La misma póliza dos veces en el mismo mes», que ahora los muestra juntos.',
           '«Sacar este renglón» y «Sacar esta baja»: el mismo cartel y los mismos cinco segundos que la papelera, con la cuenta de lo que se lleva puesto.',
           'En «los dos lados» hay que decidir: si la póliza se fue, se saca de la planilla; si sigue, se saca la baja. Si acaban de darla de baja o de reactivarla, esperá un minuto y volvé a revisar.',
         ],

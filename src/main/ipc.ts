@@ -239,6 +239,7 @@ import {
 import {
   detectarDuplicados,
   fusionarClientes,
+  fusionarPolizas,
   sacarBajaRepetida,
   sacarCuotaRepetida,
   vistaPreviaDeSacarBaja,
@@ -432,6 +433,11 @@ export function registrarIpc(): void {
   })
   manejar('duplicados:fusionarClientes', (sobrevivienteId, duplicadoId) =>
     exito(fusionarClientes(sobrevivienteId, duplicadoId, exigirEdicion('clientes', 'cartera'))),
+  )
+  // Juntar dos pólizas del mismo auto toca la cartera, no las fichas: lo pide `cartera`. Es lo mismo
+  // que ya podía hacer quien saca un renglón repetido, y sobre lo mismo que el detector señaló.
+  manejar('duplicados:fusionarPolizas', (sobrevivienteId, duplicadaId) =>
+    exito(fusionarPolizas(sobrevivienteId, duplicadaId, exigirEdicion('cartera'))),
   )
   manejar('duplicados:vistaPreviaCuota', (cuotaId) => {
     exigirEdicion('cartera')
