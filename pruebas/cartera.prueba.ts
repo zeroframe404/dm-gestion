@@ -24,12 +24,13 @@ import {
   marcarRechazosVistos,
   resolverRechazoDesdeLaCampana,
 } from '../src/main/servicios/rechazos'
+import { listarClientes } from '../src/main/servicios/clientes'
 import { editarCompania, listarCompanias } from '../src/main/servicios/companias'
 import { listarRiesgos } from '../src/main/servicios/riesgos'
 import { historialDeFila } from '../src/main/servicios/historial'
 import { guardarPlantillaDeAviso } from '../src/main/servicios/plantillas'
 import { calcularAlerta, periodoDeHoy, periodoSiguiente } from '../src/shared/semaforo'
-import type { FilaCartera, SesionUsuario } from '../src/shared/tipos'
+import type { FilaCartera, FiltrosClientes, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
 import { filas, importar, unico } from './ayuda'
@@ -42,6 +43,8 @@ const DANIEL: SesionUsuario = {
   sucursal: { id: 1, nombre: 'Daniel' },
   debeCambiarClave: false,
 }
+const SIN_FILTROS: FiltrosClientes = { busqueda: '', sucursales: [], companias: [], estado: '' }
+
 const ANA: SesionUsuario = { ...DANIEL, id: 2, nombre: 'Ana Ruiz', usuario: 'ana', rol: 'ADMIN' }
 const MARIA: SesionUsuario = { ...DANIEL, id: 3, nombre: 'María Pérez', usuario: 'maria', rol: 'EMPLEADO' }
 
@@ -800,5 +803,87 @@ test('si la clave que le tocaría ya está ocupada, el dato se guarda igual y la
     `NOM:${CLIENTES.rodriguez.nombre}`,
     'la clave se queda donde estaba',
   )
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Corregir el NÚMERO DE PÓLIZA desde la planilla
+// ---------------------------------------------------------------------------
+
+test('corregir el NÚMERO DE PÓLIZA desde la planilla rehace el normalizado y la clave', async () => {
+  const db = await carteraDePrueba()
+  const fila = buscar(planillaDelMes(null).filas, CLIENTES.gonzalez.nombre)
+  assert.ok(fila.polizaId)
+  const antes = db.prepare('SELECT clave, numero_normalizado FROM polizas WHERE id = ?').get(fila.polizaId) as {
+    clave: string
+    numero_normalizado: string | null
+  }
+  assert.equal(antes.numero_normalizado, CLIENTES.gonzalez.poliza)
+  assert.equal(antes.clave, `POL:${CLIENTES.gonzalez.cia}|${CLIENTES.gonzalez.poliza}`)
+
+  const corregida = editarCelda(fila.filaId, 'numeroPoliza', '76.543/21-B', DANIEL)
+  assert.equal(corregida.numeroPoliza, '76.543/21-B')
+
+  const despues = db.prepare('SELECT clave, numero, numero_normalizado FROM polizas WHERE id = ?').get(fila.polizaId) as {
+    clave: string
+    numero: string
+    numero_normalizado: string
+  }
+  assert.equal(despues.numero, '76.543/21-B')
+  // Sin esto el número quedaba corregido a la vista y la columna con la que el importador engancha las
+  // planillas históricas —y con la que se busca por número— se quedaba con el viejo…
+  assert.equal(despues.numero_normalizado, '7654321B')
+  // …y la clave, que es la identidad de la póliza en las cinco computadoras, apuntaba a un número que
+  // ya no está en ninguna parte.
+  assert.equal(despues.clave, `POL:${CLIENTES.gonzalez.cia}|7654321B`)
+
+  // La copia de la fila del mes también se corrige, como siempre.
+  assert.equal(unico<string>(db, 'SELECT numero_poliza FROM cuotas_mes WHERE fila_id = ?', fila.filaId), '76.543/21-B')
+
+  // Y la ficha de clientes encuentra por el número nuevo, que es lo que se acaba de corregir.
+  assert.equal(listarClientes({ ...SIN_FILTROS, busqueda: '7654321B' }).filas.length, 1)
+  assert.equal(listarClientes({ ...SIN_FILTROS, busqueda: CLIENTES.gonzalez.poliza }).filas.length, 0)
+  cerrarBaseDeDatos()
+})
+
+test('cambiar la COMPAÑÍA desde la planilla mueve la clave con ella', async () => {
+  const db = await carteraDePrueba()
+  const fila = buscar(planillaDelMes(null).filas, CLIENTES.lopez.nombre)
+  assert.ok(fila.polizaId)
+
+  // La clave es 'POL:<cía>|<número>': la compañía entra igual que el número, así que cambiarla sin
+  // mover la clave dejaba a la póliza anclada a una compañía que ya no es la suya.
+  const corregida = editarCelda(fila.filaId, 'compania', 'ZURICH', DANIEL)
+  assert.equal(corregida.compania, 'ZURICH')
+  assert.equal(unico<string>(db, 'SELECT clave FROM polizas WHERE id = ?', fila.polizaId), `POL:ZURICH|${CLIENTES.lopez.poliza}`)
+  assert.equal(unico<string>(db, 'SELECT compania FROM cuotas_mes WHERE fila_id = ?', fila.filaId), 'ZURICH')
+  cerrarBaseDeDatos()
+})
+
+test('ponerle desde la planilla el número de otra póliza de la misma compañía se rechaza, como en la ficha', async () => {
+  const db = await carteraDePrueba()
+  // López y González son las dos de SANCOR: darle a una el número de la otra las deja con la misma
+  // clave, y la columna es única. Es lo mismo que contesta `editarPoliza` desde la ficha.
+  const fila = buscar(planillaDelMes(null).filas, CLIENTES.lopez.nombre)
+  assert.ok(fila.polizaId)
+  assert.throws(() => editarCelda(fila.filaId, 'numeroPoliza', CLIENTES.gonzalez.poliza, DANIEL), /Ya hay otra póliza/)
+
+  // Y el rechazo no dejó nada a medio guardar: ni el número, ni el normalizado, ni la clave, ni la copia
+  // que guarda la fila del mes.
+  const despues = db.prepare('SELECT clave, numero, numero_normalizado FROM polizas WHERE id = ?').get(fila.polizaId) as {
+    clave: string
+    numero: string
+    numero_normalizado: string
+  }
+  assert.equal(despues.numero, CLIENTES.lopez.poliza)
+  assert.equal(despues.numero_normalizado, CLIENTES.lopez.poliza)
+  assert.equal(despues.clave, `POL:${CLIENTES.lopez.cia}|${CLIENTES.lopez.poliza}`)
+  assert.equal(unico<string>(db, 'SELECT numero_poliza FROM cuotas_mes WHERE fila_id = ?', fila.filaId), CLIENTES.lopez.poliza)
+
+  // Reescribir el MISMO número con otra puntuación no es chocar contra sí misma: se guarda y la clave
+  // se queda donde está.
+  const conPuntos = editarCelda(fila.filaId, 'numeroPoliza', '777.111', DANIEL)
+  assert.equal(conPuntos.numeroPoliza, '777.111')
+  assert.equal(unico<string>(db, 'SELECT clave FROM polizas WHERE id = ?', fila.polizaId), `POL:${CLIENTES.lopez.cia}|${CLIENTES.lopez.poliza}`)
   cerrarBaseDeDatos()
 })
