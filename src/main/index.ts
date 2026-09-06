@@ -12,12 +12,15 @@ import {
 } from './arranque'
 import { abrirBaseDeDatos, cerrarBaseDeDatos } from './db/base'
 import { registrarIpc } from './ipc'
+import { arrancarCartero, apurarAlCartero, pararCartero } from './mensajeria/cartero'
 import { carpetaDatos, configurarCarpetaDatos, rutaBaseDeDatos } from './rutas'
 import { adoptarAjustesAlArrancar } from './servicios/ajustesCompartidos'
 import { configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
 import { credencialesVps } from './servicios/config'
 import { hayImportacionEnCurso, marcarImportacionesInterrumpidas } from './servicios/importacion'
+import { alSubirUnAdjunto } from './servicios/adjuntos'
 import { detenerSincronizacion } from './servicios/sincronizacion'
+import { alCambiarLaSesion } from './servicios/sesion'
 import { detenerActualizaciones, iniciarActualizaciones } from './servicios/updater'
 import { AlmacenDeCredencial } from './usuarios/credencial'
 import { AlmacenGitHub, REPO_DATOS, TOKEN_DATOS, TOKEN_DATOS_ANTERIOR } from './usuarios/github'
@@ -232,6 +235,23 @@ function prepararBaseDeUsuarios(): void {
   else console.log(enDesarrollo ? '[usuarios] Desarrollo sin DM_GESTION_VPS_URL: usuarios locales.' : '[usuarios] Versión publicada sin servidor de usuarios: usuarios locales.')
 }
 
+/**
+ * Engancha la mensajería a las dos cosas de las que depende para andar sola: la sesión (el cartero
+ * reparte para quien está usando el programa, así que arranca al ingresar y para al salir) y la
+ * subida de archivos (un mensaje con adjuntos sale recién cuando sus archivos están arriba: cuando
+ * termina de subir el último, hay que despertar al cartero para que el mensaje salga ahora y no en
+ * la vuelta siguiente).
+ */
+function engancharLaMensajeria(): void {
+  alCambiarLaSesion((quien) => {
+    if (quien) arrancarCartero(quien)
+    else pararCartero()
+  })
+  alSubirUnAdjunto((tipo) => {
+    if (tipo === 'mensaje') apurarAlCartero()
+  })
+}
+
 function arrancar(): void {
   // En producción no hay menú. En desarrollo se conserva el de Electron por las herramientas de desarrollo.
   if (app.isPackaged) Menu.setApplicationMenu(null)
@@ -252,6 +272,7 @@ function arrancar(): void {
   if (!paso('la revisión de las importaciones a medio hacer', marcarImportacionesInterrumpidas)) return
   if (!paso('la preparación de la base de usuarios', prepararBaseDeUsuarios)) return
   if (!paso('el registro de los canales internos', registrarIpc)) return
+  if (!paso('la mensajería interna', engancharLaMensajeria)) return
   if (!paso('la creación de la ventana', crearVentana)) return
   listoParaVentana = true
 
@@ -308,6 +329,9 @@ if (!app.requestSingleInstanceLock()) {
     // el cerrojo de instancia única y no deja abrir de nuevo.
     for (const [nombre, cerrar] of [
       ['las actualizaciones', detenerActualizaciones],
+      // El cartero puede estar esperando hasta veinticinco segundos en el long-poll: sin este corte,
+      // cerrar el programa esperaría a que el pedido termine solo.
+      ['la mensajería', pararCartero],
       ['la sincronización', detenerSincronizacion],
       ['la base de datos', cerrarBaseDeDatos],
     ] as const) {

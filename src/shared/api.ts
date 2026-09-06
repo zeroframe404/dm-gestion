@@ -228,6 +228,29 @@ export interface ApiDm {
     guardarPdf: Remota<'presupuestos:guardarPdf'>
     imprimir: Remota<'presupuestos:imprimir'>
   }
+  /** El chat interno de la agencia (12.8). */
+  mensajes: {
+    conversaciones: Remota<'mensajes:conversaciones'>
+    contactos: Remota<'mensajes:contactos'>
+    abrirCon: Remota<'mensajes:abrirCon'>
+    crearGrupo: Remota<'mensajes:crearGrupo'>
+    hilo: Remota<'mensajes:hilo'>
+    enviar: Remota<'mensajes:enviar'>
+    enviarConArchivos: Remota<'mensajes:enviarConArchivos'>
+    reintentar: Remota<'mensajes:reintentar'>
+    marcarLeidos: Remota<'mensajes:marcarLeidos'>
+    avisos: Remota<'mensajes:avisos'>
+    borrar: Remota<'mensajes:borrar'>
+    abrirAdjunto: Remota<'mensajes:abrirAdjunto'>
+    contenidoDeAdjunto: Remota<'mensajes:contenidoDeAdjunto'>
+    borrarAdjunto: Remota<'mensajes:borrarAdjunto'>
+    estado: Remota<'mensajes:estado'>
+    registro: Remota<'mensajes:registro'>
+    /** Llegó un mensaje nuevo de otra persona: acá es donde suena la campana. */
+    alLlegarAlguno: Suscripcion<'mensajes:llegaron'>
+    /** Se movió un tilde o salió algo de la cola: se redibuja y no suena nada. */
+    alCambiarAlgo: Suscripcion<'mensajes:cambiaron'>
+  }
   tareas: {
     listar: Remota<'tareas:listar'>
     ficha: Remota<'tareas:ficha'>

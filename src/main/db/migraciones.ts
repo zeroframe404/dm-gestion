@@ -1540,6 +1540,148 @@ export const MIGRACIONES: Migracion[] = [
       CREATE UNIQUE INDEX idx_lead_notas_fila ON lead_notas (fila_id) WHERE fila_id IS NOT NULL;
     `,
   },
+  {
+    version: 25,
+    descripcion: 'La mensajería interna: conversaciones, mensajes, acuses de entrega y lectura, adjuntos y la cola de salida',
+    sql: `
+      -- 12.8: el chat de la agencia. Hasta ahora, para avisarle algo a la otra sucursal había que
+      -- llamar por teléfono o escribir por WhatsApp desde el celular personal: lo que se dijo no
+      -- queda en ningún lado, el que atiende no lo puede buscar, y si esa persona se va de la
+      -- agencia se lleva la conversación con ella. Acá los mensajes son de la agencia.
+      --
+      -- Dónde vive la verdad: en la base del VPS, no en esta tabla y no en la grilla del GENERAL DE
+      -- CLIENTES. Esto es un ESPEJO local, para poder leer sin internet y para que un mensaje escrito
+      -- con la conexión caída tenga dónde esperar. Por eso cada fila tiene su \`remoto_id\`: el UUID
+      -- que la eligió esta computadora y con el que el servidor la conoce.
+      --
+      -- Por qué no viaja por la planilla como los siniestros y las tareas: la grilla mueve pestañas
+      -- enteras cada treinta segundos y eso alcanza para una tarea, no para un chat. Los mensajes
+      -- tienen su propio camino (\`/api/dmg/mensajes\`) y su propio carril, que trae lo nuevo en el
+      -- momento en vez de cada media hora.
+
+      -- Una charla: de a dos ('DIRECTA') o de varios ('GRUPO'). \`clave\` es la identidad estable de
+      -- una charla directa —los dos usuarios ordenados, 'ana|beto'—: sin ella, si Ana y Beto se
+      -- escriben al mismo tiempo desde dos mostradores, quedan dos conversaciones distintas para la
+      -- misma charla y cada uno ve la mitad de lo que se dijeron.
+      CREATE TABLE conversaciones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remoto_id TEXT NOT NULL,
+        clave TEXT,
+        tipo TEXT NOT NULL CHECK (tipo IN ('DIRECTA', 'GRUPO')),
+        titulo TEXT,
+        creado_por TEXT NOT NULL,
+        ultimo_mensaje_en TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_conversaciones_remoto ON conversaciones (remoto_id);
+      CREATE UNIQUE INDEX idx_conversaciones_clave ON conversaciones (clave) WHERE clave IS NOT NULL;
+      CREATE INDEX idx_conversaciones_ultimo ON conversaciones (ultimo_mensaje_en DESC);
+
+      -- Quién está en cada charla. Lo que identifica a la persona es \`usuario_clave\` (el usuario de
+      -- ingreso en minúscula) y no \`usuario_id\`: el id es de ESTA base y la misma persona tiene otro
+      -- número en las otras cuatro computadoras. El id local se guarda igual, para enganchar la ficha
+      -- cuando se la conoce, y el nombre queda desnormalizado para que la charla siga legible aunque
+      -- esa persona ya no esté en el listado.
+      CREATE TABLE conversacion_participantes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversacion_id INTEGER NOT NULL REFERENCES conversaciones(id),
+        usuario_clave TEXT NOT NULL,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        usuario_nombre TEXT NOT NULL,
+        salio_en TEXT,
+        creado_en TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_participantes_unico ON conversacion_participantes (conversacion_id, usuario_clave);
+      CREATE INDEX idx_participantes_usuario ON conversacion_participantes (usuario_clave);
+
+      -- Los mensajes. \`orden\` es el número que le puso el servidor: ordena el hilo igual en las cinco
+      -- computadoras (el \`id\` local no sirve, porque cada base los numera como los fue recibiendo).
+      -- Los que todavía no salieron de acá tienen orden NULL y van al final, que es donde va lo que
+      -- se acaba de escribir.
+      --
+      -- \`estado\` es lo que dibuja el tilde. 'enCola' es de esta computadora y de nadie más; los otros
+      -- cuatro los decide el servidor con los acuses.
+      CREATE TABLE mensajes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remoto_id TEXT NOT NULL,
+        conversacion_id INTEGER NOT NULL REFERENCES conversaciones(id),
+        orden INTEGER,
+        autor_clave TEXT NOT NULL,
+        autor_nombre TEXT NOT NULL,
+        cuerpo TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'enCola' CHECK (estado IN ('enCola', 'enviado', 'entregado', 'leido', 'fallado')),
+        error TEXT,
+        intentos INTEGER NOT NULL DEFAULT 0,
+        proximo_intento TEXT,
+        eliminado_en TEXT,
+        eliminado_por TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_mensajes_remoto ON mensajes (remoto_id);
+      CREATE INDEX idx_mensajes_hilo ON mensajes (conversacion_id, orden, id);
+      -- La consulta de la cola de salida: lo que se escribió acá y todavía no salió.
+      CREATE INDEX idx_mensajes_cola ON mensajes (estado, proximo_intento);
+
+      -- Quién recibió y quién leyó cada mensaje. Una fila por mensaje y por destinatario: en un grupo
+      -- de cinco, un mensaje deja cuatro. Es lo que permite decir «leído por 2 de 4» en vez de un
+      -- tilde que no explica nada, y es la misma tabla que tiene el servidor.
+      CREATE TABLE mensaje_acuses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mensaje_id INTEGER NOT NULL REFERENCES mensajes(id),
+        usuario_clave TEXT NOT NULL,
+        entregado_en TEXT,
+        leido_en TEXT
+      );
+      CREATE UNIQUE INDEX idx_acuses_unico ON mensaje_acuses (mensaje_id, usuario_clave);
+
+      -- Los adjuntos del mensaje. Las columnas son EXACTAMENTE las de poliza_adjuntos (migración 23)
+      -- a propósito: así \`src/main/servicios/adjuntos.ts\` los sube al VPS, los reintenta con esperas
+      -- crecientes, los baja cuando alguien los abre y los verifica al arrancar sin escribir una
+      -- línea de eso de nuevo. \`fila_id\`, \`drive_id\` y \`drive_error\` quedan siempre en NULL —un
+      -- mensaje no cuelga de una fila de la planilla y un chat privado no va al Drive de la agencia—
+      -- pero las columnas tienen que estar igual: el SELECT de ese servicio las nombra por su nombre.
+      CREATE TABLE mensaje_adjuntos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mensaje_id INTEGER NOT NULL REFERENCES mensajes(id),
+        fila_id TEXT,
+        nombre TEXT NOT NULL,
+        archivo TEXT NOT NULL DEFAULT '',
+        tipo TEXT,
+        tamano INTEGER NOT NULL DEFAULT 0,
+        sha256 TEXT,
+        ancho INTEGER,
+        alto INTEGER,
+        miniatura TEXT,
+        drive_id TEXT,
+        drive_error TEXT,
+        vps_id TEXT,
+        vps_subido_en TEXT,
+        vps_error TEXT,
+        vps_intentos INTEGER NOT NULL DEFAULT 0,
+        vps_proximo_intento TEXT,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        usuario_nombre TEXT NOT NULL,
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX idx_mensaje_adjuntos ON mensaje_adjuntos (mensaje_id, id DESC);
+      CREATE UNIQUE INDEX idx_mensaje_adjuntos_fila ON mensaje_adjuntos (fila_id) WHERE fila_id IS NOT NULL;
+      CREATE INDEX idx_mensaje_adjuntos_vps ON mensaje_adjuntos (vps_subido_en, vps_proximo_intento);
+      -- El id del archivo en el servidor es único también acá: la fila que llegó del servidor y la que
+      -- creó esta computadora son el mismo archivo, no dos.
+      CREATE UNIQUE INDEX idx_mensaje_adjuntos_vps_id ON mensaje_adjuntos (vps_id) WHERE vps_id IS NOT NULL;
+
+      -- Hasta dónde miró esta computadora los acuses de sus propios mensajes. Es el cursor del carril
+      -- de mensajería y va en una fila sola, como estado_sync.
+      CREATE TABLE mensajeria_estado (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        cursor_acuses TEXT,
+        ultimo_error TEXT,
+        actualizado_en TEXT
+      );
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

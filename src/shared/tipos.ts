@@ -3877,3 +3877,178 @@ export interface ListasDeCompanias {
   puedeEditar: boolean
   anioActual: number
 }
+
+// ---------------------------------------------------------------------------
+// Mensajería interna (12.8)
+// ---------------------------------------------------------------------------
+//
+// El chat entre los usuarios de la agencia. Los mensajes viven en la base del VPS —no en la grilla
+// del GENERAL DE CLIENTES— y esta computadora guarda un espejo local para poder leerlos sin internet
+// y para que la cola tenga dónde esperar cuando no hay.
+//
+// La identidad de la persona que va y viene es SIEMPRE su usuario de ingreso en minúscula
+// (`claveDeUsuario` en shared/texto.ts): el id de la tabla `usuarios` es local a cada máquina.
+
+/**
+ * En qué anda un mensaje que mandó esta computadora. Las dos confirmaciones que pidió la agencia son
+ * las dos últimas.
+ *
+ *  - `enCola`     lo escribió y todavía no salió de acá (sin internet, o esperando el turno).
+ *  - `enviado`    el servidor lo aceptó y lo guardó. Un tilde.
+ *  - `entregado`  la computadora del otro lo bajó. Dos tildes.
+ *  - `leido`      el otro abrió la conversación con el mensaje a la vista. Dos tildes en color.
+ *  - `fallado`    el servidor lo rechazó y no se va a arreglar reintentando.
+ *
+ * En un grupo el estado es el del que MENOS avanzó: si tres lo leyeron y uno no lo recibió todavía,
+ * el mensaje está «enviado». Es lo que hace WhatsApp y es lo que la gente espera: el tilde doble azul
+ * significa «lo vieron todos».
+ */
+export type EstadoDeEnvio = 'enCola' | 'enviado' | 'entregado' | 'leido' | 'fallado'
+
+export interface AcuseDeMensaje {
+  /** El usuario de ingreso de la persona, en minúscula. */
+  clave: string
+  nombre: string
+  entregadoEn: string | null
+  leidoEn: string | null
+}
+
+/** Un archivo colgado de un mensaje, tal como lo dibuja la burbuja. */
+export interface AdjuntoDeMensaje {
+  id: number
+  nombre: string
+  tipo: string
+  tamano: number
+  /** true si el archivo está en el disco de ESTA computadora y se puede abrir sin bajar nada. */
+  descargado: boolean
+  /** true cuando el servidor ya lo tiene: recién ahí lo pueden abrir las otras computadoras. */
+  enElServidor: boolean
+  /** Lo cargó otra computadora y todavía no terminó de subirlo: la burbuja lo dice y no miente. */
+  enOtraComputadora: boolean
+  /** El motivo por el que no subió, si se dio por vencido. */
+  error: string | null
+  /** `data:image/jpeg;base64,…` de 320 px para las fotos y los videos. Null en lo demás. */
+  miniatura: string | null
+  ancho: number | null
+  alto: number | null
+}
+
+export interface MensajeInterno {
+  id: number
+  /** El id que comparten las cinco computadoras (UUID v4). El `id` de arriba es de esta base. */
+  remotoId: string
+  conversacionId: number
+  autorClave: string
+  autorNombre: string
+  /** true si lo escribió quien está mirando: es lo que decide de qué lado va la burbuja. */
+  mio: boolean
+  /** El texto tal cual se escribió: UTF-16 completo, emojis incluidos. Vacío si se borró. */
+  cuerpo: string
+  creadoEn: string
+  estado: EstadoDeEnvio
+  /** Por qué no salió, cuando el estado es `fallado`. */
+  error: string | null
+  eliminadoEn: string | null
+  adjuntos: AdjuntoDeMensaje[]
+  /** Quién lo recibió y quién lo leyó. Sólo viene con los mensajes propios. */
+  acuses: AcuseDeMensaje[]
+}
+
+export interface ParticipanteDeConversacion {
+  clave: string
+  nombre: string
+  /** El id local, cuando esta computadora conoce a la persona. Sirve para la foto y para el estado. */
+  usuarioId: number | null
+  salioEn: string | null
+}
+
+export interface ConversacionInterna {
+  id: number
+  remotoId: string
+  tipo: 'DIRECTA' | 'GRUPO'
+  /** Cómo se llama en la lista: el nombre del grupo, o el de la otra persona en una directa. */
+  titulo: string
+  participantes: ParticipanteDeConversacion[]
+  /** La última línea que se muestra abajo del título, ya recortada. */
+  ultimoTexto: string
+  ultimoEn: string | null
+  ultimoMio: boolean
+  sinLeer: number
+}
+
+export interface HiloDeMensajes {
+  conversacion: ConversacionInterna
+  mensajes: MensajeInterno[]
+  /** true si más arriba hay mensajes viejos que todavía no se trajeron. */
+  hayMas: boolean
+}
+
+/** Con quién se puede hablar: los usuarios activos de la agencia, menos uno mismo. */
+export interface ContactoDeMensajeria {
+  clave: string
+  nombre: string
+  usuario: string
+  rol: Rol
+  sucursal: string | null
+}
+
+/** Lo que mira la campana de mensajes de la barra superior. */
+export interface AvisosDeMensajes {
+  sinLeer: number
+  /** Los ids de los mensajes sin leer. `useAvisoNuevo` los compara para sonar una sola vez. */
+  ids: number[]
+  /** Las conversaciones con algo sin leer, para el desplegable de la campana. */
+  conversaciones: ConversacionInterna[]
+}
+
+/** Lo que la pantalla manda para adjuntar a un mensaje: bytes de la ventana o rutas del disco. */
+export interface ParaMandarUnMensaje {
+  conversacionId: number
+  cuerpo: string
+  archivos?: ArchivoParaAdjuntar[]
+  /** Archivos elegidos con el diálogo del sistema: se leen en el main y no viajan por IPC. */
+  rutas?: string[]
+}
+
+export interface FiltrosDelLogDeMensajes {
+  usuario: string | null
+  desde: string | null
+  hasta: string | null
+  texto: string
+  pagina: number
+}
+
+export interface RenglonDelLogDeMensajes {
+  remotoId: string
+  conversacion: string
+  tipo: 'DIRECTA' | 'GRUPO'
+  participantes: string
+  autorClave: string
+  autorNombre: string
+  /** El texto original, incluso el de un mensaje borrado: para eso existe el registro. */
+  cuerpo: string
+  creadoEn: string
+  eliminadoEn: string | null
+  eliminadoPor: string | null
+  adjuntos: string
+  /** «Leído por 2 de 3», ya resuelto para la tabla. */
+  acuse: string
+}
+
+export interface LogDeMensajes {
+  renglones: RenglonDelLogDeMensajes[]
+  total: number
+  pagina: number
+  porPagina: number
+}
+
+/** Cómo viene la conexión de la mensajería, para el cartelito de la pantalla. */
+export interface EstadoDeMensajeria {
+  /** true si el puente con el VPS está configurado en esta computadora. */
+  configurada: boolean
+  /** true si el último intento de hablar con el servidor salió bien. */
+  enLinea: boolean
+  /** Cuántos mensajes escritos acá están esperando para salir. */
+  enCola: number
+  ultimoError: string | null
+}

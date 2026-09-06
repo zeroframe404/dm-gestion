@@ -74,6 +74,24 @@ import {
   revisarArchivoParaPublicar,
   vincularConMeta,
 } from './servicios/redes'
+import { apurarAlCartero } from './mensajeria/cartero'
+import {
+  abrirConversacionCon,
+  avisosDe as avisosDeMensajeria,
+  borrarAdjuntoDeMensaje,
+  contactosDe as contactosDeMensajeria,
+  contenidoDeAdjuntoDeMensaje,
+  conversacionesDe as conversacionesDeMensajeria,
+  crearGrupoDeMensajes,
+  eliminarMensajePropio,
+  encolarMensaje,
+  estadoDeMensajeria,
+  hiloDe as hiloDeMensajes,
+  marcarConversacionLeida,
+  registroDeMensajes,
+  reintentarMensaje,
+  rutaDelAdjuntoDeMensaje,
+} from './servicios/mensajeria'
 import { avisarDeSegmento, borrarSegmento, guardarSegmento, resultadoDeSegmento } from './servicios/marketing'
 import {
   agregarNotaDeLead,
@@ -1179,6 +1197,82 @@ export function registrarIpc(): void {
   manejar('tareas:mias', () => exito(misTareas(exigirVista('tareas', 'clientes', 'siniestros'))))
   manejar('tareas:avisos', () => exito(avisosDeTareas(exigirVista('tareas', 'clientes', 'siniestros'))))
   manejar('tareas:marcarVistos', () => exito(marcarAvisosVistos(exigirVista('tareas', 'clientes', 'siniestros'))))
+
+  // Mensajería interna: el chat entre los usuarios de la agencia (12.8).
+  //
+  // El control de acceso es `exigirVista('mensajes')` / `exigirEdicion('mensajes')`, salvo el registro,
+  // que además es del superadministrador. Escribir un mensaje es «editar»: alguien con el módulo en
+  // «sólo ver» puede leer lo que le mandan y no puede contestar, que es lo que la agencia entendería
+  // por sólo ver.
+  manejar('mensajes:conversaciones', () => exito(conversacionesDeMensajeria(exigirVista('mensajes'))))
+  manejar('mensajes:contactos', () => exito(contactosDeMensajeria(exigirVista('mensajes'))))
+  manejar('mensajes:abrirCon', async (clave) => exito(await abrirConversacionCon(exigirEdicion('mensajes'), clave)))
+  manejar('mensajes:crearGrupo', async (titulo, claves) => exito(await crearGrupoDeMensajes(exigirEdicion('mensajes'), titulo, claves)))
+  manejar('mensajes:hilo', (conversacionId, antesDeId) =>
+    exito(hiloDeMensajes(exigirVista('mensajes'), conversacionId, antesDeId)),
+  )
+  manejar('mensajes:enviar', (conversacionId, cuerpo, archivos) => {
+    const mensaje = encolarMensaje(exigirEdicion('mensajes'), { conversacionId, cuerpo, archivos })
+    // El cartero está esperando en el long-poll: se lo despierta para que el mensaje salga ahora y no
+    // dentro de veinticinco segundos.
+    apurarAlCartero()
+    return exito(mensaje)
+  })
+  manejar('mensajes:enviarConArchivos', async (conversacionId, cuerpo, rutas) => {
+    const actor = exigirEdicion('mensajes')
+    // La pantalla manda `null` y el diálogo se abre acá; la prueba de humo manda las rutas, porque un
+    // diálogo del sistema no se puede manejar desde afuera.
+    if (rutas !== null) {
+      const mensaje = encolarMensaje(actor, { conversacionId, cuerpo, rutas })
+      apurarAlCartero()
+      return exito(mensaje)
+    }
+    const ventana = ventanaActual()
+    const opciones = {
+      title: 'Elegí los archivos para mandar',
+      buttonLabel: 'Mandar',
+      properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+      filters: [
+        { name: 'Fotos y videos', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'mp4', 'mov', 'avi', 'mkv'] },
+        { name: 'Documentos', extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt'] },
+        { name: 'Audio', extensions: ['mp3', 'm4a', 'ogg', 'wav', 'opus'] },
+        { name: 'Todos los archivos', extensions: ['*'] },
+      ],
+    }
+    const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
+    if (elegido.canceled || elegido.filePaths.length === 0) {
+      throw new ErrorDeNegocio('No se eligió ningún archivo.')
+    }
+    const mensaje = encolarMensaje(actor, { conversacionId, cuerpo, rutas: elegido.filePaths })
+    apurarAlCartero()
+    return exito(mensaje)
+  })
+  manejar('mensajes:reintentar', (mensajeId) => {
+    const mensaje = reintentarMensaje(exigirEdicion('mensajes'), mensajeId)
+    apurarAlCartero()
+    return exito(mensaje)
+  })
+  manejar('mensajes:marcarLeidos', (conversacionId) => exito(marcarConversacionLeida(exigirVista('mensajes'), conversacionId)))
+  manejar('mensajes:avisos', () => exito(avisosDeMensajeria(exigirVista('mensajes'))))
+  manejar('mensajes:borrar', async (mensajeId) => {
+    await eliminarMensajePropio(exigirEdicion('mensajes'), mensajeId)
+    return exito(null)
+  })
+  manejar('mensajes:abrirAdjunto', async (adjuntoId) => {
+    exigirVista('mensajes')
+    const error = await shell.openPath(await rutaDelAdjuntoDeMensaje(adjuntoId))
+    if (error) throw new ErrorDeNegocio(`No se pudo abrir el archivo: ${error}`)
+    return exito(null)
+  })
+  manejar('mensajes:contenidoDeAdjunto', async (adjuntoId) => {
+    exigirVista('mensajes')
+    return exito(await contenidoDeAdjuntoDeMensaje(adjuntoId))
+  })
+  manejar('mensajes:borrarAdjunto', (adjuntoId) => exito(borrarAdjuntoDeMensaje(exigirEdicion('mensajes'), adjuntoId)))
+  manejar('mensajes:estado', () => exito(estadoDeMensajeria(exigirVista('mensajes'))))
+  // El registro de todo lo que se dijo en la agencia. Se pide el rol acá además de en el servidor: un
+  // dato que llega al renderer ya está afuera, y no ofrecerlo en la pantalla no es lo mismo que no darlo.
+  manejar('mensajes:registro', async (filtros) => exito(await registroDeMensajes(exigirRol('SUPER_ADMIN'), filtros)))
 
   // Métricas: los números de la agencia.
   // Los agregados de plata de la agencia (lo recaudado del mes, su evolución, el reparto por medio de

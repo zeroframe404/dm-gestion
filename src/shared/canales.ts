@@ -3,6 +3,16 @@
 import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion } from './eliminacion'
 import type { MatrizPermisos } from './permisos'
 import type {
+  // Mensajería interna (12.8).
+  AdjuntoDeMensaje,
+  AvisosDeMensajes,
+  ContactoDeMensajeria,
+  ConversacionInterna,
+  EstadoDeMensajeria,
+  FiltrosDelLogDeMensajes,
+  HiloDeMensajes,
+  LogDeMensajes,
+  MensajeInterno,
   AdjuntoDePoliza,
   ArchivoParaAdjuntar,
   AceptacionDePresupuesto,
@@ -514,6 +524,40 @@ export interface Canales {
   /** Manda el presupuesto a la impresora que elija el usuario. false = se canceló el diálogo. */
   'presupuestos:imprimir': (presupuestoId: number) => Resultado<boolean>
 
+  // Mensajería interna (12.8): el chat entre los usuarios de la agencia.
+  //
+  // Todas las que escriben devuelven lo que la pantalla tiene que mostrar después, no un ok pelado:
+  // es la misma regla que el resto del contrato y evita que quede dibujado lo de antes.
+  'mensajes:conversaciones': () => Resultado<ConversacionInterna[]>
+  /** Con quién se puede hablar: los usuarios activos de la agencia, menos uno mismo. */
+  'mensajes:contactos': () => Resultado<ContactoDeMensajeria[]>
+  /** Abre la conversación con alguien, o devuelve la que ya estaba. Necesita conexión. */
+  'mensajes:abrirCon': (claveDelDestinatario: string) => Resultado<ConversacionInterna>
+  'mensajes:crearGrupo': (titulo: string, claves: string[]) => Resultado<ConversacionInterna>
+  /** El hilo. Con `antesDeId` trae los anteriores a ése, que es el «Ver mensajes anteriores». */
+  'mensajes:hilo': (conversacionId: number, antesDeId: number | null) => Resultado<HiloDeMensajes>
+  /**
+   * Deja el mensaje en la cola y lo devuelve tal como se ve. NO espera al servidor: escribir nunca se
+   * queda esperando a la red, y lo escrito sin internet sale solo cuando vuelve.
+   */
+  'mensajes:enviar': (conversacionId: number, cuerpo: string, archivos: ArchivoParaAdjuntar[]) => Resultado<MensajeInterno>
+  /** Adjuntar archivos elegidos con el diálogo del sistema: se leen en el main y no viajan por IPC. */
+  'mensajes:enviarConArchivos': (conversacionId: number, cuerpo: string, rutas: string[] | null) => Resultado<MensajeInterno>
+  /** Volver a intentar uno que el servidor rechazó. */
+  'mensajes:reintentar': (mensajeId: number) => Resultado<MensajeInterno>
+  /** La confirmación de lectura: apaga el globito y se lo cuenta al servidor. */
+  'mensajes:marcarLeidos': (conversacionId: number) => Resultado<AvisosDeMensajes>
+  /** Lo que mira la campana de la barra superior. */
+  'mensajes:avisos': () => Resultado<AvisosDeMensajes>
+  'mensajes:borrar': (mensajeId: number) => Resultado<null>
+  'mensajes:abrirAdjunto': (adjuntoId: number) => Resultado<null>
+  /** El contenido de una imagen como `data:` URL. Es lo que hace que un GIF se mueva en la burbuja. */
+  'mensajes:contenidoDeAdjunto': (adjuntoId: number) => Resultado<string>
+  'mensajes:borrarAdjunto': (adjuntoId: number) => Resultado<AdjuntoDeMensaje[]>
+  'mensajes:estado': () => Resultado<EstadoDeMensajeria>
+  /** El registro de todos los mensajes de todos. Sólo SUPER_ADMIN; el corte lo hace el servidor. */
+  'mensajes:registro': (filtros: FiltrosDelLogDeMensajes) => Resultado<LogDeMensajes>
+
   // Tareas
   'tareas:listar': (filtros: FiltrosTareas) => Resultado<ListadoTareas>
   'tareas:ficha': (tareaId: number) => Resultado<FichaTarea>
@@ -686,6 +730,19 @@ export interface Eventos {
   'vehiculos:progreso': ProgresoDeCatalogo
   /** Una tarea se dio por terminada: el renderer hace sonar el aviso y refresca lo que tenga a la vista. */
   'tareas:completada': TareaCompletada
+  /**
+   * Llegó al menos un mensaje nuevo de otra persona: el cartero ya lo guardó y ya confirmó su llegada.
+   * No lleva datos —es un «volvé a preguntar»— porque la pantalla necesita el hilo entero y la campana
+   * la lista de no leídos, y las dos se piden distinto. Éste es el evento que hace sonar el aviso: por
+   * eso está separado del de abajo, que no suena.
+   */
+  'mensajes:llegaron': null
+  /**
+   * Cambió algo que no es un mensaje nuevo: se movió un tilde (entregado o leído), salió algo de la
+   * cola o apareció una conversación. La pantalla se redibuja y NO suena nada. Un chat que suena cada
+   * vez que el otro lee algo es un chat que se termina silenciando.
+   */
+  'mensajes:cambiaron': null
   /**
    * El carril rápido de la sincronización bajó tareas nuevas o cambiadas de otra computadora. No lleva
    * datos: es un «volvé a preguntar» para la campana, el contador de la barra lateral y el listado, que

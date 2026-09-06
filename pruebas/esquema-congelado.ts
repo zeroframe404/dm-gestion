@@ -42,4 +42,8 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // La 24 da a las tareas y a los presupuestos la clave de su vínculo («SINIESTRO:<_ID>», «LEAD:<_ID>»)
   // y a las notas de los leads su fila en la base (viajan por APP COMENTARIOS).
   24: '07924f5ab6b867a2',
+  // La 25 crea la mensajería interna: conversaciones, participantes, mensajes con su estado de
+  // envío, los acuses de entrega y lectura por destinatario, los adjuntos (con las mismas columnas
+  // que `poliza_adjuntos`, para reusar la subida al VPS) y el cursor del carril.
+  25: '921e1543cdefdda9',
 }
