@@ -383,6 +383,7 @@ interface PolizaCruda {
   compania: string | null
   numero: string | null
   numero_normalizado: string | null
+  propuesta: string | null
   cobertura: string | null
   vigencia_desde: string | null
   vigencia_hasta: string | null
@@ -395,7 +396,7 @@ interface PolizaCruda {
 // lleva nada que se pueda contar después: lo que cuelga de cada póliza y su sucursal se piden sólo
 // para las que quedaron agrupadas, que son un puñado.
 const SELECT_POLIZAS_CON_PATENTE = `
-  SELECT p.id, p.clave, p.cliente_id, p.compania, p.numero, p.numero_normalizado, p.cobertura,
+  SELECT p.id, p.clave, p.cliente_id, p.compania, p.numero, p.numero_normalizado, p.propuesta, p.cobertura,
          p.vigencia_desde, p.vigencia_hasta, p.creado_en,
          cl.nombre AS cliente_nombre, v.patente, v.patente_normalizada
     FROM polizas p
@@ -484,6 +485,7 @@ export function polizasDelMismoRiesgo(): GrupoDePolizasDelMismoRiesgo[] {
         (p): PolizaRepetida => ({
           id: p.id,
           numero: p.numero,
+          propuesta: p.propuesta,
           cobertura: p.cobertura,
           vigenciaDesde: p.vigencia_desde,
           vigenciaHasta: p.vigencia_hasta,
@@ -573,6 +575,34 @@ export function fusionarPolizas(sobrevivienteCrudo: unknown, duplicadaCruda: unk
     const renovaciones = db().prepare('UPDATE OR IGNORE renovaciones SET poliza_id = ? WHERE poliza_id = ?').run(sobrevivienteId, duplicadaId).changes
     if (renovaciones > 0) movido.push({ que: 'renovación en seguimiento', cuantos: renovaciones })
     db().prepare('DELETE FROM renovaciones WHERE poliza_id = ?').run(duplicadaId)
+
+    // Otras dos columnas apuntan a `polizas(id)` y NO cuelgan de `poliza_id`: la renovación que dio
+    // origen a esta póliza (`renovaciones.poliza_nueva_id`) y la póliza que la nombra como su anterior
+    // (`polizas.poliza_anterior_id`). Con `foreign_keys = ON` el borrado se cae contra ellas, así que
+    // primero pasan a la que queda —es la misma póliza, ahora con un solo número—; y si eso dejara a
+    // una póliza siendo su propia anterior, o a una renovación renovándose a sí misma, el vínculo se
+    // suelta, que es lo que corresponde: la renovación de una póliza consigo misma no existe.
+    db().prepare('UPDATE renovaciones SET poliza_nueva_id = ? WHERE poliza_nueva_id = ?').run(sobrevivienteId, duplicadaId)
+    db().prepare('UPDATE renovaciones SET poliza_nueva_id = NULL WHERE poliza_id = ? AND poliza_nueva_id = ?').run(sobrevivienteId, sobrevivienteId)
+    db().prepare('UPDATE polizas SET poliza_anterior_id = ? WHERE poliza_anterior_id = ?').run(sobrevivienteId, duplicadaId)
+    db().prepare('UPDATE polizas SET poliza_anterior_id = NULL WHERE id = ? AND poliza_anterior_id = ?').run(sobrevivienteId, sobrevivienteId)
+
+    // Las tareas y los presupuestos guardan a quién cuelgan por CLAVE, no por id: «POLIZA:<clave>» y
+    // «RENOVACION:<clave>|<vence>» (ver `claveDeVinculoDeTarea`). Se mudaron por `poliza_id`, pero esa
+    // clave todavía nombra a la que se va, y `resolverVinculoDeTarea` la busca por texto: si queda
+    // como está, el vínculo apunta a una póliza que ya no existe. El puntero sigue al dato.
+    const claveQueLlega = String(queda.clave)
+    const claveQueSeVa = String(seVa.clave)
+    for (const tabla of ['tareas', 'presupuestos'] as const) {
+      db().prepare(`UPDATE ${tabla} SET vinculo_clave = ? WHERE vinculo_clave = ?`).run(`POLIZA:${claveQueLlega}`, `POLIZA:${claveQueSeVa}`)
+      const renovadas = db()
+        .prepare(`SELECT id, vinculo_clave FROM ${tabla} WHERE vinculo_clave LIKE ?`)
+        .all(`RENOVACION:${claveQueSeVa}|%`) as Array<{ id: number; vinculo_clave: string }>
+      for (const fila of renovadas) {
+        const vence = fila.vinculo_clave.slice(`RENOVACION:${claveQueSeVa}|`.length)
+        db().prepare(`UPDATE ${tabla} SET vinculo_clave = ? WHERE id = ?`).run(`RENOVACION:${claveQueLlega}|${vence}`, fila.id)
+      }
+    }
 
     db().prepare('DELETE FROM polizas WHERE id = ?').run(duplicadaId)
     db().prepare('UPDATE polizas SET actualizado_en = ? WHERE id = ?').run(ahora, sobrevivienteId)

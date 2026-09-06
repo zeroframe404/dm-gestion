@@ -403,3 +403,59 @@ test('juntar pólizas exige dos distintas y que el detector las haya señalado',
   assert.throws(() => fusionarPolizas(ids[0]!, 999999, FEDE), /ya no figuran como el mismo auto/)
   db.close()
 })
+
+test('juntar una póliza que estuvo en una renovación no revienta contra las claves foráneas', async () => {
+  const { db } = await baseCon(septiembreConLeonDosVeces())
+  const grupo = polizasDelMismoRiesgo()[0]!
+  const queda = grupo.polizas.find((p) => p.sugerida)!
+  const seVa = grupo.polizas.find((p) => !p.sugerida)!
+  const ahora = ahoraIso()
+
+  // La repetida quedó apuntada por una renovación: es la póliza NUEVA de un seguimiento, y además
+  // otra póliza la nombra como su anterior. Las dos columnas apuntan a polizas(id).
+  db.prepare(
+    `INSERT INTO renovaciones (poliza_id, poliza_nueva_id, vence_el, estado, creado_en, actualizado_en)
+     VALUES (?, ?, '2026-12-01', 'renovada', ?, ?)`,
+  ).run(queda.id, seVa.id, ahora, ahora)
+  db.prepare('UPDATE polizas SET poliza_anterior_id = ? WHERE id = ?').run(seVa.id, queda.id)
+
+  const resultado = fusionarPolizas(queda.id, seVa.id, FEDE)
+  assert.equal(resultado.eliminadaId, seVa.id)
+  assert.equal(contar(db, 'polizas', `id = ${seVa.id}`), 0)
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), [], 'ninguna columna quedó apuntando a la que se fue')
+  assert.equal(
+    unico<number | null>(db, `SELECT poliza_anterior_id FROM polizas WHERE id = ${queda.id}`),
+    null,
+    'una póliza no puede ser su propia anterior: el vínculo se suelta',
+  )
+  db.close()
+})
+
+test('el vínculo de una tarea sigue a la póliza que queda: no apunta a una clave borrada', async () => {
+  const { db } = await baseCon(septiembreConLeonDosVeces())
+  const grupo = polizasDelMismoRiesgo()[0]!
+  const queda = grupo.polizas.find((p) => p.sugerida)!
+  const seVa = grupo.polizas.find((p) => !p.sugerida)!
+  const claveQueSeVa = unico<string>(db, `SELECT clave FROM polizas WHERE id = ${seVa.id}`)
+  const claveQueQueda = unico<string>(db, `SELECT clave FROM polizas WHERE id = ${queda.id}`)
+  const ahora = ahoraIso()
+
+  // Una tarea colgada de la póliza repetida, y otra colgada de su renovación: las dos guardan la
+  // clave de la póliza, no su id.
+  db.prepare(
+    `INSERT INTO tareas (titulo, estado, poliza_id, vinculo_clave, creado_por, creado_en, actualizado_en)
+     VALUES ('LLAMAR AL CLIENTE', 'pendiente', ?, ?, 'Fede', ?, ?)`,
+  ).run(seVa.id, `POLIZA:${claveQueSeVa}`, ahora, ahora)
+  db.prepare(
+    `INSERT INTO tareas (titulo, estado, poliza_id, vinculo_clave, creado_por, creado_en, actualizado_en)
+     VALUES ('AVISAR EL VENCIMIENTO', 'pendiente', ?, ?, 'Fede', ?, ?)`,
+  ).run(seVa.id, `RENOVACION:${claveQueSeVa}|2026-12-01`, ahora, ahora)
+
+  fusionarPolizas(queda.id, seVa.id, FEDE)
+
+  assert.equal(contar(db, 'tareas', `vinculo_clave LIKE '%${claveQueSeVa}%'`), 0, 'ninguna tarea nombra la clave que se borró')
+  assert.equal(contar(db, 'tareas', `vinculo_clave = 'POLIZA:${claveQueQueda}'`), 1)
+  assert.equal(contar(db, 'tareas', `vinculo_clave = 'RENOVACION:${claveQueQueda}|2026-12-01'`), 1, 'la fecha del vencimiento se conserva')
+  assert.equal(contar(db, 'tareas', `poliza_id = ${queda.id}`), 2)
+  db.close()
+})

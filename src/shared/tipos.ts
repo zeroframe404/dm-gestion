@@ -2901,6 +2901,8 @@ export interface GrupoDeBajasRepetidas {
 export interface PolizaRepetida {
   id: number
   numero: string | null
+  /** El número de propuesta, si lo tiene: a veces lo que se cargó como póliza es en realidad éste. */
+  propuesta: string | null
   cobertura: string | null
   vigenciaDesde: string | null
   vigenciaHasta: string | null
@@ -2911,7 +2913,10 @@ export interface PolizaRepetida {
   siniestros: number
   adjuntos: number
   creadoEn: string
-  /** La que el programa sugiere conservar (la que tiene número propio, la que más arrastra, la más vieja). */
+  /**
+   * La que el programa sugiere conservar: la que tiene número propio, después la que más arrastra,
+   * después la del número más completo y, a igualdad de todo, la de clave más chica.
+   */
   sugerida: boolean
 }
 

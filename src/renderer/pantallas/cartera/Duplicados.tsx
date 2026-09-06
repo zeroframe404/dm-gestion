@@ -354,7 +354,13 @@ function GrupoDelMismoRiesgo({
               {p.sugerida && <Etiqueta tono="marca">Sugerida</Etiqueta>}
             </div>
             <div className="text-xs text-slate-600">
-              {[p.cobertura, p.sucursal, p.vigenciaDesde ? `desde ${p.vigenciaDesde}` : null, p.vigenciaHasta ? `hasta ${p.vigenciaHasta}` : null]
+              {[
+                p.propuesta ? `propuesta ${p.propuesta}` : null,
+                p.cobertura,
+                p.sucursal,
+                p.vigenciaDesde ? `desde ${p.vigenciaDesde}` : null,
+                p.vigenciaHasta ? `hasta ${p.vigenciaHasta}` : null,
+              ]
                 .filter(Boolean)
                 .join(' · ') || 'sin cobertura ni vigencia cargadas'}
             </div>
