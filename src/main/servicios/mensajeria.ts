@@ -250,7 +250,10 @@ function guardarAdjuntosDelMensaje(mensajeId: number, remoto: MensajeRemoto): vo
                                    vps_id, vps_subido_en, usuario_id, usuario_nombre, creado_en)
      VALUES (@mensaje, @nombre, '', @tipo, @tamano, @sha256, @ancho, @alto, @miniatura,
              @vps_id, @vps_subido_en, NULL, @usuario, @creado_en)
-     ON CONFLICT(vps_id) DO UPDATE SET
+     -- El WHERE va repetido a propósito: el índice único de \`vps_id\` es PARCIAL
+     -- (\`WHERE vps_id IS NOT NULL\`) y SQLite exige que el objetivo del ON CONFLICT diga lo mismo,
+     -- si no contesta «ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint».
+     ON CONFLICT(vps_id) WHERE vps_id IS NOT NULL DO UPDATE SET
        vps_subido_en = CASE WHEN mensaje_adjuntos.archivo <> '' THEN mensaje_adjuntos.vps_subido_en
                             ELSE COALESCE(mensaje_adjuntos.vps_subido_en, excluded.vps_subido_en) END,
        miniatura = COALESCE(mensaje_adjuntos.miniatura, excluded.miniatura)`,
@@ -411,7 +414,8 @@ function aConversacion(fila: FilaConversacion, miClave: string): ConversacionInt
     .prepare(
       `SELECT cuerpo, autor_clave, creado_en, eliminado_en,
               (SELECT COUNT(*) FROM mensaje_adjuntos WHERE mensaje_id = m.id) AS adjuntos
-         FROM mensajes m WHERE conversacion_id = ? ORDER BY COALESCE(orden, 9223372036854775807), id DESC LIMIT 1`,
+         FROM mensajes m WHERE conversacion_id = ?
+        ORDER BY COALESCE(orden, 9223372036854775807) DESC, id DESC LIMIT 1`,
     )
     .get(fila.id) as
     | { cuerpo: string; autor_clave: string; creado_en: string; eliminado_en: string | null; adjuntos: number }
@@ -500,16 +504,66 @@ function conversacionLocal(conversacionId: number, miClave: string): FilaConvers
   return fila
 }
 
-export function hiloDe(actor: SesionUsuario, conversacionId: number, antesDeId: number | null = null): HiloDeMensajes {
+/**
+ * Trae del servidor la página de mensajes que corresponde y la guarda acá.
+ *
+ * Hace falta porque el reparto sólo entrega lo que está PENDIENTE para esta persona: una computadora
+ * recién instalada, o una a la que alguien entra por primera vez, no tiene nada de lo que se habló
+ * antes, y sin esto la conversación se vería vacía. También es lo que trae los mensajes que esa misma
+ * persona escribió desde otra computadora, que tampoco vienen por el reparto (quien los escribió no
+ * tiene acuse propio).
+ *
+ * Es «lo mejor que se pueda»: sin conexión no falla, sólo no trae nada. Lo que ya está guardado acá se
+ * sigue leyendo igual, que es la razón de que exista el espejo local.
+ */
+async function traerHistorial(actor: SesionUsuario, conversacionId: number, antesDeOrden: number | null): Promise<void> {
+  const puente = puenteDeMensajes()
+  if (!puente) return
+  const fila = db().prepare('SELECT remoto_id FROM conversaciones WHERE id = ?').get(conversacionId) as
+    | { remoto_id: string }
+    | undefined
+  if (!fila) return
+  try {
+    const { mensajes } = await puente.historial(actorDelPuente(actor), {
+      conversacion: fila.remoto_id,
+      antesDe: antesDeOrden ?? undefined,
+      limite: MENSAJES_POR_PAGINA,
+    })
+    const miClave = miClaveDe(actor)
+    for (const remoto of mensajes) guardarMensaje(remoto, miClave)
+  } catch (error) {
+    // Sin internet, o el servidor caído: se muestra lo que hay guardado. No es un error de la pantalla.
+    console.error('[mensajería] No se pudo traer el historial:', error instanceof Error ? error.message : error)
+  }
+}
+
+export async function hiloDe(
+  actor: SesionUsuario,
+  conversacionId: number,
+  antesDeId: number | null = null,
+): Promise<HiloDeMensajes> {
   const miClave = miClaveDe(actor)
   const id = enteroPositivo(conversacionId, 'La conversación')
+  conversacionLocal(id, miClave)
+
+  // Antes de dibujar, se le pide al servidor la página que corresponde: es lo que hace que una
+  // computadora nueva vea la conversación entera y no sólo lo que llegó desde que se instaló.
+  const desde = antesDeId
+    ? ((db().prepare('SELECT orden FROM mensajes WHERE id = ?').get(antesDeId) as { orden: number | null } | undefined)?.orden ?? null)
+    : null
+  await traerHistorial(actor, id, desde)
+
   const fila = conversacionLocal(id, miClave)
 
   // Se piden uno más que los que se muestran: si viene, es que arriba hay más.
+  // Se pagina por el mismo `orden` con el que se ordena y NO por el `id` local: cuando el historial
+  // trae mensajes viejos del servidor, esos quedan con ids locales altos, y paginar por id se saltearía
+  // justo los que se acaban de traer.
   const filas = db()
     .prepare(
       `SELECT * FROM mensajes
-        WHERE conversacion_id = @conversacion ${antesDeId ? 'AND id < @antesDe' : ''}
+        WHERE conversacion_id = @conversacion
+          ${antesDeId ? 'AND COALESCE(orden, 9223372036854775807) < (SELECT COALESCE(orden, 9223372036854775807) FROM mensajes WHERE id = @antesDe)' : ''}
         ORDER BY COALESCE(orden, 9223372036854775807) DESC, id DESC
         LIMIT @limite`,
     )

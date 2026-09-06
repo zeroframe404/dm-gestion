@@ -22,6 +22,7 @@ import { ImportarGoogle } from './ImportarGoogle'
 import { Impresora } from './Impresora'
 import { Permisos } from './Permisos'
 import { RedesSociales } from './RedesSociales'
+import { RegistroDeMensajes } from './RegistroDeMensajes'
 import { Sincronizacion } from './Sincronizacion'
 import { SincronizarTodo } from './SincronizarTodo'
 import { Usuarios } from './Usuarios'
@@ -29,6 +30,7 @@ import { Usuarios } from './Usuarios'
 type IdSeccion =
   | 'usuarios'
   | 'permisos'
+  | 'registromensajes'
   | 'companias'
   | 'impresora'
   | 'sincronizar'
@@ -53,6 +55,9 @@ export function Administracion() {
     if (usuario.rol === 'SUPER_ADMIN') {
       lista.push({ id: 'usuarios', nombre: 'Usuarios', icono: 'clientes', ayuda: 'administracion.usuarios' })
       lista.push({ id: 'permisos', nombre: 'Permisos', icono: 'candado', ayuda: 'administracion.permisos' })
+      // El registro del chat interno: todo lo que se dijo, incluidas las conversaciones en las que el
+      // superadministrador no está y los mensajes que alguien borró.
+      lista.push({ id: 'registromensajes', nombre: 'Registro de mensajes', icono: 'mensaje', ayuda: 'administracion.registromensajes' })
     }
     // Compañías la ve todo el equipo: los días de cobertura financiera de cada compañía son los que
     // decidieron el color de la fila que el mostrador tiene delante, y saber si una renueva sola o a
@@ -111,6 +116,7 @@ export function Administracion() {
       >
         {seccion === 'usuarios' && <Usuarios />}
         {seccion === 'permisos' && <Permisos />}
+        {seccion === 'registromensajes' && <RegistroDeMensajes />}
         {seccion === 'companias' && <Companias />}
         {seccion === 'impresora' && <Impresora />}
         {seccion === 'sincronizar' && <SincronizarTodo />}

@@ -541,8 +541,19 @@ export interface Canales {
    * queda esperando a la red, y lo escrito sin internet sale solo cuando vuelve.
    */
   'mensajes:enviar': (conversacionId: number, cuerpo: string, archivos: ArchivoParaAdjuntar[]) => Resultado<MensajeInterno>
-  /** Adjuntar archivos elegidos con el diálogo del sistema: se leen en el main y no viajan por IPC. */
-  'mensajes:enviarConArchivos': (conversacionId: number, cuerpo: string, rutas: string[] | null) => Resultado<MensajeInterno>
+  /**
+   * Manda con archivos elegidos en el diálogo del sistema: se leen en el proceso principal y no viajan
+   * por IPC, que es lo que evita que un video de 200 MB congele la ventana.
+   *
+   * `archivos` son los que la persona ya había arrastrado o pegado antes de tocar el clip: van en el
+   * mismo mensaje. Sin esto, abrir el diálogo con algo ya elegido lo perdería sin decir nada.
+   */
+  'mensajes:enviarConArchivos': (
+    conversacionId: number,
+    cuerpo: string,
+    rutas: string[] | null,
+    archivos: ArchivoParaAdjuntar[],
+  ) => Resultado<MensajeInterno>
   /** Volver a intentar uno que el servidor rechazó. */
   'mensajes:reintentar': (mensajeId: number) => Resultado<MensajeInterno>
   /** La confirmación de lectura: apaga el globito y se lo cuenta al servidor. */

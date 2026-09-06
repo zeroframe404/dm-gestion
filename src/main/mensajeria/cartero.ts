@@ -154,6 +154,22 @@ async function unaVuelta(actor: SesionUsuario, senal: AbortSignal): Promise<void
   const acusesMovidos = guardarAcusesSueltos(novedades.acuses)
   guardarCursorDeAcuses(novedades.cursorAcuses)
 
+  // Confirmar la llegada de lo que se acaba de guardar, sin esperar a la vuelta siguiente: el segundo
+  // tilde tiene que aparecer del otro lado apenas el mensaje está acá, no un ciclo después. El paso 1
+  // sigue existiendo igual, para lo que quedó sin confirmar de una vuelta que se cortó a la mitad.
+  const reciénGuardados = pendientesDeConfirmarLlegada(miClave)
+  if (reciénGuardados.length) {
+    await puente.avisarEntregados(
+      yo,
+      reciénGuardados.map((fila) => fila.remoto_id),
+    )
+    anotarAcusePropio(
+      reciénGuardados.map((fila) => fila.id),
+      miClave,
+      'entregado_en',
+    )
+  }
+
   if (llegados.length) {
     avisarQueLlegaron(llegados)
     // El evento va DESPUÉS de guardar y de acusar: cuando la pantalla se entera, el mensaje ya está.

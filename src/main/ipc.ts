@@ -1208,8 +1208,8 @@ export function registrarIpc(): void {
   manejar('mensajes:contactos', () => exito(contactosDeMensajeria(exigirVista('mensajes'))))
   manejar('mensajes:abrirCon', async (clave) => exito(await abrirConversacionCon(exigirEdicion('mensajes'), clave)))
   manejar('mensajes:crearGrupo', async (titulo, claves) => exito(await crearGrupoDeMensajes(exigirEdicion('mensajes'), titulo, claves)))
-  manejar('mensajes:hilo', (conversacionId, antesDeId) =>
-    exito(hiloDeMensajes(exigirVista('mensajes'), conversacionId, antesDeId)),
+  manejar('mensajes:hilo', async (conversacionId, antesDeId) =>
+    exito(await hiloDeMensajes(exigirVista('mensajes'), conversacionId, antesDeId)),
   )
   manejar('mensajes:enviar', (conversacionId, cuerpo, archivos) => {
     const mensaje = encolarMensaje(exigirEdicion('mensajes'), { conversacionId, cuerpo, archivos })
@@ -1218,12 +1218,12 @@ export function registrarIpc(): void {
     apurarAlCartero()
     return exito(mensaje)
   })
-  manejar('mensajes:enviarConArchivos', async (conversacionId, cuerpo, rutas) => {
+  manejar('mensajes:enviarConArchivos', async (conversacionId, cuerpo, rutas, archivos) => {
     const actor = exigirEdicion('mensajes')
     // La pantalla manda `null` y el diálogo se abre acá; la prueba de humo manda las rutas, porque un
     // diálogo del sistema no se puede manejar desde afuera.
     if (rutas !== null) {
-      const mensaje = encolarMensaje(actor, { conversacionId, cuerpo, rutas })
+      const mensaje = encolarMensaje(actor, { conversacionId, cuerpo, rutas, archivos })
       apurarAlCartero()
       return exito(mensaje)
     }
@@ -1243,7 +1243,7 @@ export function registrarIpc(): void {
     if (elegido.canceled || elegido.filePaths.length === 0) {
       throw new ErrorDeNegocio('No se eligió ningún archivo.')
     }
-    const mensaje = encolarMensaje(actor, { conversacionId, cuerpo, rutas: elegido.filePaths })
+    const mensaje = encolarMensaje(actor, { conversacionId, cuerpo, rutas: elegido.filePaths, archivos })
     apurarAlCartero()
     return exito(mensaje)
   })

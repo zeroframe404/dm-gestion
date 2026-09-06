@@ -32,6 +32,7 @@ const Marketing = lazy(() => import('./pantallas/marketing/Marketing').then((m) 
 const Metricas = lazy(() => import('./pantallas/metricas/Metricas').then((m) => ({ default: m.Metricas })))
 const Presupuestos = lazy(() => import('./pantallas/presupuestos/Presupuestos').then((m) => ({ default: m.Presupuestos })))
 const Reportes = lazy(() => import('./pantallas/reportes/Reportes').then((m) => ({ default: m.Reportes })))
+const Mensajes = lazy(() => import('./pantallas/mensajes/Mensajes').then((m) => ({ default: m.Mensajes })))
 const Tareas = lazy(() => import('./pantallas/tareas/Tareas').then((m) => ({ default: m.Tareas })))
 const Polizas = lazy(() => import('./pantallas/polizas/Polizas').then((m) => ({ default: m.Polizas })))
 const Renovaciones = lazy(() => import('./pantallas/renovaciones/Renovaciones').then((m) => ({ default: m.Renovaciones })))
@@ -107,6 +108,8 @@ function Escritorio() {
     contenido = <Presupuestos />
   } else if (modulo.id === 'tareas') {
     contenido = <Tareas />
+  } else if (modulo.id === 'mensajes') {
+    contenido = <Mensajes />
   } else if (modulo.id === 'polizas') {
     contenido = <Polizas />
   } else if (modulo.id === 'renovaciones') {

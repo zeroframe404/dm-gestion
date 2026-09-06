@@ -255,7 +255,8 @@ const api: ApiDm = {
     crearGrupo: (titulo, claves) => invocar('mensajes:crearGrupo', titulo, claves),
     hilo: (conversacionId, antesDeId) => invocar('mensajes:hilo', conversacionId, antesDeId),
     enviar: (conversacionId, cuerpo, archivos) => invocar('mensajes:enviar', conversacionId, cuerpo, archivos),
-    enviarConArchivos: (conversacionId, cuerpo, rutas) => invocar('mensajes:enviarConArchivos', conversacionId, cuerpo, rutas),
+    enviarConArchivos: (conversacionId, cuerpo, rutas, archivos) =>
+      invocar('mensajes:enviarConArchivos', conversacionId, cuerpo, rutas, archivos),
     reintentar: (mensajeId) => invocar('mensajes:reintentar', mensajeId),
     marcarLeidos: (conversacionId) => invocar('mensajes:marcarLeidos', conversacionId),
     avisos: () => invocar('mensajes:avisos'),

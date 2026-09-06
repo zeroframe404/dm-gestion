@@ -52,7 +52,15 @@ export class VpsSimulado {
       ajusteLeido: 0, ajusteConsultado: 0, ajusteGuardado: 0,
       usuariosLeidos: 0, usuariosGuardados: 0,
       respaldosListados: 0, respaldosCreados: 0, respaldosRestaurados: 0,
+      mensajesConversaciones: 0, mensajesEnviados: 0, mensajesNovedades: 0,
+      mensajesEntregados: 0, mensajesLeidos: 0, mensajesRegistro: 0,
     }
+    /** La mensajería interna (12.8): conversaciones, mensajes y acuses, en memoria. */
+    this.conversaciones = new Map()
+    this.mensajes = []
+    /** `${mensajeId}|${usuarioClave}` → { entregadoEn, leidoEn }. Es también la cola de reparto. */
+    this.acuses = new Map()
+    this.ordenDeMensajes = 1
     /** Los respaldos guardados, del más nuevo al más viejo. */
     this.respaldos = []
     /** Los adjuntos subidos (12.6): id → ficha + bytes. */
@@ -225,6 +233,8 @@ export class VpsSimulado {
 
         try {
           if (ruta.startsWith('/api/dmg/adjuntos')) return this.atenderAdjuntos(pedido, respuesta, ruta, crudo, responder)
+          if (ruta.startsWith('/api/dmg/mensajes'))
+            return this.atenderMensajes(pedido.method ?? 'GET', ruta, json, responder, new URLSearchParams(consulta ?? ''))
           return this.atender(pedido.method ?? 'GET', ruta ?? '', json, responder, new URLSearchParams(consulta ?? ''))
         } catch (error) {
           return responder(500, { error: error instanceof Error ? error.message : String(error) })
@@ -312,6 +322,291 @@ export class VpsSimulado {
       return responder(200, { borrado: this.adjuntos.delete(id) })
     }
     return responder(404, { error: `Ruta desconocida: ${metodo} ${ruta}` })
+  }
+
+  // -------------------------------------------------------------------------
+  // Mensajería interna (12.8)
+  // -------------------------------------------------------------------------
+  //
+  // Replica la semántica del servidor real, que es lo que hace que la prueba de dos computadoras
+  // signifique algo: el id lo elige el cliente y reenviar no duplica, la conversación directa es única
+  // por par, y cada mensaje deja un acuse por destinatario que es a la vez la cola de reparto.
+  //
+  // La única diferencia a propósito: `novedades` NO espera. En el servidor de verdad el pedido se
+  // queda abierto hasta veinticinco segundos; acá contesta al instante, porque una prueba que espera
+  // veinticinco segundos por vuelta no la corre nadie.
+
+  claveDirectaDe(una, otra) {
+    return [una, otra].sort().join('|')
+  }
+
+  actorDelPedido(json, busqueda) {
+    const actor = json?.actor ?? {}
+    const clave = String(actor.clave ?? busqueda.get('actorClave') ?? '').trim().toLowerCase()
+    const nombre = String(actor.nombre ?? busqueda.get('actorNombre') ?? clave)
+    const rol = String(actor.rol ?? busqueda.get('actorRol') ?? 'EMPLEADO')
+    return { clave, nombre, rol }
+  }
+
+  conversacionParaLaApp(conversacion) {
+    return {
+      id: conversacion.id,
+      tipo: conversacion.tipo,
+      titulo: conversacion.titulo,
+      participantes: conversacion.participantes.map((participante) => ({ ...participante })),
+      creadoPor: conversacion.creadoPor,
+      creadoEn: conversacion.creadoEn,
+      ultimoMensajeEn: conversacion.ultimoMensajeEn,
+    }
+  }
+
+  acusesDe(mensajeId) {
+    const salida = []
+    for (const [clave, acuse] of this.acuses) {
+      if (!clave.startsWith(`${mensajeId}|`)) continue
+      salida.push({
+        mensajeId,
+        usuarioClave: clave.slice(mensajeId.length + 1),
+        entregadoEn: acuse.entregadoEn,
+        leidoEn: acuse.leidoEn,
+      })
+    }
+    return salida
+  }
+
+  mensajeParaLaApp(mensaje, conCuerpoBorrado = false) {
+    const borrado = Boolean(mensaje.eliminadoEn) && !conCuerpoBorrado
+    return {
+      id: mensaje.id,
+      conversacionId: mensaje.conversacionId,
+      orden: mensaje.orden,
+      autorClave: mensaje.autorClave,
+      autorNombre: mensaje.autorNombre,
+      cuerpo: borrado ? '' : mensaje.cuerpo,
+      creadoEn: mensaje.creadoEn,
+      enviadoEn: mensaje.enviadoEn,
+      eliminadoEn: mensaje.eliminadoEn,
+      adjuntos: borrado ? [] : mensaje.adjuntos.map((adjunto) => ({ ...adjunto })),
+      acuses: this.acusesDe(mensaje.id),
+    }
+  }
+
+  conversacionesDe(clave) {
+    return [...this.conversaciones.values()].filter((conversacion) =>
+      conversacion.participantes.some((participante) => participante.clave === clave && !participante.salioEn),
+    )
+  }
+
+  atenderMensajes(metodo, ruta, json, responder, busqueda) {
+    const actor = this.actorDelPedido(json, busqueda)
+    if (!actor.clave) return responder(400, { error: 'Falta quién manda el pedido (usuario y rol).' })
+    const ahora = new Date().toISOString()
+
+    if (metodo === 'GET' && ruta === '/api/dmg/mensajes/conversaciones') {
+      this.llamadas.mensajesConversaciones++
+      return responder(200, { conversaciones: this.conversacionesDe(actor.clave).map((c) => this.conversacionParaLaApp(c)) })
+    }
+
+    if (metodo === 'POST' && ruta === '/api/dmg/mensajes/conversaciones/directa') {
+      const destino = String(json?.clave ?? '').trim().toLowerCase()
+      if (!destino) return responder(400, { error: 'Falta a quién le querés escribir.' })
+      if (destino === actor.clave) return responder(400, { error: 'No se puede abrir una conversación con uno mismo.' })
+      const claveDirecta = this.claveDirectaDe(actor.clave, destino)
+      const yaEsta = [...this.conversaciones.values()].find((c) => c.claveDirecta === claveDirecta)
+      if (yaEsta) return responder(200, { conversacion: this.conversacionParaLaApp(yaEsta) })
+      const conversacion = {
+        id: String(json?.id ?? `sim-${this.conversaciones.size + 1}`),
+        tipo: 'DIRECTA',
+        titulo: null,
+        claveDirecta,
+        creadoPor: actor.clave,
+        creadoEn: ahora,
+        ultimoMensajeEn: null,
+        participantes: [
+          { clave: actor.clave, nombre: actor.nombre, salioEn: null },
+          { clave: destino, nombre: String(json?.nombre ?? destino), salioEn: null },
+        ],
+      }
+      this.conversaciones.set(conversacion.id, conversacion)
+      return responder(200, { conversacion: this.conversacionParaLaApp(conversacion) })
+    }
+
+    if (metodo === 'POST' && ruta === '/api/dmg/mensajes/conversaciones/grupo') {
+      const titulo = String(json?.titulo ?? '').trim()
+      if (!titulo) return responder(400, { error: 'El grupo necesita un nombre.' })
+      const porClave = new Map([[actor.clave, actor.nombre]])
+      for (const participante of json?.participantes ?? []) {
+        const clave = String(participante?.clave ?? '').trim().toLowerCase()
+        if (clave) porClave.set(clave, String(participante?.nombre ?? clave))
+      }
+      if (porClave.size < 2) return responder(400, { error: 'Un grupo necesita al menos otra persona.' })
+      const conversacion = {
+        id: String(json?.id ?? `sim-grupo-${this.conversaciones.size + 1}`),
+        tipo: 'GRUPO',
+        titulo,
+        claveDirecta: null,
+        creadoPor: actor.clave,
+        creadoEn: ahora,
+        ultimoMensajeEn: null,
+        participantes: [...porClave].map(([clave, nombre]) => ({ clave, nombre, salioEn: null })),
+      }
+      this.conversaciones.set(conversacion.id, conversacion)
+      return responder(200, { conversacion: this.conversacionParaLaApp(conversacion) })
+    }
+
+    if (metodo === 'POST' && ruta === '/api/dmg/mensajes') {
+      this.llamadas.mensajesEnviados++
+      const id = String(json?.id ?? '')
+      const yaEsta = this.mensajes.find((mensaje) => mensaje.id === id)
+      // Idempotencia por id: reintentar un envío cortado devuelve el que ya está.
+      if (yaEsta) return responder(200, { mensaje: this.mensajeParaLaApp(yaEsta), yaEstaba: true })
+
+      const conversacion = this.conversaciones.get(String(json?.conversacionId ?? ''))
+      if (!conversacion) return responder(400, { error: 'El id de la conversación no es válido.' })
+      if (!conversacion.participantes.some((p) => p.clave === actor.clave && !p.salioEn)) {
+        return responder(403, { error: 'No participás de esa conversación.' })
+      }
+      const cuerpo = String(json?.cuerpo ?? '')
+      const adjuntos = Array.isArray(json?.adjuntos) ? json.adjuntos : []
+      if (!cuerpo && adjuntos.length === 0) return responder(400, { error: 'El mensaje está vacío.' })
+
+      const mensaje = {
+        id,
+        conversacionId: conversacion.id,
+        orden: this.ordenDeMensajes++,
+        autorClave: actor.clave,
+        autorNombre: actor.nombre,
+        cuerpo,
+        creadoEn: ahora,
+        enviadoEn: json?.enviadoEn ?? null,
+        eliminadoEn: null,
+        eliminadoPor: null,
+        adjuntos: adjuntos.map((adjunto) => ({
+          id: String(adjunto.id),
+          nombre: String(adjunto.nombre ?? 'archivo'),
+          tipo: String(adjunto.tipo ?? 'application/octet-stream'),
+          tamano: Number(adjunto.tamano ?? 0),
+          sha256: String(adjunto.sha256 ?? ''),
+          ancho: adjunto.ancho ?? null,
+          alto: adjunto.alto ?? null,
+          duracion: adjunto.duracion ?? null,
+          miniatura: adjunto.miniatura ?? null,
+        })),
+      }
+      this.mensajes.push(mensaje)
+      conversacion.ultimoMensajeEn = ahora
+      // Un acuse pendiente por cada destinatario: es la cola de reparto.
+      for (const participante of conversacion.participantes) {
+        if (participante.clave === actor.clave || participante.salioEn) continue
+        this.acuses.set(`${mensaje.id}|${participante.clave}`, { entregadoEn: null, leidoEn: null })
+      }
+      return responder(201, { mensaje: this.mensajeParaLaApp(mensaje), yaEstaba: false })
+    }
+
+    if (metodo === 'GET' && ruta === '/api/dmg/mensajes/novedades') {
+      this.llamadas.mensajesNovedades++
+      const pendientes = []
+      for (const mensaje of this.mensajes) {
+        const acuse = this.acuses.get(`${mensaje.id}|${actor.clave}`)
+        if (acuse && !acuse.entregadoEn) pendientes.push(this.mensajeParaLaApp(mensaje))
+      }
+      const desde = busqueda.get('desdeAcuses')
+      const limite = desde ? new Date(desde).getTime() - 5_000 : 0
+      const acuses = []
+      for (const mensaje of this.mensajes) {
+        if (mensaje.autorClave !== actor.clave) continue
+        for (const acuse of this.acusesDe(mensaje.id)) {
+          const cuando = acuse.leidoEn ?? acuse.entregadoEn
+          if (!cuando || new Date(cuando).getTime() >= limite) acuses.push(acuse)
+        }
+      }
+      return responder(200, {
+        mensajes: pendientes,
+        acuses,
+        conversaciones: this.conversacionesDe(actor.clave).map((c) => this.conversacionParaLaApp(c)),
+        cursorAcuses: ahora,
+      })
+    }
+
+    if (metodo === 'POST' && (ruta === '/api/dmg/mensajes/entregados' || ruta === '/api/dmg/mensajes/leidos')) {
+      const leidos = ruta.endsWith('leidos')
+      if (leidos) this.llamadas.mensajesLeidos++
+      else this.llamadas.mensajesEntregados++
+      let marcados = 0
+      for (const id of json?.ids ?? []) {
+        const acuse = this.acuses.get(`${id}|${actor.clave}`)
+        if (!acuse) continue
+        // Acusar dos veces no corre la hora: el «entregado a las 9:04» sigue diciendo 9:04.
+        if (!acuse.entregadoEn) acuse.entregadoEn = ahora
+        if (leidos && !acuse.leidoEn) {
+          acuse.leidoEn = ahora
+          marcados++
+        } else if (!leidos) {
+          marcados++
+        }
+      }
+      return responder(200, { marcados })
+    }
+
+    if (metodo === 'GET' && ruta === '/api/dmg/mensajes/historial') {
+      const conversacionId = busqueda.get('conversacion') ?? ''
+      const conversacion = this.conversaciones.get(conversacionId)
+      if (!conversacion) return responder(400, { error: 'El id de la conversación no es válido.' })
+      if (!conversacion.participantes.some((p) => p.clave === actor.clave && !p.salioEn)) {
+        return responder(403, { error: 'No participás de esa conversación.' })
+      }
+      const mensajes = this.mensajes
+        .filter((mensaje) => mensaje.conversacionId === conversacionId)
+        .map((mensaje) => this.mensajeParaLaApp(mensaje))
+      return responder(200, { mensajes, hayMas: false })
+    }
+
+    if (metodo === 'GET' && ruta === '/api/dmg/mensajes/log') {
+      this.llamadas.mensajesRegistro++
+      if (actor.rol !== 'SUPER_ADMIN') {
+        return responder(403, { error: 'El log de mensajes es sólo del superadministrador.' })
+      }
+      const texto = (busqueda.get('texto') ?? '').toLowerCase()
+      const usuario = (busqueda.get('usuario') ?? '').toLowerCase()
+      const renglones = this.mensajes
+        .filter((mensaje) => {
+          if (texto && !mensaje.cuerpo.toLowerCase().includes(texto)) return false
+          if (!usuario) return true
+          if (mensaje.autorClave === usuario) return true
+          const conversacion = this.conversaciones.get(mensaje.conversacionId)
+          return Boolean(conversacion?.participantes.some((p) => p.clave === usuario))
+        })
+        .map((mensaje) => {
+          const conversacion = this.conversaciones.get(mensaje.conversacionId)
+          return {
+            // `true`: el registro muestra el cuerpo original aunque el mensaje esté borrado.
+            mensaje: this.mensajeParaLaApp(mensaje, true),
+            conversacion: {
+              id: conversacion.id,
+              tipo: conversacion.tipo,
+              titulo: conversacion.titulo,
+              participantes: conversacion.participantes.map((p) => ({ clave: p.clave, nombre: p.nombre })),
+            },
+            eliminadoPor: mensaje.eliminadoPor,
+          }
+        })
+        .reverse()
+      return responder(200, { renglones, total: renglones.length, pagina: 1, porPagina: 100 })
+    }
+
+    const borrado = /^\/api\/dmg\/mensajes\/([^/]+)\/eliminar$/.exec(ruta)
+    if (metodo === 'POST' && borrado) {
+      const mensaje = this.mensajes.find((cada) => cada.id === borrado[1])
+      if (!mensaje) return responder(404, { error: 'Ese mensaje no existe.' })
+      if (mensaje.autorClave !== actor.clave && actor.rol !== 'SUPER_ADMIN') {
+        return responder(403, { error: 'Sólo se puede borrar un mensaje propio.' })
+      }
+      mensaje.eliminadoEn = mensaje.eliminadoEn ?? ahora
+      mensaje.eliminadoPor = mensaje.eliminadoPor ?? actor.clave
+      return responder(200, { eliminado: true })
+    }
+
+    return responder(404, { error: `El simulador no atiende ${metodo} ${ruta}.` })
   }
 
   atender(metodo, ruta, json, responder, busqueda = new URLSearchParams()) {
