@@ -63,7 +63,16 @@ export function crearFuente(): FuenteHoja | null {
   return crearFuenteVps()
 }
 
-export function crearFuenteVps(): FuenteVps | null {
+/**
+ * La URL y el token con los que esta computadora habla con el puente del VPS, o null si en esta
+ * computadora no hay puente.
+ *
+ * Está separado de `crearFuenteVps` porque el puente lo usan dos cosas distintas: la grilla del
+ * GENERAL DE CLIENTES (que es lo que devuelve `FuenteVps`) y la mensajería, que tiene sus propios
+ * endpoints y su propio cliente. Las dos tienen que elegir el servidor con la MISMA regla, y la
+ * regla es la que importa: en desarrollo y en las pruebas nunca se toca el VPS real.
+ */
+export function credencialesDelPuente(): { urlBase: string; token: string } | null {
   // En desarrollo (y en las pruebas, donde electron ni existe) NUNCA se toca el VPS real: sólo se
   // sincroniza si DM_GESTION_VPS_URL apunta a un servidor local (el simulador), igual que
   // DM_GESTION_GITHUB_API con la base de usuarios.
@@ -72,9 +81,14 @@ export function crearFuenteVps(): FuenteVps | null {
     const urlBase = process.env.DM_GESTION_VPS_URL
     if (!urlBase) return null
     // Nunca el token real en desarrollo: 'prueba' es el del simulador (scripts/vps-simulado.mjs).
-    return new FuenteVps({ urlBase, token: process.env.DM_GESTION_VPS_TOKEN ?? 'prueba' })
+    return { urlBase, token: process.env.DM_GESTION_VPS_TOKEN ?? 'prueba' }
   }
-  return new FuenteVps(credencialesVps())
+  return credencialesVps()
+}
+
+export function crearFuenteVps(): FuenteVps | null {
+  const credenciales = credencialesDelPuente()
+  return credenciales ? new FuenteVps(credenciales) : null
 }
 
 /** La conexión directa con Google, si la agencia todavía la tiene configurada (migración y Drive). */

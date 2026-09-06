@@ -132,18 +132,50 @@ export function usarAlmacenDeAdjuntos(dador: () => AlmacenDeAdjuntos | null): vo
   dameAlmacen = dador
 }
 
+/**
+ * A quién avisarle que un archivo terminó de subir.
+ *
+ * Los adjuntos de las fichas se lo cuentan a las otras computadoras escribiendo la columna SUBIDO de
+ * su fila de APP ADJUNTOS; los de un mensaje no tienen fila, así que la mensajería se engancha acá
+ * para mandar su propio aviso. Es un dador y no un import directo para no atar este archivo al de
+ * mensajería: el banco de pruebas importa los servicios sueltos.
+ */
+let avisarSubidaDelArchivo: ((tipo: TipoDeAdjunto, adjuntoId: number, vpsId: string, subidoEn: string) => void) | null = null
+
+export function alSubirUnAdjunto(
+  avisar: ((tipo: TipoDeAdjunto, adjuntoId: number, vpsId: string, subidoEn: string) => void) | null,
+): void {
+  avisarSubidaDelArchivo = avisar
+}
+
 // ---------------------------------------------------------------------------
-// Las tres tablas, con la misma forma
+// Las cuatro tablas, con la misma forma
 // ---------------------------------------------------------------------------
 
-const TABLAS: Record<TipoDeAnexo, { tabla: string; padre: string; grupo: (padreId: number) => string; etiqueta: string }> = {
+/**
+ * De qué cuelga un adjunto. Los tres primeros cuelgan de una ficha que tiene fila en la planilla y por
+ * eso su ficha viaja por APP ADJUNTOS (`TipoDeAnexo`); el cuarto no.
+ *
+ * Un adjunto de un mensaje (12.8) va al mismo disco, sube al mismo servidor y se baja igual —de eso se
+ * trata reusar esto— pero NO tiene fila en la planilla: su ficha viaja adentro del propio mensaje, por
+ * los endpoints de mensajería. Todo lo que en este archivo mira `fila_id` lo saltea solo.
+ */
+export type TipoDeAdjunto = TipoDeAnexo | 'mensaje'
+
+const TABLAS: Record<TipoDeAdjunto, { tabla: string; padre: string; grupo: (padreId: number) => string; etiqueta: string }> = {
   poliza: { tabla: 'poliza_adjuntos', padre: 'poliza_id', grupo: (id) => `poliza-${id}`, etiqueta: 'poliza' },
   // Los siniestros usan el número a secas: así quedaron los de la Fase 7 y no se les mueve el piso.
   siniestro: { tabla: 'siniestro_adjuntos', padre: 'siniestro_id', grupo: (id) => String(id), etiqueta: 'siniestro' },
   tarea: { tabla: 'tarea_adjuntos', padre: 'tarea_id', grupo: (id) => `tarea-${id}`, etiqueta: 'tarea' },
+  mensaje: { tabla: 'mensaje_adjuntos', padre: 'mensaje_id', grupo: (id) => `mensaje-${id}`, etiqueta: 'mensaje' },
 }
 
-export function grupoDeAdjuntos(tipo: TipoDeAnexo, padreId: number): string {
+/** Los que además tienen ficha en APP ADJUNTOS. Un mensaje no: por eso este angostamiento existe. */
+function comoAnexo(tipo: TipoDeAdjunto): TipoDeAnexo | null {
+  return tipo === 'mensaje' ? null : tipo
+}
+
+export function grupoDeAdjuntos(tipo: TipoDeAdjunto, padreId: number): string {
   return TABLAS[tipo].grupo(padreId)
 }
 
@@ -172,7 +204,7 @@ interface FilaAdjunto {
   categoria_detalle?: string | null
 }
 
-function selectDe(tipo: TipoDeAnexo): string {
+function selectDe(tipo: TipoDeAdjunto): string {
   const { tabla, padre } = TABLAS[tipo]
   return `SELECT id, ${padre} AS padre_id, fila_id, nombre, archivo, tipo, tamano, sha256, ancho, alto, miniatura,
                  drive_id, drive_error, vps_id, vps_subido_en, vps_error, vps_intentos, vps_proximo_intento,
@@ -188,7 +220,7 @@ type FilaAdjuntoLiviana = Omit<FilaAdjunto, 'miniatura' | 'ancho' | 'alto' | 'dr
  * segundo plano (la subida cada 10 s, la verificación al arrancar sobre TODAS las filas con vps_id)
  * no la necesitan para nada: con `selectDe` se leían megabytes por vuelta.
  */
-function selectLivianoDe(tipo: TipoDeAnexo): string {
+function selectLivianoDe(tipo: TipoDeAdjunto): string {
   const { tabla, padre } = TABLAS[tipo]
   return `SELECT id, ${padre} AS padre_id, fila_id, nombre, archivo, tipo, tamano, sha256,
                  vps_id, vps_subido_en, vps_error, vps_intentos, vps_proximo_intento,
@@ -196,7 +228,7 @@ function selectLivianoDe(tipo: TipoDeAnexo): string {
           FROM ${tabla}`
 }
 
-function leerFila(tipo: TipoDeAnexo, adjuntoId: number): FilaAdjunto {
+function leerFila(tipo: TipoDeAdjunto, adjuntoId: number): FilaAdjunto {
   const fila = db().prepare(`${selectDe(tipo)} WHERE id = ?`).get(adjuntoId) as FilaAdjunto | undefined
   if (!fila) throw new ErrorDeNegocio('No se encontró ese documento.')
   return fila
@@ -255,12 +287,12 @@ function aGenerico(fila: FilaAdjunto): AdjuntoGenerico {
   }
 }
 
-export function adjuntosDe(tipo: TipoDeAnexo, padreId: number): AdjuntoGenerico[] {
+export function adjuntosDe(tipo: TipoDeAdjunto, padreId: number): AdjuntoGenerico[] {
   const { padre } = TABLAS[tipo]
   return (db().prepare(`${selectDe(tipo)} WHERE ${padre} = ? ORDER BY id DESC`).all(padreId) as FilaAdjunto[]).map(aGenerico)
 }
 
-export function adjuntoPorId(tipo: TipoDeAnexo, adjuntoId: number): AdjuntoGenerico & { padreId: number } {
+export function adjuntoPorId(tipo: TipoDeAdjunto, adjuntoId: number): AdjuntoGenerico & { padreId: number } {
   const fila = leerFila(tipo, adjuntoId)
   return { ...aGenerico(fila), padreId: fila.padre_id }
 }
@@ -296,7 +328,7 @@ function sha256De(contenido: Buffer): string {
  * vienen de la pantalla (arrastrar, pegar, elegir) o con una ruta (el explorador de archivos).
  */
 export function registrarAdjunto(
-  tipo: TipoDeAnexo,
+  tipo: TipoDeAdjunto,
   padreId: number,
   archivo: ArchivoEntrante,
   actor: SesionUsuario,
@@ -332,7 +364,10 @@ export function registrarAdjunto(
   // con un UPDATE: entre las dos sentencias no hay transacción, y una caída ahí en el medio dejaba
   // justo el estado que esto evita (un fila_id puesto que nadie encoló, invisible para siempre). El
   // `vps_id` se pone igual: el archivo puede ir subiendo mientras tanto.
-  const conVinculo = vinculoDelPadre(tipo, padreId) !== null
+  // Un mensaje no tiene ficha en la planilla: no se le pregunta por el vínculo (preguntar lo llevaría
+  // a consultar la tabla equivocada con el id del mensaje, en silencio y mal).
+  const anexo = comoAnexo(tipo)
+  const conVinculo = anexo !== null && vinculoDelPadre(anexo, padreId) !== null
 
   const { id } = db()
     .prepare(
@@ -360,8 +395,10 @@ export function registrarAdjunto(
       ...(conCategoria ? { categoria: opciones.categoria ?? null, categoria_detalle: opciones.categoriaDetalle ?? null } : {}),
     }) as { id: number }
 
-  if (conVinculo) {
-    encolarFichaDelAdjunto(tipo, padreId, filaId, {
+  // `conVinculo` sólo puede ser true cuando `anexo` no es null (un mensaje nunca lo tiene): se
+  // comprueban los dos para que el compilador lo vea igual que se lee.
+  if (conVinculo && anexo) {
+    encolarFichaDelAdjunto(anexo, padreId, filaId, {
       fecha: ahora,
       nombre: copia.nombre,
       categoria: conCategoria ? nombreDeCategoria(opciones.categoria ?? null, opciones.categoriaDetalle ?? null) : null,
@@ -412,7 +449,7 @@ function encolarFichaDelAdjunto(
  * posible: si no hay conexión queda el archivo huérfano allá, que es preferible a un borrado que no
  * se puede hacer.
  */
-export function borrarAdjuntoRegistrado(tipo: TipoDeAnexo, adjuntoId: number, actor: SesionUsuario): { padreId: number; nombre: string } {
+export function borrarAdjuntoRegistrado(tipo: TipoDeAdjunto, adjuntoId: number, actor: SesionUsuario): { padreId: number; nombre: string } {
   const fila = leerFila(tipo, adjuntoId)
   db().prepare(`DELETE FROM ${TABLAS[tipo].tabla} WHERE id = ?`).run(fila.id)
   borrarArchivoDeAdjunto(fila.archivo)
@@ -443,7 +480,7 @@ export function borrarAdjuntosDelServidor(lista: Array<{ vpsId: string; nombre: 
 // ---------------------------------------------------------------------------
 
 /** La ruta local del archivo, bajándolo del servidor si hace falta (lo cargó otra computadora). */
-export async function asegurarAdjuntoLocal(tipo: TipoDeAnexo, adjuntoId: number): Promise<string> {
+export async function asegurarAdjuntoLocal(tipo: TipoDeAdjunto, adjuntoId: number): Promise<string> {
   const fila = leerFila(tipo, adjuntoId)
   if (fila.archivo && existsSync(rutaDeAdjunto(fila.archivo))) return rutaDeAdjunto(fila.archivo)
   if (!fila.vps_id) {
@@ -591,7 +628,7 @@ export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>)
   // Fallas de red seguidas en esta vuelta: con dos, no hay conexión y no vale la pena seguir.
   let fallasDeRedSeguidas = 0
 
-  for (const [tipo, { tabla, grupo }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
+  for (const [tipo, { tabla, grupo }] of Object.entries(TABLAS) as Array<[TipoDeAdjunto, (typeof TABLAS)[TipoDeAdjunto]]>) {
     // Los que ya fallaron van al fondo: un archivo que no pasa no puede tapar a los que vinieron después.
     const pendientes = db()
       .prepare(`${selectLivianoDe(tipo)} WHERE ${CONDICION_PENDIENTE} ORDER BY vps_intentos, creado_en LIMIT ?`)
@@ -638,6 +675,13 @@ export async function subirAdjuntosPendientes(dameToken: (() => Promise<string>)
           .run(subidoEn, sha256, fila.id)
         // 12.7: se lo cuenta a las otras computadoras por la columna SUBIDO de su fila.
         if (fila.fila_id) encolarSubidoDeAnexo(fila.fila_id, subidoEn)
+        // 12.8: y el que no tiene fila (el adjunto de un mensaje) avisa por su propio camino.
+        try {
+          avisarSubidaDelArchivo?.(tipo, fila.id, fila.vps_id ?? '', subidoEn)
+        } catch (errorDelAviso) {
+          // El archivo YA subió: que el aviso falle no puede deshacer eso ni cortar la vuelta.
+          console.error('[adjuntos] No se pudo avisar que el archivo subió:', errorDelAviso)
+        }
         resultado.subidos++
         fallasDeRedSeguidas = 0
       } catch (error) {
@@ -779,7 +823,7 @@ export async function verificarAdjuntosContraElServidor(): Promise<ResultadoDeVe
 }
 
 async function reintentarDrive(dameToken: () => Promise<string>, limite: number): Promise<void> {
-  for (const [tipo, { tabla, etiqueta }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
+  for (const [tipo, { tabla, etiqueta }] of Object.entries(TABLAS) as Array<[TipoDeAdjunto, (typeof TABLAS)[TipoDeAdjunto]]>) {
     const sinDrive = db()
       .prepare(`${selectLivianoDe(tipo)} WHERE drive_id IS NULL AND drive_error = ? AND archivo <> '' ORDER BY creado_en LIMIT ?`)
       .all(MENSAJE_SIN_DRIVE, limite) as FilaAdjuntoLiviana[]
@@ -856,7 +900,11 @@ export async function copiarADrive(tipo: TipoDeAnexo, adjuntoId: number, dameTok
  */
 export function registrarLoQueNoViajo(): { adjuntos: number; comentarios: number } {
   let adjuntos = 0
-  for (const [tipo, { tabla, padre }] of Object.entries(TABLAS) as Array<[TipoDeAnexo, (typeof TABLAS)[TipoDeAnexo]]>) {
+  for (const [tipo, { tabla, padre }] of Object.entries(TABLAS) as Array<[TipoDeAdjunto, (typeof TABLAS)[TipoDeAdjunto]]>) {
+    // Los adjuntos de un mensaje no viajan por APP ADJUNTOS: su ficha va adentro del mensaje. Acá no
+    // hay nada que rescatar (y `fila_id` en ellos es NULL siempre, no «todavía no viajó»).
+    const anexo = comoAnexo(tipo)
+    if (anexo === null) continue
     const viejos = db()
       .prepare(`${selectDe(tipo)} WHERE fila_id IS NULL AND archivo <> '' ORDER BY id`)
       .all() as FilaAdjunto[]
@@ -866,7 +914,7 @@ export function registrarLoQueNoViajo(): { adjuntos: number; comentarios: number
       // Si la ficha madre todavía no tiene identidad en la base, no hay nada que mandar: se lo deja
       // como está (sin fila_id) y se vuelve a mirar en el próximo arranque. Hasta la 12.6 se le ponía
       // el fila_id igual y quedaba para siempre como «ya registrado» sin haber viajado.
-      if (!vinculoDelPadre(tipo, fila.padre_id)) continue
+      if (!vinculoDelPadre(anexo, fila.padre_id)) continue
       let contenido: Buffer
       try {
         contenido = readFileSync(ruta)
@@ -887,7 +935,7 @@ export function registrarLoQueNoViajo(): { adjuntos: number; comentarios: number
         .prepare(`UPDATE ${tabla} SET fila_id = ?, vps_id = ?, sha256 = ?, tipo = ?, tamano = ?, miniatura = ?, ancho = ?, alto = ? WHERE id = ?`)
         .run(filaId, vpsId, sha256, tipoMime, contenido.length, medidas.miniatura, medidas.ancho, medidas.alto, fila.id)
       const enCamino = encolarFichaDelAdjunto(
-        tipo,
+        anexo,
         fila.padre_id,
         filaId,
         {

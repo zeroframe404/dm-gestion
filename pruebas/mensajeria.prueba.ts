@@ -1,0 +1,436 @@
+// La mensajería entre dos computadoras (12.8): lo que se escribe en Lanús tiene que aparecer en Dock
+// Sud, con sus dos confirmaciones, sus emojis enteros y sus archivos.
+//
+// Las dos computadoras tienen su propia base y su propia carpeta de archivos, y hablan con el mismo
+// servidor simulado. `unaVueltaDelCartero` corre una vuelta sin el bucle ni las esperas: es lo mismo
+// que hace el programa de verdad cada vez que el servidor le contesta.
+//
+// Qué se prueba acá y no en el servidor: el ida y vuelta completo. Que el mensaje salga de una base y
+// entre en la otra, que el acuse vuelva y mueva el tilde, que un mensaje escrito sin internet espere y
+// salga solo, y que un emoji que ocupa dos unidades UTF-16 llegue igual del otro lado.
+import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import test from 'node:test'
+import { VpsSimulado } from '../scripts/vps-simulado.mjs'
+import { abrirBaseDeDatos, cerrarBaseDeDatos, usarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
+import { unaVueltaDelCartero } from '../src/main/mensajeria/cartero'
+import { PuenteDeMensajes, usarPuenteDeMensajesDePrueba } from '../src/main/mensajeria/puente'
+import { hayAdjuntosPendientes, subirAdjuntosPendientes, usarCarpetaDeAdjuntosDePrueba } from '../src/main/servicios/adjuntos'
+import {
+  abrirConversacionCon,
+  avisosDe,
+  conversacionesDe,
+  contactosDe,
+  encolarMensaje,
+  eliminarMensajePropio,
+  hiloDe,
+  marcarConversacionLeida,
+  registroDeMensajes,
+} from '../src/main/servicios/mensajeria'
+import { usarFuenteDePrueba } from '../src/main/servicios/sincronizacion'
+import { FuenteVps } from '../src/main/vps/fuenteVps'
+import type { SesionUsuario } from '../src/shared/tipos'
+
+const TOKEN = 'prueba'
+
+// `daniel` no se da de alta: es el usuario inicial que ya siembra la base (ver db/semilla.ts), y darlo
+// de alta otra vez choca contra el índice único del nombre de usuario.
+const DANIEL: SesionUsuario = { id: 1, nombre: 'Daniel Martínez', usuario: 'daniel', rol: 'SUPER_ADMIN', sucursal: { id: 4, nombre: 'Daniel' }, debeCambiarClave: false }
+const ANA: SesionUsuario = { id: 2, nombre: 'Ana', usuario: 'ana', rol: 'EMPLEADO', sucursal: { id: 2, nombre: 'Lanús' }, debeCambiarClave: false }
+const BETO: SesionUsuario = { id: 3, nombre: 'Beto', usuario: 'beto', rol: 'ADMIN', sucursal: { id: 1, nombre: 'Dock Sud' }, debeCambiarClave: false }
+
+/** El mensaje con el que se prueba todo lo de Unicode: emoji simple, emoji con ZWJ y otros alfabetos. */
+const CON_EMOJIS = 'Listo lo de Gómez 👍 — la familia 👨‍👩‍👧 quedó cubierta ✅ Привет'
+
+const temporales: string[] = []
+process.on('exit', () => {
+  for (const carpeta of temporales) rmSync(carpeta, { recursive: true, force: true })
+})
+
+interface Computadora {
+  nombre: string
+  db: BaseDeDatos
+  carpeta: string
+}
+
+const abiertas: Computadora[] = []
+
+/** Deja activas la base Y la carpeta de archivos de esa computadora: cada una tiene su disco. */
+function en(pc: Computadora): void {
+  usarBaseDeDatos(pc.db)
+  usarCarpetaDeAdjuntosDePrueba(pc.carpeta)
+}
+
+function computadora(nombre: string): Computadora {
+  const registrar = console.log
+  console.log = () => undefined
+  const db = abrirBaseDeDatos(':memory:')
+  console.log = registrar
+  // Las dos computadoras conocen a la misma gente: es el espejo de la base de usuarios de la agencia.
+  const alta = db.prepare(
+    `INSERT INTO usuarios (id, nombre, usuario, clave_hash, rol, sucursal_id, activo, debe_cambiar_clave)
+     VALUES (@id, @nombre, @usuario, 'sin-clave', @rol, (SELECT id FROM sucursales WHERE nombre = @sucursal), 1, 0)`,
+  )
+  for (const persona of [ANA, BETO]) {
+    alta.run({ id: persona.id, nombre: persona.nombre, usuario: persona.usuario, rol: persona.rol, sucursal: persona.sucursal.nombre })
+  }
+  const carpeta = mkdtempSync(path.join(tmpdir(), 'dm-mensajes-'))
+  temporales.push(carpeta)
+  const pc = { nombre, db, carpeta }
+  abiertas.push(pc)
+  return pc
+}
+
+function cerrarTodo(): void {
+  for (const pc of abiertas) pc.db.close()
+  abiertas.length = 0
+  usarPuenteDeMensajesDePrueba(null)
+  usarFuenteDePrueba(null)
+  cerrarBaseDeDatos()
+}
+
+interface Escenario {
+  servidor: VpsSimulado
+  lanus: Computadora
+  dockSud: Computadora
+}
+
+async function dosComputadoras(): Promise<Escenario> {
+  cerrarTodo()
+  const servidor = new VpsSimulado({ token: TOKEN })
+  await servidor.escuchar()
+  usarPuenteDeMensajesDePrueba(new PuenteDeMensajes({ urlBase: servidor.url, token: TOKEN }))
+  // Los archivos van y vienen por el MISMO servidor simulado, con el cliente de verdad: es lo que
+  // hace que la prueba de los adjuntos signifique algo.
+  usarFuenteDePrueba(new FuenteVps({ urlBase: servidor.url, token: TOKEN }))
+  return { servidor, lanus: computadora('Lanús'), dockSud: computadora('Dock Sud') }
+}
+
+// ---------------------------------------------------------------------------
+
+test('un mensaje escrito en Lanús aparece en Dock Sud, con sus dos confirmaciones', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  // Ana abre la conversación y escribe.
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  assert.equal(conversacion.titulo, 'Beto')
+  const mandado = encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: CON_EMOJIS })
+  assert.equal(mandado.estado, 'enCola', 'recién escrito, todavía no salió de esta computadora')
+
+  await unaVueltaDelCartero(ANA)
+  assert.equal((await hiloDe(ANA, conversacion.id)).mensajes[0].estado, 'enviado', 'el servidor ya lo tiene')
+
+  // Beto todavía no sabe nada: su computadora no fue a buscar.
+  en(dockSud)
+  assert.equal(conversacionesDe(BETO).length, 0)
+
+  // Su vuelta lo trae, y de paso confirma la llegada.
+  await unaVueltaDelCartero(BETO)
+  const suHilo = await hiloDe(BETO, conversacionesDe(BETO)[0].id)
+  assert.equal(suHilo.mensajes.length, 1)
+  assert.equal(suHilo.mensajes[0].cuerpo, CON_EMOJIS, 'el texto llega igual, emojis incluidos')
+  assert.equal(suHilo.mensajes[0].mio, false)
+  assert.equal(avisosDe(BETO).sinLeer, 1)
+
+  // Y Ana ve el segundo tilde.
+  en(lanus)
+  await unaVueltaDelCartero(ANA)
+  assert.equal((await hiloDe(ANA, conversacion.id)).mensajes[0].estado, 'entregado')
+
+  // Beto lo abre: eso es leerlo.
+  en(dockSud)
+  const conversacionDeBeto = conversacionesDe(BETO)[0].id
+  assert.equal(marcarConversacionLeida(BETO, conversacionDeBeto).sinLeer, 0)
+  await unaVueltaDelCartero(BETO)
+
+  en(lanus)
+  await unaVueltaDelCartero(ANA)
+  const final = (await hiloDe(ANA, conversacion.id)).mensajes[0]
+  assert.equal(final.estado, 'leido')
+  assert.equal(final.acuses.length, 1)
+  assert.equal(final.acuses[0].nombre, 'Beto')
+  assert.ok(final.acuses[0].leidoEn, 'el acuse dice a qué hora lo leyó')
+})
+
+test('el texto llega byte por byte: emojis, pares sustitutos y otros alfabetos', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  const casos = [
+    '👍',
+    '👨‍👩‍👧‍👦 la familia entera',
+    '👍🏽 con tono de piel',
+    '❤️ con selector de variación',
+    'Ñandú, sanción, ¿cómo estás?',
+    'Привет こんにちは 안녕하세요 مرحبا',
+    '🚗💥 choque en Pavón y Rivadavia',
+  ]
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  for (const caso of casos) encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: caso })
+  await unaVueltaDelCartero(ANA)
+
+  en(dockSud)
+  await unaVueltaDelCartero(BETO)
+  const recibidos = (await hiloDe(BETO, conversacionesDe(BETO)[0].id)).mensajes.map((mensaje) => mensaje.cuerpo)
+  assert.deepEqual(recibidos, casos, 'nada se recortó ni se rompió en el camino')
+  // Y ninguno trae el rombo del par sustituto partido.
+  for (const recibido of recibidos) assert.ok(!recibido.includes('�'), `«${recibido}» llegó con un carácter roto`)
+})
+
+test('lo escrito sin internet espera en la cola y sale solo cuando vuelve', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+
+  // Se corta internet de verdad: el servidor deja de atender. No se usa `errorFijo` a propósito —un
+  // 503 es «el servidor contestó que no» y tiene su propia espera creciente—; lo que se prueba acá es
+  // quedarse sin conexión, que NO cuenta como intento fallido y por eso sale apenas vuelve.
+  const puerto = Number(new URL(servidor.url).port)
+  await servidor.cerrar()
+  encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Che, ¿lo de Pérez lo cerraste? 🤔' })
+  await assert.rejects(() => unaVueltaDelCartero(ANA))
+  assert.equal((await hiloDe(ANA, conversacion.id)).mensajes[0].estado, 'enCola', 'sigue esperando, no se perdió')
+  assert.equal(
+    (lanus.db.prepare('SELECT intentos FROM mensajes').get() as { intentos: number }).intentos,
+    0,
+    'sin internet no se gasta un intento: el servidor nunca dijo que no',
+  )
+
+  // Vuelve internet: sale solo, sin que nadie lo vuelva a escribir.
+  await servidor.escuchar(puerto)
+  await unaVueltaDelCartero(ANA)
+  assert.equal((await hiloDe(ANA, conversacion.id)).mensajes[0].estado, 'enviado')
+
+  en(dockSud)
+  await unaVueltaDelCartero(BETO)
+  assert.equal((await hiloDe(BETO, conversacionesDe(BETO)[0].id)).mensajes[0].cuerpo, 'Che, ¿lo de Pérez lo cerraste? 🤔')
+})
+
+test('reintentar un envío cortado no manda el mensaje dos veces', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Una sola vez' })
+  await unaVueltaDelCartero(ANA)
+  // Se lo devuelve a la cola a mano, como si la respuesta se hubiera perdido en el camino.
+  lanus.db.prepare("UPDATE mensajes SET estado = 'enCola'").run()
+  await unaVueltaDelCartero(ANA)
+
+  en(dockSud)
+  await unaVueltaDelCartero(BETO)
+  assert.equal((await hiloDe(BETO, conversacionesDe(BETO)[0].id)).mensajes.length, 1, 'el id lo elige quien manda: reenviar no duplica')
+})
+
+test('un mensaje con un archivo sale recién cuando el archivo está arriba, y el otro lo puede abrir', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  const foto = new Uint8Array(Buffer.from('%PDF-1.4\n' + 'x'.repeat(3000)))
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  const mandado = encolarMensaje(ANA, {
+    conversacionId: conversacion.id,
+    cuerpo: 'Te mando la denuncia 📄',
+    archivos: [{ nombre: 'denuncia.pdf', tipo: 'application/pdf', contenido: foto }],
+  })
+  assert.equal(mandado.adjuntos.length, 1)
+
+  // Con el archivo todavía sin subir, el mensaje NO sale: si saliera, del otro lado aparecería una
+  // burbuja con un archivo que no se puede abrir.
+  await unaVueltaDelCartero(ANA)
+  assert.equal((await hiloDe(ANA, conversacion.id)).mensajes[0].estado, 'enCola')
+  assert.equal(servidor.mensajes.length, 0)
+
+  assert.ok(hayAdjuntosPendientes(), 'el archivo está en la cola de subida de siempre')
+  await subirAdjuntosPendientes(null)
+  await unaVueltaDelCartero(ANA)
+  assert.equal((await hiloDe(ANA, conversacion.id)).mensajes[0].estado, 'enviado')
+
+  en(dockSud)
+  await unaVueltaDelCartero(BETO)
+  const recibido = (await hiloDe(BETO, conversacionesDe(BETO)[0].id)).mensajes[0]
+  assert.equal(recibido.adjuntos.length, 1)
+  assert.equal(recibido.adjuntos[0].nombre, 'denuncia.pdf')
+  assert.equal(recibido.adjuntos[0].descargado, false, 'todavía no está en el disco de Dock Sud')
+  assert.equal(recibido.adjuntos[0].enElServidor, true, 'pero se puede bajar cuando lo abran')
+})
+
+test('borrar un mensaje lo saca de la conversación y lo deja entero en el registro', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Perdón, era para otra persona' })
+  await unaVueltaDelCartero(ANA)
+
+  en(dockSud)
+  await unaVueltaDelCartero(BETO)
+  const suConversacion = conversacionesDe(BETO)[0].id
+  assert.equal((await hiloDe(BETO, suConversacion)).mensajes[0].cuerpo, 'Perdón, era para otra persona')
+
+  en(lanus)
+  const mio = (await hiloDe(ANA, conversacion.id)).mensajes[0]
+  await eliminarMensajePropio(ANA, mio.id)
+  assert.equal((await hiloDe(ANA, conversacion.id)).mensajes[0].cuerpo, '', 'en el chat ya no está')
+
+  // Y el superadministrador lo sigue viendo entero, con la marca de quién lo borró.
+  const registro = await registroDeMensajes(DANIEL, { usuario: null, desde: null, hasta: null, texto: '', pagina: 1 })
+  assert.equal(registro.total, 1)
+  assert.equal(registro.renglones[0].cuerpo, 'Perdón, era para otra persona')
+  assert.equal(registro.renglones[0].eliminadoPor, 'ana')
+  assert.ok(registro.renglones[0].eliminadoEn)
+})
+
+test('el registro es del superadministrador y de nadie más', async (t) => {
+  const { servidor, lanus } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Algo privado' })
+  await unaVueltaDelCartero(ANA)
+
+  const sinPermiso = { usuario: null, desde: null, hasta: null, texto: '', pagina: 1 }
+  await assert.rejects(() => registroDeMensajes(ANA, sinPermiso), /superadministrador/i)
+  await assert.rejects(() => registroDeMensajes(BETO, sinPermiso), /superadministrador/i)
+  assert.equal((await registroDeMensajes(DANIEL, sinPermiso)).total, 1)
+})
+
+test('la conversación entre dos personas es una sola, aunque los dos la abran a la vez', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const deAna = await abrirConversacionCon(ANA, 'beto')
+  en(dockSud)
+  const deBeto = await abrirConversacionCon(BETO, 'ana')
+
+  assert.equal(deAna.remotoId, deBeto.remotoId, 'las dos computadoras terminan en la misma conversación')
+  assert.equal(servidor.conversaciones.size, 1)
+})
+
+test('con quién se puede hablar: los usuarios activos, menos uno mismo', async (t) => {
+  const { servidor, lanus } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const contactos = contactosDe(ANA).map((contacto) => contacto.clave)
+  assert.deepEqual(contactos.sort(), ['beto', 'daniel'])
+  await assert.rejects(() => abrirConversacionCon(ANA, 'ana'), /uno mismo/i)
+  await assert.rejects(() => abrirConversacionCon(ANA, 'nadie'), /no está en el listado/i)
+})
+
+test('en un grupo, el doble tilde en color quiere decir que lo vieron todos', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  // El grupo lo arma Ana con Beto y Daniel. Daniel no tiene computadora en esta prueba: alcanza con
+  // que no acuse nada para que el mensaje no llegue nunca a «leído».
+  en(lanus)
+  const puente = new PuenteDeMensajes({ urlBase: servidor.url, token: TOKEN })
+  const grupo = await puente.crearGrupo(
+    { clave: 'ana', nombre: 'Ana', rol: 'EMPLEADO' },
+    { titulo: 'Mostrador', participantes: [{ clave: 'beto', nombre: 'Beto' }, { clave: 'daniel', nombre: 'Daniel Martínez' }], id: 'grupo-1' },
+  )
+  await unaVueltaDelCartero(ANA)
+  const local = conversacionesDe(ANA).find((conversacion) => conversacion.remotoId === grupo.id)
+  assert.ok(local, 'el grupo bajó a la computadora de Ana')
+  encolarMensaje(ANA, { conversacionId: local.id, cuerpo: 'Mañana abrimos a las 9 🕘' })
+  await unaVueltaDelCartero(ANA)
+
+  // Beto lo lee; Daniel no.
+  en(dockSud)
+  await unaVueltaDelCartero(BETO)
+  const suGrupo = conversacionesDe(BETO).find((conversacion) => conversacion.remotoId === grupo.id)
+  assert.ok(suGrupo)
+  marcarConversacionLeida(BETO, suGrupo.id)
+  await unaVueltaDelCartero(BETO)
+
+  en(lanus)
+  await unaVueltaDelCartero(ANA)
+  const mensaje = (await hiloDe(ANA, local.id)).mensajes.at(-1)
+  assert.ok(mensaje)
+  assert.equal(mensaje.acuses.length, 2, 'un acuse por cada destinatario')
+  assert.equal(mensaje.estado, 'enviado', 'uno lo leyó y el otro ni lo recibió: vale el que menos avanzó')
+})
+
+test('una computadora recién instalada ve la conversación entera, no sólo lo que llega desde ahora', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  // Ana y Beto hablan un rato desde sus dos computadoras de siempre.
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Primero' })
+  encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Segundo 👍' })
+  await unaVueltaDelCartero(ANA)
+  en(dockSud)
+  await unaVueltaDelCartero(BETO)
+  const deBeto = conversacionesDe(BETO)[0].id
+  encolarMensaje(BETO, { conversacionId: deBeto, cuerpo: 'Tercero, dale' })
+  await unaVueltaDelCartero(BETO)
+  en(lanus)
+  await unaVueltaDelCartero(ANA)
+
+  // Aparece una computadora nueva y Ana entra ahí por primera vez. El reparto sólo entrega lo
+  // PENDIENTE, así que sin traer el historial esta pantalla se vería vacía.
+  const recienInstalada = computadora('Sarandí')
+  en(recienInstalada)
+  await unaVueltaDelCartero(ANA)
+  const suConversacion = conversacionesDe(ANA)[0]
+  assert.ok(suConversacion, 'la conversación bajó')
+
+  const hilo = await hiloDe(ANA, suConversacion.id)
+  assert.deepEqual(
+    hilo.mensajes.map((mensaje) => mensaje.cuerpo),
+    ['Primero', 'Segundo 👍', 'Tercero, dale'],
+    'están los tres, en orden, incluidos los que escribió ella misma desde la otra computadora',
+  )
+  assert.equal(hilo.mensajes[0].mio, true)
+  assert.equal(hilo.mensajes[2].mio, false)
+})

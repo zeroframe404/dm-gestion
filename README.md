@@ -1787,6 +1787,119 @@ transacciones que traban una pestaña tienen un minuto.
 Pruebas nuevas: `pruebas/encabezados-siniestros.prueba.ts`, más las que se agregaron en
 `sincronizacion`, `importador`, `correcciones`, `adjuntos`, `cartera` y `cobranzas`.
 
+## Mensajería interna (12.8)
+
+El chat entre los usuarios de la agencia, adentro del programa. Hasta la 12.7, para avisarle algo a la
+otra sucursal había que llamar por teléfono o escribir por WhatsApp desde el celular personal: lo que
+se dijo no quedaba en ningún lado, el que atiende al día siguiente no lo puede buscar, y si esa persona
+deja la agencia se lleva la conversación con ella. Ahora los mensajes son de la agencia.
+
+**Dónde vive todo.** En la base PostgreSQL del VPS, con sus propias tablas y su propio endpoint
+(`/api/dmg/mensajes`), NO en la grilla del GENERAL DE CLIENTES. La grilla es una planilla y sirve muy
+bien para lo que es una planilla; un chat necesita tres cosas que una planilla no da: orden estable,
+acuse **por destinatario** y una consulta barata de «qué me falta recibir». Cada computadora guarda
+además un espejo local en SQLite (migración 25), para poder leer sin internet y para que un mensaje
+escrito con la conexión caída tenga dónde esperar.
+
+**Cómo llega en el momento, sin websockets.** El «cartero» (`src/main/mensajeria/cartero.ts`) le
+pregunta al servidor si hay algo, y el servidor **no contesta enseguida**: se queda con el pedido
+abierto hasta 25 segundos y contesta apenas aparece algo (`GET /api/dmg/mensajes/novedades`). Es un
+long-poll y no un websocket porque el nginx de la agencia ya deja pasar pedidos de hasta 300 segundos
+(`proxy_read_timeout`): no hay nada que configurar en el servidor, ningún puerto que abrir y ningún
+antivirus que convencer. El cartero arranca cuando alguien ingresa y para cuando cierra sesión o se
+cierra el programa (cerrar corta el pedido a mitad de camino: sin eso, apagar la aplicación esperaría
+los 25 segundos).
+
+**Las dos confirmaciones.** Cada mensaje deja una fila por destinatario en `dmg_mensaje_estados`, y esa
+fila es a la vez el acuse y la cola de reparto:
+
+| En la burbuja | Qué pasó |
+| --- | --- |
+| reloj | Todavía no salió de esta computadora: no hay internet, o falta que suban sus archivos |
+| ✓ | El servidor lo tiene |
+| ✓✓ | La computadora del destinatario lo bajó y lo guardó — **confirmación de llegada** |
+| ✓✓ en color | El destinatario abrió la conversación con el mensaje a la vista — **confirmación de lectura** |
+
+En un grupo vale el que MENOS avanzó: el doble tilde en color quiere decir «lo vieron todos». Pasando
+el mouse por encima aparece el detalle, persona por persona y con la hora.
+
+Mientras `entregado_en` sea NULL, el mensaje le sigue apareciendo pendiente a esa persona. Por eso el
+reparto **no usa un contador global**: dos envíos simultáneos toman los números 5 y 6 y el 6 puede
+confirmarse antes que el 5, y un lector que avanzara por ese número se saltearía el 5 para siempre.
+Con el acuse explícito, una computadora que se apagó antes de guardar el mensaje lo vuelve a recibir
+cuando arranca.
+
+**UTF-16 y emojis.** Contar y recortar texto vive en `src/shared/texto.ts` y recorre **puntos de
+código** (`Array.from`), nunca `.length` ni `.slice()`. Casi todo emoji ocupa dos unidades UTF-16 (un
+par sustituto) y varios —👨‍👩‍👧, 👍🏽, ❤️— son secuencias de varios puntos unidas por modificadores o por
+ZWJ: un tope aplicado con `.length` cuenta el doble en un mensaje de emojis, y un recorte por posición
+puede partir el par al medio y dejar guardado un carácter que ya no es nada, cosa que se ve recién en
+la computadora del otro. El cuerpo es `TEXT` en Postgres (UTF-8: cualquier punto de código) y en
+SQLite, sin ningún `varchar(n)` que pueda cortar nada. La caja de escribir acepta cualquier carácter
+venga de donde venga; el cajón de emojis (`pantallas/mensajes/emojis.ts`) es una lista propia con
+buscador en castellano, porque la CSP no deja bajar una biblioteca de un CDN.
+
+**Los archivos.** Se puede mandar cualquier cosa: fotos, GIF, videos, audios, PDF, planillas. Se
+arrastran sobre la caja, se pegan con Ctrl+V (las capturas) o se eligen con el clip. Reusan **la misma
+tubería que los adjuntos de pólizas, siniestros y tareas** (`servicios/adjuntos.ts`): la misma tabla
+—`mensaje_adjuntos` copia columna por columna a `poliza_adjuntos`—, la misma subida al VPS con esperas
+crecientes, la misma bajada la primera vez que alguien los abre y la misma verificación al arrancar. La
+única diferencia es que un mensaje **no tiene fila en la planilla**: su ficha viaja adentro del propio
+mensaje, por Postgres, y no por APP ADJUNTOS.
+
+Dos cosas a propósito:
+
+- **Un mensaje con archivos sale recién cuando los archivos están arriba.** Mientras tanto se ve con
+  el reloj. Si saliera antes, del otro lado aparecería una burbuja con una foto que todavía no se
+  puede abrir, y habría que inventar un segundo camino para avisarle cuando llegara.
+- **Los GIF, los videos y los audios NO se recomprimen.** Las fotos sí (lado largo 2560 px, JPEG al
+  86 %, igual que en el resto del programa): un GIF achicado deja de moverse. En la burbuja, la foto y
+  el GIF se ven adentro —el GIF se pide entero, porque su miniatura es un JPEG del primer cuadro y se
+  vería quieto—; el video, el audio y los documentos se abren con el programa del sistema, porque un
+  mp4 de 40 MB en base64 son 53 MB de texto cruzando el puente con la ventana congelada.
+
+**El sonido.** Cuando llega un mensaje suena **la campana**, el mismo aviso que las notificaciones
+normales del programa, más la notificación de Windows y el parpadeo del ícono en la barra de tareas.
+Quién decide que suene es `useAvisoNuevo`, el mismo de las tareas: compara los IDENTIFICADORES de lo
+que no leíste y no la cantidad, y la primera consulta del día no suena nunca (al abrir el programa hay
+mensajes sin leer y ninguno es una novedad). Que se mueva un tilde no hace sonar nada: un chat que
+suena cada vez que el otro lee algo es un chat que se termina silenciando.
+
+**El registro del superadministrador.** **Administración → Registro de mensajes**: todos los mensajes
+de todas las conversaciones, incluidas aquellas en las que el superadministrador no está, con buscador
+por persona, por texto y por fechas. Los mensajes borrados aparecen con su **texto original** y la
+marca de quién los borró: borrar un mensaje lo saca de la conversación de la gente y lo deja en el
+registro, porque si borrara de verdad el registro no serviría para lo único que sirve. El corte por rol
+está en tres lugares —la pestaña no se dibuja, el manejador de IPC pide el rol y el servidor lo vuelve
+a pedir—: un dato que llega al renderer ya está afuera, y esconder un botón no protege nada.
+
+**Permisos.** «Mensajes» es un área más de **Administración → Permisos**: con «Sólo ver» una persona
+lee lo que le mandan y no puede contestar, y con «Sin acceso» el módulo no le aparece. El registro no
+se configura: es siempre y sólo del superadministrador.
+
+**Lo que necesita conexión y lo que no.** Abrir una conversación NUEVA la necesita; mandar en una que
+ya existe, no. La conversación directa entre dos personas es una sola en toda la agencia y quien decide
+cuál es, es el servidor (índice único sobre `clave_directa`, las dos claves de usuario ordenadas):
+dejar que dos computadoras sin internet la creen cada una por su lado sería fabricar el problema de las
+dos conversaciones paralelas para después tener que resolverlo.
+
+**Quién es quién.** La identidad que viaja es el **usuario de ingreso en minúscula**, no el `id` de la
+tabla `usuarios` (que es local a cada computadora) ni el `remoto_id`: el servidor no tiene forma de
+traducir ese número, porque la lista de usuarios vive cifrada en `dmg_usuarios` y el VPS no la abre.
+Con el usuario, el registro se lee solo («ana → beto») sin desencriptar nada. Igual que en Redes
+sociales, la identidad viaja **declarada** en cada pedido: el puente entero se autentica con un token
+compartido por las cinco computadoras, así que el token dice «esta es una PC de la agencia» y el actor
+dice «y la está usando Ana». Es el mismo modelo de confianza que ya tiene todo el puente (ver «Qué NO
+protege esto»): esto ordena el trabajo de la agencia, no defiende los mensajes de alguien que se ponga
+a escribir pedidos a mano con el token en la mano.
+
+Código: `src/main/servicios/mensajeria.ts` (el servicio), `src/main/mensajeria/puente.ts` (el cliente),
+`src/main/mensajeria/cartero.ts` (el long-poll), `src/renderer/pantallas/mensajes/` (la pantalla),
+`src/renderer/componentes/CampanaDeMensajes.tsx` (la campana y el sonido) y
+`server/src/modules/dmg/mensajes.service.ts` del repositorio web. Pruebas:
+`pruebas/mensajeria.prueba.ts` (dos computadoras contra el servidor simulado) y
+`server/src/modules/dmg/mensajes.service.test.ts`.
+
 ## Integración continua
 
 `.github/workflows/pruebas.yml` corre `npm run typecheck` y `npm run prueba` en cada push y en cada pull

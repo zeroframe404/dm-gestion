@@ -8,6 +8,7 @@ import { AYUDA_EXCEL } from './excel'
 import { AYUDA_INICIO } from './inicio'
 import { AYUDA_LEADS } from './leads'
 import { AYUDA_MARKETING } from './marketing'
+import { AYUDA_MENSAJES } from './mensajes'
 import { AYUDA_METRICAS } from './metricas'
 import { AYUDA_POLIZAS } from './polizas'
 import { AYUDA_PRESUPUESTOS } from './presupuestos'
@@ -25,6 +26,7 @@ export const CONTENIDO_AYUDA: Record<string, ContenidoDeAyuda> = {
   ...AYUDA_LEADS,
   ...AYUDA_PRESUPUESTOS,
   ...AYUDA_TAREAS,
+  ...AYUDA_MENSAJES,
   ...AYUDA_POLIZAS,
   ...AYUDA_RENOVACIONES,
   ...AYUDA_SINIESTROS,

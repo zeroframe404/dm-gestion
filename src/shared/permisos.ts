@@ -27,6 +27,7 @@ export const AREAS = [
   'reportes',
   'marketing',
   'tareas',
+  'mensajes',
   'companias',
   'administracion',
 ] as const
@@ -63,6 +64,11 @@ export const DESCRIPCION_AREA: Record<Area, { nombre: string; detalle: string }>
   reportes: { nombre: 'Reportes', detalle: 'Exportar listados a Excel o PDF y la planilla clásica.' },
   marketing: { nombre: 'Marketing', detalle: 'Los segmentos de la cartera y las plantillas de WhatsApp.' },
   tareas: { nombre: 'Tareas', detalle: 'Los pendientes del equipo y la campana de avisos.' },
+  mensajes: {
+    nombre: 'Mensajes',
+    detalle:
+      'El chat interno: hablar con un compañero o con un grupo, con archivos. «Sólo ver» deja leer lo que le mandan a uno y no deja contestar. El registro de todos los mensajes de la agencia es siempre y sólo del superadministrador.',
+  },
   companias: {
     nombre: 'Compañías',
     detalle:

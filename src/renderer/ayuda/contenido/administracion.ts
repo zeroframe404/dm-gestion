@@ -47,6 +47,35 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.registromensajes': {
+    clave: 'administracion.registromensajes',
+    titulo: 'Administración → Registro de mensajes',
+    resumen: 'Todo lo que se habló por el chat interno de la agencia. Sólo la ve el superadministrador.',
+    secciones: [
+      {
+        titulo: 'Qué muestra',
+        parrafos: [
+          'Todos los mensajes del chat interno, de todas las conversaciones, incluidas aquellas en las que el superadministrador no participa. Se puede buscar por persona (los mensajes que escribió y los de las conversaciones donde estuvo), por texto, y acotar por fechas.',
+          'Los mensajes borrados aparecen igual, con el texto original y una marca roja que dice quién los borró y cuándo. Borrar un mensaje lo saca de la conversación de la gente, no del registro: si lo sacara de acá también, esta pantalla no serviría para lo único para lo que sirve.',
+          'La columna «Llegada y lectura» dice a cuántos les llegó y cuántos lo leyeron, que es la misma información que ve como tildes quien lo escribió.',
+        ],
+      },
+      {
+        titulo: 'Quién puede entrar',
+        parrafos: [
+          'Sólo el superadministrador, y no se puede delegar desde la pantalla de Permisos. El control está en tres lugares: la pestaña no se dibuja para los demás roles, el programa lo vuelve a pedir antes de consultar y el servidor de la agencia —que es el que tiene los mensajes— lo pide por tercera vez. Los tres hacen falta: esconder un botón no protege nada.',
+          'Es información de conversaciones entre compañeros de trabajo. Está para lo que tiene que estar —una discusión sobre lo que se dijo, un reclamo, una auditoría— y conviene tratarla así.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Entregado y leído',
+        explicacion:
+          'Entregado es que el mensaje llegó a la computadora de la otra persona; leído, que abrió la conversación con el mensaje a la vista.',
+      },
+    ],
+  },
   'administracion.permisos': {
     clave: 'administracion.permisos',
     titulo: 'Administración → Permisos',

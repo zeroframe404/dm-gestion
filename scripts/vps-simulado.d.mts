@@ -34,7 +34,13 @@ export class VpsSimulado {
     | 'respaldosCreados'
     | 'respaldosRestaurados'
     | 'adjuntosSubidos'
-    | 'adjuntosBajados',
+    | 'adjuntosBajados'
+    | 'mensajesConversaciones'
+    | 'mensajesEnviados'
+    | 'mensajesNovedades'
+    | 'mensajesEntregados'
+    | 'mensajesLeidos'
+    | 'mensajesRegistro',
     number
   >
   /** Los respaldos guardados, del más nuevo al más viejo. */
@@ -47,6 +53,36 @@ export class VpsSimulado {
   usuarios: { texto: string; version: number; actualizadoEn: string; actualizadoPor: string | null; mensaje: string | null } | null
   /** Los mensajes con los que se guardó la base de usuarios, en orden. */
   mensajesDeUsuarios: string[]
+  /** Mensajería interna (12.8): las conversaciones que tiene el servidor simulado. */
+  conversaciones: Map<
+    string,
+    {
+      id: string
+      tipo: 'DIRECTA' | 'GRUPO'
+      titulo: string | null
+      claveDirecta: string | null
+      creadoPor: string
+      creadoEn: string
+      ultimoMensajeEn: string | null
+      participantes: Array<{ clave: string; nombre: string; salioEn: string | null }>
+    }
+  >
+  /** Los mensajes guardados, en el orden en que llegaron. */
+  mensajes: Array<{
+    id: string
+    conversacionId: string
+    orden: number
+    autorClave: string
+    autorNombre: string
+    cuerpo: string
+    creadoEn: string
+    enviadoEn: string | null
+    eliminadoEn: string | null
+    eliminadoPor: string | null
+    adjuntos: Array<{ id: string; nombre: string; tipo: string; tamano: number; sha256: string; miniatura: string | null }>
+  }>
+  /** Los dos acuses, por mensaje y por persona: `${mensajeId}|${usuarioClave}`. */
+  acuses: Map<string, { entregadoEn: string | null; leidoEn: string | null }>
   escuchar(puerto?: number): Promise<string>
   cerrar(): Promise<void>
   /** Lee los valores actuales de una pestaña (para asserts). */

@@ -6,6 +6,7 @@ import { useSesion, useUsuarioActual } from '../contexto/Sesion'
 import { BotonDeSonido } from './BotonDeSonido'
 import { BotonDeTema } from './BotonDeTema'
 import { CampanaDeRechazos } from './CampanaDeRechazos'
+import { CampanaDeMensajes } from './CampanaDeMensajes'
 import { CampanaDeTareas } from './CampanaDeTareas'
 import { ControlDeZoom } from './ControlDeZoom'
 import { IndicadorSync } from './IndicadorSync'
@@ -18,6 +19,7 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
   const permisos = usePermisos()
   // Sin acceso a Tareas la campana no tiene nada que avisar: no se muestra.
   const verTareas = permisos.puedeVer('tareas')
+  const verMensajes = permisos.puedeVer('mensajes')
   // La de rechazos es de la cartera del mostrador: la ve quien tenga Cartera o Pólizas a la vista, y
   // sólo puede darlos por resueltos quien además pueda editar alguno de los dos.
   const verRechazos = permisos.puedeVer('cartera') || permisos.puedeVer('polizas')
@@ -58,6 +60,12 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
           <>
             <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
             <CampanaDeTareas />
+          </>
+        )}
+        {verMensajes && (
+          <>
+            <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
+            <CampanaDeMensajes />
           </>
         )}
         {/* Pegado a las campanas: es lo que se busca justo después de que sonó una y molestó. */}
