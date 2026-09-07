@@ -3933,8 +3933,16 @@ export interface AdjuntoDeMensaje {
   alto: number | null
 }
 
+/**
+ * Qué clase de mensaje es. El ZUMBIDO es el de Messenger: no lleva texto, del otro lado suena fuerte y
+ * la ventana se sacude. Es un tipo y no un texto convenido para que se distinga de verdad de un
+ * mensaje que casualmente diga lo mismo.
+ */
+export type TipoDeMensaje = 'NORMAL' | 'ZUMBIDO'
+
 export interface MensajeInterno {
   id: number
+  tipo: TipoDeMensaje
   /** El id que comparten las cinco computadoras (UUID v4). El `id` de arriba es de esta base. */
   remotoId: string
   conversacionId: number
@@ -4022,6 +4030,11 @@ export interface RenglonDelLogDeMensajes {
   remotoId: string
   conversacion: string
   tipo: 'DIRECTA' | 'GRUPO'
+  /**
+   * Qué fue: un mensaje o un zumbido. Va aparte del cuerpo porque un zumbido no tiene texto, y sin
+   * esto el registro mostraría un renglón vacío —que es peor que no mostrarlo—.
+   */
+  claseDeMensaje: TipoDeMensaje
   participantes: string
   autorClave: string
   autorNombre: string

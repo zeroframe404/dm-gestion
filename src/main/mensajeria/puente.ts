@@ -12,7 +12,7 @@
 // y la computadora vuelve a preguntar. El resultado se siente instantáneo y no hace falta tocar el
 // nginx de la agencia (que ya deja pasar pedidos de hasta 300 segundos), ni abrir un puerto, ni pelear
 // con los antivirus de las cinco máquinas, que es lo que suele pasar con un websocket.
-import type { Rol } from '../../shared/tipos'
+import type { Rol, TipoDeMensaje } from '../../shared/tipos'
 import { ErrorDeNegocio } from '../servicios/errores'
 import { credencialesDelPuente } from '../servicios/sincronizacion'
 
@@ -55,6 +55,11 @@ export interface AdjuntoRemoto {
 
 export interface MensajeRemoto {
   id: string
+  /**
+   * NORMAL o ZUMBIDO. Viene opcional porque un servidor anterior a la 12.8.1 no lo manda: ahí todo lo
+   * que llega es un mensaje común, que es exactamente lo que era. Se resuelve al guardarlo.
+   */
+  tipo?: TipoDeMensaje
   conversacionId: string
   orden: number
   autorClave: string
@@ -238,6 +243,7 @@ export class PuenteDeMensajes {
       cuerpo: string
       enviadoEn: string
       adjuntos: AdjuntoParaMandar[]
+      tipo?: TipoDeMensaje
     },
   ): Promise<{ mensaje: MensajeRemoto; yaEstaba: boolean }> {
     const respuesta = (await this.pedir('mandar el mensaje', 'POST', '/api/dmg/mensajes', {

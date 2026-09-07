@@ -167,7 +167,13 @@ export function RegistroDeMensajes() {
                       {renglon.tipo === 'GRUPO' && <span className="block text-xs text-slate-500">{renglon.participantes}</span>}
                     </td>
                     <td className="max-w-md px-3 py-2">
-                      <span className="whitespace-pre-wrap break-words text-slate-800">{renglon.cuerpo || '—'}</span>
+                      {/* Un zumbido no tiene texto: sin decir qué fue, el renglón quedaría en blanco y
+                          parecería un error del registro. */}
+                      {renglon.claseDeMensaje === 'ZUMBIDO' ? (
+                        <Etiqueta tono="aviso">Zumbido</Etiqueta>
+                      ) : (
+                        <span className="whitespace-pre-wrap break-words text-slate-800">{renglon.cuerpo || '—'}</span>
+                      )}
                       {renglon.eliminadoEn && (
                         <span className="mt-1 block">
                           <Etiqueta tono="peligro">

@@ -91,6 +91,7 @@ import {
   registroDeMensajes,
   reintentarMensaje,
   rutaDelAdjuntoDeMensaje,
+  zumbar,
 } from './servicios/mensajeria'
 import { avisarDeSegmento, borrarSegmento, guardarSegmento, resultadoDeSegmento } from './servicios/marketing'
 import {
@@ -1247,6 +1248,9 @@ export function registrarIpc(): void {
     apurarAlCartero()
     return exito(mensaje)
   })
+  // El zumbido sale por su cuenta y no por la cola: `zumbar` habla con el servidor en el momento. Por
+  // eso no hay `apurarAlCartero()` acá —no hay nada esperando— y por eso es `async`.
+  manejar('mensajes:zumbar', async (conversacionId) => exito(await zumbar(exigirEdicion('mensajes'), conversacionId)))
   manejar('mensajes:reintentar', (mensajeId) => {
     const mensaje = reintentarMensaje(exigirEdicion('mensajes'), mensajeId)
     apurarAlCartero()

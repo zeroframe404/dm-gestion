@@ -23,7 +23,7 @@ import { BrowserWindow } from 'electron'
 import type { DatosDeEvento, NombreEvento } from '../../shared/canales'
 import type { SesionUsuario } from '../../shared/tipos'
 import { resumenDeMensaje } from '../../shared/texto'
-import { llamarLaAtencion, notificarEnElSistema } from '../servicios/avisos'
+import { llamarLaAtencion, notificarEnElSistema, sacudirLaVentana } from '../servicios/avisos'
 import { esFallaDeRed } from '../servicios/red'
 import {
   actorDelPuente,
@@ -143,12 +143,15 @@ async function unaVuelta(actor: SesionUsuario, senal: AbortSignal): Promise<void
   for (const conversacion of novedades.conversaciones) guardarConversacion(conversacion)
 
   const llegados: { autor: string; cuerpo: string; adjuntos: number }[] = []
+  const zumbaron: string[] = []
   for (const remoto of novedades.mensajes) {
     const id = guardarMensaje(remoto, miClave)
     if (id === null) continue
-    if (remoto.autorClave !== miClave && !remoto.eliminadoEn) {
-      llegados.push({ autor: remoto.autorNombre, cuerpo: remoto.cuerpo, adjuntos: remoto.adjuntos.length })
-    }
+    if (remoto.autorClave === miClave || remoto.eliminadoEn) continue
+    // Un zumbido no es un mensaje que se lee: es un golpe en la puerta. Va por su propio camino —el
+    // sacudón, el sonido fuerte— y no por el cartel de «te escribieron», que diría una frase vacía.
+    if (remoto.tipo === 'ZUMBIDO') zumbaron.push(remoto.autorNombre)
+    else llegados.push({ autor: remoto.autorNombre, cuerpo: remoto.cuerpo, adjuntos: remoto.adjuntos.length })
   }
 
   const acusesMovidos = guardarAcusesSueltos(novedades.acuses)
@@ -170,11 +173,20 @@ async function unaVuelta(actor: SesionUsuario, senal: AbortSignal): Promise<void
     )
   }
 
+  if (zumbaron.length) {
+    // El sacudón de la ventana lo hace el proceso principal (es el único que puede moverla); el sonido
+    // lo hace el renderer, igual que el resto de los avisos. Los dos empiezan en el mismo instante.
+    notificarEnElSistema(zumbaron[0], zumbaron.length === 1 ? 'Te mandó un zumbido.' : 'Te mandaron un zumbido.')
+    llamarLaAtencion()
+    sacudirLaVentana()
+    emitir('mensajes:zumbido', { autor: zumbaron[0] })
+  }
+
   if (llegados.length) {
     avisarQueLlegaron(llegados)
     // El evento va DESPUÉS de guardar y de acusar: cuando la pantalla se entera, el mensaje ya está.
     emitir('mensajes:llegaron', null)
-  } else if (acusesMovidos || novedades.conversaciones.length) {
+  } else if (zumbaron.length || acusesMovidos || novedades.conversaciones.length) {
     emitir('mensajes:cambiaron', null)
   }
 }

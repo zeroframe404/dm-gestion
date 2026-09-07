@@ -16,6 +16,8 @@
 // Un video no se dibuja adentro de la burbuja a propósito: para eso habría que mandar el archivo
 // entero al renderer y un mp4 de 40 MB son 53 MB de texto cruzando el puente, con la ventana
 // congelada mientras tanto.
+//
+// El zumbido no se dibuja como burbuja: ver `Zumbido`, más abajo.
 import { useEffect, useState } from 'react'
 import type { AdjuntoDeMensaje, MensajeInterno } from '../../../shared/tipos'
 import { Icono, type NombreIcono } from '../../componentes/Icono'
@@ -183,7 +185,28 @@ interface Props {
   alReintentar: (mensajeId: number) => void
 }
 
+/**
+ * El zumbido en el hilo. No es una burbuja: va centrado, chico y sin tilde, como el «X salió del
+ * grupo» de cualquier chat. Es a propósito —un zumbido no es algo que se dijo, es algo que se hizo—, y
+ * además queda escrito: en un mes, «me zumbaste tres veces» se puede mirar en vez de discutir.
+ */
+function Zumbido({ mensaje }: { mensaje: MensajeInterno }) {
+  return (
+    <div className="flex w-full justify-center py-1">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs text-amber-900">
+        <Icono nombre="altavoz" tamano={13} />
+        <span className="font-semibold">
+          {mensaje.mio ? 'Mandaste un zumbido' : `${mensaje.autorNombre} te mandó un zumbido`}
+        </span>
+        <span className="tabular-nums text-amber-700">{horaDe(mensaje.creadoEn)}</span>
+      </span>
+    </div>
+  )
+}
+
 export function Burbuja({ mensaje, mostrarAutor, alBorrar, alReintentar }: Props) {
+  if (mensaje.tipo === 'ZUMBIDO' && !mensaje.eliminadoEn) return <Zumbido mensaje={mensaje} />
+
   const mio = mensaje.mio
   const soloEmojis = !mensaje.eliminadoEn && !mensaje.adjuntos.length && esSoloEmojis(mensaje.cuerpo)
 

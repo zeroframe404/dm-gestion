@@ -2,6 +2,7 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { AvisoActualizacion } from './componentes/AvisoActualizacion'
 import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
+import { AvisoDeZumbido } from './componentes/AvisoDeZumbido'
 import { BarraLateral } from './componentes/BarraLateral'
 import { BarraSuperior } from './componentes/BarraSuperior'
 import { Icono } from './componentes/Icono'
@@ -174,6 +175,8 @@ function Marco({
       <PreguntaDeTicket />
       {/* Ídem: una tarea se cierra desde tres pantallas distintas y hasta desde otra computadora. */}
       <AvisoDeTareaHecha />
+      {/* Un zumbido llega estando en cualquier pantalla: por eso el sonido y el cartel viven acá. */}
+      <AvisoDeZumbido />
     </div>
   )
 }

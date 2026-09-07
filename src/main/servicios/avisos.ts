@@ -57,13 +57,14 @@ export function notificarEnElSistema(titulo: string, cuerpo: string): void {
 
 /**
  * Hace parpadear el ícono de la aplicación en la barra de tareas (Windows) o saltar el del dock
- * (macOS) hasta que alguien le dé el foco a la ventana. Es el «nudge» de siempre —el de Messenger,
- * el que hacía vibrar la ventana del chat— adaptado a lo que un programa de escritorio puede sacudir
- * hoy sin asustar a nadie: no la pantalla, sino el ícono de la barra de tareas.
+ * (macOS) hasta que alguien le dé el foco a la ventana.
  *
  * Se llama junto con `notificarEnElSistema`, no en su lugar: el cartel dice QUÉ pasó, esto hace que
  * se note que pasó algo aunque el cartel ya se haya cerrado solo y la persona ni siquiera esté mirando
  * la barra de tareas en ese instante.
+ *
+ * No es el zumbido —para eso está `sacudirLaVentana`, más abajo—, y sirve donde el zumbido no llega:
+ * la ventana minimizada o detrás de otra, que no se puede sacudir porque no se ve.
  *
  * Nunca falla hacia afuera, y no hace nada con una ventana que ya tiene el foco: ahí no hay ícono que
  * hacer parpadear, porque ya se está mirando.
@@ -98,4 +99,77 @@ export function avisarTareaCompletada(datos: TareaCompletada): void {
     llamarLaAtencion()
   }
   emitir('tareas:completada', datos)
+}
+
+/**
+ * Sacude la ventana: el zumbido de Messenger, el que movía la ventana del otro para que la mirara.
+ *
+ * Cómo está hecho, y por qué así. No hay ninguna API de «sacudir»: se mueve la ventana a mano unos
+ * píxeles y se la devuelve. La amplitud baja en cada paso, que es lo que hace que se lea como un
+ * sacudón y no como una ventana que se volvió loca, y al terminar vuelve EXACTAMENTE a donde estaba
+ * (la posición se guarda antes de empezar, no se calcula al final).
+ *
+ * Lo que NO sacude, a propósito:
+ *   - una ventana maximizada o en pantalla completa: moverla la saca de ese estado, y quien la dejó
+ *     así no quiere que un mensaje se la desacomode;
+ *   - una minimizada: no se ve, y moverla no la trae al frente (para eso está `llamarLaAtencion`);
+ *   - una que ya se está sacudiendo: dos zumbidos juntos se pisarían y la ventana quedaría corrida.
+ *
+ * Nunca falla hacia afuera: si algo sale mal, el mensaje ya llegó igual y eso es lo que importa.
+ */
+let sacudiendo = false
+
+export function sacudirLaVentana(): void {
+  if (sacudiendo) return
+  try {
+    const elegidas = ventanas().filter(
+      (ventana) =>
+        !ventana.isDestroyed() && !ventana.isMinimized() && !ventana.isMaximized() && !ventana.isFullScreen(),
+    )
+    if (!elegidas.length) return
+
+    const origen = elegidas.map((ventana) => ({ ventana, posicion: ventana.getPosition() }))
+    // Doce pasos de 45 ms: poco más de medio segundo, lo mismo que dura el sonido.
+    const PASOS = 12
+    const MILISEGUNDOS = 45
+    const DESVIO = 14
+    sacudiendo = true
+
+    let paso = 0
+    const mover = () => {
+      // El try va ACÁ ADENTRO y no sólo afuera: el de afuera no cubre lo que pasa dentro de un
+      // `setTimeout`, y si un paso lanzara —la ventana se cerró entre el `isDestroyed()` y el
+      // `setPosition()`, que es la carrera real— el `sacudiendo` quedaría en true para siempre y no
+      // volvería a sacudirse nunca más en toda la sesión.
+      try {
+        paso++
+        const queda = 1 - paso / PASOS
+        for (const { ventana, posicion } of origen) {
+          if (ventana.isDestroyed()) continue
+          if (paso >= PASOS) {
+            // El último paso devuelve la ventana a donde estaba, sin cuentas de por medio.
+            ventana.setPosition(posicion[0], posicion[1])
+            continue
+          }
+          const lado = paso % 2 === 0 ? 1 : -1
+          ventana.setPosition(
+            posicion[0] + Math.round(DESVIO * queda) * lado,
+            posicion[1] + Math.round((DESVIO / 2) * queda) * (paso % 4 < 2 ? 1 : -1),
+          )
+        }
+        if (paso >= PASOS) {
+          sacudiendo = false
+          return
+        }
+        setTimeout(mover, MILISEGUNDOS)
+      } catch (error) {
+        sacudiendo = false
+        console.error('[avisos] Se cortó el sacudón de la ventana:', error)
+      }
+    }
+    setTimeout(mover, MILISEGUNDOS)
+  } catch (error) {
+    sacudiendo = false
+    console.error('[avisos] No se pudo sacudir la ventana:', error)
+  }
 }

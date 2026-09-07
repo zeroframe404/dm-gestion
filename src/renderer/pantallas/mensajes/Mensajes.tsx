@@ -30,6 +30,13 @@ import { usePermisos } from '../../contexto/Permisos'
 import { Burbuja } from './Burbuja'
 import { SelectorDeEmojis } from './SelectorDeEmojis'
 
+/**
+ * Cuánto hay que esperar entre dos zumbidos. Es el mismo número que tienen el proceso principal y el
+ * servidor, escrito acá para que el botón lo pueda mostrar: los tres topes son el mismo tope, y el que
+ * manda es el del servidor —éste sólo evita el error rojo—.
+ */
+const ESPERA_ENTRE_ZUMBIDOS_SEGUNDOS = 10
+
 /** Un archivo elegido y todavía no mandado, con su vista previa si es una foto. */
 interface ArchivoEnEspera {
   archivo: ArchivoParaAdjuntar
@@ -51,6 +58,9 @@ export function Mensajes() {
   const [texto, setTexto] = useState('')
   const [enEspera, setEnEspera] = useState<ArchivoEnEspera[]>([])
   const [mandando, setMandando] = useState(false)
+  const [zumbando, setZumbando] = useState(false)
+  /** Cuántos segundos faltan para poder zumbar de nuevo. 0 = se puede. */
+  const [esperaDelZumbido, setEsperaDelZumbido] = useState(0)
 
   const caja = useRef<HTMLTextAreaElement | null>(null)
   const fondoDelHilo = useRef<HTMLDivElement | null>(null)
@@ -106,6 +116,20 @@ export function Mensajes() {
       soltarCambio()
     }
   }, [cargarConversaciones, cargarEstado, cargarHilo])
+
+  // La cuenta regresiva del zumbido, en la pantalla. El tope de verdad lo ponen el servicio y el
+  // servidor; esto es para que el botón se vea apagado y diga cuánto falta, en vez de dejar que
+  // alguien lo toque cinco veces y reciba cinco errores rojos.
+  useEffect(() => {
+    if (esperaDelZumbido <= 0) return
+    const reloj = setTimeout(() => setEsperaDelZumbido((antes) => Math.max(0, antes - 1)), 1000)
+    return () => clearTimeout(reloj)
+  }, [esperaDelZumbido])
+
+  // Cambiar de conversación limpia la espera: el tope es por conversación, no por persona que escribe.
+  useEffect(() => {
+    setEsperaDelZumbido(0)
+  }, [elegida])
 
   // Bajar del todo cuando cambia el hilo: un chat que abre mostrando lo de hace tres días no sirve.
   useEffect(() => {
@@ -182,6 +206,29 @@ export function Mensajes() {
     setEnEspera([])
     await cargarHilo(elegida)
     await cargarConversaciones()
+  }
+
+  /**
+   * El zumbido: del otro lado suena fuerte y se le mueve la ventana.
+   *
+   * A diferencia de mandar un mensaje, esto SÍ espera al servidor: un zumbido no se encola, porque uno
+   * que sale media hora después no llama la atención sobre nada. Por eso puede fallar por falta de
+   * conexión, y por eso el error se muestra.
+   */
+  const zumbar = async () => {
+    if (elegida === null || zumbando || esperaDelZumbido > 0) return
+    setZumbando(true)
+    setError(null)
+    const respuesta = await window.dm.mensajes.zumbar(elegida)
+    setZumbando(false)
+    if (!respuesta.ok) {
+      setError(respuesta.error)
+      return
+    }
+    setEsperaDelZumbido(ESPERA_ENTRE_ZUMBIDOS_SEGUNDOS)
+    await cargarHilo(elegida)
+    await cargarConversaciones()
+    caja.current?.focus()
   }
 
   const insertarEmoji = (emoji: string) => {
@@ -435,6 +482,32 @@ export function Mensajes() {
                   </button>
 
                   <SelectorDeEmojis alElegir={insertarEmoji} disabled={!puedeEscribir} />
+
+                  <button
+                    type="button"
+                    disabled={!puedeEscribir || zumbando || esperaDelZumbido > 0}
+                    onClick={() => void zumbar()}
+                    aria-label="Mandar un zumbido"
+                    title={
+                      !puedeEscribir
+                        ? 'No tenés permiso para escribir mensajes'
+                        : esperaDelZumbido > 0
+                          ? `Esperá ${esperaDelZumbido} segundos para mandar otro zumbido`
+                          : 'Zumbido: del otro lado suena fuerte y se le mueve la ventana'
+                    }
+                    className={cx(
+                      'inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors',
+                      'hover:bg-amber-50 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40',
+                      'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent',
+                      zumbando ? 'text-amber-700' : 'text-slate-600',
+                    )}
+                  >
+                    {esperaDelZumbido > 0 ? (
+                      <span className="text-xs font-bold tabular-nums">{esperaDelZumbido}</span>
+                    ) : (
+                      <Icono nombre="altavoz" tamano={18} />
+                    )}
+                  </button>
 
                   <textarea
                     ref={caja}

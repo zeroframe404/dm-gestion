@@ -554,6 +554,12 @@ export interface Canales {
     rutas: string[] | null,
     archivos: ArchivoParaAdjuntar[],
   ) => Resultado<MensajeInterno>
+  /**
+   * El zumbido: suena fuerte del otro lado y le sacude la ventana. NO pasa por la cola —sin conexión
+   * devuelve error en vez de esperar—, porque un zumbido que llega media hora tarde no llama la
+   * atención sobre nada. Devuelve el mensaje para que la pantalla lo dibuje en el hilo.
+   */
+  'mensajes:zumbar': (conversacionId: number) => Resultado<MensajeInterno>
   /** Volver a intentar uno que el servidor rechazó. */
   'mensajes:reintentar': (mensajeId: number) => Resultado<MensajeInterno>
   /** La confirmación de lectura: apaga el globito y se lo cuenta al servidor. */
@@ -754,6 +760,12 @@ export interface Eventos {
    * vez que el otro lee algo es un chat que se termina silenciando.
    */
   'mensajes:cambiaron': null
+  /**
+   * Alguien mandó un zumbido. La ventana ya se está sacudiendo (eso lo hace el proceso principal, que
+   * es el único que la puede mover); esto es para que el renderer haga sonar el zumbido y muestre de
+   * quién fue. Va aparte de `mensajes:llegaron` porque suena OTRO sonido: el zumbido no es la campana.
+   */
+  'mensajes:zumbido': { autor: string }
   /**
    * El carril rápido de la sincronización bajó tareas nuevas o cambiadas de otra computadora. No lleva
    * datos: es un «volvé a preguntar» para la campana, el contador de la barra lateral y el listado, que
