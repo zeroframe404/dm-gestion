@@ -93,6 +93,7 @@ import type {
   ConfigImpresora,
   DatosDeCompania,
   DatosDeImpresora,
+  DatosDeMovimientoDeCaja,
   DatosDePagoManual,
   DireccionDeSucursal,
   FiltrosMora,
@@ -308,8 +309,19 @@ export interface Canales {
   'cobranzas:caja': (fecha: string | null, sucursales: string[]) => Resultado<CajaDelDia>
   /** Alta manual de un pago. Con `cuotaFilaId` paga una fila de la planilla del mes. */
   'cobranzas:registrarPagoManual': (datos: DatosDePagoManual) => Resultado<CajaDelDia>
-  /** Abre el diálogo «Guardar como» con el día en CSV. Devuelve la ruta o null si se canceló. */
+  /**
+   * Abre el diálogo «Guardar como» con el día en un .xlsx con la forma de la planilla de caja de la
+   * agencia. Devuelve la ruta o null si se canceló.
+   */
   'cobranzas:exportarCaja': (fecha: string | null, sucursales: string[]) => Resultado<{ ruta: string | null }>
+  /** Carga (o corrige) un renglón de la caja chica: la apertura, un gasto, una bajada o el cierre. */
+  'cobranzas:guardarMovimientoCaja': (datos: DatosDeMovimientoDeCaja) => Resultado<CajaDelDia>
+  /** Saca un renglón de la caja chica (un gasto mal cargado, una bajada que no fue). */
+  'cobranzas:borrarMovimientoCaja': (movimientoId: number) => Resultado<CajaDelDia>
+  /** El tilde de REVISIÓN DE PAGO de la planilla de caja. Devuelve la caja del día de ese pago. */
+  'cobranzas:revisarPago': (pagoId: number, revisado: boolean) => Resultado<CajaDelDia>
+  /** El número del comprobante (columna NRO TICKET), para cargarlo o corregirlo a mano. */
+  'cobranzas:numeroDeTicket': (pagoId: number, numero: string) => Resultado<CajaDelDia>
   'cobranzas:mora': (filtros: FiltrosMora) => Resultado<ListadoMora>
   /** El mismo WhatsApp de la planilla, también para cuotas de meses ya cerrados. */
   'cobranzas:avisarMora': (filaId: string) => Resultado<AvisoDeMora>

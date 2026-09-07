@@ -27,7 +27,23 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
           '«Registrar pago» carga un cobro nuevo sin tener que ir a buscar la fila en la Cartera: se elige el cliente o la cuota, el importe, el medio de pago y la sucursal. Abajo están las mismas opciones que en la Cartera: el estado del cobro («Pagó» o «Imputado», para cuando se le paga a la compañía y el cliente transfiere después) y, si se eligió una cuota del mes, qué cuota se paga (la de este mes, la del mes que viene por adelantado, o las dos).',
           'Un pago imputado se ve en la lista con la marca «Imputado · falta cobrar» y no suma al total del día: es plata que la agencia adelantó y que todavía tiene que entrar. Cuando el cliente paga, se registra de nuevo como «Pagó» sobre la misma cuota y recién ahí suma. Un pago adelantado se ve con la marca «Adelantado» y el mes que paga: suma hoy en la caja, pero se rinde en el mes que viene.',
           'Si el mostrador tiene la ticketeadora térmica configurada, al guardar el pago aparece un cartel que pregunta si imprimir el comprobante: «Imprimir» saca el ticket y «No imprimir» lo saltea, que es lo que conviene con las compañías que no lo piden. El pago queda registrado igual en los dos casos. Ese cartel se puede apagar (y volver a la impresión automática) en Administración → Impresora.',
-          '«Exportar el día» genera un archivo con todos los pagos del día elegido, para guardar o imprimir. Si hay pagos sin un importe numérico cargado, aparece un aviso: esos pagos no suman al total.',
+          '«Exportar el día» guarda el día en un Excel con la misma forma de la planilla de caja de siempre: una fila por cobro con el número de ticket, la patente, el nombre, el DEBE, el HABER, el posnet, las transferencias, el tilde de revisión, las observaciones, la compañía y la póliza; y abajo el resumen con las cuentas hechas. Si hay pagos sin un importe numérico cargado, aparece un aviso: esos pagos no suman al total.',
+        ],
+      },
+      {
+        titulo: 'La caja chica y el cierre del día',
+        parrafos: [
+          'Debajo de las tarjetas está la caja chica del mostrador: es la mitad de abajo de la planilla de caja, con las cuentas hechas solas. Se ve con cuánto cambio se abrió el día, cuánto entró en efectivo, cuánto se pagó de gastos, cuánta plata se bajó a la caja fuerte y cuánto tendría que quedar en el cajón. Aparece cuando se está mirando una sola sucursal: la caja chica es el cajón de ese mostrador y sumar la de dos no es la caja de ninguno.',
+          'La caja chica de apertura se arrastra sola del cierre del día anterior, así que casi nunca hay que cargarla; si un día hace falta corregirla («Cambiar»), se escribe y listo. «Gasto» anota lo que se pagó del cajón con su concepto (la limpieza, un envío, la nafta) y «A la caja fuerte», la plata en efectivo que se baja y se guarda. Los dos se pueden sacar si se cargaron mal.',
+          '«Cerrar la caja» es el arqueo: se cuenta lo que quedó en el cajón y se escribe. Si no coincide con lo que dice la cuenta, la diferencia queda a la vista en vez de taparse, y lo contado es la caja chica con la que abre el día siguiente. Abajo de todo, el DEBE y el HABER de la planilla tienen que dar lo mismo; cuando no dan, la pantalla avisa por cuánto y casi siempre es un cobro sin importe o una bajada a la caja fuerte sin anotar.',
+          'La caja chica viaja a las otras computadoras como todo lo demás: el gasto que carga una persona lo ve la compañera del mismo mostrador, y el cierre lo puede hacer cualquiera de las dos.',
+        ],
+      },
+      {
+        titulo: 'El número de ticket y el tilde de revisión',
+        parrafos: [
+          'La columna «N° ticket» es la primera de la planilla de caja. Si el mostrador tiene la ticketeadora configurada, el número se guarda solo al imprimir el comprobante; si no, se escribe a mano en la casilla y se guarda al salir de ella.',
+          'La columna «Revisado» es el tilde de la planilla: se toca cuando se miró el cobro y está todo bien. Pasando el mouse por encima se ve quién lo tildó. Es del control del día, distinto del RESULTADO de Imputados, que es lo que la compañía dijo del mes.',
         ],
       },
     ],
@@ -35,6 +51,14 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Sucursal del mostrador',
         explicacion: 'La caja se ordena por dónde se cobró el pago, no por la sucursal habitual del cliente. Alguien que paga en otra sucursal aparece en la caja de esa sucursal.',
+      },
+      {
+        termino: 'Caja chica',
+        explicacion: 'El cambio que queda en el cajón del mostrador. Empieza el día con lo que quedó el día anterior, le entra lo que se cobra en efectivo y le sale lo que se gasta y lo que se baja a la caja fuerte.',
+      },
+      {
+        termino: 'Arqueo',
+        explicacion: 'Contar la plata del cajón al cerrar y compararla con lo que dicen las cuentas. Si sobra o falta, la pantalla lo dice con todas las letras.',
       },
     ],
   },

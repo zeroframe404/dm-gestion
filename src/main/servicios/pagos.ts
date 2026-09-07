@@ -21,6 +21,9 @@ import { ahoraIso, limpiar, interpretarNumero, normalizarTexto } from '../import
 import { encolar } from '../sincronizacion/cola'
 import { PESTANA_PAGOS_APP } from '../sincronizacion/pestanasApp'
 import { registrarFilaDeLaApp } from './filas'
+import { ErrorDeNegocio } from './errores'
+import { registrarCambio } from './historial'
+import { enteroPositivo } from './validacion'
 
 // ---------------------------------------------------------------------------
 // El RESULTADO de la rendición
@@ -368,6 +371,8 @@ interface PagoParaLaHoja {
   sucursal: string | null
   estado_cobro: string | null
   adelanto_modo: string | null
+  numero_ticket: string | null
+  revisado_en: string | null
 }
 
 /** Dónde quedó encolado un pago: en qué pestaña y si se agrega entero o se actualiza. */
@@ -390,7 +395,7 @@ export function asegurarPagoEnLaHoja(pagoId: number, actor: SesionUsuario | null
     .prepare(
       `SELECT fila_id, pestana, fecha, cliente_nombre, documento, compania, numero_poliza, patente, importe, medio,
               periodo, observaciones, resultado, COALESCE(sucursal_cobro, sucursal_texto) AS sucursal, usuario_nombre,
-              estado_cobro, adelanto_modo
+              estado_cobro, adelanto_modo, numero_ticket, revisado_en
        FROM pagos WHERE id = ?`,
     )
     .get(pagoId) as (PagoParaLaHoja & { usuario_nombre: string | null }) | undefined
@@ -421,6 +426,10 @@ export function asegurarPagoEnLaHoja(pagoId: number, actor: SesionUsuario | null
   }
   if (hoja.esDeLaApp && pago.usuario_nombre) campos.usuario = pago.usuario_nombre
   if (normalizarEstadoDeCobro(pago.estado_cobro) === 'IMPUTADO') campos.cobro = 'IMPUTADO'
+  // Las dos de la planilla de caja viajan sólo cuando tienen algo adentro, igual que COBRO: un pago
+  // sin ticket ni revisar no manda columnas que una APP PAGOS vieja no tiene.
+  if (limpiar(pago.numero_ticket)) campos.ticket = limpiar(pago.numero_ticket)
+  if (limpiar(pago.revisado_en)) campos.revisado = REVISADO_EN_LA_HOJA
   encolar({ operacion: 'crear', pestana: hoja.pestana, filaId: pago.fila_id, campos }, actor)
   return { operacion: 'crear', pestana: hoja.pestana }
 }
@@ -479,6 +488,91 @@ export interface PagoCrudo {
   estado_cobro: string | null
   adelanto_modo: string | null
   cuota_fila_id: string | null
+  numero_ticket: string | null
+  revisado_en: string | null
+  revisado_por: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Las dos columnas de la planilla de caja: el número del ticket y el tilde de revisión
+// ---------------------------------------------------------------------------
+
+/** Cómo se escribe el tilde de REVISIÓN DE PAGO en la hoja, para que se lea desde Google. */
+const REVISADO_EN_LA_HOJA = 'SI'
+
+/** Lo que puede haber escrito en esa columna —el tilde de la planilla incluido— y qué quiere decir. */
+export function estaRevisado(valor: unknown): boolean {
+  const texto = limpiar(valor)
+  if (!texto) return false
+  if (/^[✓✔√x×]+$/i.test(texto)) return true
+  return ['SI', 'SÍ', 'OK', 'LISTO', 'REVISADO', 'REVISADA', 'CONTROLADO', 'TRUE', '1'].includes(normalizarTexto(texto))
+}
+
+/**
+ * El tilde de REVISIÓN DE PAGO: alguien miró el cobro contra el ticket y está todo bien. Es de la
+ * planilla de caja del mostrador, no de la rendición mensual (eso es el RESULTADO, más arriba): acá se
+ * controla el cobro del día antes de cerrar la caja; allá, lo que la compañía dijo del mes.
+ *
+ * Viaja por la columna REVISIÓN DE PAGO de APP PAGOS, y sólo cuando hay algo que decir: un pago que
+ * nadie revisó no manda la columna, así una APP PAGOS armada antes de la 12.10 no anota «columna
+ * faltante» por cada cobro (mismo criterio que COBRO).
+ */
+export function marcarPagoRevisado(pagoId: number, revisado: boolean, actor: SesionUsuario): boolean {
+  const id = enteroPositivo(pagoId, 'El pago')
+  const pago = db().prepare('SELECT fila_id, revisado_en FROM pagos WHERE id = ?').get(id) as
+    | { fila_id: string; revisado_en: string | null }
+    | undefined
+  if (!pago) throw new ErrorDeNegocio('No se encontró ese pago.')
+  const estaba = limpiar(pago.revisado_en) !== ''
+  if (estaba === revisado) return revisado
+
+  const ahora = ahoraIso()
+  db()
+    .prepare('UPDATE pagos SET revisado_en = ?, revisado_por = ?, actualizado_en = ? WHERE id = ?')
+    .run(revisado ? ahora : null, revisado ? actor.nombre : null, ahora, id)
+
+  // Al destildar hay que mandar la celda vacía igual: si no, la otra computadora seguiría viendo el
+  // tilde que se acaba de sacar. La columna ya existe, porque para destildar alguien tildó antes.
+  const lugar = asegurarPagoEnLaHoja(id, actor)
+  if (lugar?.operacion === 'actualizar') {
+    encolar({ operacion: 'actualizar', pestana: lugar.pestana, filaId: pago.fila_id, campos: { revisado: revisado ? REVISADO_EN_LA_HOJA : '' } }, actor)
+  }
+  registrarCambio(actor, {
+    accion: 'caja',
+    tabla: 'pagos',
+    registroId: id,
+    filaId: pago.fila_id,
+    campo: 'REVISIÓN DE PAGO',
+    valorAnterior: estaba ? REVISADO_EN_LA_HOJA : null,
+    valorNuevo: revisado ? REVISADO_EN_LA_HOJA : null,
+  })
+  return revisado
+}
+
+/**
+ * Guarda en el pago el número del comprobante (la columna NRO TICKET de la planilla de caja). Lo llama
+ * la ticketeadora cuando toma el correlativo, así el número que salió en el papel queda pegado al
+ * cobro y nadie lo copia a mano; también se puede escribir desde la caja para un ticket viejo o para
+ * un comprobante que se hizo a mano.
+ *
+ * `actor` es null cuando lo llama la impresión: el ticket sale en segundo plano y no puede depender de
+ * quién tenga la sesión abierta en ese instante.
+ */
+export function guardarNumeroDeTicket(pagoId: number, numero: string | null, actor: SesionUsuario | null): string | null {
+  const id = enteroPositivo(pagoId, 'El pago')
+  const pago = db().prepare('SELECT fila_id, numero_ticket FROM pagos WHERE id = ?').get(id) as
+    | { fila_id: string; numero_ticket: string | null }
+    | undefined
+  if (!pago) throw new ErrorDeNegocio('No se encontró ese pago.')
+  const limpio = limpiar(numero).slice(0, 40)
+  if ((pago.numero_ticket ?? '') === limpio) return pago.numero_ticket
+
+  db().prepare('UPDATE pagos SET numero_ticket = ?, actualizado_en = ? WHERE id = ?').run(limpio || null, ahoraIso(), id)
+  const lugar = asegurarPagoEnLaHoja(id, actor)
+  if (lugar?.operacion === 'actualizar') {
+    encolar({ operacion: 'actualizar', pestana: lugar.pestana, filaId: pago.fila_id, campos: { ticket: limpio } }, actor)
+  }
+  return limpio || null
 }
 
 /**
@@ -504,7 +598,7 @@ export const SELECT_PAGOS = `
          ${SUCURSAL_DEL_PAGO} AS sucursal,
          p.importe, p.importe_monto, p.medio, COALESCE(p.periodo, substr(p.fecha_iso, 1, 7)) AS periodo,
          p.resultado, p.observaciones, p.usuario_nombre, p.hecho_en_la_app, p.creado_en,
-         p.estado_cobro, p.adelanto_modo, p.cuota_fila_id
+         p.estado_cobro, p.adelanto_modo, p.cuota_fila_id, p.numero_ticket, p.revisado_en, p.revisado_por
   FROM pagos p
   LEFT JOIN clientes cl ON cl.id = p.cliente_id
 `
@@ -575,5 +669,10 @@ export function aPagoRegistrado(cruda: PagoCrudo): PagoRegistrado {
     estadoCobro: normalizarEstadoDeCobro(cruda.estado_cobro),
     adelantoModo: normalizarModoDeAdelanto(cruda.adelanto_modo),
     adelantoImputado: cruda.adelanto_modo !== null && cruda.cuota_fila_id !== null,
+    numeroTicket: cruda.numero_ticket,
+    // Vacío y NULL son lo mismo: la bajada escribe '' cuando en la hoja se sacó el tilde.
+    revisado: limpiar(cruda.revisado_en) !== '',
+    revisadoPor: cruda.revisado_por,
+    revisadoEn: cruda.revisado_en,
   }
 }

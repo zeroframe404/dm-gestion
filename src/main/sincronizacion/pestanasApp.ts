@@ -1,5 +1,5 @@
 // Las pestañas que DM Gestión agrega a la hoja: APP LEADS, APP PRESUPUESTOS, APP TAREAS, APP RECHAZOS,
-// APP PAGOS y, desde la 12.6, APP ADJUNTOS y APP COMENTARIOS.
+// APP PAGOS, desde la 12.6 APP ADJUNTOS y APP COMENTARIOS, y desde la 12.10 APP CAJA.
 //
 // Leads, presupuestos, tareas y los avisos de rechazo del débito no existen en el Excel de la agencia.
 // Para que igual se puedan mirar desde Google —que es donde la agencia mira todo— la aplicación crea las
@@ -145,8 +145,22 @@ export const PESTANAS_DE_LA_APP: PestanaDeLaApp[] = [
       // cuando hay algo que decir, así una APP PAGOS armada antes de esta columna no avisa «columna
       // faltante» por cada pago común.
       'COBRO',
+      // 12.10: las dos columnas de la planilla de caja que faltaban acá. El número del comprobante lo
+      // pone la ticketeadora al imprimir; el tilde, quien revisa la caja. Como COBRO, se escriben sólo
+      // cuando tienen algo adentro: un pago sin ticket ni revisar no las manda.
+      'NRO TICKET',
+      'REVISIÓN DE PAGO',
       ENCABEZADO_ID,
     ],
+  },
+  // La caja chica de cada mostrador (12.10): con cuánto cambio se abre el día, los gastos que se pagan
+  // del cajón, la plata que baja a la caja fuerte y lo que se cuenta al cerrar. Lo COBRADO no está acá
+  // —viaja por APP PAGOS, que es donde vive cada pago—: junto con esto, la otra computadora rehace el
+  // mismo arqueo. Va en los dos sentidos, como APP RECHAZOS.
+  {
+    titulo: 'APP CAJA',
+    tipo: 'APP_CAJA',
+    encabezados: ['FECHA', 'LOCAL', 'TIPO', 'DETALLE', 'IMPORTE', 'CARGADO POR', ENCABEZADO_ID],
   },
   // 12.6: la ficha de cada foto o documento adjunto a una póliza, un siniestro o una tarea. El archivo
   // en sí va al disco del VPS (`PUT /api/dmg/adjuntos/:id`); acá viaja lo que hace falta para que
@@ -175,6 +189,9 @@ export const PESTANA_COMENTARIOS_APP = 'APP COMENTARIOS'
 
 /** La pestaña donde viajan los pagos de la aplicación cuando la base no tiene una IMPUTADOS usable. */
 export const PESTANA_PAGOS_APP = 'APP PAGOS'
+
+/** La pestaña de la caja chica: la apertura, los gastos, lo que baja a la caja fuerte y el cierre. */
+export const PESTANA_CAJA_APP = 'APP CAJA'
 
 const TITULOS = new Set(PESTANAS_DE_LA_APP.map((p) => p.titulo))
 

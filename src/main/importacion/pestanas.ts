@@ -82,6 +82,7 @@ export function clasificarPestana(titulo: string): ClasificacionPestana {
   if (t === 'APP RECHAZOS') return { tipo: 'APP_RECHAZOS', mes: null, anio: null }
   if (t === 'APP ADJUNTOS') return { tipo: 'APP_ADJUNTOS', mes: null, anio: null }
   if (t === 'APP COMENTARIOS') return { tipo: 'APP_COMENTARIOS', mes: null, anio: null }
+  if (t === 'APP CAJA') return { tipo: 'APP_CAJA', mes: null, anio: null }
   // APP PAGOS es una pestaña de pagos como IMPUTADOS, sólo que la escribe la aplicación (ver
   // sincronizacion/pestanasApp.ts): se importa y se sincroniza con las mismas reglas que aquélla.
   if (t === 'APP PAGOS') return { tipo: 'PAGOS', mes: null, anio: null }

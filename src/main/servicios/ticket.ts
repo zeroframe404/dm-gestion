@@ -35,6 +35,7 @@ import {
   tomarNumeroDeTicket,
   ultimoErrorDeImpresion,
 } from './preferencias'
+import { guardarNumeroDeTicket } from './pagos'
 import { listarSucursales } from './sucursales'
 import { ErrorDeNegocio } from './errores'
 import { enteroPositivo } from './validacion'
@@ -611,9 +612,14 @@ export function pedidoDeTicket(pagoId: number): PedidoDeTicket | null {
   }
 }
 
+/** '000123': el correlativo solo, que es lo que se anota en la columna NRO TICKET de la caja. */
+function numeroDeTicketPelado(numero: number): string {
+  return String(numero).padStart(6, '0')
+}
+
 /** 'N° 000123', como venía saliendo en el papel de la agencia. */
 function formatearNumeroDeTicket(numero: number): string {
-  return `N° ${String(numero).padStart(6, '0')}`
+  return `N° ${numeroDeTicketPelado(numero)}`
 }
 
 /**
@@ -627,9 +633,15 @@ export async function imprimirTicketDePago(pagoId: number, copias?: number): Pro
   const config = impresoraGuardada()
   if (!config.habilitada || !config.impresora) return false
 
+  // El correlativo se toma acá y se guarda en el pago en el mismo movimiento: el número que salió en
+  // el papel es el que va en la columna NRO TICKET de la planilla de caja, y así nadie lo copia a mano.
+  // Se guarda aunque después la impresión falle: el número ya se gastó y ese ticket es de este cobro.
+  const numero = tomarNumeroDeTicket()
+  guardarNumeroDeTicket(pagoId, numeroDeTicketPelado(numero), null)
+
   return imprimirTicketSiCorresponde(
     {
-      numero: formatearNumeroDeTicket(tomarNumeroDeTicket()),
+      numero: formatearNumeroDeTicket(numero),
       direccion: direccionDeSucursal(pago.sucursal),
       telefono: telefonoDeSucursal(pago.sucursal),
       fecha: comoFechaCorta(diaDelPago(pago)),

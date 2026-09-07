@@ -8,14 +8,15 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos, usarBaseDeDatos, type BaseDeDatos 
 import { ejecutarImportacion } from '../src/main/importacion/importador'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 import { bajasDelMes, darDeBaja, deshacerBaja, editarCelda, periodosDisponibles, planillaDelMes, registrarPago } from '../src/main/servicios/cartera'
-import { cajaDelDia, cambiarResultado, imputados } from '../src/main/servicios/cobranzas'
+import { cajaDelDia, cambiarResultado, cargarMovimientoDeCaja, imputados } from '../src/main/servicios/cobranzas'
+import { filaIdDelMovimiento } from '../src/main/servicios/caja'
 import { PESTANA_APP } from '../src/main/servicios/filas'
 import { hojaDeImputados, subirPagosRezagados } from '../src/main/servicios/pagos'
 import { repararBajasDuplicadas, repararColaContraPestanaInexistente, repararCuotasDuplicadas } from '../src/main/servicios/reparaciones'
 import { cerrarMesConLaBase } from '../src/main/servicios/sincronizacion'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes } from '../src/main/sincronizacion/cola'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
-import { PESTANA_PAGOS_APP } from '../src/main/sincronizacion/pestanasApp'
+import { PESTANA_CAJA_APP, PESTANA_PAGOS_APP } from '../src/main/sincronizacion/pestanasApp'
 import type { FilaCartera, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
@@ -627,5 +628,48 @@ test('un cobro IMPUTADO viaja por la columna COBRO de APP PAGOS, y en la otra co
   assert.equal(pagada.pagoImputado, false)
   assert.equal(pagada.pagoRegistrado, true)
   assert.equal(cajaDelDia('2026-08-14', ['Lanús']).total, 24420)
+  cerrarTodo()
+})
+
+test('la caja chica que carga un mostrador es la misma en la otra computadora del mostrador', async () => {
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+  en(lanus1)
+  // Milagros abre la caja, cobra en efectivo y anota un gasto del cajón.
+  const gonzalez = exigirFila(CLIENTES.gonzalez.nombre)
+  registrarPago(gonzalez.filaId, { fecha: '2026-08-12', importe: '$ 24.420', medioDePago: 'EFECTIVO' }, MILAGROS)
+  cargarMovimientoDeCaja({ fecha: '2026-08-12', sucursal: 'Lanús', tipo: 'APERTURA', detalle: '', importe: '20000' }, MILAGROS)
+  cargarMovimientoDeCaja({ fecha: '2026-08-12', sucursal: 'Lanús', tipo: 'GASTO', detalle: 'limpieza', importe: '4600' }, MILAGROS)
+  await subirTodo(lanus1)
+
+  assert.ok(hoja.titulos().includes(PESTANA_CAJA_APP), 'la pestaña de la caja se creó sola al final de la base')
+  const idDeLaApertura = filaIdDelMovimiento('2026-08-12', 'Lanús', 'APERTURA')
+  assert.equal(renglonesCon(hoja, PESTANA_CAJA_APP, idDeLaApertura), 1)
+  assert.equal(celda(hoja, PESTANA_CAJA_APP, idDeLaApertura, 'IMPORTE'), '20000')
+  assert.equal(celda(hoja, PESTANA_CAJA_APP, idDeLaApertura, 'TIPO'), 'APERTURA')
+  assert.equal(celda(hoja, PESTANA_CAJA_APP, idDeLaApertura, 'LOCAL'), 'Lanús')
+
+  // Daiana, en la otra computadora del mismo mostrador, ve el mismo arqueo y lo cierra.
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  const arqueo = cajaDelDia('2026-08-12', ['Lanús'], DAIANA).arqueo
+  assert.ok(arqueo, 'la caja chica llegó a la otra computadora')
+  assert.equal(arqueo.apertura, 20000)
+  assert.equal(arqueo.gastos, 4600)
+  assert.equal(arqueo.efectivo, 24420, 'lo cobrado sigue viajando por APP PAGOS')
+  assert.equal(arqueo.esperado, 39820)
+  assert.equal(arqueo.descuadre, 0)
+  cargarMovimientoDeCaja({ fecha: '2026-08-12', sucursal: 'Lanús', tipo: 'CIERRE', detalle: '', importe: '39820' }, DAIANA)
+  await subirTodo(lanus2)
+
+  // Y el cierre vuelve a la primera, que además lo toma como la caja chica del día siguiente.
+  en(lanus1)
+  await lanus1.motor.ciclarBajada()
+  const cerrada = cajaDelDia('2026-08-12', ['Lanús'], MILAGROS).arqueo
+  assert.equal(cerrada?.contado, 39820)
+  assert.equal(cerrada?.diferencia, 0)
+  assert.equal(cerrada?.cerradoPor, 'Daiana')
+  const siguiente = cajaDelDia('2026-08-13', ['Lanús'], MILAGROS).arqueo
+  assert.equal(siguiente?.apertura, 39820)
+  assert.equal(siguiente?.aperturaHeredadaDe, '2026-08-12')
   cerrarTodo()
 })

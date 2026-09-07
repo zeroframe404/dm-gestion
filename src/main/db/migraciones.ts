@@ -1696,6 +1696,48 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE mensajes ADD COLUMN tipo TEXT NOT NULL DEFAULT 'NORMAL' CHECK (tipo IN ('NORMAL', 'ZUMBIDO'));
     `,
   },
+  {
+    version: 27,
+    descripcion: 'La caja chica del mostrador: apertura, gastos, lo que baja a la caja fuerte y el arqueo del cierre',
+    sql: `
+      -- Lo único de la planilla de caja de la agencia que no estaba en la aplicación. Lo COBRADO ya
+      -- vive en \`pagos\` (importe, medio, cliente, compañía, póliza, patente): acá van los renglones
+      -- que en la planilla se escriben a mano —con cuánto cambio se abre el día, los gastos que se
+      -- pagan del cajón, la plata que baja a la caja fuerte y lo que se cuenta al cerrar—, que es lo
+      -- que faltaba para que las cuentas del pie de la planilla se hagan solas.
+      --
+      -- Una fila por movimiento y no una por día: los gastos y las bajadas a la caja fuerte son varios
+      -- en el mismo día, y así los cuatro renglones tienen la misma forma y viajan por la misma
+      -- pestaña (APP CAJA) sin inventar una tabla por cada uno.
+      CREATE TABLE caja_movimientos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fila_id TEXT NOT NULL UNIQUE,
+        pestana TEXT NOT NULL,
+        fecha_iso TEXT NOT NULL,
+        sucursal TEXT NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('APERTURA', 'GASTO', 'CAJA_FUERTE', 'CIERRE')),
+        detalle TEXT,
+        importe REAL NOT NULL DEFAULT 0,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        usuario_nombre TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE INDEX idx_caja_movimientos_dia ON caja_movimientos (fecha_iso, sucursal);
+      -- La apertura y el cierre son UNO por día y por mostrador: volver a cargarlos corrige el que ya
+      -- estaba en vez de sumar otro. El _ID de esos dos se arma con la fecha y la sucursal, así que
+      -- dos computadoras que cierren la misma caja escriben la misma fila y no dos.
+      CREATE UNIQUE INDEX idx_caja_unicos ON caja_movimientos (fecha_iso, sucursal, tipo)
+        WHERE tipo IN ('APERTURA', 'CIERRE');
+
+      -- El número del comprobante que salió por la ticketeadora, guardado en el pago: es la columna
+      -- NRO TICKET de la planilla de caja, que hasta ahora se copiaba a mano del papel.
+      ALTER TABLE pagos ADD COLUMN numero_ticket TEXT;
+      -- El tilde de REVISIÓN DE PAGO de la planilla: quién miró el cobro y cuándo.
+      ALTER TABLE pagos ADD COLUMN revisado_en TEXT;
+      ALTER TABLE pagos ADD COLUMN revisado_por TEXT;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

@@ -157,6 +157,9 @@ function borrarRegistroQueYaNoEsta(base: BaseDeDatos, filaId: string, tipo: Tipo
     case 'APP_RECHAZOS':
       base.prepare('DELETE FROM rechazos_debito WHERE fila_id = ?').run(filaId)
       return
+    case 'APP_CAJA':
+      base.prepare('DELETE FROM caja_movimientos WHERE fila_id = ?').run(filaId)
+      return
     case 'AMP':
       base.prepare('DELETE FROM amp WHERE fila_id = ?').run(filaId)
       return
