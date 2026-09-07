@@ -44,7 +44,7 @@ import {
 } from './servicios/cobranzas'
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
-import { estadisticasDeCartera, tableroDeMetricas } from './servicios/metricas'
+import { estadisticasDeCartera, podioDelMes, tableroDeMetricas } from './servicios/metricas'
 import {
   areasDelReporte,
   catalogoDeExcel,
@@ -1290,6 +1290,13 @@ export function registrarIpc(): void {
   manejar('metricas:estadisticas', (periodo, sucursales) => {
     const actor = exigirVista('metricas', 'cartera')
     return exito(estadisticasDeCartera(periodo, sucursales, veLosNumerosDeLaAgencia(actor.rol)))
+  })
+  // El podio: sólo pide que haya alguien loggeado, sin permiso de área. Es la competencia entre
+  // sucursales por altas, no un número de la agencia, y el pedido del cliente fue justamente que la
+  // vea cualquiera —lo tenga habilitado en Métricas o no—, para que el primero quiera seguir primero.
+  manejar('metricas:podio', () => {
+    exigirSesion()
+    return exito(podioDelMes())
   })
 
   // Reportes: exportar lo que ya se ve en pantalla. Un reporte junta datos de varios módulos, así que

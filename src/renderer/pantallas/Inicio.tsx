@@ -4,7 +4,7 @@
 // cada usuario vea sus pendientes al entrar, y eso es lo que hace que alguien abra la aplicación a la
 // mañana en vez de mirar un papelito.
 import { useEffect, useState } from 'react'
-import { NOMBRE_ROL, type FilaTarea } from '../../shared/tipos'
+import { NOMBRE_ROL, type FilaTarea, type PodioMensual } from '../../shared/tipos'
 import { AvisoConexionGoogle } from '../componentes/AvisoConexionGoogle'
 import { DialogoReportarError } from '../componentes/DialogoReportarError'
 import { Icono } from '../componentes/Icono'
@@ -15,6 +15,7 @@ import { useNavegacion } from '../contexto/Navegacion'
 import { usePermisos } from '../contexto/Permisos'
 import { useUsuarioActual } from '../contexto/Sesion'
 import { esAreaDePermisos, MODULOS, type IdModulo } from '../modulos'
+import { mesCorto, numero } from './metricas/graficos'
 
 export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
   const usuario = useUsuarioActual()
@@ -64,6 +65,8 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
       <AvisoConexionGoogle />
 
       <MisTareas />
+
+      <PodioDeSucursales />
 
       <div className="mt-8">
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Módulos</p>
@@ -185,6 +188,75 @@ function MisTareas() {
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+// Las medallas de las primeras tres sucursales del podio. De la cuarta en más van con un número: con
+// cuatro sucursales en total casi siempre entra toda la agencia, y no hay medalla para el último.
+const MEDALLAS = ['🥇', '🥈', '🥉']
+
+/**
+ * El podio del mes: quién metió más altas, sucursal contra sucursal. Es la competencia que pidió el
+ * cliente para que el primero quiera seguir primero, así que no pide permiso de área —la ve
+ * cualquiera que entró, tenga o no el módulo Métricas— y desaparece sola si todavía no hay mes
+ * anterior cargado: sin él las altas no se pueden calcular y no hay carrera que mostrar.
+ */
+function PodioDeSucursales() {
+  const [podio, setPodio] = useState<PodioMensual | null>(null)
+
+  useEffect(() => {
+    let vigente = true
+    const traer = async () => {
+      const resultado = await window.dm.metricas.podio()
+      if (vigente && resultado.ok) setPodio(resultado.datos)
+    }
+    void traer()
+    return () => {
+      vigente = false
+    }
+  }, [])
+
+  if (!podio || !podio.hayMesAnterior || podio.ranking.length === 0) return null
+
+  return (
+    <section className="mt-8">
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Competencia entre sucursales</p>
+          <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-slate-900">
+            Podio de altas · {mesCorto(podio.periodo)}
+          </h3>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
+        {podio.ranking.map((fila, indice) => (
+          <div
+            key={fila.etiqueta}
+            className={cx(
+              'rounded-xl border px-4 py-3 shadow-suave',
+              indice === 0 ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white',
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-lg leading-none" aria-hidden="true">
+                {MEDALLAS[indice] ?? `${indice + 1}°`}
+              </span>
+              <span className="truncate font-semibold text-slate-900" title={fila.etiqueta}>
+                {fila.etiqueta}
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline gap-1.5">
+              <span className="font-display text-2xl font-extrabold tabular-nums text-slate-900">{numero(fila.altas ?? 0)}</span>
+              <span className="text-xs text-slate-500">alta{fila.altas === 1 ? '' : 's'}</span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              {numero(fila.bajas)} baja{fila.bajas === 1 ? '' : 's'} · {numero(fila.activos)} activa{fila.activos === 1 ? '' : 's'}
+            </p>
+          </div>
+        ))}
+      </div>
     </section>
   )
 }

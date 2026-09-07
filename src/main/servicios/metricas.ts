@@ -30,6 +30,7 @@ import type {
   FilaEstadistica,
   FiltrosMetricas,
   MesDeEvolucion,
+  PodioMensual,
   PorcionMetrica,
   TableroMetricas,
   TotalPorMedio,
@@ -469,5 +470,31 @@ export function estadisticasDeCartera(
     },
     hayMesAnterior,
     hoy: hoyLocal(),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// El podio del mes: la competencia entre sucursales por altas
+// ---------------------------------------------------------------------------
+
+/**
+ * El ranking de sucursales por altas del mes en curso. Se apoya en `estadisticasDeCartera` en vez de
+ * volver a recorrer cuotas y bajas: son la misma cuenta y así los números del podio nunca se
+ * despegan de los de Cartera → Estadísticas. Siempre `conNumeros = false`: la competencia es por
+ * altas y bajas, no por plata, y así la ve cualquiera, tenga o no el módulo Métricas habilitado.
+ */
+export function podioDelMes(): PodioMensual {
+  const estadisticas = estadisticasDeCartera(null, [], false)
+  const ranking = estadisticas.porSucursal
+    .filter((fila) => fila.etiqueta !== '(sin sucursal)')
+    .sort((a, b) => {
+      if (a.altas === null || b.altas === null) return b.activos - a.activos || a.etiqueta.localeCompare(b.etiqueta, 'es')
+      return b.altas - a.altas || b.activos - a.activos || a.etiqueta.localeCompare(b.etiqueta, 'es')
+    })
+  return {
+    periodo: estadisticas.periodo,
+    hayMesAnterior: estadisticas.hayMesAnterior,
+    ranking,
+    hoy: estadisticas.hoy,
   }
 }
