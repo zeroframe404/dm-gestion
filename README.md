@@ -1798,7 +1798,7 @@ deja la agencia se lleva la conversación con ella. Ahora los mensajes son de la
 (`/api/dmg/mensajes`), NO en la grilla del GENERAL DE CLIENTES. La grilla es una planilla y sirve muy
 bien para lo que es una planilla; un chat necesita tres cosas que una planilla no da: orden estable,
 acuse **por destinatario** y una consulta barata de «qué me falta recibir». Cada computadora guarda
-además un espejo local en SQLite (migración 25), para poder leer sin internet y para que un mensaje
+además un espejo local en SQLite (migraciones 25 y 26), para poder leer sin internet y para que un mensaje
 escrito con la conexión caída tenga dónde esperar.
 
 **Cómo llega en el momento, sin websockets.** El «cartero» (`src/main/mensajeria/cartero.ts`) le
@@ -1865,6 +1865,38 @@ que no leíste y no la cantidad, y la primera consulta del día no suena nunca (
 mensajes sin leer y ninguno es una novedad). Que se mueva un tilde no hace sonar nada: un chat que
 suena cada vez que el otro lee algo es un chat que se termina silenciando.
 
+**El zumbido.** El de Messenger: el botón del altavoz, al lado del cajón de emojis, hace que del otro
+lado **suene fuerte y se mueva la ventana**. Es para lo que siempre fue: «mirá esto ahora», cuando el
+mensaje ya está escrito y hace veinte minutos que nadie contesta.
+
+Cinco decisiones que lo hacen usable y no una broma pesada:
+
+- **No pasa por la cola.** Es lo único de la mensajería que habla con el servidor en el momento
+  (`zumbar()` en `servicios/mensajeria.ts`). Sin conexión no se manda y lo dice; un mensaje escrito, en
+  cambio, sigue esperando en la cola como siempre. Un zumbido que sale media hora después sacude una
+  ventana por algo que ya pasó.
+- **Uno cada diez segundos**, por conversación y por persona. El tope está en los tres lados —el botón
+  se apaga y hace la cuenta regresiva, el servicio lo verifica y el servidor lo vuelve a verificar—, y
+  el que manda es el del servidor: un botón deshabilitado no frena a nadie que insista.
+- **Sacude, pero no rompe nada.** No hay ninguna API de «sacudir»: `sacudirLaVentana()`
+  (`servicios/avisos.ts`) mueve la ventana a mano doce pasos de 45 ms con la amplitud bajando, y la
+  devuelve EXACTAMENTE a donde estaba (la posición se guarda antes de empezar, no se calcula al final).
+  No toca una ventana maximizada ni en pantalla completa —moverla la sacaría de ese estado—, ni una
+  minimizada —no se ve; para eso está el parpadeo del ícono—, ni una que ya se está sacudiendo.
+- **Suena distinto que la campana** (`sonidos/zumbido.wav`: un zumbido descendente de 0,6 s), un
+  escalón más fuerte que el resto de los avisos, porque es lo único que interrumpe a propósito. Sigue
+  respetando el volumen y el interruptor de silencio de esa computadora: el botón sirve para llamar la
+  atención de alguien, no para saltearle las preferencias.
+- **Queda escrito.** Es una fila más en `dmg_mensajes` con `tipo = 'ZUMBIDO'`, con sus dos acuses, en
+  el hilo de los dos (un renglón centrado, no una burbuja) y en el registro del superadministrador, que
+  lo muestra como «Zumbido» y no como una fila en blanco. En un mes, «me zumbaste tres veces» se puede
+  mirar en vez de discutir.
+
+El reparto de tareas entre los procesos es el de siempre: **mover la ventana** lo hace el proceso
+principal, que es el único que puede, y **el sonido** lo hace el renderer
+(`componentes/AvisoDeZumbido.tsx`), que es donde viven el volumen y el silencio. Los dos arrancan con
+el mismo evento (`mensajes:zumbido`).
+
 **El registro del superadministrador.** **Administración → Registro de mensajes**: todos los mensajes
 de todas las conversaciones, incluidas aquellas en las que el superadministrador no está, con buscador
 por persona, por texto y por fechas. Los mensajes borrados aparecen con su **texto original** y la
@@ -1895,7 +1927,8 @@ a escribir pedidos a mano con el token en la mano.
 
 Código: `src/main/servicios/mensajeria.ts` (el servicio), `src/main/mensajeria/puente.ts` (el cliente),
 `src/main/mensajeria/cartero.ts` (el long-poll), `src/renderer/pantallas/mensajes/` (la pantalla),
-`src/renderer/componentes/CampanaDeMensajes.tsx` (la campana y el sonido) y
+`src/renderer/componentes/CampanaDeMensajes.tsx` (la campana y el sonido),
+`src/renderer/componentes/AvisoDeZumbido.tsx` con `src/main/servicios/avisos.ts` (el zumbido) y
 `server/src/modules/dmg/mensajes.service.ts` del repositorio web. Pruebas:
 `pruebas/mensajeria.prueba.ts` (dos computadoras contra el servidor simulado) y
 `server/src/modules/dmg/mensajes.service.test.ts`.

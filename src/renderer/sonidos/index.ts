@@ -1,13 +1,14 @@
-// Los tres sonidos de aviso del programa.
+// Los cuatro sonidos de aviso del programa.
 //
 // La agencia trabaja con la aplicación de fondo y la vista puesta en otra cosa —el teléfono, un
 // papel, la persona del mostrador—, así que un punto rojo en una campana que nadie está mirando no
-// avisa nada. Estos tres sonidos son para eso, y por eso son tres distintos: se tiene que poder
+// avisa nada. Estos sonidos son para eso, y por eso son distintos entre sí: se tiene que poder
 // saber QUÉ pasó sin dar vuelta la cabeza.
 //
-//   campana        una tarea nueva o algo que vence hoy
+//   campana        una tarea nueva, algo que vence hoy, o un mensaje que llegó
 //   rechazo        un débito que rebotó y hay que salir a cobrarlo a mano
 //   tareaHecha     alguien terminó una tarea (es el único que además es una buena noticia)
+//   zumbido        alguien tocó el botón de zumbar: es el único que interrumpe a propósito
 //
 // Los archivos se importan con `?url`: Vite los copia al empaquetado y devuelve la ruta relativa, que
 // es lo que la CSP de producción permite cargar (`media-src 'self'`).
@@ -22,13 +23,15 @@
 import campanaUrl from './campana.m4a?url'
 import rechazoUrl from './debito-rechazado.mp3?url'
 import tareaHechaUrl from './tarea-completa.mp3?url'
+import zumbidoUrl from './zumbido.wav?url'
 
-export type NombreDeSonido = 'campana' | 'rechazo' | 'tareaHecha'
+export type NombreDeSonido = 'campana' | 'rechazo' | 'tareaHecha' | 'zumbido'
 
 const ARCHIVOS: Record<NombreDeSonido, string> = {
   campana: campanaUrl,
   rechazo: rechazoUrl,
   tareaHecha: tareaHechaUrl,
+  zumbido: zumbidoUrl,
 }
 
 const CLAVE_SILENCIO = 'dm.sonidos.silenciados'
@@ -88,7 +91,20 @@ export function guardarVolumen(volumen: number): void {
 }
 
 /**
- * Deja los tres archivos cargados antes de que haga falta. Sin esto, el primer aviso del día suena
+ * El volumen con el que sale cada aviso.
+ *
+ * El zumbido va un escalón más arriba que el resto (sin pasarse del tope) porque es lo único que
+ * interrumpe a propósito: si suena igual que la campana no se distingue de un mensaje cualquiera y el
+ * botón no sirve para nada. Sigue respetando el volumen de esta computadora y el interruptor de
+ * silencio: nadie puede hacer sonar algo en una oficina que eligió no escuchar nada.
+ */
+function volumenDeSonido(nombre: NombreDeSonido): number {
+  const base = volumenDeLosSonidos()
+  return nombre === 'zumbido' ? Math.min(1, base * 1.25) : base
+}
+
+/**
+ * Deja los archivos cargados antes de que haga falta. Sin esto, el primer aviso del día suena
  * medio segundo tarde —lo que tarda en bajar el archivo del disco— y llega después del cartel.
  */
 export function precargarSonidos(): void {
@@ -122,7 +138,7 @@ export function reproducir(nombre: NombreDeSonido): void {
     // Se clona para que dos avisos seguidos no se corten entre ellos: un mismo Audio reiniciado
     // silencia el que estaba sonando.
     const audio = base ? (base.cloneNode(true) as HTMLAudioElement) : new Audio(ARCHIVOS[nombre])
-    audio.volume = volumenDeLosSonidos()
+    audio.volume = volumenDeSonido(nombre)
     const promesa = audio.play()
     if (promesa && typeof promesa.catch === 'function') promesa.catch(() => undefined)
   } catch {
@@ -134,7 +150,7 @@ export function reproducir(nombre: NombreDeSonido): void {
 export function probarSonido(nombre: NombreDeSonido): void {
   try {
     const audio = new Audio(ARCHIVOS[nombre])
-    audio.volume = volumenDeLosSonidos()
+    audio.volume = volumenDeSonido(nombre)
     const promesa = audio.play()
     if (promesa && typeof promesa.catch === 'function') promesa.catch(() => undefined)
   } catch {

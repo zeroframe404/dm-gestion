@@ -1682,6 +1682,20 @@ export const MIGRACIONES: Migracion[] = [
       );
     `,
   },
+  {
+    version: 26,
+    descripcion: 'El zumbido de la mensajería: el mensaje que no lleva texto, suena fuerte y sacude la ventana del otro',
+    sql: `
+      -- El zumbido de Messenger, el que sonaba y movía la ventana del otro. Es un TIPO de mensaje y no
+      -- un texto convenido: un mensaje que dice «zumbido» es un mensaje que dice «zumbido», y esto es
+      -- otra cosa —no se lee, se siente—. Con la columna se distingue de verdad, el registro del
+      -- superadministrador los puede contar aparte y nadie fabrica uno escribiendo la palabra justa.
+      --
+      -- Las filas que ya están quedan en 'NORMAL', que es lo que son. NOT NULL con DEFAULT constante es
+      -- lo único que un ALTER TABLE de SQLite puede agregar sin reescribir la tabla entera.
+      ALTER TABLE mensajes ADD COLUMN tipo TEXT NOT NULL DEFAULT 'NORMAL' CHECK (tipo IN ('NORMAL', 'ZUMBIDO'));
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

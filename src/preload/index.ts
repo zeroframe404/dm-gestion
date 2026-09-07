@@ -257,6 +257,7 @@ const api: ApiDm = {
     enviar: (conversacionId, cuerpo, archivos) => invocar('mensajes:enviar', conversacionId, cuerpo, archivos),
     enviarConArchivos: (conversacionId, cuerpo, rutas, archivos) =>
       invocar('mensajes:enviarConArchivos', conversacionId, cuerpo, rutas, archivos),
+    zumbar: (conversacionId) => invocar('mensajes:zumbar', conversacionId),
     reintentar: (mensajeId) => invocar('mensajes:reintentar', mensajeId),
     marcarLeidos: (conversacionId) => invocar('mensajes:marcarLeidos', conversacionId),
     avisos: () => invocar('mensajes:avisos'),
@@ -268,6 +269,7 @@ const api: ApiDm = {
     registro: (filtros) => invocar('mensajes:registro', filtros),
     alLlegarAlguno: (escuchar) => suscribir('mensajes:llegaron', escuchar),
     alCambiarAlgo: (escuchar) => suscribir('mensajes:cambiaron', escuchar),
+    alZumbar: (escuchar) => suscribir('mensajes:zumbido', escuchar),
   },
   tareas: {
     listar: (filtros) => invocar('tareas:listar', filtros),

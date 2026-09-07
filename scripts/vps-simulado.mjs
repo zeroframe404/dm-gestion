@@ -55,6 +55,11 @@ export class VpsSimulado {
       mensajesConversaciones: 0, mensajesEnviados: 0, mensajesNovedades: 0,
       mensajesEntregados: 0, mensajesLeidos: 0, mensajesRegistro: 0,
     }
+    /**
+     * El freno del zumbido, en milisegundos. El servidor de verdad usa diez segundos; la prueba lo
+     * puede bajar a cero para verificar los dos lados (que frena, y que después deja).
+     */
+    this.esperaEntreZumbidosMs = 10_000
     /** La mensajería interna (12.8): conversaciones, mensajes y acuses, en memoria. */
     this.conversaciones = new Map()
     this.mensajes = []
@@ -379,6 +384,7 @@ export class VpsSimulado {
     return {
       id: mensaje.id,
       conversacionId: mensaje.conversacionId,
+      tipo: mensaje.tipo ?? 'NORMAL',
       orden: mensaje.orden,
       autorClave: mensaje.autorClave,
       autorNombre: mensaje.autorNombre,
@@ -466,13 +472,31 @@ export class VpsSimulado {
       if (!conversacion.participantes.some((p) => p.clave === actor.clave && !p.salioEn)) {
         return responder(403, { error: 'No participás de esa conversación.' })
       }
-      const cuerpo = String(json?.cuerpo ?? '')
-      const adjuntos = Array.isArray(json?.adjuntos) ? json.adjuntos : []
-      if (!cuerpo && adjuntos.length === 0) return responder(400, { error: 'El mensaje está vacío.' })
+      // El zumbido: no lleva texto ni archivos, y tiene su propio freno. Es el mismo trato que le da
+      // el servidor de verdad (`mensajes.service.ts`), porque la prueba tiene que fallar acá si un día
+      // el cliente manda un zumbido con texto o dos seguidos.
+      const tipo = json?.tipo === 'ZUMBIDO' ? 'ZUMBIDO' : 'NORMAL'
+      const cuerpo = tipo === 'ZUMBIDO' ? '' : String(json?.cuerpo ?? '')
+      const adjuntos = tipo === 'ZUMBIDO' ? [] : Array.isArray(json?.adjuntos) ? json.adjuntos : []
+      if (tipo === 'NORMAL' && !cuerpo && adjuntos.length === 0) {
+        return responder(400, { error: 'El mensaje está vacío.' })
+      }
+      if (tipo === 'ZUMBIDO') {
+        const ultimo = [...this.mensajes]
+          .reverse()
+          .find((cada) => cada.conversacionId === conversacion.id && cada.autorClave === actor.clave && cada.tipo === 'ZUMBIDO')
+        if (ultimo) {
+          const faltan = this.esperaEntreZumbidosMs - (Date.now() - new Date(ultimo.creadoEn).getTime())
+          if (faltan > 0) {
+            return responder(429, { error: `Esperá ${Math.ceil(faltan / 1000)} segundos para mandar otro zumbido.` })
+          }
+        }
+      }
 
       const mensaje = {
         id,
         conversacionId: conversacion.id,
+        tipo,
         orden: this.ordenDeMensajes++,
         autorClave: actor.clave,
         autorNombre: actor.nombre,

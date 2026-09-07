@@ -28,6 +28,7 @@ import {
   hiloDe,
   marcarConversacionLeida,
   registroDeMensajes,
+  zumbar,
 } from '../src/main/servicios/mensajeria'
 import { usarFuenteDePrueba } from '../src/main/servicios/sincronizacion'
 import { FuenteVps } from '../src/main/vps/fuenteVps'
@@ -433,4 +434,150 @@ test('una computadora recién instalada ve la conversación entera, no sólo lo 
   )
   assert.equal(hilo.mensajes[0].mio, true)
   assert.equal(hilo.mensajes[2].mio, false)
+})
+
+test('se manda con la MISMA forma con la que llama la pantalla, con la lista de archivos vacía', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  // Esta prueba existe por un error de verdad: la pantalla manda SIEMPRE `archivos`, con la lista
+  // vacía cuando no se arrastró nada, y el envío moría antes de mirar el texto porque el validador de
+  // adjuntos —el de las pantallas donde adjuntar es la acción— trata la lista vacía como un error
+  // («No elegiste ningún archivo»). No salía ni un mensaje de texto. Las pruebas no lo vieron porque
+  // llamaban al servicio sin la clave `archivos`, que no es como llama la aplicación.
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+
+  const soloTexto = encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Sin adjuntos', archivos: [] })
+  assert.equal(soloTexto.adjuntos.length, 0)
+  // Y con las rutas vacías además, que es como llega el otro camino de la pantalla.
+  encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Tampoco acá', archivos: [], rutas: [] })
+
+  // Un mensaje sin texto Y sin archivos sigue siendo un error: lo vacío es vacío.
+  assert.throws(
+    () => encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: '   ', archivos: [] }),
+    /vacío/i,
+  )
+
+  await unaVueltaDelCartero(ANA)
+  en(dockSud)
+  await unaVueltaDelCartero(BETO)
+  const recibidos = (await hiloDe(BETO, conversacionesDe(BETO)[0].id)).mensajes.map((mensaje) => mensaje.cuerpo)
+  assert.deepEqual(recibidos, ['Sin adjuntos', 'Tampoco acá'])
+})
+
+// ---------------------------------------------------------------------------
+// El zumbido
+// ---------------------------------------------------------------------------
+
+test('el zumbido llega del otro lado, queda en el hilo de los dos y no lleva texto', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  const zumbido = await zumbar(ANA, conversacion.id)
+
+  // No pasa por la cola: cuando `zumbar` devuelve, el servidor YA lo tiene. Es toda la diferencia con
+  // un mensaje escrito, y es lo que hace que sirva para llamar la atención.
+  assert.equal(zumbido.tipo, 'ZUMBIDO')
+  assert.equal(zumbido.estado, 'enviado', 'salió en el momento, no quedó esperando al cartero')
+  assert.equal(zumbido.cuerpo, '', 'un zumbido no lleva texto')
+  assert.equal(zumbido.adjuntos.length, 0)
+
+  en(dockSud)
+  await unaVueltaDelCartero(BETO)
+  const suHilo = await hiloDe(BETO, conversacionesDe(BETO)[0].id)
+  assert.equal(suHilo.mensajes.length, 1)
+  assert.equal(suHilo.mensajes[0].tipo, 'ZUMBIDO', 'del otro lado también es un zumbido y no un mensaje vacío')
+  assert.equal(suHilo.mensajes[0].mio, false)
+  assert.equal(suHilo.mensajes[0].autorNombre, 'Ana')
+  // En la lista de conversaciones se lee como lo que es, no como «0 archivos».
+  assert.equal(conversacionesDe(BETO)[0].ultimoTexto, 'Zumbido')
+  // Y NO deja un globito rojo: ya se anunció mucho más fuerte que eso, y si contara, la campana
+  // sonaría encima del zumbido —dos avisos pisados por una sola cosa—.
+  assert.equal(conversacionesDe(BETO)[0].sinLeer, 0)
+  assert.equal(avisosDe(BETO).sinLeer, 0)
+
+  // Y tiene sus acuses como cualquier mensaje: el zumbido también se entrega.
+  en(lanus)
+  await unaVueltaDelCartero(ANA)
+  const desdeAna = (await hiloDe(ANA, conversacion.id)).mensajes[0]
+  assert.equal(desdeAna.estado, 'entregado')
+
+  // Abrir la conversación sí lo marca leído: el que zumbó tiene que ver el tilde cuando el otro miró.
+  en(dockSud)
+  marcarConversacionLeida(BETO, conversacionesDe(BETO)[0].id)
+  await unaVueltaDelCartero(BETO)
+  en(lanus)
+  await unaVueltaDelCartero(ANA)
+  assert.equal((await hiloDe(ANA, conversacion.id)).mensajes[0].estado, 'leido')
+})
+
+test('no se pueden mandar dos zumbidos seguidos, y después de la espera sí', async (t) => {
+  const { servidor, lanus } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  await zumbar(ANA, conversacion.id)
+
+  await assert.rejects(() => zumbar(ANA, conversacion.id), /esperá/i, 'el segundo seguido no sale')
+
+  // Con la espera cumplida sí. Se simula corriendo hacia atrás la hora del que ya está guardado, que
+  // es lo mismo que mirar el reloj diez segundos después sin tener que esperarlos.
+  servidor.esperaEntreZumbidosMs = 0
+  lanus.db
+    .prepare("UPDATE mensajes SET creado_en = ? WHERE tipo = 'ZUMBIDO'")
+    .run(new Date(Date.now() - 60_000).toISOString())
+  const segundo = await zumbar(ANA, conversacion.id)
+  assert.equal(segundo.tipo, 'ZUMBIDO')
+})
+
+test('el zumbido queda en el registro del superadministrador', async (t) => {
+  const { servidor, lanus } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  await zumbar(ANA, conversacion.id)
+
+  const registro = await registroDeMensajes(DANIEL, { usuario: '', desde: null, hasta: null, texto: '', pagina: 1 })
+  assert.equal(registro.renglones.length, 1)
+  // El registro lo dice con todas las letras: sin esto el renglón vendría con el cuerpo vacío y el
+  // superadministrador vería una fila en blanco, que es peor que no verla.
+  assert.equal(registro.renglones[0].claseDeMensaje, 'ZUMBIDO')
+  assert.equal(registro.renglones[0].cuerpo, '')
+  assert.equal(registro.renglones[0].autorClave, 'ana')
+})
+
+test('sin conexión el zumbido no espera en la cola: avisa que no se pudo', async (t) => {
+  const { servidor, lanus } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+
+  // Sin puente configurado —una computadora sin la conexión del servidor cargada— mandar un mensaje
+  // sigue funcionando (espera en la cola) y zumbar no: un zumbido que llega media hora tarde sacude
+  // una ventana por algo que ya pasó.
+  usarPuenteDeMensajesDePrueba(null)
+  const escrito = encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Esto sí espera' })
+  assert.equal(escrito.estado, 'enCola')
+  await assert.rejects(() => zumbar(ANA, conversacion.id), /conexión/i)
 })

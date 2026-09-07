@@ -44,6 +44,7 @@ import type {
   MensajeInterno,
   ParticipanteDeConversacion,
   SesionUsuario,
+  TipoDeMensaje,
 } from '../../shared/tipos'
 import { claveDeUsuario, cuerpoDeMensajeLimpio, largoEnPuntos, resumenDeMensaje, MAXIMO_DE_UN_MENSAJE } from '../../shared/texto'
 import { db } from '../db/base'
@@ -91,6 +92,7 @@ interface FilaMensaje {
   id: number
   remoto_id: string
   conversacion_id: number
+  tipo: TipoDeMensaje
   orden: number | null
   autor_clave: string
   autor_nombre: string
@@ -180,9 +182,9 @@ export function guardarMensaje(remoto: MensajeRemoto, miClave: string): number |
   const mio = remoto.autorClave === miClave
   const fila = base
     .prepare(
-      `INSERT INTO mensajes (remoto_id, conversacion_id, orden, autor_clave, autor_nombre, cuerpo, estado,
+      `INSERT INTO mensajes (remoto_id, conversacion_id, tipo, orden, autor_clave, autor_nombre, cuerpo, estado,
                              eliminado_en, eliminado_por, creado_en, actualizado_en)
-       VALUES (@remoto_id, @conversacion, @orden, @autor_clave, @autor_nombre, @cuerpo, @estado,
+       VALUES (@remoto_id, @conversacion, @tipo, @orden, @autor_clave, @autor_nombre, @cuerpo, @estado,
                @eliminado_en, @eliminado_por, @creado_en, @actualizado_en)
        ON CONFLICT(remoto_id) DO UPDATE SET
          orden = COALESCE(excluded.orden, mensajes.orden),
@@ -200,6 +202,8 @@ export function guardarMensaje(remoto: MensajeRemoto, miClave: string): number |
     .get({
       remoto_id: remoto.id,
       conversacion: conversacion.id,
+      // Un servidor viejo no manda `tipo`: lo que llega sin él es un mensaje común, que es lo que era.
+      tipo: remoto.tipo === 'ZUMBIDO' ? 'ZUMBIDO' : 'NORMAL',
       orden: remoto.orden,
       autor_clave: remoto.autorClave,
       autor_nombre: remoto.autorNombre,
@@ -371,6 +375,7 @@ function aMensaje(fila: FilaMensaje, miClave: string): MensajeInterno {
   const acuses = mio ? acusesDelMensaje(fila.id, fila.conversacion_id) : []
   return {
     id: fila.id,
+    tipo: fila.tipo,
     remotoId: fila.remoto_id,
     conversacionId: fila.conversacion_id,
     autorClave: fila.autor_clave,
@@ -412,13 +417,20 @@ function aConversacion(fila: FilaConversacion, miClave: string): ConversacionInt
   const participantes = participantesDe(fila.id)
   const ultimo = db()
     .prepare(
-      `SELECT cuerpo, autor_clave, creado_en, eliminado_en,
+      `SELECT tipo, cuerpo, autor_clave, creado_en, eliminado_en,
               (SELECT COUNT(*) FROM mensaje_adjuntos WHERE mensaje_id = m.id) AS adjuntos
          FROM mensajes m WHERE conversacion_id = ?
         ORDER BY COALESCE(orden, 9223372036854775807) DESC, id DESC LIMIT 1`,
     )
     .get(fila.id) as
-    | { cuerpo: string; autor_clave: string; creado_en: string; eliminado_en: string | null; adjuntos: number }
+    | {
+        tipo: TipoDeMensaje
+        cuerpo: string
+        autor_clave: string
+        creado_en: string
+        eliminado_en: string | null
+        adjuntos: number
+      }
     | undefined
 
   const sinLeer = (
@@ -426,6 +438,7 @@ function aConversacion(fila: FilaConversacion, miClave: string): ConversacionInt
       .prepare(
         `SELECT COUNT(*) AS cuantos FROM mensajes m
           WHERE m.conversacion_id = ? AND m.autor_clave <> ? AND m.eliminado_en IS NULL
+            AND m.tipo <> 'ZUMBIDO'
             AND NOT EXISTS (SELECT 1 FROM mensaje_acuses a WHERE a.mensaje_id = m.id AND a.usuario_clave = ? AND a.leido_en IS NOT NULL)`,
       )
       .get(fila.id, miClave, miClave) as { cuantos: number }
@@ -435,11 +448,14 @@ function aConversacion(fila: FilaConversacion, miClave: string): ConversacionInt
     ? ''
     : ultimo.eliminado_en
       ? 'Se eliminó este mensaje'
-      : ultimo.cuerpo
-        ? resumenDeMensaje(ultimo.cuerpo)
-        : ultimo.adjuntos === 1
-          ? 'Un archivo'
-          : `${ultimo.adjuntos} archivos`
+      : // Un zumbido no tiene texto: sin este renglón la lista diría «0 archivos», que no dice nada.
+        ultimo.tipo === 'ZUMBIDO'
+        ? 'Zumbido'
+        : ultimo.cuerpo
+          ? resumenDeMensaje(ultimo.cuerpo)
+          : ultimo.adjuntos === 1
+            ? 'Un archivo'
+            : `${ultimo.adjuntos} archivos`
 
   return {
     id: fila.id,
@@ -578,6 +594,18 @@ export async function hiloDe(
   }
 }
 
+/**
+ * Lo que mira la campana de la barra: los mensajes sin leer.
+ *
+ * **El zumbido no cuenta**, por dos motivos. Uno: ya se anunció mucho más fuerte que un globito rojo
+ * —sonó, sacudió la ventana, salió el cartel de Windows y parpadeó el ícono—, y dejar un «1 sin leer»
+ * obliga a abrir la conversación para apagar un aviso de algo que no tiene nada para leer. Dos: la
+ * campana suena sola cuando aparece un id nuevo (`useAvisoNuevo`), así que un zumbido contado acá
+ * haría sonar la campana ENCIMA del zumbido, dos avisos pisados por una sola cosa.
+ *
+ * Sí se marca como leído junto con el resto al abrir la conversación: el que lo mandó tiene que ver el
+ * tilde cuando el otro efectivamente miró.
+ */
 export function avisosDe(actor: SesionUsuario): AvisosDeMensajes {
   const miClave = miClaveDe(actor)
   const ids = (
@@ -586,6 +614,7 @@ export function avisosDe(actor: SesionUsuario): AvisosDeMensajes {
         `SELECT m.id FROM mensajes m
            JOIN conversacion_participantes p ON p.conversacion_id = m.conversacion_id AND p.usuario_clave = @yo AND p.salio_en IS NULL
           WHERE m.autor_clave <> @yo AND m.eliminado_en IS NULL
+            AND m.tipo <> 'ZUMBIDO'
             AND NOT EXISTS (SELECT 1 FROM mensaje_acuses a WHERE a.mensaje_id = m.id AND a.usuario_clave = @yo AND a.leido_en IS NOT NULL)
           ORDER BY m.id`,
       )
@@ -674,7 +703,13 @@ export function encolarMensaje(
   if (largoEnPuntos(typeof datos.cuerpo === 'string' ? datos.cuerpo : '') > MAXIMO_DE_UN_MENSAJE) {
     throw new ErrorDeNegocio(`El mensaje no puede pasar de ${MAXIMO_DE_UN_MENSAJE} caracteres.`)
   }
-  const archivos = datos.archivos === undefined ? [] : archivosParaAdjuntar(datos.archivos)
+  // Una lista VACÍA es «sin archivos», que en un chat es el caso normal: casi todos los mensajes son
+  // sólo texto. `archivosParaAdjuntar` es el validador de las pantallas donde adjuntar es la acción
+  // (una tarea, un siniestro) y ahí una lista vacía sí es un error —«No elegiste ningún archivo»—, así
+  // que hay que preguntar antes de llamarlo. Sin esto no salía NINGÚN mensaje: la pantalla siempre
+  // manda la lista, vacía cuando no se arrastró nada, y el envío moría antes de mirar el texto.
+  const sinArchivos = datos.archivos === undefined || (Array.isArray(datos.archivos) && datos.archivos.length === 0)
+  const archivos = sinArchivos ? [] : archivosParaAdjuntar(datos.archivos)
   const rutas = Array.isArray(datos.rutas) ? datos.rutas.filter((ruta): ruta is string => typeof ruta === 'string') : []
   if (!cuerpo && !archivos.length && !rutas.length) throw new ErrorDeNegocio('El mensaje está vacío.')
 
@@ -703,6 +738,62 @@ export function encolarMensaje(
 
   db().prepare('UPDATE conversaciones SET ultimo_mensaje_en = ?, actualizado_en = ? WHERE id = ?').run(ahora, ahora, conversacionId)
   return aMensaje(db().prepare('SELECT * FROM mensajes WHERE id = ?').get(id) as FilaMensaje, miClave)
+}
+
+/**
+ * Cuánto hay que esperar entre dos zumbidos propios en la misma conversación.
+ *
+ * El zumbido es la única cosa del programa que le mueve la ventana a otra persona, así que es también
+ * la única que se puede usar para hacerle la vida imposible a alguien. Diez segundos alcanzan para que
+ * sirva —se manda uno, se espera a que conteste— y no para mandar veinte seguidos. El servidor tiene el
+ * mismo tope y es el que manda: éste es para que el «esperá» salga en el momento, sin ida y vuelta.
+ */
+export const ESPERA_ENTRE_ZUMBIDOS_MS = 10_000
+
+/**
+ * El zumbido: el de Messenger, el que suena fuerte y le mueve la ventana al otro.
+ *
+ * **No pasa por la cola.** Es lo único de la mensajería que habla con el servidor en el momento, y es
+ * a propósito: un zumbido sirve para decir «mirá esto AHORA». Uno que sale de la cola veinte minutos
+ * después, cuando volvió el internet, no llama la atención sobre nada —sacude una ventana por algo que
+ * ya pasó—. Sin conexión, entonces, no se manda y se dice por qué; el mensaje escrito, en cambio, sigue
+ * esperando en la cola como siempre.
+ *
+ * Queda guardado igual que cualquier otro mensaje: se ve en el hilo de los dos, cuenta en los acuses y
+ * está en el registro del superadministrador. Un zumbido es algo que una persona le hizo a otra en el
+ * trabajo, y eso se audita como todo lo demás.
+ */
+export async function zumbar(actor: SesionUsuario, conversacionId: unknown): Promise<MensajeInterno> {
+  const miClave = miClaveDe(actor)
+  const id = enteroPositivo(conversacionId, 'La conversación')
+  const conversacion = conversacionLocal(id, miClave)
+
+  const ultimo = db()
+    .prepare(
+      `SELECT creado_en FROM mensajes
+        WHERE conversacion_id = ? AND autor_clave = ? AND tipo = 'ZUMBIDO'
+        ORDER BY id DESC LIMIT 1`,
+    )
+    .get(id, miClave) as { creado_en: string } | undefined
+  if (ultimo) {
+    const faltan = ESPERA_ENTRE_ZUMBIDOS_MS - (Date.now() - new Date(ultimo.creado_en).getTime())
+    if (faltan > 0) throw new ErrorDeNegocio(`Esperá ${Math.ceil(faltan / 1000)} segundos para mandar otro zumbido.`)
+  }
+
+  const { mensaje } = await exigirPuente().enviar(actorDelPuente(actor), {
+    id: randomUUID(),
+    conversacionId: conversacion.remoto_id,
+    tipo: 'ZUMBIDO',
+    cuerpo: '',
+    enviadoEn: ahoraIso(),
+    adjuntos: [],
+  })
+  const local = guardarMensaje(mensaje, miClave)
+  if (local === null) throw new ErrorDeNegocio('El zumbido salió, pero esta computadora no pudo guardarlo.')
+
+  const ahora = ahoraIso()
+  db().prepare('UPDATE conversaciones SET ultimo_mensaje_en = ?, actualizado_en = ? WHERE id = ?').run(ahora, ahora, id)
+  return aMensaje(db().prepare('SELECT * FROM mensajes WHERE id = ?').get(local) as FilaMensaje, miClave)
 }
 
 /**
@@ -740,6 +831,7 @@ export function cuantosEnCola(miClave: string): number {
 export function paraMandar(fila: FilaMensaje): {
   id: string
   conversacionId: string
+  tipo: TipoDeMensaje
   cuerpo: string
   enviadoEn: string
   adjuntos: { id: string; nombre: string; tipo: string; tamano: number; sha256: string; ancho: number | null; alto: number | null; miniatura: string | null }[]
@@ -768,6 +860,7 @@ export function paraMandar(fila: FilaMensaje): {
   return {
     id: fila.remoto_id,
     conversacionId: conversacion.remoto_id,
+    tipo: fila.tipo,
     cuerpo: fila.cuerpo,
     enviadoEn: fila.creado_en,
     adjuntos: adjuntos.map((adjunto) => ({
@@ -1001,6 +1094,7 @@ export async function registroDeMensajes(actor: SesionUsuario, filtros: FiltrosD
             ? (renglon.conversacion.titulo ?? 'Grupo')
             : renglon.conversacion.participantes.map((participante) => participante.nombre).join(' ↔ '),
         tipo: renglon.conversacion.tipo,
+        claseDeMensaje: renglon.mensaje.tipo === 'ZUMBIDO' ? 'ZUMBIDO' : 'NORMAL',
         participantes: renglon.conversacion.participantes.map((participante) => participante.nombre).join(', '),
         autorClave: renglon.mensaje.autorClave,
         autorNombre: renglon.mensaje.autorNombre,

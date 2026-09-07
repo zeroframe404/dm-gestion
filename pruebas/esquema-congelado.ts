@@ -46,4 +46,6 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // envío, los acuses de entrega y lectura por destinatario, los adjuntos (con las mismas columnas
   // que `poliza_adjuntos`, para reusar la subida al VPS) y el cursor del carril.
   25: '921e1543cdefdda9',
+  // La 26 le da tipo a los mensajes, para distinguir el zumbido de un mensaje que diga «zumbido».
+  26: 'd6549d0715eb7b22',
 }

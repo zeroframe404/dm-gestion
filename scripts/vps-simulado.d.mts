@@ -67,10 +67,16 @@ export class VpsSimulado {
       participantes: Array<{ clave: string; nombre: string; salioEn: string | null }>
     }
   >
+  /**
+   * El freno del zumbido, en milisegundos (el servidor de verdad usa diez segundos). La prueba lo baja
+   * a cero para verificar los dos lados: que frena, y que después de la espera deja pasar.
+   */
+  esperaEntreZumbidosMs: number
   /** Los mensajes guardados, en el orden en que llegaron. */
   mensajes: Array<{
     id: string
     conversacionId: string
+    tipo: 'NORMAL' | 'ZUMBIDO'
     orden: number
     autorClave: string
     autorNombre: string

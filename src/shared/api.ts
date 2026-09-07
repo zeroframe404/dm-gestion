@@ -237,6 +237,8 @@ export interface ApiDm {
     hilo: Remota<'mensajes:hilo'>
     enviar: Remota<'mensajes:enviar'>
     enviarConArchivos: Remota<'mensajes:enviarConArchivos'>
+    /** El zumbido de Messenger: suena fuerte del otro lado y le sacude la ventana. Necesita conexión. */
+    zumbar: Remota<'mensajes:zumbar'>
     reintentar: Remota<'mensajes:reintentar'>
     marcarLeidos: Remota<'mensajes:marcarLeidos'>
     avisos: Remota<'mensajes:avisos'>
@@ -250,6 +252,8 @@ export interface ApiDm {
     alLlegarAlguno: Suscripcion<'mensajes:llegaron'>
     /** Se movió un tilde o salió algo de la cola: se redibuja y no suena nada. */
     alCambiarAlgo: Suscripcion<'mensajes:cambiaron'>
+    /** Alguien zumbó: la ventana ya se sacude sola, esto es para el sonido y el cartelito. */
+    alZumbar: Suscripcion<'mensajes:zumbido'>
   }
   tareas: {
     listar: Remota<'tareas:listar'>
