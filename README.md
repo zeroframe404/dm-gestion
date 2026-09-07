@@ -804,12 +804,66 @@ quién cobró. Arriba, el total del día y el subtotal por cada medio de pago.
   entera los tres roles (ver «Imputados», más abajo).
 - La sucursal de la caja es **la del mostrador donde entró la plata**, no la del cliente: un cliente de
   Lanús que paga en Dock Sud suma a la caja de Dock Sud (`pagos.sucursal_cobro`).
-- **Exportar el día** guarda un CSV con punto y coma y BOM, listo para abrir de un doble clic en Excel.
+- **Exportar el día** guarda un **.xlsx con la forma de la planilla de caja de la agencia** (12.10):
+  las once columnas de siempre —NRO TICKET, PATENTE, DESCRIPCION, DEBE, HABER, POSNET MP, MP, REVISIÓN
+  DE PAGO, OBSERVACIONES, CIA ASEGURADA, POLIZA—, la pestaña nombrada como las de la agencia («0209»
+  para el 2 de septiembre) y el resumen del pie con las cuentas hechas. Hasta la 12.9 era un CSV con
+  otras columnas; la planilla del mes se puede seguir armando con un archivo por día, como hasta ahora.
 - **Registrar pago** busca al cliente, ofrece sus cuotas del mes abierto y —si se elige una— cobra por
   el mismo camino que la Cartera, así la fila queda paga y en verde. También admite un pago suelto,
   para un riesgo vario o para alguien que todavía no está en la planilla.
 - Los pagos sin importe numérico (un «A/D» venido de la hoja) se listan pero no suman al total, y se
   avisa cuántos son.
+- **N° ticket** y **Revisado** son las columnas A y H de la planilla (12.10). El número lo guarda sola
+  la ticketeadora al imprimir el comprobante (`tomarNumeroDeTicket` en `preferencias.ts`) y se puede
+  escribir a mano en la casilla; el tilde lo pone quien revisa el cobro, y al lado queda quién fue. Las
+  dos viajan por APP PAGOS y **sólo cuando tienen algo adentro**, como la columna COBRO: una APP PAGOS
+  armada antes de la 12.10 no anota «columna faltante» por cada pago común.
+
+### La caja chica del mostrador (12.10)
+
+La planilla de caja que lleva la agencia tiene dos mitades. Arriba, una fila por cobro: eso ya vivía en
+`pagos` y es la lista de la caja del día. Abajo, a partir de la fila 34, un resumen que se hace solo con
+las cuentas del cajón. **Esa mitad es la que faltaba**, y es la que ahora hace la aplicación.
+
+Debajo de las tarjetas de la caja del día está el arqueo del mostrador:
+
+```
+Caja chica al abrir      $ 36.600   (arrastrada del cierre del 01/09)
++ Cobrado en efectivo    $ 88.300
+− Gastos                 $      0
+− A la caja fuerte       $100.000
+= Debería quedar         $ 24.900
+```
+
+- **Lo cobrado no se carga dos veces**: sale de los pagos del día de esa sucursal, y cada uno cae en la
+  columna que le toca según su medio —EFECTIVO en el cajón, TARJETA en «POSNET MP», TRANSFERENCIA,
+  MERCADO PAGO y CBU en «MP»; lo demás (cuponera, pago en el local de la compañía) suma aparte y a los
+  dos lados de la cuenta—. El débito automático **no** es un posnet: lleva la palabra «débito» y se
+  mira antes (ver `grupoDelMedio` en `servicios/caja.ts`).
+- A mano se cargan sólo cuatro renglones, que son los que la planilla escribe a mano: **la apertura**
+  (el cambio del día), **los gastos** (con el concepto: «limpieza», «nafta»), **lo que baja a la caja
+  fuerte** y **el cierre** (lo que se cuenta en el cajón). Los cuatro viven en `caja_movimientos`.
+- **La apertura se arrastra sola**: es el último cierre contado de ese mostrador, y la pantalla dice de
+  qué día viene. Cargarla a mano la pisa para ese día.
+- **Cerrar la caja es el arqueo**: lo contado contra lo que dice la cuenta. La diferencia queda a la
+  vista —sobra o falta— en vez de taparse escribiendo el número que cierra, que es lo que pasa cuando la
+  cuenta se hace en el papel.
+- Abajo se repite el cuadre de la planilla: **DEBE** (caja chica al abrir + todo lo cobrado) contra
+  **HABER** (posnet + transferencias + otros medios + gastos + lo que bajó a la caja fuerte + lo que
+  queda en el cajón). Con el día abierto dan iguales siempre —los dos lados salen de las mismas
+  cuentas—; lo único que puede separarlos es **lo que se contó al cerrar**, que es justamente para lo
+  que sirve el control, y entonces la pantalla dice cuánto sobra o falta en el cajón.
+- **Un cobro IMPUTADO no suma**: la plata no entró, la agencia se la adelantó a la compañía. Es la misma
+  regla que el total del día.
+- **La caja chica es de UN mostrador**: con varias sucursales a la vista (o con todas) no se muestra, y
+  no se suman entre sí. Un empleado carga la de su mostrador y nada más; el administrador, la del que
+  elija (`sucursalParaLaCaja`, en `cobranzas.ts`).
+- **Viaja como todo lo demás**, por la pestaña **APP CAJA** (FECHA, LOCAL, TIPO, DETALLE, IMPORTE,
+  CARGADO POR): el gasto que carga una computadora entra en el arqueo que cierra la otra del mismo
+  mostrador, y entra en el ciclo de bajada de todos los días. El `_ID` de la apertura y del cierre se
+  arma con el día y la sucursal (`CAJA:2026-09-02:DOCKSUD:CIERRE`), así que dos computadoras que cierren
+  la misma caja escriben la **misma** fila de la hoja y no dos que se contradicen.
 
 ### Mora
 
@@ -919,6 +973,12 @@ desde la pantalla y verifica que el cambio quede camino a la hoja, carga un porc
 por último, configura una impresora inexistente para comprobar que el cobro se registra igual.
 
 No hace clic en «Avisar» a propósito: abriría WhatsApp en el navegador de quien corre la prueba.
+
+Las cuentas de la caja chica tienen su propio banco de pruebas, `pruebas/caja.prueba.ts`: reproduce un
+día real de la planilla de septiembre de 2026 —se abre con $36.600 de cambio, se cobra una cuota de
+$88.300 con un billete de $100.000 que va entero a la caja fuerte y quedan $24.900 en el cajón— y
+comprueba que el arqueo dé exactamente lo mismo que la planilla escrita a mano. Que la caja chica llegue
+a la otra computadora del mismo mostrador se prueba en `pruebas/dos-computadoras.prueba.ts`.
 
 ## Siniestros, Riesgos varios y AMP (Fase 7)
 
@@ -1113,8 +1173,8 @@ siniestro); acá está el módulo propio.
 
 Leads, presupuestos, tareas y los avisos de rechazo del débito no existen en el Excel de la agencia.
 Para que igual se puedan mirar desde Google, DM Gestión crea **«APP LEADS»**, **«APP PRESUPUESTOS»**,
-**«APP TAREAS»**, **«APP RECHAZOS»** y **«APP PAGOS»** al final del archivo, con sus encabezados, **la
-primera vez que hay algo que subir a alguna de ellas**.
+**«APP TAREAS»**, **«APP RECHAZOS»**, **«APP PAGOS»** y **«APP CAJA»** al final del archivo, con sus
+encabezados, **la primera vez que hay algo que subir a alguna de ellas**.
 
 - Se crean tarde a propósito: una hoja de una agencia que todavía no cargó ni un lead no tiene por qué
   llenarse de pestañas vacías.
@@ -1123,10 +1183,11 @@ primera vez que hay algo que subir a alguna de ellas**.
 - APP LEADS y APP PRESUPUESTOS van en un solo sentido (la aplicación escribe, la hoja mira). Sus filas quedan
   anotadas como conocidas igual que las de cualquier otro módulo, así que volver a importar no las
   duplica ni dispara una importación completa.
-- **«APP RECHAZOS» y «APP PAGOS» van en los dos sentidos**: se leen de vuelta (a `rechazos_debito` y a
-  `pagos`) y entran en el ciclo de bajada de todos los días, porque son el camino por el que un aviso o
-  un pago cargado en una sucursal llega a la computadora de la otra. Ver **Rechazos del débito
-  automático** y **Cobranzas e Imputados**, más arriba.
+- **«APP RECHAZOS», «APP PAGOS» y «APP CAJA» van en los dos sentidos**: se leen de vuelta (a
+  `rechazos_debito`, a `pagos` y a `caja_movimientos`) y entran en el ciclo de bajada de todos los días,
+  porque son el camino por el que un aviso, un pago o un renglón de la caja chica cargado en una
+  sucursal llega a la computadora de la otra. Ver **Rechazos del débito automático** y **Cobranzas e
+  Imputados**, más arriba.
 - **«APP TAREAS» también se lee de vuelta** desde la v12.4: entra en el ciclo de todos los días y además
   tiene el carril rápido de 30 segundos, que es lo que hace que una tarea asignada desde otra sucursal
   aparezca en el momento. Ver **Tareas**, más arriba.

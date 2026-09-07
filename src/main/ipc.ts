@@ -36,11 +36,15 @@ import {
   avisarMora,
   cajaDelDia,
   cambiarResultado,
+  cargarMovimientoDeCaja,
   comisiones,
-  csvDeLaCaja,
   imputados,
   mora,
+  numeroDeTicketDelPago,
+  planillaDeLaCaja,
+  quitarMovimientoDeCaja,
   registrarPagoManual,
+  revisarPago,
 } from './servicios/cobranzas'
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
@@ -655,9 +659,15 @@ export function registrarIpc(): void {
     return exito(resultado.caja)
   })
   manejar('cobranzas:exportarCaja', async (fecha, sucursales) => {
-    const archivo = csvDeLaCaja(fecha, sucursales, exigirVista('cobranzas'))
-    return exito(await guardarComo({ ...archivo, descripcion: 'Planilla CSV' }, ventanaActual()))
+    const archivo = planillaDeLaCaja(fecha, sucursales, exigirVista('cobranzas'))
+    return exito(await guardarBinarioComo({ ...archivo, descripcion: 'Planilla de caja' }, ventanaActual()))
   })
+  // La caja chica la carga quien pueda editar Cobranzas, y sólo la de su mostrador si es empleado
+  // (la sucursal se revisa adentro, en `sucursalParaLaCaja`).
+  manejar('cobranzas:guardarMovimientoCaja', (datos) => exito(cargarMovimientoDeCaja(datos, exigirEdicion('cobranzas'))))
+  manejar('cobranzas:borrarMovimientoCaja', (movimientoId) => exito(quitarMovimientoDeCaja(movimientoId, exigirEdicion('cobranzas'))))
+  manejar('cobranzas:revisarPago', (pagoId, revisado) => exito(revisarPago(pagoId, revisado, exigirEdicion('cobranzas'))))
+  manejar('cobranzas:numeroDeTicket', (pagoId, numero) => exito(numeroDeTicketDelPago(pagoId, numero, exigirEdicion('cobranzas'))))
   manejar('cobranzas:mora', (filtros) => {
     exigirVista('cobranzas')
     return exito(mora(filtros))

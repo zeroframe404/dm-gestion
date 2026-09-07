@@ -20,7 +20,8 @@ import { repiteEncabezados } from '../importacion/encabezados'
 import { esPestanaDeAnexos, guardarAnexoDeLaHoja } from './anexos'
 import { refrescarLayoutSiCambio } from './columnas'
 import { alDesaparecerDeLaHoja, alReaparecerEnLaHoja } from '../servicios/filas'
-import { normalizarEstadoDeCobro } from '../servicios/pagos'
+import { estaRevisado, normalizarEstadoDeCobro } from '../servicios/pagos'
+import { tipoDeMovimientoDesdeTexto } from '../servicios/caja'
 import { estadoDeTareaDesdeTexto, prioridadDeTareaDesdeTexto } from '../../shared/tareas'
 import { normalizarDocumento, normalizarNumeroPoliza, normalizarPatente } from '../importacion/normalizar'
 import { columnaDelId, huellaDeFila, type ContextoHoja, type PestanaSincronizable } from './hoja'
@@ -172,6 +173,29 @@ const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
     sucursal: { tabla: 'pagos', columna: 'sucursal_texto' },
     mes: { tabla: 'pagos', columna: 'periodo_texto' },
     usuario: { tabla: 'pagos', columna: 'usuario_nombre' },
+    // 12.10: las dos columnas de la planilla de caja. El número del comprobante lo escribe la
+    // computadora que imprimió el ticket; el tilde, la que revisó el cobro.
+    ticket: { tabla: 'pagos', columna: 'numero_ticket' },
+    // El tilde viaja como «SI» o vacío: la hoja no lleva la hora exacta en que se tildó, así que al
+    // llegar de otra computadora se guarda el momento en que llegó, que es lo más cerca que se puede
+    // estar. Quién lo tildó se pierde en el viaje —no hay columna para eso— y por eso se limpia al
+    // destildar: mejor sin nombre que con el de alguien que ya no tiene nada que ver.
+    revisado: {
+      tabla: 'pagos',
+      columna: 'revisado_en',
+      normalizar: (valor) => (estaRevisado(valor) ? ahoraIso() : ''),
+      derivadas: (valor) => (estaRevisado(valor) ? {} : { revisado_por: null }),
+    },
+  },
+  // La caja chica del mostrador (12.10). Lo que cambia después de cargado un renglón es su importe y
+  // su detalle —se corrige la apertura, se arregla el concepto de un gasto, se cuenta de nuevo el
+  // cierre— y eso lo toca la otra computadora del mismo mostrador.
+  APP_CAJA: {
+    importe: { tabla: 'caja_movimientos', columna: 'importe', normalizar: (valor) => String(interpretarNumero(valor) ?? 0) },
+    detalle: { tabla: 'caja_movimientos', columna: 'detalle' },
+    tipo_registro: { tabla: 'caja_movimientos', columna: 'tipo', normalizar: (valor) => tipoDeMovimientoDesdeTexto(valor) ?? 'GASTO' },
+    sucursal: { tabla: 'caja_movimientos', columna: 'sucursal' },
+    usuario: { tabla: 'caja_movimientos', columna: 'usuario_nombre' },
   },
   // Los avisos de rechazo del débito. Lo único que cambia después de creado el aviso es en qué anda
   // (PENDIENTE → VISTO → RESUELTO) y la nota: eso lo toca la sucursal avisada, desde su computadora.

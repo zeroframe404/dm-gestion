@@ -12,6 +12,7 @@ import {
   RESULTADOS_DE_IMPUTACION,
   type AvisoDeMora,
   type CajaDelDia,
+  type DatosDeMovimientoDeCaja,
   type DatosDePagoManual,
   type FilaCartera,
   type FilaComision,
@@ -41,21 +42,27 @@ import {
 } from './cartera'
 import { comisionPorCompania, diasCoberturaPorCompania, listarCompanias, sincronizarCompanias } from './companias'
 import { sucursalesParaElegir } from './sucursales'
+import { arqueoDeLaCaja, borrarMovimientoDeCaja, grupoDelMedio, guardarMovimientoDeCaja } from './caja'
+import { paraNombreDeArchivo } from './exportacion'
+import { construirXlsx, type HojaXlsx, type ValorDeCelda } from './xlsx'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
 import { encolar } from '../sincronizacion/cola'
 import {
   aPagoRegistrado,
   asegurarPagoEnLaHoja,
+  guardarNumeroDeTicket,
   guardarPago,
   hojaDeImputados,
+  marcarPagoRevisado,
   normalizarEstadoDeCobro,
   normalizarResultado,
   PAGO_QUE_CUBRE_LA_CUOTA,
   SELECT_PAGOS,
+  SUCURSAL_DEL_PAGO,
   type PagoCrudo,
 } from './pagos'
-import { enteroPositivo, texto } from './validacion'
+import { booleano, enteroPositivo, texto } from './validacion'
 
 const FORMATO_ISO = /^\d{4}-\d{2}-\d{2}$/
 const FORMATO_PERIODO = /^\d{4}-\d{2}$/
@@ -168,81 +175,166 @@ export function cajaDelDia(fechaPedida: string | null, sucursalesPedidas: string
     total: cobrados(pagos).reduce((suma, pago) => suma + (pago.importeMonto ?? 0), 0),
     sinImporte: cobrados(pagos).filter((pago) => pago.importeMonto === null).length,
     imputados: pagos.length - cobrados(pagos).length,
+    // La caja chica es de UN mostrador: la del cajón que se abre a la mañana y se cuenta a la noche.
+    // Con varias sucursales a la vista (o con todas) no hay una caja chica que mostrar, y sumarlas
+    // daría un número que no es el de ningún cajón.
+    arqueo: sucursales.length === 1 ? arqueoDeLaCaja(fecha, sucursales[0]!, pagos) : null,
     hoy: hoyLocal(),
   }
 }
 
-/** Importe con coma decimal y sin separador de miles: es lo que entiende el Excel en español. */
-function comoImporte(valor: number): string {
-  return valor.toFixed(2).replace('.', ',')
+/** Los encabezados de la planilla de caja de la agencia, en su orden (columnas A a K). */
+const COLUMNAS_DE_LA_PLANILLA = [
+  'NRO TICKET',
+  'PATENTE',
+  'DESCRIPCION',
+  'DEBE',
+  'HABER',
+  'POSNET MP',
+  'MP',
+  'REVISIÓN DE PAGO',
+  'OBSERVACIONES',
+  'CIA ASEGURADA',
+  'POLIZA',
+]
+
+const ANCHOS_DE_LA_PLANILLA = [12, 12, 34, 14, 14, 14, 14, 16, 34, 18, 18]
+
+/** El día como lo escribe la agencia, para el título de la planilla. */
+function comoDiaCorto(fechaIso: string): string {
+  const [anio, mes, dia] = fechaIso.split('-')
+  return dia && mes && anio ? `${dia}/${mes}/${anio}` : fechaIso
 }
 
 /**
- * Una celda del CSV. Además de escapar las comillas, se le antepone un apóstrofo a lo que empiece con
- * `=`, `+`, `-`, `@` o un tabulador: Excel toma eso como una fórmula, y los nombres, las pólizas y las
- * observaciones vienen de la hoja de Google y de lo que se tipea en la caja.
+ * El día de caja con la forma de la planilla de la agencia: una fila por cobro con el ticket, la
+ * patente, el nombre, el DEBE, el HABER, el posnet, las transferencias, el tilde de revisión, las
+ * observaciones, la compañía y la póliza; y abajo el resumen con las cuentas hechas.
+ *
+ * Es a propósito la MISMA forma que la planilla que se lleva a mano: quien la mira ya sabe leerla, y
+ * el mes se puede seguir armando con un archivo por día como hasta ahora. Lo único que cambia es que
+ * las cuentas ya vienen hechas y los cobros no se copian de nuevo.
+ *
+ * La mitad de abajo (la caja chica) sale sólo cuando se está mirando UN mostrador: la caja chica es el
+ * cambio que tiene ese cajón, y sumar la de dos sucursales no es la caja de ninguna.
  */
-function celda(valor: string | number | null): string {
-  const contenido = valor === null ? '' : String(valor)
-  const seguro = /^[=+\-@\t\r]/.test(contenido) ? `'${contenido}` : contenido
-  return `"${seguro.replace(/"/g, '""')}"`
+export function hojaDeLaCaja(caja: CajaDelDia): HojaXlsx {
+  const arqueo = caja.arqueo
+  const filas: ValorDeCelda[][] = []
+  const renglon = (celdas: Partial<Record<number, ValorDeCelda>>): ValorDeCelda[] =>
+    COLUMNAS_DE_LA_PLANILLA.map((_, indice) => celdas[indice] ?? null)
+
+  // Fila 2 de la planilla: con cuánto cambio se abrió el día.
+  if (arqueo) {
+    filas.push(
+      renglon({
+        2: 'CAJA CHICA AL ABRIR',
+        3: arqueo.apertura,
+        8: arqueo.aperturaCargada
+          ? null
+          : arqueo.aperturaHeredadaDe
+            ? `arrastrada del cierre del ${comoDiaCorto(arqueo.aperturaHeredadaDe)}`
+            : 'sin cargar',
+      }),
+    )
+  }
+
+  for (const pago of caja.pagos) {
+    const grupo = grupoDelMedio(pago.medio)
+    const cobrado = pago.estadoCobro === 'PAGO' ? pago.importeMonto : null
+    filas.push(
+      renglon({
+        0: pago.numeroTicket,
+        1: pago.patente,
+        2: pago.clienteNombre,
+        3: cobrado ?? (pago.estadoCobro === 'PAGO' ? pago.importe : null),
+        5: grupo === 'POSNET' ? cobrado : null,
+        6: grupo === 'TRANSFERENCIA' ? cobrado : null,
+        7: pago.revisado ? '✔' : null,
+        8: [
+          pago.observaciones,
+          pago.medio ? `PAGO S/${pago.medio}` : null,
+          pago.estadoCobro === 'IMPUTADO' ? 'IMPUTADO · FALTA COBRAR' : null,
+          pago.adelantoModo ? 'PAGO ADELANTADO' : null,
+          pago.usuarioNombre ? `COBRÓ ${pago.usuarioNombre}` : null,
+        ]
+          .filter(Boolean)
+          .join(' / '),
+        9: pago.compania,
+        10: pago.numeroPoliza,
+      }),
+    )
+  }
+
+  // Lo que bajó a la caja fuerte va en la columna HABER, en su propio renglón: en la planilla a mano
+  // se escribe al lado del cobro que lo generó, pero la plata que baja no es siempre la de un cobro
+  // (a veces es el vuelto que quedó, a veces son dos cobros juntos).
+  for (const movimiento of arqueo?.movimientos ?? []) {
+    if (movimiento.tipo !== 'CAJA_FUERTE') continue
+    filas.push(renglon({ 2: 'A LA CAJA FUERTE', 4: movimiento.importe, 8: movimiento.detalle }))
+  }
+
+  if (arqueo) {
+    filas.push(renglon({ 2: 'TOTALES', 3: arqueo.debe, 4: arqueo.aLaCajaFuerte, 5: arqueo.posnet, 6: arqueo.transferencia }))
+    filas.push([])
+    filas.push(renglon({ 2: 'RESUMEN DEL DÍA', 8: 'TOTAL' }))
+    filas.push(renglon({ 2: 'POSNET MP', 4: arqueo.posnet, 8: arqueo.haber }))
+    filas.push(renglon({ 2: 'M.P/T.B', 4: arqueo.transferencia, 8: arqueo.debe }))
+    if (arqueo.otros > 0) filas.push(renglon({ 2: 'OTROS MEDIOS', 4: arqueo.otros }))
+    for (const movimiento of arqueo.movimientos) {
+      if (movimiento.tipo !== 'GASTO') continue
+      filas.push(renglon({ 2: 'GASTOS', 4: movimiento.importe, 5: movimiento.detalle }))
+    }
+    if (!arqueo.movimientos.some((movimiento) => movimiento.tipo === 'GASTO')) filas.push(renglon({ 2: 'GASTOS', 4: 0 }))
+    filas.push(renglon({ 2: 'EFECTIVO', 4: arqueo.aLaCajaFuerte, 5: 'a la caja fuerte' }))
+    filas.push(
+      renglon({
+        2: 'CAJA CHICA',
+        4: arqueo.contado ?? arqueo.esperado,
+        5: arqueo.contado === null ? 'lo que debería quedar' : 'contado al cerrar',
+      }),
+    )
+    filas.push(renglon({ 2: 'TOTAL', 3: arqueo.debe, 4: arqueo.haber }))
+    // La diferencia del arqueo es lo mismo que la distancia entre los dos totales de acá arriba, así
+    // que va una sola vez y con el nombre que se entiende: lo contado contra lo que dicen las cuentas.
+    if (arqueo.contado !== null && arqueo.diferencia !== 0) {
+      filas.push(
+        renglon({
+          2: 'DIFERENCIA',
+          4: Math.abs(arqueo.diferencia ?? 0),
+          5: (arqueo.diferencia ?? 0) > 0 ? 'sobra en el cajón' : 'falta en el cajón',
+        }),
+      )
+    }
+  } else {
+    filas.push(renglon({ 2: 'TOTAL COBRADO', 3: caja.total }))
+    filas.push([])
+    filas.push(renglon({ 2: 'La caja chica se lleva por mostrador: elegí una sola sucursal para que salgan sus cuentas.' }))
+  }
+
+  const donde = caja.sucursalesElegidas.length > 0 ? caja.sucursalesElegidas.join(', ') : 'todas las sucursales'
+  return {
+    // La pestaña se llama como las de la agencia: el día y el mes pegados («0109»).
+    nombre: `${caja.fecha.slice(8, 10)}${caja.fecha.slice(5, 7)}`,
+    titulo: `CAJA DEL ${comoDiaCorto(caja.fecha)} · ${donde}`,
+    encabezados: COLUMNAS_DE_LA_PLANILLA,
+    filas,
+    anchos: ANCHOS_DE_LA_PLANILLA,
+  }
 }
 
-/**
- * El día en CSV, con punto y coma de separador y BOM: así se abre de un doble clic en el Excel de la
- * agencia, sin pasar por el asistente de importación.
- */
-export function csvDeLaCaja(
+/** El día de caja en un .xlsx, listo para guardar, imprimir o mandarle al contador. */
+export function planillaDeLaCaja(
   fechaPedida: string | null,
   sucursalesPedidas: string[],
   actor?: SesionUsuario | null,
-): { nombre: string; contenido: string } {
+): { nombre: string; contenido: Buffer } {
   const caja = cajaDelDia(fechaPedida, sucursalesPedidas, actor)
-  const lineas: string[] = []
-  lineas.push(celda(`Caja del ${caja.fecha}${caja.sucursalesElegidas.length > 0 ? ` · ${caja.sucursalesElegidas.join(', ')}` : ' · todas las sucursales'}`))
-  lineas.push('')
-  lineas.push(
-    ['Hora', 'Cliente', 'DNI/CUIT', 'Compañía', 'Póliza', 'Patente', 'Importe', 'Medio', 'Sucursal', 'Cobró', 'Mes', 'Resultado', 'Cobro']
-      .map(celda)
-      .join(';'),
-  )
-  for (const pago of caja.pagos) {
-    lineas.push(
-      [
-        celda(pago.hora),
-        celda(pago.clienteNombre),
-        celda(pago.documento),
-        celda(pago.compania),
-        celda(pago.numeroPoliza),
-        celda(pago.patente),
-        pago.importeMonto === null ? celda(pago.importe) : comoImporte(pago.importeMonto),
-        celda(pago.medio),
-        celda(pago.sucursal),
-        celda(pago.usuarioNombre),
-        celda(pago.periodo),
-        celda(pago.resultado),
-        celda(pago.estadoCobro === 'IMPUTADO' ? 'IMPUTADO (falta cobrar)' : pago.adelantoModo ? 'PAGO ADELANTADO' : 'PAGO'),
-      ].join(';'),
-    )
+  const sufijo = caja.sucursalesElegidas.length > 0 ? ` ${caja.sucursalesElegidas.join(' ')}` : ''
+  return {
+    nombre: `${paraNombreDeArchivo(`CAJA ${caja.fecha}${sufijo}`)}.xlsx`,
+    contenido: construirXlsx([hojaDeLaCaja(caja)]),
   }
-  lineas.push('')
-  lineas.push([celda('Total por medio de pago'), celda('Pagos'), celda('Importe')].join(';'))
-  for (const total of caja.totalesPorMedio) {
-    lineas.push([celda(total.medio), String(total.pagos), comoImporte(total.total)].join(';'))
-  }
-  lineas.push([celda('TOTAL'), String(caja.pagos.length - caja.imputados), comoImporte(caja.total)].join(';'))
-  if (caja.imputados > 0) {
-    lineas.push('')
-    lineas.push(celda(`${caja.imputados} pago(s) imputado(s) a la compañía y todavía sin cobrar: no suman al total.`))
-  }
-  if (caja.sinImporte > 0) {
-    lineas.push('')
-    lineas.push(celda(`${caja.sinImporte} pago(s) sin importe numérico: no suman al total.`))
-  }
-
-  const sufijo = caja.sucursalesElegidas.length > 0 ? `-${caja.sucursalesElegidas.join('-').replace(/[^\p{L}\p{N}]+/gu, '-')}` : ''
-  // El BOM del principio es lo que le dice a Excel que el archivo está en UTF-8.
-  return { nombre: `caja-${caja.fecha}${sufijo}.csv`, contenido: `﻿${lineas.join('\r\n')}\r\n` }
 }
 
 // ---------------------------------------------------------------------------
@@ -330,6 +422,70 @@ export function registrarPagoManual(datos: DatosDePagoManual, actor: SesionUsuar
     valorNuevo: `${nombre} · ${importe}${medio ? ` · ${medio}` : ''} (${fecha})`,
   })
   return { caja: cajaDelDia(interpretada.iso, sucursal ? [sucursal] : [], actor), pagoId }
+}
+
+// ---------------------------------------------------------------------------
+// La caja chica: los renglones que se cargan a mano
+// ---------------------------------------------------------------------------
+
+/**
+ * La sucursal en la que este usuario puede tocar la caja chica. Un empleado, la suya y ninguna otra:
+ * es la misma regla con la que ve la caja del día (`sucursalObligadaDe`), y tiene que valer también
+ * para escribir, no sólo para mirar. Un administrador carga la del mostrador que elija.
+ */
+function sucursalParaLaCaja(pedida: string, actor: SesionUsuario): string {
+  const obligada = sucursalObligadaDe(actor)
+  if (!obligada) return limpiar(pedida) || actor.sucursal.nombre
+  const elegida = limpiar(pedida)
+  if (elegida && !mismaSucursal(elegida, obligada)) {
+    throw new ErrorDeNegocio(`La caja de ${elegida} la lleva ese mostrador. Vos cargás la de ${obligada}.`)
+  }
+  return obligada
+}
+
+/** Carga (o corrige) un renglón de la caja chica y devuelve la caja de ese día ya rehecha. */
+export function cargarMovimientoDeCaja(datos: DatosDeMovimientoDeCaja, actor: SesionUsuario): CajaDelDia {
+  const sucursal = sucursalParaLaCaja(datos?.sucursal ?? '', actor)
+  const { movimiento } = guardarMovimientoDeCaja({ ...datos, sucursal }, actor)
+  return cajaDelDia(movimiento.fecha, [movimiento.sucursal], actor)
+}
+
+/** Saca un renglón de la caja chica y devuelve la caja de ese día ya rehecha. */
+export function quitarMovimientoDeCaja(movimientoId: unknown, actor: SesionUsuario): CajaDelDia {
+  const id = enteroPositivo(movimientoId, 'El renglón de la caja')
+  const dueno = db().prepare('SELECT sucursal FROM caja_movimientos WHERE id = ?').get(id) as { sucursal: string } | undefined
+  if (!dueno) throw new ErrorDeNegocio('Ese renglón de la caja ya no está.')
+  sucursalParaLaCaja(dueno.sucursal, actor)
+  const movimiento = borrarMovimientoDeCaja(id, actor)
+  return cajaDelDia(movimiento.fecha, [movimiento.sucursal], actor)
+}
+
+/** El día y el mostrador de un pago: es adónde vuelve la pantalla después de tocarlo. */
+function diaDelPago(pagoId: number): { fecha: string; sucursal: string } {
+  const pago = db()
+    .prepare(`SELECT p.fecha_iso, ${SUCURSAL_DEL_PAGO} AS sucursal FROM pagos p LEFT JOIN clientes cl ON cl.id = p.cliente_id WHERE p.id = ?`)
+    .get(pagoId) as { fecha_iso: string | null; sucursal: string | null } | undefined
+  if (!pago) throw new ErrorDeNegocio('No se encontró ese pago.')
+  return { fecha: pago.fecha_iso ?? hoyLocal(), sucursal: limpiar(pago.sucursal) }
+}
+
+/** El tilde de REVISIÓN DE PAGO: el cobro se miró y está todo bien. */
+export function revisarPago(pagoId: unknown, revisado: unknown, actor: SesionUsuario): CajaDelDia {
+  const id = enteroPositivo(pagoId, 'El pago')
+  const dia = diaDelPago(id)
+  sucursalParaLaCaja(dia.sucursal, actor)
+  marcarPagoRevisado(id, booleano(revisado, 'El tilde de revisión'), actor)
+  return cajaDelDia(dia.fecha, dia.sucursal ? [dia.sucursal] : [], actor)
+}
+
+/** El número del comprobante escrito a mano (el de la ticketeadora se guarda solo al imprimir). */
+export function numeroDeTicketDelPago(pagoId: unknown, numero: unknown, actor: SesionUsuario): CajaDelDia {
+  const id = enteroPositivo(pagoId, 'El pago')
+  const dia = diaDelPago(id)
+  sucursalParaLaCaja(dia.sucursal, actor)
+  if (typeof numero !== 'string') throw new ErrorDeNegocio('El número de ticket no es válido.')
+  guardarNumeroDeTicket(id, numero, actor)
+  return cajaDelDia(dia.fecha, dia.sucursal ? [dia.sucursal] : [], actor)
 }
 
 // ---------------------------------------------------------------------------

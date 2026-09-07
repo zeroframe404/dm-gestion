@@ -12,7 +12,8 @@ import {
   cajaDelDia,
   cambiarResultado,
   comisiones,
-  csvDeLaCaja,
+  hojaDeLaCaja,
+  planillaDeLaCaja,
   imputados,
   mora,
   registrarPagoManual,
@@ -204,19 +205,30 @@ test('un pago suelto se puede cargar sin cliente de la base', async () => {
   cerrarBaseDeDatos()
 })
 
-test('«Exportar el día» arma un CSV con los pagos y los totales por medio', async () => {
+test('«Exportar el día» arma la planilla de caja de la agencia, con sus columnas y sus cuentas', async () => {
   await cobranzasDePrueba()
   registrarPago(buscar(CLIENTES.gonzalez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 10.000', medioDePago: 'EFECTIVO' }, DANIEL)
   registrarPago(buscar(CLIENTES.rodriguez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 20.000', medioDePago: 'TRANSFERENCIA' }, DANIEL)
 
-  const archivo = csvDeLaCaja(DIA_DE_CAJA, [])
-  assert.equal(archivo.nombre, `caja-${DIA_DE_CAJA}.csv`)
-  // El BOM del principio es lo que hace que Excel lo abra en UTF-8.
-  assert.ok(archivo.contenido.startsWith('﻿'))
-  assert.match(archivo.contenido, /"Hora";"Cliente";"DNI\/CUIT"/)
-  assert.match(archivo.contenido, new RegExp(CLIENTES.gonzalez.nombre))
-  assert.match(archivo.contenido, /"EFECTIVO";1;10000,00/)
-  assert.match(archivo.contenido, /"TOTAL";2;30000,00/)
+  const hoja = hojaDeLaCaja(cajaDelDia(DIA_DE_CAJA, [DANIEL.sucursal.nombre]))
+  // Las once columnas de la planilla, en su orden.
+  assert.deepEqual(hoja.encabezados?.slice(0, 4), ['NRO TICKET', 'PATENTE', 'DESCRIPCION', 'DEBE'])
+  assert.equal(hoja.nombre, '1908', 'la pestaña se llama como las de la agencia: día y mes pegados')
+
+  const descripcion = (fila: (string | number | null)[]) => String(fila[2] ?? '')
+  assert.ok(hoja.filas.some((fila) => descripcion(fila) === CLIENTES.gonzalez.nombre && fila[3] === 10000))
+  // Una transferencia repite el importe en la columna MP, como en la planilla escrita a mano.
+  assert.ok(hoja.filas.some((fila) => descripcion(fila) === CLIENTES.rodriguez.nombre && fila[3] === 20000 && fila[6] === 20000))
+
+  const total = hoja.filas.find((fila) => descripcion(fila) === 'TOTAL')
+  assert.ok(total, 'el resumen de abajo tiene su renglón de TOTAL')
+  assert.equal(total[3], 30000, 'el DEBE es la caja chica del principio más lo cobrado')
+  assert.equal(total[4], 30000, 'y el HABER tiene que dar lo mismo')
+
+  const archivo = planillaDeLaCaja(DIA_DE_CAJA, [])
+  assert.equal(archivo.nombre, `CAJA ${DIA_DE_CAJA}.xlsx`)
+  // Un .xlsx es un ZIP: empieza con «PK».
+  assert.equal(archivo.contenido.subarray(0, 2).toString('latin1'), 'PK')
   cerrarBaseDeDatos()
 })
 
@@ -722,9 +734,11 @@ test('el CSV no deja que una celda de la hoja se abra como fórmula en Excel', a
     },
     DANIEL,
   )
-  const archivo = csvDeLaCaja(DIA_DE_CAJA, [])
-  assert.match(archivo.contenido, /"'=SUMA\(A1:A9\)"/)
-  assert.match(archivo.contenido, /"'@raro"/)
+  // En el .xlsx el nombre viaja como texto (una cadena en línea), no como fórmula: el Excel muestra
+  // «=SUMA(A1:A9)» tal cual en vez de intentar calcularlo. Ver `construirXlsx`.
+  const hoja = hojaDeLaCaja(cajaDelDia(DIA_DE_CAJA, ['Daniel']))
+  assert.ok(hoja.filas.some((fila) => fila[2] === '=SUMA(A1:A9)'))
+  assert.ok(hoja.filas.some((fila) => fila[10] === '@raro'))
   cerrarBaseDeDatos()
 })
 
@@ -748,7 +762,10 @@ test('un cobro IMPUTADO no deja la fila paga ni suma a la caja; cuando el client
   assert.equal(caja.total, 0, 'pero no suma: la plata no entró')
   assert.equal(caja.imputados, 1)
   assert.equal(caja.totalesPorMedio.length, 0)
-  assert.match(csvDeLaCaja(DIA_DE_CAJA, []).contenido, /IMPUTADO \(falta cobrar\)/)
+  assert.ok(
+    hojaDeLaCaja(cajaDelDia(DIA_DE_CAJA, ['Daniel'])).filas.some((fila) => String(fila[8] ?? '').includes('IMPUTADO · FALTA COBRAR')),
+    'en la planilla el imputado se ve en las observaciones, y sin importe en el DEBE',
+  )
 
   // En la rendición se cuenta como «sin cobrar», y en la mora sigue apareciendo con la marca.
   assert.equal(imputados('2026-08', []).sinCobrar, 1)

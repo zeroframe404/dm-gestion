@@ -72,6 +72,7 @@ import {
   resolverVinculoDeTarea,
 } from '../sincronizacion/vinculos'
 import { normalizarEstadoDeCobro } from '../servicios/pagos'
+import { tipoDeMovimientoDesdeTexto } from '../servicios/caja'
 
 interface PestanaParaDuenios {
   titulo: string
@@ -540,6 +541,18 @@ function prepararSentencias(db: BaseDeDatos) {
     vigenciaDePresupuestos: db.prepare(`
       UPDATE presupuestos SET vigente = CASE WHEN version = (SELECT MAX(version) FROM presupuestos o WHERE o.numero = presupuestos.numero) THEN 1 ELSE 0 END
       WHERE numero = @numero`),
+
+    // Un renglón de la caja chica que llegó de otra computadora (APP CAJA). La apertura y el cierre
+    // traen un _ID armado con el día y la sucursal, así que dos computadoras que cierren la misma caja
+    // escriben la misma fila: el ON CONFLICT la corrige en vez de duplicarla.
+    movimientoDeCaja: db.prepare(`
+      INSERT INTO caja_movimientos (fila_id, pestana, fecha_iso, sucursal, tipo, detalle, importe, usuario_nombre,
+                                    creado_en, actualizado_en)
+      VALUES (@fila_id, @pestana, @fecha_iso, @sucursal, @tipo, @detalle, @importe, @usuario_nombre, @ahora, @ahora)
+      ON CONFLICT(fila_id) DO UPDATE SET
+        pestana = excluded.pestana, fecha_iso = excluded.fecha_iso, sucursal = excluded.sucursal,
+        tipo = excluded.tipo, detalle = excluded.detalle, importe = excluded.importe,
+        usuario_nombre = excluded.usuario_nombre, actualizado_en = excluded.actualizado_en`),
 
     rechazo: db.prepare(`
       INSERT INTO rechazos_debito (fila_id, pestana, poliza_id, cliente_id, cliente_nombre, documento, telefono, compania,
@@ -1272,6 +1285,7 @@ class TrabajoDeImportacion {
       'APP_PRESUPUESTOS',
       'APP_TAREAS',
       'APP_RECHAZOS',
+      'APP_CAJA',
       // Los anexos van después de todo lo que puede ser su ficha madre (pólizas, siniestros, tareas).
       'APP_ADJUNTOS',
       'APP_COMENTARIOS',
@@ -1581,6 +1595,9 @@ class TrabajoDeImportacion {
             case 'APP_ADJUNTOS':
             case 'APP_COMENTARIOS':
               this.guardarAnexo(p, fila, resumen)
+              break
+            case 'APP_CAJA':
+              this.guardarMovimientoDeCaja(p, fila, resumen)
               break
             default:
               break
@@ -2508,6 +2525,55 @@ class TrabajoDeImportacion {
       ahora: this.ahora,
     })
     this.contar(resumen, 'pagos')
+  }
+
+  /**
+   * Un renglón de la caja chica de un mostrador: con cuánto cambio abrió el día, un gasto, la plata
+   * que bajó a la caja fuerte o lo que se contó al cerrar (pestaña APP CAJA).
+   *
+   * Es la vuelta del viaje: lo carga quien está en el mostrador, sube a la pestaña y de ahí baja a las
+   * otras computadoras, que es cómo dos personas de la misma sucursal ven el mismo arqueo. Lo COBRADO
+   * no está acá —viaja por APP PAGOS, como siempre— así que la cuenta se rehace sola de este lado.
+   *
+   * Una fila sin TIPO reconocido o sin importe no es un renglón de caja: se saltea sin romper nada,
+   * que es lo mismo que hace el importador con una fila a medio escribir de cualquier otra pestaña.
+   */
+  private guardarMovimientoDeCaja(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
+    if (this.sinDatosUtiles(p, fila)) return
+    // Un renglón que esta computadora acaba de cargar y todavía no subió no se vuelve a leer de la
+    // hoja: allá está el valor viejo y le pisaría el nuevo. Mismo criterio que las tareas y las bajas.
+    if (this.sinSubir.has(fila.id)) return
+    const tipo = tipoDeMovimientoDesdeTexto(fila.valor('tipo_registro'))
+    if (!tipo) return
+    const importe = interpretarNumero(fila.valor('importe'))
+    if (importe === null) return
+    const fechaTexto = fila.valor('fecha')
+    const fecha = interpretarFecha(fechaTexto, null, this.anioActual)
+    if (fecha.problema) this.problema(p.titulo, fila.numero, fila.id, 'fecha de caja inválida', fecha.problema)
+    const sucursalTexto = this.sucursalDeLaFila(fila)
+    this.resolverSucursal(p, fila, sucursalTexto)
+    try {
+      this.sentencias.movimientoDeCaja.run({
+        fila_id: fila.id,
+        pestana: p.titulo,
+        fecha_iso: fecha.iso ?? (limpiar(fechaTexto) || this.ahora.slice(0, 10)),
+        sucursal: sucursalCanonica(sucursalTexto) ?? limpiar(sucursalTexto),
+        tipo,
+        detalle: oNulo(fila.valor('detalle')),
+        importe,
+        usuario_nombre: oNulo(fila.valor('usuario')),
+        ahora: this.ahora,
+      })
+    } catch (error) {
+      // La apertura y el cierre son uno por día y mostrador. Dos filas que digan ser el mismo —una
+      // escrita a mano en la pestaña, con su propio _ID— chocan contra ese índice: se informa cuál es
+      // y se sigue, en vez de cortar la importación entera por un renglón repetido.
+      const motivo = error instanceof Error ? error.message : String(error)
+      if (!/UNIQUE constraint/i.test(motivo)) throw error
+      this.problema(p.titulo, fila.numero, fila.id, 'renglón de caja repetido', `ya hay ${tipo} de ese día en ese mostrador: se conserva el que estaba`)
+      return
+    }
+    this.contar(resumen, 'caja_movimientos')
   }
 
   /**

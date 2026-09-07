@@ -99,6 +99,10 @@ export type Campo =
   // para que la otra computadora las reconstruya sin adivinar.
   | 'vinculo_clave'
   | 'opciones_json'
+  // 12.10: las dos columnas de la planilla de caja que faltaban en el pago. NRO TICKET es el número
+  // del comprobante que salió por la ticketeadora; REVISIÓN DE PAGO, el tilde de «lo miré y está bien».
+  | 'ticket'
+  | 'revisado'
 
 /** Sinónimos generales (normalizados). El orden importa: ante un sinónimo repetido gana el primer campo. */
 const SINONIMOS: Record<Campo, string[]> = {
@@ -161,6 +165,8 @@ const SINONIMOS: Record<Campo, string[]> = {
   origen: ['ORIGEN', 'COMO LLEGO', 'CANAL DE CONTACTO', 'DE DONDE VINO', 'POR DONDE ENTRO', 'FUENTE'],
   interes: ['QUE ASEGURA', 'QUE QUIERE ASEGURAR', 'QUE BUSCA', 'INTERES', 'CONSULTA', 'PEDIDO'],
   usuario: ['CARGADO POR', 'CREADO POR', 'ATENDIO', 'ATENDIDO POR', 'USUARIO', 'QUIEN CARGO', 'QUIEN ATENDIO'],
+  ticket: ['NRO TICKET', 'N TICKET', 'NUMERO DE TICKET', 'NUMERO TICKET', 'TICKET', 'NRO COMPROBANTE', 'N COMPROBANTE'],
+  revisado: ['REVISION DE PAGO', 'REVISION DEL PAGO', 'REVISADO', 'PAGO REVISADO'],
   numero_presupuesto: ['N PRESUPUESTO', 'NRO PRESUPUESTO', 'NUMERO DE PRESUPUESTO', 'PRESUPUESTO N', 'PRESUPUESTO NRO'],
   version: ['VERSION', 'VER', 'REVISION'],
   opciones: ['OPCIONES', 'OPCIONES COTIZADAS', 'COTIZACIONES', 'COTIZACION'],
@@ -277,6 +283,11 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
     // Si el cliente pagó o si la agencia le imputó la cuota a la compañía y falta cobrarle: también
     // la escribe la aplicación en APP PAGOS.
     COBRO: 'cobro',
+    // Las dos de la planilla de caja (12.10): el número del comprobante y el tilde de revisión.
+    'NRO TICKET': 'ticket',
+    TICKET: 'ticket',
+    'REVISION DE PAGO': 'revisado',
+    REVISADO: 'revisado',
   },
   COBERTURA: {
     DESCRIPCION: 'detalle',
@@ -333,6 +344,17 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
     USUARIO: 'usuario',
     TEXTO: 'texto',
   },
+  // La caja chica de cada mostrador. TIPO es cuál de los cuatro renglones es (APERTURA, GASTO,
+  // CAJA FUERTE o CIERRE) y DETALLE el concepto del gasto; ninguno de los dos es el de una póliza.
+  APP_CAJA: {
+    FECHA: 'fecha',
+    TIPO: 'tipo_registro',
+    DETALLE: 'detalle',
+    CONCEPTO: 'detalle',
+    IMPORTE: 'importe',
+    LOCAL: 'sucursal',
+    'CARGADO POR': 'usuario',
+  },
   // En los rechazos, FECHA es el día del aviso y MES el de la cuota que rebotó. ESTADO es en qué anda
   // el aviso (PENDIENTE / VISTO / RESUELTO), no el estado de la póliza.
   APP_RECHAZOS: {
@@ -376,7 +398,7 @@ const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
     'tercero_lesionados',
     'tercero_lesionados_detalle',
   ],
-  PAGOS: ['fecha', 'nombre', 'documento', 'sucursal', 'compania', 'numero_poliza', 'patente', 'importe', 'medio_pago', 'mes', 'observaciones', 'cuota', 'resultado', 'usuario', 'cobro'],
+  PAGOS: ['fecha', 'nombre', 'documento', 'sucursal', 'compania', 'numero_poliza', 'patente', 'importe', 'medio_pago', 'mes', 'observaciones', 'cuota', 'resultado', 'usuario', 'cobro', 'ticket', 'revisado'],
   COBERTURA: ['compania', 'cobertura', 'incluye', 'franquicia', 'detalle', 'observaciones', 'prima'],
   CONTADOR: 'todos',
   SEGUROS_ACT: 'todos',
@@ -387,6 +409,7 @@ const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
   APP_RECHAZOS: ['fecha', 'sucursal', 'nombre', 'documento', 'telefono', 'compania', 'numero_poliza', 'patente', 'forma_pago', 'cuota', 'mes', 'motivo', 'observaciones', 'estado', 'usuario'],
   APP_ADJUNTOS: ['fecha', 'tipo_registro', 'vinculo', 'descripcion', 'archivo_nombre', 'categoria', 'archivo', 'tamano', 'sha256', 'usuario', 'subido'],
   APP_COMENTARIOS: ['fecha', 'tipo_registro', 'vinculo', 'usuario', 'texto'],
+  APP_CAJA: ['fecha', 'sucursal', 'tipo_registro', 'detalle', 'importe', 'usuario'],
   OTRA: 'todos',
 }
 
@@ -832,6 +855,9 @@ const ENCABEZADO_PARA_AGREGAR: Partial<Record<Campo, string>> = {
   texto: 'TEXTO',
   vinculo_clave: 'VINCULO ID',
   opciones_json: 'OPCIONES JSON',
+  ticket: 'NRO TICKET',
+  revisado: 'REVISIÓN DE PAGO',
+  detalle: 'DETALLE',
 }
 
 /**

@@ -111,6 +111,10 @@ function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
       // cargan desde cualquier mostrador; hasta la 12.6 sólo entraban con «Forzar bajada completa».
       p.tipo === 'APP_LEADS' ||
       p.tipo === 'APP_PRESUPUESTOS' ||
+      // 12.10: la caja chica del mostrador. Dos personas atienden la misma caja desde dos
+      // computadoras: el gasto que carga una tiene que estar en el arqueo que cierra la otra, y no
+      // en la bajada completa de la noche.
+      p.tipo === 'APP_CAJA' ||
       p.tipo === 'AMP' ||
       p.tipo === 'COBERTURA'
     ) {

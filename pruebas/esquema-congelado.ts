@@ -48,4 +48,7 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   25: '921e1543cdefdda9',
   // La 26 le da tipo a los mensajes, para distinguir el zumbido de un mensaje que diga «zumbido».
   26: 'd6549d0715eb7b22',
+  // La 27 crea caja_movimientos (la caja chica del mostrador: apertura, gastos, lo que baja a la
+  // caja fuerte y el arqueo del cierre) y le suma a `pagos` el número de ticket y el tilde de revisión.
+  27: '0d45daf3aac857e4',
 }

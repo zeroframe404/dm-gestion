@@ -8,12 +8,15 @@ import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
+import { ArqueoDeCaja } from './ArqueoDeCaja'
 import { DialogoPagoManual } from './DialogoPagoManual'
 import { numero, pesos } from './formato'
 import { usePuedeEditar } from '../../contexto/Permisos'
 
 /** Las que se pueden apagar con «Columnas». El cliente no: sin él el renglón no se sabe de quién es. */
 const COLUMNAS: Array<{ id: string; titulo: string; siempre?: boolean }> = [
+  // Las tres primeras son las columnas A, B y C de la planilla de caja de la agencia.
+  { id: 'ticket', titulo: 'N° ticket' },
   { id: 'hora', titulo: 'Hora' },
   { id: 'cliente', titulo: 'Cliente', siempre: true },
   { id: 'documento', titulo: 'DNI/CUIT' },
@@ -22,6 +25,9 @@ const COLUMNAS: Array<{ id: string; titulo: string; siempre?: boolean }> = [
   { id: 'patente', titulo: 'Patente' },
   { id: 'importe', titulo: 'Importe' },
   { id: 'medio', titulo: 'Medio' },
+  // La columna REVISIÓN DE PAGO de la planilla: el tilde de «lo miré y está bien».
+  { id: 'revisado', titulo: 'Revisado' },
+  { id: 'observaciones', titulo: 'Observaciones' },
   { id: 'sucursal', titulo: 'Sucursal' },
   { id: 'cobro_usuario', titulo: 'Cobró' },
   { id: 'cobro_estado', titulo: 'Cobro' },
@@ -55,6 +61,22 @@ export function CajaDelDia() {
   useEffect(() => {
     void cargar(null, [usuario.sucursal.nombre])
   }, [cargar, usuario.sucursal.nombre])
+
+  /** El tilde de REVISIÓN DE PAGO. La caja vuelve rehecha: el arqueo puede haber cambiado. */
+  const revisar = async (pago: PagoRegistrado) => {
+    setError(null)
+    const resultado = await window.dm.cobranzas.revisarPago(pago.id, !pago.revisado)
+    if (resultado.ok) setDatos(resultado.datos)
+    else setError(resultado.error)
+  }
+
+  /** El número del comprobante escrito a mano (el de la ticketeadora se guarda solo al imprimir). */
+  const anotarTicket = async (pago: PagoRegistrado, numero: string) => {
+    setError(null)
+    const resultado = await window.dm.cobranzas.numeroDeTicket(pago.id, numero)
+    if (resultado.ok) setDatos(resultado.datos)
+    else setError(resultado.error)
+  }
 
   const exportar = async () => {
     if (!datos) return
@@ -115,7 +137,13 @@ export function CajaDelDia() {
           <Boton icono="cargando" onClick={() => void cargar(datos.fecha, datos.sucursalesElegidas)} disabled={cargando}>
             Actualizar
           </Boton>
-          <Boton icono="descargar" onClick={() => void exportar()} cargando={exportando} disabled={datos.pagos.length === 0}>
+          <Boton
+            icono="descargar"
+            onClick={() => void exportar()}
+            cargando={exportando}
+            disabled={datos.pagos.length === 0 && !datos.arqueo}
+            title="Guarda el día en un Excel con la forma de la planilla de caja de siempre."
+          >
             Exportar el día
           </Boton>
           {puedeEditar && (
@@ -134,6 +162,15 @@ export function CajaDelDia() {
           <Tarjeta key={total.medio} etiqueta={total.medio} valor={pesos(total.total)} nota={`${numero(total.pagos)} pago(s)`} />
         ))}
       </div>
+
+      {datos.arqueo ? (
+        <ArqueoDeCaja arqueo={datos.arqueo} puedeEditar={puedeEditar} alCambiar={setDatos} />
+      ) : (
+        <Alerta tono="info">
+          La caja chica —el cambio del cajón, los gastos y el arqueo del cierre— se lleva por mostrador. Elegí una sola
+          sucursal para verla y cerrarla.
+        </Alerta>
+      )}
 
       {datos.sinImporte > 0 && (
         <Alerta tono="aviso">
@@ -168,6 +205,26 @@ export function CajaDelDia() {
             )}
             {datos.pagos.map((pago) => (
               <tr key={pago.id} className="border-b border-slate-100 last:border-b-0">
+                {ve.has('ticket') && (
+                  <td className="px-3 py-2">
+                    {puedeEditar ? (
+                      <input
+                        // La clave lleva el número: al recargar la caja, el valor de la casilla se
+                        // rehace con lo que quedó guardado en vez de conservar lo tipeado.
+                        key={pago.numeroTicket ?? ''}
+                        defaultValue={pago.numeroTicket ?? ''}
+                        onBlur={(evento) => {
+                          if (evento.target.value.trim() !== (pago.numeroTicket ?? '')) void anotarTicket(pago, evento.target.value)
+                        }}
+                        placeholder="—"
+                        aria-label={`Número de ticket de ${pago.clienteNombre ?? 'el pago'}`}
+                        className="w-20 rounded border border-transparent bg-transparent px-1 py-0.5 font-mono text-xs text-slate-600 hover:border-slate-300 focus:border-marino-500 focus:bg-white focus:outline-none"
+                      />
+                    ) : (
+                      <span className="font-mono text-xs text-slate-600">{pago.numeroTicket ?? '—'}</span>
+                    )}
+                  </td>
+                )}
                 {ve.has('hora') && <td className="px-3 py-2 tabular-nums whitespace-nowrap text-slate-600">{pago.hora ?? '—'}</td>}
                 {ve.has('cliente') && <td className="px-3 py-2 font-medium text-slate-900">{pago.clienteNombre ?? '—'}</td>}
                 {ve.has('documento') && <td className="px-3 py-2 text-slate-600">{pago.documento ?? '—'}</td>}
@@ -181,6 +238,33 @@ export function CajaDelDia() {
                 )}
                 {ve.has('medio') && (
                   <td className="px-3 py-2 text-slate-700">{pago.medio ?? <span className="text-slate-400">sin especificar</span>}</td>
+                )}
+                {ve.has('revisado') && (
+                  <td className="px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => void revisar(pago)}
+                      disabled={!puedeEditar}
+                      title={
+                        pago.revisado
+                          ? `Revisado${pago.revisadoPor ? ` por ${pago.revisadoPor}` : ''}. Tocá para sacar el tilde.`
+                          : 'Tocá cuando hayas mirado el cobro y esté todo bien.'
+                      }
+                      className={cx(
+                        'flex h-6 w-6 items-center justify-center rounded border text-xs font-bold',
+                        pago.revisado ? 'border-green-300 bg-green-50 text-green-700' : 'border-slate-300 text-slate-300',
+                        puedeEditar && 'hover:border-green-400 hover:text-green-700',
+                      )}
+                      aria-label={pago.revisado ? 'Sacar el tilde de revisión' : 'Marcar como revisado'}
+                    >
+                      {pago.revisado ? '✔' : ''}
+                    </button>
+                  </td>
+                )}
+                {ve.has('observaciones') && (
+                  <td className="max-w-[18rem] truncate px-3 py-2 text-slate-600" title={pago.observaciones ?? ''}>
+                    {pago.observaciones ?? '—'}
+                  </td>
                 )}
                 {ve.has('sucursal') && <td className="px-3 py-2 text-slate-600">{pago.sucursal ?? '—'}</td>}
                 {ve.has('cobro_usuario') && (

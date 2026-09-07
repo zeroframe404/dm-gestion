@@ -41,6 +41,9 @@ export type AccionHistorial =
   // Dos fichas de la misma persona que se juntan en una (Cartera → Duplicados, 12.6): queda anotado
   // qué ficha se fue y adónde pasó todo lo suyo.
   | 'fusion'
+  // La caja chica del mostrador (12.10): el cambio del día, un gasto, lo que bajó a la caja fuerte y
+  // el arqueo del cierre. Es plata, así que quién la tocó y cuánto puso queda anotado como todo lo demás.
+  | 'caja'
 
 export interface CambioARegistrar {
   accion: AccionHistorial

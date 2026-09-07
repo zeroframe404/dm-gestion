@@ -290,6 +290,9 @@ export type TipoPestana =
   // tareas y observaciones de siniestros. Antes quedaban sólo en la PC donde se cargaron.
   | 'APP_ADJUNTOS'
   | 'APP_COMENTARIOS'
+  // 12.10: la caja chica de cada mostrador (el cambio del día, los gastos, lo que baja a la caja
+  // fuerte y el arqueo del cierre). Lo cobrado ya viaja por APP PAGOS: acá va sólo lo demás.
+  | 'APP_CAJA'
   | 'OTRA'
 
 export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
@@ -308,6 +311,7 @@ export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
   APP_RECHAZOS: 'Rechazos de débito (la escribe DM Gestión)',
   APP_ADJUNTOS: 'Adjuntos (la escribe DM Gestión)',
   APP_COMENTARIOS: 'Comentarios y observaciones (la escribe DM Gestión)',
+  APP_CAJA: 'Caja chica (la escribe DM Gestión)',
   OTRA: 'Sin clasificar (sólo crudo)',
 }
 
@@ -1769,6 +1773,13 @@ export interface PagoRegistrado {
   adelantoModo: ModoDeAdelanto | null
   /** Para un pago adelantado: true cuando ya quedó imputado a la fila del mes que pagaba. */
   adelantoImputado: boolean
+  /** Número del comprobante (la columna NRO TICKET de la planilla de caja); null si no se imprimió. */
+  numeroTicket: string | null
+  /** El tilde de REVISIÓN DE PAGO: alguien miró el cobro y está todo bien. */
+  revisado: boolean
+  /** Quién puso el tilde, y cuándo (ISO); null si todavía nadie lo revisó. */
+  revisadoPor: string | null
+  revisadoEn: string | null
 }
 
 export interface TotalPorMedio {
@@ -1797,7 +1808,106 @@ export interface CajaDelDia {
   sinImporte: number
   /** Cuántos pagos del día están IMPUTADOS y sin cobrar: se ven en la lista pero no suman al total. */
   imputados: number
+  /**
+   * La caja chica y el cuadre del día, que es la mitad de abajo de la planilla de caja de la agencia.
+   * Es null cuando se está mirando más de una sucursal (o todas): la caja chica es el cambio que tiene
+   * cada mostrador en el cajón, y sumar la de Lanús con la de Dock Sud no es la caja de nadie.
+   */
+  arqueo: ArqueoDeCaja | null
   hoy: string
+}
+
+/**
+ * Los renglones de la caja chica que se cargan a mano. Lo demás —lo que se cobró y con qué medio— sale
+ * de los pagos del día, así que no se escribe dos veces.
+ *
+ * - `APERTURA`: con cuánto cambio se empieza el día (la fila 2 de la planilla de la agencia). Uno solo
+ *   por día y sucursal; si no está, se arrastra el último cierre contado.
+ * - `GASTO`: lo que se pagó del cajón (la nafta, la limpieza), con el concepto al lado.
+ * - `CAJA_FUERTE`: la plata que se bajó en efectivo y se guardó en la caja fuerte.
+ * - `CIERRE`: lo que se contó en el cajón al cerrar. Uno solo por día y sucursal: es el arqueo.
+ */
+export const TIPOS_DE_MOVIMIENTO_DE_CAJA = ['APERTURA', 'GASTO', 'CAJA_FUERTE', 'CIERRE'] as const
+export type TipoDeMovimientoDeCaja = (typeof TIPOS_DE_MOVIMIENTO_DE_CAJA)[number]
+
+export const NOMBRE_MOVIMIENTO_DE_CAJA: Record<TipoDeMovimientoDeCaja, string> = {
+  APERTURA: 'Caja chica al abrir',
+  GASTO: 'Gasto',
+  CAJA_FUERTE: 'A la caja fuerte',
+  CIERRE: 'Contado al cerrar',
+}
+
+/** Los dos que son únicos por día y sucursal: cargarlos de nuevo corrige el que ya estaba. */
+export const MOVIMIENTOS_UNICOS_DEL_DIA: TipoDeMovimientoDeCaja[] = ['APERTURA', 'CIERRE']
+
+export interface MovimientoDeCaja {
+  id: number
+  filaId: string
+  fecha: string
+  sucursal: string
+  tipo: TipoDeMovimientoDeCaja
+  /** El concepto del gasto («limpieza»), o la aclaración de la bajada a la caja fuerte. */
+  detalle: string | null
+  importe: number
+  usuarioNombre: string | null
+  /** Hora en que se cargó ('HH:MM'); null en los que llegaron de la base sin hora. */
+  hora: string | null
+}
+
+export interface DatosDeMovimientoDeCaja {
+  fecha: string
+  sucursal: string
+  tipo: TipoDeMovimientoDeCaja
+  detalle: string
+  importe: string
+}
+
+/**
+ * El arqueo de la caja chica de un mostrador en un día: el resumen automático de la planilla de la
+ * agencia (las cuentas de la fila 34 para abajo), con el cuadre incluido.
+ *
+ * La cuenta es la misma que hace la planilla a mano:
+ *   DEBE  = caja chica al abrir + todo lo que se cobró
+ *   HABER = posnet + transferencias + otros medios + gastos + lo que bajó a la caja fuerte + lo que
+ *           queda en la caja chica
+ * y las dos tienen que dar igual.
+ */
+export interface ArqueoDeCaja {
+  fecha: string
+  sucursal: string
+  /** El cambio con el que se abrió el día. */
+  apertura: number
+  /** false cuando la apertura no se cargó y se arrastró del último cierre contado. */
+  aperturaCargada: boolean
+  /** De qué día se arrastró la apertura; null si se cargó a mano o si no había ningún cierre antes. */
+  aperturaHeredadaDe: string | null
+  /** Todo lo cobrado en el día (lo que en la planilla va en la columna DEBE, sin la apertura). */
+  cobrado: number
+  efectivo: number
+  posnet: number
+  transferencia: number
+  /** Lo cobrado por medios que no son ni efectivo, ni posnet, ni transferencia (cuponera, local…). */
+  otros: number
+  gastos: number
+  aLaCajaFuerte: number
+  /** Lo que tendría que haber en el cajón: apertura + efectivo − gastos − lo que bajó a la caja fuerte. */
+  esperado: number
+  /** Lo que se contó al cerrar; null mientras el día no se cerró. */
+  contado: number | null
+  /** contado − esperado; null mientras el día no se cerró. Positivo sobra, negativo falta. */
+  diferencia: number | null
+  cerradoEn: string | null
+  cerradoPor: string | null
+  debe: number
+  haber: number
+  /**
+   * debe − haber, que es el control que hace la planilla comparando sus dos totales. Mientras el día
+   * está abierto da cero siempre (los dos lados salen de las mismas cuentas); cuando el día se cierra
+   * es lo mismo que `diferencia` mirado del otro lado, porque lo contado es lo único que entra en la
+   * cuenta sin salir de ella.
+   */
+  descuadre: number
+  movimientos: MovimientoDeCaja[]
 }
 
 /** Alta manual de un pago desde la caja. Con `cuotaFilaId` se paga una fila de la planilla del mes. */

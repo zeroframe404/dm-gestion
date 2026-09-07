@@ -91,6 +91,10 @@ export interface ApiDm {
     caja: Remota<'cobranzas:caja'>
     registrarPagoManual: Remota<'cobranzas:registrarPagoManual'>
     exportarCaja: Remota<'cobranzas:exportarCaja'>
+    guardarMovimientoCaja: Remota<'cobranzas:guardarMovimientoCaja'>
+    borrarMovimientoCaja: Remota<'cobranzas:borrarMovimientoCaja'>
+    revisarPago: Remota<'cobranzas:revisarPago'>
+    numeroDeTicket: Remota<'cobranzas:numeroDeTicket'>
     mora: Remota<'cobranzas:mora'>
     avisarMora: Remota<'cobranzas:avisarMora'>
     imputados: Remota<'cobranzas:imputados'>
