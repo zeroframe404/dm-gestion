@@ -187,6 +187,7 @@ import type {
   OpcionesPlanillaClasica,
   PedidoDeReporte,
   PlantillaDeMensaje,
+  PodioMensual,
   ResultadoDeSegmento,
   TableroMetricas,
   VistaPreviaDeReporte,
@@ -598,6 +599,8 @@ export interface Canales {
   // Métricas: el tablero con filtros globales y su versión tabular (Cartera → Estadísticas).
   'metricas:tablero': (filtros: FiltrosMetricas) => Resultado<TableroMetricas>
   'metricas:estadisticas': (periodo: string | null, sucursales: string[]) => Resultado<EstadisticasDeCartera>
+  // El podio de sucursales por altas del mes: sin permiso de área, lo ve cualquiera que entró.
+  'metricas:podio': () => Resultado<PodioMensual>
 
   // Reportes: el centro de exportación.
   'reportes:catalogo': () => Resultado<CatalogoDeReportes>

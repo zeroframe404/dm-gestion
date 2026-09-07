@@ -2813,6 +2813,21 @@ export interface EstadisticasDeCartera {
   hoy: string
 }
 
+/**
+ * El podio mensual de sucursales: quién metió más altas este mes, para que se corran una carrera. Lo
+ * ve cualquiera que entre a la aplicación, no sólo quien tiene el módulo Métricas —es competencia, no
+ * un número de la agencia—, así que nunca trae `cobrado`: cada fila sale con ese campo en null.
+ */
+export interface PodioMensual {
+  periodo: string
+  /** false si no hay mes anterior cargado: sin él las altas no se pueden deducir y el podio no tiene sentido. */
+  hayMesAnterior: boolean
+  /** Una fila por sucursal (la etiqueta es el nombre de la sucursal), ya ordenadas por altas de mayor a
+   *  menor y, a igualdad, por activos; sin la fila «(sin sucursal)», que no compite. */
+  ranking: FilaEstadistica[]
+  hoy: string
+}
+
 // ---------------------------------------------------------------------------
 // 12.6 · Duplicados: lo que la sincronización dejó repetido, a la vista y con botón
 // ---------------------------------------------------------------------------

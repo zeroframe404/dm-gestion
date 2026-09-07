@@ -7,7 +7,7 @@ import test from 'node:test'
 import { usarBaseDeDatos } from '../src/main/db/base'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 import { darDeBaja, periodosDisponibles, planillaDelMes } from '../src/main/servicios/cartera'
-import { estadisticasDeCartera, tableroDeMetricas } from '../src/main/servicios/metricas'
+import { estadisticasDeCartera, podioDelMes, tableroDeMetricas } from '../src/main/servicios/metricas'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
 import type { SesionUsuario } from '../src/shared/tipos'
@@ -112,5 +112,31 @@ test('sin mes anterior cargado las altas son «no se sabe» (null), nunca cero',
   assert.equal(estadisticas.hayMesAnterior, false)
   assert.equal(estadisticas.totales.altas, null)
   for (const fila of estadisticas.porCompania) assert.equal(fila.altas, null)
+  db.close()
+})
+
+test('el podio del mes ordena las sucursales por altas, sin la fila «(sin sucursal)» y sin plata', async () => {
+  const { db } = await baseImportada()
+  const estadisticas = estadisticasDeCartera('2026-08', [], false)
+  const podio = podioDelMes()
+
+  assert.equal(podio.periodo, estadisticas.periodo, 'el podio mira el mismo período que Estadísticas por defecto')
+  assert.equal(podio.hayMesAnterior, estadisticas.hayMesAnterior)
+  assert.ok(podio.ranking.every((fila) => fila.etiqueta !== '(sin sucursal)'), 'la fila sin sucursal no compite')
+
+  // Las mismas sucursales de estadisticasDeCartera, sólo reordenadas para el podio.
+  const porNombre = (filas: typeof podio.ranking) => [...filas].sort((a, b) => a.etiqueta.localeCompare(b.etiqueta, 'es'))
+  assert.deepEqual(
+    porNombre(podio.ranking),
+    porNombre(estadisticas.porSucursal.filter((fila) => fila.etiqueta !== '(sin sucursal)')),
+  )
+
+  // De mayor a menor altas, que es la carrera que pidió el cliente.
+  for (let i = 1; i < podio.ranking.length; i++) {
+    assert.ok((podio.ranking[i - 1]!.altas ?? 0) >= (podio.ranking[i]!.altas ?? 0), 'cada fila trae igual o más altas que la siguiente')
+  }
+
+  // Es competencia por altas y bajas, no por plata: nunca trae cobrado.
+  for (const fila of podio.ranking) assert.equal(fila.cobrado, null)
   db.close()
 })

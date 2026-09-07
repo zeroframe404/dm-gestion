@@ -277,6 +277,7 @@ export interface ApiDm {
   metricas: {
     tablero: Remota<'metricas:tablero'>
     estadisticas: Remota<'metricas:estadisticas'>
+    podio: Remota<'metricas:podio'>
   }
   reportes: {
     catalogo: Remota<'reportes:catalogo'>
