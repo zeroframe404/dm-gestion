@@ -96,9 +96,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Queda a mano para descargar desde la corrida aunque el Release se haya borrado.
+      # Una copia de más, para poder bajar el instalador desde la corrida aunque el Release se haya
+      # borrado. Es SECUNDARIA: lo que actualiza las computadoras de la agencia es el Release, que a
+      # esta altura ya está publicado.
+      #
+      # Por eso `continue-on-error`. El 6 de septiembre de 2026 una publicación quedó marcada en rojo
+      # con el instalador ya subido al Release y andando: lo que falló fue esta copia, porque la cuota
+      # de artefactos de la cuenta estaba llena («Artifact storage quota has been hit»). Una corrida en
+      # rojo después de una publicación que salió bien hace perder media hora averiguando qué se rompió,
+      # y peor: invita a volver a publicar algo que ya estaba publicado. Si esta copia no se puede
+      # guardar, queda el aviso en la corrida y la publicación sigue siendo un éxito, que es lo que es.
+      #
+      # Y `retention-days: 7` para que la cuota no se vuelva a llenar sola: el instalador pesa unos
+      # 130 MB y el valor por defecto los guarda 90 días, así que con cada publicación se acumulaban
+      # más de tres meses de instaladores que nadie mira. Una semana alcanza de sobra para el único
+      # caso en que esto sirve —bajarlo a mano poco después de publicar—, y el Release, que es la copia
+      # que importa, no vence nunca.
       - name: Guardar el instalador como artefacto
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: instalador
           path: |
@@ -106,3 +122,4 @@ jobs:
             release/DM-Gestion-Setup-*.exe.blockmap
             release/latest.yml
           if-no-files-found: error
+          retention-days: 7
