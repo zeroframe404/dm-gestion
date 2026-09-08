@@ -612,11 +612,18 @@ interface ClienteCargado {
   documento: string | null
   telefono: string | null
   sucursal_texto: string | null
+  email: string | null
+  direccion: string | null
+  localidad: string | null
+  fecha_nacimiento: string | null
 }
 
 function leerCliente(clienteId: number): ClienteCargado {
   const cliente = db()
-    .prepare('SELECT id, nombre, documento, telefono, sucursal_texto FROM clientes WHERE id = ?')
+    .prepare(
+      `SELECT id, nombre, documento, telefono, sucursal_texto, email, direccion, localidad, fecha_nacimiento
+         FROM clientes WHERE id = ?`,
+    )
     .get(clienteId) as ClienteCargado | undefined
   if (!cliente) throw new ErrorDeNegocio('No se encontró ese cliente. Actualizá la pantalla y probá de nuevo.')
   return cliente
@@ -864,6 +871,13 @@ function camposDeLaFilaNueva(
     documento: cliente.documento ?? '',
     telefono: cliente.telefono ?? '',
     sucursal: cliente.sucursal_texto ?? '',
+    // Los otros cuatro datos de la ficha también son columnas de la planilla mensual: si la fila
+    // nueva sale sin ellos, el email y el domicilio que se acaban de cargar no existen para las demás
+    // computadoras, y la primera reimportación se los borra a ésta (issue #75).
+    email: cliente.email ?? '',
+    direccion: cliente.direccion ?? '',
+    localidad: cliente.localidad ?? '',
+    fecha_nacimiento: cliente.fecha_nacimiento ?? '',
     compania: datos.compania,
     numero_poliza: datos.numero,
     patente: vehiculo.patente,
