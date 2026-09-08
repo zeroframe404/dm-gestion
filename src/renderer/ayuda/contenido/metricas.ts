@@ -17,7 +17,7 @@ export const AYUDA_METRICAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Las tarjetas grandes',
         parrafos: [
-          'Seguros activos: cuántas pólizas tiene la planilla de ese mes, sea cual sea su estado actual (es una foto de ese mes puntual, no de la cartera de hoy). Altas del mes: las pólizas que están en la planilla de este mes y no estaban en la del mes anterior. Bajas del mes: las que se dieron de baja en ese mes, con el motivo más frecuente a modo de resumen.',
+          'Seguros activos: cuántas pólizas tiene la planilla de ese mes, sea cual sea su estado actual (es una foto de ese mes puntual, no de la cartera de hoy). Altas del mes: las pólizas que están en la planilla de este mes y no estaban en la del mes anterior (una renovación no cuenta: el cliente ya estaba). Bajas del mes: las que se dieron de baja en ese mes, con el motivo más frecuente a modo de resumen.',
           'Cobrado en el mes y Pendiente de cobro: cuánta plata entró y cuánta sigue faltando cobrar de las cuotas de ese mes, con la cantidad de cuotas en cada caso. Siniestros abiertos: todos los que no están en estado Cerrado, sin importar de qué mes son (un siniestro sigue «abierto» hasta que se resuelve, más allá de cuándo se cargó).',
         ],
       },
@@ -31,7 +31,7 @@ export const AYUDA_METRICAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Cómo se cuenta cada cosa',
         parrafos: [
-          'Los seguros activos de un mes son literalmente las filas de la planilla de ese mes, lo mismo que contaría alguien mirando esa pestaña a mano: no se filtra por si esa póliza sigue vigente hoy, porque eso arruinaría la lectura de los meses viejos. Las altas salen de comparar la planilla de este mes contra la del mes anterior, así que dependen de que ese mes anterior ya esté cargado en el sistema. Las bajas del mes son las que están anotadas en Cartera → Bajas de ese mismo mes. Activos, altas y bajas se cuentan una vez por póliza: si la planilla trae la misma póliza en dos renglones (ver Cartera → Duplicados), el tablero no la cuenta dos veces.',
+          'Los seguros activos de un mes son literalmente las filas de la planilla de ese mes, lo mismo que contaría alguien mirando esa pestaña a mano: no se filtra por si esa póliza sigue vigente hoy, porque eso arruinaría la lectura de los meses viejos. Las altas salen de comparar la planilla de este mes contra la del mes anterior, así que dependen de que ese mes anterior ya esté cargado en el sistema; una póliza renovada se sigue reconociendo como la misma y no se cuenta de nuevo. Las bajas del mes son las que están anotadas en Cartera → Bajas de ese mismo mes. Activos, altas y bajas se cuentan una vez por póliza: si la planilla trae la misma póliza en dos renglones (ver Cartera → Duplicados), el tablero no la cuenta dos veces.',
         ],
       },
     ],
@@ -42,7 +42,7 @@ export const AYUDA_METRICAS: Record<string, ContenidoDeAyuda> = {
       },
       {
         termino: 'Altas',
-        explicacion: 'Pólizas que aparecen en la planilla de este mes y no estaban en la del mes anterior. Sin mes anterior cargado, dan en cero.',
+        explicacion: 'Pólizas que aparecen en la planilla de este mes y no estaban en la del mes anterior. Una renovación NO es un alta: el cliente ya estaba y la cartera no creció, aunque la póliza haya cambiado de número. Sin mes anterior cargado dan un guion, no cero.',
       },
       {
         termino: 'Bajas',

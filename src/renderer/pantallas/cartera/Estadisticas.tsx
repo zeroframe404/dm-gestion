@@ -87,8 +87,9 @@ export function Estadisticas() {
       <p className="shrink-0 text-xs leading-relaxed text-slate-500">
         <strong className="font-semibold text-slate-600">Activos</strong> son las filas de la planilla del mes que no están dadas de
         baja —lo mismo que cuenta SEGUROS ACT—. <strong className="font-semibold text-slate-600">Altas</strong> son las que están este
-        mes y no estaban el anterior. <strong className="font-semibold text-slate-600">Bajas</strong> salen de la pestaña de bajas de
-        ese mes. <strong className="font-semibold text-slate-600">Pagos</strong> son los cobros imputados a ese mes.
+        mes y no estaban el anterior: una renovación no cuenta, porque el cliente ya estaba y la cartera no creció.{' '}
+        <strong className="font-semibold text-slate-600">Bajas</strong> salen de la pestaña de bajas de ese mes.{' '}
+        <strong className="font-semibold text-slate-600">Pagos</strong> son los cobros imputados a ese mes.
       </p>
     </div>
   )

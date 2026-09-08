@@ -1240,8 +1240,12 @@ Tres definiciones, que son las que hacen que los números coincidan con la plani
   dice cómo está la póliza **hoy**, y con eso un mes viejo mostraría menos pólizas de las que tuvo.
 - **Altas** de un mes = las que están en ese mes y no estaban en el anterior, que es la cuenta que hace
   el contador comparando dos pestañas. La columna ALTA de la hoja está llena a medias y con fechas de
-  todos los formatos, así que no sirve. Si no hay mes anterior cargado las altas van en cero y la
-  pantalla lo dice.
+  todos los formatos, así que no sirve. Si no hay mes anterior cargado las altas van en null —un guion
+  en la pantalla, nunca un cero— y la pantalla lo dice. Una **renovación no es un alta**: renovar crea
+  una póliza nueva, que queda enganchada a la anterior por `poliza_anterior_id`, y las métricas suben
+  por esa cadena hasta la primera de la línea antes de comparar. Sin eso, cada renovación se veía como
+  cartera nueva y el podio de Inicio le contaba a la sucursal más grande más de cien altas en un mes en
+  el que no había entrado casi nadie.
 - **Bajas** de un mes = las filas de la pestaña de BAJAS de ese mes, con su MOTIVO.
 
 Los gráficos están dibujados a mano en SVG (`pantallas/metricas/graficos.tsx`): son cuatro formas
