@@ -61,7 +61,8 @@ export interface ResultadoBajada {
  * siempre era avisar por unos minutos y nunca más: la bitácora guarda 500 eventos y la pantalla
  * muestra 50, así que un respaldo restaurado un viernes el lunes ya no se veía en ninguna parte, con
  * los borrados de esa pestaña congelados sin que nadie lo supiera. Repetirlo en cada ciclo tampoco
- * sirve: el carril rápido pasa cada 30 segundos y taparía la bitácora con el mismo renglón.
+ * sirve: desde la 13.1 el aviso en vivo puede disparar una bajada apenas alguien escribe, así que en
+ * un rato movido la bitácora quedaría tapada con el mismo renglón.
  */
 const MINUTOS_ENTRE_AVISOS_DE_PESTANA_VACIA = 15
 

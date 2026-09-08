@@ -3,6 +3,7 @@
 import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion } from './eliminacion'
 import type { MatrizPermisos } from './permisos'
 import type {
+  TipoPestana,
   // Mensajería interna (12.8).
   AdjuntoDeMensaje,
   AvisosDeMensajes,
@@ -796,11 +797,21 @@ export interface Eventos {
    */
   'mensajes:zumbido': { autor: string }
   /**
-   * El carril rápido de la sincronización bajó tareas nuevas o cambiadas de otra computadora. No lleva
-   * datos: es un «volvé a preguntar» para la campana, el contador de la barra lateral y el listado, que
-   * si no tendrían que esperar a su propio reloj para enterarse.
+   * La sincronización bajó tareas nuevas o cambiadas de otra computadora. No lleva datos: es un «volvé
+   * a preguntar» para la campana, el contador de la barra lateral y el listado, que si no tendrían que
+   * esperar a su propio reloj para enterarse.
    */
   'tareas:cambiaron': null
+  /**
+   * Bajaron datos de otra computadora: estas pestañas cambiaron y la pantalla que muestre algo de
+   * ellas se tiene que recargar sola. Es lo que hace que un cambio hecho en otra sucursal aparezca en
+   * la pantalla abierta sin que nadie navegue a otro lado y vuelva.
+   *
+   * Lleva los títulos Y los tipos porque son dos cosas distintas: una pantalla no sabe nada de
+   * «AGOSTO 2026» —el título cambia todos los meses— pero sí sabe que muestra la planilla mensual.
+   * Los títulos van igual, para la bitácora y para el día que haga falta afinar el filtro.
+   */
+  'datos:cambiaron': { pestanas: string[]; tipos: TipoPestana[] }
 }
 
 export type NombreCanal = keyof Canales

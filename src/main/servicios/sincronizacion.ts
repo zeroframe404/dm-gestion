@@ -157,15 +157,36 @@ async function importarTodo(pestanas?: string[]): Promise<void> {
   }
 }
 
+/**
+ * Si el aviso en vivo está andando. Lo pone `index.ts` al arrancar, apuntando al vigía.
+ *
+ * Va por acá y no con un `import` directo del vigía a propósito: el vigía necesita `obtenerMotor()`,
+ * y si además la sincronización lo importara a él quedaría un círculo entre los dos módulos. Es el
+ * mismo motivo por el que el cartero de la mensajería se engancha desde `index.ts` y no desde acá.
+ */
+let avisoEnVivoAndando: () => boolean = () => false
+
+export function usarAvisoEnVivo(esta: () => boolean): void {
+  avisoEnVivoAndando = esta
+}
+
 export function obtenerMotor(): MotorDeSincronizacion {
   if (!motor) {
     motor = new MotorDeSincronizacion({
       crearFuente,
       importar: importarTodo,
       alCambiarEstado: (estado) => emitir('sincronizacion:estado', estado),
-      // El carril rápido de las tareas: cuando trae algo, la campana y el contador de la barra lateral
-      // se enteran en el momento en vez de esperar a su propio reloj.
+      // Cuando la bajada trae tareas, la campana y el contador de la barra lateral se enteran en el
+      // momento en vez de esperar a su propio reloj.
       alCambiarLasTareas: () => emitir('tareas:cambiaron', null),
+      // Y cuando trae cualquier otra cosa, la pantalla que la esté mostrando se recarga sola: hasta la
+      // 13.0 el dato entraba en la base y la pantalla abierta seguía mostrando lo viejo.
+      alCambiarLosDatos: (pestanas) =>
+        emitir('datos:cambiaron', {
+          pestanas: pestanas.map((p) => p.titulo),
+          tipos: [...new Set(pestanas.map((p) => p.tipo))],
+        }),
+      hayAvisoEnVivo: () => avisoEnVivoAndando(),
       // 12.6: los adjuntos suben al servidor en el mismo ciclo que la cola, después de ella.
       hayArchivosPendientes: hayAdjuntosPendientes,
       subirArchivos: () => subirAdjuntosPendientes(dadorDeTokenDeGoogle()),

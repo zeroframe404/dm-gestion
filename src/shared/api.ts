@@ -205,6 +205,8 @@ export interface ApiDm {
     reintentar: Remota<'sincronizacion:reintentar'>
     respaldarAhora: Remota<'sincronizacion:respaldarAhora'>
     alCambiarEstado: Suscripcion<'sincronizacion:estado'>
+    /** Bajaron datos de otra computadora: qué pestañas cambiaron, para que la pantalla se recargue. */
+    alCambiarLosDatos: Suscripcion<'datos:cambiaron'>
   }
   /** Los respaldos del SERVIDOR, no los .xlsx de esta computadora (ésos están en `sincronizacion`). */
   respaldos: {
