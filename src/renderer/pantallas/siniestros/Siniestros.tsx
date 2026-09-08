@@ -5,6 +5,7 @@
 // La lista es la que ya conocen; lo nuevo está adentro. Por eso la fila entera abre la ficha y la
 // pantalla no se llena de botones.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import {
   ESTADOS_DE_SINIESTRO,
@@ -66,14 +67,15 @@ export function Siniestros() {
   const { visibles, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('siniestros', COLUMNAS)
   const ve = useMemo(() => new Set(visibles.map((columna) => columna.id)), [visibles])
 
-  const cargar = useCallback(async (cuales: FiltrosSiniestros) => {
-    setCargando(true)
+  /** `enSilencio` es la recarga del aviso en vivo: cambia los datos sin poner la pantalla en blanco. */
+  const cargar = useCallback(async (cuales: FiltrosSiniestros, opciones: { enSilencio?: boolean } = {}) => {
+    if (!opciones.enSilencio) setCargando(true)
     const resultado = await window.dm.siniestros.listar(cuales)
     if (resultado.ok) {
       setDatos(resultado.datos)
       setError(null)
     } else setError(resultado.error)
-    setCargando(false)
+    if (!opciones.enSilencio) setCargando(false)
   }, [])
 
   // Con un respiro: el buscador pedía el listado entero (1.500 siniestros con sus contadores) en cada
@@ -82,6 +84,15 @@ export function Siniestros() {
     const espera = setTimeout(() => void cargar(filtros), 200)
     return () => clearTimeout(espera)
   }, [cargar, filtros])
+
+  // Un siniestro cargado o comentado en otra sucursal aparece en el listado solo. Con una ficha
+  // abierta el refresco espera: la ficha tiene su propio estado y recargar el listado abajo la
+  // dejaría desincronizada de lo que se está mirando.
+  useRefrescoEnVivo({
+    tipos: ['SINIESTROS', 'APP_ADJUNTOS', 'APP_COMENTARIOS'],
+    recargar: () => cargar(filtros, { enSilencio: true }),
+    postergar: () => abierto !== null || altaAbierta,
+  })
 
   // Otro módulo puede mandar directo a una ficha (por ejemplo desde la ficha del cliente).
   useEffect(() => {

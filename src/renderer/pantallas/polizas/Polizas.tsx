@@ -3,6 +3,7 @@
 // Los parámetros de navegación deciden con qué arranca (desde la ficha de un cliente se llega con
 // `nuevaPolizaPara`, desde la bandeja de renovaciones con `polizaId`).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
 import { DIAS_DE_RENOVACION, diasParaVencer, NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
 import { NOMBRE_RAMA, type Rama } from '../../../shared/ramas'
 import { ESTADOS_DE_POLIZA, type EstadoPoliza, type FiltrosPolizas, type ListadoPolizas, type PolizaDeCliente } from '../../../shared/tipos'
@@ -53,9 +54,10 @@ export function Polizas() {
   // vieja se descarta. Si no, la tabla podría quedar mostrando el resultado del filtro anterior.
   const peticion = useRef(0)
 
-  const cargar = useCallback(async (aplicar: FiltrosPolizas) => {
+  /** `enSilencio` es la recarga del aviso en vivo: cambia los datos sin poner la pantalla en blanco. */
+  const cargar = useCallback(async (aplicar: FiltrosPolizas, opciones: { enSilencio?: boolean } = {}) => {
     const mia = ++peticion.current
-    setCargando(true)
+    if (!opciones.enSilencio) setCargando(true)
     const resultado = await window.dm.polizas.listar(aplicar)
     if (mia !== peticion.current) return
     if (resultado.ok) {
@@ -64,12 +66,20 @@ export function Polizas() {
     } else {
       setError(resultado.error)
     }
-    setCargando(false)
+    if (!opciones.enSilencio) setCargando(false)
   }, [])
 
   useEffect(() => {
     void cargar(filtros)
   }, [cargar, filtros])
+
+  // Una póliza emitida en otra sucursal aparece en el listado sola. Con el formulario o una ficha
+  // abiertos el refresco espera: ahí adentro puede haber media carga sin guardar.
+  useRefrescoEnVivo({
+    tipos: ['MENSUAL', 'BAJAS'],
+    recargar: () => cargar(filtros, { enSilencio: true }),
+    postergar: () => vista.pantalla !== 'listado',
+  })
 
   useEffect(() => {
     const temporizador = setTimeout(() => {
