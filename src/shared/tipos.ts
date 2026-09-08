@@ -243,8 +243,12 @@ export interface InfoApp {
 /**
  * `deshabilitada` es el caso de desarrollo (`npm run dev`): sin instalador no hay de dónde bajar
  * actualizaciones, así que ni se intenta. En un ejecutable empaquetado nunca aparece.
+ *
+ * `disponible` es la novedad que se acaba de detectar y todavía no se bajó: es la que dispara el
+ * cartel «Actualización disponible encontrada» con sus dos botones. Antes de la 15-min se pasaba
+ * directo a `descargando` sin preguntar nada.
  */
-export type SituacionActualizacion = 'deshabilitada' | 'buscando' | 'al-dia' | 'descargando' | 'lista' | 'error'
+export type SituacionActualizacion = 'deshabilitada' | 'buscando' | 'al-dia' | 'disponible' | 'descargando' | 'lista' | 'error'
 
 export interface EstadoActualizacion {
   situacion: SituacionActualizacion
@@ -255,6 +259,23 @@ export interface EstadoActualizacion {
   canal: string
   ultimoChequeo: string | null
   ultimoError: string | null
+}
+
+/**
+ * El reporte que cada sucursal manda sobre SU computadora, para que el superadministrador vea desde
+ * la pantalla de Usuarios quién tiene el programa al día y quién dejó una actualización para después.
+ * Viaja por el mismo mecanismo que el encabezado del ticket: cada sucursal sólo puede escribir su
+ * propio renglón (ver `estadoDeActualizaciones.ts`).
+ */
+export interface EstadoDeActualizacionDeSucursal {
+  sucursal: string
+  /** Versión que tiene instalada esa sucursal ahora mismo. */
+  version: string
+  /** Última vez que esa sucursal confirmó su versión (se reporta en cada chequeo). */
+  reportadoEn: string
+  /** La versión que dejó «para después», o null si nunca la rechazó o si ya actualizó. */
+  rechazoVersion: string | null
+  rechazadoEn: string | null
 }
 
 /**

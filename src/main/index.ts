@@ -19,6 +19,7 @@ import { configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
 import { credencialesVps } from './servicios/config'
 import { hayImportacionEnCurso, marcarImportacionesInterrumpidas } from './servicios/importacion'
 import { alSubirUnAdjunto } from './servicios/adjuntos'
+import { reportarVersionPropia } from './servicios/estadoDeActualizaciones'
 import { detenerSincronizacion } from './servicios/sincronizacion'
 import { alCambiarLaSesion } from './servicios/sesion'
 import { detenerActualizaciones, iniciarActualizaciones } from './servicios/updater'
@@ -244,8 +245,13 @@ function prepararBaseDeUsuarios(): void {
  */
 function engancharLaMensajeria(): void {
   alCambiarLaSesion((quien) => {
-    if (quien) arrancarCartero(quien)
-    else pararCartero()
+    if (quien) {
+      arrancarCartero(quien)
+      // Recién con sesión hay a qué sucursal atribuirle el reporte: se manda apenas se ingresa, sin
+      // esperar al próximo chequeo de los 15 minutos, para que el superadministrador vea la versión
+      // al día ni bien alguien abre el programa.
+      reportarVersionPropia()
+    } else pararCartero()
   })
   alSubirUnAdjunto((tipo) => {
     if (tipo === 'mensaje') apurarAlCartero()

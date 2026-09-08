@@ -16,6 +16,8 @@ function textoDeSituacion(estado: EstadoActualizacion): string {
       return 'Buscando actualizaciones…'
     case 'al-dia':
       return 'No hay actualizaciones pendientes.'
+    case 'disponible':
+      return `Hay una versión nueva (${estado.version}) disponible.`
     case 'descargando':
       return `Descargando la versión ${estado.version ?? ''}${estado.porcentaje !== null ? ` (${estado.porcentaje}%)` : ''}…`
     case 'lista':

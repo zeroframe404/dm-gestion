@@ -292,7 +292,8 @@ import {
 } from './servicios/permisos'
 import { exigirRol, exigirSesion, sesion } from './servicios/sesion'
 import { listarSucursales } from './servicios/sucursales'
-import { buscarActualizaciones, estadoDeActualizacion, instalarActualizacion } from './servicios/updater'
+import { estadoDeActualizacionesPorSucursal } from './servicios/estadoDeActualizaciones'
+import { actualizarAhora, buscarActualizaciones, estadoDeActualizacion, instalarActualizacion, posponerActualizacion } from './servicios/updater'
 import { cambiarActivo, crearUsuario, editarUsuario, listarUsuarios, resetearClave } from './servicios/usuarios'
 import { enteroPositivo } from './servicios/validacion'
 
@@ -1668,9 +1669,24 @@ export function registrarIpc(): void {
     buscarActualizaciones()
     return exito(estadoDeActualizacion())
   })
+  // El «Actualizar ahora» del cartel: recién ahí se baja el instalador.
+  manejar('actualizaciones:actualizarAhora', () => {
+    actualizarAhora()
+    return exito(estadoDeActualizacion())
+  })
+  // El «Dejar para después»: no baja nada, sólo lo anota para que lo vea el superadministrador.
+  manejar('actualizaciones:posponer', (version) => {
+    posponerActualizacion(version)
+    return exito(null)
+  })
   manejar('actualizaciones:instalarAhora', () => {
     instalarActualizacion()
     return exito(null)
+  })
+  // Sólo lo ve un superadministrador, igual que el resto de la pantalla de Usuarios.
+  manejar('actualizaciones:estadoDeSucursales', async () => {
+    exigirRol('SUPER_ADMIN')
+    return exito(await estadoDeActualizacionesPorSucursal())
   })
 
   // Ayuda: el PDF de una pantalla de ayuda, por el mismo camino que ya usa el presupuesto.

@@ -381,7 +381,10 @@ const api: ApiDm = {
   actualizaciones: {
     estado: () => invocar('actualizaciones:estado'),
     buscarAhora: () => invocar('actualizaciones:buscarAhora'),
+    actualizarAhora: () => invocar('actualizaciones:actualizarAhora'),
+    posponer: (version) => invocar('actualizaciones:posponer', version),
     instalarAhora: () => invocar('actualizaciones:instalarAhora'),
+    estadoDeSucursales: () => invocar('actualizaciones:estadoDeSucursales'),
     alCambiarEstado: (escuchar) => suscribir('actualizaciones:estado', escuchar),
   },
   ayuda: {

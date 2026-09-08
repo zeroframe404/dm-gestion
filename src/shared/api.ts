@@ -379,7 +379,10 @@ export interface ApiDm {
   actualizaciones: {
     estado: Remota<'actualizaciones:estado'>
     buscarAhora: Remota<'actualizaciones:buscarAhora'>
+    actualizarAhora: Remota<'actualizaciones:actualizarAhora'>
+    posponer: Remota<'actualizaciones:posponer'>
     instalarAhora: Remota<'actualizaciones:instalarAhora'>
+    estadoDeSucursales: Remota<'actualizaciones:estadoDeSucursales'>
     alCambiarEstado: Suscripcion<'actualizaciones:estado'>
   }
   ayuda: {
