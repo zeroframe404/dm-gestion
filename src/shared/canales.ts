@@ -181,6 +181,7 @@ import type {
   FilasDeReporte,
   DatosDePlantilla,
   DatosDeSegmento,
+  DetalleDeAltas,
   EstadisticasDeCartera,
   FiltrosDeSegmento,
   FiltrosMetricas,
@@ -613,6 +614,12 @@ export interface Canales {
   'metricas:estadisticas': (periodo: string | null, sucursales: string[]) => Resultado<EstadisticasDeCartera>
   // El podio de sucursales por altas del mes: sin permiso de área, lo ve cualquiera que entró.
   'metricas:podio': () => Resultado<PodioMensual>
+  /**
+   * Qué pólizas son esas altas, una por una. A diferencia del podio, esto SÍ pide el permiso de
+   * Cartera: el cartel muestra un número y esto muestra los nombres de los clientes, que es el dato de
+   * Cartera y no una competencia. Sin ese recorte, el podio sería una puerta de atrás al listado.
+   */
+  'metricas:altas': (periodo: string | null, sucursal: string | null) => Resultado<DetalleDeAltas>
 
   // Reportes: el centro de exportación.
   'reportes:catalogo': () => Resultado<CatalogoDeReportes>

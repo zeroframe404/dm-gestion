@@ -20,6 +20,14 @@ export const AYUDA_INICIO: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'El podio de altas',
+        parrafos: [
+          'Debajo del saludo está la competencia del mes entre sucursales: quién metió más altas, con la medalla del primero. Un alta es una póliza que está en la planilla de este mes y no estaba en la del mes anterior. Una renovación NO cuenta como alta, aunque la compañía le haya cambiado el número: el cliente ya estaba y la cartera no creció. El podio lo ve cualquiera que entre, tenga o no habilitado Métricas, porque es una carrera y no un número de la agencia.',
+          'Si además tenés permiso para ver Cartera, cada tarjeta se puede tocar: se abre la lista de esas altas, una por una, con el cliente, la compañía, el número de póliza y la patente. Es para poder controlar el número contra la planilla en vez de creerle al cartel; si un nombre de la lista es un cliente de toda la vida, avisá, porque ahí hay algo mal contado.',
+          'Cuando todavía no hay un mes anterior cargado en el sistema, el podio no aparece: sin con qué comparar no hay altas que calcular y no habría carrera que mostrar.',
+        ],
+      },
+      {
         titulo: 'Agrandar la pantalla y achicar el menú',
         parrafos: [
           'Arriba a la derecha, al lado del botón del sonido, están los controles de tamaño: «−» achica todo y «+» agranda todo (la letra, los botones, las tablas), y el número del medio vuelve al 100 %. También funcionan los atajos de siempre: Ctrl y «+», Ctrl y «−», Ctrl y «0» para volver al tamaño normal, y Ctrl con la rueda del mouse. Sirve para las dos puntas: en la notebook del mostrador se baja a 80 % y entran más columnas de la planilla; en el monitor grande de la oficina se sube a 125 % y se lee sin acercarse.',
@@ -53,6 +61,10 @@ export const AYUDA_INICIO: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Tarea',
         explicacion: 'Un pendiente asignado a una persona, con una fecha límite opcional y a veces vinculado a un cliente, una póliza o un siniestro. Se administran desde el módulo Tareas.',
+      },
+      {
+        termino: 'Alta',
+        explicacion: 'Una póliza que está en la planilla de este mes y no estaba en la del anterior. Una renovación no es un alta: es la misma póliza que sigue, aunque cambie de número.',
       },
       {
         termino: 'Módulo',

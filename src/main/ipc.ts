@@ -48,7 +48,7 @@ import {
 } from './servicios/cobranzas'
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
-import { estadisticasDeCartera, podioDelMes, tableroDeMetricas } from './servicios/metricas'
+import { altasDelMes, estadisticasDeCartera, podioDelMes, tableroDeMetricas } from './servicios/metricas'
 import {
   areasDelReporte,
   catalogoDeExcel,
@@ -1307,6 +1307,13 @@ export function registrarIpc(): void {
   manejar('metricas:podio', () => {
     exigirSesion()
     return exito(podioDelMes())
+  })
+  // El detalle del podio —qué pólizas son esas altas— pide Cartera, que es de donde sale el dato. El
+  // podio se ve sin permiso porque es un número de una carrera; una lista con el nombre de cada cliente
+  // ya es el listado de Cartera, y llegar a él por el atajo del podio sería una puerta de atrás.
+  manejar('metricas:altas', (periodo, sucursal) => {
+    exigirVista('cartera')
+    return exito(altasDelMes(periodo, sucursal))
   })
 
   // Reportes: exportar lo que ya se ve en pantalla. Un reporte junta datos de varios módulos, así que

@@ -11,7 +11,7 @@ import test from 'node:test'
 import { usarBaseDeDatos } from '../src/main/db/base'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 import { darDeBaja, periodosDisponibles, planillaDelMes } from '../src/main/servicios/cartera'
-import { estadisticasDeCartera, podioDelMes, tableroDeMetricas } from '../src/main/servicios/metricas'
+import { altasDelMes, estadisticasDeCartera, podioDelMes, tableroDeMetricas } from '../src/main/servicios/metricas'
 import { listarPolizas } from '../src/main/servicios/polizas'
 import { datosSugeridosDeRenovacion, renovar } from '../src/main/servicios/renovaciones'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
@@ -214,5 +214,97 @@ test('renovar dejando la anterior ACTIVA sí suma un alta: son dos pólizas viva
   // las altas tienen que acompañar: si no, activos y altas contarían cosas distintas.
   assert.equal(estadisticasDeCartera('2026-08', [], true).totales.activos, antesActivos + 1, 'quedan las dos vigentes')
   assert.equal(altasEnElPodio('Dock Sud'), (antes ?? 0) + 1, 'la segunda fila de la misma línea sí es un alta')
+  db.close()
+})
+
+// ---------------------------------------------------------------------------
+// El detalle del podio: qué pólizas son esas altas
+// ---------------------------------------------------------------------------
+
+test('el detalle de cada sucursal suma exactamente lo que dice su tarjeta del podio', async () => {
+  const { db } = await baseImportada()
+  const podio = podioDelMes()
+  assert.ok(podio.ranking.length > 0, 'hay podio que mirar')
+
+  // Es la garantía que hace útil al detalle: si la lista no suma el número de la tarjeta, el detalle no
+  // sirve para controlar nada. Por eso sale de las mismas filas y por eso se prueba sucursal por sucursal.
+  for (const fila of podio.ranking) {
+    const detalle = altasDelMes(podio.periodo, fila.etiqueta)
+    assert.equal(detalle.filas.length, fila.altas ?? 0, `${fila.etiqueta}: la lista tiene que sumar lo que dice la tarjeta`)
+    assert.equal(detalle.periodo, podio.periodo)
+    assert.ok(
+      detalle.filas.every((alta) => alta.sucursal === fila.etiqueta),
+      `${fila.etiqueta}: no se cuela ninguna fila de otra sucursal`,
+    )
+  }
+  db.close()
+})
+
+test('sin sucursal, el detalle trae todas las altas del mes, incluidas las que no tienen sucursal', async () => {
+  const { db } = await baseImportada()
+  const estadisticas = estadisticasDeCartera('2026-08', [], false)
+  const detalle = altasDelMes('2026-08', null)
+  assert.equal(detalle.sucursal, null)
+  assert.equal(detalle.filas.length, estadisticas.totales.altas, 'el total del detalle es el total de Estadísticas')
+
+  // Y trae con qué reconocer cada póliza en la planilla: un listado sin el número ni la patente no se
+  // puede mirar contra la hoja, que es para lo único que existe.
+  const suarez = detalle.filas.find((alta) => alta.cliente === CLIENTES.suarez.nombre)
+  assert.ok(suarez, 'Suárez es el alta de agosto y tiene que estar')
+  assert.equal(suarez.numeroPoliza, CLIENTES.suarez.poliza)
+  assert.equal(suarez.patente, CLIENTES.suarez.patente)
+  assert.equal(suarez.compania, CLIENTES.suarez.cia)
+  db.close()
+})
+
+test('una póliza renovada no aparece en el detalle de altas', async () => {
+  const { db } = await baseImportada()
+  const antes = altasDelMes('2026-08', 'Dock Sud')
+  assert.ok(!antes.filas.some((alta) => alta.cliente === CLIENTES.gonzalez.nombre), 'González no era un alta antes de renovar')
+
+  const original = polizaDe(CLIENTES.gonzalez.poliza)
+  renovar(original.id, { ...datosSugeridosDeRenovacion(original.id), numero: `${CLIENTES.gonzalez.poliza}-R` }, DANIEL)
+
+  const despues = altasDelMes('2026-08', 'Dock Sud')
+  assert.equal(despues.filas.length, antes.filas.length, 'renovar no agrega una fila al detalle')
+  assert.ok(!despues.filas.some((alta) => alta.cliente === CLIENTES.gonzalez.nombre), 'y González sigue sin estar')
+  // El detalle y la tarjeta siguen cerrando después de renovar, que es cuando antes se despegaban.
+  const enElPodio = podioDelMes().ranking.find((f) => f.etiqueta === 'Dock Sud')
+  assert.equal(despues.filas.length, enElPodio?.altas ?? 0)
+  db.close()
+})
+
+test('con dos pólizas vivas de la misma línea, el detalle lista sólo la que es alta', async () => {
+  const { db } = await baseImportada()
+  const antes = altasDelMes('2026-08', 'Dock Sud')
+  const original = polizaDe(CLIENTES.gonzalez.poliza)
+
+  // El caso incómodo: la línea de González queda con DOS filas vivas en agosto y sólo una de las dos es
+  // alta. Es donde el detalle y la tarjeta se pueden despegar más fácil, porque hay que elegir cuál de
+  // las dos filas es la que cuenta y las dos cuentas tienen que elegir la misma.
+  renovar(
+    original.id,
+    { ...datosSugeridosDeRenovacion(original.id), numero: `${CLIENTES.gonzalez.poliza}-B`, destinoDeLaAnterior: 'activa' },
+    DANIEL,
+  )
+
+  const despues = altasDelMes('2026-08', 'Dock Sud')
+  const enElPodio = podioDelMes().ranking.find((f) => f.etiqueta === 'Dock Sud')
+  assert.equal(despues.filas.length, antes.filas.length + 1, 'la cartera creció en una y el detalle lo muestra')
+  assert.equal(despues.filas.length, enElPodio?.altas ?? 0, 'y la lista sigue sumando lo que dice la tarjeta')
+  assert.equal(
+    despues.filas.filter((alta) => alta.cliente === CLIENTES.gonzalez.nombre).length,
+    1,
+    'González aparece UNA vez: tiene dos pólizas vivas, pero una sola es el alta',
+  )
+  db.close()
+})
+
+test('sin mes anterior cargado el detalle va vacío, no con la cartera entera adentro', async () => {
+  const { db } = await baseImportada()
+  const primero = periodosDisponibles().map((p) => p.periodo).sort()[0]!
+  const detalle = altasDelMes(primero, null)
+  assert.equal(detalle.hayMesAnterior, false)
+  assert.equal(detalle.filas.length, 0, 'sin con qué comparar no hay altas que listar')
   db.close()
 })

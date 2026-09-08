@@ -4,11 +4,11 @@
 // cada usuario vea sus pendientes al entrar, y eso es lo que hace que alguien abra la aplicación a la
 // mañana en vez de mirar un papelito.
 import { useEffect, useState } from 'react'
-import { NOMBRE_ROL, type FilaTarea, type PodioMensual } from '../../shared/tipos'
+import { NOMBRE_ROL, type DetalleDeAltas, type FilaEstadistica, type FilaTarea, type PodioMensual } from '../../shared/tipos'
 import { AvisoConexionGoogle } from '../componentes/AvisoConexionGoogle'
 import { DialogoReportarError } from '../componentes/DialogoReportarError'
 import { Icono } from '../componentes/Icono'
-import { Boton, Etiqueta, cx } from '../componentes/ui'
+import { Boton, Cargando, Dialogo, Etiqueta, cx } from '../componentes/ui'
 import { BotonAyuda } from '../componentes/Ayuda'
 import { BotonManual } from '../componentes/BotonManual'
 import { useNavegacion } from '../contexto/Navegacion'
@@ -204,6 +204,12 @@ const MEDALLAS = ['🥇', '🥈', '🥉']
  */
 function PodioDeSucursales() {
   const [podio, setPodio] = useState<PodioMensual | null>(null)
+  // Qué tarjeta se está mirando por dentro. Guarda la fila entera y no el nombre: el cuadro muestra el
+  // número que decía la tarjeta al lado de la lista, que es lo único que permite ver si cierran.
+  const [mirando, setMirando] = useState<FilaEstadistica | null>(null)
+  // El detalle es el listado de Cartera con otro nombre, así que se ofrece sólo a quien puede verlo.
+  const { puedeVer } = usePermisos()
+  const seVeElDetalle = puedeVer('cartera')
 
   useEffect(() => {
     let vigente = true
@@ -234,33 +240,150 @@ function PodioDeSucursales() {
       </div>
 
       <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
-        {podio.ranking.map((fila, indice) => (
-          <div
-            key={fila.etiqueta}
-            className={cx(
-              'rounded-xl border px-4 py-3 shadow-suave',
-              indice === 0 ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white',
-            )}
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-lg leading-none" aria-hidden="true">
-                {MEDALLAS[indice] ?? `${indice + 1}°`}
-              </span>
-              <span className="truncate font-semibold text-slate-900" title={fila.etiqueta}>
-                {fila.etiqueta}
-              </span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-1.5">
-              <span className="font-display text-2xl font-extrabold tabular-nums text-slate-900">{numero(fila.altas ?? 0)}</span>
-              <span className="text-xs text-slate-500">alta{fila.altas === 1 ? '' : 's'}</span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              {numero(fila.bajas)} baja{fila.bajas === 1 ? '' : 's'} · {numero(fila.activos)} activa{fila.activos === 1 ? '' : 's'}
-            </p>
-          </div>
-        ))}
+        {podio.ranking.map((fila, indice) => {
+          const cuerpo = (
+            <>
+              <div className="flex items-center gap-2">
+                <span className="text-lg leading-none" aria-hidden="true">
+                  {MEDALLAS[indice] ?? `${indice + 1}°`}
+                </span>
+                <span className="truncate font-semibold text-slate-900" title={fila.etiqueta}>
+                  {fila.etiqueta}
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline gap-1.5">
+                <span className="font-display text-2xl font-extrabold tabular-nums text-slate-900">{numero(fila.altas ?? 0)}</span>
+                <span className="text-xs text-slate-500">alta{fila.altas === 1 ? '' : 's'}</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                {numero(fila.bajas)} baja{fila.bajas === 1 ? '' : 's'} · {numero(fila.activos)} activa{fila.activos === 1 ? '' : 's'}
+              </p>
+            </>
+          )
+          const aspecto = cx(
+            'rounded-xl border px-4 py-3 text-left shadow-suave',
+            indice === 0 ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white',
+          )
+          // Sin permiso de Cartera la tarjeta es la de siempre: un div, sin botón que prometa un
+          // detalle que después va a decir que no.
+          if (!seVeElDetalle) {
+            return (
+              <div key={fila.etiqueta} className={aspecto}>
+                {cuerpo}
+              </div>
+            )
+          }
+          return (
+            <button
+              key={fila.etiqueta}
+              type="button"
+              onClick={() => setMirando(fila)}
+              title={`Ver qué pólizas son las altas de ${fila.etiqueta}`}
+              className={cx(
+                aspecto,
+                'transition hover:border-marino-300 hover:shadow-media focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40',
+              )}
+            >
+              {cuerpo}
+              <p className="mt-2 text-[11px] font-semibold text-marino-600">Ver el detalle</p>
+            </button>
+          )
+        })}
       </div>
+
+      <DetalleDelPodio periodo={podio.periodo} fila={mirando} alCerrar={() => setMirando(null)} />
     </section>
+  )
+}
+
+/**
+ * Qué pólizas son las altas de una sucursal. Es lo que convierte el podio en un número que se puede
+ * discutir: la agencia vio «Dock Sud, 128 altas» y lo primero que preguntó fue qué estaba contando.
+ * Con la lista al lado del número, esa pregunta se contesta sola en el mostrador y no hace falta que
+ * nadie mire la base de datos.
+ */
+function DetalleDelPodio({ periodo, fila, alCerrar }: { periodo: string; fila: FilaEstadistica | null; alCerrar: () => void }) {
+  const [detalle, setDetalle] = useState<DetalleDeAltas | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!fila) return
+    let vigente = true
+    // Cada vez que se abre otra sucursal se limpia lo anterior: sin esto se ve un instante la lista de
+    // Dock Sud abajo del título de Lanús, que es peor que ver el cartel de «cargando».
+    setDetalle(null)
+    setError(null)
+    const traer = async () => {
+      const resultado = await window.dm.metricas.altas(periodo, fila.etiqueta)
+      if (!vigente) return
+      if (resultado.ok) setDetalle(resultado.datos)
+      else setError(resultado.error)
+    }
+    void traer()
+    return () => {
+      vigente = false
+    }
+  }, [periodo, fila])
+
+  if (!fila) return null
+  // Las dos cuentas tienen que dar lo mismo. Si no dan, lo dice la pantalla en vez de dejar que alguien
+  // sume la lista a mano y se entere solo de que el programa le mintió.
+  const cuadra = detalle === null || detalle.filas.length === (fila.altas ?? 0)
+
+  return (
+    <Dialogo
+      abierto
+      alCerrar={alCerrar}
+      ancho="lg"
+      titulo={`Altas de ${fila.etiqueta} · ${mesCorto(periodo)}`}
+      descripcion={
+        <>
+          Las {numero(fila.altas ?? 0)} pólizas que están en la planilla de este mes y no estaban en la del anterior. Una renovación no
+          está en esta lista: el cliente ya estaba, aunque la póliza haya cambiado de número.
+        </>
+      }
+      pie={
+        <Boton onClick={alCerrar}>Cerrar</Boton>
+      }
+    >
+      {error && <p className="text-sm text-red-700">{error}</p>}
+      {!error && detalle === null && <Cargando texto="Buscando las altas…" />}
+      {!error && detalle !== null && detalle.filas.length === 0 && (
+        <p className="text-sm text-slate-600">No hay altas de {fila.etiqueta} en este mes.</p>
+      )}
+      {!error && detalle !== null && detalle.filas.length > 0 && (
+        <>
+          {!cuadra && (
+            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              La tarjeta dice {numero(fila.altas ?? 0)} y la lista trae {numero(detalle.filas.length)}. Avisá para que lo miren: los dos
+              números salen de la misma cuenta y tendrían que dar igual.
+            </p>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="py-2 pr-3">Cliente</th>
+                  <th className="py-2 pr-3">Compañía</th>
+                  <th className="py-2 pr-3">N° de póliza</th>
+                  <th className="py-2">Patente</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detalle.filas.map((alta, indice) => (
+                  <tr key={`${alta.numeroPoliza ?? ''}|${alta.patente ?? ''}|${indice}`} className="border-b border-slate-100">
+                    <td className="py-2 pr-3 font-medium text-slate-900">{alta.cliente ?? '—'}</td>
+                    <td className="py-2 pr-3 text-slate-600">{alta.compania ?? '—'}</td>
+                    <td className="py-2 pr-3 tabular-nums text-slate-600">{alta.numeroPoliza ?? '—'}</td>
+                    <td className="py-2 text-slate-600">{alta.patente ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Dialogo>
   )
 }
 
