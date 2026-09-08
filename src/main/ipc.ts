@@ -2,7 +2,7 @@
 // Los errores esperables (ErrorDeNegocio) vuelven como `{ ok: false, error }`; el resto se registra
 // en consola y se devuelve un mensaje genérico para no filtrar detalles internos al renderer.
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import type { ArgumentosDe, DatosDeEvento, NombreCanal, NombreEvento, RespuestaDe } from '../shared/canales'
+import type { ArgumentosDe, NombreCanal, RespuestaDe } from '../shared/canales'
 import { AREA_ELIMINABLE, esTipoEliminable, motivoDeNoPoderEliminar, rolPuedeEliminar } from '../shared/eliminacion'
 import { veLosNumerosDeLaAgencia } from '../shared/permisos'
 import type { InfoApp, Resultado, SesionUsuario } from '../shared/tipos'
@@ -296,6 +296,7 @@ import { estadoDeActualizacionesPorSucursal } from './servicios/estadoDeActualiz
 import { actualizarAhora, buscarActualizaciones, estadoDeActualizacion, instalarActualizacion, posponerActualizacion } from './servicios/updater'
 import { cambiarActivo, crearUsuario, editarUsuario, listarUsuarios, resetearClave } from './servicios/usuarios'
 import { enteroPositivo } from './servicios/validacion'
+import { emitirATodas } from './servicios/avisos'
 
 type Manejador<C extends NombreCanal> = (...args: ArgumentosDe<C>) => RespuestaDe<C> | Promise<RespuestaDe<C>>
 
@@ -334,12 +335,6 @@ function exigirBorrado(tipoCrudo: unknown): SesionUsuario {
   const actor = exigirEdicion(AREA_ELIMINABLE[tipoCrudo])
   if (!rolPuedeEliminar(actor.rol, tipoCrudo)) throw new ErrorDeNegocio(motivoDeNoPoderEliminar(tipoCrudo))
   return actor
-}
-
-function emitirATodas<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
-  for (const ventana of BrowserWindow.getAllWindows()) {
-    if (!ventana.isDestroyed()) ventana.webContents.send(evento, datos)
-  }
 }
 
 function ventanaActual(): BrowserWindow | null {

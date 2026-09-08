@@ -3,7 +3,6 @@
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { DatosDeEvento, NombreEvento } from '../../shared/canales'
 import type { EstadoImportador, InformeImportacion, ProgresoImportacion, SesionUsuario, VistaPreviaHoja } from '../../shared/tipos'
 import { db } from '../db/base'
 import type { FuenteHoja } from '../importacion/fuente'
@@ -15,6 +14,7 @@ import { carpetaDatos } from '../rutas'
 import { ErrorDeNegocio } from './errores'
 import { repararDuplicados } from './reparaciones'
 import { crearFuenteVps } from './sincronizacion'
+import { emitirATodas as emitir } from './avisos'
 
 interface ImportacionEnCurso {
   id: number
@@ -47,12 +47,6 @@ export function reservarImportacionAutomatica(id: number): { estaCancelada: () =
     liberar: () => {
       if (enCurso === reserva) enCurso = null
     },
-  }
-}
-
-function emitir<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
-  for (const ventana of BrowserWindow.getAllWindows()) {
-    if (!ventana.isDestroyed()) ventana.webContents.send(evento, datos)
   }
 }
 

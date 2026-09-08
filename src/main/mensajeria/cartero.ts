@@ -19,8 +19,6 @@
 // Cuándo arranca y cuándo para: arranca cuando alguien ingresa y para cuando cierra sesión o se cierra
 // el programa. Cerrar corta el pedido a mitad de camino con un `AbortController`; sin eso, apagar la
 // aplicación esperaría los 25 segundos del pedido abierto.
-import { BrowserWindow } from 'electron'
-import type { DatosDeEvento, NombreEvento } from '../../shared/canales'
 import type { SesionUsuario } from '../../shared/tipos'
 import { resumenDeMensaje } from '../../shared/texto'
 import { llamarLaAtencion, notificarEnElSistema, sacudirLaVentana } from '../servicios/avisos'
@@ -43,6 +41,7 @@ import {
   posponerEnvio,
 } from '../servicios/mensajeria'
 import { esRechazoDefinitivo, ESPERA_DEL_LONG_POLL_SEGUNDOS, puenteDeMensajes } from './puente'
+import { emitirATodas as emitir } from '../servicios/avisos'
 
 /** Después de una vuelta con error se espera esto antes de volver a intentar, para no golpear al servidor caído. */
 const ESPERA_TRAS_ERROR_MS = 15_000
@@ -52,24 +51,6 @@ const RESPIRO_MS = 250
 let corriendo = false
 let cortar: AbortController | null = null
 let quienSoy: SesionUsuario | null = null
-
-/**
- * Las ventanas abiertas, o ninguna si no hay Electron alrededor. El banco de pruebas importa esto sin
- * proceso de Electron, y un aviso que no se puede mostrar no puede romper la entrega del mensaje.
- */
-function ventanas(): BrowserWindow[] {
-  try {
-    return typeof BrowserWindow?.getAllWindows === 'function' ? BrowserWindow.getAllWindows() : []
-  } catch {
-    return []
-  }
-}
-
-function emitir<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
-  for (const ventana of ventanas()) {
-    if (!ventana.isDestroyed()) ventana.webContents.send(evento, datos)
-  }
-}
 
 /**
  * Espera `ms`, o menos si cortan. El oyente se saca siempre al terminar: sin eso, cada vuelta le deja

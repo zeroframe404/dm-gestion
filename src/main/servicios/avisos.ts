@@ -27,11 +27,21 @@ function ventanas(): BrowserWindow[] {
   }
 }
 
-function emitir<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
+/**
+ * Le manda un aviso a todas las ventanas abiertas.
+ *
+ * Vive acá, exportada, porque esta misma función estaba copiada en cinco archivos —la importación, el
+ * actualizador, la sincronización, el IPC y el cartero— y de las cinco copias sólo dos se acordaban de
+ * aguantar que no haya Electron alrededor, que es lo que pasa en el banco de pruebas. Una copia más y
+ * la próxima que se olvide del `try` va a romper una prueba lejos de acá.
+ */
+export function emitirATodas<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
   for (const ventana of ventanas()) {
     if (!ventana.isDestroyed()) ventana.webContents.send(evento, datos)
   }
 }
+
+const emitir = emitirATodas
 
 /**
  * Muestra una notificación del sistema. Nunca falla hacia afuera: un aviso que no se pudo mostrar no

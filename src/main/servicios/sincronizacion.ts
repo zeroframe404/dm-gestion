@@ -1,8 +1,7 @@
 // Servicio de sincronización: arma el motor con las credenciales guardadas, avisa al renderer cuando
 // cambia el estado y expone lo que muestra Administración → Sincronización.
-import { app, BrowserWindow } from 'electron'
+import { app } from 'electron'
 import path from 'node:path'
-import type { DatosDeEvento, NombreEvento } from '../../shared/canales'
 import { nombreDePeriodo } from '../../shared/semaforo'
 import type {
   EntradaDeCola,
@@ -38,19 +37,12 @@ import { ErrorDeNegocio } from './errores'
 import { reservarImportacionAutomatica, tipoDeImportacionEnCurso } from './importacion'
 import { repararAlArrancar, repararDuplicados, repararSiniestrosSinCliente } from './reparaciones'
 import { construirXlsx, type HojaXlsx } from './xlsx'
+import { emitirATodas as emitir } from './avisos'
 
 let motor: MotorDeSincronizacion | null = null
 /** En las pruebas se puede poner una hoja simulada acá y saltear las credenciales. */
 let fuenteDePrueba: FuenteHoja | null = null
 let servicioDeRespaldoDePrueba: ServicioDeRespaldo | null = null
-
-function emitir<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
-  // Fuera de Electron (las pruebas, que usan el motor del programa) no hay ventanas a las que avisar.
-  const ventanas = (BrowserWindow as typeof BrowserWindow | undefined)?.getAllWindows() ?? []
-  for (const ventana of ventanas) {
-    if (!ventana.isDestroyed()) ventana.webContents.send(evento, datos)
-  }
-}
 
 export function carpetaDeRespaldos(): string {
   return path.join(carpetaDatos(), 'respaldos')
