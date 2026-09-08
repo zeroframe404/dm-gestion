@@ -6,6 +6,7 @@ import {
   NOMBRE_ROL,
   ROLES,
   type DatosEdicionUsuario,
+  type EstadoDeActualizacionDeSucursal,
   type EstadoDeUsuarios,
   type Rol,
   type Sucursal,
@@ -35,6 +36,8 @@ export function Usuarios() {
   const [dialogo, setDialogo] = useState<EstadoDialogo>(null)
   const [estado, setEstado] = useState<EstadoDeUsuarios | null>(null)
   const [subiendo, setSubiendo] = useState(false)
+  const [versionPropia, setVersionPropia] = useState<string | null>(null)
+  const [actualizacionesPorSucursal, setActualizacionesPorSucursal] = useState<EstadoDeActualizacionDeSucursal[]>([])
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -50,6 +53,14 @@ export function Usuarios() {
     else setError(resultadoUsuarios.error)
     if (resultadoSucursales.ok) setSucursales(resultadoSucursales.datos)
     else if (resultadoUsuarios.ok) setError(resultadoSucursales.error)
+    // Quién tiene el programa al día: no puede frenar la pantalla ni mostrar error, es sólo una columna
+    // más de información. Con el servidor caído la tabla se ve igual, sin esas dos columnas.
+    const [resultadoInfo, resultadoActualizaciones] = await Promise.all([
+      window.dm.app.info(),
+      window.dm.actualizaciones.estadoDeSucursales(),
+    ])
+    if (resultadoInfo.ok) setVersionPropia(resultadoInfo.datos.version)
+    if (resultadoActualizaciones.ok) setActualizacionesPorSucursal(resultadoActualizaciones.datos)
     setCargando(false)
   }, [])
 
@@ -146,6 +157,8 @@ export function Usuarios() {
             usuarios={usuarios}
             idActual={actual.id}
             bloqueado={bloqueado}
+            versionPropia={versionPropia}
+            actualizacionesPorSucursal={actualizacionesPorSucursal}
             alEditar={(usuario) => setDialogo({ tipo: 'editar', usuario })}
             alResetear={(usuario) => setDialogo({ tipo: 'resetear', usuario })}
             alCambiarActivo={(usuario) => setDialogo({ tipo: 'activo', usuario })}
@@ -295,12 +308,36 @@ interface PropsTabla {
   idActual: number
   /** Motivo por el que las acciones están deshabilitadas, o null. */
   bloqueado: string | null
+  /** La versión que tiene instalada ESTA computadora: la referencia contra la que se compara cada sucursal. */
+  versionPropia: string | null
+  actualizacionesPorSucursal: EstadoDeActualizacionDeSucursal[]
   alEditar: (usuario: Usuario) => void
   alResetear: (usuario: Usuario) => void
   alCambiarActivo: (usuario: Usuario) => void
 }
 
-function TablaUsuarios({ usuarios, idActual, bloqueado, alEditar, alResetear, alCambiarActivo }: PropsTabla) {
+/** «13.0.1» contra «9.2.0»: comparación numérica por tramo, no alfabética. */
+function compararVersiones(a: string, b: string): number {
+  const partesA = a.split('.').map((parte) => Number.parseInt(parte, 10) || 0)
+  const partesB = b.split('.').map((parte) => Number.parseInt(parte, 10) || 0)
+  const largo = Math.max(partesA.length, partesB.length)
+  for (let i = 0; i < largo; i++) {
+    const diferencia = (partesA[i] ?? 0) - (partesB[i] ?? 0)
+    if (diferencia !== 0) return diferencia
+  }
+  return 0
+}
+
+function TablaUsuarios({
+  usuarios,
+  idActual,
+  bloqueado,
+  versionPropia,
+  actualizacionesPorSucursal,
+  alEditar,
+  alResetear,
+  alCambiarActivo,
+}: PropsTabla) {
   if (usuarios.length === 0) {
     return <p className="px-6 py-12 text-center text-sm text-slate-500">Todavía no hay usuarios cargados.</p>
   }
@@ -316,12 +353,14 @@ function TablaUsuarios({ usuarios, idActual, bloqueado, alEditar, alResetear, al
             <th className={encabezado}>Rol</th>
             <th className={encabezado}>Sucursal</th>
             <th className={encabezado}>Estado</th>
+            <th className={encabezado}>Versión del programa</th>
             <th className={cx(encabezado, 'pr-6 text-right')}>Acciones</th>
           </tr>
         </thead>
         <tbody>
           {usuarios.map((usuario) => {
             const esActual = usuario.id === idActual
+            const reporte = actualizacionesPorSucursal.find((fila) => fila.sucursal === usuario.sucursalNombre) ?? null
             return (
               <tr
                 key={usuario.id}
@@ -343,6 +382,9 @@ function TablaUsuarios({ usuarios, idActual, bloqueado, alEditar, alResetear, al
                     {usuario.activo ? <Etiqueta tono="exito">Activo</Etiqueta> : <Etiqueta tono="peligro">Desactivado</Etiqueta>}
                     {usuario.debeCambiarClave && <Etiqueta tono="aviso">Debe cambiar la contraseña</Etiqueta>}
                   </div>
+                </td>
+                <td className="px-4 py-3">
+                  <CeldaVersion reporte={reporte} versionPropia={versionPropia} />
                 </td>
                 <td className="px-4 py-3 pr-6">
                   {/* Acciones sólo con ícono: el texto va en title y aria-label para que la tabla entre en 1280 px. */}
@@ -387,6 +429,33 @@ function TablaUsuarios({ usuarios, idActual, bloqueado, alEditar, alResetear, al
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+/**
+ * Qué versión tiene esa sucursal y si dejó una actualización para después.
+ *
+ * Sin reporte todavía (nunca abrió el programa en esta versión con la base del VPS configurada, o el
+ * servidor no contestó) no se inventa nada: se avisa que no hay dato, en vez de mostrar «desactualizado»
+ * sin estar seguro.
+ */
+function CeldaVersion({ reporte, versionPropia }: { reporte: EstadoDeActualizacionDeSucursal | null; versionPropia: string | null }) {
+  if (!reporte) {
+    return <span className="text-xs text-slate-400">Sin datos todavía</span>
+  }
+  const alDia = versionPropia === null || compararVersiones(reporte.version, versionPropia) >= 0
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <div className="flex items-center gap-1.5">
+        <span className="font-mono text-xs text-slate-700">{reporte.version}</span>
+        {alDia ? <Etiqueta tono="exito">Al día</Etiqueta> : <Etiqueta tono="aviso">Desactualizado</Etiqueta>}
+      </div>
+      {reporte.rechazoVersion && (
+        <span title={reporte.rechazadoEn ? `Rechazada ${haceCuanto(reporte.rechazadoEn)}` : undefined}>
+          <Etiqueta tono="peligro">Rechazó la {reporte.rechazoVersion}</Etiqueta>
+        </span>
+      )}
     </div>
   )
 }

@@ -134,6 +134,7 @@ import type {
   DatosDePago,
   EntradaHistorial,
   EstadoActualizacion,
+  EstadoDeActualizacionDeSucursal,
   EstadoSincronizacion,
   PanelSincronizacion,
   FilaBaja,
@@ -742,10 +743,16 @@ export interface Canales {
 
   'app:info': () => Resultado<InfoApp>
 
-  // Actualizaciones: chequeo automático (al abrir y cada 4 horas) más el botón manual de Acerca de.
+  // Actualizaciones: chequeo automático liviano (al abrir y cada 15 minutos) más el botón manual de
+  // Acerca de. `actualizarAhora` dispara la descarga que el chequeo automático ya no arranca solo, y
+  // `posponer` es el «Dejar para después» del cartel: no baja nada, sólo lo anota para el superadmin.
   'actualizaciones:estado': () => Resultado<EstadoActualizacion>
   'actualizaciones:buscarAhora': () => Resultado<EstadoActualizacion>
+  'actualizaciones:actualizarAhora': () => Resultado<EstadoActualizacion>
+  'actualizaciones:posponer': (version: string) => Resultado<null>
   'actualizaciones:instalarAhora': () => Resultado<null>
+  /** Sólo para el superadministrador: qué versión tiene instalada cada sucursal y si rechazó alguna. */
+  'actualizaciones:estadoDeSucursales': () => Resultado<EstadoDeActualizacionDeSucursal[]>
 
   /** El PDF (A4) de una pantalla de ayuda. Abre el diálogo «Guardar como»; null si se canceló. */
   'ayuda:guardarPdf': (pedido: { html: string; nombreDeArchivo: string }) => Resultado<{ ruta: string | null }>

@@ -1,6 +1,7 @@
 // Raíz de la interfaz: decide entre carga, login, cambio de contraseña obligatorio y el escritorio.
 import { lazy, Suspense, type ReactNode } from 'react'
 import { AvisoActualizacion } from './componentes/AvisoActualizacion'
+import { CartelActualizacionDisponible } from './componentes/CartelActualizacionDisponible'
 import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
 import { AvisoDeZumbido } from './componentes/AvisoDeZumbido'
 import { BarraLateral } from './componentes/BarraLateral'
@@ -177,6 +178,8 @@ function Marco({
       <AvisoDeTareaHecha />
       {/* Un zumbido llega estando en cualquier pantalla: por eso el sonido y el cartel viven acá. */}
       <AvisoDeZumbido />
+      {/* Igual que el resto de estos avisos: vive acá para saltar sin importar en qué pantalla se esté. */}
+      <CartelActualizacionDisponible />
     </div>
   )
 }
