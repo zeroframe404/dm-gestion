@@ -2,15 +2,21 @@
 // se prueba acá es sobre todo que los DUPLICADOS no los tuerzan: una póliza dos veces en la planilla
 // (lo que dejaban las carreras de la sincronización) cuenta una sola vez, y sin mes anterior las altas
 // son «no se sabe», no cero.
+//
+// Y, desde la 13.0.1, que una RENOVACIÓN NO SEA UN ALTA: era lo que le inflaba el podio a Dock Sud
+// —la sucursal más grande y la que más renueva— con más de cien altas en un mes en el que no había
+// entrado casi nadie.
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { usarBaseDeDatos } from '../src/main/db/base'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 import { darDeBaja, periodosDisponibles, planillaDelMes } from '../src/main/servicios/cartera'
 import { estadisticasDeCartera, podioDelMes, tableroDeMetricas } from '../src/main/servicios/metricas'
+import { listarPolizas } from '../src/main/servicios/polizas'
+import { datosSugeridosDeRenovacion, renovar } from '../src/main/servicios/renovaciones'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
-import type { SesionUsuario } from '../src/shared/tipos'
+import type { FiltrosPolizas, PolizaDeCliente, SesionUsuario } from '../src/shared/tipos'
 
 const DANIEL: SesionUsuario = { id: 1, nombre: 'Daniel Martínez', usuario: 'daniel', rol: 'SUPER_ADMIN', sucursal: { id: 4, nombre: 'Daniel' }, debeCambiarClave: false }
 import { baseDePrueba, contar, importar } from './ayuda'
@@ -138,5 +144,75 @@ test('el podio del mes ordena las sucursales por altas, sin la fila «(sin sucur
 
   // Es competencia por altas y bajas, no por plata: nunca trae cobrado.
   for (const fila of podio.ranking) assert.equal(fila.cobrado, null)
+  db.close()
+})
+
+// ---------------------------------------------------------------------------
+// Renovar no es dar de alta (13.0.1)
+// ---------------------------------------------------------------------------
+
+const SIN_FILTROS_DE_POLIZA: FiltrosPolizas = { busqueda: '', estados: [], companias: [], sucursales: [], coberturas: [], ramas: [] }
+
+function polizaDe(numero: string): PolizaDeCliente {
+  const encontrada = listarPolizas({ ...SIN_FILTROS_DE_POLIZA, busqueda: numero }).filas[0]
+  if (!encontrada) throw new Error(`No está la póliza ${numero}`)
+  return encontrada
+}
+
+/** Las altas de una sucursal en el podio, que es donde el cliente vio el número mal. */
+function altasEnElPodio(sucursal: string): number | null {
+  const fila = podioDelMes().ranking.find((f) => f.etiqueta === sucursal)
+  if (!fila) throw new Error(`El podio no trae a ${sucursal}`)
+  return fila.altas
+}
+
+test('renovar una póliza NO es un alta: es la misma línea de cartera que sigue', async () => {
+  const { db } = await baseImportada()
+  // González es de Dock Sud y está en JULIO y en AGOSTO: renovarla no puede convertirla en un alta de
+  // agosto, porque la clienta ya estaba. AGOSTO es el mes abierto, así que la fila nueva cae ahí.
+  const antesActivos = estadisticasDeCartera('2026-08', [], true).totales.activos
+  const antesAltas = altasEnElPodio('Dock Sud')
+
+  const original = polizaDe(CLIENTES.gonzalez.poliza)
+  // Con el MISMO número, que es lo normal: ahí la póliza nueva le saca la clave a la vieja y la vieja
+  // pasa a ser «ANTERIOR:…». Era el caso que garantizaba un alta fantasma en todas las renovaciones.
+  renovar(original.id, { ...datosSugeridosDeRenovacion(original.id), numero: CLIENTES.gonzalez.poliza }, DANIEL)
+
+  const despues = estadisticasDeCartera('2026-08', [], true)
+  assert.equal(despues.totales.activos, antesActivos, 'la cartera no creció: la fila vieja salió y entró la nueva')
+  assert.equal(altasEnElPodio('Dock Sud'), antesAltas, 'y el podio de Dock Sud no se movió: renovar no es un alta')
+  assert.equal(despues.totales.bajas, estadisticasDeCartera('2026-08', [], true).totales.bajas, 'tampoco es una baja')
+  db.close()
+})
+
+test('renovar con OTRO número de póliza tampoco es un alta', async () => {
+  const { db } = await baseImportada()
+  const antes = altasEnElPodio('Dock Sud')
+  const original = polizaDe(CLIENTES.gonzalez.poliza)
+
+  // Hay compañías que al renovar cambian el número. La póliza nueva nace con otra clave y, sin seguir
+  // la cadena de renovaciones, no se parecía en nada a la de julio.
+  renovar(original.id, { ...datosSugeridosDeRenovacion(original.id), numero: `${CLIENTES.gonzalez.poliza}-R` }, DANIEL)
+
+  assert.equal(altasEnElPodio('Dock Sud'), antes, 'el número cambió, la clienta no')
+  db.close()
+})
+
+test('renovar dejando la anterior ACTIVA sí suma un alta: son dos pólizas vivas', async () => {
+  const { db } = await baseImportada()
+  const antesActivos = estadisticasDeCartera('2026-08', [], true).totales.activos
+  const antes = altasEnElPodio('Dock Sud')
+  const original = polizaDe(CLIENTES.gonzalez.poliza)
+
+  renovar(
+    original.id,
+    { ...datosSugeridosDeRenovacion(original.id), numero: `${CLIENTES.gonzalez.poliza}-B`, destinoDeLaAnterior: 'activa' },
+    DANIEL,
+  )
+
+  // Acá la planilla del mes queda con las dos filas a propósito, así que la cartera SÍ creció en una y
+  // las altas tienen que acompañar: si no, activos y altas contarían cosas distintas.
+  assert.equal(estadisticasDeCartera('2026-08', [], true).totales.activos, antesActivos + 1, 'quedan las dos vigentes')
+  assert.equal(altasEnElPodio('Dock Sud'), (antes ?? 0) + 1, 'la segunda fila de la misma línea sí es un alta')
   db.close()
 })

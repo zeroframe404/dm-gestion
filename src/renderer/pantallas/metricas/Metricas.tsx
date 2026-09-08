@@ -89,7 +89,7 @@ export function Metricas() {
         <TarjetaGrande
           etiqueta="Altas del mes"
           valor={datos.altas === null ? '—' : numero(datos.altas)}
-          detalle={datos.altas === null ? 'Sin mes anterior cargado no se pueden deducir' : 'Están este mes y no estaban el anterior'}
+          detalle={datos.altas === null ? 'Sin mes anterior cargado no se pueden deducir' : 'Están este mes y no estaban el anterior; las renovaciones no cuentan'}
           tono="exito"
         />
         <TarjetaGrande etiqueta="Bajas del mes" valor={numero(datos.bajas)} detalle={resumenDeMotivos(datos)} tono="peligro" />

@@ -227,6 +227,9 @@ function PodioDeSucursales() {
           <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-slate-900">
             Podio de altas · {mesCorto(podio.periodo)}
           </h3>
+          {/* Qué se está contando, dicho en la tarjeta: el número se mira todos los días y sin esta línea
+              «altas» se lee como «pólizas nuevas escritas», que no es lo mismo. */}
+          <p className="mt-1 text-xs text-slate-500">Pólizas que están este mes y no estaban el anterior. Las renovaciones no cuentan.</p>
         </div>
       </div>
 
