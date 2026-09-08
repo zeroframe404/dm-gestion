@@ -460,11 +460,16 @@ export class MotorDeSincronizacion {
     this.avisar()
     const arranque = Date.now()
     try {
-      const contexto = await this.conContexto(fuente, completa)
+      let contexto = await this.conContexto(fuente, completa)
+      // Una pestaña que el servidor nombró y que acá no figura es una recién creada del otro lado: el
+      // cierre de mes de otra sucursal. La estructura se cachea cinco minutos, así que sin releerla
+      // ahora el mes nuevo no aparecería hasta que el caché venza —justo el caso en que la sucursal
+      // está esperando ver el mes abierto—.
+      if (acotada && acotada.some((titulo) => !contexto.porTitulo.has(titulo))) {
+        contexto = await this.conContexto(fuente, true)
+      }
       const titulos = acotada
-        ? // Una pestaña que el servidor nombró pero que acá todavía no está en la estructura leída
-          // (recién creada del otro lado) no se puede bajar: la trae la próxima vuelta, con el
-          // contexto releído.
+        ? // Lo que sigue sin figurar ya no está en la hoja: se borró entre el aviso y la bajada.
           acotada.filter((titulo) => contexto.porTitulo.has(titulo))
         : soloLasTareas
           ? pestanasDeTareas(contexto)

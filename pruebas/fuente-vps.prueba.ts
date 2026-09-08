@@ -7,6 +7,7 @@ import test from 'node:test'
 import { VpsSimulado } from '../scripts/vps-simulado.mjs'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
 import { esFallaDeRed } from '../src/main/servicios/red'
+import { adoptarVersiones, estadoDeVersiones, olvidarVersiones } from '../src/main/sincronizacion/versiones'
 import { ErrorDelServidorVps, FuenteVps } from '../src/main/vps/fuenteVps'
 import { contar, importar, baseDePrueba } from './ayuda'
 import { construirHojaDePrueba } from './hoja-de-prueba'
@@ -74,6 +75,26 @@ test('fuente VPS: el contrato de grilla de punta a punta', async (t) => {
     assert.equal(valores.length, 4)
     assert.equal(valores[2]![1], 'LOPEZ RAUL', 'la fila de abajo se corrió al lugar de la borrada')
     assert.equal(valores[3]![1], 'NUEVO CLIENTE')
+  })
+
+  await t.test('la versión que devuelve una escritura se adopta, para no bajarse la pestaña por el propio cambio', async () => {
+    // El eco: sin esto, el aviso en vivo despierta a la computadora por lo que ella misma acaba de
+    // escribir y le hace bajar la pestaña entera para no encontrar nada.
+    olvidarVersiones()
+    adoptarVersiones(simulador.mapaDeVersiones(), simulador.generacion)
+    const conocidaAntes = estadoDeVersiones().versiones['AGOSTO']
+
+    await fuente.escribirCeldas([{ titulo: 'AGOSTO', fila: 2, columna: 2, valor: '16500' }])
+    assert.equal(estadoDeVersiones().versiones['AGOSTO'], conocidaAntes + 1, 'la escritura propia se da por vista')
+
+    // Y el caso que hace que esto sea correcto: si otra computadora escribió en el medio, la versión
+    // pega un salto y NO se adopta, para que el cambio de la otra se baje igual.
+    simulador.marcarCambiada('AGOSTO')
+    const antesDelSalto = estadoDeVersiones().versiones['AGOSTO']
+    await fuente.escribirCeldas([{ titulo: 'AGOSTO', fila: 2, columna: 2, valor: '17000' }])
+    assert.equal(estadoDeVersiones().versiones['AGOSTO'], antesDelSalto, 'con un salto de versión no se adopta nada')
+
+    olvidarVersiones()
   })
 
   await t.test('borrar y escribir por _ID: la grilla corrida no engaña al borrado ni a la celda (12.6)', async () => {

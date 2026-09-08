@@ -37,6 +37,16 @@ export class VpsSimulado {
     /** @type {Array<{sheetId: number, titulo: string, indice: number, columnas: number, oculta: boolean, columnasOcultas: number[], filas: Map<number, string[]>}>} */
     this.pestanas = []
     this.inicializada = false
+    /**
+     * El aviso en vivo: la versión de cada pestaña (sube en cada escritura) y la generación (sube
+     * cuando la hoja se reemplaza entera). Igual que el servidor real, salvo que `/novedades` NO
+     * espera: contesta al instante, porque una prueba que espera veinticinco segundos por vuelta no
+     * la corre nadie. Es la misma decisión que ya se había tomado con las novedades de mensajería.
+     */
+    this.versiones = new Map()
+    this.generacion = 1
+    /** Las pestañas que se bajaron enteras (sin `hastaFila`), en orden. */
+    this.pestanasLeidas = []
     this.proximoSheetId = 1
     this.servidor = null
     this.url = ''
@@ -49,6 +59,7 @@ export class VpsSimulado {
     this.intercambios = []
     this.llamadas = {
       estructura: 0, leer: 0, celdas: 0, agregar: 0, borrar: 0, pestanas: 0, tramos: 0, estado: 0,
+      novedades: 0,
       ajusteLeido: 0, ajusteConsultado: 0, ajusteGuardado: 0,
       usuariosLeidos: 0, usuariosGuardados: 0,
       respaldosListados: 0, respaldosCreados: 0, respaldosRestaurados: 0,
@@ -138,6 +149,25 @@ export class VpsSimulado {
       filas,
       hechoPor: respaldo.hechoPor,
     }
+  }
+
+  /** Sube la versión de una pestaña y la devuelve, como `marcarPestanaCambiada` del servidor real. */
+  marcarCambiada(titulo) {
+    const version = (this.versiones.get(titulo) ?? 0) + 1
+    this.versiones.set(titulo, version)
+    return version
+  }
+
+  /** El mapa `{titulo: version}` de toda la hoja. Una pestaña que nunca se escribió cuenta como 0. */
+  mapaDeVersiones() {
+    const mapa = {}
+    for (const pestana of this.pestanas) mapa[pestana.titulo] = this.versiones.get(pestana.titulo) ?? 0
+    return mapa
+  }
+
+  /** La hoja se reemplazó entera (restaurar un respaldo, la migración inicial). */
+  subirGeneracion() {
+    this.generacion += 1
   }
 
   porTitulo(titulo) {
@@ -668,6 +698,11 @@ export class VpsSimulado {
       this.llamadas.leer++
       if (!this.exigirInicializada(responder)) return
       const titulos = Array.isArray(json.titulos) ? json.titulos : []
+      // Qué pestañas se bajaron ENTERAS, para poder afirmar que una bajada acotada bajó sólo las que
+      // cambiaron y no la hoja entera. Contar llamadas no alcanza y mirar todos los títulos tampoco:
+      // el contexto lee los encabezados de todas las pestañas (con `hastaFila`) y eso es barato y
+      // pasa igual; lo que importa es qué pestaña se trajo con sus miles de renglones.
+      if (json.hastaFila === undefined || json.hastaFila === null) this.pestanasLeidas.push(...titulos.map(String))
       if (titulos.length === 0) return responder(400, { error: 'Indicá qué pestañas leer.' })
       const pestanas = []
       for (const titulo of titulos) {
@@ -677,11 +712,21 @@ export class VpsSimulado {
       }
       return responder(200, { pestanas })
     }
+    if (metodo === 'POST' && ruta === '/api/dmg/novedades') {
+      this.llamadas.novedades++
+      // NO espera, a diferencia del servidor real (ver el comentario de arriba): con `espera` en lo
+      // que sea, contesta al instante con el estado de ahora.
+      const conocidas = json.versiones && typeof json.versiones === 'object' && !Array.isArray(json.versiones) ? json.versiones : {}
+      const versiones = this.mapaDeVersiones()
+      const cambiaron = Object.keys(versiones).filter((titulo) => conocidas[titulo] !== versiones[titulo])
+      return responder(200, { generacion: this.generacion, versiones, cambiaron })
+    }
     if (metodo === 'POST' && ruta === '/api/dmg/celdas') {
       this.llamadas.celdas++
       if (!this.exigirInicializada(responder)) return
       const columnaIdPorTitulo = json.columnaId && typeof json.columnaId === 'object' ? json.columnaId : {}
       const noEncontradas = []
+      const tocadas = new Set()
       let escritas = 0
       for (const celda of json.celdas ?? []) {
         const pestana = this.porTitulo(String(celda.titulo))
@@ -700,8 +745,11 @@ export class VpsSimulado {
         this.editarDirecto(pestana.titulo, fila, celda.columna, celda.valor)
         if (celda.columna + 1 > pestana.columnas) pestana.columnas = celda.columna + 1
         escritas++
+        tocadas.add(pestana.titulo)
       }
-      return responder(200, { escritas, noEncontradas })
+      const versiones = {}
+      for (const titulo of tocadas) versiones[titulo] = this.marcarCambiada(titulo)
+      return responder(200, { escritas, noEncontradas, versiones })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/filas/agregar') {
       this.llamadas.agregar++
@@ -731,7 +779,14 @@ export class VpsSimulado {
         numeros.push(siguiente)
         siguiente++
       }
-      return responder(200, { primeraFila, agregadas: siguiente - primeraFila, repetidas, numeros })
+      const agregadas = siguiente - primeraFila
+      return responder(200, {
+        primeraFila,
+        agregadas,
+        repetidas,
+        numeros,
+        version: agregadas > 0 ? this.marcarCambiada(pestana.titulo) : null,
+      })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/filas/borrar') {
       this.llamadas.borrar++
@@ -752,14 +807,18 @@ export class VpsSimulado {
       const borradas = [...new Set(numeros)].sort((a, b) => a - b)
       const habiaAlmacenadas = borradas.some((numero) => pestana.filas.has(numero))
       const restantes = [...pestana.filas.entries()].filter(([numero]) => !borradas.includes(numero)).sort((a, b) => a[0] - b[0])
-      if (!habiaAlmacenadas) return responder(200, { borradas: 0, noEncontradas })
+      if (!habiaAlmacenadas) return responder(200, { borradas: 0, noEncontradas, version: null })
       pestana.filas = new Map(
         restantes.map(([numero, celdas]) => {
           const corridas = borradas.filter((borrada) => borrada < numero).length
           return [numero - corridas, celdas]
         }),
       )
-      return responder(200, { borradas: borradas.length, noEncontradas })
+      return responder(200, {
+        borradas: borradas.length,
+        noEncontradas,
+        version: this.marcarCambiada(pestana.titulo),
+      })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/pestanas') {
       this.llamadas.pestanas++
@@ -777,6 +836,7 @@ export class VpsSimulado {
         filas: encabezados.length > 0 ? 1 : 0,
         columnas: pestana.columnas,
         oculta: false,
+        version: this.marcarCambiada(pestana.titulo),
       })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/columnas/asegurar') {
@@ -811,7 +871,11 @@ export class VpsSimulado {
         })
       }
       if (Number(json.indiceColumna) + 1 > pestana.columnas) pestana.columnas = Number(json.indiceColumna) + 1
-      return responder(200, { escritas, saltadas })
+      return responder(200, {
+        escritas,
+        saltadas,
+        version: escritas > 0 ? this.marcarCambiada(pestana.titulo) : null,
+      })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/columnas/ocultar') {
       if (!this.exigirInicializada(responder)) return
@@ -844,6 +908,8 @@ export class VpsSimulado {
       if (this.inicializada) return responder(409, { error: 'La base del VPS ya está inicializada: la migración es una sola vez.' })
       if (this.pestanas.length === 0) return responder(400, { error: 'No se cargó ninguna pestaña: no hay nada que confirmar.' })
       this.inicializada = true
+      // La hoja se acaba de escribir entera: las computadoras tienen que olvidar lo que sabían.
+      this.subirGeneracion()
       let filas = 0
       for (const pestana of this.pestanas) filas += pestana.filas.size
       return responder(200, { ok: true, pestanas: this.pestanas.length, filas })
@@ -947,6 +1013,10 @@ export class VpsSimulado {
       // Igual que el servidor real: primero la foto de cómo está AHORA, después se pisa.
       const { respaldo: previo } = this.guardarRespaldo('ANTES_DE_RESTAURAR', quien)
       this.pestanas = guardado.pestanas.map(copiaProfunda)
+      // Rebobinar reemplaza la hoja entera y las versiones vuelven a empezar: sin subir la generación
+      // una pestaña podría quedar valiendo lo mismo que antes y nadie se enteraría del rebobinado.
+      this.versiones = new Map()
+      this.subirGeneracion()
       return responder(200, {
         pestanas: this.pestanas.length,
         filas: this.pestanas.reduce((suma, pestana) => suma + pestana.filas.size, 0),

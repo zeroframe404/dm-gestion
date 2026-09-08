@@ -29,6 +29,7 @@
 // las tareas— y prueba de nuevo cada diez minutos. Cuando el VPS se actualiza, las cinco computadoras
 // se enganchan solas sin que nadie las reinicie.
 import { anotarEvento } from './cola'
+import type { MotorDeSincronizacion } from './motor'
 import { obtenerMotor } from '../servicios/sincronizacion'
 import { esFallaDeRed } from '../servicios/red'
 import {
@@ -123,7 +124,7 @@ export function elVigiaEstaVivo(): boolean {
 async function vigilar(senal: AbortSignal): Promise<void> {
   while (corriendo && !senal.aborted) {
     try {
-      await unaVuelta(senal)
+      await unaVuelta(senal, obtenerMotor())
       await esperar(RESPIRO_MS, senal)
     } catch (error) {
       if (senal.aborted) return
@@ -153,7 +154,7 @@ async function vigilar(senal: AbortSignal): Promise<void> {
  * Una vuelta: preguntar, bajar lo que cambió, y recién entonces dar por vistas esas versiones.
  * Devuelve los títulos que se bajaron, que es lo que miran las pruebas.
  */
-async function unaVuelta(senal: AbortSignal): Promise<string[]> {
+async function unaVuelta(senal: AbortSignal, motor: MotorDeSincronizacion): Promise<string[]> {
   const puente = puenteDeGrilla()
   if (!puente) {
     // Todavía no hay servidor configurado (desarrollo sin simulador). No es un error.
@@ -179,19 +180,28 @@ async function unaVuelta(senal: AbortSignal): Promise<string[]> {
     olvidarVersiones()
     pendientesDeBajar.clear()
     for (const titulo of Object.keys(novedades.versiones)) pendientesDeBajar.add(titulo)
-  } else if (eraLaPrimera) {
+  } else if (eraLaPrimera && pendientesDeBajar.size === 0) {
     // Primera vuelta después de arrancar: `arrancarSincronizacion` acaba de correr una
     // sincronización completa, así que lo que hay ya está. Se adopta el mapa sin bajar nada.
+    //
+    // La condición del pendiente no sobra: después de un rebobinado el mapa queda olvidado a
+    // propósito, y si la bajada de esa vuelta no pudo correr —el motor estaba ocupado— la vuelta
+    // siguiente vería el mapa vacío y tomaría este atajo, dando por vista una hoja que todavía no
+    // bajó. Con pendientes anotados no hay atajo que valga.
     adoptarVersiones(novedades.versiones, novedades.generacion)
     return []
   } else {
     for (const titulo of novedades.cambiaron) pendientesDeBajar.add(titulo)
   }
 
-  return bajarLosPendientes(novedades, senal)
+  return bajarLosPendientes(novedades, senal, motor)
 }
 
-async function bajarLosPendientes(novedades: NovedadesDeLaGrilla, senal: AbortSignal): Promise<string[]> {
+async function bajarLosPendientes(
+  novedades: NovedadesDeLaGrilla,
+  senal: AbortSignal,
+  motor: MotorDeSincronizacion,
+): Promise<string[]> {
   if (pendientesDeBajar.size === 0) {
     // Nada que bajar, pero puede haber pestañas que se borraron del servidor: adoptar el mapa las saca.
     adoptarVersiones(novedades.versiones, novedades.generacion, [])
@@ -204,7 +214,7 @@ async function bajarLosPendientes(novedades: NovedadesDeLaGrilla, senal: AbortSi
 
   const titulos = [...pendientesDeBajar]
   ultimaBajada = Date.now()
-  const resultado = await obtenerMotor().ciclarBajadaDe(titulos)
+  const resultado = await motor.ciclarBajadaDe(titulos)
   if (!resultado) {
     // El motor estaba subiendo o importando. Los títulos quedan en el conjunto y se reintentan en la
     // vuelta siguiente: darlos por bajados perdería el cambio hasta el reloj de red.
@@ -219,13 +229,16 @@ async function bajarLosPendientes(novedades: NovedadesDeLaGrilla, senal: AbortSi
 /**
  * Para el banco de pruebas: una vuelta sola, sin bucle ni esperas de error. Devuelve qué pestañas se
  * bajaron, que es lo que hay que poder afirmar («bajó AGOSTO 2026, y sólo ésa»).
+ *
+ * El motor se puede pasar a mano: el banco arma el suyo, con su base en memoria y su importador, en
+ * vez del que usa el programa de verdad.
  */
-export async function unaVueltaDelVigia(): Promise<string[]> {
+export async function unaVueltaDelVigia(motor: MotorDeSincronizacion = obtenerMotor()): Promise<string[]> {
   const control = new AbortController()
   const eraCorriendo = corriendo
   corriendo = true
   try {
-    return await unaVuelta(control.signal)
+    return await unaVuelta(control.signal, motor)
   } finally {
     corriendo = eraCorriendo
   }

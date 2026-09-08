@@ -25,6 +25,7 @@ export class VpsSimulado {
     | 'pestanas'
     | 'tramos'
     | 'estado'
+    | 'novedades'
     | 'ajusteLeido'
     | 'ajusteConsultado'
     | 'ajusteGuardado'
@@ -94,6 +95,16 @@ export class VpsSimulado {
   /** Lee los valores actuales de una pestaña (para asserts). */
   valoresDe(titulo: string, hastaFila?: number): string[][] | null
   /** «Otra computadora» cambió una celda directamente en la base. */
+  /** El aviso en vivo: la versión de cada pestaña y la generación de la hoja. */
+  versiones: Map<string, number>
+  generacion: number
+  /** Las pestañas bajadas ENTERAS (sin `hastaFila`), en orden: para afirmar qué se bajó y qué no. */
+  pestanasLeidas: string[]
+  /** Sube la versión de una pestaña y la devuelve, como una escritura del servidor real. */
+  marcarCambiada(titulo: string): number
+  mapaDeVersiones(): Record<string, number>
+  /** La hoja se reemplazó entera (restaurar un respaldo, la migración inicial). */
+  subirGeneracion(): void
   editarDirecto(titulo: string, fila: number, columna: number, valor: string): void
   cargarPestanaDirecto(pestana: PestanaSimulada): void
   /** Guarda una foto de cómo están las pestañas ahora, como hace el reloj del servidor. */
