@@ -1020,18 +1020,28 @@ export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): Resul
 
 /**
  * Cada dato del cliente con su columna, cómo se llama en el historial, la copia que la fila del mes
- * guarda del mismo dato y el nombre con el que viaja a la hoja. Los que no tienen `enLaHoja` (email,
- * dirección, localidad, nacimiento) no están en la planilla mensual: se guardan y nada más.
+ * guarda del mismo dato y el nombre con el que viaja a la base compartida.
+ *
+ * Los OCHO datos de la ficha viajan, porque los ocho son columnas de la planilla mensual (ver
+ * `CAMPOS_POR_TIPO.MENSUAL` en importacion/encabezados.ts). Hasta la 13.0.1 el email, el domicilio, la
+ * localidad y la fecha de nacimiento se guardaban «acá y nada más», y eso los borraba solo: la
+ * importación completa —que corre sola cada vez que otra computadora agrega una fila— toma la planilla
+ * como verdad para todos estos campos, así que lo que se había completado en la ficha volvía al valor
+ * viejo de la hoja y en las otras computadoras no aparecía nunca. Es el issue #75.
+ *
+ * Lo único que sigue siendo de esta computadora es la dirección EN PARTES (calle, altura, provincia,
+ * código postal): la planilla no tiene esas columnas, y el renglón armado con ellas es justamente lo
+ * que viaja en `direccion`.
  */
 const CAMPOS_DEL_CLIENTE = [
   { campo: 'nombre', columna: 'nombre', etiqueta: 'NOMBRE', enLaCuota: 'cliente_nombre', enLaHoja: 'nombre' },
   { campo: 'documento', columna: 'documento', etiqueta: 'DNI/CUIT', enLaCuota: 'documento', enLaHoja: 'documento' },
   { campo: 'telefono', columna: 'telefono', etiqueta: 'TELEFONO', enLaCuota: null, enLaHoja: 'telefono' },
   { campo: 'sucursal', columna: 'sucursal_texto', etiqueta: 'LOCAL', enLaCuota: 'sucursal_texto', enLaHoja: 'sucursal' },
-  { campo: 'email', columna: 'email', etiqueta: 'EMAIL', enLaCuota: null, enLaHoja: null },
-  { campo: 'direccion', columna: 'direccion', etiqueta: 'DIRECCION', enLaCuota: null, enLaHoja: null },
-  { campo: 'localidad', columna: 'localidad', etiqueta: 'LOCALIDAD', enLaCuota: null, enLaHoja: null },
-  { campo: 'fechaNacimiento', columna: 'fecha_nacimiento', etiqueta: 'FECHA DE NACIMIENTO', enLaCuota: null, enLaHoja: null },
+  { campo: 'email', columna: 'email', etiqueta: 'EMAIL', enLaCuota: null, enLaHoja: 'email' },
+  { campo: 'direccion', columna: 'direccion', etiqueta: 'DIRECCION', enLaCuota: null, enLaHoja: 'direccion' },
+  { campo: 'localidad', columna: 'localidad', etiqueta: 'LOCALIDAD', enLaCuota: null, enLaHoja: 'localidad' },
+  { campo: 'fechaNacimiento', columna: 'fecha_nacimiento', etiqueta: 'FECHA DE NACIMIENTO', enLaCuota: null, enLaHoja: 'fecha_nacimiento' },
   { campo: 'calle', columna: 'calle', etiqueta: 'CALLE', enLaCuota: null, enLaHoja: null },
   { campo: 'calle2', columna: 'calle2', etiqueta: 'ENTRE CALLES', enLaCuota: null, enLaHoja: null },
   { campo: 'altura', columna: 'altura', etiqueta: 'ALTURA', enLaCuota: null, enLaHoja: null },
@@ -1039,6 +1049,9 @@ const CAMPOS_DEL_CLIENTE = [
   { campo: 'provincia', columna: 'provincia', etiqueta: 'PROVINCIA', enLaCuota: null, enLaHoja: null },
   { campo: 'codigoPostal', columna: 'codigo_postal', etiqueta: 'CODIGO POSTAL', enLaCuota: null, enLaHoja: null },
 ] as const
+
+/** Cómo se llaman en la base compartida los datos del cliente que viajan (ver `enLaHoja`). */
+type CampoDeLaHoja = NonNullable<(typeof CAMPOS_DEL_CLIENTE)[number]['enLaHoja']>
 
 export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: SesionUsuario): FichaCliente {
   const id = enteroPositivo(clienteId, 'El cliente')
@@ -1088,7 +1101,7 @@ export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: S
   const ahora = ahoraIso()
   const cuotas = cuotasDelMesAbierto(id)
   const columnasDeLaCuota = cambiados.filter((c) => c.enLaCuota !== null)
-  const camposDeLaHoja: Partial<Record<'nombre' | 'documento' | 'telefono' | 'sucursal', string>> = {}
+  const camposDeLaHoja: Partial<Record<CampoDeLaHoja, string>> = {}
   for (const cambio of cambiados) {
     if (cambio.enLaHoja !== null) camposDeLaHoja[cambio.enLaHoja] = campos[cambio.campo]
   }

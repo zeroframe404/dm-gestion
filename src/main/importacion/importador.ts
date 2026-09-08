@@ -301,20 +301,26 @@ function prepararSentencias(db: BaseDeDatos) {
                             sucursal_id, sucursal_texto, fecha_nacimiento, fila_id, pestana_origen, creado_en, actualizado_en)
       VALUES (@clave, @documento, @documento_normalizado, @nombre, @telefono, @email, @direccion, @localidad,
               @sucursal_id, @sucursal_texto, @fecha_nacimiento, @fila_id, @pestana_origen, @ahora, @ahora)
+      -- Lo que la fila trae manda sobre lo que hay acá, MIENTRAS esta computadora no tenga un cambio
+      -- suyo esperando subir (12.7, issue #75): es el mismo freno que la fila del mes, y por el mismo
+      -- motivo. La ficha que alguien acaba de completar todavía no llegó a la base compartida, así que
+      -- la fila viene con los datos viejos; sin el freno, la reimportación —que corre sola cada vez que
+      -- otra computadora agrega una fila— le devolvía el email, el domicilio o la sucursal anteriores
+      -- delante de quien los estaba cargando.
       ON CONFLICT(clave) DO UPDATE SET
-        documento = COALESCE(excluded.documento, clientes.documento),
-        documento_normalizado = COALESCE(excluded.documento_normalizado, clientes.documento_normalizado),
-        nombre = CASE WHEN excluded.nombre <> '' THEN excluded.nombre ELSE clientes.nombre END,
-        telefono = COALESCE(excluded.telefono, clientes.telefono),
-        email = COALESCE(excluded.email, clientes.email),
-        direccion = COALESCE(excluded.direccion, clientes.direccion),
-        localidad = COALESCE(excluded.localidad, clientes.localidad),
+        documento = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.documento ELSE excluded.documento END, clientes.documento),
+        documento_normalizado = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.documento_normalizado ELSE excluded.documento_normalizado END, clientes.documento_normalizado),
+        nombre = CASE WHEN excluded.nombre <> '' AND @sin_subir = 0 THEN excluded.nombre ELSE clientes.nombre END,
+        telefono = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.telefono ELSE excluded.telefono END, clientes.telefono),
+        email = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.email ELSE excluded.email END, clientes.email),
+        direccion = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.direccion ELSE excluded.direccion END, clientes.direccion),
+        localidad = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.localidad ELSE excluded.localidad END, clientes.localidad),
         -- El texto manda, pero el id sólo se pisa si se pudo resolver: una sucursal escrita como no
         -- está en el catálogo devuelve texto sin id (ver resolverSucursal), y con el CASE de antes ese
         -- texto borraba el id que ya estaba bien resuelto.
-        sucursal_id = COALESCE(excluded.sucursal_id, clientes.sucursal_id),
-        sucursal_texto = COALESCE(excluded.sucursal_texto, clientes.sucursal_texto),
-        fecha_nacimiento = COALESCE(excluded.fecha_nacimiento, clientes.fecha_nacimiento),
+        sucursal_id = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.sucursal_id ELSE excluded.sucursal_id END, clientes.sucursal_id),
+        sucursal_texto = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.sucursal_texto ELSE excluded.sucursal_texto END, clientes.sucursal_texto),
+        fecha_nacimiento = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.fecha_nacimiento ELSE excluded.fecha_nacimiento END, clientes.fecha_nacimiento),
         fila_id = excluded.fila_id, pestana_origen = excluded.pestana_origen, actualizado_en = excluded.actualizado_en
       RETURNING id`),
 
@@ -2051,7 +2057,9 @@ class TrabajoDeImportacion {
 
     const visto = this.clientesEnCorrida.get(clave)
     if (!visto) {
-      const { id } = this.sentencias.clienteCompleto.get(datos) as { id: number }
+      // `sin_subir` va sólo acá: `clienteCompletar` rellena huecos y nunca pisa nada, así que no
+      // necesita el freno (y better-sqlite3 rechaza un parámetro con nombre que la sentencia no usa).
+      const { id } = this.sentencias.clienteCompleto.get({ ...datos, sin_subir: this.sinSubir.has(fila.id) ? 1 : 0 }) as { id: number }
       const entrada = { id, nombre: ident.nombre, fila: fila.numero }
       this.clientesEnCorrida.set(clave, entrada)
       // Alias por nombre: las planillas viejas (o filas sin DNI) del mismo nombre enlazan con este cliente.

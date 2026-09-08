@@ -8,6 +8,7 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos, usarBaseDeDatos, type BaseDeDatos 
 import { ejecutarImportacion } from '../src/main/importacion/importador'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 import { bajasDelMes, darDeBaja, deshacerBaja, editarCelda, periodosDisponibles, planillaDelMes, registrarPago } from '../src/main/servicios/cartera'
+import { editarCliente, fichaDeCliente, listarClientes } from '../src/main/servicios/clientes'
 import { cajaDelDia, cambiarResultado, cargarMovimientoDeCaja, imputados } from '../src/main/servicios/cobranzas'
 import { filaIdDelMovimiento } from '../src/main/servicios/caja'
 import { PESTANA_APP } from '../src/main/servicios/filas'
@@ -17,7 +18,8 @@ import { cerrarMesConLaBase } from '../src/main/servicios/sincronizacion'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes } from '../src/main/sincronizacion/cola'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { PESTANA_CAJA_APP, PESTANA_PAGOS_APP } from '../src/main/sincronizacion/pestanasApp'
-import type { FilaCartera, SesionUsuario } from '../src/shared/tipos'
+import { sanearDireccion } from '../src/shared/direccion'
+import type { DatosDeCliente, FilaCartera, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
 
@@ -671,5 +673,98 @@ test('la caja chica que carga un mostrador es la misma en la otra computadora de
   const siguiente = cajaDelDia('2026-08-13', ['Lanús'], MILAGROS).arqueo
   assert.equal(siguiente?.apertura, 39820)
   assert.equal(siguiente?.aperturaHeredadaDe, '2026-08-12')
+  cerrarTodo()
+})
+
+// ---------------------------------------------------------------------------
+// Los datos de la ficha del cliente (issue #75)
+// ---------------------------------------------------------------------------
+
+/** El id del cliente en la base activa, buscado como lo busca la pantalla. */
+function clienteLlamado(nombre: string): number {
+  const fila = listarClientes({ busqueda: nombre, sucursales: [], companias: [], estado: '' }).filas[0]
+  if (!fila) throw new Error(`No está «${nombre}» en Clientes`)
+  return fila.id
+}
+
+/** La ficha completa como la carga quien atiende: los ocho datos, con la dirección en partes. */
+function fichaCompleta(id: number): DatosDeCliente {
+  const ficha = fichaDeCliente(id)
+  return {
+    nombre: ficha.nombre,
+    documento: ficha.documento ?? '',
+    telefono: '11-5555-4444',
+    email: 'lopez@ejemplo.com.ar',
+    direccion: '',
+    localidad: '',
+    sucursal: 'Lanús',
+    fechaNacimiento: '12/05/1980',
+    direccionDetalle: sanearDireccion({ calle: 'Belgrano', altura: '567', localidad: 'Sarandí', provincia: 'Buenos Aires', codigoPostal: 'B1872' }),
+  }
+}
+
+test('lo que se completa en la ficha del cliente llega a la otra computadora y la reimportación no lo pisa', async () => {
+  const { lanus1, lanus2 } = await dosComputadoras()
+
+  // Lanús 1 completa la ficha entera de un cliente que ya estaba, como quien termina de cargarlo.
+  en(lanus1)
+  const id = clienteLlamado(CLIENTES.lopez.nombre)
+  editarCliente(id, fichaCompleta(id), MILAGROS)
+  await subirTodo(lanus1)
+
+  // La reimportación corre sola cada vez que otra computadora agrega una fila: hasta la 13.0.1 le
+  // devolvía a la ficha el email, el domicilio, la localidad y el nacimiento viejos de la planilla.
+  en(lanus1)
+  await lanus1.importar()
+  en(lanus1)
+  const propia = fichaDeCliente(id)
+  assert.equal(propia.email, 'lopez@ejemplo.com.ar', 'el email cargado no lo pisa la reimportación')
+  assert.equal(propia.direccion, 'Belgrano 567', 'ni el domicilio')
+  assert.equal(propia.localidad, 'Sarandí', 'ni la localidad')
+  assert.equal(propia.fechaNacimiento, '12/05/1980', 'ni la fecha de nacimiento')
+  assert.equal(propia.sucursal, 'Lanús', 'ni la sucursal')
+  assert.equal(propia.direccionDetalle.localidad, 'Sarandí', 'y la dirección en partes queda coherente con el renglón')
+
+  // Y en la otra computadora está todo, que es lo que hace que el dato sirva para la agencia.
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  await lanus2.importar()
+  en(lanus2)
+  const alLado = fichaDeCliente(clienteLlamado(CLIENTES.lopez.nombre))
+  assert.equal(alLado.telefono, '11-5555-4444')
+  assert.equal(alLado.email, 'lopez@ejemplo.com.ar')
+  assert.equal(alLado.direccion, 'Belgrano 567')
+  assert.equal(alLado.localidad, 'Sarandí')
+  assert.equal(alLado.fechaNacimiento, '12/05/1980')
+  assert.equal(alLado.sucursal, 'Lanús')
+  cerrarTodo()
+})
+
+test('la ficha que todavía no subió no la pisa la reimportación', async () => {
+  const { lanus1 } = await dosComputadoras()
+
+  // Sin internet (o con la cola esperando su turno) el cambio queda pendiente. Si justo en ese rato
+  // otra computadora agrega una fila, la bajada dispara la importación completa: la fila de la base
+  // sigue con los datos viejos, y sin el freno de `sin_subir` volvían a la ficha delante de quien
+  // los estaba cargando.
+  en(lanus1)
+  const id = clienteLlamado(CLIENTES.lopez.nombre)
+  editarCliente(id, fichaCompleta(id), MILAGROS)
+  assert.ok(cuantasPendientes() > 0, 'el cambio está esperando para subir')
+
+  await lanus1.importar()
+  en(lanus1)
+  const ficha = fichaDeCliente(id)
+  assert.equal(ficha.sucursal, 'Lanús', 'la sucursal recién cargada no vuelve atrás')
+  assert.equal(ficha.telefono, '11-5555-4444', 'ni el celular')
+  assert.equal(ficha.email, 'lopez@ejemplo.com.ar', 'ni el email')
+  assert.equal(ficha.direccion, 'Belgrano 567', 'ni el domicilio')
+
+  // Y cuando la conexión vuelve, el cambio viaja igual: el freno demora la hoja, no la subida.
+  await subirTodo(lanus1)
+  en(lanus1)
+  await lanus1.importar()
+  en(lanus1)
+  assert.equal(fichaDeCliente(id).email, 'lopez@ejemplo.com.ar')
   cerrarTodo()
 })

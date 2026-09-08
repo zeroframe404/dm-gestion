@@ -649,6 +649,16 @@ cobrarle. Se tilda lo que haga falta y la lista se rehace sola:
 - **Ficha** con seis pestañas: Datos (editables), Vehículos, Pólizas, Pagos, Siniestros y Notas.
   Las pólizas van separadas en **Activas** e **Histórico**, y las del histórico muestran el motivo y la
   fecha de la baja.
+- **Los ocho datos de la ficha viajan a la base compartida** (13.0.2): nombre, DNI/CUIT, celular,
+  sucursal, email, domicilio, localidad y fecha de nacimiento son columnas de la planilla mensual, así
+  que se ven en todas las computadoras. Hasta la 13.0.1 los últimos cuatro se guardaban sólo en la
+  computadora que los cargaba, y eso los borraba solo: la reimportación —que corre sola cada vez que
+  otra computadora agrega una fila— toma la planilla como verdad y les devolvía el valor viejo delante
+  de quien los acababa de completar. Además, **una ficha con cambios sin subir ya no la pisa la
+  reimportación** (mismo freno que la fila del mes: `sin_subir`), así que tampoco se pierde lo cargado
+  sin internet. Lo único que sigue siendo de esta computadora es la dirección **en partes** (calle,
+  altura, provincia, código postal): la planilla no tiene esas columnas y lo que viaja es el renglón
+  armado con ellas.
 - **Alta sin duplicados**: si el DNI/CUIT ya existe, no se crea nada. Aparece el cliente que ya estaba
   —con su sucursal, su teléfono y cuántas pólizas activas tiene— y dos caminos: abrir esa ficha o
   volver a editar sin perder lo cargado. El documento se compara normalizado, así que «20-30111222-3»,
@@ -1774,12 +1784,23 @@ otras cuatro.** Lo que la 12.6 dejaba distinto en cada mostrador, y cómo se cer
   cada base; ahora desempatan por el `_ID` de la fila.
 - **Con dos pestañas del mismo tipo** («SINIESTROS» y «SINIESTROS 2025»), todas las computadoras
   escriben en la misma: la que más renglones tiene, y a igual cantidad la primera por nombre.
+- **La ficha del cliente viaja entera** (13.0.2, issue #75). El email, el domicilio, la localidad y la
+  fecha de nacimiento se guardaban sólo en la computadora que los cargaba, aunque los cuatro son
+  columnas de la planilla mensual. En las otras nunca aparecían, y en la propia tampoco duraban: la
+  reimportación toma la planilla como verdad para los datos del cliente, así que a la primera fila
+  nueva de otra computadora les devolvía el valor viejo. Ahora los ocho datos de la ficha se encolan al
+  guardar (`CAMPOS_DEL_CLIENTE` en `servicios/clientes.ts`) y salen también en la fila que abre una
+  póliza nueva. Y la importación **no pisa los datos de un cliente cuya fila tiene cambios sin subir**,
+  que es el mismo freno (`sin_subir`) que ya protegía a la fila del mes: sin internet, lo que se acaba
+  de cargar espera su turno en vez de perderse.
 
 Lo que sigue siendo de cada computadora, a propósito: `visto_en` de las tareas (la campana es de cada
-persona), quién marcó visto o resuelto un rechazo, y el seguimiento de las renovaciones (que no tiene
-pestaña en la base).
+persona), quién marcó visto o resuelto un rechazo, el seguimiento de las renovaciones (que no tiene
+pestaña en la base) y la dirección del cliente **en partes** (calle, altura, provincia, código postal:
+la planilla no tiene esas columnas y lo que viaja es el renglón armado con ellas).
 
-Pruebas: `pruebas/siniestros-entre-computadoras.prueba.ts` y `pruebas/comercial-entre-computadoras.prueba.ts`.
+Pruebas: `pruebas/siniestros-entre-computadoras.prueba.ts`, `pruebas/comercial-entre-computadoras.prueba.ts`
+y, para la ficha del cliente, `pruebas/dos-computadoras.prueba.ts`.
 
 ## La segunda pasada: los caminos que quedaban abiertos (12.7.1)
 
