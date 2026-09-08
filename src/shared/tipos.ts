@@ -2923,6 +2923,30 @@ export interface EstadisticasDeCartera {
   hoy: string
 }
 
+/** Una de las pólizas que el mes cuenta como alta, con lo justo para reconocerla en la planilla. */
+export interface FilaDeAlta {
+  cliente: string | null
+  compania: string | null
+  numeroPoliza: string | null
+  patente: string | null
+  sucursal: string | null
+}
+
+/**
+ * El detalle de las altas de un mes: qué pólizas son, una por una. Existe para poder CONTROLAR el
+ * número en vez de creerle —«Dock Sud, 128 altas» no se puede discutir; una lista de 128 nombres sí—,
+ * y sale de las mismas filas que cuenta el podio, así que si el detalle no cierra con la tarjeta es
+ * que el número está mal y no al revés.
+ */
+export interface DetalleDeAltas {
+  periodo: string
+  /** La sucursal pedida tal cual se pidió, o null si son las de toda la agencia. */
+  sucursal: string | null
+  /** false si no hay mes anterior cargado: sin él no hay altas que deducir y la lista va vacía. */
+  hayMesAnterior: boolean
+  filas: FilaDeAlta[]
+}
+
 /**
  * El podio mensual de sucursales: quién metió más altas este mes, para que se corran una carrera. Lo
  * ve cualquiera que entre a la aplicación, no sólo quien tiene el módulo Métricas —es competencia, no

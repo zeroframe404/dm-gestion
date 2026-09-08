@@ -1246,6 +1246,13 @@ Tres definiciones, que son las que hacen que los números coincidan con la plani
   por esa cadena hasta la primera de la línea antes de comparar. Sin eso, cada renovación se veía como
   cartera nueva y el podio de Inicio le contaba a la sucursal más grande más de cien altas en un mes en
   el que no había entrado casi nadie.
+
+  Queda un caso abierto: `poliza_anterior_id` lo escribe la computadora donde se apretó «Renovar» y no
+  viaja por la hoja. Si la compañía deja el mismo número de póliza —lo normal— la fila nueva cae igual
+  en la misma clave y la renovación se reconoce en todas las computadoras; si el número CAMBIA, la
+  máquina que no renovó la sigue contando como alta. Cerrarlo es hacer viajar el enganche por la hoja,
+  con una columna más en la planilla del mes. Mientras tanto se ve desde el detalle del podio: si en la
+  lista de altas aparecen clientes viejos, son renovaciones con número nuevo hechas en otra máquina.
 - **Bajas** de un mes = las filas de la pestaña de BAJAS de ese mes, con su MOTIVO.
 
 Los gráficos están dibujados a mano en SVG (`pantallas/metricas/graficos.tsx`): son cuatro formas

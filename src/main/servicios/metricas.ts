@@ -29,6 +29,7 @@ import { mismaSucursal } from '../../shared/sucursales'
 import type {
   BajaPorMotivo,
   CobranzaDelMes,
+  DetalleDeAltas,
   EstadisticasDeCartera,
   FilaEstadistica,
   FiltrosMetricas,
@@ -103,6 +104,21 @@ const IDENTIDAD_DE_LA_BAJA = `COALESCE('P:' || p.clave, 'B:' || b.fila_id)`
  * como alta: el podio le contaba a Dock Sud —la sucursal más grande y la que más renueva— más de cien
  * altas en un mes en el que no había entrado casi nadie, y al lado veinte bajas. Una renovación no es
  * cartera nueva: es la misma línea que sigue.
+ *
+ * LO QUE ESTA CADENA TODAVÍA NO ALCANZA. `poliza_anterior_id` lo escribe la computadora donde alguien
+ * apretó «Renovar» y no viaja por la hoja de Google: la planilla no tiene columna para él. En las
+ * demás computadoras la renovación llega como una fila más de la planilla del mes, así que:
+ *
+ *   · si la compañía DEJA EL MISMO NÚMERO —lo normal, y lo que propone la bandeja de renovaciones— la
+ *     fila nueva cae en la misma clave («POL:<cía>|<número>») y en la misma póliza: la renovación se
+ *     reconoce sola en todas las computadoras, con cadena o sin ella;
+ *   · si la compañía CAMBIA EL NÚMERO, la computadora que no renovó ve una póliza con clave nueva y
+ *     sin cadena, y la sigue contando como alta.
+ *
+ * Cerrarlo del todo es hacer viajar el enganche por la hoja (una columna más en la planilla del mes,
+ * con lo que eso arrastra en el importador y en la sincronización). No se hizo acá porque el caso
+ * frecuente ya queda bien y el detalle del podio —`altasDelMes`— deja ver cuándo pasa: si en la lista
+ * aparecen clientes viejos, son renovaciones con número nuevo hechas en otra máquina.
  */
 function lineasDeRenovacion(): Map<number, string> {
   const filas = db()
@@ -211,6 +227,13 @@ interface CuotaDelMes {
   identidad: string
   /** La línea de cartera: la misma aunque la póliza se haya renovado. Es lo que se compara entre meses. */
   linea: string
+  // Con qué se reconoce la fila en la planilla. Viaja acá, y no en una consulta aparte, porque el
+  // detalle de altas tiene que listar EXACTAMENTE las filas que se contaron: si el listado saliera de
+  // su propia consulta, el día que las dos se despeguen el detalle no sumaría lo que dice la tarjeta y
+  // no habría forma de saber cuál de los dos números está mal.
+  clienteNombre: string | null
+  numeroPoliza: string | null
+  patente: string | null
   compania: string | null
   sucursal: string | null
   cuotaMonto: number | null
@@ -228,6 +251,7 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
   const filas = db()
     .prepare(
       `SELECT c.poliza_id, p.clave, c.numero_poliza, c.patente, c.documento,
+              COALESCE(NULLIF(TRIM(c.cliente_nombre), ''), cl.nombre) AS cliente_nombre,
               COALESCE(NULLIF(TRIM(c.compania), ''), p.compania) AS compania,
               ${SUCURSAL_DE_LA_CUOTA} AS sucursal,
               c.cuota, c.cuota_monto,
@@ -250,6 +274,7 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
     numero_poliza: string | null
     patente: string | null
     documento: string | null
+    cliente_nombre: string | null
     compania: string | null
     sucursal: string | null
     cuota: string | null
@@ -271,6 +296,9 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
     .map((fila) => ({
       identidad: fila.identidad,
       linea: fila.linea,
+      clienteNombre: fila.cliente_nombre,
+      numeroPoliza: fila.numero_poliza,
+      patente: fila.patente,
       compania: fila.compania,
       sucursal: fila.sucursal,
       cuota: fila.cuota,
@@ -606,6 +634,57 @@ export function estadisticasDeCartera(
  * despegan de los de Cartera → Estadísticas. Siempre `conNumeros = false`: la competencia es por
  * altas y bajas, no por plata, y así la ve cualquiera, tenga o no el módulo Métricas habilitado.
  */
+/**
+ * Con qué nombre agrupa el podio una sucursal. Es el MISMO que usa `tomar()` para armar las filas de
+ * Estadísticas, y tiene que serlo: el detalle se pide con la etiqueta que muestra la tarjeta, así que
+ * si acá se comparara de otra forma —con `mismaSucursal`, que además pliega «AVELLANEDA» dentro de
+ * «Dock Sud»— el listado traería filas que la tarjeta no contó y el número dejaría de cerrar.
+ */
+function claveDeLaFilaDeSucursal(valor: string | null): string {
+  return normalizarTexto(limpiar(valor) || '(sin sucursal)')
+}
+
+/**
+ * Las pólizas que se están contando como altas, una por una. Es la respuesta a «¿qué está contando?»:
+ * el podio da un número y esto dice de quién es cada una, para poder mirarlo contra la planilla en vez
+ * de creerle al cartel.
+ *
+ * Sale de las MISMAS filas que cuenta el podio y con el mismo recorrido, no de una consulta parecida:
+ * se cuenta sobre toda la agencia y recién después se recorta por sucursal. Filtrar antes cambiaría
+ * también el mes anterior contra el que se compara —una póliza que se mudó de local parecería un alta—
+ * y el detalle de Dock Sud no sumaría lo que dice su tarjeta.
+ */
+export function altasDelMes(periodoPedido: string | null, sucursalPedida: string | null): DetalleDeAltas {
+  const disponibles = periodosDisponibles().map((p) => p.periodo)
+  const periodo = resolverPeriodo(periodoPedido, disponibles)
+  const lineas = lineasDeRenovacion()
+  const cuotas = cuotasDelMes(periodo, [], lineas)
+  const anteriores = lineasDelMes(periodoAnterior(periodo), [], lineas)
+  const hayMesAnterior = anteriores.size > 0
+  const esAlta = contadorDeAltas(anteriores)
+  // El contador se recorre entero aunque no haya mes anterior: es el mismo paseo que hace el podio, y
+  // dos recorridos distintos sobre las mismas filas son dos números distintos esperando a aparecer.
+  const altas = cuotas.filter((cuota) => esAlta(cuota.linea))
+
+  const sucursal = limpiar(sucursalPedida) || null
+  const buscada = sucursal === null ? null : claveDeLaFilaDeSucursal(sucursal)
+  return {
+    periodo,
+    sucursal,
+    hayMesAnterior,
+    filas: (hayMesAnterior ? altas : [])
+      .filter((cuota) => buscada === null || claveDeLaFilaDeSucursal(cuota.sucursal) === buscada)
+      .map((cuota) => ({
+        cliente: cuota.clienteNombre,
+        compania: cuota.compania,
+        numeroPoliza: cuota.numeroPoliza,
+        patente: cuota.patente,
+        sucursal: limpiar(cuota.sucursal) || null,
+      }))
+      .sort((a, b) => (a.cliente ?? '').localeCompare(b.cliente ?? '', 'es')),
+  }
+}
+
 export function podioDelMes(): PodioMensual {
   const estadisticas = estadisticasDeCartera(null, [], false)
   const ranking = estadisticas.porSucursal

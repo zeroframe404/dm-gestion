@@ -296,6 +296,7 @@ const api: ApiDm = {
     tablero: (filtros) => invocar('metricas:tablero', filtros),
     estadisticas: (periodo, sucursales) => invocar('metricas:estadisticas', periodo, sucursales),
     podio: () => invocar('metricas:podio'),
+    altas: (periodo, sucursal) => invocar('metricas:altas', periodo, sucursal),
   },
   reportes: {
     catalogo: () => invocar('reportes:catalogo'),
