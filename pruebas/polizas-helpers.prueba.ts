@@ -7,6 +7,7 @@ import {
   anioDeVehiculo,
   anioMinimoDe,
   buscarRegla,
+  categoriaDeCartera,
   diasEntre,
   diasParaVencer,
   estadoDePoliza,
@@ -135,6 +136,45 @@ test('sin fecha de vigencia no se puede afirmar que venció: sigue activa', () =
   assert.equal(estadoDePoliza(true, null, '2026-08-21'), 'ACTIVA')
   assert.equal(estadoDePoliza(true, 'ANUAL', '2026-08-21'), 'ACTIVA')
   assert.equal(diasParaVencer(null, '2026-08-21'), null)
+})
+
+// ---------------------------------------------------------------------------
+// Resumen de cartera (activas / fuera de vigencia / dadas de baja)
+// ---------------------------------------------------------------------------
+
+test('categoriaDeCartera: activa y vencida se distinguen igual que estadoDePoliza cuando el flag está al día', () => {
+  const hoy = '2026-08-21'
+  assert.equal(categoriaDeCartera(true, false, '2027-01-01', hoy), 'ACTIVA')
+  assert.equal(categoriaDeCartera(true, false, '2026-08-21', hoy), 'ACTIVA', 'el último día todavía está vigente')
+  assert.equal(categoriaDeCartera(true, false, '2026-08-20', hoy), 'VENCIDA')
+  assert.equal(categoriaDeCartera(false, false, '2027-01-01', hoy), 'BAJA')
+})
+
+test('categoriaDeCartera: la fecha manda sobre el flag `activa`, a diferencia de estadoDePoliza', () => {
+  const hoy = '2026-08-21'
+  // Esta es la corrección concreta al reclamo «las pólizas vencidas no se cuentan en cartera»: la
+  // importación apaga `activa` en bloque para lo que ya no está en la hoja más nueva, sin fijarse si
+  // venció o si de verdad se dio de baja. `estadoDePoliza` la mostraría como BAJA (ver test de arriba);
+  // acá, con la vigencia ya pasada, cuenta como fuera de vigencia.
+  assert.equal(categoriaDeCartera(false, false, '2026-08-20', hoy), 'VENCIDA')
+  assert.equal(
+    estadoDePoliza(false, '2026-08-20', hoy),
+    'BAJA',
+    'referencia: estadoDePoliza no distingue este caso, por eso existe categoriaDeCartera',
+  )
+  // Sin vigencia vencida y sin actividad, sigue contando como baja: no hay otro dato que la salve.
+  assert.equal(categoriaDeCartera(false, false, '2027-01-01', hoy), 'BAJA')
+})
+
+test('categoriaDeCartera: la renovada no entra en ninguna categoría, para no duplicar la cartera', () => {
+  const hoy = '2026-08-21'
+  assert.equal(categoriaDeCartera(false, true, '2026-08-20', hoy), null)
+  assert.equal(categoriaDeCartera(false, true, '2027-01-01', hoy), null)
+})
+
+test('categoriaDeCartera: sin fecha de vigencia no se puede afirmar que venció', () => {
+  assert.equal(categoriaDeCartera(true, false, null, '2026-08-21'), 'ACTIVA')
+  assert.equal(categoriaDeCartera(false, false, null, '2026-08-21'), 'BAJA')
 })
 
 // ---------------------------------------------------------------------------

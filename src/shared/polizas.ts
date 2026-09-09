@@ -153,6 +153,34 @@ export const NOMBRE_ESTADO_POLIZA: Record<EstadoPoliza, string> = {
   VENCIDA: 'Vencida',
 }
 
+/** Las tres categorías del resumen de cartera. No incluye RENOVADA a propósito (ver `categoriaDeCartera`). */
+export type CategoriaDeCartera = 'ACTIVA' | 'VENCIDA' | 'BAJA'
+
+/**
+ * Para el resumen de TODA la cartera (activas / fuera de vigencia / dadas de baja), sin duplicar entre
+ * categorías. Se parece a `estadoDePoliza()` pero cambia a propósito el orden de las preguntas: acá la
+ * fecha de vigencia manda sobre el flag `activa`. La importación apaga `activa` en bloque para
+ * cualquier póliza que ya no aparezca en la planilla mensual más nueva, sin distinguir una baja real de
+ * una que simplemente venció sin que la agencia la haya renovado ni dado de baja a mano —y con la regla
+ * vieja esa vencida se contaba como «baja» en vez de «fuera de vigencia», que es justo la queja: las
+ * vencidas no se contaban en cartera. Acá alcanza con que haya pasado la fecha para que cuente como
+ * vencida, esté o no prendido el flag.
+ *
+ * Las renovadas no entran en ninguna de las tres: la póliza que las sucede ya se cuenta a sí misma como
+ * activa o vencida, y sumar también la vieja duplicaría esa misma cartera.
+ */
+export function categoriaDeCartera(
+  activa: boolean,
+  renovada: boolean,
+  vigenciaHastaIso: string | null | undefined,
+  hoy: string,
+): CategoriaDeCartera | null {
+  if (renovada) return null
+  const dias = diasParaVencer(vigenciaHastaIso, hoy)
+  if (dias !== null && dias < 0) return 'VENCIDA'
+  return activa ? 'ACTIVA' : 'BAJA'
+}
+
 /** Cuántos días antes del vencimiento entra una póliza en la bandeja de renovaciones. */
 export const DIAS_DE_RENOVACION = 60
 
