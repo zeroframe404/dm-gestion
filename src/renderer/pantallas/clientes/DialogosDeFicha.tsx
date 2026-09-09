@@ -82,7 +82,7 @@ export function DialogoPagoDelCliente({ ficha, alCerrar, alPagar }: PropsPago) {
     <Dialogo
       abierto
       titulo="Registrar pago"
-      descripcion={cuotas ? `${ficha.nombre} · cuotas de ${nombreDePeriodo(cuotas.periodo)}` : ficha.nombre}
+      descripcion={cuotas ? `${ficha.nombre} · cuotas pendientes` : ficha.nombre}
       alCerrar={alCerrar}
       ancho="md"
       pie={
@@ -124,7 +124,7 @@ export function DialogoPagoDelCliente({ ficha, alCerrar, alPagar }: PropsPago) {
                   {fila.compania ?? 'Sin compañía'} {fila.numeroPoliza ?? ''}
                 </span>
                 <span className="block truncate text-xs text-slate-500">
-                  {fila.patente ?? 'sin patente'} · vence el {fila.diaVencimiento ?? '—'}
+                  {nombreDePeriodo(fila.periodo)} · {fila.patente ?? 'sin patente'} · vence el {fila.diaVencimiento ?? '—'}
                 </span>
               </span>
               <span className={cx('shrink-0 text-sm font-semibold tabular-nums', fila.pagoFecha ? 'text-green-700' : 'text-slate-900')}>

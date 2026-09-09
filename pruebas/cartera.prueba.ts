@@ -97,7 +97,8 @@ test('la planilla abre en el mes más nuevo con todas sus filas', async () => {
 })
 
 test('los meses anteriores se ven completos pero un empleado no los puede tocar; un administrador sí', async () => {
-  await carteraDePrueba()
+  const db = await carteraDePrueba()
+  insertarUsuario(db, MARIA)
   const enero = planillaDelMes('2026-01')
   assert.equal(enero.periodo, '2026-01')
   assert.equal(enero.soloLectura, true)
@@ -105,8 +106,12 @@ test('los meses anteriores se ven completos pero un empleado no los puede tocar;
 
   const fila = enero.filas[0]!
   assert.throws(() => editarCelda(fila.filaId, 'cuota', '$ 1', MARIA), /mes anterior/)
-  assert.throws(() => registrarPago(fila.filaId, { fecha: '2026-01-10', importe: '1', medioDePago: 'EFECTIVO' }, MARIA), /mes anterior/)
   assert.throws(() => darDeBaja(fila.filaId, { motivo: 'VENDIO', nota: '' }, MARIA), /mes anterior/)
+
+  // Cobrar una cuota vencida es distinto de editar la planilla vieja: un EMPLEADO sí puede registrar
+  // ese pago, porque es lo que la agencia necesita todos los días (un cliente que debe meses atrás).
+  const pagada = registrarPago(fila.filaId, { fecha: '2026-01-10', importe: '1', medioDePago: 'EFECTIVO' }, MARIA)
+  assert.equal(pagada.pagoRegistrado, true)
 
   // Un SUPER_ADMIN sigue pudiendo corregir un mes ya cerrado.
   const corregida = editarCelda(fila.filaId, 'cuota', '$ 1', DANIEL)
@@ -340,9 +345,10 @@ test('un mes cerrado sigue siendo de lectura y escritura para un administrador, 
   assert.doesNotThrow(() => registrarPago(gonzalez.filaId, { fecha: '2026-08-09', importe: '$ 1', medioDePago: 'EFECTIVO' }, ANA))
   assert.doesNotThrow(() => editarCelda(gonzalez.filaId, 'observaciones', 'corregido por administración', DANIEL))
 
-  // Para el EMPLEADO, agosto cerrado sigue siendo de sólo lectura.
+  // Para el EMPLEADO, agosto cerrado sigue siendo de sólo lectura para editar... pero cobrar una
+  // cuota vencida de ese mes no es editar la planilla, y eso sí lo puede hacer.
   assert.equal(planillaDelMes('2026-08', MARIA).soloLectura, true)
-  assert.throws(() => registrarPago(gonzalez.filaId, { fecha: '2026-08-09', importe: '$ 1', medioDePago: 'EFECTIVO' }, MARIA), /mes anterior/)
+  assert.doesNotThrow(() => registrarPago(gonzalez.filaId, { fecha: '2026-08-09', importe: '$ 1', medioDePago: 'EFECTIVO' }, MARIA))
   assert.throws(() => editarCelda(gonzalez.filaId, 'observaciones', 'no debería poder', MARIA), /mes anterior/)
   cerrarBaseDeDatos()
 })
