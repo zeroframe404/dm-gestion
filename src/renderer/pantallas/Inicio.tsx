@@ -16,6 +16,7 @@ import { useNavegacion } from '../contexto/Navegacion'
 import { usePermisos } from '../contexto/Permisos'
 import { useUsuarioActual } from '../contexto/Sesion'
 import { esAreaDePermisos, MODULOS, type IdModulo } from '../modulos'
+import { nombreDePeriodo } from '../../shared/semaforo'
 import { mesCorto, numero } from './metricas/graficos'
 
 export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
@@ -246,7 +247,20 @@ function PodioDeSucursales() {
           </h3>
           {/* Qué se está contando, dicho en la tarjeta: el número se mira todos los días y sin esta línea
               «altas» se lee como «pólizas nuevas escritas», que no es lo mismo. */}
-          <p className="mt-1 text-xs text-slate-500">Pólizas que están este mes y no estaban el anterior. Las renovaciones no cuentan.</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Pólizas que están en {nombreDePeriodo(podio.periodo).toLowerCase()} y no estaban en {nombreDePeriodo(podio.periodoAnterior).toLowerCase()}.
+            Las renovaciones no cuentan.
+          </p>
+          {/* De cuándo son los números (issue #79). La agencia comparó el podio de dos computadoras y no
+              daba igual: sin esta línea no hay forma de saber si una de las dos estaba mirando datos
+              viejos. Con la hora de la última bajada al lado, «no coinciden» se vuelve «la tuya bajó a
+              las 10 y la mía a las 12». */}
+          <p className="mt-0.5 text-xs text-slate-500">
+            Calculado el {momento(podio.calculadoEn)}
+            {podio.datosBajadosEn
+              ? ` con los datos que esta computadora bajó del servidor el ${momento(podio.datosBajadosEn)}.`
+              : '. Esta computadora todavía no bajó datos del servidor: son sólo los cargados acá.'}
+          </p>
         </div>
       </div>
 
@@ -396,6 +410,13 @@ function DetalleDelPodio({ periodo, fila, alCerrar }: { periodo: string; fila: F
       )}
     </Dialogo>
   )
+}
+
+/** «9/9/2026, 14:32»: día y hora de un instante ISO, para decir de cuándo es un número. */
+function momento(iso: string): string {
+  const fecha = new Date(iso)
+  if (Number.isNaN(fecha.getTime())) return iso
+  return `${fecha.toLocaleDateString('es-AR')} a las ${fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`
 }
 
 function saludoSegunHora(): string {

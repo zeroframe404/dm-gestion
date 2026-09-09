@@ -117,6 +117,7 @@ test('aviso en vivo: baja sólo la pestaña que cambió, y recién ahí la da po
     await ponerseAlDia(pc)
     assert.equal(estadoDeVersiones().generacion, 1)
     assert.equal(Object.keys(estadoDeVersiones().versiones).length, 3, 'conoce las tres pestañas de la hoja')
+    const bajadaAntes = pc.motor.estado().ultimaBajada
 
     // 2. Lo que escribió la otra sucursal baja SÓLO esa pestaña. Si esto se rompe todo «funciona» y
     //    la agencia se come una lectura de varios MB cada vez que alguien tipea una celda.
@@ -126,6 +127,12 @@ test('aviso en vivo: baja sólo la pestaña que cambió, y recién ahí la da po
     assert.deepEqual(await unaVueltaDelVigia(pc.motor), ['AGOSTO 2026'], 'una sola pestaña, no las tres')
     assert.deepEqual(simulador.pestanasLeidas, ['AGOSTO 2026'], 'no se bajó ninguna otra pestaña entera')
     assert.equal(cuotaDe('PEREZ'), '18000', 'el dato de la otra sucursal ya está en esta base')
+    // Y cuenta como bajada (13.0.2): es la hora que el podio de Inicio muestra como «datos bajados del
+    // servidor», y la que la barra usa para «sincronizado hace…». Con el vigía andando casi todo
+    // llega por acá, así que si no la corriera las dos dirían una hora vieja con datos nuevos.
+    const bajadaDespues = pc.motor.estado().ultimaBajada
+    assert.ok(bajadaDespues, 'la bajada en vivo deja la marca de última bajada')
+    assert.ok(bajadaAntes === null || bajadaDespues > bajadaAntes, 'y la corre hacia adelante')
 
     // 3. Sin novedades no baja nada.
     simulador.pestanasLeidas = []

@@ -1289,12 +1289,25 @@ Tres definiciones, que son las que hacen que los números coincidan con la plani
   cartera nueva y el podio de Inicio le contaba a la sucursal más grande más de cien altas en un mes en
   el que no había entrado casi nadie.
 
-  Queda un caso abierto: `poliza_anterior_id` lo escribe la computadora donde se apretó «Renovar» y no
-  viaja por la hoja. Si la compañía deja el mismo número de póliza —lo normal— la fila nueva cae igual
-  en la misma clave y la renovación se reconoce en todas las computadoras; si el número CAMBIA, la
-  máquina que no renovó la sigue contando como alta. Cerrarlo es hacer viajar el enganche por la hoja,
-  con una columna más en la planilla del mes. Mientras tanto se ve desde el detalle del podio: si en la
-  lista de altas aparecen clientes viejos, son renovaciones con número nuevo hechas en otra máquina.
+  La cadena sola no alcanzaba (13.0.2, issue #79): `poliza_anterior_id` lo escribe la computadora
+  donde se apretó «Renovar» y no viaja por la hoja. Si la compañía deja el mismo número de póliza —lo
+  normal— la fila nueva cae igual en la misma clave y la renovación se reconoce en todas las
+  computadoras; si el número CAMBIA, la máquina que no renovó la contaba como alta, y el podio del
+  mismo mes daba distinto en cada sucursal. Ahora `contadorDeAltas` reconoce además la renovación por
+  lo que la fila tiene ESCRITO: una fila cuya línea no estaba el mes anterior pero que asegura el mismo
+  riesgo —la misma patente— que una línea del mes anterior que en este mes ya no está, es esa línea que
+  sigue, no un alta. Sale de la planilla y por eso da igual en todas las máquinas. Sólo la patente, sin
+  compañía ni documento, porque es la identidad con la que el importador engancha las planillas viejas
+  cuando el número no coincide, y una instalación de cero tiene que contar lo mismo que una que bajó la
+  hoja mes a mes. Un cambio de vehículo es otro riesgo y sigue siendo un alta; un cambio de compañía con
+  el mismo auto, no. Una póliza sin patente de verdad («0KM», «SIN PATENTE») no tiene riesgo que
+  reconocer: su renovación con número nuevo sigue dependiendo de la cadena, en la máquina que renovó.
+
+  Y el podio dice **de cuándo son sus números**: a qué hora se calcularon y a qué hora esa computadora
+  bajó por última vez la hoja (`calculadoEn` y `datosBajadosEn` en `PodioMensual`; la marca
+  `ultima_bajada` la escribe el motor al terminar cada bajada). Si dos sucursales ven podios distintos,
+  la respuesta está ahí: la que bajó más tarde tiene lo que la otra todavía no vio. Con el aviso en
+  vivo (13.0), el podio se vuelve a calcular solo cuando bajan datos de la planilla del mes o de BAJAS.
 - **Bajas** de un mes = las filas de la pestaña de BAJAS de ese mes, con su MOTIVO.
 
 Los gráficos están dibujados a mano en SVG (`pantallas/metricas/graficos.tsx`): son cuatro formas

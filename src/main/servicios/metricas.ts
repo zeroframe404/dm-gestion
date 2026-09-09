@@ -19,6 +19,10 @@
 //     Y una RENOVACIÓN NO ES UN ALTA (13.0.1): el cliente ya estaba, sigue estando y la cartera no
 //     creció. Es la misma distinción que hace el Excel de pólizas al separar RENOVADA de DADA DE
 //     BAJA, sólo que del otro lado: la renovada no es cartera perdida, y tampoco es cartera nueva.
+//     Y se reconoce IGUAL EN TODAS LAS COMPUTADORAS (13.0.2): la cuenta sale de lo que la planilla
+//     tiene escrito, no de un enganche que sólo conoce la máquina que renovó (ver `contadorDeAltas`).
+//     Si dos sucursales ven podios distintos del mismo mes, es que bajaron la hoja en momentos
+//     distintos: por eso el podio dice de cuándo son sus datos.
 //
 //  3. BAJAS de un mes = las pólizas de la pestaña de BAJAS de ese mes, con su MOTIVO, también una vez
 //     por póliza.
@@ -40,7 +44,8 @@ import type {
   TotalPorMedio,
 } from '../../shared/tipos'
 import { db } from '../db/base'
-import { limpiar, normalizarDocumento, normalizarNumeroPoliza, normalizarPatente, normalizarTexto } from '../importacion/normalizar'
+import { ahoraIso, limpiar, normalizarDocumento, normalizarNumeroPoliza, normalizarPatente, normalizarTexto } from '../importacion/normalizar'
+import { leerMarca } from '../sincronizacion/cola'
 import { catalogos, periodosDisponibles } from './cartera'
 import { PAGO_QUE_CUBRE_LA_CUOTA, SUCURSAL_DEL_PAGO } from './pagos'
 
@@ -151,21 +156,81 @@ function lineasDeRenovacion(): Map<number, string> {
 }
 
 /**
- * El contador de altas de un mes: se le pasan las líneas que estaban el mes anterior y va tachando.
+ * El RIESGO que asegura una fila, tal como está escrito en la planilla: la patente. Es con lo que se
+ * reconoce una renovación con número nuevo en TODAS las computadoras (ver `contadorDeAltas`), así que
+ * sale sólo de lo que viaja por la hoja.
  *
- * Se cuenta contra un CONTEO y no contra un conjunto porque una línea puede tener dos filas vivas a la
- * vez: renovar eligiendo «la anterior sigue activa» deja las dos pólizas en la planilla, y esa segunda
- * fila sí es una fila más en la cartera. Así la primera fila de una línea que ya estaba no es alta —es
- * la misma póliza, o su renovación— y la segunda sí. Las filas llegan siempre en el mismo orden (ver el
- * ORDER BY de `cuotasDelMes`), así que cuál de las dos queda como alta no cambia de una corrida a otra.
+ * Sólo la patente, y no la compañía ni el documento, a propósito: es la misma identidad con la que el
+ * importador engancha las planillas viejas a una póliza cuando el número no coincide (`buscarPoliza`),
+ * y las dos cuentas tienen que decir lo mismo, si no una computadora instalada de cero —que importa la
+ * historia entera— y una que la fue bajando mes a mes verían altas distintas. Con el documento solo,
+ * además, un cliente que vendió la moto y aseguró un auto pasaría por una renovación. `normalizarPatente`
+ * devuelve '' para «0KM», «SIN PATENTE» y compañía: sin eso dos autos sin chapa serían el mismo riesgo.
+ * Una póliza sin patente de verdad no tiene riesgo que reconocer, y su renovación con número nuevo se
+ * reconoce sólo por la cadena, en la máquina que renovó.
  */
-function contadorDeAltas(anteriores: Map<string, number>): (linea: string) => boolean {
-  const quedan = new Map(anteriores)
-  return (linea) => {
+function riesgoDeLaCuota(fila: { patente: string | null }): string | null {
+  const patente = normalizarPatente(fila.patente)
+  return patente ? `PAT:${patente}` : null
+}
+
+/**
+ * El contador de altas de un mes: se le pasan las filas del mes anterior y las del mes que se mira, y
+ * después dice, fila por fila, cuál es alta.
+ *
+ * Una fila NO es alta si su línea de cartera ya estaba el mes anterior. Se cuenta contra un CONTEO y
+ * no contra un conjunto porque una línea puede tener dos filas vivas a la vez: renovar eligiendo «la
+ * anterior sigue activa» deja las dos pólizas en la planilla, y esa segunda fila sí es una fila más en
+ * la cartera. Así la primera fila de una línea que ya estaba no es alta —es la misma póliza, o su
+ * renovación— y la segunda sí.
+ *
+ * Y TAMPOCO es alta si es la RENOVACIÓN CON NÚMERO NUEVO de una fila que se fue (13.0.2): una fila
+ * cuya línea no estaba el mes anterior, pero que asegura el mismo riesgo —la misma patente— que una
+ * línea del mes anterior que en este mes YA NO ESTÁ. Es la misma cuenta que hace la
+ * cadena de renovaciones (`lineasDeRenovacion`), hecha con lo que la planilla tiene escrito. Hace falta
+ * porque la cadena no viaja por la hoja: la computadora donde se apretó «Renovar» conocía el enganche
+ * y las demás no, así que el mismo mes daba un podio distinto en cada sucursal, y a la sucursal que
+ * más renueva le sobraban altas en todas las máquinas menos en la suya. Por eso hay que recibir el mes
+ * entero de antemano: para saber qué líneas del mes anterior quedaron huérfanas hay que haber visto
+ * todas las filas de éste. Si la línea vieja sigue presente —se renovó dejando la anterior activa— no
+ * está huérfana y la fila nueva es un alta, como siempre. Un cambio de vehículo es otro riesgo y sigue
+ * siendo un alta (y el auto viejo, una baja); un cambio de compañía con el mismo auto no lo es: el
+ * cliente y el auto siguen, la cartera no creció.
+ *
+ * Las filas llegan siempre en el mismo orden (ver el ORDER BY de `cuotasDelMes`), así que cuál de dos
+ * filas queda como alta no cambia de una corrida a otra ni de una computadora a otra.
+ */
+function contadorDeAltas(anteriores: CuotaDelMes[], actuales: CuotaDelMes[]): (cuota: CuotaDelMes) => boolean {
+  const quedan = new Map<string, number>()
+  for (const cuota of anteriores) quedan.set(cuota.linea, (quedan.get(cuota.linea) ?? 0) + 1)
+
+  // Las líneas del mes anterior que este mes no están, por riesgo: las candidatas a «se renovó con
+  // otro número». Lo que se descuenta es siempre `quedan`, así que una línea consumida por acá no
+  // vuelve a servir para otra fila.
+  const presentes = new Set(actuales.map((cuota) => cuota.linea))
+  const huerfanasPorRiesgo = new Map<string, string[]>()
+  for (const cuota of anteriores) {
+    if (cuota.riesgo === null || presentes.has(cuota.linea)) continue
+    const lista = huerfanasPorRiesgo.get(cuota.riesgo) ?? []
+    lista.push(cuota.linea)
+    huerfanasPorRiesgo.set(cuota.riesgo, lista)
+  }
+
+  const descontar = (linea: string): boolean => {
     const restantes = quedan.get(linea) ?? 0
-    if (restantes <= 0) return true
+    if (restantes <= 0) return false
     quedan.set(linea, restantes - 1)
-    return false
+    return true
+  }
+
+  return (cuota) => {
+    if (descontar(cuota.linea)) return false
+    if (cuota.riesgo !== null) {
+      for (const linea of huerfanasPorRiesgo.get(cuota.riesgo) ?? []) {
+        if (descontar(linea)) return false
+      }
+    }
+    return true
   }
 }
 
@@ -227,6 +292,8 @@ interface CuotaDelMes {
   identidad: string
   /** La línea de cartera: la misma aunque la póliza se haya renovado. Es lo que se compara entre meses. */
   linea: string
+  /** El riesgo escrito en la fila (la patente): con qué se reconoce una renovación con número nuevo. */
+  riesgo: string | null
   // Con qué se reconoce la fila en la planilla. Viaja acá, y no en una consulta aparte, porque el
   // detalle de altas tiene que listar EXACTAMENTE las filas que se contaron: si el listado saliera de
   // su propia consulta, el día que las dos se despeguen el detalle no sumaría lo que dice la tarjeta y
@@ -296,6 +363,7 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
     .map((fila) => ({
       identidad: fila.identidad,
       linea: fila.linea,
+      riesgo: riesgoDeLaCuota(fila),
       clienteNombre: fila.cliente_nombre,
       numeroPoliza: fila.numero_poliza,
       patente: fila.patente,
@@ -306,18 +374,6 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
       formaPago: fila.forma_pago,
       pagada: fila.pagada === 1,
     }))
-}
-
-/**
- * Cuántas filas tenía cada línea de cartera en un mes: es lo único que hace falta para contar las
- * altas del siguiente. Un conteo y no un conjunto por lo que explica `contadorDeAltas`.
- */
-function lineasDelMes(periodo: string, sucursales: string[], lineas: Map<number, string>): Map<string, number> {
-  const conteo = new Map<string, number>()
-  for (const cuota of cuotasDelMes(periodo, sucursales, lineas)) {
-    conteo.set(cuota.linea, (conteo.get(cuota.linea) ?? 0) + 1)
-  }
-  return conteo
 }
 
 interface BajaDelMes {
@@ -413,9 +469,9 @@ function evolucion(
   const filas: MesDeEvolucion[] = []
   for (const mes of meses) {
     const cuotas = cuotasDelMes(mes, sucursales, lineas)
-    const anteriores = lineasDelMes(periodoAnterior(mes), sucursales, lineas)
-    const esAlta = contadorDeAltas(anteriores)
-    const altas = anteriores.size === 0 ? null : cuotas.filter((cuota) => esAlta(cuota.linea)).length
+    const anteriores = cuotasDelMes(periodoAnterior(mes), sucursales, lineas)
+    const esAlta = contadorDeAltas(anteriores, cuotas)
+    const altas = anteriores.length === 0 ? null : cuotas.filter(esAlta).length
     filas.push({
       periodo: mes,
       activos: cuotas.length,
@@ -474,11 +530,10 @@ export function tableroDeMetricas(filtros: FiltrosMetricas, conNumeros: boolean)
 
   const lineas = lineasDeRenovacion()
   const cuotas = cuotasDelMes(periodo, sucursales, lineas)
-  const anterior = periodoAnterior(periodo)
-  const lineasAnteriores = lineasDelMes(anterior, sucursales, lineas)
-  const hayMesAnterior = lineasAnteriores.size > 0
-  const esAlta = contadorDeAltas(lineasAnteriores)
-  const altasDelMes = cuotas.filter((cuota) => esAlta(cuota.linea)).length
+  const anteriores = cuotasDelMes(periodoAnterior(periodo), sucursales, lineas)
+  const hayMesAnterior = anteriores.length > 0
+  const esAlta = contadorDeAltas(anteriores, cuotas)
+  const altasDelMes = cuotas.filter(esAlta).length
 
   const porCompania = new Map<string, { etiqueta: string; cantidad: number }>()
   const porSucursal = new Map<string, { etiqueta: string; cantidad: number }>()
@@ -572,9 +627,9 @@ export function estadisticasDeCartera(
 
   const lineas = lineasDeRenovacion()
   const cuotas = cuotasDelMes(periodo, sucursales, lineas)
-  const lineasAnteriores = lineasDelMes(periodoAnterior(periodo), sucursales, lineas)
-  const hayMesAnterior = lineasAnteriores.size > 0
-  const contar = contadorDeAltas(lineasAnteriores)
+  const anteriores = cuotasDelMes(periodoAnterior(periodo), sucursales, lineas)
+  const hayMesAnterior = anteriores.length > 0
+  const contar = contadorDeAltas(anteriores, cuotas)
 
   const companias = new Map<string, Acumulador>()
   const sucursalesMapa = new Map<string, Acumulador>()
@@ -582,7 +637,7 @@ export function estadisticasDeCartera(
     // `contar` va primero y se llama SIEMPRE: es el que tacha, y saltearlo cuando no hay mes anterior
     // lo dejaría descontando de más en la fila siguiente. Sin mes anterior no tacha nada igual, y las
     // altas salen en null de todos modos (ver `ordenar`).
-    const esAlta = contar(cuota.linea) && hayMesAnterior
+    const esAlta = contar(cuota) && hayMesAnterior
     for (const fila of [tomar(companias, cuota.compania, '(sin compañía)'), tomar(sucursalesMapa, cuota.sucursal, '(sin sucursal)')]) {
       fila.activos++
       if (esAlta) fila.altas++
@@ -659,12 +714,12 @@ export function altasDelMes(periodoPedido: string | null, sucursalPedida: string
   const periodo = resolverPeriodo(periodoPedido, disponibles)
   const lineas = lineasDeRenovacion()
   const cuotas = cuotasDelMes(periodo, [], lineas)
-  const anteriores = lineasDelMes(periodoAnterior(periodo), [], lineas)
-  const hayMesAnterior = anteriores.size > 0
-  const esAlta = contadorDeAltas(anteriores)
+  const anteriores = cuotasDelMes(periodoAnterior(periodo), [], lineas)
+  const hayMesAnterior = anteriores.length > 0
+  const esAlta = contadorDeAltas(anteriores, cuotas)
   // El contador se recorre entero aunque no haya mes anterior: es el mismo paseo que hace el podio, y
   // dos recorridos distintos sobre las mismas filas son dos números distintos esperando a aparecer.
-  const altas = cuotas.filter((cuota) => esAlta(cuota.linea))
+  const altas = cuotas.filter(esAlta)
 
   const sucursal = limpiar(sucursalPedida) || null
   const buscada = sucursal === null ? null : claveDeLaFilaDeSucursal(sucursal)
@@ -695,8 +750,15 @@ export function podioDelMes(): PodioMensual {
     })
   return {
     periodo: estadisticas.periodo,
+    periodoAnterior: periodoAnterior(estadisticas.periodo),
     hayMesAnterior: estadisticas.hayMesAnterior,
     ranking,
     hoy: estadisticas.hoy,
+    // De cuándo son estos números (13.0.2). Es lo que permite poner dos computadoras al lado: si los
+    // podios no coinciden y las bajadas son de momentos distintos, no es un error, es que una todavía
+    // no bajó lo que la otra cargó. `ultima_bajada` la escribe el motor de sincronización al terminar
+    // cada bajada de la hoja; null si esta computadora nunca bajó nada.
+    calculadoEn: ahoraIso(),
+    datosBajadosEn: leerMarca('ultima_bajada'),
   }
 }

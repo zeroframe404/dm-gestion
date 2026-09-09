@@ -497,6 +497,12 @@ export class MotorDeSincronizacion {
         // reloj de red, que es justamente lo que esto vino a arreglar. Corre acotada a las pestañas
         // donde aparecieron filas, con su propio candado.
         if (resultado.necesitaImportacion) await this.importarAcotada(resultado.pestanasConFilasNuevas, resultado.filasNuevas)
+        // La marca de última bajada también se corre acá (13.0.2): esto SÍ es una bajada de la hoja
+        // —trae las pestañas que cambiaron, con importación incluida—, y con el vigía andando es la
+        // que trae casi todo. Sin esto el podio de Inicio decía «datos bajados a las 10» a las 12, con
+        // las altas de la otra sucursal ya adentro, y la barra seguía diciendo «sincronizado hace dos
+        // horas». El carril de tareas no la toca porque baja una pestaña sola y sin importar.
+        guardarMarca('ultima_bajada', new Date().toISOString())
         if (trajoAlgo) this.avisarQueCambiaronLosDatos(contexto, titulos)
         return resultado
       }

@@ -2975,12 +2975,21 @@ export interface DetalleDeAltas {
  */
 export interface PodioMensual {
   periodo: string
+  /** El mes contra el que se comparó: las altas son lo que está en `periodo` y no estaba acá. */
+  periodoAnterior: string
   /** false si no hay mes anterior cargado: sin él las altas no se pueden deducir y el podio no tiene sentido. */
   hayMesAnterior: boolean
   /** Una fila por sucursal (la etiqueta es el nombre de la sucursal), ya ordenadas por altas de mayor a
    *  menor y, a igualdad, por activos; sin la fila «(sin sucursal)», que no compite. */
   ranking: FilaEstadistica[]
   hoy: string
+  /** Cuándo se hizo esta cuenta (ISO con hora). */
+  calculadoEn: string
+  /**
+   * De cuándo son los datos: la última bajada de la hoja en esta computadora (ISO con hora), o null si
+   * todavía no bajó nada. Es lo que hay que mirar cuando dos computadoras muestran podios distintos.
+   */
+  datosBajadosEn: string | null
 }
 
 // ---------------------------------------------------------------------------
