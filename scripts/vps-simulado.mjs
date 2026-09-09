@@ -303,18 +303,239 @@ export class VpsSimulado {
     return this.renglonesPorId(pestana, columnaId).get(id) ?? null
   }
 
-  /** «Otra computadora» (o el panel web) cambió una celda directamente en la base. */
-  editarDirecto(titulo, fila, columna, valor) {
+  /**
+   * Escribir una celda y nada más. Aparte de `editarDirecto` porque los manejadores de `/celdas` y de
+   * `/tramos` escriben de a muchas y avisan UNA VEZ al final, cuando suben la versión (ver
+   * `marcarCambiada`): pasando por `editarDirecto` mandarían un frame por celda.
+   */
+  ponerCelda(titulo, fila, columna, valor) {
     const pestana = this.porTitulo(titulo)
     if (!pestana) throw new Error(`No existe la pestaña ${titulo}`)
     const celdas = pestana.filas.get(fila) ?? []
     while (celdas.length <= columna) celdas.push('')
     celdas[columna] = comoTexto(valor)
     pestana.filas.set(fila, celdas)
+  }
+
+  /** Lo que la celda dice AHORA, para comparar contra el `previo` que manda quien escribe. */
+  celdaActual(pestana, fila, columna) {
+    return comoTexto((pestana.filas.get(fila) ?? [])[columna]).trim()
+  }
+
+  /** «Otra computadora» (o el panel web) cambió una celda directamente en la base. */
+  editarDirecto(titulo, fila, columna, valor) {
+    this.ponerCelda(titulo, fila, columna, valor)
     // Sin `marcarCambiada` la foto sale igual que antes y el cliente no baja nada: es a propósito. El
     // aviso está para que ninguna escritura quede muda, no para inventar una versión que el servidor
     // real tampoco subiría (quien edita a mano en la base tampoco toca las versiones).
     this.avisarGrilla()
+  }
+
+  // -------------------------------------------------------------------------
+  // El canal en vivo (14.0)
+  // -------------------------------------------------------------------------
+  //
+  // El mismo puerto y el mismo servidor http que el resto del puente: el `upgrade` de HTTP a WebSocket
+  // se atiende a mano y sólo para `/api/dmg/vivo`, que es exactamente lo que hace el hub del VPS
+  // (`WebSocketServer({ noServer: true })` + `server.on('upgrade')`). Va así y no con un puerto aparte
+  // porque el cliente arma la URL del canal a partir de la del puente —le cambia `http` por `ws` y le
+  // pega la ruta— y con dos puertos esa cuenta dejaría de valer y la prueba no probaría lo que el
+  // programa hace de verdad.
+  //
+  // Lo que el simulador NO hace, a propósito: el corte del saludo a los cinco segundos y el latido del
+  // servidor cada veinte. Son relojes que en una prueba sólo sirven para que tarde, y lo que sostienen
+  // —que una conexión muda se cierre— no es lo que estas pruebas miran.
+
+  /** Engancha el canal al servidor http ya levantado. Lo llama `escuchar()`. */
+  engancharElCanal() {
+    this.servidorDelCanal = new WebSocketServer({ noServer: true })
+    this.servidor.on('upgrade', (pedido, socket, cabeza) => {
+      const [ruta] = (pedido.url ?? '').split('?')
+      // Cualquier otra ruta se corta a lo bruto, como el hub real: no hay ningún otro WebSocket acá.
+      if (ruta !== RUTA_DEL_CANAL) return socket.destroy()
+      this.servidorDelCanal.handleUpgrade(pedido, socket, cabeza, (enchufe) => this.atenderElCanal(enchufe))
+    })
+  }
+
+  /**
+   * Una conexión recién abierta. Todavía no cuenta como presente: entra en `conexiones` recién con el
+   * `hola`, que es lo que trae quién es. Antes de eso no hay a quién mostrar ni a quién avisarle.
+   */
+  atenderElCanal(enchufe) {
+    const conexion = {
+      id: `cx-${this.proximaConexion++}`,
+      socket: enchufe,
+      actor: null,
+      color: null,
+      foco: null,
+      desde: new Date().toISOString(),
+    }
+    enchufe.on('message', (crudo) => this.frameDelCanal(conexion, crudo))
+    enchufe.on('close', () => {
+      if (this.conexiones.delete(conexion.id)) this.difundirPresencia()
+    })
+    // Un socket cortado a lo bruto (ver `cerrarConexionesDe`) emite `error` antes del `close`: sin
+    // este oyente, Node lo trata como excepción no atendida y voltea la prueba entera.
+    enchufe.on('error', () => undefined)
+  }
+
+  frameDelCanal(conexion, crudo) {
+    let mensaje = null
+    try {
+      mensaje = JSON.parse(String(crudo))
+    } catch {
+      return this.rechazarLaConexion(conexion, 'protocolo', 'El frame no es JSON.')
+    }
+    if (!mensaje || typeof mensaje.t !== 'string') {
+      return this.rechazarLaConexion(conexion, 'protocolo', 'El frame no dice qué es.')
+    }
+
+    if (mensaje.t === 'hola') {
+      // El token viaja en el saludo y nunca en la URL, igual que en el servidor real: la URL queda
+      // escrita en los registros del nginx de la agencia.
+      if (mensaje.token !== this.token) {
+        return this.rechazarLaConexion(conexion, 'token', 'Token del puente DM Gestión inválido.')
+      }
+      const clave = String(mensaje.actor?.clave ?? '').trim().toLowerCase()
+      if (!clave) return this.rechazarLaConexion(conexion, 'actor', 'Falta quién se conecta.')
+      conexion.actor = {
+        clave,
+        nombre: String(mensaje.actor?.nombre ?? clave),
+        rol: String(mensaje.actor?.rol ?? 'EMPLEADO'),
+        sucursal: String(mensaje.actor?.sucursal ?? ''),
+      }
+      conexion.color = this.asegurarPerfil(clave).color
+      this.conexiones.set(conexion.id, conexion)
+      this.mandarPorElCanal(conexion, {
+        t: 'bienvenida',
+        conexionId: conexion.id,
+        ...this.fotoDeLaGrilla(),
+        perfiles: [...this.perfiles.values()],
+        presencia: this.presencia(),
+        ice: this.ice,
+        latidoCadaMs: LATIDO_DEL_CANAL_MS,
+      })
+      // Después del saludo, no antes: la foto de presencia que sale tiene que traer al que entró.
+      this.difundirPresencia()
+      return
+    }
+
+    if (!conexion.actor) {
+      return this.rechazarLaConexion(conexion, 'protocolo', 'El primer frame tiene que ser el saludo.')
+    }
+    if (mensaje.t === 'latido') return this.mandarPorElCanal(conexion, { t: 'latido' })
+    if (mensaje.t === 'foco') {
+      conexion.foco = mensaje.foco ?? null
+      return this.difundirPresencia()
+    }
+    if (mensaje.t === 'llamada') {
+      this.llamadasDeVoz.push({ de: conexion.actor.clave, evento: mensaje.evento })
+      return
+    }
+    return this.rechazarLaConexion(conexion, 'protocolo', `Frame desconocido: ${mensaje.t}.`)
+  }
+
+  /** Le dice por qué y cierra, con el mismo código que el hub: 4401 lo que es de quién sos, 4400 la forma. */
+  rechazarLaConexion(conexion, codigo, mensaje) {
+    this.mandarPorElCanal(conexion, { t: 'error', codigo, mensaje })
+    this.conexiones.delete(conexion.id)
+    try {
+      conexion.socket.close(codigo === 'protocolo' ? 4400 : 4401, codigo)
+    } catch {
+      // Un socket que ya se había ido. No hay a quién avisarle.
+    }
+  }
+
+  mandarPorElCanal(conexion, mensaje) {
+    try {
+      conexion.socket.send(JSON.stringify(mensaje))
+    } catch {
+      // El otro lado se fue en el medio: lo va a decir el `close`, que es quien lo saca de presencia.
+    }
+  }
+
+  /**
+   * El color de una persona: el primer índice libre de la paleta.
+   *
+   * Con trece personas o más ya no queda ninguno libre y se reparte el que toque por orden de llegada.
+   * El servidor real cae al color MENOS usado; acá alcanza con que no explote, porque la agencia tiene
+   * cinco computadoras y lo que las pruebas miran es que dos personas distintas no compartan color.
+   */
+  asegurarPerfil(clave) {
+    const guardado = this.perfiles.get(clave)
+    if (guardado) return guardado
+    const tomados = new Set([...this.perfiles.values()].map((perfil) => perfil.color))
+    let color = this.perfiles.size % COLORES_DE_LA_PALETA
+    for (let indice = 0; indice < COLORES_DE_LA_PALETA; indice++) {
+      if (!tomados.has(indice)) {
+        color = indice
+        break
+      }
+    }
+    const perfil = { clave, color, foto: null, version: 1, actualizadoEn: new Date().toISOString() }
+    this.perfiles.set(clave, perfil)
+    return perfil
+  }
+
+  /** Quién está conectado y en qué. Foto completa: con cinco computadoras no valen la pena los deltas. */
+  presencia() {
+    return [...this.conexiones.values()].map((conexion) => ({
+      conexionId: conexion.id,
+      clave: conexion.actor.clave,
+      nombre: conexion.actor.nombre,
+      sucursal: conexion.actor.sucursal,
+      color: conexion.color,
+      foco: conexion.foco,
+      desde: conexion.desde,
+    }))
+  }
+
+  difundirPresencia() {
+    this.difundirPorElCanal({ t: 'presencia', presentes: this.presencia() })
+  }
+
+  /** «Algo de la grilla cambió»: la señal, no los datos. El cliente compara y baja lo distinto. */
+  avisarGrilla() {
+    this.difundirPorElCanal({ t: 'grilla', ...this.fotoDeLaGrilla() })
+  }
+
+  /** «Hay algo tuyo en la mensajería», a las computadoras de esas personas. Los datos van por HTTP. */
+  avisarMensajes(claves) {
+    const aQuienes = new Set(claves.filter(Boolean))
+    if (aQuienes.size === 0) return
+    for (const conexion of this.conexiones.values()) {
+      if (aQuienes.has(conexion.actor.clave)) this.mandarPorElCanal(conexion, { t: 'mensajes' })
+    }
+  }
+
+  difundirPorElCanal(mensaje) {
+    // Sin nadie conectado no hay ni que armar el JSON: la mayoría de las pruebas no abren el canal y
+    // pasan por acá en cada escritura.
+    if (this.conexiones.size === 0) return
+    const texto = JSON.stringify(mensaje)
+    for (const conexion of this.conexiones.values()) {
+      try {
+        conexion.socket.send(texto)
+      } catch {
+        // Ver `mandarPorElCanal`.
+      }
+    }
+  }
+
+  /**
+   * Le corta el canal a una persona, sin saludo de despedida: es la computadora a la que le
+   * desenchufaron el cable, no la que cierra sesión. Devuelve cuántas conexiones se cortaron.
+   */
+  cerrarConexionesDe(clave) {
+    let cortadas = 0
+    for (const conexion of [...this.conexiones.values()]) {
+      if (conexion.actor.clave !== clave) continue
+      this.conexiones.delete(conexion.id)
+      conexion.socket.terminate()
+      cortadas++
+    }
+    if (cortadas > 0) this.difundirPresencia()
+    return cortadas
   }
 
   async escuchar(puerto = 0) {
@@ -360,6 +581,9 @@ export class VpsSimulado {
         }
       })
     })
+    // El canal se engancha ANTES de escuchar: el `upgrade` tiene que estar puesto para el primer
+    // pedido, no para el segundo.
+    this.engancharElCanal()
     await new Promise((resolver) => this.servidor.listen(puerto, '127.0.0.1', resolver))
     const direccion = this.servidor.address()
     this.url = `http://127.0.0.1:${direccion.port}`
@@ -548,6 +772,9 @@ export class VpsSimulado {
         ],
       }
       this.conversaciones.set(conversacion.id, conversacion)
+      // Del otro lado la conversación aparece sola: hasta la 13.x había que esperar la vuelta del
+      // cartero, que era un long-poll de veinticinco segundos.
+      this.avisarMensajes([destino])
       return responder(200, { conversacion: this.conversacionParaLaApp(conversacion) })
     }
 
@@ -571,6 +798,7 @@ export class VpsSimulado {
         participantes: [...porClave].map(([clave, nombre]) => ({ clave, nombre, salioEn: null })),
       }
       this.conversaciones.set(conversacion.id, conversacion)
+      this.avisarMensajes(conversacion.participantes.map((p) => p.clave).filter((clave) => clave !== actor.clave))
       return responder(200, { conversacion: this.conversacionParaLaApp(conversacion) })
     }
 
@@ -634,10 +862,14 @@ export class VpsSimulado {
       this.mensajes.push(mensaje)
       conversacion.ultimoMensajeEn = ahora
       // Un acuse pendiente por cada destinatario: es la cola de reparto.
+      const destinatarios = []
       for (const participante of conversacion.participantes) {
         if (participante.clave === actor.clave || participante.salioEn) continue
         this.acuses.set(`${mensaje.id}|${participante.clave}`, { entregadoEn: null, leidoEn: null })
+        destinatarios.push(participante.clave)
       }
+      // El aviso no lleva el mensaje: dice «hay algo tuyo» y el cartero lo pide por HTTP como siempre.
+      this.avisarMensajes(destinatarios)
       return responder(201, { mensaje: this.mensajeParaLaApp(mensaje), yaEstaba: false })
     }
 
@@ -671,6 +903,8 @@ export class VpsSimulado {
       if (leidos) this.llamadas.mensajesLeidos++
       else this.llamadas.mensajesEntregados++
       let marcados = 0
+      /** A quién le cambió un tilde: al que escribió el mensaje, no al que acusa. */
+      const autores = new Set()
       for (const id of json?.ids ?? []) {
         const acuse = this.acuses.get(`${id}|${actor.clave}`)
         if (!acuse) continue
@@ -682,7 +916,10 @@ export class VpsSimulado {
         } else if (!leidos) {
           marcados++
         }
+        const mensaje = this.mensajes.find((cada) => cada.id === id)
+        if (mensaje) autores.add(mensaje.autorClave)
       }
+      this.avisarMensajes([...autores])
       return responder(200, { marcados })
     }
 
@@ -741,6 +978,8 @@ export class VpsSimulado {
       }
       mensaje.eliminadoEn = mensaje.eliminadoEn ?? ahora
       mensaje.eliminadoPor = mensaje.eliminadoPor ?? actor.clave
+      const conversacion = this.conversaciones.get(mensaje.conversacionId)
+      this.avisarMensajes((conversacion?.participantes ?? []).map((p) => p.clave).filter((clave) => clave !== actor.clave))
       return responder(200, { eliminado: true })
     }
 
@@ -819,6 +1058,14 @@ export class VpsSimulado {
       if (!this.exigirInicializada(responder)) return
       const columnaIdPorTitulo = json.columnaId && typeof json.columnaId === 'object' ? json.columnaId : {}
       const noEncontradas = []
+      /**
+       * Las celdas que llegaron con `previo` y ya decían otra cosa (14.0): no se escriben y vuelven
+       * con lo que la base tiene hoy. Es «gana la base»: hasta la 13.x la escritura entraba igual y
+       * pisaba el trabajo de la otra computadora, que se enteraba dos días después mirando el
+       * historial. Un cliente viejo que no manda `previo` sigue escribiendo como siempre, que es lo
+       * que sostiene el despliegue por partes.
+       */
+      const rechazadas = []
       const tocadas = new Set()
       let escritas = 0
       for (const celda of json.celdas ?? []) {
@@ -835,14 +1082,23 @@ export class VpsSimulado {
           }
           fila = resuelto
         }
-        this.editarDirecto(pestana.titulo, fila, celda.columna, celda.valor)
+        if (celda.previo !== undefined && celda.previo !== null) {
+          const actual = this.celdaActual(pestana, fila, Number(celda.columna))
+          if (actual !== comoTexto(celda.previo).trim()) {
+            rechazadas.push({ titulo: pestana.titulo, id, columna: Number(celda.columna), actual })
+            continue
+          }
+        }
+        this.ponerCelda(pestana.titulo, fila, celda.columna, celda.valor)
         if (celda.columna + 1 > pestana.columnas) pestana.columnas = celda.columna + 1
         escritas++
         tocadas.add(pestana.titulo)
       }
+      // `marcarCambiada` es también lo que dispara el aviso del canal: si todas las celdas quedaron
+      // rechazadas no se tocó nada y no hay nada que contarle a nadie.
       const versiones = {}
       for (const titulo of tocadas) versiones[titulo] = this.marcarCambiada(titulo)
-      return responder(200, { escritas, noEncontradas, versiones })
+      return responder(200, { escritas, noEncontradas, rechazadas, versiones })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/filas/agregar') {
       this.llamadas.agregar++
@@ -937,6 +1193,9 @@ export class VpsSimulado {
       const pestana = this.porSheetId(Number(json.sheetId))
       if (!pestana) return responder(400, { error: `No hay ninguna pestaña con sheetId ${json.sheetId} en la hoja del VPS.` })
       pestana.columnas = Math.max(pestana.columnas, Number(json.cantidad) || 0)
+      // Agregar una columna cambia la pestaña para todos, así que también se avisa: es el hueco que
+      // el servidor real cierra llamando a `despertarPorLaGrilla()` acá.
+      this.avisarGrilla()
       return responder(200, { columnas: pestana.columnas })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/tramos') {
@@ -959,7 +1218,7 @@ export class VpsSimulado {
               return
             }
           }
-          this.editarDirecto(pestana.titulo, numero, Number(json.indiceColumna), valor)
+          this.ponerCelda(pestana.titulo, numero, Number(json.indiceColumna), valor)
           escritas++
         })
       }
@@ -975,6 +1234,7 @@ export class VpsSimulado {
       const pestana = this.porSheetId(Number(json.sheetId))
       if (!pestana) return responder(400, { error: `No hay ninguna pestaña con sheetId ${json.sheetId} en la hoja del VPS.` })
       if (!pestana.columnasOcultas.includes(Number(json.indiceColumna))) pestana.columnasOcultas.push(Number(json.indiceColumna))
+      this.avisarGrilla()
       return responder(200, { ok: true })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/inicializar/comenzar') {
@@ -1121,6 +1381,15 @@ export class VpsSimulado {
 
   async cerrar() {
     if (!this.servidor) return
+    // Primero los sockets del canal: un WebSocket abierto es una conexión viva, y `close()` del
+    // servidor http espera a que las conexiones vivas terminen. Sin esto, cerrar el simulador al final
+    // de una prueba con el canal abierto se queda esperando para siempre.
+    for (const conexion of this.conexiones.values()) conexion.socket.terminate()
+    this.conexiones.clear()
+    if (this.servidorDelCanal) {
+      await new Promise((resolver) => this.servidorDelCanal.close(resolver))
+      this.servidorDelCanal = null
+    }
     await new Promise((resolver) => this.servidor.close(resolver))
     this.servidor = null
   }
