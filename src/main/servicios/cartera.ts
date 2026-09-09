@@ -884,8 +884,10 @@ interface CobroDeFila {
  */
 export function registrarPago(filaId: string, datos: DatosDePago, actor: SesionUsuario): FilaCartera {
   const fila = buscarFila(texto(filaId, 'La fila', 1, 64))
-  exigirMesAbierto(fila.periodo, actor)
-
+  // A propósito NO se llama `exigirMesAbierto` acá: cobrar una cuota vencida de un mes ya cerrado es
+  // el pan de cada día en el mostrador (el cliente que debe dos o tres meses y viene a pagarlos todos
+  // juntos), y no tiene nada que ver con editar la planilla vieja. Esa edición sigue restringida para
+  // un EMPLEADO; registrar un cobro, no.
   const fecha = limpiar(datos.fecha) || hoyLocal()
   const fechaIso = interpretarFecha(fecha, Number(fila.periodo.slice(0, 4))).iso
   if (!fechaIso) throw new ErrorDeNegocio(`«${fecha}» no es una fecha válida. Usá el formato día/mes/año.`)
@@ -1818,16 +1820,22 @@ function camposDeLaFila(fila: FilaCruda): Record<string, string> {
 // ---------------------------------------------------------------------------
 
 /**
- * Las cuotas del mes abierto de un cliente: es lo que se puede pagar hoy desde su ficha. Se devuelven
- * las filas completas para poder reusar el mismo diálogo de «Registrar pago» que usa la planilla, con
- * los mismos medios de pago y la misma fecha de hoy.
+ * Las cuotas que se le pueden cobrar hoy a un cliente: las del mes abierto, más cualquier cuota de un
+ * mes anterior que le haya quedado sin pagar (el cliente que debe dos o tres meses y viene a
+ * ponerse al día). Se devuelven las filas completas para poder reusar el mismo diálogo de «Registrar
+ * pago» que usa la planilla, con los mismos medios de pago y la misma fecha de hoy. Van ordenadas de
+ * la más vieja a la más nueva, así el mostrador cobra primero lo más atrasado.
  */
 export function cuotasDelClienteEnElMes(clienteId: number): CuotasDelCliente {
   const periodo = periodosDisponibles()[0]?.periodo ?? periodoDeHoy()
   const dias = diasCoberturaPorCompania()
   const crudas = db()
-    .prepare(`${SELECT_PLANILLA} WHERE c.periodo = ? AND c.dada_de_baja = 0 AND c.cliente_id = ? ORDER BY nombre`)
-    .all(periodo, clienteId) as FilaCruda[]
+    .prepare(
+      `SELECT * FROM (${SELECT_PLANILLA} WHERE c.dada_de_baja = 0 AND c.cliente_id = ?) sub
+       WHERE sub.periodo = ? OR (sub.periodo < ? AND sub.pago_fecha IS NULL AND sub.pago_registrado = 0)
+       ORDER BY sub.periodo, nombre`,
+    )
+    .all(clienteId, periodo, periodo) as FilaCruda[]
 
   return {
     filas: crudas.map((c) => aFila(c, dias)),

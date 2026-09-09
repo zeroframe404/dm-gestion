@@ -224,10 +224,11 @@ export function DialogoPagoManual({ fecha, sucursales, sucursalPorDefecto, medio
 
         {cuotas && cuotas.filas.length > 0 && (
           <div>
-            <p className="text-sm font-medium text-slate-700">Cuota de {nombreDePeriodo(cuotas.periodo)}</p>
+            <p className="text-sm font-medium text-slate-700">Cuotas pendientes</p>
             <div className="mt-1.5 flex flex-col gap-1.5">
               {cuotas.filas.map((fila) => {
                 const pagada = Boolean(fila.pagoFecha) || fila.pagoRegistrado
+                const atrasada = !pagada && fila.periodo !== cuotas.periodo
                 const elegida = cuotaElegida?.filaId === fila.filaId
                 return (
                   <button
@@ -244,11 +245,12 @@ export function DialogoPagoManual({ fecha, sucursales, sucursalPorDefecto, medio
                         {fila.compania ?? 'sin compañía'} · {fila.numeroPoliza ?? 'sin póliza'}
                       </span>
                       <span className="block truncate text-xs text-slate-500">
-                        {fila.patente ?? 'sin patente'} · vence el {fila.diaVencimiento ?? '—'}
+                        {nombreDePeriodo(fila.periodo)} · {fila.patente ?? 'sin patente'} · vence el {fila.diaVencimiento ?? '—'}
                       </span>
                     </span>
                     <span className="tabular-nums font-semibold text-slate-900">{fila.cuota ?? '—'}</span>
                     {pagada && <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-700">Ya paga</span>}
+                    {atrasada && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">Atrasada</span>}
                   </button>
                 )
               })}

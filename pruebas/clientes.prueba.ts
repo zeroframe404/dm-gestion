@@ -434,6 +434,27 @@ test('desde la ficha se ven las cuotas del mes del cliente, que es lo que se pue
   assert.equal(cuotasDelClienteEnElMes(idDe(CLIENTES.fernandez.nombre)).filas.length, 0)
 })
 
+test('desde la ficha también se puede cobrar una cuota de un mes anterior que quedó adeudada', async () => {
+  const db = await carteraDePrueba()
+  const perez = idDe(CLIENTES.perezAuto.nombre)
+
+  // Julio se importó como pagado (débito automático); se lo marca sin pagar, como si hubiera rebotado.
+  const atrasada = db
+    .prepare(`SELECT fila_id, periodo FROM cuotas_mes WHERE cliente_id = ? AND periodo < '2026-08' ORDER BY periodo DESC LIMIT 1`)
+    .get(perez) as { fila_id: string; periodo: string }
+  db.prepare(`UPDATE cuotas_mes SET pago = NULL, pago_fecha = NULL WHERE fila_id = ?`).run(atrasada.fila_id)
+
+  const cuotas = cuotasDelClienteEnElMes(perez)
+  assert.equal(cuotas.periodo, '2026-08', 'el período de referencia sigue siendo el mes abierto')
+  assert.equal(cuotas.filas.length, 3, 'el auto y la moto de agosto, más la cuota atrasada')
+  const cuotaAtrasada = cuotas.filas.find((f) => f.periodo === atrasada.periodo)
+  assert.ok(cuotaAtrasada, 'la cuota atrasada aparece junto con las del mes abierto')
+  assert.equal(cuotaAtrasada!.pagoFecha, null)
+
+  // Las de agosto ya pagas de otros meses no vuelven a aparecer: sólo lo que sigue sin pagar.
+  assert.ok(cuotas.filas.every((f) => f.periodo === '2026-08' || f.filaId === atrasada.fila_id))
+})
+
 test('cargar un siniestro lo deja en la ficha y camino a la hoja', async () => {
   const db = await carteraDePrueba()
   const cliente = idDe(CLIENTES.gonzalez.nombre)
