@@ -11,7 +11,7 @@ import {
   avisarMora,
   cajaDelDia,
   cambiarResultado,
-  comisiones,
+  comisionesLocal,
   hojaDeLaCaja,
   planillaDeLaCaja,
   imputados,
@@ -552,7 +552,7 @@ test('la comisión estimada sale de lo cobrado en el mes y del porcentaje de cad
   // RIVADAVIA 16.236. Se suma un cobro más del mostrador.
   registrarPago(buscar(CLIENTES.suarez.nombre).filaId, { fecha: DIA_DE_CAJA, importe: '$ 30.000', medioDePago: 'EFECTIVO' }, DANIEL)
 
-  const resumen = comisiones('2026-08')
+  const resumen = comisionesLocal('2026-08')
   const filaSancor = resumen.filas.find((f) => f.compania === 'SANCOR')!
   assert.equal(filaSancor.cobrado, 24_420)
   assert.equal(filaSancor.porcentaje, 20)
@@ -568,7 +568,7 @@ test('la comisión estimada sale de lo cobrado en el mes y del porcentaje de cad
 
   // Cargado el porcentaje, la estimación aparece.
   editarCompania(rivadavia.id, { nombre: rivadavia.nombre, diasCoberturaFinanciera: rivadavia.diasCoberturaFinanciera, comisionPorcentaje: 10, mesesRenovacion: rivadavia.mesesRenovacion, activa: true })
-  const conPorcentaje = comisiones('2026-08')
+  const conPorcentaje = comisionesLocal('2026-08')
   assert.equal(conPorcentaje.filas.find((f) => f.compania === 'RIVADAVIA')?.comision, 1623.6)
   assert.equal(conPorcentaje.sinPorcentaje.includes('RIVADAVIA'), false)
   cerrarBaseDeDatos()

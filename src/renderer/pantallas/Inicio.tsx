@@ -16,6 +16,7 @@ import { usePermisos } from '../contexto/Permisos'
 import { useUsuarioActual } from '../contexto/Sesion'
 import { esAreaDePermisos, MODULOS, type IdModulo } from '../modulos'
 import { nombreDePeriodo } from '../../shared/semaforo'
+import { momento } from './cobranzas/formato'
 import { mesCorto, numero } from './metricas/graficos'
 
 export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
@@ -429,12 +430,6 @@ function DetalleDelPodio({ periodo, fila, alCerrar }: { periodo: string; fila: F
   )
 }
 
-/** «9/9/2026, 14:32»: día y hora de un instante ISO, para decir de cuándo es un número. */
-function momento(iso: string): string {
-  const fecha = new Date(iso)
-  if (Number.isNaN(fecha.getTime())) return iso
-  return `${fecha.toLocaleDateString('es-AR')} a las ${fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`
-}
 
 function saludoSegunHora(): string {
   const hora = new Date().getHours()

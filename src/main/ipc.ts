@@ -34,11 +34,8 @@ import {
 } from './servicios/rechazos'
 import {
   avisarMora,
-  cajaDelDia,
   cambiarResultado,
   cargarMovimientoDeCaja,
-  comisiones,
-  imputados,
   mora,
   numeroDeTicketDelPago,
   planillaDeLaCaja,
@@ -46,10 +43,12 @@ import {
   registrarPagoManual,
   revisarPago,
 } from './servicios/cobranzas'
+import { cajaConCache, comisionesConCache, imputadosConCache } from './servicios/cobranzasDesdeCache'
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
-import { altasDelMes, estadisticasDeCartera, tableroDeMetricas } from './servicios/metricas'
+import { altasDelMes } from './servicios/metricas'
 import { leerSnapshotDeMetrica } from './servicios/metricasCache'
+import { estadisticasConCache, tableroConCache } from './servicios/metricasDesdeCache'
 import {
   areasDelReporte,
   catalogoDeExcel,
@@ -649,7 +648,9 @@ export function registrarIpc(): void {
   // administrador, aunque un empleado tenga «editar» en Cobranzas.
   // La caja del día de las OTRAS sucursales sigue siendo de los administradores —es plata que entró en
   // otro mostrador—; un empleado mira la suya (ver `sucursalObligadaDe` en cobranzas.ts).
-  manejar('cobranzas:caja', (fecha, sucursales) => exito(cajaDelDia(fecha, sucursales, exigirVista('cobranzas'))))
+  // `cajaConCache` sólo pisa los totales de hoy/ayer con el cálculo del servidor cuando lo tiene; la
+  // lista de pagos, el arqueo y el resto de días siguen siendo siempre el cálculo local de `cajaDelDia`.
+  manejar('cobranzas:caja', (fecha, sucursales) => exito(cajaConCache(fecha, sucursales, exigirVista('cobranzas'))))
   manejar('cobranzas:registrarPagoManual', (datos) => {
     const resultado = registrarPagoManual(datos, exigirEdicion('cobranzas'))
     if (datos.estadoCobro !== 'IMPUTADO') resolverTicketDelPago(resultado.pagoId)
@@ -674,9 +675,13 @@ export function registrarIpc(): void {
   // La rendición del mes se ve y se rinde ENTERA, con las cuatro sucursales, sea cual sea el rol: la
   // sucursal es un filtro de la pantalla como la compañía. Es a propósito distinto de la caja del día
   // de acá arriba (ver `imputados` en servicios/cobranzas.ts).
+  // Lo calcula el servidor (esta migración), una sola vez para toda la agencia, cuando ya tiene un cálculo para
+  // el período pedido; si no, `imputadosConCache`/`comisionesConCache` caen al cálculo local de
+  // siempre. La lista de pagos de Imputados y `cambiarResultado()` siguen siendo 100% locales — ver la
+  // cabecera de servicios/cobranzasDesdeCache.ts.
   manejar('cobranzas:imputados', (periodo, companias, sucursales) => {
     const actor = exigirVista('cartera', 'cobranzas')
-    return exito(imputados(periodo, companias, sucursales, veLosNumerosDeLaAgencia(actor.rol)))
+    return exito(imputadosConCache(periodo, companias, sucursales, veLosNumerosDeLaAgencia(actor.rol)))
   })
   manejar('cobranzas:cambiarResultado', (pagoId, resultado, companias, sucursales) =>
     exito(cambiarResultado(pagoId, resultado, companias, exigirEdicion('cartera', 'cobranzas'), sucursales)),
@@ -684,7 +689,7 @@ export function registrarIpc(): void {
   manejar('cobranzas:comisiones', (periodo) => {
     exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirVista('cobranzas')
-    return exito(comisiones(periodo))
+    return exito(comisionesConCache(periodo))
   })
 
   // Ticketeadora térmica: la usa y la configura todo el mostrador. No pide rol ni permiso sobre
@@ -1289,14 +1294,20 @@ export function registrarIpc(): void {
   // Los agregados de plata de la agencia (lo recaudado del mes, su evolución, el reparto por medio de
   // pago) no viajan a un empleado. Se decide acá y no en la pantalla: un dato que llega al renderer ya
   // está afuera, y ocultarlo con un `if` en el JSX no lo oculta, sólo no lo dibuja.
+  //
+  // Lo calcula el servidor (esta migración), una sola vez para toda la agencia, igual que ya hacía el podio desde
+  // la 13.2: `tableroConCache`/`estadisticasConCache` leen el último cálculo que llegó por el aviso en
+  // vivo y, mientras no haya ninguno todavía (o el período pedido no esté), caen al cálculo local de
+  // siempre (`tableroDeMetricasLocal`/`estadisticasDeCarteraLocal` en servicios/metricas.ts), que sigue
+  // viva justamente para eso y para cotejar contra el servidor mientras dura la migración.
   manejar('metricas:tablero', (filtros) => {
     const actor = exigirVista('metricas')
-    return exito(tableroDeMetricas(filtros, veLosNumerosDeLaAgencia(actor.rol)))
+    return exito(tableroConCache(filtros, veLosNumerosDeLaAgencia(actor.rol)))
   })
   // Estadísticas es la pestaña de Cartera con los mismos números en tabla.
   manejar('metricas:estadisticas', (periodo, sucursales) => {
     const actor = exigirVista('metricas', 'cartera')
-    return exito(estadisticasDeCartera(periodo, sucursales, veLosNumerosDeLaAgencia(actor.rol)))
+    return exito(estadisticasConCache(periodo, sucursales, veLosNumerosDeLaAgencia(actor.rol)))
   })
   // El podio: sólo pide que haya alguien loggeado, sin permiso de área. Es la competencia entre
   // sucursales por altas, no un número de la agencia, y el pedido del cliente fue justamente que la

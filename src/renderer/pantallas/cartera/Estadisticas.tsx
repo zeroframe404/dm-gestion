@@ -8,7 +8,7 @@ import { nombreDePeriodo } from '../../../shared/semaforo'
 import type { EstadisticasDeCartera, FilaEstadistica, ResumenDeCartera } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
-import { numero, pesos } from '../cobranzas/formato'
+import { momento, numero, pesos } from '../cobranzas/formato'
 
 export function Estadisticas() {
   const [datos, setDatos] = useState<EstadisticasDeCartera | null>(null)
@@ -67,6 +67,17 @@ export function Estadisticas() {
         <Alerta tono="info">
           Sin el mes anterior cargado no se pueden deducir las altas: la columna muestra un guion hasta que se importe.
         </Alerta>
+      )}
+      {datos.calculadoEn && (
+        <p className="-mt-1 text-xs text-slate-500">
+          Calculado por el servidor el {momento(datos.calculadoEn)}
+          {datos.recibidoEnEstaComputadora && <> · recibido acá el {momento(datos.recibidoEnEstaComputadora)}</>}.
+          {datos.frescura && datos.frescura !== 'AL_DIA' && (
+            <span className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800">
+              Sin conexión con el servidor: mostrando el último cálculo recibido.
+            </span>
+          )}
+        </p>
       )}
 
       <ResumenCartera resumen={datos.resumenCartera} />

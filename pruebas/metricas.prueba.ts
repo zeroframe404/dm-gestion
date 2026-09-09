@@ -11,7 +11,7 @@ import test from 'node:test'
 import { usarBaseDeDatos } from '../src/main/db/base'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 import { darDeBaja, periodosDisponibles, planillaDelMes } from '../src/main/servicios/cartera'
-import { altasDelMes, estadisticasDeCartera, podioDelMes, tableroDeMetricas } from '../src/main/servicios/metricas'
+import { altasDelMes, estadisticasDeCarteraLocal, podioDelMes, tableroDeMetricasLocal } from '../src/main/servicios/metricas'
 import { listarPolizas } from '../src/main/servicios/polizas'
 import { datosSugeridosDeRenovacion, renovar } from '../src/main/servicios/renovaciones'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
@@ -48,13 +48,13 @@ function duplicarCuota(db: ReturnType<typeof baseDePrueba>, nombre: string): str
 
 test('activos, altas y bajas de agosto salen de la planilla como los contaría el contador', async () => {
   const { db } = await baseImportada()
-  const tablero = tableroDeMetricas({ periodo: '2026-08', sucursales: [] }, true)
+  const tablero = tableroDeMetricasLocal({ periodo: '2026-08', sucursales: [] }, true)
   assert.equal(tablero.periodo, '2026-08')
   assert.equal(tablero.hayMesAnterior, true)
   assert.equal(tablero.activos, contar(db, 'cuotas_mes', `periodo = '2026-08' AND dada_de_baja = 0`), 'una fila por póliza en agosto')
   // Suárez es la única alta de agosto: está en AGOSTO y no estaba en JULIO.
   assert.equal(tablero.altas, 1)
-  const estadisticas = estadisticasDeCartera('2026-08', [], true)
+  const estadisticas = estadisticasDeCarteraLocal('2026-08', [], true)
   assert.equal(estadisticas.totales.activos, tablero.activos)
   assert.equal(estadisticas.totales.altas, 1)
   assert.equal(estadisticas.totales.bajas, tablero.bajas)
@@ -63,12 +63,12 @@ test('activos, altas y bajas de agosto salen de la planilla como los contaría e
 
 test('una póliza repetida en la planilla cuenta una sola vez en activos, altas y estadísticas', async () => {
   const { db } = await baseImportada()
-  const antes = tableroDeMetricas({ periodo: '2026-08', sucursales: [] }, true)
+  const antes = tableroDeMetricasLocal({ periodo: '2026-08', sucursales: [] }, true)
   duplicarCuota(db, CLIENTES.suarez.nombre)
   duplicarCuota(db, CLIENTES.lopez.nombre)
   assert.equal(contar(db, 'cuotas_mes', `periodo = '2026-08' AND dada_de_baja = 0`), antes.activos + 2, 'la base tiene dos renglones de más')
 
-  const despues = tableroDeMetricas({ periodo: '2026-08', sucursales: [] }, true)
+  const despues = tableroDeMetricasLocal({ periodo: '2026-08', sucursales: [] }, true)
   assert.equal(despues.activos, antes.activos, 'activos no cambia: cada póliza cuenta una vez')
   assert.equal(despues.altas, antes.altas, 'ni las altas: Suárez sigue siendo una sola alta')
   assert.deepEqual(despues.activosPorCompania, antes.activosPorCompania)
@@ -76,7 +76,7 @@ test('una póliza repetida en la planilla cuenta una sola vez en activos, altas 
   assert.equal(evolucionAgosto.activos, antes.activos)
   assert.equal(evolucionAgosto.altas, antes.altas)
 
-  const estadisticas = estadisticasDeCartera('2026-08', [], true)
+  const estadisticas = estadisticasDeCarteraLocal('2026-08', [], true)
   assert.equal(estadisticas.totales.activos, antes.activos)
   assert.equal(estadisticas.totales.altas, antes.altas)
   db.close()
@@ -86,7 +86,7 @@ test('una baja repetida (misma póliza, mismo mes) cuenta una sola vez', async (
   const { db } = await baseImportada()
   const lopez = planillaDelMes('2026-08').filas.find((f) => f.nombre === CLIENTES.lopez.nombre)!
   darDeBaja(lopez.filaId, { motivo: 'VENDIO', nota: '' }, DANIEL)
-  const antes = tableroDeMetricas({ periodo: '2026-08', sucursales: [] }, true)
+  const antes = tableroDeMetricasLocal({ periodo: '2026-08', sucursales: [] }, true)
   assert.ok(antes.bajas >= 1)
 
   // La misma baja anotada dos veces, con otro _ID: lo que dejaba la sincronización cuando dos
@@ -97,24 +97,24 @@ test('una baja repetida (misma póliza, mismo mes) cuenta una sola vez', async (
   db.prepare(`INSERT INTO bajas (${columnas.join(', ')}) VALUES (${columnas.map((c) => `@${c}`).join(', ')})`).run({ ...baja, fila_id: 'BAJA:copia-de-prueba', hecha_en_la_app: 0 })
   assert.equal(contar(db, 'bajas', `periodo = '2026-08'`), antes.bajas + 1, 'la base tiene un renglón de más')
 
-  const despues = tableroDeMetricas({ periodo: '2026-08', sucursales: [] }, true)
+  const despues = tableroDeMetricasLocal({ periodo: '2026-08', sucursales: [] }, true)
   assert.equal(despues.bajas, antes.bajas, 'la misma póliza no es dos bajas')
   assert.deepEqual(despues.bajasPorMotivo, antes.bajasPorMotivo)
   assert.equal(despues.activos, antes.activos, 'y López tampoco vuelve a los activos')
-  assert.equal(estadisticasDeCartera('2026-08', [], true).totales.bajas, antes.bajas)
+  assert.equal(estadisticasDeCarteraLocal('2026-08', [], true).totales.bajas, antes.bajas)
   db.close()
 })
 
 test('sin mes anterior cargado las altas son «no se sabe» (null), nunca cero', async () => {
   const { db } = await baseImportada()
   const primero = periodosDisponibles().map((p) => p.periodo).sort()[0]!
-  const tablero = tableroDeMetricas({ periodo: primero, sucursales: [] }, true)
+  const tablero = tableroDeMetricasLocal({ periodo: primero, sucursales: [] }, true)
   assert.equal(tablero.hayMesAnterior, false)
   assert.equal(tablero.altas, null)
   assert.ok(tablero.activos > 0)
   const evolucion = tablero.evolucion.find((mes) => mes.periodo === primero)!
   assert.equal(evolucion.altas, null, 'en la evolución también')
-  const estadisticas = estadisticasDeCartera(primero, [], true)
+  const estadisticas = estadisticasDeCarteraLocal(primero, [], true)
   assert.equal(estadisticas.hayMesAnterior, false)
   assert.equal(estadisticas.totales.altas, null)
   for (const fila of estadisticas.porCompania) assert.equal(fila.altas, null)
@@ -123,14 +123,14 @@ test('sin mes anterior cargado las altas son «no se sabe» (null), nunca cero',
 
 test('el podio del mes ordena las sucursales por altas, sin la fila «(sin sucursal)» y sin plata', async () => {
   const { db } = await baseImportada()
-  const estadisticas = estadisticasDeCartera('2026-08', [], false)
+  const estadisticas = estadisticasDeCarteraLocal('2026-08', [], false)
   const podio = podioDelMes()
 
   assert.equal(podio.periodo, estadisticas.periodo, 'el podio mira el mismo período que Estadísticas por defecto')
   assert.equal(podio.hayMesAnterior, estadisticas.hayMesAnterior)
   assert.ok(podio.ranking.every((fila) => fila.etiqueta !== '(sin sucursal)'), 'la fila sin sucursal no compite')
 
-  // Las mismas sucursales de estadisticasDeCartera, sólo reordenadas para el podio.
+  // Las mismas sucursales de estadisticasDeCarteraLocal, sólo reordenadas para el podio.
   const porNombre = (filas: typeof podio.ranking) => [...filas].sort((a, b) => a.etiqueta.localeCompare(b.etiqueta, 'es'))
   assert.deepEqual(
     porNombre(podio.ranking),
@@ -170,7 +170,7 @@ test('renovar una póliza NO es un alta: es la misma línea de cartera que sigue
   const { db } = await baseImportada()
   // González es de Dock Sud y está en JULIO y en AGOSTO: renovarla no puede convertirla en un alta de
   // agosto, porque la clienta ya estaba. AGOSTO es el mes abierto, así que la fila nueva cae ahí.
-  const antesActivos = estadisticasDeCartera('2026-08', [], true).totales.activos
+  const antesActivos = estadisticasDeCarteraLocal('2026-08', [], true).totales.activos
   const antesAltas = altasEnElPodio('Dock Sud')
 
   const original = polizaDe(CLIENTES.gonzalez.poliza)
@@ -178,10 +178,10 @@ test('renovar una póliza NO es un alta: es la misma línea de cartera que sigue
   // pasa a ser «ANTERIOR:…». Era el caso que garantizaba un alta fantasma en todas las renovaciones.
   renovar(original.id, { ...datosSugeridosDeRenovacion(original.id), numero: CLIENTES.gonzalez.poliza }, DANIEL)
 
-  const despues = estadisticasDeCartera('2026-08', [], true)
+  const despues = estadisticasDeCarteraLocal('2026-08', [], true)
   assert.equal(despues.totales.activos, antesActivos, 'la cartera no creció: la fila vieja salió y entró la nueva')
   assert.equal(altasEnElPodio('Dock Sud'), antesAltas, 'y el podio de Dock Sud no se movió: renovar no es un alta')
-  assert.equal(despues.totales.bajas, estadisticasDeCartera('2026-08', [], true).totales.bajas, 'tampoco es una baja')
+  assert.equal(despues.totales.bajas, estadisticasDeCarteraLocal('2026-08', [], true).totales.bajas, 'tampoco es una baja')
   db.close()
 })
 
@@ -200,7 +200,7 @@ test('renovar con OTRO número de póliza tampoco es un alta', async () => {
 
 test('renovar dejando la anterior ACTIVA sí suma un alta: son dos pólizas vivas', async () => {
   const { db } = await baseImportada()
-  const antesActivos = estadisticasDeCartera('2026-08', [], true).totales.activos
+  const antesActivos = estadisticasDeCarteraLocal('2026-08', [], true).totales.activos
   const antes = altasEnElPodio('Dock Sud')
   const original = polizaDe(CLIENTES.gonzalez.poliza)
 
@@ -212,7 +212,7 @@ test('renovar dejando la anterior ACTIVA sí suma un alta: son dos pólizas viva
 
   // Acá la planilla del mes queda con las dos filas a propósito, así que la cartera SÍ creció en una y
   // las altas tienen que acompañar: si no, activos y altas contarían cosas distintas.
-  assert.equal(estadisticasDeCartera('2026-08', [], true).totales.activos, antesActivos + 1, 'quedan las dos vigentes')
+  assert.equal(estadisticasDeCarteraLocal('2026-08', [], true).totales.activos, antesActivos + 1, 'quedan las dos vigentes')
   assert.equal(altasEnElPodio('Dock Sud'), (antes ?? 0) + 1, 'la segunda fila de la misma línea sí es un alta')
   db.close()
 })
@@ -254,7 +254,7 @@ test('la renovación con número nuevo hecha en OTRA computadora tampoco es un a
   assert.equal(sinCadena.n, 0, 'la prueba vale porque acá no hay ninguna cadena de renovaciones')
 
   assert.equal(altasEnElPodio('Dock Sud'), 1, 'la única alta de Dock Sud sigue siendo Suárez')
-  assert.equal(estadisticasDeCartera('2026-08', [], true).totales.altas, 1, 'y Estadísticas cuenta lo mismo')
+  assert.equal(estadisticasDeCarteraLocal('2026-08', [], true).totales.altas, 1, 'y Estadísticas cuenta lo mismo')
   const detalle = altasDelMes('2026-08', 'Dock Sud')
   assert.deepEqual(
     detalle.filas.map((f) => f.cliente),
@@ -316,7 +316,7 @@ test('el detalle de cada sucursal suma exactamente lo que dice su tarjeta del po
 
 test('sin sucursal, el detalle trae todas las altas del mes, incluidas las que no tienen sucursal', async () => {
   const { db } = await baseImportada()
-  const estadisticas = estadisticasDeCartera('2026-08', [], false)
+  const estadisticas = estadisticasDeCarteraLocal('2026-08', [], false)
   const detalle = altasDelMes('2026-08', null)
   assert.equal(detalle.sucursal, null)
   assert.equal(detalle.filas.length, estadisticas.totales.altas, 'el total del detalle es el total de Estadísticas')
