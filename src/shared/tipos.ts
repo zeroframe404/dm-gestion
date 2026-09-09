@@ -2930,6 +2930,16 @@ export interface FilaEstadistica {
   cobrado: number | null
 }
 
+/**
+ * El resumen de TODA la cartera (no de un mes): activas, fuera de vigencia y dadas de baja, cada
+ * póliza contada una sola vez. Ver `categoriaDeCartera` en shared/polizas.ts para la regla exacta.
+ */
+export interface ResumenDeCartera {
+  activas: number
+  fueraDeVigencia: number
+  dadasDeBaja: number
+}
+
 export interface EstadisticasDeCartera {
   periodo: string
   periodos: string[]
@@ -2941,6 +2951,8 @@ export interface EstadisticasDeCartera {
   porSucursal: FilaEstadistica[]
   totales: FilaEstadistica
   hayMesAnterior: boolean
+  /** El estado de la cartera completa, sin filtrar por mes ni sucursal. */
+  resumenCartera: ResumenDeCartera
   hoy: string
 }
 

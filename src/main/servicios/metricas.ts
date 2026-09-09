@@ -30,6 +30,7 @@ import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { normalizarEstadoSiniestro } from '../../shared/siniestros'
 import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
+import { categoriaDeCartera } from '../../shared/polizas'
 import type {
   BajaPorMotivo,
   CobranzaDelMes,
@@ -40,6 +41,7 @@ import type {
   MesDeEvolucion,
   PodioMensual,
   PorcionMetrica,
+  ResumenDeCartera,
   TableroMetricas,
   TotalPorMedio,
 } from '../../shared/tipos'
@@ -609,6 +611,43 @@ function ordenar(mapa: Map<string, Acumulador>, conNumeros: boolean, hayMesAnter
 }
 
 /**
+ * El resumen de TODA la cartera —no el de un mes—: cuántas pólizas están activas, cuántas vencieron
+ * sin renovarse y cuántas se dieron de baja, cada una contada una sola vez. Antes de esto, «Activos»
+ * era lo único que se mostraba y salía de la planilla del mes: una póliza vencida que ya no aparecía en
+ * la hoja no estaba en ese número, pero tampoco en ningún otro, así que se perdía de la cartera sin
+ * dejar rastro. Acá se recorre `polizas` entera para que no quede ninguna afuera.
+ */
+export function resumenDeCartera(): ResumenDeCartera {
+  const hoy = hoyLocal()
+  const filas = db()
+    .prepare(
+      `SELECT p.id, p.activa, p.vigencia_hasta_iso,
+              EXISTS (SELECT 1 FROM polizas s WHERE s.poliza_anterior_id = p.id) AS tiene_sucesora,
+              EXISTS (SELECT 1 FROM bajas b WHERE b.poliza_id = p.id) AS tiene_baja
+       FROM polizas p`,
+    )
+    .all() as Array<{
+    id: number
+    activa: number
+    vigencia_hasta_iso: string | null
+    tiene_sucesora: number
+    tiene_baja: number
+  }>
+
+  const resumen: ResumenDeCartera = { activas: 0, fueraDeVigencia: 0, dadasDeBaja: 0 }
+  for (const fila of filas) {
+    // Misma regla que usa la ficha del cliente para distinguir «se renovó» de «se dio de baja»
+    // (ver `clientes.ts`): si además hay una baja anotada a mano, gana la baja.
+    const renovada = fila.activa === 0 && fila.tiene_sucesora === 1 && fila.tiene_baja === 0
+    const categoria = categoriaDeCartera(fila.activa === 1, renovada, fila.vigencia_hasta_iso, hoy)
+    if (categoria === 'ACTIVA') resumen.activas++
+    else if (categoria === 'VENCIDA') resumen.fueraDeVigencia++
+    else if (categoria === 'BAJA') resumen.dadasDeBaja++
+  }
+  return resumen
+}
+
+/**
  * Lo mismo que el tablero pero en tabla, que es como se compara contra la planilla: se pone la
  * pantalla al lado de la hoja y los números tienen que dar.
  */
@@ -675,6 +714,7 @@ export function estadisticasDeCartera(
       cobrado: conNumeros ? totalCobrado : null,
     },
     hayMesAnterior,
+    resumenCartera: resumenDeCartera(),
     hoy: hoyLocal(),
   }
 }

@@ -5,7 +5,7 @@
 // tabular, sin gráficos y con los totales abajo: para comparar, no para mirar.
 import { useCallback, useEffect, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
-import type { EstadisticasDeCartera, FilaEstadistica } from '../../../shared/tipos'
+import type { EstadisticasDeCartera, FilaEstadistica, ResumenDeCartera } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
 import { numero, pesos } from '../cobranzas/formato'
@@ -69,6 +69,8 @@ export function Estadisticas() {
         </Alerta>
       )}
 
+      <ResumenCartera resumen={datos.resumenCartera} />
+
       <TablaDeEstadisticas
         titulo="Por compañía"
         encabezadoDeFila="Compañía"
@@ -92,6 +94,41 @@ export function Estadisticas() {
         <strong className="font-semibold text-slate-600">Pagos</strong> son los cobros imputados a ese mes.
       </p>
     </div>
+  )
+}
+
+/**
+ * El estado de toda la cartera, sin filtrar por mes ni sucursal: cada póliza en una sola de las tres
+ * columnas. Va aparte de la tabla de abajo a propósito —esa es la reconciliación mes a mes contra la
+ * hoja de Google, y mezclar ahí un total de toda la cartera la haría dar otro número—.
+ */
+function ResumenCartera({ resumen }: { resumen: ResumenDeCartera }) {
+  const tarjetas: Array<{ etiqueta: string; valor: number; nota: string; tono: string }> = [
+    { etiqueta: 'Activas', valor: resumen.activas, nota: 'En vigencia y sin baja.', tono: 'text-emerald-700' },
+    {
+      etiqueta: 'Fuera de vigencia',
+      valor: resumen.fueraDeVigencia,
+      nota: 'Vencidas, todavía sin dar de baja.',
+      tono: 'text-amber-700',
+    },
+    { etiqueta: 'Dadas de baja', valor: resumen.dadasDeBaja, nota: 'Histórico de bajas de la cartera.', tono: 'text-red-700' },
+  ]
+  return (
+    <section className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-suave">
+      <header className="border-b border-slate-200 px-4 py-3">
+        <h2 className="font-display text-base font-bold tracking-tight text-slate-900">Toda la cartera, por estado</h2>
+        <p className="text-xs text-slate-500">Cada póliza cuenta una sola vez: activa, fuera de vigencia o dada de baja.</p>
+      </header>
+      <div className="grid grid-cols-1 divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        {tarjetas.map((tarjeta) => (
+          <div key={tarjeta.etiqueta} className="flex flex-col gap-1 px-4 py-3">
+            <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{tarjeta.etiqueta}</span>
+            <span className={cx('text-2xl font-bold tabular-nums', tarjeta.tono)}>{numero(tarjeta.valor)}</span>
+            <span className="text-xs text-slate-500">{tarjeta.nota}</span>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
