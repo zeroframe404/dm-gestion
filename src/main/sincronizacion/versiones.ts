@@ -1,5 +1,5 @@
 // Lo que esta computadora sabe de la hoja del servidor: en qué versión vio cada pestaña, y de qué
-// generación. Es el mapa que el vigía le manda al servidor en cada vuelta del aviso en vivo.
+// generación. Es el mapa que se compara contra la foto que manda el canal en vivo (ver vivo/grilla.ts).
 //
 // Vive en memoria del proceso principal y NO en SQLite, a propósito. Si el programa se reinicia el
 // mapa arranca vacío, el servidor contesta «todo es novedad» y se hace una bajada: que es exactamente
@@ -25,9 +25,10 @@ export function elMapaEstaVacio(): boolean {
 /**
  * Adopta lo que contestó el servidor.
  *
- * Con `soloEstos` se adoptan nada más esos títulos: es lo que usa el vigía cuando pudo bajar unas
+ * Con `soloEstos` se adoptan nada más esos títulos: es lo que se usa cuando se pudieron bajar unas
  * pestañas y otras no. Adoptar una pestaña que NO se llegó a bajar sería decir «ya la tengo» sin
- * tenerla, y ese cambio se perdería hasta el reloj de red de los cinco minutos.
+ * tenerla, y ese cambio no se volvería a pedir nunca (hasta la 13.x lo rescataba el reloj de red de
+ * los cinco minutos; desde la 14.0 no hay reloj que lo rescate, ver vivo/grilla.ts).
  *
  * Los títulos que ya no están en la respuesta se olvidan: la pestaña se borró del servidor y no hay
  * nada que bajar de ella.

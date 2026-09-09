@@ -1,5 +1,9 @@
-// El cliente del aviso en vivo: lo único de la aplicación que le pregunta al servidor «¿cambió algo
-// en la hoja?».
+// El cliente del aviso en vivo de la 13.1: le pregunta al servidor «¿cambió algo en la hoja?».
+//
+// DESDE LA 14.0 EL PROGRAMA NO LO USA: quien avisa es el canal en vivo (`vivo/canal.ts`), que no
+// pregunta nada —el servidor manda la foto apenas alguien escribe— y `vivo/grilla.ts` la aplica. Esto
+// queda porque el banco de pruebas lo usa para pedir esa misma foto sin levantar un socket, y porque
+// el endpoint sigue existiendo en el servidor mientras las cinco computadoras terminan de actualizar.
 //
 // Está aparte de `FuenteVps` por la misma razón que el puente de mensajes: `FuenteVps` implementa la
 // interfaz `FuenteHoja` —pestañas, filas, celdas— y su régimen de tiempos está pensado para una tanda
@@ -29,14 +33,14 @@ export interface NovedadesDeLaGrilla {
   /**
    * Las métricas que el servidor sabe calcular, con su versión actual: `{"podio": 3}`. Un servidor
    * anterior a esto no manda la clave y queda vacío, que es lo mismo que decir «nada para traer»: el
-   * vigía (ver vigia.ts) compara cada versión contra la que ya tiene guardada, y ausente o sin cambios
-   * es lo mismo, nada nuevo para esa métrica.
+   * cliente (ver vivo/grilla.ts) compara cada versión contra la que ya tiene guardada, y ausente o sin
+   * cambios es lo mismo, nada nuevo para esa métrica.
    */
   metricasVersiones: Record<string, number>
 }
 
 /**
- * Lo que el servidor contestó con un código HTTP. Conserva el `status` porque el vigía necesita
+ * Lo que el servidor contestó con un código HTTP. Conserva el `status` porque quien llama necesita
  * distinguir un 404 —«este servidor todavía no sabe avisar», que no se arregla reintentando— de un
  * 502, que se arregla solo.
  */

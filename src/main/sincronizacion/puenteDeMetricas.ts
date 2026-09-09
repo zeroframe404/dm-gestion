@@ -2,10 +2,10 @@
 // podio de sucursales, por ahora) en vez de que cada computadora la calcule con su propia base, que
 // puede estar más o menos al día que la de al lado.
 //
-// Es la mitad de bajada del mismo mecanismo que trae los cambios de la grilla: el vigía (ver vigia.ts)
-// ya le pregunta al servidor «¿cambió algo?» con el long-poll de `puenteDeGrilla.ts`, y esa misma
-// respuesta ahora trae también la versión de cada métrica. Cuando una versión no coincide con la que
-// esta computadora ya tiene, se llama a esto para traer el resultado nuevo.
+// Es la mitad de bajada del mismo mecanismo que trae los cambios de la grilla: la foto que llega por
+// el canal en vivo (ver vivo/grilla.ts; hasta la 13.x, el long-poll de `puenteDeGrilla.ts`) trae
+// también la versión de cada métrica. Cuando una versión no coincide con la que esta computadora ya
+// tiene, se llama a esto para traer el resultado nuevo.
 //
 // Por qué una función suelta y no una clase con estado, a diferencia de PuenteDeGrilla y
 // PuenteDeMensajes: acá no hay nada que recordar entre un pedido y el siguiente —ni long-poll, ni
@@ -13,9 +13,9 @@
 // vez.
 //
 // CÓMO TRATA LOS ERRORES, Y POR QUÉ DISTINTO DE `puenteDeGrilla.ts`. El long-poll de la grilla TIRA
-// sus errores: el vigía necesita distinguir un 404 (servidor viejo) de una falla de red, y reacciona
-// distinto a cada una. Acá una métrica sola que no se pudo traer no tiene que frenar nada de eso: el
-// vigía sigue con las demás métricas y con el resto de la vuelta igual, y esta versión se vuelve a
+// sus errores: quien lo llama necesita distinguir un 404 (servidor viejo) de una falla de red, y
+// reacciona distinto a cada una. Acá una métrica sola que no se pudo traer no tiene que frenar nada de
+// eso: se sigue con las demás métricas y con el resto de la foto igual, y esta versión se vuelve a
 // pedir sola en la próxima porque la versión conocida sigue sin coincidir. Por eso todo lo que no sea
 // un 2xx con el cuerpo esperado devuelve `null` en vez de tirar: quien llama no tiene que poner un
 // `try/catch` para algo que se resuelve solo.

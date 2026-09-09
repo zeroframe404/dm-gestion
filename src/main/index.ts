@@ -20,8 +20,8 @@ import { credencialesVps } from './servicios/config'
 import { hayImportacionEnCurso, marcarImportacionesInterrumpidas } from './servicios/importacion'
 import { alSubirUnAdjunto } from './servicios/adjuntos'
 import { reportarVersionPropia } from './servicios/estadoDeActualizaciones'
-import { detenerSincronizacion, usarAvisoEnVivo } from './servicios/sincronizacion'
-import { arrancarVigia, elVigiaEstaVivo, pararVigia } from './sincronizacion/vigia'
+import { detenerSincronizacion, usarSituacionDelCanal } from './servicios/sincronizacion'
+import { canal } from './vivo/canal'
 import { alCambiarLaSesion } from './servicios/sesion'
 import { detenerActualizaciones, iniciarActualizaciones } from './servicios/updater'
 import { AlmacenDeCredencial } from './usuarios/credencial'
@@ -238,37 +238,34 @@ function prepararBaseDeUsuarios(): void {
 }
 
 /**
- * Engancha la mensajería a las dos cosas de las que depende para andar sola: la sesión (el cartero
- * reparte para quien está usando el programa, así que arranca al ingresar y para al salir) y la
- * subida de archivos (un mensaje con adjuntos sale recién cuando sus archivos están arriba: cuando
- * termina de subir el último, hay que despertar al cartero para que el mensaje salga ahora y no en
- * la vuelta siguiente).
- */
-/**
- * Engancha el aviso en vivo de la sincronización a la sesión: el vigía tiene un pedido abierto contra
- * el servidor mientras alguien está usando el programa, y para cuando cierra sesión.
+ * Engancha a la sesión todo lo que trabaja en vivo (14.0): el canal con la base de la agencia y el
+ * cartero de la mensajería. Los dos existen mientras hay alguien usando el programa —el canal viaja
+ * con quién es, y el cartero reparte para esa persona— así que arrancan al ingresar y paran al salir.
  *
- * Le pasa además al motor cómo preguntar si el vigía está vivo. Va acá y no adentro de la
- * sincronización para no dejar un círculo entre los dos módulos: el vigía ya necesita el motor.
+ * Hasta la 13.x eran dos funciones: una para el vigía del aviso en vivo y otra para la mensajería.
+ * Desde que los dos long-polls se fueron al mismo socket son una sola cosa y se encienden juntos.
+ *
+ * Le pasa además al motor cómo mirar el canal, que es de donde sale el «sin conexión» del indicador.
+ * Va acá y no adentro de la sincronización para no dejar un círculo entre los dos módulos: el canal ya
+ * necesita el motor.
  */
-function engancharElAvisoEnVivo(): void {
-  usarAvisoEnVivo(elVigiaEstaVivo)
-  alCambiarLaSesion((quien) => {
-    if (quien) arrancarVigia()
-    else pararVigia()
-  })
-}
-
-function engancharLaMensajeria(): void {
+function engancharElCanal(): void {
+  usarSituacionDelCanal(() => canal().estado().situacion)
   alCambiarLaSesion((quien) => {
     if (quien) {
+      canal().arrancar(quien)
       arrancarCartero(quien)
       // Recién con sesión hay a qué sucursal atribuirle el reporte: se manda apenas se ingresa, sin
       // esperar al próximo chequeo de los 15 minutos, para que el superadministrador vea la versión
       // al día ni bien alguien abre el programa.
       reportarVersionPropia()
-    } else pararCartero()
+    } else {
+      canal().parar()
+      pararCartero()
+    }
   })
+  // Un mensaje con adjuntos sale recién cuando sus archivos están arriba: cuando termina de subir el
+  // último hay que despertar al cartero para que el mensaje salga ahora.
   alSubirUnAdjunto((tipo) => {
     if (tipo === 'mensaje') apurarAlCartero()
   })
@@ -294,8 +291,7 @@ function arrancar(): void {
   if (!paso('la revisión de las importaciones a medio hacer', marcarImportacionesInterrumpidas)) return
   if (!paso('la preparación de la base de usuarios', prepararBaseDeUsuarios)) return
   if (!paso('el registro de los canales internos', registrarIpc)) return
-  if (!paso('la mensajería interna', engancharLaMensajeria)) return
-  if (!paso('el aviso en vivo de la sincronización', engancharElAvisoEnVivo)) return
+  if (!paso('el canal en vivo con la base de la agencia', engancharElCanal)) return
   if (!paso('la creación de la ventana', crearVentana)) return
   listoParaVentana = true
 
@@ -352,10 +348,10 @@ if (!app.requestSingleInstanceLock()) {
     // el cerrojo de instancia única y no deja abrir de nuevo.
     for (const [nombre, cerrar] of [
       ['las actualizaciones', detenerActualizaciones],
-      // El cartero y el vigía pueden estar esperando hasta veinticinco segundos en su long-poll: sin
-      // estos cortes, cerrar el programa esperaría a que los pedidos terminen solos.
+      // El canal tiene un socket abierto y un latido corriendo: sin este cierre, apagar el programa
+      // dejaría el proceso vivo esperando a que el sistema operativo lo note.
       ['la mensajería', pararCartero],
-      ['el aviso en vivo', pararVigia],
+      ['el canal en vivo', () => canal().parar()],
       ['la sincronización', detenerSincronizacion],
       ['la base de datos', cerrarBaseDeDatos],
     ] as const) {

@@ -219,6 +219,10 @@ const api: ApiDm = {
     renovar: (polizaId, datos) => invocar('renovaciones:renovar', polizaId, datos),
     noRenueva: (polizaId, datos) => invocar('renovaciones:noRenueva', polizaId, datos),
   },
+  conexion: {
+    estado: () => invocar('conexion:estado'),
+    alCambiar: (escuchar) => suscribir('conexion:estado', escuchar),
+  },
   sincronizacion: {
     estado: () => invocar('sincronizacion:estado'),
     panel: () => invocar('sincronizacion:panel'),
@@ -227,6 +231,7 @@ const api: ApiDm = {
     respaldarAhora: () => invocar('sincronizacion:respaldarAhora'),
     alCambiarEstado: (escuchar) => suscribir('sincronizacion:estado', escuchar),
     alCambiarLosDatos: (escuchar) => suscribir('datos:cambiaron', escuchar),
+    alPisarUnDato: (escuchar) => suscribir('datos:pisados', escuchar),
   },
   respaldos: {
     listar: () => invocar('respaldos:listar'),

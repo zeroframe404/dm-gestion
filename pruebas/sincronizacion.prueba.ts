@@ -509,7 +509,7 @@ test('una ficha creada y borrada sin internet no deja una fila fantasma en la ba
   encolar({ operacion: 'crear', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: { nombre: 'NADIE', motivo: 'VENDIO' } }, DANIEL)
   encolar({ operacion: 'actualizar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: { motivo: 'ANULA' } }, DANIEL)
   assert.equal(cuantasPendientes(), 1)
-  encolar({ operacion: 'borrar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: {} }, DANIEL, { sinEspera: true })
+  encolar({ operacion: 'borrar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: {} }, DANIEL)
   const deLaPrimera = db.prepare(`SELECT operacion FROM cola_sync WHERE estado = 'pendiente' AND fila_id = 'FANTASMA0001'`).all() as Array<{
     operacion: string
   }>
@@ -531,7 +531,7 @@ test('una ficha creada y borrada sin internet no deja una fila fantasma en la ba
     0,
     'juntar campos contra un «crear» le borra los intentos: por eso no se los puede usar para saber si salió',
   )
-  encolar({ operacion: 'borrar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0002', campos: {} }, DANIEL, { sinEspera: true })
+  encolar({ operacion: 'borrar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0002', campos: {} }, DANIEL)
   assert.equal(hoja.filasDe('BAJAS AGOSTO').length, filasAntes + 1, 'la fila del «crear» aplicado está en la base')
 
   hoja.conectar()

@@ -281,8 +281,13 @@ export interface EstadoDeActualizacionDeSucursal {
 /**
  * Respuesta estándar de todo llamado IPC. Los errores esperables (validación,
  * permisos, credenciales) vuelven como `ok: false` con un mensaje listo para mostrar.
+ *
+ * `codigo` está para los pocos errores que la pantalla tiene que tratar distinto del resto y no
+ * alcanza con leerle el mensaje (14.0). Hoy hay uno solo, `'sin-conexion'`: se cayó el canal con la
+ * base de la agencia y no se puede guardar («ver sí, tocar no»). Eso no es un cartel al lado de un
+ * campo mal cargado, es el banner de arriba y volver a intentar cuando vuelva internet.
  */
-export type Resultado<T> = { ok: true; datos: T } | { ok: false; error: string }
+export type Resultado<T> = { ok: true; datos: T } | { ok: false; error: string; codigo?: string }
 
 export const LARGO_MINIMO_CLAVE = 8
 
@@ -997,7 +1002,17 @@ export interface FilaRiesgoVario {
 // Sincronización con Google Sheets
 // ---------------------------------------------------------------------------
 
-export type SituacionSync = 'sincronizado' | 'pendiente' | 'sin-conexion' | 'apagado' | 'trabajando'
+/**
+ * En qué anda la sincronización, para el indicador de la barra de arriba.
+ *
+ * `reconectando` es de la 14.0: el canal en vivo se cortó y se está volviendo a conectar. No es
+ * «sin conexión» —los dos primeros intentos suelen ser un despliegue del servidor y vuelven en un
+ * segundo— pero tampoco es «sincronizado», porque mientras tanto no entra ni sale nada.
+ *
+ * Desde la 14.0 `sin-conexion` sale del canal y no de que la última llamada haya fallado por red: el
+ * canal lo sabe en el momento y no cuando toca subir algo (ver `sincronizacion/motor.ts`).
+ */
+export type SituacionSync = 'sincronizado' | 'pendiente' | 'reconectando' | 'sin-conexion' | 'apagado' | 'trabajando'
 
 export interface EstadoSincronizacion {
   situacion: SituacionSync
@@ -3052,7 +3067,7 @@ export type FrescuraDeMetrica = 'AL_DIA' | 'DESCONECTADA' | 'SIN_DATOS'
  * otra recién. Eso quedaba bien pero no resolvía la pregunta de fondo —¿cuál de las dos tiene razón
  * AHORA MISMO?—, así que la cuenta se mudó al servidor: la hace una sola vez, para toda la agencia, y
  * la manda por el mismo aviso en vivo que ya trae los cambios de la grilla (ver
- * sincronizacion/vigia.ts). `calculadoEn` pasa a significar cuándo lo calculó el SERVIDOR, y
+ * main/vivo/grilla.ts). `calculadoEn` pasa a significar cuándo lo calculó el SERVIDOR, y
  * `recibidoEnEstaComputadora` reemplaza a `datosBajadosEn`: ya no es «de qué bajada de la hoja salen
  * estos números», es «cuándo le llegó a esta computadora el resultado ya hecho». `frescura` es lo que
  * queda para el caso en que dos computadoras SIGAN mostrando números distintos: una de las dos no tiene

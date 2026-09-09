@@ -1,33 +1,26 @@
-// El motor: sube cada 10 segundos si hay algo en la cola, baja lo que el vigía le diga que cambió, y
-// sabe estar sin internet.
+// El motor: vacía la cola contra la base de la agencia, baja lo que el canal en vivo le diga que
+// cambió, y sabe estar sin internet.
 //
-// CÓMO LLEGA UN CAMBIO DESDE OTRA SUCURSAL (13.1)
+// SIN RELOJES (14.0). Hasta la 13.x el motor tenía tres `setInterval`: la subida cada 10 segundos, la
+// bajada de seguridad cada 5 minutos y el carril rápido de las tareas cada 30. Los tres se fueron.
 //
-// Por el aviso en vivo. El vigía (`vigia.ts`) tiene un pedido abierto contra el servidor que contesta
-// apenas alguien escribe, y cuando contesta llama a `ciclarBajadaDe` con los títulos de las pestañas
-// que cambiaron. Se bajan sólo ésas, en el momento. No hay reloj de por medio.
+//   · La subida sale por evento: `encolar` despierta al motor (ver `usarDespertadorDeLaCola` en
+//     cola.ts) y `apurarSubida()` sube con 100 ms de respiro. Escribir una celda y verla en la otra
+//     computadora pasó de «hasta diez segundos» a «lo que tarda el viaje».
+//   · La bajada la pide el canal: el servidor avisa qué cambió y `vivo/grilla.ts` llama a
+//     `ciclarBajadaDe` con esos títulos. La red de seguridad de los cinco minutos ya no hace falta
+//     porque el canal reconcilia al conectar y al reconectar (ver `canal.reconciliar`).
+//   · El carril rápido de las tareas era redundante desde la 13.1 (el aviso en vivo traía las tareas
+//     igual de rápido y encima traía todo lo demás): se fue con los otros dos.
 //
-// El reloj de la bajada sigue existiendo, cada 5 minutos, pero cambió de papel: es la RED DE SEGURIDAD
-// para cuando el aviso en vivo no está —el servidor todavía no se actualizó, la conexión se cayó, se
-// perdió un aviso porque el backend se reinició con el pedido colgado—. Casi siempre no encuentra nada,
-// y eso es exactamente lo que tiene que pasar.
-//
-// El CARRIL RÁPIDO de las tareas (cada 30 segundos, una sola pestaña) quedó redundante: el vigía trae
-// las tareas igual de rápido y encima trae todo lo demás. No se borró, se apaga solo cuando el vigía
-// está vivo (`hayAvisoEnVivo`), así una computadora nueva contra un servidor viejo se sigue comportando
-// exactamente como antes.
-//
-// Presupuesto de llamadas a Google (la cuota es de ~60 por minuto), de cuando la hoja vivía allá:
-//   subida  → 1 lectura + 1 escritura + 1 agregado + 1 borrado = 4 como mucho, 6 veces por minuto = 24
-//   bajada  → 1 estructura + 1 encabezados + 1 lectura = 3, una vez cada 5 minutos
-// Total holgado por debajo de 50. Desde la v12 la base vive en el VPS de la agencia y no tiene esa
-// cuota, pero el presupuesto sigue siendo la razón por la que la bajada no mira todas las pestañas.
-import type { EstadoSincronizacion, SesionUsuario, TipoPestana } from '../../shared/tipos'
+// Lo que queda de aquel presupuesto de llamadas a Google —«la bajada no mira todas las pestañas»—
+// sigue vigente por otro motivo: bajar la hoja entera son varios MB y no hay ninguna razón para
+// pedirlos cuando el servidor ya dijo qué pestaña cambió.
+import type { EstadoSincronizacion, SesionUsuario, SituacionDeConexion, TipoPestana } from '../../shared/tipos'
 import type { FuenteHoja } from '../importacion/fuente'
 import { esFallaDeRed } from '../servicios/red'
 import {
   anotarEvento,
-  apurarAgrupadas,
   cuantasFallidas,
   cuantasListasParaSubir,
   cuantasPendientes,
@@ -43,13 +36,20 @@ import { leerContexto, type ContextoHoja } from './hoja'
 import { asegurarPestanasDeLaApp, asegurarPestanasDelMes } from './pestanasApp'
 import { subirTanda } from './subida'
 
-export const INTERVALO_SUBIDA_MS = 10_000
-export const INTERVALO_BAJADA_MS = 5 * 60_000
 /**
- * El carril rápido de las tareas. Queda para cuando el aviso en vivo no está disponible (un servidor
- * anterior a la 13.1): con el vigía andando no corre, porque las tareas llegan por ahí y al instante.
+ * El respiro de `apurarSubida` (14.0). Guardar una ficha encola varias filas seguidas —el cliente, el
+ * vehículo, la póliza— y sin este respiro cada una saldría en su propio pedido. Con 100 ms se juntan
+ * en una tanda sola y nadie nota la diferencia.
  */
-export const INTERVALO_TAREAS_MS = 30_000
+const RESPIRO_DE_LA_SUBIDA_MS = 100
+
+/**
+ * Cuántas vueltas seguidas puede dar la subida apurada. Cada vuelta sube lo que hay y vuelve a mirar
+ * si entró algo mientras tanto; el tope es para que un mostrador que escribe sin parar no deje al
+ * motor girando para siempre sin ceder el turno. Lo que quede espera al próximo `encolar`, que llega
+ * enseguida por definición.
+ */
+const VUELTAS_SEGUIDAS_MAXIMAS = 5
 
 /**
  * Arranca un ciclo del temporizador sin dejar la promesa suelta. Antes acá había un `void`: si el
@@ -68,7 +68,7 @@ function enSegundoPlano(ciclo: Promise<unknown>, cual: string): void {
 /** La estructura de la hoja casi nunca cambia: se relee cada tanto, no en cada ciclo. */
 const VIDA_DEL_CONTEXTO_MS = 5 * 60_000
 
-export type EstadoConexion = 'sincronizado' | 'pendiente' | 'sin-conexion' | 'apagado' | 'trabajando'
+export type EstadoConexion = 'sincronizado' | 'pendiente' | 'reconectando' | 'sin-conexion' | 'apagado' | 'trabajando'
 
 /** Una pestaña que trajo datos nuevos. El título es de la hoja; el tipo es lo que entiende la pantalla. */
 export interface PestanaQueCambio {
@@ -97,13 +97,17 @@ export interface OpcionesMotor {
    */
   alCambiarLosDatos?: (pestanas: PestanaQueCambio[]) => void
   /**
-   * ¿El aviso en vivo está andando? Con el vigía vivo el carril rápido de las tareas no corre: sería
-   * pedir lo mismo dos veces. Contra un servidor viejo devuelve false y todo sigue como antes.
+   * En qué anda el canal en vivo (14.0). De acá sale el «sin conexión» del indicador de la barra: hasta
+   * la 13.x se deducía de que la última llamada hubiera fallado por red, y eso llegaba tarde (sólo se
+   * enteraba cuando había algo para subir) y se iba tarde (hasta la llamada siguiente). El canal lo
+   * sabe en el momento, porque es el que tiene el socket.
+   *
+   * Sin esto puesto —un motor armado a mano en el banco de pruebas— se sigue mirando lo de siempre.
    */
-  hayAvisoEnVivo?: () => boolean
+  situacionDelCanal?: () => SituacionDeConexion
   /**
-   * Los archivos adjuntos que todavía no llegaron al servidor (12.6). Se suben después de la cola,
-   * en el mismo ciclo de diez segundos; `hayArchivosPendientes` evita leer la base cuando no hay nada.
+   * Los archivos adjuntos que todavía no llegaron al servidor (12.6). Se suben después de la cola, en
+   * el mismo ciclo de subida; `hayArchivosPendientes` evita leer la base cuando no hay nada.
    */
   subirArchivos?: () => Promise<{ subidos: number; fallidos: number }>
   hayArchivosPendientes?: () => boolean
@@ -115,9 +119,9 @@ export interface OpcionesMotor {
  * «APP RECHAZOS» y «APP TAREAS» también entran, y son las dos únicas pestañas de la aplicación que lo
  * hacen: por una le llega a una sucursal el aviso de que a un cliente suyo le rebotó el débito, y por
  * la otra las tareas que le asignaron desde otro mostrador. Un aviso o una tarea que tardan hasta la
- * próxima bajada completa en aparecer no sirven para lo que se necesitan. Las tareas además tienen su
- * propio carril rápido cada 30 segundos; entran igual acá para el caso en que el rápido no haya podido
- * correr (sin internet un rato, la cola trabada).
+ * próxima bajada completa en aparecer no sirven para lo que se necesitan. Desde la 14.0 casi todo
+ * llega antes por el canal, que dice exactamente qué pestaña cambió; esta lista es la que se mira
+ * cuando alguien pide una sincronización a mano.
  */
 function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
   const mensuales = contexto.pestanas.filter((p) => p.tipo === 'MENSUAL' && p.periodo).sort((a, b) => (b.periodo ?? '').localeCompare(a.periodo ?? ''))
@@ -155,29 +159,20 @@ function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
   return [...titulos]
 }
 
-/**
- * Las pestañas del carril rápido: las tareas y, desde la 12.6, los comentarios y los adjuntos, que
- * son la conversación alrededor de una tarea o un siniestro y merecen la misma inmediatez. Vacío = la
- * base todavía no tiene ninguna de las tres y no hay nada que bajar.
- */
-function pestanasDeTareas(contexto: ContextoHoja): string[] {
-  return contexto.pestanas
-    .filter((p) => p.tipo === 'APP_TAREAS' || p.tipo === 'APP_COMENTARIOS' || p.tipo === 'APP_ADJUNTOS')
-    .map((p) => p.titulo)
-}
-
 export class MotorDeSincronizacion {
   private opciones: OpcionesMotor
-  private temporizadorSubida: NodeJS.Timeout | null = null
-  private temporizadorBajada: NodeJS.Timeout | null = null
-  private temporizadorTareas: NodeJS.Timeout | null = null
+  /** El respiro de `apurarSubida`: uno solo a la vez, y lo que llegue mientras tanto se le suma. */
+  private apuro: NodeJS.Timeout | null = null
+  /** Entró algo en la cola mientras la subida estaba corriendo: hay que dar otra vuelta al terminar. */
+  private hayMas = false
+  /** Pestañas donde la base rechazó una escritura: se bajan apenas la subida suelta el turno (14.0). */
+  private readonly pisadas = new Set<string>()
   private contexto: ContextoHoja | null = null
   private contextoLeidoEn = 0
   private trabajando = false
   /**
    * Una importación en curso (12.7). Es un candado distinto de `trabajando` a propósito: mientras la
-   * importación corre (minutos, cuando es completa) la subida, el carril rápido y los archivos siguen
-   * andando. Hasta la 12.6 todo quedaba congelado, y con cinco computadoras cargando la importación
+   * importación corre (minutos, cuando es completa) la subida y los archivos siguen andando. Hasta la 12.6 todo quedaba congelado, y con cinco computadoras cargando la importación
    * corría casi todo el tiempo: nada subía y los adjuntos no llegaban.
    */
   private importando = false
@@ -198,27 +193,16 @@ export class MotorDeSincronizacion {
     // se barren al encender, si no la cola queda con «no se pudo» para siempre.
     const barridas = limpiarImposibles()
     if (barridas > 0) anotarEvento('motor', `Se limpiaron ${barridas} entradas de la cola que no se podían subir nunca.`)
-    this.temporizadorSubida = setInterval(() => enSegundoPlano(this.ciclarSubida(), 'subida'), INTERVALO_SUBIDA_MS)
-    // Los tres relojes con períodos múltiplos vencían juntos y se saltaban entre sí (el carril rápido
-    // no corre si la subida ya está trabajando); corridos unos segundos, cada uno tiene su momento.
-    this.temporizadorBajada = setInterval(() => enSegundoPlano(this.ciclarBajada(), 'bajada'), INTERVALO_BAJADA_MS + 7_000)
-    this.temporizadorTareas = setInterval(() => enSegundoPlano(this.ciclarTareas(), 'las tareas'), INTERVALO_TAREAS_MS + 3_000)
-    // Los temporizadores no tienen que impedir que el proceso termine: la aplicación se cierra cuando
-    // el usuario cierra la ventana, no cuando la sincronización lo permite.
-    this.temporizadorSubida.unref?.()
-    this.temporizadorBajada.unref?.()
-    this.temporizadorTareas.unref?.()
+    // 14.0: acá se armaban los tres temporizadores. Ya no hay ninguno; encender es nada más dejar el
+    // motor disponible y barrer lo que quedó imposible de versiones anteriores.
     anotarEvento('motor', 'Sincronización encendida.')
     this.avisar()
   }
 
   apagar(): void {
-    if (this.temporizadorSubida) clearInterval(this.temporizadorSubida)
-    if (this.temporizadorBajada) clearInterval(this.temporizadorBajada)
-    if (this.temporizadorTareas) clearInterval(this.temporizadorTareas)
-    this.temporizadorSubida = null
-    this.temporizadorBajada = null
-    this.temporizadorTareas = null
+    if (this.apuro) clearTimeout(this.apuro)
+    this.apuro = null
+    this.hayMas = false
     this.encendido = false
     this.contexto = null
     this.avisar()
@@ -232,10 +216,17 @@ export class MotorDeSincronizacion {
   estado(): EstadoSincronizacion {
     const pendientes = cuantasPendientes()
     const fallidas = cuantasFallidas()
+    // 14.0: quien sabe si hay internet es el canal, no la última llamada que falló. `sin-puente` (la
+    // máquina de desarrollo, el banco de pruebas) no es una falla: ahí no hay a qué conectarse.
+    const canal = this.opciones.situacionDelCanal?.() ?? null
+    const sinConexion = canal === null ? this.sinConexion : canal === 'sin-conexion'
     let situacion: EstadoConexion = 'sincronizado'
     if (!this.encendido) situacion = 'apagado'
+    // El corte manda sobre todo lo demás: mientras no vuelva, lo que se está haciendo no va a poder
+    // terminar, y el indicador tiene que decir lo que le pasa a la persona («no se puede guardar»).
+    else if (sinConexion) situacion = 'sin-conexion'
     else if (this.trabajando || this.importando) situacion = 'trabajando'
-    else if (this.sinConexion) situacion = 'sin-conexion'
+    else if (canal === 'reconectando') situacion = 'reconectando'
     else if (pendientes > 0 || fallidas > 0) situacion = 'pendiente'
     return {
       situacion,
@@ -277,9 +268,46 @@ export class MotorDeSincronizacion {
     for (let vueltas = 0; this.enCurso && vueltas < 5; vueltas++) await this.enCurso
   }
 
+  /**
+   * Sube lo que espera en la cola, con 100 ms de respiro (14.0). Es lo que reemplazó al reloj de los
+   * diez segundos: lo llama `encolar` a través del despertador de la cola, y el canal al reconciliar.
+   *
+   * No devuelve nada y no se espera: quien escribe una celda no tiene que quedarse esperando a que el
+   * servidor conteste. Lo que salga mal queda anotado en la cola y en la bitácora, como siempre.
+   */
+  apurarSubida(): void {
+    if (this.apuro) return
+    this.apuro = setTimeout(() => {
+      this.apuro = null
+      enSegundoPlano(this.subirLoQueEspera(), 'la subida apurada')
+    }, RESPIRO_DE_LA_SUBIDA_MS)
+    // El respiro no tiene por qué mantener vivo el proceso al cerrar el programa.
+    this.apuro.unref?.()
+  }
+
+  /**
+   * Una vuelta de subida, y otra si mientras subía entró algo más.
+   *
+   * El motor puede estar en el medio de una bajada o de una importación cuando vence el respiro: en
+   * ese caso se espera el turno en vez de perder el aviso, porque no va a haber otro —la cola avisa
+   * cuando algo entra, no cada tanto—.
+   */
+  private async subirLoQueEspera(): Promise<void> {
+    for (let vueltas = 0; vueltas < VUELTAS_SEGUIDAS_MAXIMAS; vueltas++) {
+      this.hayMas = false
+      await this.esperarTurno()
+      await this.ciclarSubida()
+      if (!this.hayMas) return
+    }
+  }
+
   /** Vacía la cola. Devuelve cuántas entradas se subieron. */
   async ciclarSubida(): Promise<number> {
-    if (this.trabajando || !this.encendido) return 0
+    if (this.trabajando || !this.encendido) {
+      // Ocupado: lo que espera no se pierde, se sube en la vuelta siguiente de `subirLoQueEspera`.
+      if (this.trabajando) this.hayMas = true
+      return 0
+    }
     // Lo que se puede intentar AHORA: las que están esperando un reintento no cuentan, si no cada ciclo
     // leía la hoja para no escribir nada.
     const hayFilas = cuantasListasParaSubir() > 0
@@ -287,7 +315,27 @@ export class MotorDeSincronizacion {
     if (!hayFilas && !hayArchivos) return 0
     const fuente = this.opciones.crearFuente()
     if (!fuente) return 0
-    return this.seguir(this.correrSubida(fuente, hayFilas))
+    const subidas = await this.seguir(this.correrSubida(fuente, hayFilas))
+    // Recién acá, con `trabajando` ya en false, se pueden bajar las pestañas que la base rechazó: si
+    // se pidiera adentro de la subida, `ciclarBajadaDe` se encontraría al motor ocupado consigo mismo
+    // y contestaría null.
+    await this.bajarLoQuePisoLaBase()
+    return subidas
+  }
+
+  /**
+   * Las pestañas donde la base rechazó una escritura de esta computadora (14.0): se bajan YA, para que
+   * la pantalla muestre el valor que ganó en el mismo momento en que aparece el aviso de que el cambio
+   * de acá no se guardó. Sin esto, la persona ve el cartel y en la pantalla sigue su propio número.
+   *
+   * El conjunto se vacía ANTES de bajar: la bajada arrastra una subida, y si esa subida vuelve a
+   * rechazar algo tiene que poder anotar sus propias pestañas sin que ésta se las lleve por delante.
+   */
+  private async bajarLoQuePisoLaBase(): Promise<void> {
+    if (this.pisadas.size === 0) return
+    const titulos = [...this.pisadas]
+    this.pisadas.clear()
+    await this.ciclarBajadaDe(titulos)
   }
 
   private async correrSubida(fuente: FuenteHoja, hayFilas = true): Promise<number> {
@@ -303,8 +351,8 @@ export class MotorDeSincronizacion {
         if (archivos.subidos > 0) {
           anotarEvento('subida', `Se subieron ${archivos.subidos} archivos adjuntos al servidor.`, { filas: archivos.subidos })
           // 12.7: cada archivo que llegó dejó en la cola el «SUBIDO» de su fila. Sale ahora, en el
-          // mismo ciclo, así las otras computadoras no lo ven como «cargado en otra computadora»
-          // diez segundos de más.
+          // mismo ciclo, así las otras computadoras no lo ven como «cargado en otra computadora» un
+          // rato de más.
           if (cuantasListasParaSubir() > 0) subidas += await this.subirLaCola(fuente, arranque)
         }
       }
@@ -335,12 +383,14 @@ export class MotorDeSincronizacion {
       if (resultado.error) throw new Error(resultado.error)
       this.sinConexion = false
       this.ultimoError = null
-      if (resultado.subidas > 0) {
+      for (const titulo of resultado.pestanasPisadas) this.pisadas.add(titulo)
+      if (resultado.subidas > 0 || resultado.pisadas > 0) {
         guardarMarca('ultima_subida', new Date().toISOString())
-        anotarEvento('subida', `Se subieron ${resultado.subidas} cambios${resultado.conflictos ? ` (${resultado.conflictos} conflictos)` : ''}.`, {
-          filas: resultado.subidas,
-          duracionMs: Date.now() - arranque,
-        })
+        anotarEvento(
+          'subida',
+          `Se subieron ${resultado.subidas} cambios${resultado.pisadas ? ` (${resultado.pisadas} celdas no se escribieron: la base ya decía otra cosa)` : ''}.`,
+          { filas: resultado.subidas, duracionMs: Date.now() - arranque },
+        )
       }
       return resultado.subidas
     }
@@ -364,36 +414,15 @@ export class MotorDeSincronizacion {
   }
 
   /**
-   * El carril rápido: baja SÓLO la pestaña de las tareas, cada 30 segundos.
+   * El canal en vivo avisó que estas pestañas cambiaron: se bajan sólo ésas, ya.
    *
-   * No sube nada antes (eso lo hace su propio ciclo cada 10 segundos) y no toca la marca de «última
-   * bajada»: no es la bajada de la aplicación, es una pestaña sola. Como cualquier otra bajada saltea
-   * las filas con cambios locales sin subir, así una tarea que se está escribiendo acá no se pisa con
-   * la versión vieja del servidor.
-   */
-  async ciclarTareas(): Promise<ResultadoBajada | null> {
-    // Con el aviso en vivo andando esto es pedir lo mismo dos veces: el vigía ya trae las tareas
-    // apenas se asignan, y encima trae todo lo demás. No se borra el carril porque contra un servidor
-    // anterior a la 13.1 sigue siendo la única forma de que una tarea llegue rápido.
-    if (this.opciones.hayAvisoEnVivo?.()) return null
-    // Con una importación en curso el carril rápido espera: la importación ya trae esas pestañas y
-    // las dos escribirían las mismas filas al mismo tiempo.
-    if (this.trabajando || this.importando || !this.encendido) return null
-    const fuente = this.opciones.crearFuente()
-    if (!fuente) return null
-    return this.seguir(this.correrBajada(fuente, false, filasConPendientes(), { soloLasTareas: true }))
-  }
-
-  /**
-   * El vigía avisó que estas pestañas cambiaron: se bajan sólo ésas, ya.
+   * Es el camino por el que llega lo que escribió otra sucursal. Hace lo mismo que `ciclarBajada`
+   * —sube primero lo pendiente, porque bajar con cambios locales sin subir los pisaría— pero en vez de
+   * mirar las pestañas del día mira exactamente las que cambiaron.
    *
-   * Es el camino por el que llega en vivo lo que escribió otra sucursal. Hace lo mismo que
-   * `ciclarBajada` —sube primero lo pendiente, porque bajar con cambios locales sin subir los
-   * pisaría— pero en vez de mirar las pestañas del día mira exactamente las que cambiaron.
-   *
-   * Devuelve `null` si no se pudo bajar ahora (el motor estaba trabajando o importando). El vigía se
-   * queda con los títulos y los vuelve a intentar en la vuelta siguiente: darlos por bajados sin
-   * haberlos bajado perdería el cambio hasta el reloj de red.
+   * Devuelve `null` si no se pudo bajar ahora (el motor estaba trabajando o importando). Quien llamó
+   * se queda con los títulos y los vuelve a intentar (ver `vivo/grilla.ts`): darlos por bajados sin
+   * haberlos bajado perdería el cambio hasta que alguien vuelva a escribir, que puede ser mañana.
    */
   async ciclarBajadaDe(titulos: string[]): Promise<ResultadoBajada | null> {
     if (titulos.length === 0) return null
@@ -449,12 +478,9 @@ export class MotorDeSincronizacion {
     fuente: FuenteHoja,
     completa: boolean,
     bloqueadas: Set<string>,
-    opciones: { soloLasTareas?: boolean; soloEstasPestanas?: string[] } = {},
+    opciones: { soloEstasPestanas?: string[] } = {},
   ): Promise<ResultadoBajada | null> {
-    const soloLasTareas = opciones.soloLasTareas === true
-    // La bajada acotada del vigía: las pestañas que el servidor dijo que cambiaron. No es «la bajada
-    // de la aplicación», así que no toca la marca de «última bajada» ni corre la limpieza, igual que
-    // el carril rápido.
+    // La bajada acotada del canal: las pestañas que el servidor dijo que cambiaron.
     const acotada = opciones.soloEstasPestanas
     this.trabajando = true
     this.avisar()
@@ -471,37 +497,26 @@ export class MotorDeSincronizacion {
       const titulos = acotada
         ? // Lo que sigue sin figurar ya no está en la hoja: se borró entre el aviso y la bajada.
           acotada.filter((titulo) => contexto.porTitulo.has(titulo))
-        : soloLasTareas
-          ? pestanasDeTareas(contexto)
-          : completa
-            ? contexto.pestanas.map((p) => p.titulo)
-            : (this.opciones.pestanasDelCiclo ?? pestanasDeTodosLosDias)(contexto)
-      // Todavía no hay pestaña de tareas en la base: no hay nada que bajar y tampoco nada que anotar.
-      if ((soloLasTareas || acotada) && titulos.length === 0) return null
+        : completa
+          ? contexto.pestanas.map((p) => p.titulo)
+          : (this.opciones.pestanasDelCiclo ?? pestanasDeTodosLosDias)(contexto)
+      // Las pestañas que nombró el canal ya no están en la base: no hay nada que bajar ni que anotar.
+      if (acotada && titulos.length === 0) return null
       const resultado = await bajarCambios(fuente, contexto, titulos, bloqueadas)
       this.sinConexion = false
       this.ultimoError = null
       const trajoAlgo =
         resultado.filasCambiadas > 0 || resultado.filasNuevas > 0 || resultado.filasQueYaNoEstan > 0
-      if (soloLasTareas) {
-        if (trajoAlgo) this.avisarQueCambiaronLosDatos(contexto, titulos)
-        // Filas escritas a mano en la pestaña (sin _ID) piden la importación completa, y ésa no se
-        // dispara desde acá: correrla cada medio minuto sería peor que esperar. La bajada de los cinco
-        // minutos también mira APP TAREAS y es la que la corre.
-        return resultado
-      }
       if (acotada) {
-        // A diferencia del carril rápido, acá la importación SÍ corre. El vigía no pasa «cada medio
-        // minuto» sino cuando de verdad cambió algo, así que no hay riesgo de estarla disparando todo
-        // el tiempo; y sin ella una póliza cargada en una sucursal no aparecería en las otras hasta el
-        // reloj de red, que es justamente lo que esto vino a arreglar. Corre acotada a las pestañas
-        // donde aparecieron filas, con su propio candado.
+        // Acá la importación SÍ corre. El canal no avisa «cada tanto» sino cuando de verdad cambió
+        // algo, así que no hay riesgo de estarla disparando todo el tiempo; y sin ella una póliza
+        // cargada en una sucursal no aparecería en las otras hasta que alguien reimportara a mano.
+        // Corre acotada a las pestañas donde aparecieron filas, con su propio candado.
         if (resultado.necesitaImportacion) await this.importarAcotada(resultado.pestanasConFilasNuevas, resultado.filasNuevas)
         // La marca de última bajada también se corre acá (13.0.2): esto SÍ es una bajada de la hoja
-        // —trae las pestañas que cambiaron, con importación incluida—, y con el vigía andando es la
-        // que trae casi todo. Sin esto el podio de Inicio decía «datos bajados a las 10» a las 12, con
-        // las altas de la otra sucursal ya adentro, y la barra seguía diciendo «sincronizado hace dos
-        // horas». El carril de tareas no la toca porque baja una pestaña sola y sin importar.
+        // —trae las pestañas que cambiaron, con importación incluida— y es la que trae casi todo. Sin
+        // esto el podio de Inicio decía «datos bajados a las 10» a las 12, con las altas de la otra
+        // sucursal ya adentro, y la barra seguía diciendo «sincronizado hace dos horas».
         guardarMarca('ultima_bajada', new Date().toISOString())
         if (trajoAlgo) this.avisarQueCambiaronLosDatos(contexto, titulos)
         return resultado
@@ -551,8 +566,8 @@ export class MotorDeSincronizacion {
     // Si el ciclo automático justo estaba corriendo, el botón no hacía nada: mostraba «Sincronizando…»
     // por un instante y volvía a lo mismo. Ahora espera a que termine y recién ahí trabaja.
     await this.esperarTurno()
-    // Las bajas que estaban esperando para viajar juntas salen ahora: acá hay alguien mirando el botón.
-    apurarAgrupadas()
+    // 14.0: acá se apuraban las bajas que estaban esperando su ventana de agrupado. Ya no espera
+    // ninguna (ver `encolar`), así que no hay nada que apurar.
     await this.ciclarSubida()
     return this.ciclarBajada(completa)
   }

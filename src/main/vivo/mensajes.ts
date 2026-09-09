@@ -8,21 +8,23 @@
 // todo eso ya está resuelto del lado del cartero. Duplicarlo acá sería tener dos caminos por los que
 // entra un mensaje y una sola forma de que se contradigan.
 import type { SesionUsuario } from '../../shared/tipos'
-
-/**
- * Lo que el tramo siguiente enchufa acá: `traerNovedadesDeMensajes(quien)` de `mensajeria/cartero.ts`
- * —la mitad de `unaVuelta` que PIDE (con `espera: 0`), guarda, acusa y avisa a la pantalla— separada
- * de la mitad que DESPACHA la cola de salida.
- */
-export type TraerNovedadesDeMensajes = (quien: SesionUsuario) => Promise<void>
+import { traerNovedadesDeMensajes } from '../mensajeria/cartero'
+import { esFallaDeRed } from '../servicios/red'
 
 /**
  * El servidor avisó que hay novedades de mensajería para esta persona.
  *
- * TODO (14.0, tramo B2): el cuerpo es `await traerNovedadesDeMensajes(quien)`, envuelto en un
- * try/catch que sólo anote: un pedido que falló se recupera solo con el aviso siguiente o con la
- * reconciliación de la reconexión, y no puede tumbar el despacho del canal.
+ * Lo que salga mal queda anotado y nada más: un pedido que falló se recupera solo con el aviso
+ * siguiente o con la reconciliación de la reconexión, y no puede tumbar el despacho del canal —que es
+ * el mismo que reparte la grilla, la presencia y las llamadas—.
  */
 export async function alLlegarAvisoDeMensajes(quien: SesionUsuario | null): Promise<void> {
   if (!quien) return
+  try {
+    await traerNovedadesDeMensajes(quien)
+  } catch (error) {
+    // Sin internet no se anota: es lo que ya está diciendo el banner de arriba.
+    if (esFallaDeRed(error)) return
+    console.error('[vivo] No se pudieron traer los mensajes nuevos:', error instanceof Error ? error.message : error)
+  }
 }

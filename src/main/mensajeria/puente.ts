@@ -253,10 +253,14 @@ export class PuenteDeMensajes {
   }
 
   /**
-   * El long-poll. Devuelve apenas hay algo, o vacío cuando se cumple la espera.
+   * Lo que haya para esta persona. Con `esperaSegundos: 0` (14.0) contesta al instante con lo que
+   * tenga: es como lo pide el cartero desde que el canal en vivo es el que avisa que hay algo. Con
+   * una espera mayor es el long-poll de la 12.8, que se queda con el pedido abierto hasta que aparezca
+   * algo; se conserva porque el servidor lo sigue soportando y porque una computadora sin canal (un
+   * VPS anterior a la 14.0) tiene que poder volver a ese camino.
    *
    * `senal` es la que se dispara al cerrar sesión o al cerrar la aplicación: sin ella, apagar el
-   * programa esperaría a que termine el pedido.
+   * programa con un pedido colgado esperaría a que termine.
    */
   async novedades(
     actor: ActorDelPuente,
@@ -269,7 +273,9 @@ export class PuenteDeMensajes {
     })}`
     const respuesta = (await this.pedir('preguntar por mensajes nuevos', 'GET', ruta, {
       senal,
-      tiempoMaximoMs: TIEMPO_MAXIMO_DEL_LONG_POLL_MS,
+      // Sin espera, el pedido es uno más: darle el tope del long-poll sería esperar cuarenta segundos
+      // a un servidor que se colgó cuando lo normal es que conteste en el acto.
+      tiempoMaximoMs: opciones.esperaSegundos > 0 ? TIEMPO_MAXIMO_DEL_LONG_POLL_MS : TIEMPO_MAXIMO_MS,
     })) as NovedadesRemotas
     return {
       mensajes: respuesta?.mensajes ?? [],

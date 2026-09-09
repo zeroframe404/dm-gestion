@@ -557,7 +557,7 @@ export function PlanillaDelMes() {
             Actualizar
           </Boton>
           {puedeCerrarMes && (
-            <Boton variante="primario" icono="mas" onClick={() => void cerrarMes()} cargando={cerrando}>
+            <Boton escribe variante="primario" icono="mas" onClick={() => void cerrarMes()} cargando={cerrando}>
               Cerrar mes
             </Boton>
           )}

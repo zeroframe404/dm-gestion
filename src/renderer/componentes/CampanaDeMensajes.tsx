@@ -19,9 +19,6 @@ import { useAvisoNuevo } from '../sonidos/useAvisoNuevo'
 import { Icono } from './Icono'
 import { cx, haceCuanto } from './ui'
 
-/** Consulta de respaldo. El aviso de verdad llega empujado por el cartero; esto es por si se perdió. */
-const CADA_CUANTO_MS = 2 * 60_000
-
 export function CampanaDeMensajes() {
   const { ir } = useNavegacion()
   const [avisos, setAvisos] = useState<AvisosDeMensajes | null>(null)
@@ -36,12 +33,14 @@ export function CampanaDeMensajes() {
   }, [])
 
   useEffect(() => {
+    // Sin reloj de respaldo (14.0). Existía porque el cartero era un long-poll que podía quedarse
+    // colgado sin que nadie se enterara; ahora el servidor empuja `{t:'mensajes'}` por el canal y, si
+    // el canal se cae, al reconectar se piden las novedades de una (`reconciliar()`). Los dos eventos
+    // de acá abajo cubren todo lo que puede cambiar el globito.
     void consultar()
-    const reloj = setInterval(() => void consultar(), CADA_CUANTO_MS)
     const soltarLlegada = window.dm.mensajes.alLlegarAlguno(() => void consultar())
     const soltarCambio = window.dm.mensajes.alCambiarAlgo(() => void consultar())
     return () => {
-      clearInterval(reloj)
       soltarLlegada()
       soltarCambio()
     }

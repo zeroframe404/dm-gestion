@@ -55,12 +55,13 @@ export function Sincronizacion() {
     setCargando(false)
   }, [])
 
+  // Sin reloj (14.0): el motor avisa cada vez que cambia su estado —encolar, subir, fallar, bajar— y
+  // el panel entero se lee de esa misma señal. El medio minuto era la red de seguridad de cuando la
+  // subida corría sola por reloj y podía moverse sin avisar; ahora nada se mueve sin evento, y leer
+  // la cola entera cada 30 segundos para dibujar lo mismo era el costo más caro de esta pantalla.
   useEffect(() => {
     void cargar()
-    // Cada medio minuto: el panel también se refresca solo con cada cambio de estado del motor, así
-    // que el reloj es la red de seguridad, no la fuente. A 10 segundos leía la cola entera sin parar.
-    const reloj = setInterval(() => void cargar(), 30_000)
-    return () => clearInterval(reloj)
+    return window.dm.sincronizacion.alCambiarEstado(() => void cargar())
   }, [cargar])
 
   const correr = async (que: string, accion: () => Promise<void>) => {
@@ -91,7 +92,7 @@ export function Sincronizacion() {
 
       <Tarjeta
         titulo="Estado"
-        descripcion="La aplicación sube cada 10 segundos lo que se va tocando y baja de la base del VPS cada 5 minutos."
+        descripcion="Desde la 14.0 no hay relojes: lo que se toca sube en el momento y lo que cargan las otras computadoras baja apenas lo avisa el canal en vivo."
         acciones={
           <>
             <Boton

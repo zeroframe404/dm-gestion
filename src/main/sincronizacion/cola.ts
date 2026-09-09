@@ -49,15 +49,21 @@ function aEntrada(fila: FilaCola): EntradaCola {
 }
 
 /**
- * Cuánto espera un borrado antes de subir, para que varios se junten en una sola llamada.
+ * A quién avisarle que hay algo nuevo esperando. Lo pone `servicios/sincronizacion.ts` apuntando a
+ * `motor.apurarSubida()` (14.0).
  *
- * Borrar una fila en Google no es como escribir una celda: corre todas las filas de abajo y obliga a
- * la planilla entera a recalcularse. Dando de baja pólizas una atrás de otra, cada baja salía sola en
- * su ciclo de diez segundos y la hoja se recalculaba una vez por baja: a quien tenía «el general»
- * abierto se le trababa. Con esta espera, las bajas de un mismo minuto viajan juntas y la hoja se
- * reacomoda una sola vez. El botón «Sincronizar ahora» no espera nada (ver `apurarAgrupadas`).
+ * Va por una función registrada y no por un `import` del motor a propósito: el motor ya importa esta
+ * cola, y un import de vuelta dejaría a los dos módulos en círculo. Es el mismo arreglo que usa el
+ * canal en vivo para no importar el motor desde adentro de la cola.
+ *
+ * Por defecto no hace nada: en las pruebas y en los scripts que encolan sin motor encendido, encolar
+ * tiene que seguir siendo lo que siempre fue —anotar la fila y volver—.
  */
-export const ESPERA_DE_AGRUPADO_MS = 60_000
+let despertador: () => void = () => undefined
+
+export function usarDespertadorDeLaCola(fn: () => void): void {
+  despertador = fn
+}
 
 /**
  * Anota un cambio para subir. Si ya hay una entrada pendiente de «crear» o «actualizar» para la misma
@@ -70,7 +76,6 @@ export const ESPERA_DE_AGRUPADO_MS = 60_000
 export function encolar(
   entrada: { operacion: OperacionSync; pestana: string; filaId: string; campos: Partial<Record<Campo | '_id', string>> },
   actor?: SesionUsuario | null,
-  opciones: { sinEspera?: boolean } = {},
 ): void {
   const base = db()
   if (entrada.operacion === 'borrar') {
@@ -111,20 +116,24 @@ export function encolar(
       base
         .prepare(`UPDATE cola_sync SET campos_json = ?, creado_en = ?, intentos = 0, proximo_intento = NULL, ultimo_error = NULL WHERE id = ?`)
         .run(JSON.stringify(juntos), ahoraIso(), ultima.id)
+      despertador()
       return
     }
   }
-  // Los borrados esperan su ventana de agrupado; el resto sale en el ciclo siguiente, como siempre.
-  // `sinEspera` (12.7): el borrado de una ficha de adjunto sale en el ciclo siguiente, sin la ventana de
-  // agrupado, porque el archivo ya se borró del servidor y cada segundo que la fila siga en la hoja las
-  // otras computadoras la muestran «en el servidor» sin poder abrirla.
-  const espera = entrada.operacion === 'borrar' && !opciones.sinEspera ? new Date(Date.now() + ESPERA_DE_AGRUPADO_MS).toISOString() : null
+  // 14.0: los borrados ya no esperan su ventana de agrupado (eran 60 segundos, `ESPERA_DE_AGRUPADO_MS`).
+  // Esa espera existía para que las bajas de una seguidilla viajaran juntas y Google no recalculara la
+  // planilla una vez por baja; la base de la agencia es SQL y no recalcula nada, y desde que la subida
+  // sale por evento el minuto de espera era lo único que quedaba entre dar de baja una póliza y verla
+  // en la otra computadora.
   base
     .prepare(
       `INSERT INTO cola_sync (creado_en, operacion, pestana, fila_id, campos_json, proximo_intento, usuario_nombre)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, NULL, ?)`,
     )
-    .run(ahoraIso(), entrada.operacion, entrada.pestana, entrada.filaId, JSON.stringify(entrada.campos), espera, actor?.nombre ?? null)
+    .run(ahoraIso(), entrada.operacion, entrada.pestana, entrada.filaId, JSON.stringify(entrada.campos), actor?.nombre ?? null)
+  // Lo último de todo: el despertador dispara la subida, y la subida tiene que encontrarse la entrada
+  // ya escrita. Los 57 lugares que encolan no cambian ni una línea; el aviso sale de acá.
+  despertador()
 }
 
 /**
@@ -173,38 +182,34 @@ export function biseccionAtascada(): boolean {
 export function pendientes(limite = 200): EntradaCola[] {
   if (topeProvisorio !== null) limite = Math.min(limite, topeProvisorio)
   const ahora = ahoraIso()
-  const listas = db()
-    .prepare(
-      `SELECT * FROM cola_sync
-       WHERE estado = 'pendiente' AND (proximo_intento IS NULL OR proximo_intento <= ?)
-       ORDER BY id LIMIT ?`,
-    )
-    .all(ahora, limite) as FilaCola[]
-
-  // Si en esta tanda ya va un borrado, se suman los otros borrados que sólo están esperando su ventana
-  // de agrupado (intentos = 0: no son reintentos de algo que falló). Así todas las bajas de la seguidilla
-  // se aplican en una sola pasada y la hoja se reacomoda una vez, en vez de una por baja.
-  if (!listas.some((f) => f.operacion === 'borrar') || listas.length >= limite) return listas.map(aEntrada)
-  const yaEstan = new Set(listas.map((f) => f.id))
-  const esperando = db()
-    .prepare(
-      `SELECT * FROM cola_sync
-       WHERE estado = 'pendiente' AND operacion = 'borrar' AND intentos = 0 AND proximo_intento > ?
-       ORDER BY id LIMIT ?`,
-    )
-    .all(ahora, limite - listas.length) as FilaCola[]
-  return [...listas, ...esperando.filter((f) => !yaEstan.has(f.id))].sort((a, b) => a.id - b.id).map(aEntrada)
+  // 14.0: acá había un segundo pedido que juntaba los borrados que esperaban su ventana de agrupado.
+  // Ya no espera ninguno, así que lo único que puede tener `proximo_intento` es un reintento de algo
+  // que falló, y ésos siguen esperando su turno como siempre.
+  return (
+    db()
+      .prepare(
+        `SELECT * FROM cola_sync
+         WHERE estado = 'pendiente' AND (proximo_intento IS NULL OR proximo_intento <= ?)
+         ORDER BY id LIMIT ?`,
+      )
+      .all(ahora, limite) as FilaCola[]
+  ).map(aEntrada)
 }
 
 /**
- * Saca la espera de agrupado de lo que está esperando nada más por eso: lo usa «Sincronizar ahora»,
- * donde alguien está mirando el botón y no tiene por qué esperar el minuto. No toca los reintentos de
- * entradas que fallaron (intentos > 0), que esperan por otro motivo.
+ * Ya no hace nada, y es correcto que no haga nada (14.0).
+ *
+ * Sacaba la espera de agrupado de los borrados que estaban esperando nada más por eso: lo usaba
+ * «Sincronizar ahora», donde alguien está mirando el botón y no tiene por qué esperar el minuto. Desde
+ * que los borrados salen sin ventana no queda nadie esperando por agrupado: lo único que puede tener
+ * `proximo_intento` es un reintento de algo que falló, y ésos no se apuran nunca —esperan justamente
+ * para no martillar a un servidor que ya dijo que no—.
+ *
+ * Se conserva vacía en vez de borrarse porque la llaman las pruebas de punta a punta antes de cada
+ * subida, y ahí sigue significando lo mismo: «no queda nada esperando».
  */
 export function apurarAgrupadas(): number {
-  return db()
-    .prepare(`UPDATE cola_sync SET proximo_intento = NULL WHERE estado = 'pendiente' AND intentos = 0 AND proximo_intento IS NOT NULL`)
-    .run().changes
+  return 0
 }
 
 /**
@@ -260,6 +265,24 @@ export function filasConPendientes(): Set<string> {
 
 export function cuantasFallidas(): number {
   return (db().prepare(`SELECT COUNT(*) AS n FROM cola_sync WHERE estado = 'fallido'`).get() as { n: number }).n
+}
+
+/**
+ * La base tenía otro valor y ganó ella (14.0): la entrada se da por terminada —no se reintenta, no se
+ * vuelve a mandar— pero queda con el motivo a la vista en la pantalla de Sincronización.
+ *
+ * Es `listo` y no `fallido` a propósito: `fallido` significa «alguien tiene que mirar esto» y suma al
+ * contador rojo de la barra, y acá no hay nada que mirar ni que reintentar. El cambio de esta
+ * computadora se descartó porque otra persona había escrito antes; lo que corresponde es traer el
+ * valor de la base y avisar, que es lo que hace `subirTanda`.
+ */
+export function marcarPisadas(ids: number[], motivo: string): void {
+  if (ids.length === 0) return
+  const marcar = db().prepare(`UPDATE cola_sync SET estado = 'listo', subido_en = ?, proximo_intento = NULL, ultimo_error = ? WHERE id = ?`)
+  const ahora = ahoraIso()
+  db().transaction(() => {
+    for (const id of ids) marcar.run(ahora, motivo.slice(0, 500), id)
+  })()
 }
 
 export function marcarListas(ids: number[]): void {

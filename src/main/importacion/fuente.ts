@@ -41,6 +41,18 @@ export interface CeldaAEscribir {
    * `noEncontradas`. Sin id se escribe por posición (Google, o un servidor viejo).
    */
   id?: string
+  /**
+   * Lo que esta computadora vio ÚLTIMO en esa celda (14.0): el «comparar y escribir» de toda la vida.
+   * Si la base tiene otra cosa, la escritura no se hace y la celda vuelve en `rechazadas`.
+   *
+   * Es lo que reemplazó a «gana el cambio local». Hasta la 13.x dos personas editando la misma celda
+   * al mismo tiempo terminaban con el valor del último que subía, y lo pisado quedaba anotado en un
+   * historial que nadie mira. Ahora gana la base y quien perdió se entera en el momento.
+   *
+   * Va sólo cuando se conoce la base: una fila que esta computadora nunca bajó (recién creada acá) no
+   * tiene contra qué comparar y se escribe como siempre.
+   */
+  previo?: string
 }
 
 /** Un renglón a borrar: por número, y desde la 12.6 también por su _ID (ver `CeldaAEscribir.id`). */
@@ -52,6 +64,14 @@ export interface FilaABorrar {
 export interface ResultadoDeCeldas {
   /** Renglones que ya no están en la pestaña: la celda no se escribió en ningún lado. */
   noEncontradas: Array<{ titulo: string; id: string }>
+  /**
+   * Las celdas que llegaron con `previo` y no se escribieron porque la base tenía otro valor (14.0):
+   * gana la base. `actual` es lo que la base tiene, que es lo que hay que mostrarle a quien escribió.
+   *
+   * Opcional porque un servidor anterior a la 14.0 no la manda: ahí no hay rechazo posible y la
+   * escritura se comporta como siempre.
+   */
+  rechazadas?: Array<{ titulo: string; id: string; columna: number; actual: string }>
 }
 
 export interface ResultadoDeAgregado {

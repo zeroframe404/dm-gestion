@@ -1,9 +1,14 @@
 // El aviso en vivo, de punta a punta contra el simulador del puente.
 //
 // Lo que se prueba acá es el camino que hace que un cambio hecho en otra sucursal aparezca en ésta en
-// el momento: el vigía pregunta qué cambió, baja SÓLO esas pestañas, y recién entonces las da por
+// el momento: se pregunta qué cambió, se bajan SÓLO esas pestañas, y recién entonces se dan por
 // vistas. «La otra computadora» es el simulador editado directo, que es exactamente lo que ve esta
 // máquina cuando otra escribió.
+//
+// 14.0: el bucle del vigía se fue (lo reemplazó el canal en vivo) pero la lógica es la misma y vive en
+// `vivo/grilla.ts`. Hasta que el tramo del banco de pruebas ponga el socket en el medio, `unaVuelta`
+// junta las dos mitades a mano: preguntar por el puente de siempre y aplicar la foto. Lo que se
+// afirma más abajo no cambió ni una coma.
 //
 // Las dos cosas que más importan y que son fáciles de romper sin que se note:
 //
@@ -20,9 +25,9 @@ import { ahoraIso } from '../src/main/importacion/normalizar'
 import { planillaDelMes } from '../src/main/servicios/cartera'
 import { leerSnapshotDeMetrica } from '../src/main/servicios/metricasCache'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
-import { estadoDeVersiones } from '../src/main/sincronizacion/versiones'
-import { esServidorSinAviso } from '../src/main/sincronizacion/puenteDeGrilla'
-import { reiniciarVigiaParaPruebas, unaVueltaDelVigia } from '../src/main/sincronizacion/vigia'
+import { estadoDeVersiones, generacionConocida, versionesConocidas } from '../src/main/sincronizacion/versiones'
+import { ESPERA_DEL_VIGIA_SEGUNDOS, esServidorSinAviso, puenteDeGrilla } from '../src/main/sincronizacion/puenteDeGrilla'
+import { aplicarFotoDeLaGrilla, reiniciarLaGrilla } from '../src/main/vivo/grilla'
 import { FuenteVps } from '../src/main/vps/fuenteVps'
 import { baseDePrueba, importar } from './ayuda'
 
@@ -51,6 +56,21 @@ interface Computadora {
 }
 
 /**
+ * Una vuelta del aviso en vivo: preguntar qué cambió y aplicar la foto que conteste.
+ *
+ * Es lo que hacía `unaVueltaDelVigia` hasta la 13.x, con las dos mitades ya separadas: el pedido lo
+ * sigue haciendo el puente de la grilla (el simulador contesta al instante, no espera los 25 segundos)
+ * y lo que llega lo aplica `vivo/grilla.ts`, que es exactamente el mismo código que corría adentro del
+ * vigía. Devuelve qué pestañas se bajaron.
+ */
+async function unaVueltaDelVigia(motor: MotorDeSincronizacion): Promise<string[]> {
+  const puente = puenteDeGrilla()
+  assert.ok(puente, 'el puente tiene que estar configurado contra el simulador')
+  const foto = await puente.novedades(versionesConocidas(), generacionConocida(), ESPERA_DEL_VIGIA_SEGUNDOS)
+  return aplicarFotoDeLaGrilla(foto, motor)
+}
+
+/**
  * Una computadora de la agencia contra el simulador: base propia en memoria, ya importada, y su
  * propio motor —no el del programa, que trae el importador de verdad y la base de la máquina—.
  */
@@ -70,7 +90,7 @@ async function unaComputadora(simulador: VpsSimulado): Promise<Computadora> {
   }
   const motor = new MotorDeSincronizacion({ crearFuente: () => fuente, importar: importarPestanas })
   motor.encender()
-  reiniciarVigiaParaPruebas()
+  reiniciarLaGrilla()
   return { db, fuente, motor }
 }
 
@@ -86,7 +106,7 @@ function en(db: BaseDeDatos): void {
 function cerrar(pc: Computadora): void {
   en(pc.db)
   pc.motor.apagar()
-  reiniciarVigiaParaPruebas()
+  reiniciarLaGrilla()
   pc.db.close()
   delete process.env.DM_GESTION_VPS_URL
   delete process.env.DM_GESTION_VPS_TOKEN

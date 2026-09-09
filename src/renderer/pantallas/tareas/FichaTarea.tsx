@@ -177,6 +177,7 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
                   Descartar
                 </Boton>
                 <Boton
+                  escribe
                   tamano="sm"
                   variante="primario"
                   icono="ok"
@@ -291,6 +292,7 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
               Prioridad {t.prioridad}
             </span>
             <Boton
+              escribe
               variante="primario"
               icono="mas"
               className="ml-auto"

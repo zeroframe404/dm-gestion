@@ -5,19 +5,20 @@
 // puede atender cualquiera de los que estén en el mostrador, y por eso lo ven todos los que trabajan
 // ahí. Mezclarlas haría que un aviso que es de dos personas parezca de una sola.
 //
-// Se refresca sola cada dos minutos, igual que la otra: el aviso lo carga alguien de otra sucursal y
-// llega por la sincronización, así que preguntar cada tanto es lo único que puede enterarse.
+// Se refresca cuando baja la pestaña APP RECHAZOS (14.0): el aviso lo carga alguien de otra sucursal
+// y llega por el canal en vivo, que avisa en el momento. Hasta la 13.x preguntaba cada dos minutos
+// porque no había forma de enterarse antes; con el canal, ese reloj sólo servía para leer la base y
+// escribir el mismo número.
 // Cuando aparece un rechazo que antes no estaba suena su propio aviso, distinto al de las tareas: hay
 // que poder saber cuál de las dos campanas sonó sin dar vuelta la cabeza, porque un rechazo se cobra
 // llamando por teléfono y una tarea puede esperar a la tarde.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { NOMBRE_MOTIVO_RECHAZO, type AvisosDeRechazos, type MotivoDeRechazo } from '../../shared/tipos'
+import { useRefrescoEnVivo } from '../contexto/DatosEnVivo'
 import { useNavegacion } from '../contexto/Navegacion'
 import { useAvisoNuevo } from '../sonidos/useAvisoNuevo'
 import { Icono } from './Icono'
 import { cx } from './ui'
-
-const CADA_CUANTO_MS = 2 * 60_000
 
 export function CampanaDeRechazos({ puedeResolver, puedeVerLaPantalla }: { puedeResolver: boolean; puedeVerLaPantalla: boolean }) {
   const { ir } = useNavegacion()
@@ -33,9 +34,12 @@ export function CampanaDeRechazos({ puedeResolver, puedeVerLaPantalla }: { puede
 
   useEffect(() => {
     void traer()
-    const reloj = setInterval(() => void traer(), CADA_CUANTO_MS)
-    return () => clearInterval(reloj)
   }, [traer])
+
+  // Los rechazos viven en la pestaña APP RECHAZOS de la hoja: cuando baja algo de ahí, la campana
+  // vuelve a contar. No se posterga nunca (no hay `postergar`): es un globito de la barra, no una
+  // planilla en edición que se pueda pisar debajo de las manos.
+  useRefrescoEnVivo({ tipos: ['APP_RECHAZOS'], recargar: traer })
 
   // Los que están en PENDIENTE, no los que se ven en el desplegable: ver el comentario de la campana
   // de tareas, que tiene el mismo problema y la misma solución.

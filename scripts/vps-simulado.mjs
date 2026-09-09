@@ -4,11 +4,19 @@
 // igual que github-simulado.mjs simula la base de usuarios.
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
+import { WebSocketServer } from 'ws'
 
 /** Las mismas claves que acepta el servidor real: es una lista blanca, no un almacén libre. */
 const CLAVES_DE_AJUSTE = new Set(['vehiculos', 'referencias', 'google', 'meta', 'ticket', 'companias'])
 
 const TOKEN_POR_DEFECTO = 'prueba'
+
+/** La ruta del canal en vivo (14.0), la misma que `src/main/vivo/protocolo.ts`. */
+const RUTA_DEL_CANAL = '/api/dmg/vivo'
+/** Cuántos colores tiene la paleta de la presencia: los índices que reparte `asegurarPerfil`. */
+const COLORES_DE_LA_PALETA = 12
+/** Cada cuánto le pide latir el servidor al cliente. El mismo número que el protocolo. */
+const LATIDO_DEL_CANAL_MS = 20_000
 
 function comoTexto(valor) {
   if (valor === null || valor === undefined) return ''
@@ -97,6 +105,31 @@ export class VpsSimulado {
     /** La base de usuarios de la agencia: el documento entero y su versión (el candado optimista). */
     this.usuarios = null
 
+    // --- El canal en vivo (14.0) -----------------------------------------------------------------
+    //
+    // Desde la 14.0 el servidor AVISA en vez de dejarse preguntar: un WebSocket por computadora, por
+    // el que viajan señales («la grilla cambió», «tenés mensajes») y la presencia. El simulador lo
+    // levanta de verdad —con `ws`, enganchado al mismo servidor http— porque lo que las pruebas de
+    // dos computadoras necesitan verificar es justamente el camino completo: que lo que escribe una
+    // le llegue a la otra sola, sin que nadie pregunte.
+    /** El `WebSocketServer` del canal; existe recién desde `escuchar()`. */
+    this.servidorDelCanal = null
+    /** Las conexiones ya saludadas: conexionId → {id, socket, actor, color, foco, desde}. */
+    this.conexiones = new Map()
+    /** Los perfiles de la agencia (color y foto), por clave. El color lo reparte `asegurarPerfil`. */
+    this.perfiles = new Map()
+    /**
+     * Los eventos de señalización de llamadas que llegaron por el canal, en orden.
+     *
+     * Se llama `llamadasDeVoz` y no `llamadas` porque ese nombre ya es de los contadores de pedidos
+     * HTTP (`llamadas.celdas`, `llamadas.leer`…), que usan medio banco de pruebas. Por ahora sólo se
+     * anotan: el relay 1:1 con su ocupado y su timeout es de la Fase E.
+     */
+    this.llamadasDeVoz = []
+    /** Lo que el saludo manda como configuración de WebRTC. Sin TURN, igual que un VPS sin secreto. */
+    this.ice = { stun: ['stun:stun.l.google.com:19302'], turn: null }
+    this.proximaConexion = 1
+
     for (const pestana of opciones.pestanas ?? []) {
       this.cargarPestanaDirecto(pestana)
     }
@@ -161,6 +194,10 @@ export class VpsSimulado {
   marcarCambiada(titulo) {
     const version = (this.versiones.get(titulo) ?? 0) + 1
     this.versiones.set(titulo, version)
+    // 14.0: subir una versión es exactamente lo que el canal tiene que contar. Va acá adentro y no en
+    // cada manejador porque todos los que escriben terminan pasando por esta línea, y un aviso que
+    // hay que acordarse de mandar es un aviso que un día no se manda.
+    this.avisarGrilla()
     return version
   }
 
@@ -181,6 +218,8 @@ export class VpsSimulado {
     const anterior = this.metricas.get(clave)
     const version = (anterior?.version ?? 0) + 1
     this.metricas.set(clave, { version, calculadoEn: new Date().toISOString(), payload })
+    // La métrica viaja en la misma foto que las pestañas: el cliente compara las dos listas de una.
+    this.avisarGrilla()
     return version
   }
 
@@ -191,9 +230,24 @@ export class VpsSimulado {
     return mapa
   }
 
+  /**
+   * La foto que viaja por el canal y que contesta `/novedades`: la generación, la versión de cada
+   * pestaña y la de cada métrica. Es lo único que manda el servidor cuando algo cambia —los datos los
+   * baja después el cliente, comparando contra lo que ya tiene—, y es lo que las pruebas le pasan a
+   * `aplicarFotoDeLaGrilla` cuando quieren el mecanismo sin levantar un socket.
+   */
+  fotoDeLaGrilla() {
+    return {
+      generacion: this.generacion,
+      versiones: this.mapaDeVersiones(),
+      metricasVersiones: this.mapaDeVersionesDeMetricas(),
+    }
+  }
+
   /** La hoja se reemplazó entera (restaurar un respaldo, la migración inicial). */
   subirGeneracion() {
     this.generacion += 1
+    this.avisarGrilla()
   }
 
   porTitulo(titulo) {
@@ -257,6 +311,10 @@ export class VpsSimulado {
     while (celdas.length <= columna) celdas.push('')
     celdas[columna] = comoTexto(valor)
     pestana.filas.set(fila, celdas)
+    // Sin `marcarCambiada` la foto sale igual que antes y el cliente no baja nada: es a propósito. El
+    // aviso está para que ninguna escritura quede muda, no para inventar una versión que el servidor
+    // real tampoco subiría (quien edita a mano en la base tampoco toca las versiones).
+    this.avisarGrilla()
   }
 
   async escuchar(puerto = 0) {

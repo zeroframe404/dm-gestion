@@ -43,7 +43,7 @@ export function DialogoBaja({ fila, alCerrar, alDarDeBaja, alFallar }: Props) {
           <Boton onClick={alCerrar} disabled={guardando}>
             Cancelar
           </Boton>
-          <Boton variante="peligro" icono="cerrar" onClick={() => void darDeBaja()} cargando={guardando}>
+          <Boton escribe variante="peligro" icono="cerrar" onClick={() => void darDeBaja()} cargando={guardando}>
             Dar de baja
           </Boton>
         </>

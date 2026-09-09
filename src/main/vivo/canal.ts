@@ -481,18 +481,27 @@ export class CanalEnVivo {
    * Lo que se hace al conectar (y al reconectar), que es lo que antes hacía el reloj de los cinco
    * minutos: ponerse al día con lo que pasó mientras el canal estuvo caído.
    *
-   * TODO (14.0, tramo B2): entre la grilla y los mensajes va `motor.apurarSubida()`, para que lo que
-   * quedó en la cola local mientras no había canal salga apenas vuelve.
+   * El orden es el de siempre: primero se BAJA lo que cambió del otro lado y recién después se SUBE lo
+   * que quedó esperando acá. Subir primero mandaría a la base valores calculados sobre una copia local
+   * vieja; bajando primero, la escritura que salga va a viajar con el `previo` recién bajado y la base
+   * la va a poder rechazar si en el medio la tocó otro (ver `sincronizacion/subida.ts`).
+   *
+   * Los mensajes van al final porque no compiten con nada: ni la cola ni la grilla los tocan.
    */
   private async reconciliar(foto: FotoDeLaGrilla): Promise<void> {
     await this.aplicarLaGrilla(foto)
+    this.motor().apurarSubida()
     await alLlegarAvisoDeMensajes(this.quien)
+  }
+
+  /** El motor de esta computadora: el del programa, o el que armó el banco de pruebas. */
+  private motor(): MotorDeSincronizacion {
+    return this.opciones.motor ? this.opciones.motor() : obtenerMotor()
   }
 
   private async aplicarLaGrilla(foto: FotoDeLaGrilla): Promise<void> {
     try {
-      const motor = this.opciones.motor ? this.opciones.motor() : obtenerMotor()
-      await aplicarFotoDeLaGrilla(foto, motor)
+      await aplicarFotoDeLaGrilla(foto, this.motor())
     } catch (error) {
       // Una foto que no se pudo aplicar no puede tumbar el canal: los títulos quedan pendientes y se
       // reintentan solos (ver `grilla.ts`).

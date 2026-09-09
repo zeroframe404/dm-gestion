@@ -148,6 +148,13 @@ function cerrarTodo(): void {
   cerrarBaseDeDatos()
 }
 
+/**
+ * Las pestañas que traía el carril rápido de las tareas hasta la 13.x. Desde la 14.0 no hay carril
+ * rápido —el canal en vivo dice qué cambió y el motor baja eso— así que acá se pide lo mismo por su
+ * nombre, que es lo que hace la aplicación de verdad cuando el servidor la nombra.
+ */
+const PESTANAS_DE_TAREAS = ['APP TAREAS', 'APP COMENTARIOS', 'APP ADJUNTOS']
+
 /** Sube lo que espera en la cola (borrados incluidos) y los archivos pendientes. */
 async function subirTodo(pc: Computadora): Promise<void> {
   en(pc)
@@ -260,7 +267,7 @@ test('un documento adjuntado a una tarea en una computadora se abre en la otra',
   agregarComentario(tarea.id, 'Llegó', FEDE)
   await subirTodo(lanus)
   en(dockSud)
-  const rapido = await dockSud.motor.ciclarTareas()
+  const rapido = await dockSud.motor.ciclarBajadaDe(PESTANAS_DE_TAREAS)
   assert.ok(rapido, 'el carril rápido corrió')
   assert.equal(rapido!.necesitaImportacion, false, 'un comentario nuevo no pide la importación completa')
   assert.equal(fichaDeTarea(idEnDockSud, MILAGROS).comentarios.length, 2)
@@ -273,7 +280,7 @@ test('un documento adjuntado a una tarea en una computadora se abre en la otra',
   assert.equal(filasDeAnexos(hoja, 'APP ADJUNTOS').length, 0, 'la fila salió de APP ADJUNTOS')
   assert.equal(hoja.almacen.size, 0, 'y el archivo del servidor')
   en(dockSud)
-  await dockSud.motor.ciclarTareas()
+  await dockSud.motor.ciclarBajadaDe(PESTANAS_DE_TAREAS)
   assert.equal(fichaDeTarea(idEnDockSud, MILAGROS).adjuntos.length, 0, 'la otra computadora ya no lo muestra')
   assert.equal(existsSync(ruta), false, 'ni lo tiene en el disco')
   cerrarTodo()
@@ -365,7 +372,7 @@ test('las fotos de una póliza viajan por la clave de la póliza y se bajan al a
   await subirTodo(dockSud)
   assert.equal(filasDeAnexos(hoja, 'APP ADJUNTOS').length, 1)
   en(lanus)
-  await lanus.motor.ciclarTareas()
+  await lanus.motor.ciclarBajadaDe(PESTANAS_DE_TAREAS)
   assert.equal(adjuntosDePoliza(poliza.id).length, 1, 'el borrado hecho en Dock Sud llegó a Lanús')
   cerrarTodo()
 })

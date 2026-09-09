@@ -219,10 +219,11 @@ export function registrarAnexoEnLaCola(
 export function encolarBorradoDeAnexo(filaId: string, tipoPestana: 'APP_ADJUNTOS' | 'APP_COMENTARIOS', actor: SesionUsuario | null, base: BaseDeDatos = db()): void {
   const conocida = base.prepare('SELECT pestana FROM filas_crudas WHERE fila_id = ?').get(filaId) as { pestana: string } | undefined
   const pestana = conocida?.pestana ?? (tipoPestana === 'APP_ADJUNTOS' ? pestanaDeAdjuntos() : pestanaDeComentarios())
-  // 12.7: la fila de un adjunto sale en el ciclo siguiente, sin la ventana de agrupado de un minuto.
-  // El archivo ya se borró del servidor, y si esta computadora se cierra en ese minuto las otras
-  // siguen viendo la fila «en el servidor» y reciben un 404 al abrirla.
-  encolar({ operacion: 'borrar', pestana, filaId, campos: {} }, actor, { sinEspera: tipoPestana === 'APP_ADJUNTOS' })
+  // 12.7 pedía acá `sinEspera` para los adjuntos: la fila tenía que salir en el ciclo siguiente y no
+  // esperar la ventana de agrupado de un minuto, porque el archivo ya se había borrado del servidor y
+  // las otras computadoras seguían viendo la ficha «en el servidor» con un 404 detrás. Desde la 14.0
+  // ya no hay ventana para ningún borrado, así que la excepción no hace falta (ver `encolar`).
+  encolar({ operacion: 'borrar', pestana, filaId, campos: {} }, actor)
 }
 
 /**

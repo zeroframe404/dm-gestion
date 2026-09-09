@@ -198,6 +198,16 @@ export interface ApiDm {
     renovar: Remota<'renovaciones:renovar'>
     noRenueva: Remota<'renovaciones:noRenueva'>
   }
+  /**
+   * El canal en vivo con la base de la agencia (14.0). Está aparte de `sincronizacion` porque son dos
+   * cosas distintas: aquélla cuenta qué pasa con los datos (cuántos cambios esperan, cuándo fue la
+   * última bajada) y ésta si HAY con quién hablar, que es lo que decide si los botones que escriben
+   * están encendidos o apagados.
+   */
+  conexion: {
+    estado: Remota<'conexion:estado'>
+    alCambiar: Suscripcion<'conexion:estado'>
+  }
   sincronizacion: {
     estado: Remota<'sincronizacion:estado'>
     panel: Remota<'sincronizacion:panel'>
@@ -207,6 +217,12 @@ export interface ApiDm {
     alCambiarEstado: Suscripcion<'sincronizacion:estado'>
     /** Bajaron datos de otra computadora: qué pestañas cambiaron, para que la pantalla se recargue. */
     alCambiarLosDatos: Suscripcion<'datos:cambiaron'>
+    /**
+     * Un cambio de esta computadora no entró porque la base ya decía otra cosa (14.0). Cuelga de
+     * `sincronizacion` y no de `conexion` porque es una novedad DE LOS DATOS —qué pasó con lo que se
+     * cargó acá—, no del estado del canal.
+     */
+    alPisarUnDato: Suscripcion<'datos:pisados'>
   }
   /** Los respaldos del SERVIDOR, no los .xlsx de esta computadora (ésos están en `sincronizacion`). */
   respaldos: {
