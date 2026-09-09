@@ -2981,9 +2981,32 @@ export interface DetalleDeAltas {
 }
 
 /**
+ * ¿Qué tan al día está lo que esta computadora está mostrando de una métrica calculada en el servidor?
+ *
+ *  - AL_DIA: lo último que se ve es lo último que el servidor calculó y esta computadora ya lo recibió.
+ *  - DESCONECTADA: esta computadora no tiene ahora mismo conexión con el servidor (ver
+ *    `EstadoConexion` en sincronizacion/motor.ts), así que lo que se ve es el último snapshot que
+ *    llegó a tiempo, no necesariamente lo más nuevo.
+ *  - SIN_DATOS: todavía no llegó ningún snapshot de esta métrica a esta computadora.
+ */
+export type FrescuraDeMetrica = 'AL_DIA' | 'DESCONECTADA' | 'SIN_DATOS'
+
+/**
  * El podio mensual de sucursales: quién metió más altas este mes, para que se corran una carrera. Lo
  * ve cualquiera que entre a la aplicación, no sólo quien tiene el módulo Métricas —es competencia, no
  * un número de la agencia—, así que nunca trae `cobrado`: cada fila sale con ese campo en null.
+ *
+ * DE DÓNDE SALE (13.2). Hasta la 13.1 cada computadora calculaba el podio con su propia base SQLite, y
+ * `calculadoEn`/`datosBajadosEn` decían de cuándo eran ESOS números: si dos sucursales veían podios
+ * distintos en el mismo instante, no era un error, era que una había bajado la hoja hace un rato y la
+ * otra recién. Eso quedaba bien pero no resolvía la pregunta de fondo —¿cuál de las dos tiene razón
+ * AHORA MISMO?—, así que la cuenta se mudó al servidor: la hace una sola vez, para toda la agencia, y
+ * la manda por el mismo aviso en vivo que ya trae los cambios de la grilla (ver
+ * sincronizacion/vigia.ts). `calculadoEn` pasa a significar cuándo lo calculó el SERVIDOR, y
+ * `recibidoEnEstaComputadora` reemplaza a `datosBajadosEn`: ya no es «de qué bajada de la hoja salen
+ * estos números», es «cuándo le llegó a esta computadora el resultado ya hecho». `frescura` es lo que
+ * queda para el caso en que dos computadoras SIGAN mostrando números distintos: una de las dos no tiene
+ * conexión con el servidor ahora mismo y está mostrando el último podio que le llegó.
  */
 export interface PodioMensual {
   periodo: string
@@ -2995,13 +3018,11 @@ export interface PodioMensual {
    *  menor y, a igualdad, por activos; sin la fila «(sin sucursal)», que no compite. */
   ranking: FilaEstadistica[]
   hoy: string
-  /** Cuándo se hizo esta cuenta (ISO con hora). */
+  /** Cuándo el SERVIDOR hizo esta cuenta (ISO con hora): no cuándo esta computadora la recibió. */
   calculadoEn: string
-  /**
-   * De cuándo son los datos: la última bajada de la hoja en esta computadora (ISO con hora), o null si
-   * todavía no bajó nada. Es lo que hay que mirar cuando dos computadoras muestran podios distintos.
-   */
-  datosBajadosEn: string | null
+  /** Cuándo esta computadora recibió este resultado del servidor (ISO con hora). */
+  recibidoEnEstaComputadora: string
+  frescura: FrescuraDeMetrica
 }
 
 // ---------------------------------------------------------------------------

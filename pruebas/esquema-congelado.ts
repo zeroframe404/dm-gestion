@@ -51,4 +51,7 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // La 27 crea caja_movimientos (la caja chica del mostrador: apertura, gastos, lo que baja a la
   // caja fuerte y el arqueo del cierre) y le suma a `pagos` el número de ticket y el tilde de revisión.
   27: '0d45daf3aac857e4',
+  // La 28 crea metricas_cache: la caché local de las métricas que ahora calcula el servidor (el podio
+  // de sucursales, primero), llenada por el aviso en vivo (ver sincronizacion/vigia.ts).
+  28: '3a654b789e365ef4',
 }

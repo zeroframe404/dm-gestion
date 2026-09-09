@@ -780,6 +780,10 @@ export function altasDelMes(periodoPedido: string | null, sucursalPedida: string
   }
 }
 
+// SUPERADA (13.2): el handler 'metricas:podio' de ipc.ts ya no llama a esta función — el podio ahora lo
+// calcula el servidor y esta computadora sólo lee el resultado (ver servicios/metricasCache.ts y
+// sincronizacion/vigia.ts). Queda acá sin tocar porque una fase más adelante borra de una vez todo este
+// cómputo local ya muerto, cuando el resto de las pantallas de Métricas también se muden.
 export function podioDelMes(): PodioMensual {
   const estadisticas = estadisticasDeCartera(null, [], false)
   const ranking = estadisticas.porSucursal
@@ -794,11 +798,14 @@ export function podioDelMes(): PodioMensual {
     hayMesAnterior: estadisticas.hayMesAnterior,
     ranking,
     hoy: estadisticas.hoy,
-    // De cuándo son estos números (13.0.2). Es lo que permite poner dos computadoras al lado: si los
-    // podios no coinciden y las bajadas son de momentos distintos, no es un error, es que una todavía
-    // no bajó lo que la otra cargó. `ultima_bajada` la escribe el motor de sincronización al terminar
-    // cada bajada de la hoja; null si esta computadora nunca bajó nada.
+    // `PodioMensual` cambió de forma en la 13.2 (ver el comentario de la interfaz en shared/tipos.ts):
+    // esta función quedó superada y ya no alimenta ninguna pantalla, así que estos dos campos son sólo
+    // lo mínimo para seguir compilando contra el tipo compartido, no un cómputo real de frescura.
+    // `recibidoEnEstaComputadora` ya no puede ser null (a diferencia del `datosBajadosEn` de antes): si
+    // esta computadora nunca bajó nada de la hoja, se usa el instante actual, que para este cómputo
+    // local sigue siendo una respuesta razonable a «¿de cuándo son estos números?».
     calculadoEn: ahoraIso(),
-    datosBajadosEn: leerMarca('ultima_bajada'),
+    recibidoEnEstaComputadora: leerMarca('ultima_bajada') ?? ahoraIso(),
+    frescura: 'AL_DIA',
   }
 }

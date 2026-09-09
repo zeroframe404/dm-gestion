@@ -614,8 +614,10 @@ export interface Canales {
   // Métricas: el tablero con filtros globales y su versión tabular (Cartera → Estadísticas).
   'metricas:tablero': (filtros: FiltrosMetricas) => Resultado<TableroMetricas>
   'metricas:estadisticas': (periodo: string | null, sucursales: string[]) => Resultado<EstadisticasDeCartera>
-  // El podio de sucursales por altas del mes: sin permiso de área, lo ve cualquiera que entró.
-  'metricas:podio': () => Resultado<PodioMensual>
+  // El podio de sucursales por altas del mes: sin permiso de área, lo ve cualquiera que entró. Lo
+  // calcula el servidor (13.2): `null` es «esta computadora todavía no recibió ningún podio», que hoy
+  // es lo mismo que mostraba la pantalla mientras no había mes anterior cargado.
+  'metricas:podio': () => Resultado<PodioMensual | null>
   /**
    * Qué pólizas son esas altas, una por una. A diferencia del podio, esto SÍ pide el permiso de
    * Cartera: el cartel muestra un número y esto muestra los nombres de los clientes, que es el dato de
@@ -812,6 +814,14 @@ export interface Eventos {
    * Los títulos van igual, para la bitácora y para el día que haga falta afinar el filtro.
    */
   'datos:cambiaron': { pestanas: string[]; tipos: TipoPestana[] }
+  /**
+   * El servidor terminó de calcular de nuevo una métrica (el podio de sucursales, por ahora) y esta
+   * computadora ya guardó el resultado nuevo (ver servicios/metricasCache.ts): la pantalla que la
+   * muestre puede volver a pedirla por su canal de siempre ('metricas:podio') y va a encontrar el dato
+   * fresco. `claves` son los nombres de las métricas que cambiaron, para que cada pantalla filtre las
+   * que le importan a ella y no se refresque por una que no mira.
+   */
+  'metricas:actualizaron': { claves: string[] }
 }
 
 export type NombreCanal = keyof Canales

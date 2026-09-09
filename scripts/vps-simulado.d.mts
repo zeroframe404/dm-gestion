@@ -26,6 +26,7 @@ export class VpsSimulado {
     | 'tramos'
     | 'estado'
     | 'novedades'
+    | 'metricasLeidas'
     | 'ajusteLeido'
     | 'ajusteConsultado'
     | 'ajusteGuardado'
@@ -103,6 +104,11 @@ export class VpsSimulado {
   /** Sube la versión de una pestaña y la devuelve, como una escritura del servidor real. */
   marcarCambiada(titulo: string): number
   mapaDeVersiones(): Record<string, number>
+  /** Las métricas que el servidor ya calculó (13.2): clave → {version, calculadoEn, payload}. */
+  metricas: Map<string, { version: number; calculadoEn: string; payload: unknown }>
+  /** «El servidor terminó de recalcular esta métrica»: sube su versión y guarda el resultado nuevo. */
+  cargarMetricaDirecto(clave: string, payload: unknown): number
+  mapaDeVersionesDeMetricas(): Record<string, number>
   /** La hoja se reemplazó entera (restaurar un respaldo, la migración inicial). */
   subirGeneracion(): void
   editarDirecto(titulo: string, fila: number, columna: number, valor: string): void

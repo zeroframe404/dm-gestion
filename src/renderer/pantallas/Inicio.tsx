@@ -3,8 +3,7 @@
 // Lo primero que se ve después del saludo son las tareas propias, no un tablero: el pliego pide que
 // cada usuario vea sus pendientes al entrar, y eso es lo que hace que alguien abra la aplicación a la
 // mañana en vez de mirar un papelito.
-import { useEffect, useState } from 'react'
-import { useRefrescoEnVivo } from '../contexto/DatosEnVivo'
+import { useEffect, useRef, useState } from 'react'
 import { NOMBRE_ROL, type DetalleDeAltas, type FilaEstadistica, type FilaTarea, type PodioMensual } from '../../shared/tipos'
 import { AvisoConexionGoogle } from '../componentes/AvisoConexionGoogle'
 import { DialogoReportarError } from '../componentes/DialogoReportarError'
@@ -226,14 +225,30 @@ function PodioDeSucursales() {
     }
   }, [refrescos])
 
-  // El podio es una competencia entre sucursales: es justamente el número que tiene que moverse solo
-  // cuando la otra sucursal da un alta. Con el cuadro de detalle abierto espera, para no cambiarle los
-  // números a alguien que los está leyendo.
-  useRefrescoEnVivo({
-    tipos: ['MENSUAL', 'BAJAS'],
-    recargar: () => setRefrescos((vuelta) => vuelta + 1),
-    postergar: () => mirando !== null,
-  })
+  // El podio ya no lo calcula esta computadora (13.2): en vez de refrescar cuando cambia la planilla
+  // del mes, se escucha el aviso de que el SERVIDOR terminó de recalcular esa cuenta. El criterio de
+  // «postergar» es el mismo que antes (ver useRefrescoEnVivo en contexto/DatosEnVivo.tsx), sólo que acá
+  // se replica a mano porque el aviso no viene por ese mismo canal: con el cuadro de detalle abierto el
+  // aviso queda pendiente en la ref y se aplica recién cuando se cierra, para no cambiarle los números
+  // a alguien que los está leyendo.
+  const mirandoRef = useRef(mirando)
+  mirandoRef.current = mirando
+  const avisoPendiente = useRef(false)
+  useEffect(() => {
+    return window.dm.metricas.alActualizar((datos) => {
+      if (!datos.claves.includes('podio')) return
+      if (mirandoRef.current !== null) {
+        avisoPendiente.current = true
+        return
+      }
+      setRefrescos((vuelta) => vuelta + 1)
+    })
+  }, [])
+  useEffect(() => {
+    if (mirando !== null || !avisoPendiente.current) return
+    avisoPendiente.current = false
+    setRefrescos((vuelta) => vuelta + 1)
+  }, [mirando])
 
   if (!podio || !podio.hayMesAnterior || podio.ranking.length === 0) return null
 
@@ -251,16 +266,18 @@ function PodioDeSucursales() {
             Pólizas que están en {nombreDePeriodo(podio.periodo).toLowerCase()} y no estaban en {nombreDePeriodo(podio.periodoAnterior).toLowerCase()}.
             Las renovaciones no cuentan.
           </p>
-          {/* De cuándo son los números (issue #79). La agencia comparó el podio de dos computadoras y no
-              daba igual: sin esta línea no hay forma de saber si una de las dos estaba mirando datos
-              viejos. Con la hora de la última bajada al lado, «no coinciden» se vuelve «la tuya bajó a
-              las 10 y la mía a las 12». */}
+          {/* De cuándo son los números (issue #79). Antes de la 13.2 cada computadora calculaba el podio
+              con su propia base y esta línea decía de qué bajada salían; ahora lo calcula el servidor una
+              sola vez y esto dice cuándo lo calculó él y cuándo le llegó a ESTA computadora, que es lo que
+              hay que mirar si dos sucursales todavía llegaran a ver números distintos. */}
           <p className="mt-0.5 text-xs text-slate-500">
-            Calculado el {momento(podio.calculadoEn)}
-            {podio.datosBajadosEn
-              ? ` con los datos que esta computadora bajó del servidor el ${momento(podio.datosBajadosEn)}.`
-              : '. Esta computadora todavía no bajó datos del servidor: son sólo los cargados acá.'}
+            Calculado por el servidor el {momento(podio.calculadoEn)}, recibido en esta computadora el {momento(podio.recibidoEnEstaComputadora)}.
           </p>
+          {podio.frescura !== 'AL_DIA' && (
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
+              Sin conexión con el servidor: mostrando el último podio recibido.
+            </p>
+          )}
         </div>
       </div>
 

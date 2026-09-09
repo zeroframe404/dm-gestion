@@ -285,6 +285,8 @@ export interface ApiDm {
     estadisticas: Remota<'metricas:estadisticas'>
     podio: Remota<'metricas:podio'>
     altas: Remota<'metricas:altas'>
+    /** El servidor recalculó una métrica y ya se guardó acá: qué claves cambiaron. */
+    alActualizar: Suscripcion<'metricas:actualizaron'>
   }
   reportes: {
     catalogo: Remota<'reportes:catalogo'>

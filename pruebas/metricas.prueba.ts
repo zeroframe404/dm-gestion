@@ -285,8 +285,9 @@ test('el podio dice de cuándo son sus números', async () => {
   assert.equal(podio.periodoAnterior, '2026-07', 'contra qué mes se compararon las altas')
   assert.ok(!Number.isNaN(new Date(podio.calculadoEn).getTime()), 'calculadoEn es un instante ISO')
   assert.ok(Date.now() - new Date(podio.calculadoEn).getTime() < 60_000, 'y es de recién')
-  // Una base recién importada, sin sincronización: nunca bajó nada del servidor, y lo dice.
-  assert.equal(podio.datosBajadosEn, null)
+  // Superada (13.2): el campo ya no puede ser null (ver PodioMensual en shared/tipos.ts), así que acá
+  // alcanza con que sea un instante ISO válido, igual que calculadoEn.
+  assert.ok(!Number.isNaN(new Date(podio.recibidoEnEstaComputadora).getTime()), 'recibidoEnEstaComputadora es un instante ISO')
   db.close()
 })
 
