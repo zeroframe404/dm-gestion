@@ -93,6 +93,33 @@ export class VpsSimulado {
   acuses: Map<string, { entregadoEn: string | null; leidoEn: string | null }>
   escuchar(puerto?: number): Promise<string>
   cerrar(): Promise<void>
+
+  // --- El canal en vivo (14.0): un WebSocket en /api/dmg/vivo sobre el mismo servidor http ---------
+  /** Las conexiones ya saludadas, por conexionId. Una computadora = una conexión. */
+  conexiones: Map<
+    string,
+    { id: string; socket: unknown; actor: ActorDelCanalSimulado; color: number; foco: FocoSimulado | null; desde: string }
+  >
+  /** El color (y la foto, cuando la Fase C la cargue) de cada persona, por clave. */
+  perfiles: Map<string, PerfilSimulado>
+  /** La señalización de llamadas que llegó por el canal, en orden. Ver `llamadas` para los contadores HTTP. */
+  llamadasDeVoz: Array<{ de: string; evento: unknown }>
+  /** Lo que el saludo manda como configuración de WebRTC. Sin TURN, igual que un VPS sin secreto. */
+  ice: { stun: string[]; turn: { urls: string[]; username: string; credential: string; venceEn: string } | null }
+  /** Quién está conectado y en qué: la foto completa que difunde el canal. */
+  presencia(): PresenteSimulado[]
+  /** La foto que viaja por el canal y que contesta `/novedades`: generación + versiones + métricas. */
+  fotoDeLaGrilla(): { generacion: number; versiones: Record<string, number>; metricasVersiones: Record<string, number> }
+  /** Difunde «algo de la grilla cambió». Sale solo desde `marcarCambiada` y compañía. */
+  avisarGrilla(): void
+  /** Le dice «hay algo tuyo» a las computadoras de esas personas. */
+  avisarMensajes(claves: string[]): void
+  /** Le corta el canal a una persona sin saludo, como el cable desenchufado. Devuelve cuántas cortó. */
+  cerrarConexionesDe(clave: string): number
+  /** El color que le toca a una clave, creando el perfil si es la primera vez. */
+  asegurarPerfil(clave: string): PerfilSimulado
+  /** Escribe una celda sin avisar por el canal: los manejadores avisan una vez, al subir la versión. */
+  ponerCelda(titulo: string, fila: number, columna: number, valor: string): void
   /** Lee los valores actuales de una pestaña (para asserts). */
   valoresDe(titulo: string, hastaFila?: number): string[][] | null
   /** «Otra computadora» cambió una celda directamente en la base. */
@@ -118,4 +145,39 @@ export class VpsSimulado {
     motivo: 'DIARIO' | 'A_MANO' | 'ANTES_DE_RESTAURAR',
     hechoPor: string | null,
   ): { respaldo: { id: number; dia: string; motivo: string }; yaEstaba: boolean }
+}
+
+/** Quién se conectó al canal en vivo, tal como llegó en el saludo. */
+export interface ActorDelCanalSimulado {
+  clave: string
+  nombre: string
+  rol: string
+  sucursal: string
+}
+
+/**
+ * En qué está trabajando alguien. Es el mismo `Foco` de `src/main/vivo/protocolo.ts`, declarado suelto
+ * acá porque el simulador no lo mira por dentro: lo guarda y lo vuelve a difundir tal cual llegó.
+ */
+export type FocoSimulado =
+  | { tipo: 'celda'; pestana: string; filaId: string; campo: string; editando: boolean }
+  | { tipo: 'objeto'; objeto: string; filaId: string; editando: boolean }
+  | { tipo: 'modulo'; modulo: string }
+
+export interface PresenteSimulado {
+  conexionId: string
+  clave: string
+  nombre: string
+  sucursal: string
+  color: number
+  foco: FocoSimulado | null
+  desde: string
+}
+
+export interface PerfilSimulado {
+  clave: string
+  color: number
+  foto: string | null
+  version: number
+  actualizadoEn: string
 }

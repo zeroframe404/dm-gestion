@@ -381,7 +381,20 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   })
 
   // --- Dejar la base local al día con lo que quedó en la hoja.
-  actualizarBaseLocal(contexto, valoresPorTitulo, entradasEscritas, celdasEscritas)
+  //
+  // Las filas que tuvieron alguna celda rechazada quedan AFUERA (14.0), y es lo que hace que el
+  // «gana la base» se vea en la pantalla. `actualizarBaseLocal` le recalcula la huella a la fila con
+  // lo que la base dice hoy; si eso corriera también acá, la bajada que sale enseguida
+  // (`pestanasPisadas` → `bajarLoQuePisoLaBase` en motor.ts) vería la fila «sin cambios» y no la
+  // releería nunca: la copia local se quedaría para siempre con el número que la base no aceptó, que
+  // es exactamente lo que esto vino a evitar. Dejándoles la huella vieja, esa bajada las trae enteras.
+  const filasPisadas = new Set(rechazadas.map(({ pisada }) => `${pisada.pestana}\u0000${pisada.filaId}`))
+  actualizarBaseLocal(
+    contexto,
+    valoresPorTitulo,
+    entradasEscritas.filter((entrada) => !filasPisadas.has(`${entrada.pestana}\u0000${entrada.filaId}`)),
+    celdasEscritas,
+  )
   marcarListas(hechas)
   for (const { id, motivo } of fallidas) marcarSinArreglo([id], motivo)
   // Después de `marcarListas`: las entradas pisadas también salen de la cola —no hay nada que

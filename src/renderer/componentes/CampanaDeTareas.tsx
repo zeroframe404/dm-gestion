@@ -6,8 +6,8 @@
 //
 // Los avisos salen del contexto de tareas, que es el mismo que dibuja el círculo rojo del módulo en la
 // barra lateral: los dos tienen que decir el mismo número. Ahí está también el cuándo se vuelve a
-// preguntar —el carril rápido de la sincronización avisa cuando bajan tareas de otra computadora, y
-// cada dos minutos hay una consulta de respaldo—, así que acá no hay ningún reloj.
+// preguntar —el canal en vivo avisa en el momento cuando bajan tareas de otra computadora (14.0)—, así
+// que acá no hay ningún reloj.
 //
 // Cuando aparece una tarea que antes no estaba, además suena la campana: la aplicación pasa el día
 // de fondo y un punto rojo que nadie mira no avisa nada.

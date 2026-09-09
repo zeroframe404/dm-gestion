@@ -18,10 +18,11 @@ import {
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
 import { ErrorDelServidorVps } from '../src/main/vps/fuenteVps'
 import { avisarRechazo, avisosDeRechazos, listarRechazos } from '../src/main/servicios/rechazos'
-import { apurarAgrupadas, cuantasFallidas, cuantasPendientes, encolar, esperaDeReintento } from '../src/main/sincronizacion/cola'
+import { apurarAgrupadas, cuantasFallidas, cuantasPendientes, encolar, esperaDeReintento, usarDespertadorDeLaCola } from '../src/main/sincronizacion/cola'
 import { leerContexto } from '../src/main/sincronizacion/hoja'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { hacerRespaldo, listarRespaldos, rotar, tocaRespaldar, type ServicioDeRespaldo } from '../src/main/sincronizacion/respaldo'
+import { subirTanda } from '../src/main/sincronizacion/subida'
 import type { FilaCartera, SesionUsuario } from '../src/shared/tipos'
 import { unico } from './ayuda'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
@@ -84,6 +85,11 @@ function enLaHoja(hoja: HojaSimulada, pestana: string, filaId: string, encabezad
   return encontrada ? ((encontrada[columna] ?? '').trim() ?? '') : null
 }
 
+/** Deja correr los relojes cortos del motor (el respiro de `apurarSubida` son 100 ms). */
+function esperar(ms: number): Promise<void> {
+  return new Promise((seguir) => setTimeout(seguir, ms))
+}
+
 /** Una fila cargada a mano en AGOSTO desde Google: con datos y con la columna del _ID vacía. */
 function agregarFilaAMano(hoja: HojaSimulada, nombre: string, dni: string): void {
   const encabezados = hoja.encabezadosDe('AGOSTO')
@@ -122,6 +128,37 @@ test('un cambio en la aplicación llega a la hoja en el próximo ciclo', async (
   cerrarBaseDeDatos()
 })
 
+// El motor ya no tiene reloj de subida (14.0): la cola lo despierta. Es lo que hace que escribir una
+// celda se vea del otro lado en lo que tarda el viaje y no «hasta diez segundos después», y también lo
+// más fácil de romper sin que se note —si el despertador se desengancha, todo sigue subiendo igual…
+// cuando alguien apriete «Sincronizar ahora»—.
+test('encolar despierta al motor y la subida sale sola, sin reloj', async () => {
+  const { hoja, motor } = await escenario()
+  let avisos = 0
+  // Es lo mismo que hace `obtenerMotor()` en el programa de verdad; acá se engancha a mano porque el
+  // motor es el del escenario y no el del proceso.
+  usarDespertadorDeLaCola(() => {
+    avisos++
+    motor.apurarSubida()
+  })
+  try {
+    const gonzalez = fila(CLIENTES.gonzalez.nombre)
+    editarCelda(gonzalez.filaId, 'telefono', '11-5555-4444', DANIEL)
+    assert.equal(avisos, 1, 'encolar avisa en el momento, no en el próximo ciclo')
+
+    // Nadie llama a `ciclarSubida`: la subida sale sola pasado el respiro de los 100 ms, que existe
+    // para que guardar una ficha —que encola el cliente, el vehículo y la póliza— viaje en una tanda.
+    await esperar(400)
+    assert.equal(cuantasPendientes(), 0, 'la cola se vació sin que nadie la empujara')
+    assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'TELEFONO'), '11-5555-4444')
+  } finally {
+    // El despertador es del proceso: si queda enganchado a este motor, las pruebas que siguen encolan
+    // contra un motor apagado y con la base cerrada.
+    usarDespertadorDeLaCola(() => undefined)
+  }
+  cerrarBaseDeDatos()
+})
+
 test('varios cambios de la misma fila viajan juntos y no se pisan', async () => {
   const { hoja, motor } = await escenario()
   const lopez = fila(CLIENTES.lopez.nombre)
@@ -157,12 +194,10 @@ test('dar de baja saca la fila de la planilla y la agrega a BAJAS, como el corta
   darDeBaja(martinez.filaId, { motivo: 'VENDIO', nota: 'Vendió la camioneta' }, DANIEL)
   assert.equal(cuantasPendientes(), 2, 'una entrada para agregar a BAJAS y otra para sacar de la planilla')
 
-  // El borrado espera su ventana de agrupado (ver ESPERA_DE_AGRUPADO_MS): el ciclo automático de recién
-  // sube la fila a BAJAS pero todavía no toca la planilla.
-  await motor.ciclarSubida()
-  assert.equal(hoja.filasDe('AGOSTO').length, filasAntes, 'el borrado espera para juntarse con otros')
-
-  apurarAgrupadas()
+  // 14.0: las dos entradas viajan en el MISMO ciclo. Hasta la 13.x el borrado esperaba su ventana de
+  // agrupado (eran 60 segundos) para juntarse con otros y no hacer recalcular la planilla de Google
+  // una vez por baja; la base de la agencia es SQL y no recalcula nada, así que ese minuto era lo
+  // único que quedaba entre dar de baja una póliza y verla desaparecer en la otra computadora.
   await motor.ciclarSubida()
   assert.equal(hoja.filasDe('AGOSTO').length, filasAntes - 1, 'la fila tiene que desaparecer de la planilla del mes')
   assert.equal(hoja.filasDe('BAJAS AGOSTO').length, bajasAntes + 1, 'y aparecer en BAJAS')
@@ -184,11 +219,9 @@ test('varias bajas seguidas borran las filas en una sola pasada por la hoja', as
     darDeBaja(fila(nombre).filaId, { motivo: 'ANULA POR FALTA DE PAGO', nota: '' }, DANIEL)
   }
 
-  // Mientras corre la ventana de agrupado sólo viajan los agregados a BAJAS: la planilla no se toca.
-  await motor.ciclarSubida()
-  assert.equal(hoja.llamadas.borrarFilas, borradosAntes, 'ningún borrado todavía')
-
-  apurarAgrupadas()
+  // 14.0: sin ventana de agrupado, las tres salen en el mismo ciclo. Que salgan en UN solo borrado
+  // sigue importando —y por eso esta prueba sigue existiendo— pero ya no lo sostiene el minuto de
+  // espera sino la tanda: las tres entradas caen juntas y `subirTanda` agrupa por pestaña.
   await motor.ciclarSubida()
   assert.equal(hoja.filasDe('AGOSTO').length, filasAntes - 3, 'las tres filas salieron de la planilla')
   assert.equal(hoja.llamadas.borrarFilas, borradosAntes + 1, 'y salieron en un solo borrado, no en tres')
@@ -348,7 +381,15 @@ test('primero se sube y recién después se baja: un cambio local nunca se pisa'
   cerrarBaseDeDatos()
 })
 
-test('si el mismo campo cambió de los dos lados, el que pierde queda anotado en el historial', async () => {
+// El choque de dos computadoras sobre la misma celda, que es LO QUE CAMBIÓ DE FONDO en la 14.0.
+//
+// Hasta la 13.x ganaba el cambio local —el que todavía no había subido— y lo que había en la base
+// quedaba pisado, anotado en un historial que en la práctica nadie mira. Con dos mostradores cargando
+// el mismo mes eso perdía trabajo ajeno de verdad. Ahora cada celda viaja con el valor que esta
+// computadora creía que tenía la base (`previo`) y la base la escribe SÓLO si sigue siendo ése: la que
+// pierde es la de acá, la entrada se cierra con el motivo a la vista y la pestaña se baja enseguida
+// para que la pantalla muestre el número que ganó.
+test('si el mismo campo cambió de los dos lados, gana la base y el de acá queda anotado', async () => {
   const { hoja, motor, db } = await escenario()
   const perez = fila(CLIENTES.perezAuto.nombre)
 
@@ -361,14 +402,56 @@ test('si el mismo campo cambió de los dos lados, el que pierde queda anotado en
   editarCelda(perez.filaId, 'cuota', '$ 22.222', DANIEL)
 
   await motor.ciclarSubida()
-  assert.equal(enLaHoja(hoja, 'AGOSTO', perez.filaId, 'CUOTA'), '$ 22.222', 'gana el cambio local, que es el más nuevo')
+  assert.equal(enLaHoja(hoja, 'AGOSTO', perez.filaId, 'CUOTA'), '$ 11.111', 'la base no se pisa: sigue lo que había')
+  assert.equal(cuantasPendientes(), 0, 'la entrada no queda reintentando: la base ya decidió')
 
-  const pisado = db
-    .prepare(`SELECT campo, valor_anterior, valor_nuevo FROM historial WHERE campo LIKE '%pisado por sincronización%' AND fila_id = ?`)
-    .get(perez.filaId) as { campo: string; valor_anterior: string; valor_nuevo: string } | undefined
-  assert.ok(pisado, 'el valor que había en la hoja tiene que quedar registrado')
-  assert.equal(pisado.valor_anterior, '$ 11.111')
-  assert.equal(pisado.valor_nuevo, '$ 22.222')
+  // Y la copia local termina mostrando lo que ganó, sin que nadie apriete nada: la subida se trae la
+  // pestaña pisada en el mismo ciclo (ver `bajarLoQuePisoLaBase` en motor.ts).
+  assert.equal(fila(CLIENTES.perezAuto.nombre).cuota, '$ 11.111', 'la pantalla queda mostrando el valor de la base')
+
+  const conflicto = db
+    .prepare(`SELECT detalle FROM eventos_sync WHERE tipo = 'conflicto' ORDER BY id DESC LIMIT 1`)
+    .get() as { detalle: string } | undefined
+  assert.ok(conflicto, 'el choque tiene que quedar anotado en la bitácora de sincronización')
+  assert.ok(conflicto.detalle.includes('$ 11.111'), `el anotado dice qué había en la base: ${conflicto.detalle}`)
+  assert.ok(conflicto.detalle.includes('$ 22.222'), `y qué no se escribió: ${conflicto.detalle}`)
+  cerrarBaseDeDatos()
+})
+
+// La otra mitad de lo mismo, mirada por dentro: qué devuelve la subida cuando la base rechaza una
+// celda. De eso salen las tres cosas que ve la persona —la pestaña que hay que bajar YA para mostrar
+// el valor que ganó, el motivo que queda en la entrada de la cola, y el aviso `datos:pisados` que
+// dispara el cartel—. El evento en sí no se puede escuchar acá (sin Electron no hay ventanas a las
+// que emitir), pero sale de la misma función que escribe el anotado en la bitácora, así que lo que se
+// afirma abajo es exactamente lo que viaja a la pantalla.
+test('una celda con el previo viejo queda pisada, marca su pestaña para bajar y deja el motivo', async () => {
+  const { hoja, db } = await escenario()
+  const perez = fila(CLIENTES.perezAuto.nombre)
+
+  const columna = hoja.encabezadosDe('AGOSTO').findIndex((e) => e.trim() === 'OBS')
+  const columnaId = hoja.columnaIdDe('AGOSTO')
+  const numeroDeFila = hoja.filasDe('AGOSTO').findIndex((f) => (f[columnaId] ?? '').trim() === perez.filaId) + 1
+  hoja.editarCelda('AGOSTO', numeroDeFila, columna, 'Lo anotó Lanús')
+  editarCelda(perez.filaId, 'observaciones', 'Lo anoté yo', DANIEL)
+
+  const contexto = await leerContexto(hoja)
+  const resultado = await subirTanda(hoja, contexto)
+  assert.equal(resultado.pisadas, 1, 'la única celda de la tanda no se escribió')
+  assert.deepEqual(resultado.pestanasPisadas, ['AGOSTO'], 'la pestaña a bajar ya, para mostrar lo que ganó')
+  assert.equal(enLaHoja(hoja, 'AGOSTO', perez.filaId, 'OBS'), 'Lo anotó Lanús', 'la base quedó intacta')
+
+  // La entrada sale de la cola —no hay nada que reintentar— pero conserva el motivo a la vista, que es
+  // lo que se lee en Administración → Sincronización cuando alguien pregunta «¿y mi cambio?».
+  assert.equal(cuantasPendientes(), 0)
+  const entrada = db
+    .prepare(`SELECT estado, ultimo_error FROM cola_sync WHERE fila_id = ? ORDER BY id DESC LIMIT 1`)
+    .get(perez.filaId) as { estado: string; ultimo_error: string | null } | undefined
+  assert.ok(entrada, 'la entrada tiene que seguir en la tabla, cerrada')
+  assert.notEqual(entrada.estado, 'pendiente')
+  assert.ok(
+    (entrada.ultimo_error ?? '').includes('base'),
+    `el motivo tiene que decir que ganó la base: ${entrada.ultimo_error}`,
+  )
   cerrarBaseDeDatos()
 })
 
@@ -431,11 +514,16 @@ test('un cambio esperando su reintento no frena la bajada de las demás filas', 
   assert.equal(fila(CLIENTES.rodriguez.nombre).cuota, '$ 77.777', 'lo de la hoja llega a la aplicación')
   assert.equal(fila(CLIENTES.gonzalez.nombre).observaciones, 'Pasa mañana', 'y la fila con el cambio sin subir no se pisa')
 
-  // Y cuando la entrada por fin sube, la fila deja de estar bloqueada.
+  // Y cuando la entrada por fin sale, la fila deja de estar bloqueada. Lo que escribe NO llega a la
+  // hoja, y es lo correcto (14.0): mientras esperaba el reintento, la hoja pasó a decir otra cosa, así
+  // que el `previo` que viaja con la celda ya no coincide y la base la rechaza. La cola queda vacía
+  // igual —una celda pisada no es algo que haya que reintentar— y la bajada que dispara la subida deja
+  // la copia local mostrando lo que ganó.
   db.prepare(`UPDATE cola_sync SET proximo_intento = NULL WHERE estado = 'pendiente'`).run()
   await motor.ciclarSubida()
   assert.equal(cuantasPendientes(), 0)
-  assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'OBS'), 'Pasa mañana')
+  assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'OBS'), 'Lo escribió otro', 'gana la base')
+  assert.equal(fila(CLIENTES.gonzalez.nombre).observaciones, 'Lo escribió otro', 'y acá se ve lo que ganó')
   cerrarBaseDeDatos()
 })
 

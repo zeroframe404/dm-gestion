@@ -1,8 +1,9 @@
 // «¿Esto que acaba de llegar es nuevo?», que es la única pregunta difícil de los sonidos de aviso.
 //
-// Las dos campanas de la barra superior vuelven a preguntar cada dos minutos y reciben la lista
-// entera, no las novedades. Sin memoria de lo anterior, sonarían cada dos minutos mientras haya algo
-// pendiente —que es exactamente la forma de que a los tres días alguien apague los parlantes—.
+// Las dos campanas de la barra superior vuelven a preguntar cada vez que el canal en vivo avisa que
+// bajó algo, y reciben la lista ENTERA, no las novedades. Sin memoria de lo anterior sonarían con cada
+// aviso mientras haya algo pendiente —que es exactamente la forma de que a los tres días alguien apague
+// los parlantes—.
 //
 // La regla es: suena cuando aparece un aviso que antes no estaba. Se comparan los identificadores y
 // no los contadores, porque un contador vuelve a cero cuando alguien abre la campana y volvería a

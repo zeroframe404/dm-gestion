@@ -16,7 +16,8 @@ if (!archivo) {
   console.error('Uso: npm run prueba:sola -- pruebas/<archivo>.prueba.ts')
   process.exit(2)
 }
-const externos = ['electron','better-sqlite3','bcryptjs','@googleapis/sheets','pdfjs-dist','pdfjs-dist/legacy/build/pdf.mjs','node:test',...builtinModules,...builtinModules.map((m)=>'node:'+m)]
+// La misma lista que vite.pruebas.config.mts, donde está explicado por qué cada uno queda afuera.
+const externos = ['electron','better-sqlite3','bcryptjs','@googleapis/sheets','pdfjs-dist','pdfjs-dist/legacy/build/pdf.mjs','node:test','ws',...builtinModules,...builtinModules.map((m)=>'node:'+m)]
 await build({
   configFile: false, publicDir: false, logLevel: 'error',
   build: { outDir, emptyOutDir: true, target: 'node22', minify: false, sourcemap: 'inline',

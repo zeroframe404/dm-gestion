@@ -3,22 +3,19 @@
 // puede estar más o menos al día que la de al lado.
 //
 // Es la mitad de bajada del mismo mecanismo que trae los cambios de la grilla: la foto que llega por
-// el canal en vivo (ver vivo/grilla.ts; hasta la 13.x, el long-poll de `puenteDeGrilla.ts`) trae
+// el canal en vivo (ver vivo/grilla.ts; hasta la 13.x lo traía un long-poll, borrado en la 14.0) trae
 // también la versión de cada métrica. Cuando una versión no coincide con la que esta computadora ya
 // tiene, se llama a esto para traer el resultado nuevo.
 //
-// Por qué una función suelta y no una clase con estado, a diferencia de PuenteDeGrilla y
-// PuenteDeMensajes: acá no hay nada que recordar entre un pedido y el siguiente —ni long-poll, ni
-// credenciales que convenga guardar una sola vez—, así que alcanza con pasarle las credenciales cada
-// vez.
+// Por qué una función suelta y no una clase con estado, a diferencia de PuenteDeMensajes: acá no hay
+// nada que recordar entre un pedido y el siguiente —ni credenciales que convenga guardar una sola
+// vez—, así que alcanza con pasarle las credenciales cada vez.
 //
-// CÓMO TRATA LOS ERRORES, Y POR QUÉ DISTINTO DE `puenteDeGrilla.ts`. El long-poll de la grilla TIRA
-// sus errores: quien lo llama necesita distinguir un 404 (servidor viejo) de una falla de red, y
-// reacciona distinto a cada una. Acá una métrica sola que no se pudo traer no tiene que frenar nada de
-// eso: se sigue con las demás métricas y con el resto de la foto igual, y esta versión se vuelve a
-// pedir sola en la próxima porque la versión conocida sigue sin coincidir. Por eso todo lo que no sea
-// un 2xx con el cuerpo esperado devuelve `null` en vez de tirar: quien llama no tiene que poner un
-// `try/catch` para algo que se resuelve solo.
+// CÓMO TRATA LOS ERRORES: devolviendo `null`, nunca tirando. Una métrica sola que no se pudo traer no
+// tiene que frenar el resto de la foto: se sigue con las demás métricas y con las pestañas igual, y
+// esta versión se vuelve a pedir sola en la próxima porque la versión conocida sigue sin coincidir.
+// Por eso todo lo que no sea un 2xx con el cuerpo esperado devuelve `null`: quien llama no tiene que
+// poner un `try/catch` para algo que se resuelve solo.
 
 /** Un pedido normal: si el servidor tarda más que esto, algo está mal. No es un long-poll. */
 const TIEMPO_MAXIMO_MS = 15_000
@@ -78,8 +75,8 @@ export async function traerMetricaDelServidor(
   try {
     json = await bruta.json()
   } catch {
-    // Igual que en puenteDeGrilla.ts: con estado 2xx, un cuerpo ilegible es la misma conexión que se
-    // cortó a la mitad, no una respuesta vacía de verdad. Tratarlo como éxito acá dejaría a esta
+    // Igual que en FuenteVps: con estado 2xx, un cuerpo ilegible es la misma conexión que se cortó a
+    // la mitad, no una respuesta vacía de verdad. Tratarlo como éxito acá dejaría a esta
     // computadora creyendo que ya sabe que la métrica no está disponible, cuando en realidad no se
     // pudo ni preguntar.
     return null

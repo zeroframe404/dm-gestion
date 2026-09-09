@@ -2,8 +2,10 @@
 // Sud, con sus dos confirmaciones, sus emojis enteros y sus archivos.
 //
 // Las dos computadoras tienen su propia base y su propia carpeta de archivos, y hablan con el mismo
-// servidor simulado. `unaVueltaDelCartero` corre una vuelta sin el bucle ni las esperas: es lo mismo
-// que hace el programa de verdad cada vez que el servidor le contesta.
+// servidor simulado. `unaVueltaDelCartero` despacha lo que está saliendo y trae lo que hay: desde la
+// 14.0 esas dos mitades están separadas en el cartero de verdad —el bucle del long-poll se fue, ahora
+// las dispara el canal en vivo cuando el servidor avisa `{t:'mensajes'}`— y esta función las junta
+// para que la prueba pueda pedirlas de a una.
 //
 // Qué se prueba acá y no en el servidor: el ida y vuelta completo. Que el mensaje salga de una base y
 // entre en la otra, que el acuse vuelva y mueva el tilde, que un mensaje escrito sin internet espere y
