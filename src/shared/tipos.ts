@@ -1012,6 +1012,24 @@ export interface EstadoSincronizacion {
   configurada: boolean
 }
 
+/**
+ * En qué anda el canal en vivo con el VPS (14.0). Lo mira el banner de arriba de todo y lo miran los
+ * botones que escriben: desde la 14.0 la regla es «ver sí, tocar no», así que sin canal la pantalla
+ * se sigue leyendo pero nada se guarda.
+ *
+ * `sin-puente` no es un error: es la computadora de desarrollo (y el banco de pruebas) sin servidor
+ * configurado. Ahí no se exige conexión, porque no hay ninguna a la que conectarse.
+ */
+export type SituacionDeConexion = 'conectado' | 'reconectando' | 'sin-conexion' | 'sin-puente'
+
+export interface EstadoDeConexion {
+  situacion: SituacionDeConexion
+  /** ISO: desde cuándo está así. Es lo que deja mostrar «sin conexión hace 3 minutos». */
+  desde: string
+  /** Reintentos seguidos que fallaron. Vuelve a cero apenas el servidor saluda. */
+  intentos: number
+}
+
 export interface EntradaDeCola {
   id: number
   creadoEn: string

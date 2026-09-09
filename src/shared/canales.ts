@@ -137,6 +137,7 @@ import type {
   EstadoActualizacion,
   EstadoDeActualizacionDeSucursal,
   EstadoSincronizacion,
+  EstadoDeConexion,
   PanelSincronizacion,
   FilaBaja,
   FilaCartera,
@@ -822,6 +823,28 @@ export interface Eventos {
    * que le importan a ella y no se refresque por una que no mira.
    */
   'metricas:actualizaron': { claves: string[] }
+  /**
+   * Cambió la situación del canal en vivo con el VPS (14.0): conectado, reconectando, sin conexión o
+   * sin puente configurado. Lo escuchan el banner de arriba de todo y los botones que escriben, que
+   * desde la 14.0 se apagan cuando no hay canal («ver sí, tocar no»).
+   */
+  'conexion:estado': EstadoDeConexion
+  /**
+   * Cambió quién está conectado o en qué está trabajando (14.0). No lleva datos —es un «volvé a
+   * preguntar»— a propósito: la foto de presencia la guarda el proceso principal y la pantalla la
+   * pide entera cuando la necesita. La fase C le agrega el canal para pedirla.
+   */
+  'presencia:cambio': null
+  /**
+   * Alguien cambió su foto o su color, acá o en otra computadora (14.0). Mismo criterio que el de
+   * arriba: la pantalla vuelve a pedir la lista de perfiles. La fase C le agrega el canal.
+   */
+  'perfiles:cambiaron': null
+  /**
+   * Se movió algo de una llamada de voz: entrante, aceptada, cortada (14.0). Por ahora no lleva
+   * datos: la fase E le pone el evento adentro, cuando exista la máquina de estados que lo entiende.
+   */
+  'llamadas:evento': null
 }
 
 export type NombreCanal = keyof Canales
