@@ -785,8 +785,14 @@ export function cambiarResultado(
 /**
  * Lo cobrado y la comisión estimada de cada compañía en el mes. Es una estimación a propósito: la
  * comisión de verdad la liquida cada compañía y llega después; esto sirve para saber qué esperar.
+ *
+ * Calculada ACÁ MISMO contra la copia SQLite de esta PC. Desde que existe el cálculo server-side (ver
+ * servicios/metricas.comisiones.ts del lado del servidor y servicios/cobranzasDesdeCache.ts acá), la
+ * pantalla ya no llama a esta función directamente: `cobranzas:comisiones` en ipc.ts usa
+ * `comisionesConCache`, que lee el payload cacheado del servidor y cae acá sólo como respaldo y como
+ * algoritmo de referencia para el cotejo. Misma nota que `tableroDeMetricasLocal` en metricas.ts.
  */
-export function comisiones(periodoPedido: string | null): ResumenComisiones {
+export function comisionesLocal(periodoPedido: string | null): ResumenComisiones {
   sincronizarCompanias()
   const periodos = periodosConPagos()
   const pedido = limpiar(periodoPedido)

@@ -514,11 +514,18 @@ function siniestrosAbiertos(sucursales: string[]): { total: number; porCompania:
 // ---------------------------------------------------------------------------
 
 /**
- * El tablero. `conNumeros` en false deja afuera todo lo que sea plata agregada de la agencia: es lo
- * que ve un empleado. Se decide en el proceso principal y no en la pantalla a propósito —el dato ni
- * siquiera viaja—, porque una pantalla que oculta un número que igual llegó no oculta nada.
+ * El tablero, calculado ACÁ MISMO contra la copia SQLite de esta PC. Desde que existe el cálculo
+ * server-side (ver servicios/metricasDesdeCache.ts), la pantalla de Métricas ya no llama a esta función
+ * directamente para lo que muestra: `metricas:tablero` en ipc.ts usa el payload cacheado del servidor
+ * cuando lo tiene, y ESTA función queda como el algoritmo de referencia con el que se coteja ese
+ * resultado (y como respaldo para cuando todavía no llegó ningún cálculo del servidor). Por eso sigue
+ * viva y con sus pruebas: mientras las dos cuentas no digan lo mismo, alguna de las dos está mal.
+ *
+ * `conNumeros` en false deja afuera todo lo que sea plata agregada de la agencia: es lo que ve un
+ * empleado. Se decide en el proceso principal y no en la pantalla a propósito —el dato ni siquiera
+ * viaja—, porque una pantalla que oculta un número que igual llegó no oculta nada.
  */
-export function tableroDeMetricas(filtros: FiltrosMetricas, conNumeros: boolean): TableroMetricas {
+export function tableroDeMetricasLocal(filtros: FiltrosMetricas, conNumeros: boolean): TableroMetricas {
   const disponibles = periodosDisponibles().map((p) => p.periodo)
   const periodo = resolverPeriodo(filtros?.periodo, disponibles)
   const disponiblesDeSucursal = catalogos().sucursales
@@ -649,9 +656,13 @@ export function resumenDeCartera(): ResumenDeCartera {
 
 /**
  * Lo mismo que el tablero pero en tabla, que es como se compara contra la planilla: se pone la
- * pantalla al lado de la hoja y los números tienen que dar.
+ * pantalla al lado de la hoja y los números tienen que dar. Misma nota que `tableroDeMetricasLocal`:
+ * `metricas:estadisticas` en ipc.ts usa el cálculo server-side cuando lo tiene, y esta función queda
+ * como algoritmo de referencia (cotejo) y respaldo — salvo `resumenDeCartera()`, que el servidor no
+ * puede calcular (depende de `polizas.activa` y de la cadena de renovaciones, que no tienen equivalente
+ * ahí) y por eso sigue siendo SIEMPRE la fuente de ese campo puntual, cache o no.
  */
-export function estadisticasDeCartera(
+export function estadisticasDeCarteraLocal(
   periodoPedido: string | null,
   sucursalesPedidas: string[],
   conNumeros: boolean,
@@ -724,7 +735,7 @@ export function estadisticasDeCartera(
 // ---------------------------------------------------------------------------
 
 /**
- * El ranking de sucursales por altas del mes en curso. Se apoya en `estadisticasDeCartera` en vez de
+ * El ranking de sucursales por altas del mes en curso. Se apoya en `estadisticasDeCarteraLocal` en vez de
  * volver a recorrer cuotas y bajas: son la misma cuenta y así los números del podio nunca se
  * despegan de los de Cartera → Estadísticas. Siempre `conNumeros = false`: la competencia es por
  * altas y bajas, no por plata, y así la ve cualquiera, tenga o no el módulo Métricas habilitado.
@@ -785,7 +796,7 @@ export function altasDelMes(periodoPedido: string | null, sucursalPedida: string
 // sincronizacion/vigia.ts). Queda acá sin tocar porque una fase más adelante borra de una vez todo este
 // cómputo local ya muerto, cuando el resto de las pantallas de Métricas también se muden.
 export function podioDelMes(): PodioMensual {
-  const estadisticas = estadisticasDeCartera(null, [], false)
+  const estadisticas = estadisticasDeCarteraLocal(null, [], false)
   const ranking = estadisticas.porSucursal
     .filter((fila) => fila.etiqueta !== '(sin sucursal)')
     .sort((a, b) => {

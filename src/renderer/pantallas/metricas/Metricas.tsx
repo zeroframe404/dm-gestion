@@ -9,7 +9,7 @@ import type { TableroMetricas } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Cargando, Tarjeta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
-import { pesos, pesosRedondos } from '../cobranzas/formato'
+import { momento, pesos, pesosRedondos } from '../cobranzas/formato'
 import { GraficoDeBarras, GraficoDeLinea, numero, Ranking, TarjetaGrande } from './graficos'
 
 export function Metricas() {
@@ -77,6 +77,20 @@ export function Metricas() {
           Las altas se cuentan comparando contra el mes anterior, y de {nombreDePeriodo(datos.periodo)} no hay mes anterior cargado:
           por eso figuran con un guion, no con un cero. En cuanto se importe el mes previo aparecen solas.
         </Alerta>
+      )}
+      {/* Calculado por el servidor (esta migración): el mismo cartel que ya tiene el Podio de Inicio desde la
+          13.2. Ausente mientras esta computadora todavía no recibió ningún cálculo del servidor para
+          este período —ahí el tablero sale del cálculo local de siempre, sin nada que fechar. */}
+      {datos.calculadoEn && (
+        <p className="-mt-1 text-xs text-slate-500">
+          Calculado por el servidor el {momento(datos.calculadoEn)}
+          {datos.recibidoEnEstaComputadora && <> · recibido acá el {momento(datos.recibidoEnEstaComputadora)}</>}.
+          {datos.frescura && datos.frescura !== 'AL_DIA' && (
+            <span className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800">
+              Sin conexión con el servidor: mostrando el último cálculo recibido.
+            </span>
+          )}
+        </p>
       )}
 
       <div className="grid shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">

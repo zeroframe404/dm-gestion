@@ -1,4 +1,5 @@
-// Formatos que comparten las pantallas de Cobranzas.
+// Formatos que comparten las pantallas de Cobranzas y, de acá en más, las que muestran un cálculo del
+// servidor con su cartel de frescura (Métricas, Estadísticas, el Podio de Inicio).
 
 /** Importe en pesos, como lo escribe la agencia: «$ 24.420,00». */
 export function pesos(valor: number): string {
@@ -12,6 +13,13 @@ export function pesosRedondos(valor: number): string {
 
 export function numero(valor: number): string {
   return valor.toLocaleString('es-AR')
+}
+
+/** Cuándo pasó algo, en el formato que usan los carteles de frescura: «9/9/2026 a las 14:32». */
+export function momento(iso: string): string {
+  const fecha = new Date(iso)
+  if (Number.isNaN(fecha.getTime())) return iso
+  return `${fecha.toLocaleDateString('es-AR')} a las ${fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`
 }
 
 /** Para comparar texto escrito a mano: sin tildes, sin puntuación, en mayúsculas. */

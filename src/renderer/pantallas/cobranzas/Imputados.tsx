@@ -20,7 +20,7 @@ import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
 import { usePermisos } from '../../contexto/Permisos'
 import { EstadoDelCobro } from './CajaDelDia'
-import { numero, pesos } from './formato'
+import { momento, numero, pesos } from './formato'
 
 const CLASES_RESULTADO: Record<ResultadoImputacion, string> = {
   '': 'border-slate-300 bg-white text-slate-600',
@@ -128,6 +128,19 @@ export function Imputados() {
         {datos.sinCobrar > 0 && <Contador etiqueta="Sin cobrar al cliente" valor={datos.sinCobrar} destacada />}
       </div>
 
+      {/* Sólo los contadores/totales de arriba salen del servidor cuando hay un cálculo disponible; la
+          lista de pagos de abajo es siempre local (ver la cabecera de servicios/cobranzasDesdeCache.ts). */}
+      {datos.calculadoEn && (
+        <p className="-mt-1 text-xs text-slate-500">
+          Los totales de arriba los calculó el servidor el {momento(datos.calculadoEn)}
+          {datos.recibidoEnEstaComputadora && <> · recibido acá el {momento(datos.recibidoEnEstaComputadora)}</>}.
+          {datos.frescura && datos.frescura !== 'AL_DIA' && (
+            <span className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800">
+              Sin conexión con el servidor: mostrando el último cálculo recibido.
+            </span>
+          )}
+        </p>
+      )}
       {datos.avisoDeSincronizacion && <Alerta tono="aviso">{datos.avisoDeSincronizacion}</Alerta>}
       {datos.sinMes > 0 && (
         <Alerta tono="aviso">

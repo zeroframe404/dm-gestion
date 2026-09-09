@@ -1836,6 +1836,14 @@ export interface CajaDelDia {
    */
   arqueo: ArqueoDeCaja | null
   hoy: string
+
+  /** Mismo campo y mismo motivo que en `TableroMetricas`, con una salvedad: sólo `totalesPorMedio`/
+   *  `total`/`sinImporte`/`imputados` pueden venir del servidor (nunca `pagos` ni `arqueo`, que siguen
+   *  siendo siempre locales — ver la cabecera de servicios/cobranzasDesdeCache.ts), y sólo para hoy y
+   *  ayer: cualquier otro día se calcula 100% acá, sin este campo. */
+  calculadoEn?: string
+  recibidoEnEstaComputadora?: string
+  frescura?: FrescuraDeMetrica
 }
 
 /**
@@ -2079,6 +2087,13 @@ export interface RendicionImputados {
    * pestaña IMPUTADOS que sea una tabla por fila, o la tiene pero sin columna RESULTADO.
    */
   avisoDeSincronizacion: string | null
+
+  /** Mismo campo y mismo motivo que en `TableroMetricas`: presente sólo cuando `contadores`/`total`/
+   *  `totalImporte`/`pendientes`/`sinCobrar` de arriba vinieron del cálculo del servidor (la lista de
+   *  `pagos` en sí sigue siendo siempre local, cache o no — ver metricasDesdeCache.ts). */
+  calculadoEn?: string
+  recibidoEnEstaComputadora?: string
+  frescura?: FrescuraDeMetrica
 }
 
 export interface FilaComision {
@@ -2097,6 +2112,11 @@ export interface ResumenComisiones {
   comision: number
   /** Compañías con cobranza en el mes y sin porcentaje cargado: su comisión no se puede estimar. */
   sinPorcentaje: string[]
+
+  /** Mismo campo y mismo motivo que en `TableroMetricas`. */
+  calculadoEn?: string
+  recibidoEnEstaComputadora?: string
+  frescura?: FrescuraDeMetrica
 }
 
 // --- Ticketeadora térmica (opcional) ---
@@ -2915,6 +2935,13 @@ export interface TableroMetricas {
   siniestrosPorCompania: PorcionMetrica[]
 
   hoy: string
+
+  /** Cuándo el SERVIDOR calculó este tablero, y cuándo esta computadora lo recibió: `undefined`
+   *  mientras el tablero salga del cálculo local de siempre (ver `tableroDeMetricasLocal` en
+   *  metricas.ts), que no tiene un "servidor" del que hablar. Mismo campo que `PodioMensual`. */
+  calculadoEn?: string
+  recibidoEnEstaComputadora?: string
+  frescura?: FrescuraDeMetrica
 }
 
 /** Una fila de la versión tabular (Cartera → Estadísticas), sea de compañía o de sucursal. */
@@ -2954,6 +2981,11 @@ export interface EstadisticasDeCartera {
   /** El estado de la cartera completa, sin filtrar por mes ni sucursal. */
   resumenCartera: ResumenDeCartera
   hoy: string
+
+  /** Mismo campo y mismo motivo que en `TableroMetricas`: `undefined` mientras salga del cálculo local. */
+  calculadoEn?: string
+  recibidoEnEstaComputadora?: string
+  frescura?: FrescuraDeMetrica
 }
 
 /** Una de las pólizas que el mes cuenta como alta, con lo justo para reconocerla en la planilla. */

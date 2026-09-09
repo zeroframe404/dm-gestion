@@ -10,7 +10,7 @@ import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { ArqueoDeCaja } from './ArqueoDeCaja'
 import { DialogoPagoManual } from './DialogoPagoManual'
-import { numero, pesos } from './formato'
+import { momento, numero, pesos } from './formato'
 import { usePuedeEditar } from '../../contexto/Permisos'
 
 /** Las que se pueden apagar con «Columnas». El cliente no: sin él el renglón no se sabe de quién es. */
@@ -153,6 +153,20 @@ export function CajaDelDia() {
           )}
         </div>
       </div>
+
+      {/* Sólo los totales de arriba pueden venir del servidor (nunca la lista de abajo ni el arqueo), y
+          sólo para hoy y ayer — ver la cabecera de servicios/cobranzasDesdeCache.ts. */}
+      {datos.calculadoEn && (
+        <p className="-mb-1 text-xs text-slate-500">
+          Los totales los calculó el servidor el {momento(datos.calculadoEn)}
+          {datos.recibidoEnEstaComputadora && <> · recibido acá el {momento(datos.recibidoEnEstaComputadora)}</>}.
+          {datos.frescura && datos.frescura !== 'AL_DIA' && (
+            <span className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800">
+              Sin conexión con el servidor: mostrando el último cálculo recibido.
+            </span>
+          )}
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Tarjeta etiqueta="Total del día" valor={pesos(datos.total)} destacada />

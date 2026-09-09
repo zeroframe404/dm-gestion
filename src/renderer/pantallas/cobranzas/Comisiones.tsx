@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import type { ResumenComisiones } from '../../../shared/tipos'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
-import { numero, pesos } from './formato'
+import { momento, numero, pesos } from './formato'
 
 export function Comisiones() {
   const [datos, setDatos] = useState<ResumenComisiones | null>(null)
@@ -54,6 +54,17 @@ export function Comisiones() {
       </div>
 
       {error && <Alerta tono="error">{error}</Alerta>}
+      {datos.calculadoEn && (
+        <p className="-mt-1 text-xs text-slate-500">
+          Calculado por el servidor el {momento(datos.calculadoEn)}
+          {datos.recibidoEnEstaComputadora && <> · recibido acá el {momento(datos.recibidoEnEstaComputadora)}</>}.
+          {datos.frescura && datos.frescura !== 'AL_DIA' && (
+            <span className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800">
+              Sin conexión con el servidor: mostrando el último cálculo recibido.
+            </span>
+          )}
+        </p>
+      )}
       {datos.sinPorcentaje.length > 0 && (
         <Alerta tono="aviso">
           Sin porcentaje de comisión cargado: {datos.sinPorcentaje.join(', ')}. Cargalo en{' '}
