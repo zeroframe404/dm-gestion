@@ -30,14 +30,17 @@
 // se enganchan solas sin que nadie las reinicie.
 import { anotarEvento } from './cola'
 import type { MotorDeSincronizacion } from './motor'
-import { obtenerMotor } from '../servicios/sincronizacion'
+import { credencialesDelPuente, obtenerMotor } from '../servicios/sincronizacion'
 import { esFallaDeRed } from '../servicios/red'
+import { emitirATodas } from '../servicios/avisos'
+import { guardarSnapshotDeMetrica, leerSnapshotDeMetrica } from '../servicios/metricasCache'
 import {
   ESPERA_DEL_VIGIA_SEGUNDOS,
   esServidorSinAviso,
   puenteDeGrilla,
   type NovedadesDeLaGrilla,
 } from './puenteDeGrilla'
+import { traerMetricaDelServidor } from './puenteDeMetricas'
 import {
   adoptarVersiones,
   elMapaEstaVacio,
@@ -172,6 +175,10 @@ async function unaVuelta(senal: AbortSignal, motor: MotorDeSincronizacion): Prom
   if (elServidorAvisa !== true) elServidorAvisa = true
   if (senal.aborted) return []
 
+  // Las métricas que el servidor ya calculó (el podio, por ahora): van aparte de las pestañas de la
+  // grilla y no tienen que esperar a que el resto de la vuelta decida qué bajar.
+  await procesarMetricas(novedades.metricasVersiones, senal)
+
   // La hoja se reemplazó entera del otro lado (restauraron un respaldo, o corrieron la migración
   // inicial). Las versiones de antes no dicen nada: se olvida todo y se baja de nuevo.
   const cambioLaGeneracion = !eraLaPrimera && generacionConocida() !== novedades.generacion
@@ -195,6 +202,41 @@ async function unaVuelta(senal: AbortSignal, motor: MotorDeSincronizacion): Prom
   }
 
   return bajarLosPendientes(novedades, senal, motor)
+}
+
+/**
+ * Compara la versión de cada métrica contra la que esta computadora ya tiene guardada y trae la que
+ * cambió. Una que no se pudo traer no frena a las demás ni a la vuelta: la versión conocida sigue sin
+ * coincidir, así que se vuelve a intentar sola en la próxima —el mismo espíritu que `pendientesDeBajar`
+ * con las pestañas de la grilla, sólo que acá no hace falta ni anotar el pendiente: la comparación de
+ * versiones ya hace ese papel.
+ */
+async function procesarMetricas(metricasVersiones: Record<string, number>, senal: AbortSignal): Promise<void> {
+  const claves = Object.keys(metricasVersiones)
+  if (claves.length === 0) return
+  const credenciales = credencialesDelPuente()
+  if (!credenciales) return
+
+  for (const clave of claves) {
+    if (senal.aborted) return
+    const version = metricasVersiones[clave]
+    const conocida = leerSnapshotDeMetrica(clave)?.servidorVersion ?? -1
+    if (version === conocida) continue
+    try {
+      const resultado = await traerMetricaDelServidor(clave, credenciales, senal)
+      if (!resultado) {
+        console.error(`[vigía] No se pudo traer la métrica «${clave}»: se reintenta en la próxima vuelta.`)
+        continue
+      }
+      // El servidor todavía no calculó esta métrica ninguna vez: nada que guardar.
+      if (!resultado.disponible) continue
+      guardarSnapshotDeMetrica(clave, { version: resultado.version, calculadoEn: resultado.calculadoEn, payload: resultado.payload })
+      emitirATodas('metricas:actualizaron', { claves: [clave] })
+    } catch (error) {
+      // Nunca deja la vuelta a mitad de camino por una métrica sola: se anota y se sigue con las demás.
+      console.error(`[vigía] Falló al procesar la métrica «${clave}»:`, error instanceof Error ? error.message : error)
+    }
+  }
 }
 
 async function bajarLosPendientes(

@@ -26,6 +26,13 @@ export interface NovedadesDeLaGrilla {
   generacion: number
   versiones: Record<string, number>
   cambiaron: string[]
+  /**
+   * Las métricas que el servidor sabe calcular, con su versión actual: `{"podio": 3}`. Un servidor
+   * anterior a esto no manda la clave y queda vacío, que es lo mismo que decir «nada para traer»: el
+   * vigía (ver vigia.ts) compara cada versión contra la que ya tiene guardada, y ausente o sin cambios
+   * es lo mismo, nada nuevo para esa métrica.
+   */
+  metricasVersiones: Record<string, number>
 }
 
 /**
@@ -56,23 +63,30 @@ function mensajeDelServidor(json: unknown, siNoDice: string): string {
   return siNoDice
 }
 
+/** Un mapa `{clave: versión}`, quedándose sólo con las entradas que de verdad son un número. */
+function mapaDeVersiones(valor: unknown): Record<string, number> {
+  const mapa: Record<string, number> = {}
+  if (valor && typeof valor === 'object' && !Array.isArray(valor)) {
+    for (const [clave, version] of Object.entries(valor as Record<string, unknown>)) {
+      if (typeof version === 'number' && Number.isFinite(version)) mapa[clave] = version
+    }
+  }
+  return mapa
+}
+
 /** Lo que llegó, quedándose sólo con lo que tiene la forma esperada. */
 function novedadesDeLaRespuesta(json: unknown): NovedadesDeLaGrilla {
   const cuerpo = (json ?? {}) as {
     generacion?: unknown
     versiones?: unknown
     cambiaron?: unknown
-  }
-  const versiones: Record<string, number> = {}
-  if (cuerpo.versiones && typeof cuerpo.versiones === 'object' && !Array.isArray(cuerpo.versiones)) {
-    for (const [titulo, version] of Object.entries(cuerpo.versiones as Record<string, unknown>)) {
-      if (typeof version === 'number' && Number.isFinite(version)) versiones[titulo] = version
-    }
+    metricasVersiones?: unknown
   }
   return {
     generacion: typeof cuerpo.generacion === 'number' ? cuerpo.generacion : 1,
-    versiones,
+    versiones: mapaDeVersiones(cuerpo.versiones),
     cambiaron: Array.isArray(cuerpo.cambiaron) ? cuerpo.cambiaron.filter((t): t is string => typeof t === 'string') : [],
+    metricasVersiones: mapaDeVersiones(cuerpo.metricasVersiones),
   }
 }
 

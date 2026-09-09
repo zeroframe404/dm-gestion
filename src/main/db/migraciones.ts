@@ -1738,6 +1738,34 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE pagos ADD COLUMN revisado_por TEXT;
     `,
   },
+  {
+    version: 28,
+    descripcion: 'Caché local de las métricas que ahora calcula el servidor (el podio de sucursales, primera)',
+    sql: `
+      -- Hasta acá el podio de altas de Inicio lo calculaba cada computadora sola, con su propia base
+      -- SQLite: si una sucursal había bajado la planilla hace un rato y otra la acababa de bajar, las
+      -- dos mostraban un número distinto en el mismo instante, y no había forma de saber cuál estaba
+      -- «bien» sin mirar la hora de la última bajada de cada una. La cuenta se mudó al servidor —una
+      -- sola vez, para toda la agencia— y esta tabla es lo que esta computadora guarda de lo último que
+      -- el servidor le mandó: por eso NO es la respuesta de una pantalla (eso sigue viajando por IPC
+      -- como siempre), es el resultado ya calculado, con su versión y su hora, esperando a que algo lo
+      -- pida.
+      --
+      -- Cómo llega hasta acá: el aviso en vivo (ver sincronizacion/vigia.ts) ya le pregunta al servidor
+      -- «¿cambió algo en la hoja?» con un pedido que se queda abierto; ahora esa misma respuesta trae
+      -- además la versión de cada métrica que el servidor sabe calcular. Cuando la versión de una
+      -- métrica no coincide con la que hay acá, el vigía la trae (GET /api/dmg/metricas/:clave) y la
+      -- guarda en esta tabla. La columna clave es el nombre de la métrica ('podio', por ahora, y
+      -- quizás otras el día de mañana), así que una fila por métrica alcanza.
+      CREATE TABLE metricas_cache (
+        clave TEXT PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        servidor_version INTEGER NOT NULL,
+        servidor_calculado_en TEXT NOT NULL,
+        recibido_en TEXT NOT NULL
+      );
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

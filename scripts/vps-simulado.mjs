@@ -45,6 +45,12 @@ export class VpsSimulado {
      */
     this.versiones = new Map()
     this.generacion = 1
+    /**
+     * Las métricas que el servidor ya calculó (el podio de sucursales, 13.2): clave → {version,
+     * calculadoEn, payload}. Van en el mismo aviso de `/novedades` que las pestañas, con su propia
+     * versión, y se leen aparte por `GET /api/dmg/metricas/:clave` — ver `cargarMetricaDirecto`.
+     */
+    this.metricas = new Map()
     /** Las pestañas que se bajaron enteras (sin `hastaFila`), en orden. */
     this.pestanasLeidas = []
     this.proximoSheetId = 1
@@ -59,7 +65,7 @@ export class VpsSimulado {
     this.intercambios = []
     this.llamadas = {
       estructura: 0, leer: 0, celdas: 0, agregar: 0, borrar: 0, pestanas: 0, tramos: 0, estado: 0,
-      novedades: 0,
+      novedades: 0, metricasLeidas: 0,
       ajusteLeido: 0, ajusteConsultado: 0, ajusteGuardado: 0,
       usuariosLeidos: 0, usuariosGuardados: 0,
       respaldosListados: 0, respaldosCreados: 0, respaldosRestaurados: 0,
@@ -162,6 +168,26 @@ export class VpsSimulado {
   mapaDeVersiones() {
     const mapa = {}
     for (const pestana of this.pestanas) mapa[pestana.titulo] = this.versiones.get(pestana.titulo) ?? 0
+    return mapa
+  }
+
+  /**
+   * «El servidor terminó de recalcular una métrica» (13.2): sube su versión y guarda el resultado
+   * nuevo, tal como lo haría un cierre de mes real. Es lo que usan las pruebas en vez de esperar a que
+   * el simulador sepa calcular el podio de verdad —no hace falta: lo que se prueba acá es que el
+   * cliente compara versiones y trae lo que cambió, no la cuenta en sí.
+   */
+  cargarMetricaDirecto(clave, payload) {
+    const anterior = this.metricas.get(clave)
+    const version = (anterior?.version ?? 0) + 1
+    this.metricas.set(clave, { version, calculadoEn: new Date().toISOString(), payload })
+    return version
+  }
+
+  /** El mapa `{clave: version}` de las métricas que el servidor ya calculó alguna vez. */
+  mapaDeVersionesDeMetricas() {
+    const mapa = {}
+    for (const [clave, metrica] of this.metricas) mapa[clave] = metrica.version
     return mapa
   }
 
@@ -719,7 +745,16 @@ export class VpsSimulado {
       const conocidas = json.versiones && typeof json.versiones === 'object' && !Array.isArray(json.versiones) ? json.versiones : {}
       const versiones = this.mapaDeVersiones()
       const cambiaron = Object.keys(versiones).filter((titulo) => conocidas[titulo] !== versiones[titulo])
-      return responder(200, { generacion: this.generacion, versiones, cambiaron })
+      // metricasVersiones (13.2): igual que `versiones`, siempre el mapa entero de lo que el servidor
+      // sabe; el cliente es quien compara contra lo que ya tiene guardado (ver sincronizacion/vigia.ts).
+      return responder(200, { generacion: this.generacion, versiones, cambiaron, metricasVersiones: this.mapaDeVersionesDeMetricas() })
+    }
+    const metrica = /^\/api\/dmg\/metricas\/([^/]+)$/.exec(ruta)
+    if (metodo === 'GET' && metrica) {
+      this.llamadas.metricasLeidas++
+      const guardada = this.metricas.get(decodeURIComponent(metrica[1]))
+      if (!guardada) return responder(200, { disponible: false })
+      return responder(200, { disponible: true, version: guardada.version, calculadoEn: guardada.calculadoEn, payload: guardada.payload })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/celdas') {
       this.llamadas.celdas++

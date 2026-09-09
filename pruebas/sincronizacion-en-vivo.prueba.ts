@@ -18,6 +18,7 @@ import { usarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
 import { ejecutarImportacion } from '../src/main/importacion/importador'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 import { planillaDelMes } from '../src/main/servicios/cartera'
+import { leerSnapshotDeMetrica } from '../src/main/servicios/metricasCache'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { estadoDeVersiones } from '../src/main/sincronizacion/versiones'
 import { esServidorSinAviso } from '../src/main/sincronizacion/puenteDeGrilla'
@@ -236,6 +237,51 @@ test('aviso en vivo: lo que no se pudo bajar NO se da por visto', async () => {
     pc.motor.encender()
     assert.deepEqual(await unaVueltaDelVigia(pc.motor), ['AGOSTO 2026'], 'lo reintenta solo')
     assert.equal(cuotaDe('PEREZ'), '21000')
+  } finally {
+    cerrar(pc)
+    await simulador.cerrar()
+  }
+})
+
+// El podio de sucursales (13.2) ya no lo calcula esta computadora: lo calcula el servidor una sola vez
+// y lo manda por el mismo aviso en vivo que trae los cambios de la grilla, con su propia versión aparte
+// de la de las pestañas. Lo que hay que probar acá no es la cuenta del podio en sí —eso lo sigue
+// probando metricas.prueba.ts contra `podioDelMes`, todavía— sino el mecanismo: que una versión nueva
+// se trae y se guarda, y que sin versión nueva no se vuelve a pedir.
+test('aviso en vivo: cuando el servidor recalcula una métrica, esta computadora la trae y la guarda', async () => {
+  const simulador = new VpsSimulado({ pestanas: hojaDeLaAgencia() })
+  await simulador.escuchar()
+  const pc = await unaComputadora(simulador)
+
+  try {
+    en(pc.db)
+    await ponerseAlDia(pc)
+    assert.equal(leerSnapshotDeMetrica('podio'), null, 'todavía no llegó ningún podio')
+
+    // 1. El servidor calcula el podio por primera vez: la vuelta lo trae y lo guarda.
+    simulador.cargarMetricaDirecto('podio', { ranking: [{ etiqueta: 'Dock Sud', altas: 3 }] })
+    await unaVueltaDelVigia(pc.motor)
+    const primero = leerSnapshotDeMetrica('podio')
+    assert.ok(primero, 'se guardó el snapshot')
+    assert.equal(primero?.servidorVersion, 1)
+    assert.deepEqual(primero?.payload, { ranking: [{ etiqueta: 'Dock Sud', altas: 3 }] })
+    assert.ok(!Number.isNaN(new Date(primero!.servidorCalculadoEn).getTime()), 'servidorCalculadoEn es un instante ISO')
+    assert.ok(!Number.isNaN(new Date(primero!.recibidoEn).getTime()), 'recibidoEn es un instante ISO')
+
+    // 2. Sin que la versión cambie, la vuelta siguiente no vuelve a pedirla: la comparación de
+    //    versiones es lo que evita pedir de nuevo algo que no cambió.
+    const leidasAntes = simulador.llamadas.metricasLeidas
+    await unaVueltaDelVigia(pc.motor)
+    assert.equal(simulador.llamadas.metricasLeidas, leidasAntes, 'la versión no cambió: no se vuelve a pedir')
+    assert.equal(leerSnapshotDeMetrica('podio')?.servidorVersion, 1, 'y lo guardado sigue siendo lo mismo')
+
+    // 3. El servidor la recalcula (otra sucursal cargó una alta, dijéramos): la versión sube y la
+    //    próxima vuelta trae el resultado nuevo.
+    simulador.cargarMetricaDirecto('podio', { ranking: [{ etiqueta: 'Dock Sud', altas: 4 }] })
+    await unaVueltaDelVigia(pc.motor)
+    const segundo = leerSnapshotDeMetrica('podio')
+    assert.equal(segundo?.servidorVersion, 2)
+    assert.deepEqual(segundo?.payload, { ranking: [{ etiqueta: 'Dock Sud', altas: 4 }] })
   } finally {
     cerrar(pc)
     await simulador.cerrar()

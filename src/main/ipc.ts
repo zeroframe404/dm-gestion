@@ -5,7 +5,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type { ArgumentosDe, NombreCanal, RespuestaDe } from '../shared/canales'
 import { AREA_ELIMINABLE, esTipoEliminable, motivoDeNoPoderEliminar, rolPuedeEliminar } from '../shared/eliminacion'
 import { veLosNumerosDeLaAgencia } from '../shared/permisos'
-import type { InfoApp, Resultado, SesionUsuario } from '../shared/tipos'
+import type { FrescuraDeMetrica, InfoApp, PodioMensual, Resultado, SesionUsuario } from '../shared/tipos'
 import { carpetaDatos, rutaBaseDeDatos, rutaConfig } from './rutas'
 import { cambiarClave, ingresar, salir } from './servicios/auth'
 import { comprobarAcceso, conectarEmisor, estadoDeAcceso, estadoDeUsuarios, subirLocales } from './servicios/baseDeUsuarios'
@@ -48,7 +48,8 @@ import {
 } from './servicios/cobranzas'
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
-import { altasDelMes, estadisticasDeCartera, podioDelMes, tableroDeMetricas } from './servicios/metricas'
+import { altasDelMes, estadisticasDeCartera, tableroDeMetricas } from './servicios/metricas'
+import { leerSnapshotDeMetrica } from './servicios/metricasCache'
 import {
   areasDelReporte,
   catalogoDeExcel,
@@ -1300,9 +1301,23 @@ export function registrarIpc(): void {
   // El podio: sólo pide que haya alguien loggeado, sin permiso de área. Es la competencia entre
   // sucursales por altas, no un número de la agencia, y el pedido del cliente fue justamente que la
   // vea cualquiera —lo tenga habilitado en Métricas o no—, para que el primero quiera seguir primero.
+  //
+  // Lo calcula el servidor (13.2), una sola vez para toda la agencia: esta computadora sólo relee lo
+  // último que le llegó por el aviso en vivo (ver sincronizacion/vigia.ts) y le agrega la frescura, que
+  // sale del mismo indicador de conexión que ya usa la barra superior (`motor.estado().situacion`), no
+  // de uno nuevo. `null` es «todavía no llegó ningún podio a esta computadora».
   manejar('metricas:podio', () => {
     exigirSesion()
-    return exito(podioDelMes())
+    const snap = leerSnapshotDeMetrica('podio')
+    if (!snap) return exito(null)
+    const frescura: FrescuraDeMetrica = estadoDeSincronizacion().situacion === 'sin-conexion' ? 'DESCONECTADA' : 'AL_DIA'
+    const payload = snap.payload as Omit<PodioMensual, 'calculadoEn' | 'recibidoEnEstaComputadora' | 'frescura'>
+    return exito({
+      ...payload,
+      calculadoEn: snap.servidorCalculadoEn,
+      recibidoEnEstaComputadora: snap.recibidoEn,
+      frescura,
+    })
   })
   // El detalle del podio —qué pólizas son esas altas— pide Cartera, que es de donde sale el dato. El
   // podio se ve sin permiso porque es un número de una carrera; una lista con el nombre de cada cliente

@@ -596,6 +596,16 @@ Ahora los cambios viajan **en el momento**, y son dos piezas:
   o tiene un diálogo abierto, **el refresco espera** hasta que lo cierre: no se le pisa lo que está
   escribiendo.
 
+- **Las métricas que calcula el servidor** (13.2) viajan por el mismo pedido: la respuesta de
+  `/novedades` trae además `metricasVersiones`, la versión de cada métrica que el servidor ya sabe
+  calcular (el podio de sucursales de Inicio, por ahora). Cuando una versión no coincide con la que
+  esta computadora ya tiene guardada, el vigía la trae aparte (`GET /api/dmg/metricas/:clave`) y la
+  deja en la tabla local `metricas_cache`; la pantalla que la muestre se entera por el evento
+  `metricas:actualizaron` y vuelve a pedirla por su canal de siempre. Es la manera de sacarle a cada
+  computadora una cuenta que antes hacía sola con su propia base —y que por eso podía dar un número
+  distinto en cada sucursal en el mismo instante— sin inventar un segundo mecanismo de aviso: el
+  servidor la calcula una sola vez, para toda la agencia, y la empuja por el mismo long-poll.
+
 Qué pasa si algo falla: el reloj de los cinco minutos sigue encendido como red de seguridad y casi
 siempre no encuentra nada. Contra un servidor anterior a la 13.1 el vigía se apaga solo tras el primer
 404, vuelve a encenderse el carril rápido de las tareas, y se reintenta cada diez minutos: cuando el
@@ -1303,11 +1313,14 @@ Tres definiciones, que son las que hacen que los números coincidan con la plani
   el mismo auto, no. Una póliza sin patente de verdad («0KM», «SIN PATENTE») no tiene riesgo que
   reconocer: su renovación con número nuevo sigue dependiendo de la cadena, en la máquina que renovó.
 
-  Y el podio dice **de cuándo son sus números**: a qué hora se calcularon y a qué hora esa computadora
-  bajó por última vez la hoja (`calculadoEn` y `datosBajadosEn` en `PodioMensual`; la marca
-  `ultima_bajada` la escribe el motor al terminar cada bajada). Si dos sucursales ven podios distintos,
-  la respuesta está ahí: la que bajó más tarde tiene lo que la otra todavía no vio. Con el aviso en
-  vivo (13.0), el podio se vuelve a calcular solo cuando bajan datos de la planilla del mes o de BAJAS.
+  Y el podio dice **de cuándo son sus números**. Hasta la 13.1 cada computadora calculaba el podio con
+  su propia base y podía dar un número distinto al de otra sucursal en el mismo instante; desde la 13.2
+  la cuenta la hace el **servidor**, una sola vez para toda la agencia (`servicios/metricas.ts` sigue
+  teniendo `podioDelMes()`, pero quedó superada: el handler `metricas:podio` ya no la llama). `calculadoEn`
+  en `PodioMensual` es cuándo el servidor la calculó y `recibidoEnEstaComputadora` es cuándo le llegó a
+  ESTA computadora, por el mismo aviso en vivo que trae los cambios de la grilla (ver «Sincronización en
+  vivo», más abajo). Si una computadora se queda sin conexión con el servidor, `frescura` pasa a
+  `'DESCONECTADA'` y la pantalla lo dice en vez de mostrar el número viejo como si fuera de ahora.
 - **Bajas** de un mes = las filas de la pestaña de BAJAS de ese mes, con su MOTIVO.
 
 Los gráficos están dibujados a mano en SVG (`pantallas/metricas/graficos.tsx`): son cuatro formas
