@@ -218,6 +218,79 @@ test('renovar dejando la anterior ACTIVA sí suma un alta: son dos pólizas viva
 })
 
 // ---------------------------------------------------------------------------
+// La renovación hecha en OTRA computadora (13.0.2, issue #79)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lo que ve la computadora que NO apretó «Renovar»: la fila de AGOSTO le llega por la hoja con lo que
+ * cambió (el número, la compañía, la patente…) y sin ninguna cadena de renovaciones. Se arma la hoja
+ * con la fila de González de AGOSTO ya cambiada y se importa desde cero, que es exactamente eso.
+ */
+async function baseConGonzalezCambiadaEnAgosto(cambios: Record<string, string>) {
+  const pestanas = construirHojaDePrueba()
+  const agosto = pestanas.find((p) => p.titulo === 'AGOSTO')
+  if (!agosto) throw new Error('La hoja de prueba no tiene AGOSTO')
+  const encabezados = agosto.valores[0]!
+  const fila = agosto.valores.find((valores) => valores[encabezados.indexOf('APELLIDO Y NOMBRE')] === CLIENTES.gonzalez.nombre)
+  if (!fila) throw new Error('González no está en AGOSTO')
+  for (const [columna, valor] of Object.entries(cambios)) {
+    const indice = encabezados.indexOf(columna)
+    if (indice < 0) throw new Error(`AGOSTO no tiene la columna ${columna}`)
+    fila[indice] = valor
+  }
+  const hoja = new HojaSimulada(pestanas)
+  const db = baseDePrueba()
+  await importar(db, hoja)
+  usarBaseDeDatos(db)
+  return db
+}
+
+test('la renovación con número nuevo hecha en OTRA computadora tampoco es un alta: se reconoce por lo escrito', async () => {
+  // Sin cadena que seguir, la fila de agosto de González trae otro número y la misma patente que la de
+  // julio. Antes esta máquina la contaba como alta y el podio de Dock Sud no coincidía con el de la
+  // computadora que renovó.
+  const db = await baseConGonzalezCambiadaEnAgosto({ 'NRO DE POLIZA': `${CLIENTES.gonzalez.poliza}-R` })
+  const sinCadena = db.prepare('SELECT COUNT(*) AS n FROM polizas WHERE poliza_anterior_id IS NOT NULL').get() as { n: number }
+  assert.equal(sinCadena.n, 0, 'la prueba vale porque acá no hay ninguna cadena de renovaciones')
+
+  assert.equal(altasEnElPodio('Dock Sud'), 1, 'la única alta de Dock Sud sigue siendo Suárez')
+  assert.equal(estadisticasDeCartera('2026-08', [], true).totales.altas, 1, 'y Estadísticas cuenta lo mismo')
+  const detalle = altasDelMes('2026-08', 'Dock Sud')
+  assert.deepEqual(
+    detalle.filas.map((f) => f.cliente),
+    [CLIENTES.suarez.nombre],
+    'González no está en la lista: es la renovación, no un alta',
+  )
+  db.close()
+})
+
+test('cambiar de vehículo SÍ es un alta; cambiar de compañía con el mismo auto, no', async () => {
+  // Otro auto en la misma compañía: es otro riesgo, la póliza del auto viejo se fue y entró una nueva.
+  const otroAuto = await baseConGonzalezCambiadaEnAgosto({ DOMINIO: 'AG333NN', 'NRO DE POLIZA': '3030303' })
+  assert.equal(altasEnElPodio('Dock Sud'), 2, 'Suárez y el auto nuevo de González')
+  otroAuto.close()
+
+  // Otra compañía con el mismo auto: la misma patente sigue asegurada, la cartera no creció. Es además
+  // lo que ve una computadora instalada de cero, que engancha julio por la patente: las dos tienen que
+  // contar lo mismo.
+  const otraCompania = await baseConGonzalezCambiadaEnAgosto({ COMPAÑIA: 'ZURICH', 'NRO DE POLIZA': '2020202' })
+  assert.equal(altasEnElPodio('Dock Sud'), 1, 'sólo Suárez: González cambió de compañía, no entró')
+  otraCompania.close()
+})
+
+test('el podio dice de cuándo son sus números', async () => {
+  const { db } = await baseImportada()
+  const podio = podioDelMes()
+  assert.equal(podio.periodo, '2026-08')
+  assert.equal(podio.periodoAnterior, '2026-07', 'contra qué mes se compararon las altas')
+  assert.ok(!Number.isNaN(new Date(podio.calculadoEn).getTime()), 'calculadoEn es un instante ISO')
+  assert.ok(Date.now() - new Date(podio.calculadoEn).getTime() < 60_000, 'y es de recién')
+  // Una base recién importada, sin sincronización: nunca bajó nada del servidor, y lo dice.
+  assert.equal(podio.datosBajadosEn, null)
+  db.close()
+})
+
+// ---------------------------------------------------------------------------
 // El detalle del podio: qué pólizas son esas altas
 // ---------------------------------------------------------------------------
 
