@@ -4,6 +4,7 @@
 // cada usuario vea sus pendientes al entrar, y eso es lo que hace que alguien abra la aplicación a la
 // mañana en vez de mirar un papelito.
 import { useEffect, useState } from 'react'
+import { useRefrescoEnVivo } from '../contexto/DatosEnVivo'
 import { NOMBRE_ROL, type DetalleDeAltas, type FilaEstadistica, type FilaTarea, type PodioMensual } from '../../shared/tipos'
 import { AvisoConexionGoogle } from '../componentes/AvisoConexionGoogle'
 import { DialogoReportarError } from '../componentes/DialogoReportarError'
@@ -211,6 +212,7 @@ function PodioDeSucursales() {
   const { puedeVer } = usePermisos()
   const seVeElDetalle = puedeVer('cartera')
 
+  const [refrescos, setRefrescos] = useState(0)
   useEffect(() => {
     let vigente = true
     const traer = async () => {
@@ -221,7 +223,16 @@ function PodioDeSucursales() {
     return () => {
       vigente = false
     }
-  }, [])
+  }, [refrescos])
+
+  // El podio es una competencia entre sucursales: es justamente el número que tiene que moverse solo
+  // cuando la otra sucursal da un alta. Con el cuadro de detalle abierto espera, para no cambiarle los
+  // números a alguien que los está leyendo.
+  useRefrescoEnVivo({
+    tipos: ['MENSUAL', 'BAJAS'],
+    recargar: () => setRefrescos((vuelta) => vuelta + 1),
+    postergar: () => mirando !== null,
+  })
 
   if (!podio || !podio.hayMesAnterior || podio.ranking.length === 0) return null
 

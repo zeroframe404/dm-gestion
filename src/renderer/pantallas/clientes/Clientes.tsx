@@ -5,6 +5,7 @@
 // perdiera el filtro y la posición de la tabla tendría que buscar de nuevo cada vez. Son 2.100 filas
 // virtualizadas, así que dejarlas montadas no cuesta nada.
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
 import type { FilaCliente, FiltroEstadoCliente, FiltrosClientes, ListadoClientes, ResumenDeClientes } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
@@ -143,9 +144,10 @@ function ListadoDeClientes({
   // siguió): sólo se acepta la del último pedido.
   const pedido = useRef(0)
 
-  const cargar = useCallback(async (aplicar: FiltrosClientes) => {
+  /** `enSilencio` es la recarga del aviso en vivo: cambia los datos sin poner la pantalla en blanco. */
+  const cargar = useCallback(async (aplicar: FiltrosClientes, opciones: { enSilencio?: boolean } = {}) => {
     const mio = ++pedido.current
-    setCargando(true)
+    if (!opciones.enSilencio) setCargando(true)
     const resultado = await window.dm.clientes.listar(aplicar)
     if (mio !== pedido.current) return
     if (resultado.ok) {
@@ -154,7 +156,7 @@ function ListadoDeClientes({
     } else {
       setError(resultado.error)
     }
-    setCargando(false)
+    if (!opciones.enSilencio) setCargando(false)
   }, [])
 
   useEffect(() => {
@@ -162,6 +164,16 @@ function ListadoDeClientes({
     setAviso(null)
     void cargar(filtros)
   }, [cargar, filtros, relecturas])
+
+  // Un cliente dado de alta en otra sucursal aparece en el listado solo. Espera mientras el listado
+  // está escondido detrás de una ficha —no hay apuro por recargar lo que nadie está mirando, y al
+  // volver el efecto corre solo— y mientras hay un diálogo abierto, que puede tener media carga sin
+  // guardar adentro.
+  useRefrescoEnVivo({
+    tipos: ['MENSUAL', 'BAJAS'],
+    recargar: () => cargar(filtros, { enSilencio: true }),
+    postergar: () => oculto || dialogoAbierto || deudoresAbierto,
+  })
 
   const hayFiltros = Boolean(filtros.busqueda || filtros.sucursales.length || filtros.companias.length || filtros.estado)
 

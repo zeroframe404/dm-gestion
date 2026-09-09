@@ -226,6 +226,7 @@ const api: ApiDm = {
     reintentar: () => invocar('sincronizacion:reintentar'),
     respaldarAhora: () => invocar('sincronizacion:respaldarAhora'),
     alCambiarEstado: (escuchar) => suscribir('sincronizacion:estado', escuchar),
+    alCambiarLosDatos: (escuchar) => suscribir('datos:cambiaron', escuchar),
   },
   respaldos: {
     listar: () => invocar('respaldos:listar'),

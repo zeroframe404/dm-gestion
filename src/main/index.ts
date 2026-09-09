@@ -20,7 +20,8 @@ import { credencialesVps } from './servicios/config'
 import { hayImportacionEnCurso, marcarImportacionesInterrumpidas } from './servicios/importacion'
 import { alSubirUnAdjunto } from './servicios/adjuntos'
 import { reportarVersionPropia } from './servicios/estadoDeActualizaciones'
-import { detenerSincronizacion } from './servicios/sincronizacion'
+import { detenerSincronizacion, usarAvisoEnVivo } from './servicios/sincronizacion'
+import { arrancarVigia, elVigiaEstaVivo, pararVigia } from './sincronizacion/vigia'
 import { alCambiarLaSesion } from './servicios/sesion'
 import { detenerActualizaciones, iniciarActualizaciones } from './servicios/updater'
 import { AlmacenDeCredencial } from './usuarios/credencial'
@@ -243,6 +244,21 @@ function prepararBaseDeUsuarios(): void {
  * termina de subir el último, hay que despertar al cartero para que el mensaje salga ahora y no en
  * la vuelta siguiente).
  */
+/**
+ * Engancha el aviso en vivo de la sincronización a la sesión: el vigía tiene un pedido abierto contra
+ * el servidor mientras alguien está usando el programa, y para cuando cierra sesión.
+ *
+ * Le pasa además al motor cómo preguntar si el vigía está vivo. Va acá y no adentro de la
+ * sincronización para no dejar un círculo entre los dos módulos: el vigía ya necesita el motor.
+ */
+function engancharElAvisoEnVivo(): void {
+  usarAvisoEnVivo(elVigiaEstaVivo)
+  alCambiarLaSesion((quien) => {
+    if (quien) arrancarVigia()
+    else pararVigia()
+  })
+}
+
 function engancharLaMensajeria(): void {
   alCambiarLaSesion((quien) => {
     if (quien) {
@@ -279,6 +295,7 @@ function arrancar(): void {
   if (!paso('la preparación de la base de usuarios', prepararBaseDeUsuarios)) return
   if (!paso('el registro de los canales internos', registrarIpc)) return
   if (!paso('la mensajería interna', engancharLaMensajeria)) return
+  if (!paso('el aviso en vivo de la sincronización', engancharElAvisoEnVivo)) return
   if (!paso('la creación de la ventana', crearVentana)) return
   listoParaVentana = true
 
@@ -335,9 +352,10 @@ if (!app.requestSingleInstanceLock()) {
     // el cerrojo de instancia única y no deja abrir de nuevo.
     for (const [nombre, cerrar] of [
       ['las actualizaciones', detenerActualizaciones],
-      // El cartero puede estar esperando hasta veinticinco segundos en el long-poll: sin este corte,
-      // cerrar el programa esperaría a que el pedido termine solo.
+      // El cartero y el vigía pueden estar esperando hasta veinticinco segundos en su long-poll: sin
+      // estos cortes, cerrar el programa esperaría a que los pedidos terminen solos.
       ['la mensajería', pararCartero],
+      ['el aviso en vivo', pararVigia],
       ['la sincronización', detenerSincronizacion],
       ['la base de datos', cerrarBaseDeDatos],
     ] as const) {

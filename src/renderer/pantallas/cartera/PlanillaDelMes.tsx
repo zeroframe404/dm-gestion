@@ -1,6 +1,7 @@
 // La planilla del mes: la pantalla donde se trabaja todos los días. Es la hoja de Excel de siempre,
 // con el semáforo calculado solo y las tres acciones de un clic (avisar, registrar pago, dar de baja).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
 import { diasEntre } from '../../../shared/polizas'
 import {
   calcularAlerta,
@@ -181,18 +182,42 @@ export function PlanillaDelMes() {
   const [rechazoDe, setRechazoDe] = useState<FilaCartera | null>(null)
   const [cerrando, setCerrando] = useState(false)
 
-  const cargar = useCallback(async (periodo: string | null) => {
-    setCargando(true)
-    setError(null)
+  /**
+   * `enSilencio` es la recarga que dispara el aviso en vivo cuando otra sucursal tocó este mes: no
+   * pone la pantalla en blanco ni borra el error a la vista, sólo cambia las filas. Sin eso, la
+   * planilla entera parpadearía sola cada vez que alguien cobra una cuota en otro mostrador.
+   */
+  const cargar = useCallback(async (periodo: string | null, opciones: { enSilencio?: boolean } = {}) => {
+    if (!opciones.enSilencio) {
+      setCargando(true)
+      setError(null)
+    }
     const resultado = await window.dm.cartera.planilla(periodo)
     if (resultado.ok) setDatos(resultado.datos)
-    else setError(resultado.error)
-    setCargando(false)
+    else if (!opciones.enSilencio) setError(resultado.error)
+    if (!opciones.enSilencio) setCargando(false)
   }, [])
 
   useEffect(() => {
     void cargar(null)
   }, [cargar])
+
+  /**
+   * Lo que cobró, dio de baja o cargó la otra sucursal aparece acá solo. Es la pantalla donde más se
+   * nota: dos mostradores trabajan el mismo mes al mismo tiempo.
+   *
+   * ESPERA MIENTRAS SE ESTÁ EDITANDO. `CeldaEditable` es un `<input>` no controlado, así que un
+   * re-render no le borra lo tipeado; pero si la fila que se está editando desapareció del servidor,
+   * React desmonta el input y lo escrito se pierde sin que nadie se entere. Y los tres diálogos
+   * (cobrar, dar de baja, anotar un rechazo) guardan una copia congelada de la fila: recargar abajo
+   * los dejaría trabajando sobre datos que ya no son los de la pantalla. En los dos casos el aviso
+   * queda anotado y el refresco sale apenas se cierra lo que está abierto.
+   */
+  useRefrescoEnVivo({
+    tipos: ['MENSUAL', 'BAJAS', 'PAGOS', 'APP_RECHAZOS'],
+    recargar: () => cargar(datos?.periodo ?? null, { enSilencio: true }),
+    postergar: () => editando !== null || pagoDe !== null || bajaDe !== null || rechazoDe !== null || cerrando,
+  })
 
   /** Reemplaza una fila en memoria después de editarla, sin recargar las 2.300. */
   const reemplazar = useCallback((fila: FilaCartera) => {

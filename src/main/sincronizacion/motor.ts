@@ -1,17 +1,28 @@
-// El motor: sube cada 10 segundos si hay algo en la cola, baja cada 5 minutos, y sabe estar sin internet.
+// El motor: sube cada 10 segundos si hay algo en la cola, baja lo que el vigía le diga que cambió, y
+// sabe estar sin internet.
 //
-// Presupuesto de llamadas a Google (la cuota es de ~60 por minuto):
+// CÓMO LLEGA UN CAMBIO DESDE OTRA SUCURSAL (13.1)
+//
+// Por el aviso en vivo. El vigía (`vigia.ts`) tiene un pedido abierto contra el servidor que contesta
+// apenas alguien escribe, y cuando contesta llama a `ciclarBajadaDe` con los títulos de las pestañas
+// que cambiaron. Se bajan sólo ésas, en el momento. No hay reloj de por medio.
+//
+// El reloj de la bajada sigue existiendo, cada 5 minutos, pero cambió de papel: es la RED DE SEGURIDAD
+// para cuando el aviso en vivo no está —el servidor todavía no se actualizó, la conexión se cayó, se
+// perdió un aviso porque el backend se reinició con el pedido colgado—. Casi siempre no encuentra nada,
+// y eso es exactamente lo que tiene que pasar.
+//
+// El CARRIL RÁPIDO de las tareas (cada 30 segundos, una sola pestaña) quedó redundante: el vigía trae
+// las tareas igual de rápido y encima trae todo lo demás. No se borró, se apaga solo cuando el vigía
+// está vivo (`hayAvisoEnVivo`), así una computadora nueva contra un servidor viejo se sigue comportando
+// exactamente como antes.
+//
+// Presupuesto de llamadas a Google (la cuota es de ~60 por minuto), de cuando la hoja vivía allá:
 //   subida  → 1 lectura + 1 escritura + 1 agregado + 1 borrado = 4 como mucho, 6 veces por minuto = 24
 //   bajada  → 1 estructura + 1 encabezados + 1 lectura = 3, una vez cada 5 minutos
-// Total holgado por debajo de 50.
-//
-// Hay un tercer temporizador, el CARRIL RÁPIDO: cada 30 segundos baja una sola pestaña, APP TAREAS.
-// Cinco minutos son una eternidad para una tarea que alguien acaba de asignar desde otra sucursal —el
-// pedido fue justamente que lleguen en el momento—, y una pestaña sola es un pedido chico contra el VPS
-// de la agencia, que es donde vive la base desde la v12 y no tiene la cuota de Google. Si el carril
-// rápido encuentra algo, avisa al renderer para que la campana y el listado se refresquen sin esperar
-// a su propio reloj.
-import type { EstadoSincronizacion, SesionUsuario } from '../../shared/tipos'
+// Total holgado por debajo de 50. Desde la v12 la base vive en el VPS de la agencia y no tiene esa
+// cuota, pero el presupuesto sigue siendo la razón por la que la bajada no mira todas las pestañas.
+import type { EstadoSincronizacion, SesionUsuario, TipoPestana } from '../../shared/tipos'
 import type { FuenteHoja } from '../importacion/fuente'
 import { esFallaDeRed } from '../servicios/red'
 import {
@@ -34,7 +45,10 @@ import { subirTanda } from './subida'
 
 export const INTERVALO_SUBIDA_MS = 10_000
 export const INTERVALO_BAJADA_MS = 5 * 60_000
-/** El carril rápido de las tareas. Medio minuto es lo más parecido a «en el momento» sin ser un chat. */
+/**
+ * El carril rápido de las tareas. Queda para cuando el aviso en vivo no está disponible (un servidor
+ * anterior a la 13.1): con el vigía andando no corre, porque las tareas llegan por ahí y al instante.
+ */
 export const INTERVALO_TAREAS_MS = 30_000
 
 /**
@@ -56,6 +70,12 @@ const VIDA_DEL_CONTEXTO_MS = 5 * 60_000
 
 export type EstadoConexion = 'sincronizado' | 'pendiente' | 'sin-conexion' | 'apagado' | 'trabajando'
 
+/** Una pestaña que trajo datos nuevos. El título es de la hoja; el tipo es lo que entiende la pantalla. */
+export interface PestanaQueCambio {
+  titulo: string
+  tipo: TipoPestana
+}
+
 export interface OpcionesMotor {
   /** Devuelve la fuente configurada, o null si todavía no hay conexión con Google configurada. */
   crearFuente: () => FuenteHoja | null
@@ -68,8 +88,19 @@ export interface OpcionesMotor {
   alCambiarEstado?: (estado: EstadoSincronizacion) => void
   /** Qué pestañas se miran en el ciclo automático; el resto sólo en la bajada completa. */
   pestanasDelCiclo?: (contexto: ContextoHoja) => string[]
-  /** Se llama cuando el carril rápido trajo tareas nuevas o cambiadas, para avisar al renderer. */
+  /** Se llama cuando se bajaron tareas nuevas o cambiadas, para avisar al renderer. */
   alCambiarLasTareas?: () => void
+  /**
+   * Se llama cuando una bajada trajo datos de otra computadora, con las pestañas que cambiaron. Es lo
+   * que hace que la pantalla abierta se refresque sola en vez de seguir mostrando lo viejo hasta que
+   * el usuario navegue a otro lado.
+   */
+  alCambiarLosDatos?: (pestanas: PestanaQueCambio[]) => void
+  /**
+   * ¿El aviso en vivo está andando? Con el vigía vivo el carril rápido de las tareas no corre: sería
+   * pedir lo mismo dos veces. Contra un servidor viejo devuelve false y todo sigue como antes.
+   */
+  hayAvisoEnVivo?: () => boolean
   /**
    * Los archivos adjuntos que todavía no llegaron al servidor (12.6). Se suben después de la cola,
    * en el mismo ciclo de diez segundos; `hayArchivosPendientes` evita leer la base cuando no hay nada.
@@ -341,6 +372,10 @@ export class MotorDeSincronizacion {
    * la versión vieja del servidor.
    */
   async ciclarTareas(): Promise<ResultadoBajada | null> {
+    // Con el aviso en vivo andando esto es pedir lo mismo dos veces: el vigía ya trae las tareas
+    // apenas se asignan, y encima trae todo lo demás. No se borra el carril porque contra un servidor
+    // anterior a la 13.1 sigue siendo la única forma de que una tarea llegue rápido.
+    if (this.opciones.hayAvisoEnVivo?.()) return null
     // Con una importación en curso el carril rápido espera: la importación ya trae esas pestañas y
     // las dos escribirían las mismas filas al mismo tiempo.
     if (this.trabajando || this.importando || !this.encendido) return null
@@ -349,35 +384,120 @@ export class MotorDeSincronizacion {
     return this.seguir(this.correrBajada(fuente, false, filasConPendientes(), { soloLasTareas: true }))
   }
 
+  /**
+   * El vigía avisó que estas pestañas cambiaron: se bajan sólo ésas, ya.
+   *
+   * Es el camino por el que llega en vivo lo que escribió otra sucursal. Hace lo mismo que
+   * `ciclarBajada` —sube primero lo pendiente, porque bajar con cambios locales sin subir los
+   * pisaría— pero en vez de mirar las pestañas del día mira exactamente las que cambiaron.
+   *
+   * Devuelve `null` si no se pudo bajar ahora (el motor estaba trabajando o importando). El vigía se
+   * queda con los títulos y los vuelve a intentar en la vuelta siguiente: darlos por bajados sin
+   * haberlos bajado perdería el cambio hasta el reloj de red.
+   */
+  async ciclarBajadaDe(titulos: string[]): Promise<ResultadoBajada | null> {
+    if (titulos.length === 0) return null
+    if (this.trabajando || this.importando || !this.encendido) return null
+    const fuente = this.opciones.crearFuente()
+    if (!fuente) return null
+
+    if (cuantasListasParaSubir() > 0) await this.ciclarSubida()
+    if (this.trabajando) return null
+
+    return this.seguir(this.correrBajada(fuente, false, filasConPendientes(), { soloEstasPestanas: titulos }))
+  }
+
+  /**
+   * Le avisa al renderer que estas pestañas trajeron datos de otra computadora, para que la pantalla
+   * abierta se refresque sola. Manda el título Y el tipo: la pantalla no sabe de «AGOSTO 2026», sabe
+   * de MENSUAL.
+   *
+   * El aviso de tareas sigue saliendo aparte —lo escuchan la campana y el contador de la barra, que
+   * son anteriores a esto— y sale venga la bajada del carril que venga.
+   */
+  private avisarQueCambiaronLosDatos(contexto: ContextoHoja, titulos: string[]): void {
+    const pestanas: PestanaQueCambio[] = []
+    for (const titulo of titulos) {
+      const pestana = contexto.porTitulo.get(titulo)
+      if (pestana) pestanas.push({ titulo, tipo: pestana.tipo })
+    }
+    if (pestanas.length === 0) return
+    if (pestanas.some((p) => p.tipo === 'APP_TAREAS' || p.tipo === 'APP_COMENTARIOS' || p.tipo === 'APP_ADJUNTOS')) {
+      this.opciones.alCambiarLasTareas?.()
+    }
+    this.opciones.alCambiarLosDatos?.(pestanas)
+  }
+
+  /** La importación acotada a las pestañas donde aparecieron filas nuevas, con su propio candado. */
+  private async importarAcotada(pestanas: string[] | undefined, filasNuevas: number): Promise<void> {
+    anotarEvento(
+      'bajada',
+      `Aparecieron ${filasNuevas} filas nuevas en la base: se importan ${pestanas && pestanas.length > 0 ? `las pestañas ${pestanas.map((p) => `«${p}»`).join(', ')}` : 'todas las pestañas'} para incorporarlas.`,
+    )
+    this.trabajando = false
+    this.importando = true
+    this.avisar()
+    try {
+      await this.opciones.importar(pestanas)
+    } finally {
+      this.importando = false
+      this.trabajando = true
+    }
+  }
+
   private async correrBajada(
     fuente: FuenteHoja,
     completa: boolean,
     bloqueadas: Set<string>,
-    opciones: { soloLasTareas?: boolean } = {},
+    opciones: { soloLasTareas?: boolean; soloEstasPestanas?: string[] } = {},
   ): Promise<ResultadoBajada | null> {
     const soloLasTareas = opciones.soloLasTareas === true
+    // La bajada acotada del vigía: las pestañas que el servidor dijo que cambiaron. No es «la bajada
+    // de la aplicación», así que no toca la marca de «última bajada» ni corre la limpieza, igual que
+    // el carril rápido.
+    const acotada = opciones.soloEstasPestanas
     this.trabajando = true
     this.avisar()
     const arranque = Date.now()
     try {
-      const contexto = await this.conContexto(fuente, completa)
-      const titulos = soloLasTareas
-        ? pestanasDeTareas(contexto)
-        : completa
-          ? contexto.pestanas.map((p) => p.titulo)
-          : (this.opciones.pestanasDelCiclo ?? pestanasDeTodosLosDias)(contexto)
+      let contexto = await this.conContexto(fuente, completa)
+      // Una pestaña que el servidor nombró y que acá no figura es una recién creada del otro lado: el
+      // cierre de mes de otra sucursal. La estructura se cachea cinco minutos, así que sin releerla
+      // ahora el mes nuevo no aparecería hasta que el caché venza —justo el caso en que la sucursal
+      // está esperando ver el mes abierto—.
+      if (acotada && acotada.some((titulo) => !contexto.porTitulo.has(titulo))) {
+        contexto = await this.conContexto(fuente, true)
+      }
+      const titulos = acotada
+        ? // Lo que sigue sin figurar ya no está en la hoja: se borró entre el aviso y la bajada.
+          acotada.filter((titulo) => contexto.porTitulo.has(titulo))
+        : soloLasTareas
+          ? pestanasDeTareas(contexto)
+          : completa
+            ? contexto.pestanas.map((p) => p.titulo)
+            : (this.opciones.pestanasDelCiclo ?? pestanasDeTodosLosDias)(contexto)
       // Todavía no hay pestaña de tareas en la base: no hay nada que bajar y tampoco nada que anotar.
-      if (soloLasTareas && titulos.length === 0) return null
+      if ((soloLasTareas || acotada) && titulos.length === 0) return null
       const resultado = await bajarCambios(fuente, contexto, titulos, bloqueadas)
       this.sinConexion = false
       this.ultimoError = null
+      const trajoAlgo =
+        resultado.filasCambiadas > 0 || resultado.filasNuevas > 0 || resultado.filasQueYaNoEstan > 0
       if (soloLasTareas) {
-        if (resultado.filasCambiadas > 0 || resultado.filasNuevas > 0 || resultado.filasQueYaNoEstan > 0) {
-          this.opciones.alCambiarLasTareas?.()
-        }
+        if (trajoAlgo) this.avisarQueCambiaronLosDatos(contexto, titulos)
         // Filas escritas a mano en la pestaña (sin _ID) piden la importación completa, y ésa no se
         // dispara desde acá: correrla cada medio minuto sería peor que esperar. La bajada de los cinco
         // minutos también mira APP TAREAS y es la que la corre.
+        return resultado
+      }
+      if (acotada) {
+        // A diferencia del carril rápido, acá la importación SÍ corre. El vigía no pasa «cada medio
+        // minuto» sino cuando de verdad cambió algo, así que no hay riesgo de estarla disparando todo
+        // el tiempo; y sin ella una póliza cargada en una sucursal no aparecería en las otras hasta el
+        // reloj de red, que es justamente lo que esto vino a arreglar. Corre acotada a las pestañas
+        // donde aparecieron filas, con su propio candado.
+        if (resultado.necesitaImportacion) await this.importarAcotada(resultado.pestanasConFilasNuevas, resultado.filasNuevas)
+        if (trajoAlgo) this.avisarQueCambiaronLosDatos(contexto, titulos)
         return resultado
       }
       guardarMarca('ultima_bajada', new Date().toISOString())
@@ -400,7 +520,7 @@ export class MotorDeSincronizacion {
           this.importando = false
         }
       }
-      if (resultado.filasCambiadas > 0 || resultado.filasNuevas > 0 || resultado.filasQueYaNoEstan > 0 || completa) {
+      if (trajoAlgo || completa) {
         anotarEvento(
           'bajada',
           `${resultado.filasCambiadas} filas cambiadas, ${resultado.filasNuevas} nuevas, ${resultado.filasQueYaNoEstan} que ya no están` +
@@ -408,6 +528,7 @@ export class MotorDeSincronizacion {
           { filas: resultado.filasCambiadas, duracionMs: Date.now() - arranque },
         )
       }
+      if (trajoAlgo) this.avisarQueCambiaronLosDatos(contexto, titulos)
       limpiarViejas()
       return resultado
     } catch (error) {

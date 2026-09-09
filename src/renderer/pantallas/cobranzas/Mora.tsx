@@ -1,6 +1,7 @@
 // Mora: las cuotas vencidas sin pago, de todos los meses. Es la lista de a quién hay que llamar hoy,
 // así que se ordena por días de atraso y cada fila tiene el mismo «Avisar» de la planilla.
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { NOMBRE_RANGO_MORA, type FilaMora, type FiltrosMora, type ListadoMora, type RangoDeMora } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
@@ -28,15 +29,22 @@ export function Mora() {
   const [aviso, setAviso] = useState<string | null>(null)
   const [avisando, setAvisando] = useState<string | null>(null)
 
-  const cargar = useCallback(async (actuales: FiltrosMora) => {
-    setCargando(true)
-    setError(null)
-    // El aviso habla del último WhatsApp que se abrió: al cambiar de filtro deja de tener sentido.
-    setAviso(null)
+  /**
+   * `enSilencio` es la recarga que dispara el aviso en vivo cuando otra sucursal cobró algo: no pone
+   * la pantalla en blanco ni borra lo que se está leyendo, sólo cambia los datos abajo. Sin eso, la
+   * mora entera parpadearía sola cada vez que alguien registra un pago en otro mostrador.
+   */
+  const cargar = useCallback(async (actuales: FiltrosMora, opciones: { enSilencio?: boolean } = {}) => {
+    if (!opciones.enSilencio) {
+      setCargando(true)
+      setError(null)
+      // El aviso habla del último WhatsApp que se abrió: al cambiar de filtro deja de tener sentido.
+      setAviso(null)
+    }
     const resultado = await window.dm.cobranzas.mora(actuales)
     if (resultado.ok) setDatos(resultado.datos)
     else setError(resultado.error)
-    setCargando(false)
+    if (!opciones.enSilencio) setCargando(false)
   }, [])
 
   // El listado se arma en el proceso principal: la búsqueda se manda con un respiro para no
@@ -45,6 +53,13 @@ export function Mora() {
     const reloj = setTimeout(() => void cargar(filtros), filtros.busqueda ? 250 : 0)
     return () => clearTimeout(reloj)
   }, [cargar, filtros])
+
+  // Lo que cobró otra sucursal saca al cliente de la mora: si no se refresca, acá se le sigue
+  // reclamando a alguien que ya pagó.
+  useRefrescoEnVivo({
+    tipos: ['MENSUAL', 'PAGOS'],
+    recargar: () => cargar(filtros, { enSilencio: true }),
+  })
 
   const avisar = async (fila: FilaMora) => {
     setAvisando(fila.filaId)

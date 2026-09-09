@@ -13,6 +13,7 @@ import { Alerta } from './componentes/ui'
 import { ProveedorNavegacion, useNavegacion } from './contexto/Navegacion'
 import { ProveedorPermisos, usePermisos } from './contexto/Permisos'
 import { useSesion } from './contexto/Sesion'
+import { ProveedorDatosEnVivo } from './contexto/DatosEnVivo'
 import { ProveedorTareas } from './contexto/Tareas'
 import { buscarModulo, esAreaDePermisos, type IdModulo } from './modulos'
 import { CambiarClave } from './pantallas/CambiarClave'
@@ -51,7 +52,11 @@ export function App() {
       <ProveedorNavegacion>
         {/* Adentro de los permisos: lo que se pregunta depende de a qué módulos entra esta persona. */}
         <ProveedorTareas>
-          <ConPermisosCargados />
+          {/* El aviso de que bajaron datos de otra computadora, para que la pantalla abierta se
+              recargue sola. Un solo suscriptor para toda la aplicación. */}
+          <ProveedorDatosEnVivo>
+            <ConPermisosCargados />
+          </ProveedorDatosEnVivo>
         </ProveedorTareas>
       </ProveedorNavegacion>
     </ProveedorPermisos>

@@ -542,10 +542,11 @@ La aplicación y la hoja se mantienen iguales solas, usando la columna `_ID` com
   agrupa todo: una tanda de 200 cambios usa 2 llamadas a Google, no 200. Los reintentos son
   exponenciales (10 s, 20 s, 40 s… hasta 10 minutos) y los errores que no se arreglan reintentando
   («esa pestaña no existe») quedan marcados para que alguien los mire.
-- **Bajada**: al abrir sesión, cada 5 minutos y con «Sincronizar ahora». Compara cada fila contra la
-  huella de la última vez y sólo toca lo que cambió: la hoja entera (25 pestañas, 28.000 filas) se
-  revisa en ~400 ms con **3 llamadas**. Las filas que alguien cargó a mano en Google se incorporan con
-  la importación completa, que es la que les escribe el `_ID` en la hoja.
+- **Bajada**: cuando el servidor avisa que algo cambió (ver «Sincronización en vivo», más abajo), al
+  abrir sesión, cada 5 minutos como red de seguridad, y con «Sincronizar ahora». Compara cada fila
+  contra la huella de la última vez y sólo toca lo que cambió: la hoja entera (25 pestañas, 28.000
+  filas) se revisa en ~400 ms con **3 llamadas**. Las filas que alguien cargó a mano en Google se
+  incorporan con la importación completa, que es la que les escribe el `_ID` en la hoja.
 - **Bajas**: la fila se agrega a la pestaña «BAJAS …» y se elimina de la planilla del mes, igual que el
   cortar y pegar de siempre. **Los borrados esperan un minuto antes de subir** (`ESPERA_DE_AGRUPADO_MS`)
   y, cuando sale uno, viajan con él todos los que estén esperando: borrar una fila en Google corre las
@@ -568,6 +569,37 @@ La aplicación y la hoja se mantienen iguales solas, usando la columna `_ID` com
   exporta la base a `.xlsx` en `%APPDATA%/dm-gestion/respaldos/` (conserva 30) y sube una copia a la
   carpeta «Respaldos DM» del Drive; si Drive falla, la copia local igual queda guardada. Ésa sirve para
   abrir en Excel y mirar.
+
+### Sincronización en vivo (13.1)
+
+Hasta la 13.0 un cambio hecho en una sucursal aparecía en las otras cuando les tocaba el reloj: hasta
+**cinco minutos** para la planilla del mes, los clientes, las pólizas, los siniestros y las cobranzas
+(sólo las tareas tenían un carril rápido de 30 segundos). Y aunque el dato llegara, la pantalla que ya
+estaba abierta seguía mostrando lo viejo hasta que alguien navegaba a otro lado y volvía.
+
+Ahora los cambios viajan **en el momento**, y son dos piezas:
+
+- **El vigía** (`src/main/sincronizacion/vigia.ts`) tiene un pedido abierto contra el servidor
+  (`POST /api/dmg/novedades`) que se queda esperando hasta 25 segundos y **contesta apenas alguien
+  escribe**. Es el mismo mecanismo que ya usaba la mensajería interna: un long-poll, sin websockets y
+  sin tocar la configuración del servidor de la agencia. Cuando contesta, se bajan **sólo las pestañas
+  que cambiaron** —casi siempre una— en vez de las catorce del ciclo de todos los días.
+
+  La señal es la versión de cada pestaña, que el servidor ya llevaba para el espejo hacia Google. El
+  programa manda el mapa `{pestaña: versión}` que conoce y el servidor le contesta el actual: la
+  comparación es «igual o distinto», así que no hay ninguna marca de agua que pueda saltearse un
+  cambio. Una pestaña se da por vista **recién después** de haberla bajado bien; lo que no se pudo
+  bajar queda pendiente y se reintenta.
+
+- **La pantalla se refresca sola.** El proceso principal avisa `datos:cambiaron` y las siete pantallas
+  que viven de la cartera se recargan sin que nadie toque nada. Si el usuario está editando una celda
+  o tiene un diálogo abierto, **el refresco espera** hasta que lo cierre: no se le pisa lo que está
+  escribiendo.
+
+Qué pasa si algo falla: el reloj de los cinco minutos sigue encendido como red de seguridad y casi
+siempre no encuentra nada. Contra un servidor anterior a la 13.1 el vigía se apaga solo tras el primer
+404, vuelve a encenderse el carril rápido de las tareas, y se reintenta cada diez minutos: cuando el
+VPS se actualiza, las computadoras se enganchan solas sin que nadie las reinicie.
 
 ### Respaldos y rebobinar (12.5)
 

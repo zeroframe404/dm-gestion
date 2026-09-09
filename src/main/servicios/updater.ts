@@ -3,12 +3,12 @@
 // `emitir` que sincronizacion.ts e importacion.ts) para que aparezca el cartel «Actualización
 // disponible encontrada». Recién baja el instalador cuando alguien aprieta «Actualizar ahora»: antes
 // se bajaba solo apenas se detectaba, sin preguntar nada.
-import { app, BrowserWindow } from 'electron'
+import { app } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import type { DatosDeEvento, NombreEvento } from '../../shared/canales'
 import type { EstadoActualizacion } from '../../shared/tipos'
 import { ahoraIso } from '../importacion/normalizar'
 import { reportarRechazo, reportarVersionPropia } from './estadoDeActualizaciones'
+import { emitirATodas as emitir } from './avisos'
 
 /**
  * Token de SOLO LECTURA para leer los Releases del repo privado `zeroframe404/dm-gestion`
@@ -38,12 +38,6 @@ let temporizador: NodeJS.Timeout | null = null
  * vino a evitar.
  */
 let instalarSolaAlTerminar = false
-
-function emitir<E extends NombreEvento>(evento: E, datos: DatosDeEvento<E>): void {
-  for (const ventana of BrowserWindow.getAllWindows()) {
-    if (!ventana.isDestroyed()) ventana.webContents.send(evento, datos)
-  }
-}
 
 function cambiarEstado(cambios: Partial<EstadoActualizacion>): void {
   estado = { ...estado, ...cambios }

@@ -19,6 +19,7 @@ import {
 } from '../importacion/fuente'
 import type { AlmacenDeAdjuntos, ArchivoBajado, FichaEnElAlmacen, FichaParaElAlmacen } from '../servicios/adjuntos'
 import { ErrorDeNegocio } from '../servicios/errores'
+import { adoptarVersionPropia } from '../sincronizacion/versiones'
 
 /** Tiempo máximo por pedido; sin esto una conexión colgada bloquea la importación. */
 const TIEMPO_MAXIMO_MS = 90_000
@@ -236,6 +237,23 @@ function mensajeDelServidor(json: unknown, porDefecto: string): string {
     return (json as { error: string }).error
   }
   return porDefecto
+}
+
+/**
+ * Adopta las versiones que dejó una escritura NUESTRA, para que el aviso en vivo no nos despierte por
+ * nuestro propio cambio y nos haga bajar la pestaña entera para no encontrar nada.
+ *
+ * Un servidor anterior al aviso en vivo no manda el campo: ahí no se adopta nada y vuelve el eco, que
+ * es exactamente la degradación correcta —una lectura de más, no un dato perdido—.
+ *
+ * A propósito NO se adopta en `borrarFilas` (renumera los renglones de abajo y conviene releerlos, y
+ * además pasa una vez por hora y no cada diez segundos), ni al crear pestañas o columnas.
+ */
+function adoptarVersionesPropias(versiones: Record<string, unknown> | undefined): void {
+  if (!versiones) return
+  for (const [titulo, version] of Object.entries(versiones)) {
+    if (typeof version === 'number') adoptarVersionPropia(titulo, version)
+  }
 }
 
 export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
@@ -512,7 +530,9 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
     const datos = (await this.pedir('escribir celdas', 'POST', '/api/dmg/celdas', { celdas, columnaId: columnaIdPorTitulo })) as {
       escritas?: number
       noEncontradas?: Array<{ titulo?: unknown; id?: unknown }>
+      versiones?: Record<string, unknown>
     } | null
+    adoptarVersionesPropias(datos?.versiones)
     const contesta = Array.isArray(datos?.noEncontradas)
     this.comprobarServidorAlDia(contesta, celdas.some((celda) => Boolean(celda.id)))
     return {
@@ -526,7 +546,8 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
     if (filas.length === 0) return { primeraFila: 0, numeros: [] }
     const datos = (await this.pedir('agregar filas', 'POST', '/api/dmg/filas/agregar', { titulo, filas }, {
       reintentarSinRespuesta: false,
-    })) as { primeraFila: number; numeros?: Array<number | null> }
+    })) as { primeraFila: number; numeros?: Array<number | null>; version?: unknown }
+    adoptarVersionPropia(titulo, typeof datos.version === 'number' ? datos.version : null)
     const primeraFila = Number(datos.primeraFila) || 0
     // Un servidor viejo no dice en qué renglón quedó cada una: se supone «primeraFila + i», como antes.
     const numeros = Array.isArray(datos.numeros)
@@ -568,7 +589,9 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
     const datos = (await this.pedir('escribir la columna _ID', 'POST', '/api/dmg/tramos', { titulo, indiceColumna, tramos })) as {
       escritas?: number
       saltadas?: unknown[]
+      version?: unknown
     } | null
+    adoptarVersionPropia(titulo, typeof datos?.version === 'number' ? datos.version : null)
     const contesta = Array.isArray(datos?.saltadas)
     this.comprobarServidorAlDia(contesta, tramos.some((tramo) => Array.isArray(tramo.previos)))
     return { saltadas: contesta ? datos!.saltadas!.map(Number).filter(Number.isInteger) : [] }

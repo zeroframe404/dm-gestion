@@ -7,6 +7,7 @@
 // La subpestaña «Planilla clásica» es otra cosa: no elige columnas ni formato, porque su gracia es
 // justamente salir siempre igual, con el formato de la hoja mensual de siempre.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import type {
   CatalogoDeReportes,
@@ -100,10 +101,26 @@ function CentroDeExportacion({ catalogo }: { catalogo: CatalogoDeReportes }) {
   // La vista previa se recalcula sola, con una pausa: escribir en el buscador no puede disparar una
   // consulta por tecla.
   const ultimoPedido = useRef(0)
+  // Sube cuando bajan datos de otra computadora: entra en las dependencias de la vista previa y la
+  // hace recalcularse. La ref de al lado dice que ESA vuelta va en silencio, sin el cartel de
+  // «cargando»: un reporte que parpadea solo mientras alguien lo está leyendo es peor que uno que
+  // tarda un segundo de más en enterarse.
+  const [refrescoEnVivo, setRefrescoEnVivo] = useState(0)
+  const vieneDelAvisoEnVivo = useRef(false)
+  useRefrescoEnVivo({
+    tipos: ['MENSUAL', 'BAJAS', 'PAGOS', 'SINIESTROS'],
+    recargar: () => {
+      vieneDelAvisoEnVivo.current = true
+      setRefrescoEnVivo((vuelta) => vuelta + 1)
+    },
+  })
+
   useEffect(() => {
     if (!reporte) return
     const numeroDePedido = ++ultimoPedido.current
-    setCargando(true)
+    const enSilencio = vieneDelAvisoEnVivo.current
+    vieneDelAvisoEnVivo.current = false
+    if (!enSilencio) setCargando(true)
     const reloj = setTimeout(async () => {
       const resultado = await window.dm.reportes.vistaPrevia(pedido)
       // Una respuesta vieja no puede pisar a una nueva.
@@ -114,10 +131,10 @@ function CentroDeExportacion({ catalogo }: { catalogo: CatalogoDeReportes }) {
       } else {
         setError(resultado.error)
       }
-      setCargando(false)
+      if (!enSilencio) setCargando(false)
     }, 250)
     return () => clearTimeout(reloj)
-  }, [pedido, reporte])
+  }, [pedido, reporte, refrescoEnVivo])
 
   async function exportar(formato: FormatoDeReporte) {
     if (!reporte) return
