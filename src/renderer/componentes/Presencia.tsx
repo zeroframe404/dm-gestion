@@ -14,12 +14,14 @@
 // temblaría. La sombra se dibuja encima y no mueve nada. Con `inset` queda por dentro del borde de la
 // celda, que es donde se espera ver el marco.
 //
-// VARIAS PERSONAS EN EL MISMO LUGAR: los anillos se APILAN (dos píxeles cada uno, de adentro hacia
-// afuera) y las burbujas se ponen una al lado de la otra. Pasa poco pero pasa, y mostrar sólo al
-// primero haría que la segunda persona crea que está sola.
+// VARIAS PERSONAS EN EL MISMO LUGAR: los anillos se APILAN (uno por persona, de adentro hacia afuera)
+// y las burbujas se ponen una al lado de la otra. Pasa poco pero pasa, y mostrar sólo al primero haría
+// que la segunda persona crea que está sola. El halo difuminado de afuera, en cambio, es UNO SOLO —del
+// color de la primera persona—: tres halos borrosos superpuestos ensuciarían la celda en vez de
+// avisar nada.
 import { useCallback, useEffect, useMemo, useRef, useState, type FocusEvent, type ReactNode } from 'react'
 import type { Presente } from '../../main/vivo/protocolo'
-import { colorDePaleta } from '../../shared/paleta'
+import { colorConAlpha, colorDePaleta } from '../../shared/paleta'
 import type { ClaveDeFoco } from '../../shared/presencia'
 import { claveDeFicha, useBloqueoDe, useFocoDeObjeto, usePresenciaDe, type ObjetoConFicha } from '../contexto/Presencia'
 import { Avatar } from './Avatar'
@@ -34,15 +36,31 @@ export { motivoDelBloqueo, textoDePresencia }
 /** Hasta cuántas caras se dibujan al lado del anillo. Más que esto no entra en una celda. */
 const CUANTAS_BURBUJAS = 3
 
-/** Cuántos píxeles crece cada anillo apilado. */
-const GRUESO_DEL_ANILLO = 2
+/** Cuántos píxeles crece cada anillo apilado, por dentro del borde de la celda. */
+const GRUESO_DEL_ANILLO = 1
 
-/** Las sombras apiladas, de la persona más «adentro» a la de más afuera. */
-function anillosDe(presentes: readonly Presente[]): string {
-  return presentes
+/** Cuánto se desdibuja el halo que se escapa hacia afuera de la celda. */
+const DESENFOQUE_DEL_AURA = 10
+/** Cuánto se extiende el halo antes de empezar a desdibujarse. */
+const EXTENSION_DEL_AURA = 2
+/** Qué tan transparente es el halo: tiene que avisar sin tapar lo que hay alrededor. */
+const OPACIDAD_DEL_AURA = 0.3
+
+/**
+ * El aura completa (14.0): el anillo fino de cada persona, apilado por dentro del borde —para
+ * distinguirlas por color cuando hay varias—, más UN SOLO halo difuminado hacia afuera, del color
+ * de la primera persona de la lista. Es lo que hace que se vea como un resplandor y no como una
+ * línea pegada al borde.
+ */
+function auraDe(presentes: readonly Presente[]): string {
+  const anillos = presentes
     .slice(0, CUANTAS_BURBUJAS)
     .map((presente, posicion) => `inset 0 0 0 ${(posicion + 1) * GRUESO_DEL_ANILLO}px ${colorDePaleta(presente.color).hex}`)
-    .join(', ')
+  const primero = presentes[0]
+  const halo = primero
+    ? [`0 0 ${DESENFOQUE_DEL_AURA}px ${EXTENSION_DEL_AURA}px ${colorConAlpha(colorDePaleta(primero.color), OPACIDAD_DEL_AURA)}`]
+    : []
+  return [...anillos, ...halo].join(', ')
 }
 
 /**
@@ -82,8 +100,8 @@ export function MarcaDePresencia({
     <>
       <span
         aria-hidden="true"
-        style={{ boxShadow: anillosDe(presentes) }}
-        className={cx('pointer-events-none absolute inset-0 z-10', redondeo)}
+        style={{ boxShadow: auraDe(presentes) }}
+        className={cx('pointer-events-none absolute inset-0 z-10 isolate', redondeo)}
       />
       {!soloAnillo && (
         <span
@@ -127,7 +145,10 @@ export function Glow({
 }) {
   const presentes = usePresenciaDe(claveDeFoco)
   return (
-    <span className={cx('relative block', className)} title={textoDePresencia(presentes) || undefined}>
+    // El `display` lo trae `className` (`flex` para un título en línea con la insignia, `block` para
+    // envolver un bloque entero): `Glow` sólo pone `relative`, para no competir con lo que pida cada
+    // llamador.
+    <span className={cx('relative', className)} title={textoDePresencia(presentes) || undefined}>
       {children}
       <MarcaDePresencia claveDeFoco={claveDeFoco} redondeo={redondeo} />
     </span>

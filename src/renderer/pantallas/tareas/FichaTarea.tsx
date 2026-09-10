@@ -14,7 +14,7 @@ import {
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
-import { InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
+import { Glow, InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
 import { SelectorDeAdjuntos } from '../../componentes/SelectorDeAdjuntos'
 import { EtiquetaDeEstado } from '../polizas/AdjuntosDePoliza'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Selector, Tarjeta, cx } from '../../componentes/ui'
@@ -130,17 +130,18 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
         <Boton icono="flechaIzquierda" onClick={alVolver}>
           Volver
         </Boton>
-        <div className="min-w-0 flex-1">
+        {/* El aura envuelve el título y el renglón de abajo: la insignia va metida ahí adentro junto
+            con quién la creó, no al lado del título. */}
+        <Glow claveDeFoco={claveDeFoco} redondeo="rounded-md" className="block min-w-0 flex-1">
           <h1 className={cx('font-display text-2xl font-extrabold tracking-tight', t.estado === 'hecha' ? 'text-slate-400 line-through' : 'text-slate-900')}>
             {t.titulo}
           </h1>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">
             <span>Creada por {t.creadoPor} el {fechaYHora(t.creadoEn)}</span>
             <EtiquetaDeVencimiento tarea={t} />
-            {/* Quién más tiene la tarea abierta (14.0). */}
             <InsigniaDePresencia claveDeFoco={claveDeFoco} />
           </p>
-        </div>
+        </Glow>
 
         <select
           value={t.estado}

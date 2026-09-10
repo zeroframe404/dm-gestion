@@ -17,7 +17,7 @@ import {
 import { NOMBRE_ESTADO_TAREA } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
-import { InsigniaDePresencia, useCursorAdentro, useFichaEnVivo } from '../../componentes/Presencia'
+import { Glow, InsigniaDePresencia, useCursorAdentro, useFichaEnVivo } from '../../componentes/Presencia'
 import { SelectorDeAdjuntos } from '../../componentes/SelectorDeAdjuntos'
 import { EtiquetaDeEstado } from '../polizas/AdjuntosDePoliza'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Dialogo, Selector, Tarjeta, cx } from '../../componentes/ui'
@@ -117,7 +117,9 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
         <Boton icono="flechaIzquierda" onClick={alVolver}>
           Volver
         </Boton>
-        <div className="min-w-0 flex-1">
+        {/* El aura envuelve el título, el subtítulo y la insignia: acá la insignia va en su propia
+            línea, así que el aura tiene que cubrir todo el bloque para que se vea junto al nombre. */}
+        <Glow claveDeFoco={claveDeFoco} redondeo="rounded-md" className="block min-w-0 flex-1">
           <h1 className="font-display text-2xl font-extrabold tracking-tight text-slate-900">
             {s.esRobo && <span className="mr-2 rounded bg-red-100 px-2 py-0.5 align-middle text-sm font-extrabold text-red-700">ROBO</span>}
             {s.clienteNombre ?? 'Sin asegurado'}
@@ -125,11 +127,10 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
           <p className="mt-1 text-sm text-slate-600">
             {[s.compania, s.numeroPoliza, s.cobertura, s.patente].filter(Boolean).join(' · ') || 'Sin datos de póliza'}
           </p>
-          {/* Quién más tiene el siniestro abierto (14.0). */}
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <InsigniaDePresencia claveDeFoco={claveDeFoco} />
           </div>
-        </div>
+        </Glow>
         <label className="text-sm font-semibold text-slate-700">
           Estado del trámite
           <select

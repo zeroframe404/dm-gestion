@@ -20,7 +20,7 @@ import {
   type Sucursal,
 } from '../../../shared/tipos'
 import { Icono, type NombreIcono } from '../../componentes/Icono'
-import { InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
+import { Glow, InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
@@ -155,12 +155,12 @@ export function FichaDelCliente({
           </Boton>
 
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
+            {/* El aura envuelve el título: es lo primero que se mira al entrar, y enterarse después de
+                escribir media dirección no sirve de nada. */}
+            <Glow claveDeFoco={claveDeFoco} redondeo="rounded-md" className="flex flex-wrap items-center gap-2">
               <h1 className="truncate font-display text-xl font-extrabold tracking-tight text-slate-900">{ficha.nombre}</h1>
-              {/* Quién más tiene esta ficha abierta (14.0), al lado del nombre: es lo primero que se
-                  mira al entrar, y enterarse después de escribir media dirección no sirve de nada. */}
               <InsigniaDePresencia claveDeFoco={claveDeFoco} />
-            </div>
+            </Glow>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
               <span className="tabular-nums">{ficha.documento ? `DNI/CUIT ${ficha.documento}` : 'Sin documento cargado'}</span>
               <span aria-hidden="true">·</span>
