@@ -5,6 +5,11 @@ import type { MatrizPermisos, PermisosDeUnRol } from './permisos'
 // Sólo el tipo: `ramas.ts` importa de acá `CategoriaDeVehiculo`, también sólo el tipo, así que las dos
 // flechas se borran al compilar y no queda ningún ciclo en tiempo de ejecución.
 import type { Rama } from './ramas'
+// El contrato del canal en vivo (14.0), también sólo el tipo. `protocolo.ts` es la copia exacta de lo
+// que declara el servidor y no importa nada de nadie: la flecha se borra al compilar, igual que la que
+// ya sale de `shared/presencia.ts`. Se toma de ahí y no se vuelve a escribir acá para que la pantalla
+// y el proceso principal no puedan quedar diciendo cosas distintas sobre la misma llamada.
+import type { ConfiguracionIce, EventoDeLlamada, MotivoDeCorte } from '../main/vivo/protocolo'
 
 export const ROLES = ['SUPER_ADMIN', 'ADMIN', 'EMPLEADO'] as const
 export type Rol = (typeof ROLES)[number]
@@ -1045,6 +1050,73 @@ export interface EstadoDeConexion {
   intentos: number
 }
 
+/**
+ * La foto y el color de una persona de la agencia (14.0), tal como los muestra la pantalla.
+ *
+ * Es la versión de `Perfil` (el del canal) que le sirve al renderer: la foto ya viene como data URL —la
+ * base la guarda como bytes— y no viaja `actualizadoEn`, que no se dibuja en ningún lado. La identidad
+ * es la CLAVE de usuario, no el id local: el mismo perfil se ve igual en las cinco computadoras.
+ */
+export interface PerfilDeUsuario {
+  clave: string
+  /** Índice 0-11 en la paleta (`src/shared/paleta.ts`). Único por persona: lo cuida el servidor. */
+  color: number
+  /** `data:image/jpeg;base64,…` de 256 px, o null si esa persona nunca cargó una foto. */
+  foto: string | null
+  version: number
+}
+
+/** Lo que la pantalla puede cambiar de un perfil. Lo que no viene, no se toca. */
+export interface DatosDePerfil {
+  color?: number
+  /** La foto nueva como data URL, o null para sacar la que había. */
+  foto?: string | null
+}
+
+/**
+ * En qué anda la llamada de voz de ESTA computadora (14.0). Hay una sola por vez: el teléfono de la
+ * agencia tampoco atiende dos llamadas juntas, y una segunda mientras se está hablando sería un audio
+ * encima del otro.
+ *
+ *   libre → llamando → en-llamada → terminando        (la que sale de acá)
+ *   libre → timbrando → en-llamada → terminando       (la que entra)
+ */
+export type SituacionDeLlamada = 'libre' | 'llamando' | 'timbrando' | 'en-llamada' | 'terminando'
+
+/** Por qué se cortó. Es el del protocolo del canal: lo escribe el servidor en el registro de llamadas. */
+export type MotivoDeCorteDeLlamada = MotivoDeCorte
+
+/** Lo que hace falta para armar la conexión de audio: los STUN de siempre y el TURN del VPS. */
+export type ConfiguracionDeIce = ConfiguracionIce
+
+/**
+ * La señalización que hay que pasarle a la `RTCPeerConnection`: la oferta o la respuesta de la otra
+ * punta, y cada candidato de red que va apareciendo. El audio NO pasa por acá ni por el servidor: va
+ * derecho de una computadora a la otra.
+ */
+export type SenalDeLlamada = Extract<EventoDeLlamada, { tipo: 'sdp' } | { tipo: 'ice' }>
+
+/** Lo que la pantalla manda cuando su `RTCPeerConnection` tiene algo para la otra punta. */
+export type SenalParaMandar = { sdp: Extract<EventoDeLlamada, { tipo: 'sdp' }>['sdp'] } | { ice: Extract<EventoDeLlamada, { tipo: 'ice' }>['candidato'] }
+
+export interface EstadoDeLlamada {
+  situacion: SituacionDeLlamada
+  /** El id que comparten las dos computadoras y el servidor. Null cuando no hay ninguna llamada. */
+  llamadaId: string | null
+  /** El id REMOTO de la conversación (el que conocen las cinco computadoras), para abrirla al atender. */
+  conversacionId: string | null
+  /** Con quién se está hablando (o quién llama). */
+  con: { clave: string; nombre: string } | null
+  /** true si la llamada la empezó esta computadora: es quien manda la oferta SDP. */
+  saliente: boolean
+  /** ISO: cuándo empezó a sonar. Sirve para el «llamando…» y para el corte por falta de respuesta. */
+  desde: string | null
+  /** ISO: cuándo se atendió, que es desde cuándo corre el cronómetro «3:12». Null si todavía no. */
+  hablandoDesde: string | null
+  /** Por qué se cortó la última: es lo que muestra el cartel al cerrarse. */
+  motivo: MotivoDeCorteDeLlamada | null
+}
+
 export interface EntradaDeCola {
   id: number
   creadoEn: string
@@ -1157,6 +1229,14 @@ export type EstadoDeCliente = 'ACTIVO' | 'BAJA' | 'SIN POLIZAS'
 
 export interface FilaCliente {
   id: number
+  /**
+   * El `_ID` de la fila en la hoja de la agencia: el nombre que esta fila tiene en las CINCO
+   * computadoras (14.0). El `id` de arriba es de esta base y en cada máquina es otro, así que no sirve
+   * para decir «Ana está mirando a este cliente»: la presencia y el glow se agarran de acá.
+   *
+   * Null en un cliente que todavía no viajó a la hoja (recién dado de alta, con la cola sin subir).
+   */
+  filaId: string | null
   nombre: string
   documento: string | null
   telefono: string | null
@@ -4212,10 +4292,30 @@ export interface AdjuntoDeMensaje {
 
 /**
  * Qué clase de mensaje es. El ZUMBIDO es el de Messenger: no lleva texto, del otro lado suena fuerte y
- * la ventana se sacude. Es un tipo y no un texto convenido para que se distinga de verdad de un
- * mensaje que casualmente diga lo mismo.
+ * la ventana se sacude. LLAMADA (14.0) es el renglón que deja una llamada de voz cuando termina
+ * («Llamada de voz · 3:12», «Llamada perdida»): lo escribe el servidor y llega por el camino de
+ * siempre, así que la conversación cuenta lo que pasó aunque nadie haya escrito una palabra.
+ *
+ * Son tipos y no textos convenidos para que se distingan de verdad de un mensaje que casualmente diga
+ * lo mismo. El CHECK de la tabla acompaña desde la migración 29.
  */
-export type TipoDeMensaje = 'NORMAL' | 'ZUMBIDO'
+export type TipoDeMensaje = 'NORMAL' | 'ZUMBIDO' | 'LLAMADA'
+
+/**
+ * Una reacción de un mensaje, ya agrupada por emoji (14.0): el pulgar de WhatsApp.
+ *
+ * Viene agrupada y no fila por fila porque es como se dibuja —el emoji con su contador— y porque así
+ * la pantalla no tiene que contar nada. `mia` es lo que decide si la pastilla va resaltada y si
+ * tocarla saca la reacción en vez de ponerla.
+ */
+export interface ReaccionDeMensaje {
+  emoji: string
+  /** Las claves de quienes reaccionaron con este emoji. */
+  claves: string[]
+  /** Los nombres, en el mismo orden que las claves: es el globito «Ana, Beto». */
+  nombres: string[]
+  mia: boolean
+}
 
 export interface MensajeInterno {
   id: number
@@ -4237,6 +4337,8 @@ export interface MensajeInterno {
   adjuntos: AdjuntoDeMensaje[]
   /** Quién lo recibió y quién lo leyó. Sólo viene con los mensajes propios. */
   acuses: AcuseDeMensaje[]
+  /** Las reacciones, agrupadas por emoji y ordenadas de la más puesta a la menos (14.0). */
+  reacciones: ReaccionDeMensaje[]
 }
 
 export interface ParticipanteDeConversacion {
@@ -4323,6 +4425,8 @@ export interface RenglonDelLogDeMensajes {
   adjuntos: string
   /** «Leído por 2 de 3», ya resuelto para la tabla. */
   acuse: string
+  /** «👍 2, ❤️ 1», ya resuelto para la tabla (14.0). Vacío si nadie reaccionó. */
+  reacciones: string
 }
 
 export interface LogDeMensajes {

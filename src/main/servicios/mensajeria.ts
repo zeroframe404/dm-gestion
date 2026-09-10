@@ -43,6 +43,7 @@ import type {
   LogDeMensajes,
   MensajeInterno,
   ParticipanteDeConversacion,
+  ReaccionDeMensaje,
   SesionUsuario,
   TipoDeMensaje,
 } from '../../shared/tipos'
@@ -51,7 +52,9 @@ import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import type { ActorDelPuente, ConversacionRemota, MensajeRemoto } from '../mensajeria/puente'
 import { puenteDeMensajes } from '../mensajeria/puente'
+import type { ReaccionRemota } from '../vivo/protocolo'
 import { adjuntosDe, asegurarAdjuntoLocal, borrarAdjuntoRegistrado, registrarAdjunto } from './adjuntos'
+import { emitirATodas } from './avisos'
 import { rutaDeAdjunto, tipoDeArchivo } from './carpetaDeAdjuntos'
 import { ErrorDeNegocio } from './errores'
 import { archivosParaAdjuntar } from './tareas'
@@ -203,7 +206,9 @@ export function guardarMensaje(remoto: MensajeRemoto, miClave: string): number |
       remoto_id: remoto.id,
       conversacion: conversacion.id,
       // Un servidor viejo no manda `tipo`: lo que llega sin él es un mensaje común, que es lo que era.
-      tipo: remoto.tipo === 'ZUMBIDO' ? 'ZUMBIDO' : 'NORMAL',
+      // Y uno que llega con un tipo que esta versión no conoce entra como común y no rompe la bajada:
+      // el CHECK de la tabla (migración 29) sólo acepta los tres que están acá.
+      tipo: remoto.tipo === 'ZUMBIDO' || remoto.tipo === 'LLAMADA' ? remoto.tipo : 'NORMAL',
       orden: remoto.orden,
       autor_clave: remoto.autorClave,
       autor_nombre: remoto.autorNombre,
@@ -217,7 +222,64 @@ export function guardarMensaje(remoto: MensajeRemoto, miClave: string): number |
 
   guardarAcuses(fila.id, remoto)
   guardarAdjuntosDelMensaje(fila.id, remoto)
+  // Sólo si el servidor las mandó: uno anterior a la 14.0 no las conoce, y borrar las que hay porque no
+  // vinieron sería hacerlas desaparecer de la pantalla en cada vuelta del cartero.
+  if (remoto.reacciones) guardarReacciones(fila.id, remoto.reacciones)
   return fila.id
+}
+
+/**
+ * Deja las reacciones de un mensaje exactamente como las manda el servidor: borra las que ya no están y
+ * pone las que llegaron.
+ *
+ * Se guarda la lista COMPLETA y no el cambio, por lo mismo que en el resto de la mensajería: la verdad
+ * está en el VPS y esto es un espejo. Dos personas sacando y poniendo el pulgar en el mismo instante no
+ * pueden dejar a esta computadora con una cuenta que no existe en ningún lado.
+ */
+function guardarReacciones(mensajeId: number, reacciones: ReaccionRemota[]): void {
+  const base = db()
+  const ahora = ahoraIso()
+  base.transaction(() => {
+    const claves: string[] = []
+    const poner = base.prepare(
+      `INSERT INTO mensaje_reacciones (mensaje_id, clave, emoji, creado_en)
+       VALUES (@mensaje, @clave, @emoji, @creado_en)
+       ON CONFLICT(mensaje_id, clave) DO UPDATE SET emoji = excluded.emoji`,
+    )
+    for (const reaccion of reacciones) {
+      const emoji = typeof reaccion?.emoji === 'string' ? reaccion.emoji : ''
+      if (!emoji) continue
+      for (const cruda of reaccion.claves ?? []) {
+        const clave = claveDeUsuario(cruda)
+        if (!clave) continue
+        claves.push(clave)
+        poner.run({ mensaje: mensajeId, clave, emoji, creado_en: ahora })
+      }
+    }
+    if (!claves.length) {
+      base.prepare('DELETE FROM mensaje_reacciones WHERE mensaje_id = ?').run(mensajeId)
+      return
+    }
+    base
+      .prepare(`DELETE FROM mensaje_reacciones WHERE mensaje_id = ? AND clave NOT IN (${claves.map(() => '?').join(', ')})`)
+      .run(mensajeId, ...claves)
+  })()
+}
+
+/**
+ * Las reacciones que llegaron por el canal en vivo, buscando el mensaje por su id remoto (14.0).
+ *
+ * Devuelve false si ese mensaje no está en esta computadora, que pasa y no es un error: el canal le
+ * avisa a todos los participantes, y uno puede no haber bajado todavía el mensaje al que reaccionaron.
+ * Cuando lo baje, va a venir con sus reacciones adentro.
+ */
+export function aplicarReaccionesRemotas(mensajeRemotoId: string, reacciones: ReaccionRemota[]): boolean {
+  const fila = db().prepare('SELECT id FROM mensajes WHERE remoto_id = ?').get(mensajeRemotoId) as
+    | { id: number }
+    | undefined
+  if (!fila) return false
+  guardarReacciones(fila.id, reacciones)
+  return true
 }
 
 function guardarAcuses(mensajeId: number, remoto: MensajeRemoto): void {
@@ -369,6 +431,39 @@ function acusesDelMensaje(mensajeId: number, conversacionId: number): AcuseDeMen
   }))
 }
 
+/**
+ * Las reacciones de un mensaje, ya agrupadas por emoji y con los nombres puestos.
+ *
+ * El nombre sale de los participantes de la conversación, igual que en los acuses: la tabla guarda la
+ * clave (que es la identidad entre computadoras) y quien mira quiere leer «Ana», no «ana». Si la
+ * persona ya no está en la conversación queda su clave, que es mejor que un renglón vacío.
+ *
+ * Se ordenan por cantidad y, a igual cantidad, por el orden en que aparecieron: así la pastilla más
+ * puesta va primera y la fila no se reacomoda sola cada vez que alguien suma un pulgar.
+ */
+function reaccionesDelMensaje(mensajeId: number, conversacionId: number, miClave: string): ReaccionDeMensaje[] {
+  const filas = db()
+    .prepare(
+      `SELECT r.clave, r.emoji, COALESCE(p.usuario_nombre, r.clave) AS nombre
+         FROM mensaje_reacciones r
+         LEFT JOIN conversacion_participantes p
+                ON p.conversacion_id = ? AND p.usuario_clave = r.clave
+        WHERE r.mensaje_id = ?
+        ORDER BY r.creado_en, r.clave`,
+    )
+    .all(conversacionId, mensajeId) as Array<{ clave: string; emoji: string; nombre: string }>
+
+  const porEmoji = new Map<string, ReaccionDeMensaje>()
+  for (const fila of filas) {
+    const grupo = porEmoji.get(fila.emoji) ?? { emoji: fila.emoji, claves: [], nombres: [], mia: false }
+    grupo.claves.push(fila.clave)
+    grupo.nombres.push(fila.nombre)
+    if (fila.clave === miClave) grupo.mia = true
+    porEmoji.set(fila.emoji, grupo)
+  }
+  return [...porEmoji.values()].sort((a, b) => b.claves.length - a.claves.length)
+}
+
 function aMensaje(fila: FilaMensaje, miClave: string): MensajeInterno {
   const mio = fila.autor_clave === miClave
   // Los acuses de un mensaje ajeno no son asunto de quien mira: sólo el autor ve quién le leyó qué.
@@ -388,6 +483,8 @@ function aMensaje(fila: FilaMensaje, miClave: string): MensajeInterno {
     eliminadoEn: fila.eliminado_en,
     adjuntos: fila.eliminado_en ? [] : adjuntosDelMensaje(fila.id),
     acuses,
+    // Un mensaje borrado no muestra reacciones: no queda nada a lo que estén pegadas.
+    reacciones: fila.eliminado_en ? [] : reaccionesDelMensaje(fila.id, fila.conversacion_id, miClave),
   }
 }
 
@@ -680,6 +777,31 @@ export async function crearGrupoDeMensajes(
   return aConversacion(db().prepare('SELECT * FROM conversaciones WHERE id = ?').get(id) as FilaConversacion, miClave)
 }
 
+/**
+ * La conversación de a dos que se quiere llamar por voz, con quién está del otro lado (14.0).
+ *
+ * Vive acá y no en `vivo/llamadas.ts` porque quién participa de una conversación es asunto de la
+ * mensajería: la llamada sólo necesita saber a quién invitar y con qué id de conversación —el REMOTO,
+ * el que conocen las cinco computadoras y el servidor—.
+ *
+ * Sólo DIRECTA: una llamada de a dos es una conversación con una sola persona del otro lado. Los grupos
+ * quedan para cuando haya con qué mezclar tres audios.
+ */
+export function directaParaLlamar(
+  actor: SesionUsuario,
+  conversacionId: unknown,
+): { remotoId: string; con: { clave: string; nombre: string } } {
+  const miClave = miClaveDe(actor)
+  const id = enteroPositivo(conversacionId, 'La conversación')
+  const fila = conversacionLocal(id, miClave)
+  if (fila.tipo !== 'DIRECTA') {
+    throw new ErrorDeNegocio('Las llamadas de voz son de a dos: en un grupo todavía no se puede.')
+  }
+  const otro = participantesDe(fila.id).find((participante) => participante.clave !== miClave && !participante.salioEn)
+  if (!otro) throw new ErrorDeNegocio('Esa conversación no tiene a nadie del otro lado.')
+  return { remotoId: fila.remoto_id, con: { clave: otro.clave, nombre: otro.nombre } }
+}
+
 // ---------------------------------------------------------------------------
 // Mandar
 // ---------------------------------------------------------------------------
@@ -794,6 +916,48 @@ export async function zumbar(actor: SesionUsuario, conversacionId: unknown): Pro
   const ahora = ahoraIso()
   db().prepare('UPDATE conversaciones SET ultimo_mensaje_en = ?, actualizado_en = ? WHERE id = ?').run(ahora, ahora, id)
   return aMensaje(db().prepare('SELECT * FROM mensajes WHERE id = ?').get(local) as FilaMensaje, miClave)
+}
+
+/** Cuánto puede medir un emoji de reacción. Alcanza para una bandera o una familia; no para un texto. */
+const TOPE_DEL_EMOJI = 16
+
+/**
+ * Pone, cambia o saca MI reacción a un mensaje (14.0): el pulgar de WhatsApp.
+ *
+ * **No pasa por la cola**, igual que el zumbido: habla con el servidor en el momento y, sin conexión,
+ * no se manda y se dice por qué. Una reacción que sale de la cola veinte minutos después llegaría a una
+ * conversación que ya siguió de largo, y sobre todo: la cola es para lo que se ESCRIBIÓ, y una reacción
+ * es un tilde sobre algo de otro. El candado de la conexión lo pone `exigirEdicion` en `ipc.ts`.
+ *
+ * Con `emoji` en null —o con el mismo que ya estaba— la saca; con otro, la reemplaza. Quien decide es
+ * el servidor: acá se aplica lo que contesta, que es la lista completa del mensaje.
+ *
+ * El aviso a la pantalla es `mensajes:cambiaron` y no `mensajes:llegaron`: la conversación se redibuja
+ * SIN sonar y sin saltar arriba de la lista. Una reacción no es un mensaje.
+ */
+export async function reaccionarA(actor: SesionUsuario, mensajeId: unknown, emoji: unknown): Promise<MensajeInterno> {
+  const miClave = miClaveDe(actor)
+  const id = enteroPositivo(mensajeId, 'El mensaje')
+  const fila = db().prepare('SELECT * FROM mensajes WHERE id = ?').get(id) as FilaMensaje | undefined
+  if (!fila) throw new ErrorDeNegocio('Ese mensaje ya no está en esta computadora.')
+  conversacionLocal(fila.conversacion_id, miClave)
+  if (fila.eliminado_en) throw new ErrorDeNegocio('Ese mensaje se borró: ya no se le puede reaccionar.')
+  if (!fila.remoto_id || fila.estado === 'enCola' || fila.estado === 'fallado') {
+    throw new ErrorDeNegocio('Ese mensaje todavía no salió de esta computadora: esperá a que se mande.')
+  }
+
+  let elegido: string | null = null
+  if (emoji !== null && emoji !== undefined && emoji !== '') {
+    if (typeof emoji !== 'string') throw new ErrorDeNegocio('Esa reacción no se entiende.')
+    const limpio = emoji.trim()
+    if (largoEnPuntos(limpio) > TOPE_DEL_EMOJI) throw new ErrorDeNegocio('Una reacción es un emoji, no un texto.')
+    elegido = limpio || null
+  }
+
+  const respuesta = await exigirPuente().reaccionar(actorDelPuente(actor), fila.remoto_id, elegido)
+  guardarReacciones(id, respuesta.reacciones)
+  emitirATodas('mensajes:cambiaron', null)
+  return aMensaje(db().prepare('SELECT * FROM mensajes WHERE id = ?').get(id) as FilaMensaje, miClave)
 }
 
 /**
@@ -1094,7 +1258,8 @@ export async function registroDeMensajes(actor: SesionUsuario, filtros: FiltrosD
             ? (renglon.conversacion.titulo ?? 'Grupo')
             : renglon.conversacion.participantes.map((participante) => participante.nombre).join(' ↔ '),
         tipo: renglon.conversacion.tipo,
-        claseDeMensaje: renglon.mensaje.tipo === 'ZUMBIDO' ? 'ZUMBIDO' : 'NORMAL',
+        claseDeMensaje:
+          renglon.mensaje.tipo === 'ZUMBIDO' || renglon.mensaje.tipo === 'LLAMADA' ? renglon.mensaje.tipo : 'NORMAL',
         participantes: renglon.conversacion.participantes.map((participante) => participante.nombre).join(', '),
         autorClave: renglon.mensaje.autorClave,
         autorNombre: renglon.mensaje.autorNombre,
@@ -1108,6 +1273,11 @@ export async function registroDeMensajes(actor: SesionUsuario, filtros: FiltrosD
           : leidos === acuses.length
             ? `Leído por ${leidos}`
             : `Entregado a ${entregados} de ${acuses.length}, leído por ${leidos}`,
+        // Del servidor y no del espejo: el registro es de TODA la agencia, y esta computadora sólo tiene
+        // guardadas las conversaciones de las que participa quien está mirando.
+        reacciones: (renglon.mensaje.reacciones ?? [])
+          .map((reaccion) => `${reaccion.emoji} ${reaccion.claves.length}`)
+          .join(', '),
       }
     }),
   }

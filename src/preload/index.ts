@@ -223,6 +223,27 @@ const api: ApiDm = {
     estado: () => invocar('conexion:estado'),
     alCambiar: (escuchar) => suscribir('conexion:estado', escuchar),
   },
+  perfiles: {
+    listar: () => invocar('perfiles:listar'),
+    guardarMio: (datos) => invocar('perfiles:guardarMio', datos),
+    guardarDe: (clave, datos) => invocar('perfiles:guardarDe', clave, datos),
+    alCambiar: (escuchar) => suscribir('perfiles:cambiaron', escuchar),
+  },
+  vivo: {
+    foco: (foco) => invocar('vivo:foco', foco),
+    presencia: () => invocar('vivo:presencia'),
+    alCambiarLaPresencia: (escuchar) => suscribir('presencia:cambio', escuchar),
+  },
+  llamadas: {
+    invitar: (conversacionId) => invocar('llamadas:invitar', conversacionId),
+    aceptar: () => invocar('llamadas:aceptar'),
+    rechazar: () => invocar('llamadas:rechazar'),
+    colgar: () => invocar('llamadas:colgar'),
+    senal: (llamadaId, senal) => invocar('llamadas:senal', llamadaId, senal),
+    ice: () => invocar('llamadas:ice'),
+    estado: () => invocar('llamadas:estado'),
+    alPasarAlgo: (escuchar) => suscribir('llamadas:evento', escuchar),
+  },
   sincronizacion: {
     estado: () => invocar('sincronizacion:estado'),
     panel: () => invocar('sincronizacion:panel'),
@@ -268,6 +289,7 @@ const api: ApiDm = {
     enviarConArchivos: (conversacionId, cuerpo, rutas, archivos) =>
       invocar('mensajes:enviarConArchivos', conversacionId, cuerpo, rutas, archivos),
     zumbar: (conversacionId) => invocar('mensajes:zumbar', conversacionId),
+    reaccionar: (mensajeId, emoji) => invocar('mensajes:reaccionar', mensajeId, emoji),
     reintentar: (mensajeId) => invocar('mensajes:reintentar', mensajeId),
     marcarLeidos: (conversacionId) => invocar('mensajes:marcarLeidos', conversacionId),
     avisos: () => invocar('mensajes:avisos'),

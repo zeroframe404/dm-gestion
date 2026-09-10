@@ -82,10 +82,13 @@ function mesAbierto(): string | null {
 // Agregados del listado
 // ---------------------------------------------------------------------------
 
-const COLUMNAS_DE_FILA = 'id, nombre, documento, documento_normalizado, telefono, email, sucursal_texto, localidad'
+// `fila_id` viaja desde la 14.0: es el nombre que el cliente tiene en las cinco computadoras y de ahí
+// se agarran la presencia y el glow (el `id` de esta base es distinto en cada máquina).
+const COLUMNAS_DE_FILA = 'id, fila_id, nombre, documento, documento_normalizado, telefono, email, sucursal_texto, localidad'
 
 interface FilaClienteCruda {
   id: number
+  fila_id: string | null
   nombre: string
   documento: string | null
   documento_normalizado: string | null
@@ -247,6 +250,7 @@ function estadoDelCliente(id: number, datos: Agregados): EstadoDeCliente {
 function armarFila(cruda: FilaClienteCruda, datos: Agregados): FilaCliente {
   return {
     id: cruda.id,
+    filaId: cruda.fila_id,
     nombre: cruda.nombre,
     documento: cruda.documento,
     telefono: cruda.telefono,

@@ -15,6 +15,9 @@
 import type { Rol, TipoDeMensaje } from '../../shared/tipos'
 import { ErrorDeNegocio } from '../servicios/errores'
 import { credencialesDelPuente } from '../servicios/sincronizacion'
+// El mismo tipo que viaja por el canal en vivo (14.0): una reacción llega por los dos caminos —en el
+// mensaje que baja el cartero y en el frame `{t:'reaccion'}`— y tiene que significar lo mismo en los dos.
+import type { ReaccionRemota } from '../vivo/protocolo'
 
 /** Un pedido normal: si el servidor tarda más que esto, algo está mal. */
 const TIEMPO_MAXIMO_MS = 30_000
@@ -70,6 +73,11 @@ export interface MensajeRemoto {
   eliminadoEn: string | null
   adjuntos: AdjuntoRemoto[]
   acuses: AcuseRemoto[]
+  /**
+   * Las reacciones del mensaje, agrupadas por emoji (14.0). Viene opcional porque un servidor anterior
+   * no la manda: ahí un mensaje no tiene ninguna, que es exactamente lo que era.
+   */
+  reacciones?: ReaccionRemota[]
 }
 
 export interface ConversacionRemota {
@@ -140,7 +148,7 @@ export class PuenteDeMensajes {
 
   private async pedir(
     descripcion: string,
-    metodo: 'GET' | 'POST',
+    metodo: 'GET' | 'POST' | 'PUT',
     ruta: string,
     opciones: { cuerpo?: unknown; senal?: AbortSignal; tiempoMaximoMs?: number } = {},
   ): Promise<unknown> {
@@ -317,6 +325,29 @@ export class PuenteDeMensajes {
 
   async eliminar(actor: ActorDelPuente, id: string): Promise<void> {
     await this.pedir('borrar el mensaje', 'POST', `/api/dmg/mensajes/${id}/eliminar`, { cuerpo: { actor } })
+  }
+
+  /**
+   * Pone, cambia o saca MI reacción a un mensaje (14.0). Con `emoji: null` —o con el mismo que ya
+   * estaba— la saca; con otro, la reemplaza: una persona reacciona UNA vez a cada mensaje.
+   *
+   * Devuelve la lista COMPLETA del mensaje, no el cambio: dos personas reaccionando en el mismo
+   * instante no pueden dejar a nadie con una cuenta a medias. El servidor, además, se lo difunde por el
+   * canal a los participantes, así que del otro lado aparece sin que nadie pregunte.
+   */
+  async reaccionar(
+    actor: ActorDelPuente,
+    mensajeId: string,
+    emoji: string | null,
+  ): Promise<{ mensajeId: string; conversacionId: string; reacciones: ReaccionRemota[] }> {
+    const respuesta = (await this.pedir('poner la reacción', 'PUT', `/api/dmg/mensajes/${encodeURIComponent(mensajeId)}/reaccion`, {
+      cuerpo: { actor, emoji },
+    })) as { mensajeId?: string; conversacionId?: string; reacciones?: ReaccionRemota[] }
+    return {
+      mensajeId: respuesta?.mensajeId ?? mensajeId,
+      conversacionId: respuesta?.conversacionId ?? '',
+      reacciones: respuesta?.reacciones ?? [],
+    }
   }
 
   /** El registro de todos los mensajes de todos. El servidor lo corta por rol; acá no se decide nada. */

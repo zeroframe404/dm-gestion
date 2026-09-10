@@ -44,7 +44,10 @@ const INSERT_DEL_IMPORTADOR = `
  */
 function baseDesactualizada(omitir: string[] = []): BaseDeDatos {
   const db = new Database(':memory:') as BaseDeDatos
-  db.pragma('foreign_keys = ON')
+  // Apagadas mientras se aplican las migraciones, igual que hace `ejecutarMigraciones` (14.0): la 29
+  // rehace la tabla `mensajes` con los doce pasos de SQLite y no se puede borrar la vieja teniendo a
+  // `mensaje_acuses` apuntándole. Se encienden abajo, que es como queda la base de una computadora.
+  db.pragma('foreign_keys = OFF')
   const omitidas = new Set<string>()
   for (const migracion of [...MIGRACIONES].sort((a, b) => a.version - b.version)) {
     let sql = migracion.sql
@@ -59,6 +62,7 @@ function baseDesactualizada(omitir: string[] = []): BaseDeDatos {
   for (const sentencia of omitir) {
     assert.ok(omitidas.has(sentencia), `la sentencia a omitir no está en ninguna migración: ${sentencia}`)
   }
+  db.pragma('foreign_keys = ON')
   return db
 }
 

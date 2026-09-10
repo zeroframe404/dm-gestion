@@ -6,9 +6,10 @@
 // arriba de todo cada vez que alguien pone un pulgar, que es exactamente lo que hace que la gente
 // termine silenciando un chat.
 //
-// TODO (14.0, fase D): acá se hace el upsert en la tabla local `mensaje_reacciones` (migración 29) con
-// la misma función que usa `guardarMensaje`, para que el hilo abierto muestre lo mismo que la base.
-// El aviso a la pantalla ya es el definitivo: `mensajes:cambiaron` redibuja SIN sonar.
+// Lo que llega se guarda en la tabla local `mensaje_reacciones` (migración 29) con la misma función que
+// usa `guardarMensaje`, para que el hilo abierto muestre lo mismo que la base y para que siga estando
+// al abrir el programa sin internet. El aviso a la pantalla es `mensajes:cambiaron`: redibuja SIN sonar.
+import { aplicarReaccionesRemotas } from '../servicios/mensajeria'
 import { emitirATodas } from '../servicios/avisos'
 import type { DelServidor, ReaccionRemota } from './protocolo'
 
@@ -22,6 +23,16 @@ export function recibirReaccion(aviso: AvisoDeReaccion): void {
   // El servidor manda la lista ENTERA del mensaje, no el cambio: así dos reacciones puestas al mismo
   // tiempo en dos computadoras no dejan a nadie con una cuenta a medias.
   porMensaje.set(aviso.mensajeId, aviso.reacciones)
+  try {
+    // Puede no estar todavía: el aviso les llega a todos los participantes y alguno puede no haber
+    // bajado el mensaje. Cuando lo baje va a venir con sus reacciones adentro.
+    aplicarReaccionesRemotas(aviso.mensajeId, aviso.reacciones)
+  } catch (error) {
+    // Una reacción que no se pudo guardar no puede tumbar el canal, que es el mismo que reparte la
+    // grilla y los mensajes: queda lo que llegó en memoria y la base se pone al día en la vuelta
+    // siguiente del cartero.
+    console.error('[vivo] No se pudo guardar la reacción:', error instanceof Error ? error.message : error)
+  }
   emitirATodas('mensajes:cambiaron', null)
 }
 

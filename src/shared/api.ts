@@ -208,6 +208,40 @@ export interface ApiDm {
     estado: Remota<'conexion:estado'>
     alCambiar: Suscripcion<'conexion:estado'>
   }
+  /**
+   * La foto y el color de cada persona de la agencia (14.0): lo que dibuja el avatar de la barra, las
+   * burbujas de la presencia y el anillo de color alrededor de la celda que alguien está editando.
+   */
+  perfiles: {
+    listar: Remota<'perfiles:listar'>
+    guardarMio: Remota<'perfiles:guardarMio'>
+    /** Sólo administradores: la foto o el color de otra persona. */
+    guardarDe: Remota<'perfiles:guardarDe'>
+    alCambiar: Suscripcion<'perfiles:cambiaron'>
+  }
+  /**
+   * Quién está trabajando en qué (14.0). `foco` es lo que esta computadora reporta —la celda, la ficha
+   * o la pantalla donde está parada— y `presencia` es la foto de todas las demás.
+   */
+  vivo: {
+    foco: Remota<'vivo:foco'>
+    presencia: Remota<'vivo:presencia'>
+    alCambiarLaPresencia: Suscripcion<'presencia:cambio'>
+  }
+  /**
+   * Las llamadas de voz de a dos (14.0). El audio lo maneja el renderer con una `RTCPeerConnection`; por
+   * acá pasa nada más la señalización, que es lo que el proceso principal sabe mandar por el canal.
+   */
+  llamadas: {
+    invitar: Remota<'llamadas:invitar'>
+    aceptar: Remota<'llamadas:aceptar'>
+    rechazar: Remota<'llamadas:rechazar'>
+    colgar: Remota<'llamadas:colgar'>
+    senal: Remota<'llamadas:senal'>
+    ice: Remota<'llamadas:ice'>
+    estado: Remota<'llamadas:estado'>
+    alPasarAlgo: Suscripcion<'llamadas:evento'>
+  }
   sincronizacion: {
     estado: Remota<'sincronizacion:estado'>
     panel: Remota<'sincronizacion:panel'>
@@ -261,6 +295,8 @@ export interface ApiDm {
     enviarConArchivos: Remota<'mensajes:enviarConArchivos'>
     /** El zumbido de Messenger: suena fuerte del otro lado y le sacude la ventana. Necesita conexión. */
     zumbar: Remota<'mensajes:zumbar'>
+    /** La reacción de WhatsApp (14.0): con `null` —o con el mismo emoji— la saca. También necesita conexión. */
+    reaccionar: Remota<'mensajes:reaccionar'>
     reintentar: Remota<'mensajes:reintentar'>
     marcarLeidos: Remota<'mensajes:marcarLeidos'>
     avisos: Remota<'mensajes:avisos'>
