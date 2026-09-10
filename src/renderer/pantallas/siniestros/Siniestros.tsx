@@ -15,7 +15,7 @@ import {
   type ListadoSiniestros,
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
-import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
+import { Alerta, Boton, Cargando, cx, fechaCorta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
@@ -255,8 +255,8 @@ function FilaDeSiniestro({ fila, ve, alAbrir }: { fila: FilaSiniestro; ve: Set<s
       {ve.has('cobertura') && <td className={celda}>{fila.cobertura ?? '—'}</td>}
       {ve.has('asegurado') && <td className="px-3 py-2 font-medium text-slate-900">{fila.clienteNombre ?? '—'}</td>}
       {ve.has('patente') && <td className={cx(celda, 'font-mono text-xs font-semibold')}>{fila.patente ?? '—'}</td>}
-      {ve.has('carga') && <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fila.fechaCarga ?? '—'}</td>}
-      {ve.has('fecha') && <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fila.fecha ?? '—'}</td>}
+      {ve.has('carga') && <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fechaCorta(fila.fechaCargaIso, fila.fechaCarga)}</td>}
+      {ve.has('fecha') && <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fechaCorta(fila.fechaIso, fila.fecha)}</td>}
       {ve.has('numero') && <td className={cx(celda, 'font-mono text-xs')}>{fila.numeroSiniestro ?? '—'}</td>}
       {ve.has('estado') && (
         <td className="px-3 py-2">

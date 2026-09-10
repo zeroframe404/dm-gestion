@@ -17,7 +17,7 @@ import {
   type ResultadoImputacion,
 } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
-import { Alerta, Cargando, cx } from '../../componentes/ui'
+import { Alerta, Cargando, cx, fechaCorta } from '../../componentes/ui'
 import { usePermisos } from '../../contexto/Permisos'
 import { EstadoDelCobro } from './CajaDelDia'
 import { momento, numero, pesos } from './formato'
@@ -179,7 +179,7 @@ export function Imputados() {
             )}
             {datos.pagos.map((pago) => (
               <tr key={pago.id} className="border-b border-slate-100 last:border-b-0">
-                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{pago.fecha ?? pago.fechaIso ?? '—'}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{fechaCorta(pago.fechaIso, pago.fecha)}</td>
                 <td className="px-3 py-2 font-medium text-slate-900">{pago.clienteNombre ?? '—'}</td>
                 <td className="px-3 py-2 text-slate-600">{pago.documento ?? '—'}</td>
                 <td className="px-3 py-2 text-slate-600">{pago.compania ?? '—'}</td>
