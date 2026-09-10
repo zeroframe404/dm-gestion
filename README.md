@@ -606,8 +606,12 @@ archivo del repositorio del servidor):
 | `bienvenida` | La foto de la grilla, los perfiles, quién está y la configuración de las llamadas | Reconcilia (ver abajo) |
 | `grilla` | «Algo cambió»: generación, `{pestaña: versión}` y las versiones de las métricas | Compara contra lo que tiene y baja **sólo lo distinto** |
 | `mensajes` | «Hay algo tuyo» | Pide `GET /mensajes/novedades?espera=0`, como desde la 12.8 |
-| `presencia` | Quién está conectado y en qué está trabajando | Dibuja el glow y las burbujas (Fase C) |
-| `foco`, `perfil`, `reaccion`, `llamada`, `latido` | El resto del vivo | Fases C, D y E |
+| `presencia` | Quién está conectado y en qué está trabajando | Dibuja el glow y las burbujas (ver «Perfiles y presencia») |
+| `foco` | Lo único que SUBE por el canal además del saludo: en qué está parada esta computadora | Sale con 100 ms de respiro, y se reenvía al reconectar |
+| `perfil` | Alguien cambió su foto o su color | Lo guarda en el espejo y redibuja las caras |
+| `reaccion` | La lista completa de reacciones de un mensaje | Reemplaza la que tenía y redibuja el hilo, **sin** sonar |
+| `llamada` | La señalización de las llamadas de voz (`timbrar`, `aceptar`, `sdp`, `ice`, `colgar`…) | Ver «Llamadas de voz» |
+| `latido` | Signo de vida, cada 20 s | Cincuenta segundos de silencio y la conexión se da por muerta |
 
 Los datos siguen viajando por los endpoints HTTP de siempre. El canal reemplazó a los relojes y a los
 long-polls, no al puente.
@@ -665,7 +669,74 @@ alguien sube una versión. `pruebas/vivo.prueba.ts` levanta dos computadoras con
 otra tiene que verlo en menos de un segundo—, le corta el canal a una con `cerrarConexionesDe` para
 comprobar que al volver reconcilia sola, y verifica las dos ramas de `exigirConexion`.
 `pruebas/sincronizacion-en-vivo.prueba.ts` prueba la otra mitad —qué se baja y cuándo se da por
-vista— sin socket en el medio, pasándole a mano la misma foto.
+vista— sin socket en el medio, pasándole a mano la misma foto. El simulador también atiende los
+perfiles (`PUT /api/dmg/perfiles/mio` y `/:clave`, con el 409 del color tomado), las reacciones
+(`PUT /api/dmg/mensajes/:id/reaccion`) y el relay completo de las llamadas —el «ocupado», el corte por
+falta de respuesta y el renglón que queda en la conversación—, así que las tres vueltas se prueban
+enteras contra él. Lo único que no se puede probar en el banco es el AUDIO: eso va en el humo manual,
+con dos máquinas y auriculares.
+
+### Perfiles y presencia (14.0)
+
+**Se ve quién está trabajando en qué.** Cada computadora reporta su **foco** —la celda de la planilla,
+la ficha abierta, o apenas el módulo— y el servidor difunde la foto completa de los cinco. En la
+pantalla eso es un **anillo de color** alrededor de la celda o del renglón, con la **cara** de la
+persona colgada arriba a un costado. Con varias personas en el mismo lugar los anillos se apilan.
+
+- **El color es de la persona y es único**: doce colores (`src/shared/paleta.ts`), uno por cada uno, y
+  el servidor no deja repetir (pedir uno tomado contesta 409 con el nombre de quien lo tiene). Es lo
+  que hace que un anillo diga quién está sin tener que leer ningún nombre.
+- **La foto** se carga en «Mi perfil» (el avatar de la barra de arriba): se recorta a 256 × 256 y se
+  guarda como JPEG de menos de 40 KB. Un administrador puede cargarle la foto y cambiarle el color a
+  otro desde Administración → Usuarios. Las dos cosas viven en la tabla `perfiles` del espejo local,
+  así que las caras se siguen viendo al abrir el programa sin internet.
+- **El bloqueo es suave.** Mientras alguien tiene una ficha abierta con el cursor adentro de un campo,
+  a los demás se les apaga el Guardar y se les dice quién está y que se destraba solo. No protege nada
+  —la barrera de verdad es el `previo` y el 409 del servidor—: sirve para evitar de antemano el choque
+  que se puede evitar. Y **el candado no decide un guardado ya empezado**: si aparece con la persona a
+  mitad de una palabra, lo escrito se guarda igual y el choque lo resuelve el `previo`. Tirarlo en
+  silencio sería perder trabajo sin un solo cartel.
+- **La presencia vive pegada a la conexión**: cuando el socket se cierra, esa persona desaparece de la
+  foto de todos. No hace falta que nadie avise nada, y no quedan celdas pintadas para siempre.
+
+### Reacciones (14.0)
+
+Como en WhatsApp: pasando el mouse por cualquier mensaje —propio o ajeno— aparece «Reaccionar», con los
+seis emojis de siempre y un «+» que abre el cajón completo. Las reacciones quedan en una pastilla
+debajo de la burbuja, con el emoji, la cuenta y los nombres en el globito.
+
+- **Una persona reacciona UNA vez a cada mensaje**: tocar el mismo emoji lo saca, tocar otro lo
+  reemplaza. La cuenta se muestra siempre, también cuando es uno: en un grupo de cinco eso es
+  justamente lo que se quiere saber.
+- **Va por el canal, no por el cartero.** Una reacción es un tilde de un emoji, no un mensaje: no suena
+  la campana, no sube la conversación arriba de todo y no cuenta como «sin leer». El servidor difunde
+  la lista **completa** del mensaje a los participantes (`PUT /api/dmg/mensajes/:id/reaccion` →
+  `{t:'reaccion'}`), no el cambio, así que dos personas reaccionando en el mismo instante no dejan a
+  nadie con la cuenta a medias.
+
+### Llamadas de voz (14.0)
+
+Llamadas **de a dos**, desde la conversación directa: el botón «Llamar» del encabezado. El servidor
+sólo REENVÍA la señalización; el **audio va punto a punto** por WebRTC, con el coturn del VPS de muleta
+cuando el router de una sucursal no deja pasar la conexión directa.
+
+- **QUÉ pasa lo decide el proceso principal** (`src/main/vivo/llamadas.ts`): una sola llamada por
+  computadora, corte a los 45 segundos si nadie atiende, «ocupado» automático para la segunda que
+  entre. **SONAR lo hace la ventana** (`src/renderer/contexto/Llamada.tsx`): ahí viven la
+  `RTCPeerConnection`, el micrófono y el `<audio>` de la otra punta.
+- **El micrófono se pide recién al atender**, de los dos lados: nadie quiere el foquito de grabación
+  encendido durante un timbre que no contesta nadie. Electron sólo concede `media` de audio, y sólo a
+  la ventana principal (`blindarLosPermisos` en `src/main/index.ts`); todo lo demás se niega y queda
+  anotado en la bitácora.
+- **La llamada no sobrevive a que se corte el canal.** El audio aguanta un parpadeo de wifi porque no
+  pasa por el VPS, pero el estado de la llamada vive pegado a la conexión: cuando el socket se cierra,
+  el servidor la cierra y le avisa al otro. Por eso la computadora que reconecta corta con
+  `desconexion` en vez de quedarse creyendo que habla sola.
+- **Queda el renglón en la conversación** («Llamada de voz · 3:12», «Llamada perdida»). Lo escribe el
+  **servidor**, que es el único que vio los dos lados; la pantalla lo muestra tal cual y no lo
+  interpreta, así que un motivo nuevo aparece solo. Y cuando la llamada se cierra sola —ocupado,
+  rechazada, sin respuesta, desconexión— la barra de arriba lo dice por unos segundos: sin eso las
+  cuatro se ven igual y la persona vuelve a apretar «Llamar».
 
 ### Respaldos y rebobinar (12.5)
 

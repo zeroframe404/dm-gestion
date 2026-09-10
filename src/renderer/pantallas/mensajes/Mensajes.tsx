@@ -22,11 +22,16 @@ import type {
   EstadoDeMensajeria,
   HiloDeMensajes,
 } from '../../../shared/tipos'
-import { largoEnPuntos, MAXIMO_DE_UN_MENSAJE } from '../../../shared/texto'
+import { claveDeUsuario, largoEnPuntos, MAXIMO_DE_UN_MENSAJE } from '../../../shared/texto'
+import { Avatar } from '../../componentes/Avatar'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Campo, Cargando, cx, Dialogo, haceCuanto } from '../../componentes/ui'
 import { prepararArchivos } from '../../imagenes'
+import { useConexion } from '../../contexto/Conexion'
+import { useLlamada } from '../../contexto/Llamada'
 import { usePermisos } from '../../contexto/Permisos'
+import { usePresencia } from '../../contexto/Presencia'
+import { useUsuarioActual } from '../../contexto/Sesion'
 import { Burbuja } from './Burbuja'
 import { SelectorDeEmojis } from './SelectorDeEmojis'
 
@@ -43,9 +48,94 @@ interface ArchivoEnEspera {
   clave: string
 }
 
+/**
+ * Con quién es una conversación directa: el único participante que no soy yo (14.0).
+ *
+ * Hace falta para dibujarle la cara: el título de una directa es el nombre de la otra persona, pero
+ * la foto y el color van por CLAVE. En un grupo devuelve null y el dibujo pasa a ser el ícono de
+ * varios, que es lo que había antes para todas.
+ */
+function claveDeLaDirecta(conversacion: ConversacionInterna, miClave: string): string | null {
+  if (conversacion.tipo !== 'DIRECTA') return null
+  return conversacion.participantes.find((participante) => participante.clave !== miClave)?.clave ?? null
+}
+
+/**
+ * El botón de llamar por voz (14.0), en el encabezado de una conversación de a dos.
+ *
+ * En un GRUPO no se dibuja: las llamadas son de a dos (el plan de la 14.0 las deja así y los grupos
+ * quedan para después), y un botón que existe y siempre falla es peor que ninguno.
+ *
+ * Se apaga por cuatro motivos, en este orden —el mismo que usan las barreras de verdad, para que el
+ * cartel no diga una cosa y el proceso principal otra—:
+ *   1. sin permiso para escribir mensajes (llamar deja el renglón de la llamada en la conversación, así
+ *      que el IPC lo pide con `exigirEdicion('mensajes')`, igual que el zumbido);
+ *   2. sin canal en vivo (la invitación sale por el canal: sin él no hay a quién avisarle);
+ *   3. con una llamada ya en curso en esta computadora (`invitarALlamar` lo rechaza como error de
+ *      negocio: el teléfono de la agencia tampoco atiende dos juntas);
+ *   4. la otra persona sin ninguna computadora conectada, que lo dice la presencia.
+ *
+ * Lo que NO se puede saber de antemano es si la otra persona está ocupada hablando con alguien más: la
+ * presencia dice dónde está parada, no si tiene el tubo levantado. Eso lo contesta el servidor al
+ * instante con el motivo `ocupado` y la llamada se cierra sola, que es lo que hace cualquier teléfono.
+ */
+function BotonDeLlamar({
+  conversacion,
+  miClave,
+  puedeEscribir,
+  alFallar,
+}: {
+  conversacion: ConversacionInterna
+  miClave: string
+  puedeEscribir: boolean
+  alFallar: (mensaje: string) => void
+}) {
+  const { puedeEscribir: hayCanal } = useConexion()
+  const { presentes } = usePresencia()
+  const { invitar, ocupada } = useLlamada()
+
+  const claveDelOtro = claveDeLaDirecta(conversacion, miClave)
+  // La presencia ya viene sin la clave propia, así que esto es «la OTRA persona está conectada».
+  const conectada = claveDelOtro !== null && presentes.some((presente) => presente.clave === claveDelOtro)
+
+  const motivo = !puedeEscribir
+    ? 'No tenés permiso para escribir mensajes'
+    : !hayCanal
+      ? 'Sin conexión con la base de la agencia no se puede llamar: la invitación viaja por ahí.'
+      : ocupada
+        ? 'Ya hay una llamada en curso en esta computadora.'
+        : !conectada
+          ? `${conversacion.titulo} no tiene el programa abierto: no hay dónde hacer sonar la llamada.`
+          : null
+
+  return (
+    <button
+      type="button"
+      disabled={motivo !== null}
+      onClick={() => {
+        void invitar(conversacion.id).then((problema) => {
+          if (problema) alFallar(problema)
+        })
+      }}
+      aria-label={`Llamar a ${conversacion.titulo}`}
+      title={motivo ?? `Llamar a ${conversacion.titulo} por voz`}
+      className={cx(
+        'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors',
+        'hover:bg-emerald-50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
+        'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-slate-600',
+        'text-slate-600',
+      )}
+    >
+      <Icono nombre="telefono" tamano={18} />
+    </button>
+  )
+}
+
 export function Mensajes() {
   const permisos = usePermisos()
   const puedeEscribir = permisos.puedeEditar('mensajes')
+  // La clave propia, para saber quién es «el otro» en cada directa y poder dibujarle la cara.
+  const miClave = claveDeUsuario(useUsuarioActual().usuario)
 
   const [conversaciones, setConversaciones] = useState<ConversacionInterna[] | null>(null)
   const [elegida, setElegida] = useState<number | null>(null)
@@ -131,10 +221,15 @@ export function Mensajes() {
     setEsperaDelZumbido(0)
   }, [elegida])
 
-  // Bajar del todo cuando cambia el hilo: un chat que abre mostrando lo de hace tres días no sirve.
+  // Bajar del todo al abrir la conversación o cuando llega algo nuevo: un chat que abre mostrando lo de
+  // hace tres días no sirve. Mira el ÚLTIMO id y no el objeto `hilo` (14.0): desde las reacciones el
+  // hilo se redibuja también por cosas que no son mensajes nuevos —una pastilla, un tilde—, y saltar al
+  // fondo cada vez dejaría a quien reacciona a un mensaje de ayer mirando el final de la conversación.
+  // Y de paso «Ver mensajes anteriores» deja de tirar para abajo justo lo que se acaba de traer.
+  const ultimoDelHilo = hilo?.mensajes.at(-1)?.id ?? null
   useEffect(() => {
     fondoDelHilo.current?.scrollIntoView({ block: 'end' })
-  }, [hilo])
+  }, [elegida, ultimoDelHilo])
 
   const visibles = useMemo(() => {
     const aguja = buscando.trim().toLowerCase()
@@ -229,6 +324,30 @@ export function Mensajes() {
     await cargarHilo(elegida)
     await cargarConversaciones()
     caja.current?.focus()
+  }
+
+  /**
+   * Poner, cambiar o sacar MI reacción a un mensaje (14.0).
+   *
+   * Hermana del zumbido: tampoco pasa por la cola, así que espera al servidor y sin conexión falla —el
+   * error se muestra— en vez de quedar guardada para dentro de veinte minutos.
+   *
+   * La respuesta trae el mensaje con su lista de reacciones al día y se pega en el hilo tal cual, sin
+   * volver a pedirlo: es lo más corto para que la pastilla aparezca en el momento. El
+   * `mensajes:cambiaron` que emite el proceso principal reconcilia igual el resto (la otra ventana, la
+   * lista de conversaciones), y pisar un mensaje por su `id` no reordena ni recarga nada.
+   */
+  const reaccionar = async (mensajeId: number, emoji: string | null) => {
+    setError(null)
+    const respuesta = await window.dm.mensajes.reaccionar(mensajeId, emoji)
+    if (!respuesta.ok) {
+      setError(respuesta.error)
+      return
+    }
+    const alDia = respuesta.datos
+    setHilo((antes) =>
+      antes ? { ...antes, mensajes: antes.mensajes.map((cada) => (cada.id === alDia.id ? alDia : cada)) } : antes,
+    )
   }
 
   const insertarEmoji = (emoji: string) => {
@@ -345,9 +464,20 @@ export function Mensajes() {
                         elegida === conversacion.id && 'bg-marino-50',
                       )}
                     >
-                      <span className="mt-0.5 shrink-0 text-slate-400">
-                        <Icono nombre={conversacion.tipo === 'GRUPO' ? 'clientes' : 'usuario'} tamano={18} />
-                      </span>
+                      {/* La cara de la otra persona en lugar del monigote gris de siempre (14.0):
+                          con seis conversaciones abiertas la foto se reconoce antes que el nombre. */}
+                      {conversacion.tipo === 'GRUPO' ? (
+                        <span className="mt-0.5 shrink-0 text-slate-400">
+                          <Icono nombre="clientes" tamano={18} />
+                        </span>
+                      ) : (
+                        <Avatar
+                          clave={claveDeLaDirecta(conversacion, miClave)}
+                          nombre={conversacion.titulo}
+                          tamano="sm"
+                          className="mt-0.5"
+                        />
+                      )}
                       <span className="min-w-0 flex-1">
                         <span className="flex items-baseline justify-between gap-2">
                           <span className="truncate text-sm font-semibold text-slate-800">{conversacion.titulo}</span>
@@ -400,10 +530,14 @@ export function Mensajes() {
           ) : (
             <>
               <header className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
-                <span className="text-slate-400">
-                  <Icono nombre={hilo.conversacion.tipo === 'GRUPO' ? 'clientes' : 'usuario'} tamano={20} />
-                </span>
-                <div className="min-w-0">
+                {hilo.conversacion.tipo === 'GRUPO' ? (
+                  <span className="text-slate-400">
+                    <Icono nombre="clientes" tamano={20} />
+                  </span>
+                ) : (
+                  <Avatar clave={claveDeLaDirecta(hilo.conversacion, miClave)} nombre={hilo.conversacion.titulo} tamano="md" />
+                )}
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-800">{hilo.conversacion.titulo}</p>
                   {hilo.conversacion.tipo === 'GRUPO' && (
                     <p className="truncate text-xs text-slate-500">
@@ -411,6 +545,15 @@ export function Mensajes() {
                     </p>
                   )}
                 </div>
+                {/* Llamar por voz (14.0): sólo en las de a dos. Ver `BotonDeLlamar`. */}
+                {hilo.conversacion.tipo === 'DIRECTA' && (
+                  <BotonDeLlamar
+                    conversacion={hilo.conversacion}
+                    miClave={miClave}
+                    puedeEscribir={puedeEscribir}
+                    alFallar={setError}
+                  />
+                )}
               </header>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
@@ -427,8 +570,10 @@ export function Mensajes() {
                       key={mensaje.id}
                       mensaje={mensaje}
                       mostrarAutor={hilo.conversacion.tipo === 'GRUPO'}
+                      puedeEscribir={puedeEscribir}
                       alBorrar={(id) => void borrar(id)}
                       alReintentar={(id) => void reintentar(id)}
+                      alReaccionar={(id, emoji) => void reaccionar(id, emoji)}
                     />
                   ))}
                   {hilo.mensajes.length === 0 && (
@@ -613,9 +758,7 @@ function DialogoNuevaConversacion({
                   onClick={() => alElegir(contacto.clave)}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-slate-50"
                 >
-                  <span className="text-slate-400">
-                    <Icono nombre="usuario" tamano={18} />
-                  </span>
+                  <Avatar clave={contacto.clave} nombre={contacto.nombre} tamano="sm" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-slate-800">{contacto.nombre}</span>
                     <span className="block truncate text-xs text-slate-500">

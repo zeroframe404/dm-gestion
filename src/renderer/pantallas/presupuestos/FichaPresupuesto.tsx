@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FichaPresupuesto as Ficha, OpcionDePresupuesto } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
@@ -31,6 +32,14 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
   const [rechazoAbierto, setRechazoAbierto] = useState(false)
   const [motivo, setMotivo] = useState('')
   const [aceptada, setAceptada] = useState<{ opcion: OpcionDePresupuesto; clienteId: number | null; aviso: string | null } | null>(null)
+
+  /**
+   * El glow de la ficha (14.0). Cuenta como «cambios sin guardar» tener abierto el diálogo de editar,
+   * que es donde vive el formulario con las opciones cotizadas a medio cargar.
+   *
+   * `motivo` ya es el motivo del rechazo del cliente, así que el del bloqueo entra como `trabado`.
+   */
+  const { claveDeFoco, motivo: trabado } = useFichaEnVivo('presupuesto', ficha?.presupuesto.filaId, editarAbierto)
 
   const cargar = useCallback(async () => {
     const resultado = await window.dm.presupuestos.ficha(presupuestoId)
@@ -100,8 +109,10 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
             {p.numero}
             {p.version > 1 && <span className="ml-2 align-middle text-base font-bold text-slate-400">versión {p.version}</span>}
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            {[p.clienteNombre, vehiculo, p.patente, p.sucursal].filter(Boolean).join(' · ')}
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+            <span>{[p.clienteNombre, vehiculo, p.patente, p.sucursal].filter(Boolean).join(' · ')}</span>
+            {/* Quién más tiene el presupuesto abierto (14.0). */}
+            <InsigniaDePresencia claveDeFoco={claveDeFoco} />
           </p>
         </div>
         <span className={cx('rounded-full border px-3 py-1 text-sm font-semibold', CLASES_ESTADO_PRESUPUESTO[p.estado])}>{p.estado}</span>
@@ -115,6 +126,7 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
       )}
       {error && <Alerta tono="error">{error}</Alerta>}
       {aviso && <Alerta tono="exito">{aviso}</Alerta>}
+      {trabado && <Alerta tono="aviso">{trabado}</Alerta>}
 
       <div className="flex flex-wrap gap-2">
         <Boton variante="primario" icono="mensaje" cargando={trabajando} disabled={!p.vigente || !puedeTrabajar} onClick={() => void enviar()}>
@@ -126,7 +138,9 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
         <Boton icono="impresora" cargando={trabajando} onClick={() => void window.dm.presupuestos.imprimir(presupuestoId)}>
           Imprimir
         </Boton>
-        <Boton icono="lapiz" disabled={!p.vigente || !puedeTrabajar} onClick={() => setEditarAbierto(true)}>
+        {/* Trabado por otra computadora se apaga el que ABRE el editor, igual que en la consulta:
+            llenar el formulario para descubrir al final que no se puede guardar es peor. */}
+        <Boton icono="lapiz" disabled={!p.vigente || !puedeTrabajar || trabado !== undefined} title={trabado} onClick={() => setEditarAbierto(true)}>
           Editar
         </Boton>
         {p.estado !== 'RECHAZADO' && p.vigente && (

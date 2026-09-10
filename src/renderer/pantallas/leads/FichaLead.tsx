@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { ESTADOS_DE_LEAD, NOMBRE_ORIGEN_LEAD, type EstadoLead, type FichaLead as Ficha } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
 import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos } from '../../contexto/Permisos'
@@ -30,6 +31,15 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
   const [nota, setNota] = useState('')
   const [editarAbierto, setEditarAbierto] = useState(false)
   const [conversion, setConversion] = useState<{ clienteId: number; clienteNombre: string; aviso: string | null } | null>(null)
+
+  /**
+   * El glow de la ficha (14.0).
+   *
+   * Lo que cuenta como «cambios sin guardar» acá son dos cosas: el diálogo de «Editar la consulta»
+   * abierto (adentro está el formulario a medio llenar) y una nota escrita y todavía sin agregar. Los
+   * dos son estados en los que otra persona guardando encima haría perder algo.
+   */
+  const { claveDeFoco, motivo } = useFichaEnVivo('lead', ficha?.lead.filaId, editarAbierto || nota.trim() !== '')
 
   const cargar = useCallback(async () => {
     const resultado = await window.dm.leads.ficha(leadId)
@@ -90,8 +100,10 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
         </Boton>
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-extrabold tracking-tight text-slate-900">{lead.nombre}</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            {[lead.telefono, lead.sucursal, NOMBRE_ORIGEN_LEAD[lead.origen]].filter(Boolean).join(' · ')}
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">
+            <span>{[lead.telefono, lead.sucursal, NOMBRE_ORIGEN_LEAD[lead.origen]].filter(Boolean).join(' · ')}</span>
+            {/* Quién más tiene la consulta abierta (14.0). */}
+            <InsigniaDePresencia claveDeFoco={claveDeFoco} />
           </p>
         </div>
 
@@ -114,7 +126,9 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
             WhatsApp
           </Boton>
         )}
-        <Boton icono="lapiz" disabled={!puedeEditarLeads} onClick={() => setEditarAbierto(true)}>
+        {/* Trabado por otra computadora se apaga el que ABRE el editor y no el Guardar de adentro:
+            llenar el formulario para descubrir al final que no se puede guardar es peor. */}
+        <Boton icono="lapiz" disabled={!puedeEditarLeads || motivo !== undefined} title={motivo} onClick={() => setEditarAbierto(true)}>
           Editar
         </Boton>
         <BotonEliminar tipo="lead" id={lead.id} tamano="md" etiqueta="Eliminar" alBorrar={alVolver} />
@@ -174,7 +188,8 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
               <Boton
                 variante="primario"
                 icono="mas"
-                disabled={!nota.trim() || !puedeEditarLeads}
+                disabled={!nota.trim() || !puedeEditarLeads || motivo !== undefined}
+                title={motivo}
                 cargando={trabajando}
                 onClick={async () => {
                   const ok = await hacer(() => window.dm.leads.agregarNota(lead.id, nota))

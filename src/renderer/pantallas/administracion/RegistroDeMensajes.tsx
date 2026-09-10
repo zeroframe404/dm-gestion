@@ -145,6 +145,7 @@ export function RegistroDeMensajes() {
                   <th className="px-3 py-2 font-semibold">Qué dijo</th>
                   <th className="px-3 py-2 font-semibold">Archivos</th>
                   <th className="px-3 py-2 font-semibold">Llegada y lectura</th>
+                  <th className="px-3 py-2 font-semibold">Reacciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -184,6 +185,10 @@ export function RegistroDeMensajes() {
                     </td>
                     <td className="px-3 py-2 text-xs text-slate-600">{renglon.adjuntos || '—'}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-600">{renglon.acuse}</td>
+                    {/* «👍 2, ❤️ 1» (14.0), tal como lo arma el servicio. Acá van las cuentas y no los
+                        nombres: el registro se lee de un barrido, y una columna con cinco nombres por
+                        renglón lo vuelve ilegible. Quién reaccionó se ve en el chat, en la pastilla. */}
+                    <td className="px-3 py-2 text-sm text-slate-700">{renglon.reacciones || '—'}</td>
                   </tr>
                 ))}
               </tbody>

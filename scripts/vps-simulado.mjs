@@ -90,6 +90,12 @@ export class VpsSimulado {
     this.mensajes = []
     /** `${mensajeId}|${usuarioClave}` → { entregadoEn, leidoEn }. Es también la cola de reparto. */
     this.acuses = new Map()
+    /**
+     * Las reacciones (14.0): `mensajeId` → Map(clave → emoji). Una persona reacciona UNA vez a cada
+     * mensaje, así que el Map de adentro tiene la clave como llave y no una lista: es la misma forma
+     * que la clave primaria `(mensaje_id, clave)` del espejo de la aplicación.
+     */
+    this.reacciones = new Map()
     this.ordenDeMensajes = 1
     /** Los respaldos guardados, del más nuevo al más viejo. */
     this.respaldos = []
@@ -122,10 +128,22 @@ export class VpsSimulado {
      * Los eventos de señalización de llamadas que llegaron por el canal, en orden.
      *
      * Se llama `llamadasDeVoz` y no `llamadas` porque ese nombre ya es de los contadores de pedidos
-     * HTTP (`llamadas.celdas`, `llamadas.leer`…), que usan medio banco de pruebas. Por ahora sólo se
-     * anotan: el relay 1:1 con su ocupado y su timeout es de la Fase E.
+     * HTTP (`llamadas.celdas`, `llamadas.leer`…), que usan medio banco de pruebas.
      */
     this.llamadasDeVoz = []
+    /**
+     * Las llamadas abiertas (14.0): `llamadaId` → { de, para, conversacionId, situacion, desde }.
+     *
+     * El servidor es el único que ve los DOS lados, y por eso es el que decide el «ocupado», el corte
+     * por falta de respuesta y el texto del mensaje que queda en la conversación. Las computadoras
+     * sólo saben lo suyo.
+     */
+    this.llamadasAbiertas = new Map()
+    /**
+     * Cuánto suena el teléfono antes de darlo por perdido, en milisegundos. Igual que el freno del
+     * zumbido, las pruebas lo bajan: cuarenta y cinco segundos de espera no los corre nadie.
+     */
+    this.timbreDeLlamadaMs = 45_000
     /** Lo que el saludo manda como configuración de WebRTC. Sin TURN, igual que un VPS sin secreto. */
     this.ice = { stun: ['stun:stun.l.google.com:19302'], turn: null }
     this.proximaConexion = 1
@@ -372,7 +390,9 @@ export class VpsSimulado {
     }
     enchufe.on('message', (crudo) => this.frameDelCanal(conexion, crudo))
     enchufe.on('close', () => {
-      if (this.conexiones.delete(conexion.id)) this.difundirPresencia()
+      const estaba = this.conexiones.delete(conexion.id)
+      this.alIrseUnaConexion(conexion)
+      if (estaba) this.difundirPresencia()
     })
     // Un socket cortado a lo bruto (ver `cerrarConexionesDe`) emite `error` antes del `close`: sin
     // este oyente, Node lo trata como excepción no atendida y voltea la prueba entera.
@@ -430,7 +450,7 @@ export class VpsSimulado {
     }
     if (mensaje.t === 'llamada') {
       this.llamadasDeVoz.push({ de: conexion.actor.clave, evento: mensaje.evento })
-      return
+      return this.atenderLlamada(conexion, mensaje.evento ?? {})
     }
     return this.rechazarLaConexion(conexion, 'protocolo', `Frame desconocido: ${mensaje.t}.`)
   }
@@ -494,6 +514,208 @@ export class VpsSimulado {
     this.difundirPorElCanal({ t: 'presencia', presentes: this.presencia() })
   }
 
+  // -------------------------------------------------------------------------
+  // El relay de las llamadas de voz (14.0)
+  // -------------------------------------------------------------------------
+  //
+  // El servidor no escucha ni un segundo de audio: eso va punto a punto entre las dos computadoras. Lo
+  // único que hace es lo que ninguna de las dos puede hacer sola —ver los DOS lados—, y de ahí salen
+  // las cuatro decisiones que toma: convertir la invitación en un timbre para el destinatario,
+  // contestar «ocupado» cuando ya está hablando, cortar cuando nadie atiende, y escribir el renglón que
+  // queda en la conversación cuando la llamada termina.
+  //
+  // Se simula de verdad y no se anota nada más porque el contrato que hay que proteger es justamente
+  // ése: si el servidor reenviara `invitar` tal cual en vez de convertirlo en `timbrar`, o nombrara al
+  // destinatario de otra manera, el teléfono no sonaría nunca y `npm run typecheck` seguiría en verde.
+
+  /** Le manda un frame a TODAS las computadoras de una persona. Devuelve a cuántas les llegó. */
+  mandarleA(clave, mensaje) {
+    let llegaron = 0
+    for (const conexion of this.conexiones.values()) {
+      if (conexion.actor?.clave !== clave) continue
+      this.mandarPorElCanal(conexion, mensaje)
+      llegaron++
+    }
+    return llegaron
+  }
+
+  /** ¿Está en una llamada? Es lo que contesta «ocupado» sin hacer sonar nada del otro lado. */
+  estaEnUnaLlamada(clave) {
+    for (const llamada of this.llamadasAbiertas.values()) {
+      if (llamada.de === clave || llamada.para === clave) return true
+    }
+    return false
+  }
+
+  pararElTimbreDe(llamada) {
+    if (llamada.reloj) clearTimeout(llamada.reloj)
+    llamada.reloj = null
+  }
+
+  atenderLlamada(conexion, evento) {
+    const quien = conexion.actor.clave
+    const tipo = String(evento?.tipo ?? '')
+    if (tipo === 'invitar') return this.invitarAUnaLlamada(conexion, evento)
+
+    const llamada = this.llamadasAbiertas.get(String(evento?.llamadaId ?? ''))
+    // Un id que ya no existe —el otro cortó un instante antes, o es un candidato ICE que llegó tarde—
+    // se descarta en silencio: contestar un error sólo serviría para ensuciar la bitácora.
+    if (!llamada || (llamada.de !== quien && llamada.para !== quien)) return
+    const otro = llamada.de === quien ? llamada.para : llamada.de
+
+    if (tipo === 'aceptar') {
+      if (llamada.situacion !== 'timbrando') return
+      llamada.situacion = 'en-llamada'
+      llamada.hablandoDesde = Date.now()
+      this.pararElTimbreDe(llamada)
+      return this.mandarleA(otro, { t: 'llamada', evento: { tipo: 'aceptar', llamadaId: llamada.id } })
+    }
+    if (tipo === 'sdp' || tipo === 'ice') {
+      // La señalización pasa TAL CUAL. El servidor no sabe nada de SDP y no tiene por qué aprender.
+      return this.mandarleA(otro, { t: 'llamada', evento })
+    }
+    if (tipo === 'rechazar' || tipo === 'colgar') {
+      const motivo = evento?.motivo ?? (tipo === 'rechazar' ? 'rechazada' : 'terminada')
+      return this.cerrarLlamada(llamada, motivo, quien)
+    }
+  }
+
+  /**
+   * «Llamá a Beto». La invitación NO se reenvía tal cual: se convierte en `timbrar`, que es lo único
+   * que el otro lado sabe atender, y que además lleva el nombre de quien llama (el que invita conoce a
+   * quién llama, el que atiende no tiene de dónde sacarlo).
+   */
+  invitarAUnaLlamada(conexion, evento) {
+    const de = conexion.actor
+    const llamadaId = String(evento?.llamadaId ?? '')
+    const para = String(evento?.para ?? '').trim().toLowerCase()
+    const conversacionId = String(evento?.conversacionId ?? '')
+    if (!llamadaId || !para) return
+    const cortarAlQueLlama = (motivo) =>
+      this.mandarPorElCanal(conexion, { t: 'llamada', evento: { tipo: 'rechazar', llamadaId, motivo } })
+
+    const llamada = {
+      id: llamadaId,
+      de: de.clave,
+      deNombre: de.nombre,
+      para,
+      conversacionId,
+      situacion: 'timbrando',
+      desde: Date.now(),
+      hablandoDesde: null,
+      reloj: null,
+    }
+
+    // Ocupado: se contesta al instante y no suena nada del otro lado. Del lado del que llamó se
+    // escucha el tono corto, como en cualquier teléfono.
+    if (this.estaEnUnaLlamada(para) || this.estaEnUnaLlamada(de.clave)) {
+      this.mensajeDeLaLlamada(llamada, 'ocupado')
+      return cortarAlQueLlama('ocupado')
+    }
+
+    const timbres = this.mandarleA(para, {
+      t: 'llamada',
+      evento: { tipo: 'timbrar', llamadaId, de: { clave: de.clave, nombre: de.nombre }, conversacionId },
+    })
+    if (timbres === 0) {
+      // No tiene ninguna computadora prendida: no hay a quién hacerle sonar el teléfono. La llamada
+      // perdida queda igual en la conversación, que es cómo se entera cuando vuelve.
+      this.mensajeDeLaLlamada(llamada, 'sin-respuesta')
+      return cortarAlQueLlama('sin-respuesta')
+    }
+
+    this.llamadasAbiertas.set(llamada.id, llamada)
+    llamada.reloj = setTimeout(() => this.cerrarLlamada(llamada, 'sin-respuesta', null), this.timbreDeLlamadaMs)
+    llamada.reloj.unref?.()
+  }
+
+  /**
+   * Se terminó. Se le avisa al que NO cortó (el que cortó ya lo sabe) y queda el renglón en la
+   * conversación. `quienCorto` en null es el servidor cortando por su cuenta: ahí se les avisa a los dos.
+   */
+  cerrarLlamada(llamada, motivo, quienCorto) {
+    if (!this.llamadasAbiertas.delete(llamada.id)) return
+    this.pararElTimbreDe(llamada)
+    // El que todavía no atendió RECHAZA y el que estaba hablando CUELGA: para el servidor es lo mismo,
+    // pero del otro lado uno apaga un timbre y el otro corta una conversación.
+    const tipo = llamada.situacion === 'timbrando' ? 'rechazar' : 'colgar'
+    for (const clave of [llamada.de, llamada.para]) {
+      if (clave === quienCorto) continue
+      this.mandarleA(clave, { t: 'llamada', evento: { tipo, llamadaId: llamada.id, motivo } })
+    }
+    this.mensajeDeLaLlamada(llamada, motivo)
+  }
+
+  /**
+   * El renglón que queda en la conversación cuando la llamada termina («Llamada de voz · 3:12»,
+   * «Llamada perdida»).
+   *
+   * Lo escribe el SERVIDOR y no la pantalla: la duración y el motivo los sabe él, que es el único que
+   * vio los dos lados. La computadora que llamó se lo encuentra cuando pide el historial; a la otra le
+   * llega como cualquier mensaje, con su acuse pendiente.
+   */
+  mensajeDeLaLlamada(llamada, motivo) {
+    const conversacion = this.conversaciones.get(llamada.conversacionId)
+    if (!conversacion) return null
+    // Un id de conversación que no es de quien llama no deja nada escrito: el renglón es de la charla
+    // de esas dos personas, y el servidor de verdad tampoco escribe en una conversación ajena.
+    if (!conversacion.participantes.some((participante) => participante.clave === llamada.de && !participante.salioEn)) {
+      return null
+    }
+    const ahora = new Date().toISOString()
+    let cuerpo = 'Llamada perdida'
+    if (llamada.hablandoDesde) {
+      const segundos = Math.max(0, Math.round((Date.now() - llamada.hablandoDesde) / 1000))
+      cuerpo = `Llamada de voz · ${Math.floor(segundos / 60)}:${String(segundos % 60).padStart(2, '0')}`
+    } else if (motivo === 'ocupado') {
+      cuerpo = 'Llamada no atendida: estaba ocupado'
+    }
+    const mensaje = {
+      id: `llamada-${llamada.id}`,
+      conversacionId: conversacion.id,
+      tipo: 'LLAMADA',
+      orden: this.ordenDeMensajes++,
+      autorClave: llamada.de,
+      autorNombre: llamada.deNombre,
+      cuerpo,
+      creadoEn: ahora,
+      enviadoEn: ahora,
+      eliminadoEn: null,
+      eliminadoPor: null,
+      adjuntos: [],
+    }
+    this.mensajes.push(mensaje)
+    conversacion.ultimoMensajeEn = ahora
+    const destinatarios = []
+    for (const participante of conversacion.participantes) {
+      if (participante.clave === mensaje.autorClave || participante.salioEn) continue
+      this.acuses.set(`${mensaje.id}|${participante.clave}`, { entregadoEn: null, leidoEn: null })
+      destinatarios.push(participante.clave)
+    }
+    this.avisarMensajes(destinatarios)
+    return mensaje
+  }
+
+  /**
+   * Se fue una computadora: sus llamadas se cierran con `desconexion`.
+   *
+   * El estado de una llamada vive pegado a la CONEXIÓN, no a la persona: la que vuelva va a tener un
+   * `conexionId` nuevo y el saludo no dice una palabra de llamadas, así que no hay nada que retomar.
+   * Es el hecho del que depende `elCanalVolvio()` en `src/main/vivo/llamadas.ts`.
+   */
+  alIrseUnaConexion(conexion) {
+    const clave = conexion.actor?.clave
+    if (!clave) return
+    // Le puede quedar otra ventana abierta (la de la sucursal y la del mostrador): ahí no se cierra nada.
+    for (const otra of this.conexiones.values()) {
+      if (otra.actor?.clave === clave) return
+    }
+    for (const llamada of [...this.llamadasAbiertas.values()]) {
+      if (llamada.de !== clave && llamada.para !== clave) continue
+      this.cerrarLlamada(llamada, 'desconexion', clave)
+    }
+  }
+
   /** «Algo de la grilla cambió»: la señal, no los datos. El cliente compara y baja lo distinto. */
   avisarGrilla() {
     this.difundirPorElCanal({ t: 'grilla', ...this.fotoDeLaGrilla() })
@@ -531,6 +753,9 @@ export class VpsSimulado {
     for (const conexion of [...this.conexiones.values()]) {
       if (conexion.actor.clave !== clave) continue
       this.conexiones.delete(conexion.id)
+      // Antes del `terminate`: el `close` llega un rato después y la prueba que corta el cable quiere
+      // ver el `colgar {desconexion}` del otro lado ya mismo, que es lo que hace el hub de verdad.
+      this.alIrseUnaConexion(conexion)
       conexion.socket.terminate()
       cortadas++
     }
@@ -575,6 +800,8 @@ export class VpsSimulado {
           if (ruta.startsWith('/api/dmg/adjuntos')) return this.atenderAdjuntos(pedido, respuesta, ruta, crudo, responder)
           if (ruta.startsWith('/api/dmg/mensajes'))
             return this.atenderMensajes(pedido.method ?? 'GET', ruta, json, responder, new URLSearchParams(consulta ?? ''))
+          if (ruta.startsWith('/api/dmg/perfiles'))
+            return this.atenderPerfiles(pedido.method ?? 'GET', ruta, json, responder, new URLSearchParams(consulta ?? ''))
           return this.atender(pedido.method ?? 'GET', ruta ?? '', json, responder, new URLSearchParams(consulta ?? ''))
         } catch (error) {
           return responder(500, { error: error instanceof Error ? error.message : String(error) })
@@ -732,7 +959,19 @@ export class VpsSimulado {
       eliminadoEn: mensaje.eliminadoEn,
       adjuntos: borrado ? [] : mensaje.adjuntos.map((adjunto) => ({ ...adjunto })),
       acuses: this.acusesDe(mensaje.id),
+      // La lista COMPLETA, no el cambio (14.0): el espejo de cada computadora reemplaza lo que tenía.
+      reacciones: this.reaccionesDe(mensaje.id),
     }
+  }
+
+  /** Las reacciones de un mensaje, agrupadas por emoji y en el orden en que se pusieron. */
+  reaccionesDe(mensajeId) {
+    const porEmoji = new Map()
+    for (const [clave, emoji] of this.reacciones.get(mensajeId) ?? new Map()) {
+      if (!porEmoji.has(emoji)) porEmoji.set(emoji, [])
+      porEmoji.get(emoji).push(clave)
+    }
+    return [...porEmoji].map(([emoji, claves]) => ({ emoji, claves }))
   }
 
   conversacionesDe(clave) {
@@ -969,6 +1208,38 @@ export class VpsSimulado {
       return responder(200, { renglones, total: renglones.length, pagina: 1, porPagina: 100 })
     }
 
+    // Poner, cambiar o sacar MI reacción (14.0). Es un interruptor: el mismo emoji dos veces lo saca,
+    // otro emoji reemplaza al que había. Una persona reacciona UNA vez a cada mensaje.
+    //
+    // Contesta la lista COMPLETA del mensaje y no el cambio, por lo mismo que el servidor de verdad:
+    // dos personas reaccionando en el mismo instante no pueden dejar a nadie con la cuenta a medias.
+    const reaccion = /^\/api\/dmg\/mensajes\/([^/]+)\/reaccion$/.exec(ruta)
+    if (metodo === 'PUT' && reaccion) {
+      this.llamadas.mensajesReaccionados = (this.llamadas.mensajesReaccionados ?? 0) + 1
+      const mensaje = this.mensajes.find((cada) => cada.id === decodeURIComponent(reaccion[1]))
+      if (!mensaje) return responder(404, { error: 'Ese mensaje no existe.' })
+      if (mensaje.eliminadoEn) return responder(409, { error: 'Ese mensaje se borró: ya no se le puede reaccionar.' })
+      const conversacion = this.conversaciones.get(mensaje.conversacionId)
+      if (!conversacion?.participantes.some((p) => p.clave === actor.clave && !p.salioEn)) {
+        return responder(403, { error: 'No participás de esa conversación.' })
+      }
+      const puestas = this.reacciones.get(mensaje.id) ?? new Map()
+      const pedido = json?.emoji
+      const emoji = typeof pedido === 'string' && pedido.trim() ? pedido.trim() : null
+      if (!emoji || puestas.get(actor.clave) === emoji) puestas.delete(actor.clave)
+      else puestas.set(actor.clave, emoji)
+      this.reacciones.set(mensaje.id, puestas)
+
+      const reacciones = this.reaccionesDe(mensaje.id)
+      // Y se difunde por el canal a los participantes: del otro lado la pastilla aparece sola, sin que
+      // nadie pregunte. Al que reaccionó no se le manda: ya tiene la respuesta del PUT en la mano.
+      for (const participante of conversacion.participantes) {
+        if (participante.clave === actor.clave || participante.salioEn) continue
+        this.mandarleA(participante.clave, { t: 'reaccion', mensajeId: mensaje.id, conversacionId: conversacion.id, reacciones })
+      }
+      return responder(200, { mensajeId: mensaje.id, conversacionId: conversacion.id, reacciones })
+    }
+
     const borrado = /^\/api\/dmg\/mensajes\/([^/]+)\/eliminar$/.exec(ruta)
     if (metodo === 'POST' && borrado) {
       const mensaje = this.mensajes.find((cada) => cada.id === borrado[1])
@@ -984,6 +1255,52 @@ export class VpsSimulado {
     }
 
     return responder(404, { error: `El simulador no atiende ${metodo} ${ruta}.` })
+  }
+
+  /**
+   * Los perfiles de la agencia (14.0): la foto y el color de cada persona.
+   *
+   * `PUT /perfiles/mio` cambia el propio y `PUT /perfiles/:clave` el de otro (sólo administradores).
+   * El color es ÚNICO: es lo que hace que el anillo de una celda diga quién está sin tener que leer un
+   * nombre, así que pedir uno tomado se contesta con 409 y el texto que la pantalla muestra tal cual.
+   */
+  atenderPerfiles(metodo, ruta, json, responder, busqueda) {
+    const actor = this.actorDelPedido(json, busqueda)
+    if (!actor.clave) return responder(400, { error: 'Falta quién manda el pedido (usuario y rol).' })
+
+    if (metodo === 'GET' && ruta === '/api/dmg/perfiles') {
+      this.llamadas.perfilesLeidos = (this.llamadas.perfilesLeidos ?? 0) + 1
+      return responder(200, { perfiles: [...this.perfiles.values()] })
+    }
+
+    const guardado = /^\/api\/dmg\/perfiles\/(.+)$/.exec(ruta)
+    if (metodo !== 'PUT' || !guardado) return responder(404, { error: `El simulador no atiende ${metodo} ${ruta}.` })
+
+    const pedazo = decodeURIComponent(guardado[1])
+    const deQuien = pedazo === 'mio' ? actor.clave : pedazo.trim().toLowerCase()
+    if (deQuien !== actor.clave && actor.rol !== 'ADMIN' && actor.rol !== 'SUPER_ADMIN') {
+      return responder(403, { error: 'El perfil de otra persona lo cambia un administrador.' })
+    }
+    this.llamadas.perfilesGuardados = (this.llamadas.perfilesGuardados ?? 0) + 1
+
+    const perfil = this.asegurarPerfil(deQuien)
+    if (json?.color !== undefined) {
+      const color = Number(json.color)
+      if (!Number.isInteger(color) || color < 0 || color >= COLORES_DE_LA_PALETA) {
+        return responder(400, { error: 'Ese color no existe en la paleta.' })
+      }
+      const tomado = [...this.perfiles.values()].find((cada) => cada.color === color && cada.clave !== deQuien)
+      if (tomado) return responder(409, { error: `Ese color ya lo está usando ${tomado.clave}.` })
+      perfil.color = color
+    }
+    if (json?.foto !== undefined) perfil.foto = json.foto === null ? null : String(json.foto)
+    perfil.version++
+    perfil.actualizadoEn = new Date().toISOString()
+
+    // A las cinco computadoras, la que pidió el cambio incluida: la cara nueva aparece en todas sin que
+    // nadie pregunte, y el que la cambió no depende de su propia respuesta para verla.
+    this.difundirPorElCanal({ t: 'perfil', perfil: { ...perfil } })
+    return responder(200, { perfil: { ...perfil } })
   }
 
   atender(metodo, ruta, json, responder, busqueda = new URLSearchParams()) {
@@ -1386,6 +1703,10 @@ export class VpsSimulado {
     // de una prueba con el canal abierto se queda esperando para siempre.
     for (const conexion of this.conexiones.values()) conexion.socket.terminate()
     this.conexiones.clear()
+    // Los relojes del timbre son `unref`, así que no aguantan el proceso, pero dejarlos vivos haría
+    // que una llamada de una prueba ya terminada se cierre encima de la siguiente.
+    for (const llamada of this.llamadasAbiertas.values()) this.pararElTimbreDe(llamada)
+    this.llamadasAbiertas.clear()
     if (this.servidorDelCanal) {
       await new Promise((resolver) => this.servidorDelCanal.close(resolver))
       this.servidorDelCanal = null

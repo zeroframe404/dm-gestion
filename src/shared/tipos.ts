@@ -1411,6 +1411,12 @@ export interface TareaDeCliente {
 
 export interface FichaCliente {
   id: number
+  /**
+   * El `_ID` de la fila en la hoja, igual que en `FilaCliente` (14.0): es con lo que la ficha abierta
+   * reporta el foco y con lo que las otras computadoras dibujan el glow. Null si el cliente todavía no
+   * viajó a la hoja.
+   */
+  filaId: string | null
   nombre: string
   documento: string | null
   telefono: string | null
@@ -2844,6 +2850,11 @@ export interface ArchivoParaAdjuntar {
 
 export interface FilaTarea {
   id: number
+  /**
+   * El `_ID` de la fila en la hoja (14.0), como en `FilaCliente`: el nombre que esta tarea tiene en
+   * las cinco computadoras, para la presencia y el glow. Null mientras la tarea no subió.
+   */
+  filaId: string | null
   titulo: string
   detalle: string | null
   responsableId: number | null

@@ -20,6 +20,7 @@ import {
   type Sucursal,
 } from '../../../shared/tipos'
 import { Icono, type NombreIcono } from '../../componentes/Icono'
+import { InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
@@ -86,6 +87,18 @@ export function FichaDelCliente({
   const [tareaAbierta, setTareaAbierta] = useState(false)
   const [pagoAbierto, setPagoAbierto] = useState(false)
   const [siniestroAbierto, setSiniestroAbierto] = useState(false)
+  /**
+   * Si la pestaña «Datos» tiene cambios sin guardar (14.0).
+   *
+   * Vive acá arriba y no adentro de la pestaña porque es lo que decide con qué `editando` se reporta el
+   * foco de la ficha entera, y la ficha entera es lo que ven las otras computadoras: quien está en la
+   * pestaña de pólizas mirando no traba a nadie, quien tiene medio nombre cambiado sí.
+   */
+  const [conCambios, setConCambios] = useState(false)
+
+  // El glow de la ficha (14.0). Antes del `return` temprano: los hooks se llaman siempre, y con la
+  // ficha todavía sin cargar `filaId` es null y no se reporta nada.
+  const { claveDeFoco, motivo } = useFichaEnVivo('cliente', ficha?.filaId, conCambios)
 
   const hoy = useMemo(() => hoyLocal(), [])
 
@@ -142,7 +155,12 @@ export function FichaDelCliente({
           </Boton>
 
           <div className="min-w-0 flex-1">
-            <h1 className="truncate font-display text-xl font-extrabold tracking-tight text-slate-900">{ficha.nombre}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate font-display text-xl font-extrabold tracking-tight text-slate-900">{ficha.nombre}</h1>
+              {/* Quién más tiene esta ficha abierta (14.0), al lado del nombre: es lo primero que se
+                  mira al entrar, y enterarse después de escribir media dirección no sirve de nada. */}
+              <InsigniaDePresencia claveDeFoco={claveDeFoco} />
+            </div>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
               <span className="tabular-nums">{ficha.documento ? `DNI/CUIT ${ficha.documento}` : 'Sin documento cargado'}</span>
               <span aria-hidden="true">·</span>
@@ -230,7 +248,15 @@ export function FichaDelCliente({
           {error && <Alerta tono="error">{error}</Alerta>}
           {aviso && <Alerta tono="exito">{aviso}</Alerta>}
 
-          {pestana === 'datos' && <PestanaDatos ficha={ficha} alGuardar={setFicha} alAvisar={setAviso} />}
+          {pestana === 'datos' && (
+            <PestanaDatos
+              ficha={ficha}
+              alGuardar={setFicha}
+              alAvisar={setAviso}
+              alCambiarPendientes={setConCambios}
+              bloqueadaPor={motivo}
+            />
+          )}
           {pestana === 'vehiculos' && <PestanaVehiculos ficha={ficha} />}
           {pestana === 'polizas' && <PestanaPolizas ficha={ficha} hoy={hoy} alAbrirPoliza={(polizaId) => ir('polizas', { polizaId })} />}
           {pestana === 'pagos' && <PestanaPagos ficha={ficha} />}
@@ -290,10 +316,16 @@ function PestanaDatos({
   ficha,
   alGuardar,
   alAvisar,
+  alCambiarPendientes,
+  bloqueadaPor,
 }: {
   ficha: FichaCliente
   alGuardar: (ficha: FichaCliente) => void
   alAvisar: (mensaje: string | null) => void
+  /** Le avisa al encabezado si hay cambios sin guardar, que es lo que se reporta como `editando`. */
+  alCambiarPendientes: (hay: boolean) => void
+  /** Por qué no se puede guardar, cuando otra computadora está editando esta misma ficha (14.0). */
+  bloqueadaPor: string | undefined
 }) {
   const puedeEditar = usePuedeEditar('clientes')
   const [borrador, setBorrador] = useState<DatosDeCliente>(() => datosDe(ficha))
@@ -323,6 +355,14 @@ function PestanaDatos({
 
   const original = datosDe(ficha)
   const hayCambios = hayDiferencias(borrador, original)
+
+  // El aviso sale en un efecto y no en el cuerpo: cambiarle el estado al padre mientras se dibuja el
+  // hijo es lo que React llama actualizar durante el render, y con esta ficha adentro de un módulo
+  // perezoso terminaba en un bucle de dibujados.
+  useEffect(() => {
+    alCambiarPendientes(hayCambios)
+    return () => alCambiarPendientes(false)
+  }, [alCambiarPendientes, hayCambios])
 
   const cambiarTexto = (campo: Exclude<keyof DatosDeCliente, 'direccionDetalle'>) => (valor: string) =>
     setBorrador((previo) => ({ ...previo, [campo]: valor }))
@@ -407,14 +447,28 @@ function PestanaDatos({
       )}
 
       <div className="mt-5 flex items-center gap-2 border-t border-slate-200 pt-4">
-        <Boton escribe variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios || !puedeEditar}>
+        <Boton
+          escribe
+          variante="primario"
+          icono="ok"
+          onClick={() => void guardar()}
+          cargando={guardando}
+          disabled={!hayCambios || !puedeEditar || bloqueadaPor !== undefined}
+          title={bloqueadaPor}
+        >
           Guardar cambios
         </Boton>
         <Boton variante="fantasma" onClick={() => setBorrador(datosDe(ficha))} disabled={!hayCambios || guardando}>
           Descartar
         </Boton>
-        <span className="text-xs text-slate-500">
-          {!puedeEditar ? 'Tenés Clientes en sólo lectura.' : hayCambios ? 'Hay cambios sin guardar.' : 'No hay cambios pendientes.'}
+        <span className={cx('text-xs', bloqueadaPor ? 'font-semibold text-amber-700' : 'text-slate-500')}>
+          {bloqueadaPor
+            ? bloqueadaPor
+            : !puedeEditar
+              ? 'Tenés Clientes en sólo lectura.'
+              : hayCambios
+                ? 'Hay cambios sin guardar.'
+                : 'No hay cambios pendientes.'}
         </span>
       </div>
     </section>

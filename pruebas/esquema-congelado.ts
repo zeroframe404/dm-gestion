@@ -60,7 +60,10 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // La 29 trae el espejo de la colaboración en vivo (14.0): `perfiles` (la foto y el color de cada
   // persona), `mensaje_reacciones` (un emoji por persona y por mensaje) y los doce pasos que vuelven a
   // crear `mensajes` para que su CHECK de `tipo` acepte también LLAMADA. Ojo: la huella mira la forma
-  // (columnas, tipos, valores por defecto, índices) y NO los CHECK, así que lo que la mueve son las dos
-  // tablas nuevas; que la llamada se pueda guardar lo prueba `mensajeria.prueba.ts`.
+  // (columnas, tipos, valores por defecto, índices) y NO los CHECK ni los datos, así que lo que la
+  // mueve son las dos tablas nuevas. Lo que la huella no ve lo prueban dos:
+  //   - que la llamada se pueda guardar en el hilo → `colaboracion-en-vivo.prueba.ts`;
+  //   - que rehacer `mensajes` no desenganche ningún acuse ni ningún archivo, con las claves foráneas
+  //     prendidas y la tabla con datos → `esquema.prueba.ts`, «la migración 29 rehace mensajes…».
   29: 'af6f2ed764ba8b8d',
 }

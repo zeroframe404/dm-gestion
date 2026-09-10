@@ -335,6 +335,37 @@ html[data-theme='dark'] .border-green-300 {
   border-color: #276039;
 }
 
+/*
+ * Esmeralda: el teléfono (14.0).
+ *
+ * Es el verde de las llamadas —la barra de arriba mientras se habla, el botón «Llamar» del encabezado
+ * de una conversación, el renglón de la llamada en el hilo— y también el «listo» de los adjuntos de
+ * una póliza. Va aparte del verde de «pago/al día» a propósito: son dos cosas distintas y en el tema
+ * claro ya se distinguían.
+ *
+ * Los plenos (`bg-emerald-600`, `bg-emerald-700`) no están acá: llevan texto blanco encima y se leen
+ * igual en los dos temas. Los que están son el par pálido + tinta oscura, que sin dar vuelta quedaba
+ * como una pastilla casi blanca en el medio de un hilo oscuro.
+ */
+html[data-theme='dark'] .bg-emerald-50 {
+  background-color: #0e2620;
+}
+html[data-theme='dark'] .hover\:bg-emerald-50:hover {
+  background-color: #123027;
+}
+html[data-theme='dark'] .text-emerald-600 {
+  color: #5fd3a6;
+}
+html[data-theme='dark'] .text-emerald-700 {
+  color: #7cdfb6;
+}
+html[data-theme='dark'] .text-emerald-900 {
+  color: #bdf0d9;
+}
+html[data-theme='dark'] .border-emerald-300 {
+  border-color: #24603f;
+}
+
 /* Ámbar: por vencer, atención */
 html[data-theme='dark'] .bg-amber-50 {
   background-color: #2b2008;

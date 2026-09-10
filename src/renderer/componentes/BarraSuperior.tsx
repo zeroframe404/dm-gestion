@@ -1,8 +1,12 @@
 // Barra superior: título del módulo, indicador de sincronización, usuario y cierre de sesión.
+import { useState } from 'react'
 import { NOMBRE_ROL } from '../../shared/tipos'
+import { claveDeUsuario } from '../../shared/texto'
 import { useAcceso } from '../contexto/Acceso'
 import { usePermisos } from '../contexto/Permisos'
 import { useSesion, useUsuarioActual } from '../contexto/Sesion'
+import { Avatar } from './Avatar'
+import { DialogoMiPerfil } from './DialogoMiPerfil'
 import { BotonDeSonido } from './BotonDeSonido'
 import { BotonDeTema } from './BotonDeTema'
 import { CampanaDeRechazos } from './CampanaDeRechazos'
@@ -15,6 +19,7 @@ import { Boton } from './ui'
 export function BarraSuperior({ titulo }: { titulo: string }) {
   const { salir } = useSesion()
   const usuario = useUsuarioActual()
+  const [abriendoMiPerfil, setAbriendoMiPerfil] = useState(false)
   const { acceso } = useAcceso(false)
   const permisos = usePermisos()
   // Sin acceso a Tareas la campana no tiene nada que avisar: no se muestra.
@@ -76,12 +81,17 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
         <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
 
         <div className="flex items-center gap-3">
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-marino-700 text-xs font-bold text-white"
-            aria-hidden="true"
+          {/* El círculo de iniciales pasó a ser el avatar y además un botón (14.0): es el lugar donde
+              cualquiera va a buscar su foto, y hasta acá no había ninguna puerta a «Mi perfil». */}
+          <button
+            type="button"
+            onClick={() => setAbriendoMiPerfil(true)}
+            title="Mi perfil: tu foto y tu color"
+            aria-label="Mi perfil"
+            className="rounded-full transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/50"
           >
-            {obtenerIniciales(usuario.nombre)}
-          </div>
+            <Avatar clave={claveDeUsuario(usuario.usuario)} nombre={usuario.nombre} tamano="md" />
+          </button>
           <div className="leading-tight">
             <p className="text-sm font-semibold text-slate-900">{usuario.nombre}</p>
             <p className="text-xs text-slate-500">
@@ -99,13 +109,8 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
           Cerrar sesión
         </Boton>
       </div>
+
+      <DialogoMiPerfil abierto={abriendoMiPerfil} alCerrar={() => setAbriendoMiPerfil(false)} />
     </header>
   )
-}
-
-function obtenerIniciales(nombre: string): string {
-  const partes = nombre.trim().split(/\s+/).filter(Boolean)
-  const primera = partes[0]?.[0] ?? ''
-  const ultima = partes.length > 1 ? (partes[partes.length - 1]?.[0] ?? '') : ''
-  return (primera + ultima).toUpperCase() || '?'
 }

@@ -162,6 +162,7 @@ function aFila(f: FilaCruda, hoy: string): FilaTarea {
   const abierta = f.estado !== 'hecha'
   return {
     id: f.id,
+    filaId: f.fila_id,
     titulo: f.titulo,
     detalle: f.detalle,
     responsableId: f.responsable_id,

@@ -1,9 +1,13 @@
 // Panel lateral con el resto de las columnas de la fila (las que no entran en la tabla) y su historial.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CampoEditable, EntradaHistorial, FilaCartera } from '../../../shared/tipos'
 import type { ResultadoDeEliminacion } from '../../../shared/eliminacion'
+import { claveDeFilaDeCelda } from '../../../shared/presencia'
 import { Icono } from '../../componentes/Icono'
+import { InsigniaDePresencia, motivoDelBloqueo, useCursorAdentro } from '../../componentes/Presencia'
+import { seGuardaAlSalir } from '../../componentes/presencia-reglas'
 import { cx } from '../../componentes/ui'
+import { useBloqueoDe, useFocoDeObjeto } from '../../contexto/Presencia'
 import { BotonEliminar, usePuedeEliminar } from '../../componentes/BotonEliminar'
 
 interface Props {
@@ -72,6 +76,20 @@ const GRUPOS: Array<{ titulo: string; campos: Array<{ campo: CampoEditable; etiq
 export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar }: Props) {
   const [historial, setHistorial] = useState<EntradaHistorial[]>([])
   const [verHistorial, setVerHistorial] = useState(false)
+  // Acá no hay botón de Guardar: cada campo se guarda al perder el foco, así que lo que hace de
+  // «cambios sin guardar» es tener el cursor adentro de un campo. Ver `useCursorAdentro`.
+  const [conCursor, propsDelCursor] = useCursorAdentro()
+
+  // El glow de la 14.0: la fila entera, con la misma clave con la que se enciende el renglón de Mora y
+  // el de Deudores. No es `objeto:cuota:...` porque `Foco` no tiene ese objeto: la fila de la planilla
+  // ES la cuota del mes, y `objeto:fila:<filaId>` es la clave que ya usa la tabla.
+  const claveDeFoco = claveDeFilaDeCelda(fila.filaId)
+  useFocoDeObjeto('fila', fila.filaId, conCursor)
+  const bloqueadaPor = useBloqueoDe(claveDeFoco)
+  // Trabado por otra computadora: los campos pasan a sólo lectura, que es acá el equivalente del
+  // botón de Guardar apagado de las fichas (este panel guarda campo por campo y no tiene botón). Ojo:
+  // el candado se aplica al ENTRAR a un campo y no a mitad de una edición; lo decide `CampoDelDetalle`.
+  const trabado = soloLectura || bloqueadaPor !== null
 
   useEffect(() => {
     if (!verHistorial) return
@@ -90,13 +108,19 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar 
   }, [fila.filaId])
 
   return (
-    <aside className="flex w-96 shrink-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
+    <aside className="flex w-96 shrink-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white" {...propsDelCursor}>
       <header className="flex items-start justify-between gap-2 border-b border-slate-200 px-4 py-3">
         <div className="min-w-0">
           <p className="truncate font-display text-base font-bold text-slate-900">{fila.nombre ?? 'Sin nombre'}</p>
           <p className="truncate text-xs text-slate-500">
             {fila.compania ?? '—'} · {fila.numeroPoliza ?? 'sin póliza'} · {fila.patente ?? 'sin patente'}
           </p>
+          {/* Quién más está en esta fila (14.0). Debajo del nombre y no al costado: el panel mide 24
+              rem y el cartel con la cara y el texto no entra en la misma línea que el botón de cerrar. */}
+          <div className="mt-1 flex flex-wrap gap-1">
+            <InsigniaDePresencia claveDeFoco={claveDeFoco} />
+          </div>
+          {bloqueadaPor && <p className="mt-1 text-xs font-semibold text-amber-700">{motivoDelBloqueo(bloqueadaPor)}</p>}
         </div>
         <button type="button" aria-label="Cerrar el detalle" onClick={alCerrar} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
           <Icono nombre="cerrar" tamano={16} />
@@ -109,24 +133,14 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar 
             <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{grupo.titulo}</p>
             <dl className="flex flex-col gap-1">
               {grupo.campos.map(({ campo, etiqueta }) => (
-                <div key={campo} className="grid grid-cols-[9rem_1fr] items-center gap-2">
-                  <dt className="truncate text-xs text-slate-500">{etiqueta}</dt>
-                  <dd>
-                    <input
-                      defaultValue={(fila[campo as keyof FilaCartera] as string | null) ?? ''}
-                      key={`${fila.filaId}-${campo}-${(fila[campo as keyof FilaCartera] as string | null) ?? ''}`}
-                      readOnly={soloLectura}
-                      onBlur={(evento) => {
-                        const valor = evento.currentTarget.value
-                        if (!soloLectura && valor !== (((fila[campo as keyof FilaCartera] as string | null) ?? ''))) alGuardar(campo, valor)
-                      }}
-                      className={cx(
-                        'w-full rounded border border-transparent px-1.5 py-1 text-sm text-slate-800',
-                        soloLectura ? 'bg-slate-50' : 'hover:border-slate-300 focus:border-marino-400 focus:outline-none focus:ring-2 focus:ring-marino-500/25',
-                      )}
-                    />
-                  </dd>
-                </div>
+                <CampoDelDetalle
+                  key={`${fila.filaId}-${campo}`}
+                  etiqueta={etiqueta}
+                  valor={(fila[campo as keyof FilaCartera] as string | null) ?? ''}
+                  trabado={trabado}
+                  motivo={bloqueadaPor ? motivoDelBloqueo(bloqueadaPor) : undefined}
+                  alGuardar={(escrito) => alGuardar(campo, escrito)}
+                />
               ))}
             </dl>
           </section>
@@ -168,6 +182,78 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar 
           quien no es superadministrador no se dibuja nada, ni el pie. */}
       <PieDeBorrado fila={fila} alBorrar={alBorrar} />
     </aside>
+  )
+}
+
+/**
+ * Un campo del panel: se guarda solo al salir, sin botón de Guardar.
+ *
+ * EL CANDADO SE CONGELA AL ENTRAR AL CAMPO. `trabado` incluye el bloqueo suave de la 14.0, que es
+ * estado VIVO: aparece en cuanto otra computadora entra a la misma fila de la planilla, y eso pasa con
+ * la persona a mitad de una palabra. Si el candado de AHORA decidiera el guardado, lo tipeado se
+ * tiraría en silencio y el texto seguiría a la vista como si estuviera guardado, hasta que la fila se
+ * refrescara y volviera el valor viejo: trabajo perdido sin un solo cartel. Ver `seGuardaAlSalir`.
+ *
+ * Y EL VALOR VA EN ESTADO, no en un `key` con el valor adentro. Con el valor en el `key`, un cambio de
+ * ese mismo campo hecho en otra computadora desmontaba el `<input>` con el cursor adentro: se perdía lo
+ * escrito y, de paso, el `focusout` no llegaba nunca (Chromium no lo dispara al sacar del DOM al
+ * elemento enfocado) y esta computadora quedaba reportando «editando» para siempre. Lo que llega de
+ * afuera se adopta salvo que acá haya alguien escribiendo; el choque lo resuelve el 409 del `previo`.
+ */
+function CampoDelDetalle({
+  etiqueta,
+  valor,
+  trabado,
+  motivo,
+  alGuardar,
+}: {
+  etiqueta: string
+  valor: string
+  trabado: boolean
+  motivo: string | undefined
+  alGuardar: (escrito: string) => void
+}) {
+  const [texto, setTexto] = useState(valor)
+  const [conElCursor, setConElCursor] = useState(false)
+  const escribiendo = useRef(false)
+  const trabadoAlEntrar = useRef(trabado)
+
+  useEffect(() => {
+    if (!escribiendo.current) setTexto(valor)
+  }, [valor])
+
+  // Con el cursor adentro manda el candado con el que se entró; con el cursor afuera, el de ahora (que
+  // es lo que hace que el campo se vea gris apenas la otra computadora empieza a editar la fila).
+  const candado = conElCursor ? trabadoAlEntrar.current : trabado
+
+  return (
+    <div className="grid grid-cols-[9rem_1fr] items-center gap-2">
+      <dt className="truncate text-xs text-slate-500">{etiqueta}</dt>
+      <dd>
+        <input
+          value={texto}
+          readOnly={candado}
+          title={motivo}
+          onChange={(evento) => setTexto(evento.currentTarget.value)}
+          onFocus={() => {
+            trabadoAlEntrar.current = trabado
+            escribiendo.current = true
+            setConElCursor(true)
+          }}
+          onBlur={() => {
+            escribiendo.current = false
+            setConElCursor(false)
+            if (seGuardaAlSalir(trabadoAlEntrar.current, texto, valor)) alGuardar(texto)
+            // Nada que guardar: se adopta lo que haya llegado de afuera mientras el cursor estaba acá.
+            else setTexto(valor)
+          }}
+          className={cx(
+            'w-full rounded border border-transparent px-1.5 py-1 text-sm text-slate-800',
+            candado ? 'bg-slate-50' : 'hover:border-slate-300 focus:border-marino-400 focus:outline-none focus:ring-2 focus:ring-marino-500/25',
+          )}
+        />
+      </dd>
+    </div>
   )
 }
 

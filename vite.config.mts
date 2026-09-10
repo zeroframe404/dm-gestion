@@ -16,8 +16,12 @@ const POLITICA_CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self' data:",
-  // Los tres sonidos de aviso (campana, débito rechazado, tarea hecha) se empaquetan con la app.
-  "media-src 'self' data:",
+  // Los sonidos de aviso se empaquetan con la app (`'self'`). `blob:` es por las llamadas de voz
+  // (14.0): el audio de la otra computadora llega como un `MediaStream` y el `<audio>` que lo hace
+  // sonar cuelga de una URL de blob. `connect-src 'self'` queda como está: WebRTC no se rige por él
+  // —los candidatos y el audio van por UDP, no por fetch— y el canal en vivo vive en el proceso
+  // principal, que no tiene CSP.
+  "media-src 'self' data: blob:",
   "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",

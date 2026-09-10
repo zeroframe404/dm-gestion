@@ -14,6 +14,8 @@ import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { useNavegacion } from '../../contexto/Navegacion'
+import { claveDeObjeto } from '../../../shared/presencia'
+import { MarcaDePresencia } from '../../componentes/Presencia'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { FormularioPoliza } from './FormularioPoliza'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -363,6 +365,11 @@ export function Polizas() {
         columnas={visibles}
         claveDe={(fila) => String(fila.id)}
         alHacerClic={(fila) => setVista({ pantalla: 'formulario', polizaId: fila.id, clienteIdInicial: null })}
+        // El glow por renglón (14.0): quién tiene abierto el formulario de esta póliza en otra
+        // computadora. Por `filaId`, que es el `_ID` compartido; sin él no se subió todavía.
+        decorarFila={(fila) =>
+          fila.filaId ? <MarcaDePresencia claveDeFoco={claveDeObjeto('poliza', fila.filaId)} burbujas="izquierda" /> : null
+        }
         vacio={
           hayFiltros ? (
             <>

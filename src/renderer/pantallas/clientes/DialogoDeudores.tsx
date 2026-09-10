@@ -18,6 +18,8 @@ import {
   type FormatoDeDeudores,
   type ListadoDeudores,
 } from '../../../shared/tipos'
+import { claveDeFilaDeCelda } from '../../../shared/presencia'
+import { MarcaDePresencia } from '../../componentes/Presencia'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { NOMBRE_RAMA, type Rama } from '../../../shared/ramas'
 import { Alerta, Boton, Cargando, cx, Dialogo } from '../../componentes/ui'
@@ -333,6 +335,8 @@ export function DialogoDeudores({ abierto, alCerrar }: { abierto: boolean; alCer
               filas={datos?.filas ?? []}
               columnas={columnas}
               claveDe={(fila) => fila.filaId}
+              // Mismo criterio que Mora: el renglón es una cuota de la planilla, no un cliente.
+              decorarFila={(fila) => <MarcaDePresencia claveDeFoco={claveDeFilaDeCelda(fila.filaId)} burbujas="izquierda" />}
               vacio={
                 <>
                   <p className="font-medium text-slate-700">Ninguna cuota impaga cumple con eso.</p>

@@ -25,7 +25,7 @@ import {
   reparacionConProblemas,
   sentenciasDeDatos,
 } from '../src/main/db/esquema'
-import { MIGRACIONES } from '../src/main/db/migraciones'
+import { MIGRACIONES, ejecutarMigraciones } from '../src/main/db/migraciones'
 import { SUCURSALES } from '../src/shared/sucursales'
 import { importar } from './ayuda'
 import { HUELLAS_POR_VERSION } from './esquema-congelado'
@@ -481,4 +481,107 @@ test('el guardián detecta de verdad una migración editada', () => {
     MIGRACIONES[4]!.sql = original
   }
   assert.equal(huellaDelEsquema(11), antes, 'y volver a su valor al deshacer el cambio')
+})
+
+// ---------------------------------------------------------------------------
+// La migración 29: `mensajes` vuelve a nacer para que `tipo` acepte LLAMADA
+// ---------------------------------------------------------------------------
+//
+// Es la única migración que REHACE una tabla que ya tiene datos —los doce pasos del manual de SQLite:
+// crear la nueva al lado, copiar, borrar la vieja, renombrar, rehacer los índices— y es la más
+// peligrosa de todas las que hay: si la copia perdiera el `id`, el AUTOINCREMENT renumeraría y cada
+// acuse y cada archivo quedarían colgados del mensaje equivocado; y si el `PRAGMA foreign_keys = OFF`
+// de `ejecutarMigraciones` dejara de surtir efecto, el `DROP TABLE mensajes` fallaría con «FOREIGN KEY
+// constraint failed», `abrirBaseDeDatos` lanzaría y el programa no abriría en ninguna de las cinco
+// computadoras.
+//
+// Ninguna de las dos cosas la puede ver la huella congelada, que mira columnas, tipos, defaults e
+// índices, pero ni los CHECK ni los datos. Y las pruebas que llegan a la 29 desde una base a medio
+// migrar la corren siempre con `mensajes` VACÍA, que es justo el caso en el que no puede fallar nada.
+// Por eso esta prueba llena la tabla antes y prende las claves foráneas, como la PC de Daniel.
+test('la migración 29 rehace mensajes con las claves foráneas prendidas y sin desenganchar nada', () => {
+  const db = new Database(':memory:') as BaseDeDatos
+  db.pragma('foreign_keys = ON')
+  const registrar = console.log
+  console.log = () => undefined
+  try {
+    for (const migracion of MIGRACIONES.filter((cada) => cada.version <= 28)) {
+      db.exec(migracion.sql)
+      db.pragma('user_version = ' + migracion.version)
+    }
+
+    db.prepare(
+      `INSERT INTO conversaciones (id, remoto_id, clave, tipo, titulo, creado_por, ultimo_mensaje_en, creado_en, actualizado_en)
+       VALUES (1, 'c-remota', 'ana|beto', 'DIRECTA', NULL, 'ana', 'ayer', 'ayer', 'ayer')`,
+    ).run()
+    // Tres mensajes con ids salteados, que es lo que deja borrar alguno: si la copia perdiera el `id`,
+    // el AUTOINCREMENT los renumeraría 1, 2, 3 y todo lo de abajo apuntaría a otro mensaje.
+    const alta = db.prepare(
+      `INSERT INTO mensajes (id, remoto_id, conversacion_id, orden, autor_clave, autor_nombre, cuerpo, estado, creado_en, actualizado_en, tipo)
+       VALUES (@id, @remoto, 1, @id, 'ana', 'Ana Ruiz', @cuerpo, 'enviado', 'ayer', 'ayer', @tipo)`,
+    )
+    alta.run({ id: 7, remoto: 'm-7', cuerpo: 'Llegó el pago de Pérez', tipo: 'NORMAL' })
+    alta.run({ id: 19, remoto: 'm-19', cuerpo: '', tipo: 'ZUMBIDO' })
+    alta.run({ id: 42, remoto: 'm-42', cuerpo: 'Mirá la póliza', tipo: 'NORMAL' })
+    db.prepare(
+      `INSERT INTO mensaje_acuses (mensaje_id, usuario_clave, entregado_en, leido_en) VALUES (42, 'beto', 'ayer', 'ayer')`,
+    ).run()
+    db.prepare(
+      `INSERT INTO mensaje_adjuntos (mensaje_id, nombre, archivo, tipo, tamano, usuario_nombre, creado_en)
+       VALUES (42, 'poliza.pdf', 'poliza.pdf', 'application/pdf', 1024, 'Ana Ruiz', 'ayer')`,
+    ).run()
+
+    ejecutarMigraciones(db)
+  } finally {
+    console.log = registrar
+  }
+
+  assert.equal(db.pragma('user_version', { simple: true }), MIGRACIONES[MIGRACIONES.length - 1]!.version)
+  assert.equal(db.pragma('foreign_keys', { simple: true }), 1, 'las claves foráneas quedan como estaban')
+
+  // Los tres mensajes, con SUS ids: los mismos que antes y en el mismo orden.
+  assert.deepEqual(
+    (db.prepare('SELECT id, remoto_id, tipo FROM mensajes ORDER BY id').all() as Array<{ id: number; remoto_id: string; tipo: string }>),
+    [
+      { id: 7, remoto_id: 'm-7', tipo: 'NORMAL' },
+      { id: 19, remoto_id: 'm-19', tipo: 'ZUMBIDO' },
+      { id: 42, remoto_id: 'm-42', tipo: 'NORMAL' },
+    ],
+  )
+  // Y el acuse y el archivo siguen colgados del mensaje que les corresponde, no de otro.
+  assert.equal(
+    (db.prepare('SELECT m.remoto_id AS remoto FROM mensaje_acuses a JOIN mensajes m ON m.id = a.mensaje_id').get() as { remoto: string }).remoto,
+    'm-42',
+  )
+  assert.equal(
+    (db.prepare('SELECT m.remoto_id AS remoto FROM mensaje_adjuntos d JOIN mensajes m ON m.id = d.mensaje_id').get() as { remoto: string }).remoto,
+    'm-42',
+  )
+
+  // El AUTOINCREMENT sigue contando desde donde iba: el mensaje siguiente no pisa a ninguno.
+  const nuevo = db
+    .prepare(
+      `INSERT INTO mensajes (remoto_id, conversacion_id, orden, autor_clave, autor_nombre, cuerpo, estado, creado_en, actualizado_en, tipo)
+       VALUES ('m-llamada', 1, 4, 'ana', 'Ana Ruiz', 'Llamada de voz · 3:12', 'enviado', 'hoy', 'hoy', 'LLAMADA') RETURNING id`,
+    )
+    .get() as { id: number }
+  assert.ok(nuevo.id > 42, `el id nuevo (${nuevo.id}) tiene que seguir al último, no repetirlo`)
+
+  // Y el CHECK sigue rechazando cualquier otro tipo: la lista es cerrada, no un campo de texto libre.
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO mensajes (remoto_id, conversacion_id, orden, autor_clave, autor_nombre, cuerpo, estado, creado_en, actualizado_en, tipo)
+           VALUES ('m-raro', 1, 5, 'ana', 'Ana Ruiz', '', 'enviado', 'hoy', 'hoy', 'VIDEOLLAMADA')`,
+        )
+        .run(),
+    /CHECK constraint failed/,
+  )
+  // Y una fila huérfana sigue sin entrar: las claves foráneas volvieron encendidas de verdad.
+  assert.throws(
+    () => db.prepare(`INSERT INTO mensaje_acuses (mensaje_id, usuario_clave) VALUES (9999, 'beto')`).run(),
+    /FOREIGN KEY constraint failed/,
+  )
+  db.close()
 })

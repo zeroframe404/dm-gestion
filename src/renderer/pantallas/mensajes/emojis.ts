@@ -291,3 +291,29 @@ export function esSoloEmojis(texto: string): boolean {
     )
   })
 }
+
+/**
+ * El alto del cajón de emojis, en píxeles: buscador 48 + los seis rápidos 36 + las categorías 36 + la
+ * grilla 240. No hace falta que sea exacto —lo que se decide con esto es de qué lado hay más lugar—,
+ * pero sí que no se quede corto.
+ */
+export const ALTO_DEL_CAJON_DE_EMOJIS = 370
+
+/**
+ * ¿El cajón se abre hacia arriba o hacia abajo? (14.0)
+ *
+ * Hasta la 14.0 el cajón se abría SIEMPRE hacia arriba, que es lo que corresponde cuando cuelga de la
+ * caja de escribir —abajo de todo del hilo—. Cuando la barra de reacciones lo colgó de la fila de
+ * acciones de un mensaje, esa decisión dejó de valer: el hilo es una caja con `overflow-y: auto`, que
+ * recorta también hacia arriba, y el `scrollTop` no puede ser negativo, así que lo recortado no se
+ * alcanza de ninguna manera. En una conversación de dos mensajes el cajón quedaba con una franja de
+ * sesenta píxeles a la vista y el resto inalcanzable.
+ *
+ * Se prefiere ARRIBA cuando entra en los dos: es donde estaba y donde la caja de escribir lo espera.
+ * Si no entra en ninguno se elige el lado más grande, que al menos deja ver la mayor parte.
+ */
+export function haciaDondeSeAbre(espacioArriba: number, espacioAbajo: number, alto: number): 'arriba' | 'abajo' {
+  if (espacioArriba >= alto) return 'arriba'
+  if (espacioAbajo >= alto) return 'abajo'
+  return espacioArriba >= espacioAbajo ? 'arriba' : 'abajo'
+}

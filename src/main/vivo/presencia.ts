@@ -52,6 +52,40 @@ export function reportarFoco(foco: Foco | null): void {
   envioPendiente.unref?.()
 }
 
+/**
+ * El foco que mandó la pantalla, si tiene la forma de uno.
+ *
+ * Lo que entra por IPC puede ser cualquier cosa y de acá sale un frame para el servidor: se controla la
+ * forma antes de guardarlo. Lo que no se entiende vale como «no estoy en ningún lado» (null), que es lo
+ * que corresponde: apagar el glow es siempre más seguro que dejarlo prendido en el lugar equivocado.
+ */
+export function leerFoco(crudo: unknown): Foco | null {
+  if (!crudo || typeof crudo !== 'object') return null
+  const dato = crudo as Record<string, unknown>
+  const texto = (valor: unknown): string => (typeof valor === 'string' ? valor.trim().slice(0, 200) : '')
+  const editando = dato.editando === true
+
+  if (dato.tipo === 'celda') {
+    const pestana = texto(dato.pestana)
+    const filaId = texto(dato.filaId)
+    const campo = texto(dato.campo)
+    if (!pestana || !filaId || !campo) return null
+    return { tipo: 'celda', pestana, filaId, campo, editando }
+  }
+  if (dato.tipo === 'objeto') {
+    const objetos = ['cliente', 'poliza', 'siniestro', 'tarea', 'lead', 'presupuesto', 'fila'] as const
+    const objeto = objetos.find((candidato) => candidato === dato.objeto)
+    const filaId = texto(dato.filaId)
+    if (!objeto || !filaId) return null
+    return { tipo: 'objeto', objeto, filaId, editando }
+  }
+  if (dato.tipo === 'modulo') {
+    const modulo = texto(dato.modulo)
+    return modulo ? { tipo: 'modulo', modulo } : null
+  }
+  return null
+}
+
 /** Dónde dice esta computadora que está. Lo pregunta el renderer al montarse. */
 export function focoActual(): Foco | null {
   return focoPropio

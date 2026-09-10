@@ -92,6 +92,7 @@ import {
   estadoDeMensajeria,
   hiloDe as hiloDeMensajes,
   marcarConversacionLeida,
+  reaccionarA,
   registroDeMensajes,
   reintentarMensaje,
   rutaDelAdjuntoDeMensaje,
@@ -297,7 +298,18 @@ import { actualizarAhora, buscarActualizaciones, estadoDeActualizacion, instalar
 import { cambiarActivo, crearUsuario, editarUsuario, listarUsuarios, resetearClave } from './servicios/usuarios'
 import { enteroPositivo } from './servicios/validacion'
 import { emitirATodas } from './servicios/avisos'
+import { perfilesLocales, subirMiPerfil, subirPerfilDe } from './usuarios/perfiles'
 import { canal } from './vivo/canal'
+import {
+  aceptarLlamada,
+  colgarLlamada,
+  configuracionIce,
+  estadoDeLaLlamada,
+  invitarALlamar,
+  mandarSenalDeLlamada,
+  rechazarLlamada,
+} from './vivo/llamadas'
+import { leerFoco, presenciaActual, reportarFoco } from './vivo/presencia'
 
 type Manejador<C extends NombreCanal> = (...args: ArgumentosDe<C>) => RespuestaDe<C> | Promise<RespuestaDe<C>>
 
@@ -400,9 +412,10 @@ export function registrarIpc(): void {
   // el candado de «ver sí, tocar no» de la 14.0. Los que siguen son la excepción: escriben, pero se
   // piden por ROL o por VISTA, así que el candado va a mano. Son éstos y nadie más —cambiar la clave,
   // tocar usuarios, guardar la matriz de permisos, los tildes de rechazos y mensajes, adoptar las
-  // referencias, sincronizar ahora y el reporte de soporte—; lo que sí es de esta computadora (la
-  // impresora, la configuración, el catálogo de vehículos, ingresar y salir, las actualizaciones)
-  // NUNCA lleva candado: sin internet la app se tiene que poder abrir, leer y actualizar.
+  // referencias, sincronizar ahora, el reporte de soporte y los dos «guardar» de los perfiles (14.0)—;
+  // lo que sí es de esta computadora (la impresora, la configuración, el catálogo de vehículos, ingresar
+  // y salir, las actualizaciones) NUNCA lleva candado: sin internet la app se tiene que poder abrir,
+  // leer y actualizar. El foco de la presencia (`vivo:foco`) tampoco: no escribe ningún dato.
   manejar('auth:cambiarClave', async (datos) => {
     const actor = exigirSesion()
     // La clave se guarda en la base de usuarios compartida: sin canal no hay dónde escribirla, y una
@@ -813,6 +826,73 @@ export function registrarIpc(): void {
   // arriba de todo) y no dice nada de nadie, sólo si hay con quién hablar. Los cambios posteriores
   // llegan solos por el evento del mismo nombre, que emite `vivo/canal.ts`.
   manejar('conexion:estado', () => exito(canal().estado()))
+
+  // La foto y el color de cada persona (14.0). Listar sale del espejo local, así que contesta igual sin
+  // internet: las caras se tienen que seguir viendo («ver sí, tocar no» vale también para ellas).
+  manejar('perfiles:listar', () => {
+    exigirSesion()
+    return exito(perfilesLocales())
+  })
+  // Mi propio perfil lo cambia cualquiera que tenga sesión: la foto y el color son de la persona, no de
+  // un módulo, y no hay ningún área que puedan «editar» o no. El candado de la conexión va a mano por
+  // eso mismo: el perfil vive en el servidor y es de las cinco computadoras.
+  manejar('perfiles:guardarMio', async (datos) => {
+    const actor = exigirSesion()
+    canal().exigirConexion()
+    return exito(await subirMiPerfil(actor, datos))
+  })
+  // El de OTRA persona, en cambio, es de administradores: se usa para la foto del que no se la carga y
+  // para desempatar dos que quieren el mismo color. El servidor lo vuelve a controlar.
+  manejar('perfiles:guardarDe', async (clave, datos) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    canal().exigirConexion()
+    return exito(await subirPerfilDe(actor, clave, datos))
+  })
+
+  // La presencia (14.0). `vivo:foco` es lo ÚNICO que escribe sin candado de conexión, a propósito: sin
+  // canal el frame no sale y no pasa nada —un foco que no llegó no descoloca ningún dato—, mientras que
+  // trabar la pantalla por eso apagaría el glow de las otras computadoras cada vez que parpadea el wifi.
+  manejar('vivo:foco', (foco) => {
+    exigirSesion()
+    reportarFoco(leerFoco(foco))
+    return exito(null)
+  })
+  manejar('vivo:presencia', () => {
+    exigirSesion()
+    return exito(presenciaActual())
+  })
+
+  // Las llamadas de voz (14.0). Llamar es escribir en la conversación —queda el renglón de la llamada en
+  // el hilo de los dos—, así que va con `exigirEdicion('mensajes')`, igual que el zumbido. Atender,
+  // rechazar y colgar NO: si a alguien le cortaron el permiso mientras hablaba, tiene que poder cortar.
+  manejar('llamadas:invitar', (conversacionId) => exito(invitarALlamar(exigirEdicion('mensajes'), conversacionId)))
+  manejar('llamadas:aceptar', () => {
+    exigirSesion()
+    return exito(aceptarLlamada())
+  })
+  manejar('llamadas:rechazar', () => {
+    exigirSesion()
+    return exito(rechazarLlamada())
+  })
+  manejar('llamadas:colgar', () => {
+    exigirSesion()
+    return exito(colgarLlamada())
+  })
+  // La señalización va y viene decenas de veces por llamada (un candidato ICE por cada camino de red que
+  // aparece): no valida nada más que la sesión y descarta lo que no sea de la llamada en curso.
+  manejar('llamadas:senal', (llamadaId, senal) => {
+    exigirSesion()
+    mandarSenalDeLlamada(llamadaId, senal)
+    return exito(null)
+  })
+  manejar('llamadas:ice', () => {
+    exigirSesion()
+    return exito(configuracionIce())
+  })
+  manejar('llamadas:estado', () => {
+    exigirSesion()
+    return exito(estadoDeLaLlamada())
+  })
 
   // Sincronización con la hoja de Google. El estado y el «sincronizar ahora» son de la barra superior
   // y los usa todo el equipo; el panel con el detalle y los reintentos, no.
@@ -1323,6 +1403,10 @@ export function registrarIpc(): void {
   // El zumbido sale por su cuenta y no por la cola: `zumbar` habla con el servidor en el momento. Por
   // eso no hay `apurarAlCartero()` acá —no hay nada esperando— y por eso es `async`.
   manejar('mensajes:zumbar', async (conversacionId) => exito(await zumbar(exigirEdicion('mensajes'), conversacionId)))
+  // La reacción tampoco pasa por la cola: habla con el servidor en el momento, como el zumbido (14.0).
+  manejar('mensajes:reaccionar', async (mensajeId, emoji) =>
+    exito(await reaccionarA(exigirEdicion('mensajes'), mensajeId, emoji)),
+  )
   manejar('mensajes:reintentar', (mensajeId) => {
     const mensaje = reintentarMensaje(exigirEdicion('mensajes'), mensajeId)
     apurarAlCartero()

@@ -42,7 +42,10 @@ export class VpsSimulado {
     | 'mensajesNovedades'
     | 'mensajesEntregados'
     | 'mensajesLeidos'
-    | 'mensajesRegistro',
+    | 'mensajesRegistro'
+    | 'mensajesReaccionados'
+    | 'perfilesLeidos'
+    | 'perfilesGuardados',
     number
   >
   /** Los respaldos guardados, del más nuevo al más viejo. */
@@ -78,7 +81,7 @@ export class VpsSimulado {
   mensajes: Array<{
     id: string
     conversacionId: string
-    tipo: 'NORMAL' | 'ZUMBIDO'
+    tipo: 'NORMAL' | 'ZUMBIDO' | 'LLAMADA'
     orden: number
     autorClave: string
     autorNombre: string
@@ -91,6 +94,10 @@ export class VpsSimulado {
   }>
   /** Los dos acuses, por mensaje y por persona: `${mensajeId}|${usuarioClave}`. */
   acuses: Map<string, { entregadoEn: string | null; leidoEn: string | null }>
+  /** Las reacciones (14.0): mensajeId → (clave de la persona → emoji). Una por persona y por mensaje. */
+  reacciones: Map<string, Map<string, string>>
+  /** Las reacciones de un mensaje, agrupadas por emoji, tal como viajan por el canal y por HTTP. */
+  reaccionesDe(mensajeId: string): Array<{ emoji: string; claves: string[] }>
   escuchar(puerto?: number): Promise<string>
   cerrar(): Promise<void>
 
@@ -104,6 +111,15 @@ export class VpsSimulado {
   perfiles: Map<string, PerfilSimulado>
   /** La señalización de llamadas que llegó por el canal, en orden. Ver `llamadas` para los contadores HTTP. */
   llamadasDeVoz: Array<{ de: string; evento: unknown }>
+  /** Las llamadas de voz abiertas (14.0), por `llamadaId`. Vacío quiere decir que nadie está hablando. */
+  llamadasAbiertas: Map<string, LlamadaSimulada>
+  /**
+   * Cuánto suena el teléfono antes de darlo por perdido, en milisegundos (45 s en el servidor de
+   * verdad). Las pruebas lo suben o lo bajan: nadie corre un banco que espera cuarenta y cinco segundos.
+   */
+  timbreDeLlamadaMs: number
+  /** Le manda un frame a TODAS las computadoras de una persona. Devuelve a cuántas les llegó. */
+  mandarleA(clave: string, mensaje: unknown): number
   /** Lo que el saludo manda como configuración de WebRTC. Sin TURN, igual que un VPS sin secreto. */
   ice: { stun: string[]; turn: { urls: string[]; username: string; credential: string; venceEn: string } | null }
   /** Quién está conectado y en qué: la foto completa que difunde el canal. */
@@ -180,4 +196,17 @@ export interface PerfilSimulado {
   foto: string | null
   version: number
   actualizadoEn: string
+}
+
+/** Una llamada de voz abierta en el servidor simulado. */
+export interface LlamadaSimulada {
+  id: string
+  de: string
+  deNombre: string
+  para: string
+  conversacionId: string
+  situacion: 'timbrando' | 'en-llamada'
+  desde: number
+  hablandoDesde: number | null
+  reloj: ReturnType<typeof setTimeout> | null
 }

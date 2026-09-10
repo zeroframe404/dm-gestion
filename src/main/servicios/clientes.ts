@@ -787,6 +787,7 @@ export function fichaDeCliente(clienteId: number): FichaCliente {
   const polizas = polizasDe(cliente, hoy)
   return {
     id: cliente.id,
+    filaId: cliente.fila_id,
     nombre: cliente.nombre,
     documento: cliente.documento,
     telefono: cliente.telefono,

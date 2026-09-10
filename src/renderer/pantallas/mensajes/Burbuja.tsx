@@ -17,12 +17,25 @@
 // entero al renderer y un mp4 de 40 MB son 53 MB de texto cruzando el puente, con la ventana
 // congelada mientras tanto.
 //
-// El zumbido no se dibuja como burbuja: ver `Zumbido`, más abajo.
+// Las reacciones (14.0) son las de WhatsApp y se dibujan en dos piezas: la BARRA para poner una, en la
+// fila de acciones que aparece al pasar el mouse, y la PASTILLA con las que ya hay, colgada debajo de la
+// burbuja. Tres cosas que no son obvias:
+//   1. La fila de acciones ahora está también en los mensajes AJENOS, que es justamente donde uno
+//      reacciona. En los propios sigue estando «Borrar», que es de uno solo.
+//   2. Cada persona tiene UNA reacción por mensaje: tocar la propia la saca, tocar otra la cambia. Esa
+//      regla la manda el servidor (ver `reaccionarA` en `servicios/mensajeria.ts`); acá sólo se dibuja,
+//      y por eso la pastilla se pinta con lo que contestó el servidor y nunca con una cuenta local.
+//   3. Reaccionar NO pasa por la cola —igual que el zumbido—, así que sin canal en vivo no se puede: el
+//      botón queda apagado y el `title` dice por qué, como cada botón que guarda.
+//
+// El zumbido y la llamada no se dibujan como burbuja: ver `Zumbido` y `Llamada`, más abajo.
 import { useEffect, useState } from 'react'
-import type { AdjuntoDeMensaje, MensajeInterno } from '../../../shared/tipos'
+import type { AdjuntoDeMensaje, MensajeInterno, ReaccionDeMensaje } from '../../../shared/tipos'
 import { Icono, type NombreIcono } from '../../componentes/Icono'
 import { cx } from '../../componentes/ui'
-import { esSoloEmojis } from './emojis'
+import { useConexion } from '../../contexto/Conexion'
+import { EMOJIS_RAPIDOS, esSoloEmojis } from './emojis'
+import { SelectorDeEmojis } from './SelectorDeEmojis'
 
 /** El peso de un archivo escrito como lo diría una persona. */
 function pesoLegible(bytes: number): string {
@@ -177,12 +190,181 @@ function Tilde({ mensaje }: { mensaje: MensajeInterno }) {
   )
 }
 
+/**
+ * Lo que se lee al pasar el mouse por la barra de reacciones cuando no hay canal en vivo.
+ *
+ * Es la versión de `SIN_CANAL_NO_SE_GUARDA` (`componentes/ui.tsx`) para esto: una reacción no espera en
+ * la cola como un mensaje —se manda en el momento o no se manda—, así que sin conexión no hay «después»
+ * que ofrecer. Mismo criterio que el zumbido.
+ */
+const SIN_CANAL_NO_SE_REACCIONA =
+  'Sin conexión no se puede reaccionar: la reacción no espera en la cola, se manda en el momento. ' +
+  'Volvé a intentar cuando vuelva internet.'
+
+/**
+ * Por qué no se puede reaccionar ahora mismo, o null si se puede.
+ *
+ * El orden es el de las barreras de verdad, para que el cartel no mienta: primero el permiso (lo pide
+ * `exigirEdicion('mensajes')` en `ipc.ts`), después el canal (lo corta `permisos.ts exigir`) y al final
+ * lo que rechaza el servicio. Un mensaje que todavía está en la cola no tiene id remoto: el servidor no
+ * sabe de él, y `reaccionarA` lo dice con esas mismas palabras.
+ */
+function motivoParaNoReaccionar(mensaje: MensajeInterno, puedeEscribir: boolean, hayCanal: boolean): string | null {
+  if (!puedeEscribir) return 'No tenés permiso para escribir mensajes'
+  if (!hayCanal) return SIN_CANAL_NO_SE_REACCIONA
+  if (mensaje.estado === 'enCola' || mensaje.estado === 'fallado') {
+    return 'Todavía no salió de esta computadora: esperá a que se mande'
+  }
+  return null
+}
+
+/** Quiénes reaccionaron con ese emoji, para el globito de la pastilla. */
+function quienesReaccionaron(reaccion: ReaccionDeMensaje): string {
+  const nombres = reaccion.nombres.join(', ')
+  // Que la propia se saca tocándola no se adivina mirando: se dice donde la persona va a mirar.
+  return reaccion.mia ? `${nombres} · tocá para sacar la tuya` : nombres
+}
+
+/**
+ * La barra para poner una reacción: los seis de siempre y el cajón entero atrás del «más».
+ *
+ * Va INLINE en la fila de acciones y no en un globo flotante pegado a la burbuja: el hilo es un
+ * `overflow-y-auto`, y lo que se dibuja `absolute` sobre un mensaje de arriba se corta contra el borde.
+ * Inline la fila empuja y se ve completa esté donde esté el mensaje.
+ *
+ * Al elegir se cierra sola, y con ella se cierra el cajón —que vive adentro—: una reacción es UNA, no se
+ * ponen tres seguidas como los emojis de la caja de escribir.
+ */
+function BarraDeReacciones({
+  puesta,
+  motivo,
+  lado,
+  abierta,
+  setAbierta,
+  alElegir,
+}: {
+  /** El emoji que esta persona ya tiene puesto en este mensaje, para marcarlo en la barra. */
+  puesta: string | null
+  motivo: string | null
+  lado: 'derecha' | 'izquierda'
+  /** Abierta o cerrada la manda la burbuja: mientras está abierta, la fila de acciones no se desvanece. */
+  abierta: boolean
+  setAbierta: (abierta: boolean) => void
+  alElegir: (emoji: string) => void
+}) {
+  if (!abierta || motivo) {
+    return (
+      <button
+        type="button"
+        disabled={motivo !== null}
+        onClick={() => setAbierta(true)}
+        title={motivo ?? 'Reaccionar con un emoji'}
+        className="text-xs text-slate-500 transition-colors hover:text-marino-700 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:text-slate-500"
+      >
+        Reaccionar
+      </button>
+    )
+  }
+
+  const elegir = (emoji: string) => {
+    setAbierta(false)
+    alElegir(emoji)
+  }
+
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1 py-0.5 shadow-sm">
+      {EMOJIS_RAPIDOS.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          onClick={() => elegir(emoji)}
+          title={puesta === emoji ? 'Ya la tenés puesta: tocala para sacarla' : `Reaccionar con ${emoji}`}
+          className={cx(
+            'rounded-full px-1 py-0.5 text-base leading-none transition-colors hover:bg-slate-100',
+            puesta === emoji && 'bg-marino-50',
+          )}
+        >
+          {emoji}
+        </button>
+      ))}
+      <SelectorDeEmojis
+        alElegir={elegir}
+        cara={<Icono nombre="mas" tamano={14} />}
+        etiqueta="Reaccionar con otro emoji"
+        tamano="sm"
+        lado={lado}
+      />
+      <button
+        type="button"
+        onClick={() => setAbierta(false)}
+        aria-label="Cerrar"
+        title="Cerrar"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+      >
+        <Icono nombre="cerrar" tamano={12} />
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Las reacciones que ya tiene el mensaje: cada emoji con su cuenta, y resaltada la propia.
+ *
+ * Tocar la propia la saca (manda `null`) y tocar otra la cambia: es un interruptor, porque cada persona
+ * tiene una sola reacción por mensaje. La cuenta se muestra siempre, también cuando es uno: «👍» solo no
+ * dice si reaccionó una persona o cinco, y en un grupo de cinco eso es justo lo que se quiere saber.
+ */
+function PastillaDeReacciones({
+  reacciones,
+  motivo,
+  alReaccionar,
+}: {
+  reacciones: ReaccionDeMensaje[]
+  motivo: string | null
+  alReaccionar: (emoji: string | null) => void
+}) {
+  if (!reacciones.length) return null
+  return (
+    <div className="flex flex-wrap items-center gap-1 px-1">
+      {reacciones.map((reaccion) => (
+        <button
+          key={reaccion.emoji}
+          type="button"
+          disabled={motivo !== null}
+          // Apagada sigue diciendo QUIÉN reaccionó: es lo que la pastilla contesta, y no poder tocarla
+          // no es razón para esconderlo. El motivo se suma atrás, no en lugar de los nombres.
+          title={motivo ? `${quienesReaccionaron(reaccion)} · ${motivo}` : quienesReaccionaron(reaccion)}
+          onClick={() => alReaccionar(reaccion.mia ? null : reaccion.emoji)}
+          className={cx(
+            'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 leading-none transition-colors',
+            'disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-transparent',
+            reaccion.mia
+              ? 'border-marino-300 bg-marino-50 text-marino-800'
+              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+          )}
+        >
+          <span className="text-sm leading-none">{reaccion.emoji}</span>
+          <span className="text-xs font-semibold tabular-nums">{reaccion.claves.length}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 interface Props {
   mensaje: MensajeInterno
   /** En un grupo se muestra quién lo dijo; en una conversación de a dos, no hace falta. */
   mostrarAutor: boolean
+  /**
+   * Si esta persona tiene permiso de editar en «mensajes» (14.0). Lo usan las reacciones: reaccionar es
+   * escribir, y sin el permiso la barra queda apagada diciéndolo. Borrar no lo mira porque ya está
+   * limitado a los mensajes propios.
+   */
+  puedeEscribir: boolean
   alBorrar: (mensajeId: number) => void
   alReintentar: (mensajeId: number) => void
+  /** Pone (un emoji), cambia (otro) o saca (null) MI reacción. Ver `reaccionarA` en el proceso principal. */
+  alReaccionar: (mensajeId: number, emoji: string | null) => void
 }
 
 /**
@@ -204,11 +386,41 @@ function Zumbido({ mensaje }: { mensaje: MensajeInterno }) {
   )
 }
 
-export function Burbuja({ mensaje, mostrarAutor, alBorrar, alReintentar }: Props) {
+/**
+ * La llamada de voz en el hilo (14.0). Igual que el zumbido y por el mismo motivo: no es algo que se
+ * dijo, es algo que se hizo, así que va centrada y chica en vez de en una burbuja.
+ *
+ * El texto lo escribe el SERVIDOR cuando la llamada termina («Llamada de voz · 3:12», «Llamada
+ * perdida») y acá se muestra tal cual: la duración y el motivo los sabe él, que es el único que vio
+ * los dos lados. Esta pantalla no interpreta ese texto ni lo vuelve a armar; si mañana el servidor
+ * agrega un motivo nuevo, aparece solo.
+ */
+function Llamada({ mensaje }: { mensaje: MensajeInterno }) {
+  return (
+    <div className="flex w-full justify-center py-1">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs text-emerald-900">
+        <Icono nombre="telefono" tamano={13} />
+        <span className="font-semibold">{mensaje.cuerpo || 'Llamada de voz'}</span>
+        <span className="tabular-nums text-emerald-700">{horaDe(mensaje.creadoEn)}</span>
+      </span>
+    </div>
+  )
+}
+
+export function Burbuja({ mensaje, mostrarAutor, puedeEscribir, alBorrar, alReintentar, alReaccionar }: Props) {
+  // Los hooks van ANTES del zumbido y de la llamada a propósito: llamarlos después de un `return` los
+  // volvería condicionales, y React cuenta los hooks por orden. Ni un zumbido ni una llamada llevan
+  // reacciones, así que el valor se descarta.
+  const { puedeEscribir: hayCanal } = useConexion()
+  const [barraAbierta, setBarraAbierta] = useState(false)
   if (mensaje.tipo === 'ZUMBIDO' && !mensaje.eliminadoEn) return <Zumbido mensaje={mensaje} />
+  if (mensaje.tipo === 'LLAMADA' && !mensaje.eliminadoEn) return <Llamada mensaje={mensaje} />
 
   const mio = mensaje.mio
   const soloEmojis = !mensaje.eliminadoEn && !mensaje.adjuntos.length && esSoloEmojis(mensaje.cuerpo)
+  const motivoDeLaReaccion = motivoParaNoReaccionar(mensaje, puedeEscribir, hayCanal)
+  // La que tiene puesta esta persona, para marcarla en la barra. Es una sola, por definición.
+  const miReaccion = mensaje.reacciones.find((reaccion) => reaccion.mia)?.emoji ?? null
 
   return (
     <div className={cx('group flex w-full', mio ? 'justify-end' : 'justify-start')}>
@@ -248,10 +460,37 @@ export function Burbuja({ mensaje, mostrarAutor, alBorrar, alReintentar }: Props
           </div>
         </div>
 
-        {/* Las acciones aparecen al pasar el mouse: un chat lleno de botones no se lee. */}
-        {mio && !mensaje.eliminadoEn && (
-          <div className="flex items-center gap-2 px-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-            {mensaje.estado === 'fallado' && (
+        {/* Las que ya están, colgadas de la burbuja y del lado que le toca a cada uno. */}
+        {!mensaje.eliminadoEn && (
+          <PastillaDeReacciones
+            reacciones={mensaje.reacciones}
+            motivo={motivoDeLaReaccion}
+            alReaccionar={(emoji) => alReaccionar(mensaje.id, emoji)}
+          />
+        )}
+
+        {/* Las acciones aparecen al pasar el mouse: un chat lleno de botones no se lee. Desde la 14.0
+            están también en los mensajes ajenos, que es donde uno reacciona; «Borrar» sigue siendo de
+            los propios. Con la barra de emojis abierta la fila queda fija: elegir un emoji obliga a
+            mover el mouse, y una fila que se desvanece en el camino no se puede usar. */}
+        {!mensaje.eliminadoEn && (
+          <div
+            className={cx(
+              'flex items-center gap-2 px-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100',
+              // `&& !motivo`: si el canal se cae con la barra abierta, la barra vuelve a ser el botón
+              // apagado y la fila tiene que volver a esconderse como cualquier otra.
+              barraAbierta && !motivoDeLaReaccion ? 'opacity-100' : 'opacity-0',
+            )}
+          >
+            <BarraDeReacciones
+              puesta={miReaccion}
+              motivo={motivoDeLaReaccion}
+              lado={mio ? 'derecha' : 'izquierda'}
+              abierta={barraAbierta}
+              setAbierta={setBarraAbierta}
+              alElegir={(emoji) => alReaccionar(mensaje.id, emoji)}
+            />
+            {mio && mensaje.estado === 'fallado' && (
               <button
                 type="button"
                 onClick={() => alReintentar(mensaje.id)}
@@ -260,9 +499,11 @@ export function Burbuja({ mensaje, mostrarAutor, alBorrar, alReintentar }: Props
                 Volver a intentar
               </button>
             )}
-            <button type="button" onClick={() => alBorrar(mensaje.id)} className="text-xs text-slate-500 hover:text-red-700">
-              Borrar
-            </button>
+            {mio && (
+              <button type="button" onClick={() => alBorrar(mensaje.id)} className="text-xs text-slate-500 hover:text-red-700">
+                Borrar
+              </button>
+            )}
           </div>
         )}
 

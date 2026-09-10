@@ -338,9 +338,29 @@ export function elCanalSeCorto(): void {
   relojDeReconexion.unref?.()
 }
 
-/** Volvió el canal: se cancela el corte por desconexión y la llamada sigue como si nada. */
+/**
+ * Volvió el canal. Si había una llamada esperando, se corta: NO sobrevive a la reconexión.
+ *
+ * Parece al revés de lo que dice el aguante de los quince segundos, y no lo es. Lo que aguanta esos
+ * quince segundos es el AUDIO, que va punto a punto; la llamada, en cambio, vive pegada a la conexión
+ * del servidor: cuando el socket se cierra, el hub la cierra, libera el «ocupado» y le manda
+ * `colgar {desconexion}` a la otra punta, que ahí mismo tira abajo su `RTCPeerConnection`. La
+ * reconexión trae un `conexionId` nuevo y el saludo no dice una palabra de llamadas (ver `bienvenida`
+ * en `protocolo.ts`), así que no hay nada que retomar: del otro lado ya no hay nadie.
+ *
+ * Cancelar el corte acá dejaba a esta computadora sola, creyendo que hablaba: la barra verde con el
+ * cronómetro corriendo, sin voz de nadie, sin poder llamar (`ocupada`) y rechazando por «ocupado» todo
+ * lo que entrara, hasta que la persona se diera cuenta y apretara «Cortar» a mano.
+ *
+ * El aguante sigue sirviendo para lo que fue pensado: el parpadeo de wifi que se arregla ANTES de que
+ * el servidor note el cierre no llega hasta acá, porque el socket nunca se cerró.
+ */
 export function elCanalVolvio(): void {
+  const esperaba = relojDeReconexion !== null
   pararLaEspera()
+  // `avisarAlOtro` en false: el otro ya lo sabe (se lo dijo el servidor) y ese `llamadaId` para el hub
+  // nuevo no existe, así que el frame no llegaría a ningún lado.
+  if (esperaba && actual) cortar('desconexion', false)
 }
 
 // ---------------------------------------------------------------------------
