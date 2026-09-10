@@ -24,6 +24,7 @@ import { mismaSucursal } from '../../shared/sucursales'
 import type {
   BajaPorMotivo,
   CobranzaDelMes,
+  DetalleDeAltas,
   EstadisticasDeCartera,
   FilaEstadistica,
   FiltrosMetricas,
@@ -33,11 +34,11 @@ import type {
   TableroMetricas,
   TotalPorMedio,
 } from '../../shared/tipos'
-import { normalizarTexto } from '../importacion/normalizar'
+import { limpiar, normalizarTexto } from '../importacion/normalizar'
 import { catalogos } from './cartera'
 import { cotejarNumeros, frescuraActual, tocaCotejar } from './cotejoDeMetricas'
 import { leerSnapshotDeMetrica } from './metricasCache'
-import { estadisticasDeCarteraLocal, resumenDeCartera, tableroDeMetricasLocal } from './metricas'
+import { altasDelMes, claveDeLaFilaDeSucursal, estadisticasDeCarteraLocal, resumenDeCartera, tableroDeMetricasLocal } from './metricas'
 
 const FORMATO_PERIODO = /^\d{4}-\d{2}$/
 const MESES_DE_EVOLUCION = 12
@@ -396,4 +397,77 @@ export function estadisticasConCache(periodoPedido: string | null, sucursalesPed
   }
 
   return { ...desdeCache, calculadoEn: snap.servidorCalculadoEn, recibidoEnEstaComputadora: snap.recibidoEn, frescura: frescuraActual() }
+}
+
+// ---------------------------------------------------------------------------
+// El detalle del podio (qué pólizas son las altas)
+// ---------------------------------------------------------------------------
+
+interface FilaDeAltaCache {
+  cliente: string | null
+  compania: string | null
+  numeroPoliza: string | null
+  patente: string | null
+  sucursal: string | null
+}
+
+export interface AltasPayloadCache {
+  periodo: string
+  hayMesAnterior: boolean
+  filas: FilaDeAltaCache[]
+}
+
+function esPayloadDeAltas(valor: unknown): valor is AltasPayloadCache {
+  if (!valor || typeof valor !== 'object') return false
+  const posible = valor as Partial<AltasPayloadCache>
+  return typeof posible.periodo === 'string' && Array.isArray(posible.filas)
+}
+
+/**
+ * Arma `DetalleDeAltas` recortando el payload cacheado —que trae TODA la agencia, como el podio— a la
+ * sucursal pedida. `null` cuando el payload no alcanza: el período que calculó el servidor no es el
+ * pedido (el snapshot llegó de un mes que ya no es el actual, o el pedido no tiene forma de período), y
+ * ahí el llamador cae al cálculo local en vez de mostrar el detalle de otro mes con la etiqueta de éste.
+ */
+export function altasDesdeCache(payload: AltasPayloadCache, periodoPedido: string | null, sucursalPedida: string | null): DetalleDeAltas | null {
+  const periodoLimpio = (periodoPedido ?? '').trim()
+  if (periodoLimpio && periodoLimpio !== payload.periodo) return null
+
+  const sucursal = limpiar(sucursalPedida) || null
+  if (!payload.hayMesAnterior) return { periodo: payload.periodo, sucursal, hayMesAnterior: false, filas: [] }
+
+  const buscada = sucursal === null ? null : claveDeLaFilaDeSucursal(sucursal)
+  return {
+    periodo: payload.periodo,
+    sucursal,
+    hayMesAnterior: true,
+    filas: payload.filas.filter((fila) => buscada === null || claveDeLaFilaDeSucursal(fila.sucursal) === buscada),
+  }
+}
+
+/**
+ * `metricas:altas`: usa el mismo payload del servidor que ya arma el podio (misma clave 'altas' del
+ * caché) en vez de recorrer la copia SQLite de esta PC (`altasDelMes`, en metricas.ts). Es la mitad que
+ * le faltaba a la migración de Inicio (13.2): la tarjeta del podio ya venía del servidor, pero el
+ * detalle seguía saliendo de la base local, así que las dos cuentas podían mostrar números distintos
+ * —justo lo que el propio diálogo (`DetalleDelPodio` en Inicio.tsx) le avisa al usuario cuando pasa— sin
+ * que ninguna de las dos estuviera realmente "mal": eran dos cálculos sobre datos distintos.
+ */
+export function altasConCache(periodoPedido: string | null, sucursalPedida: string | null): DetalleDeAltas {
+  const snap = leerSnapshotDeMetrica('altas')
+  const payload = snap && esPayloadDeAltas(snap.payload) ? snap.payload : null
+  const desdeCache = payload ? altasDesdeCache(payload, periodoPedido, sucursalPedida) : null
+
+  if (!snap || !desdeCache) return altasDelMes(periodoPedido, sucursalPedida)
+
+  if (tocaCotejar(`altas:${desdeCache.periodo}:${sucursalPedida ?? ''}`)) {
+    try {
+      const local = altasDelMes(periodoPedido, sucursalPedida)
+      cotejarNumeros(`Altas ${desdeCache.periodo}${sucursalPedida ? ` · ${sucursalPedida}` : ''}`, [['filas', local.filas.length, desdeCache.filas.length]])
+    } catch (error) {
+      console.error('[métricas] no se pudo cotejar el detalle de altas contra el cálculo local:', error instanceof Error ? error.message : error)
+    }
+  }
+
+  return desdeCache
 }

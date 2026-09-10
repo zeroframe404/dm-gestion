@@ -746,7 +746,7 @@ export function estadisticasDeCarteraLocal(
  * si acá se comparara de otra forma —con `mismaSucursal`, que además pliega «AVELLANEDA» dentro de
  * «Dock Sud»— el listado traería filas que la tarjeta no contó y el número dejaría de cerrar.
  */
-function claveDeLaFilaDeSucursal(valor: string | null): string {
+export function claveDeLaFilaDeSucursal(valor: string | null): string {
   return normalizarTexto(limpiar(valor) || '(sin sucursal)')
 }
 

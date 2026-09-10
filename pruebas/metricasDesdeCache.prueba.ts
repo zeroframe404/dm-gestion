@@ -8,10 +8,13 @@ import { usarBaseDeDatos } from '../src/main/db/base'
 import { reiniciarCotejoParaPruebas } from '../src/main/servicios/cotejoDeMetricas'
 import { guardarSnapshotDeMetrica } from '../src/main/servicios/metricasCache'
 import {
+  altasConCache,
+  altasDesdeCache,
   estadisticasConCache,
   estadisticasDesdeCache,
   tableroConCache,
   tableroDesdeCache,
+  type AltasPayloadCache,
   type MetricasPayloadCache,
 } from '../src/main/servicios/metricasDesdeCache'
 import type { FiltrosMetricas, ResumenDeCartera } from '../src/shared/tipos'
@@ -236,5 +239,86 @@ test('estadisticasConCache: sin nada en el caché, cae al cálculo local; con el
     assert.equal(conCache.calculadoEn, '2026-09-09T12:00:00.000Z')
     // El resumen de cartera es de la base local siempre, cache o no: acá también da la cartera vacía.
     assert.deepEqual(conCache.resumenCartera, SIN_CARTERA)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// El detalle del podio (metricas:altas): la mitad que le faltaba a la migración del podio (issue #79)
+// ---------------------------------------------------------------------------
+
+function altasDePrueba(): AltasPayloadCache {
+  return {
+    periodo: '2026-09',
+    hayMesAnterior: true,
+    filas: [
+      { cliente: 'GONZALEZ JOSE', compania: 'ATM', numeroPoliza: '1109722', patente: 'JEO950', sucursal: 'Sarandí' },
+      { cliente: 'LARRAZ IAN', compania: 'GALENO', numeroPoliza: '117579', patente: 'A233FZH', sucursal: 'Sarandí' },
+      { cliente: 'MARTINEZ ANA', compania: 'RUS', numeroPoliza: '55555', patente: 'AA111BB', sucursal: 'Lanús' },
+    ],
+  }
+}
+
+test('altasDesdeCache: null cuando se pide un período que el servidor no calculó', () => {
+  conBase(() => {
+    assert.equal(altasDesdeCache(altasDePrueba(), '2026-08', 'Sarandí'), null)
+  })
+})
+
+test('altasDesdeCache: sin período pedido, usa el que trae el payload y filtra por sucursal', () => {
+  conBase(() => {
+    const detalle = altasDesdeCache(altasDePrueba(), null, 'Sarandí')
+    assert.equal(detalle?.periodo, '2026-09')
+    assert.equal(detalle?.filas.length, 2)
+    assert.ok(detalle?.filas.every((fila) => fila.sucursal === 'Sarandí'))
+  })
+})
+
+test('altasDesdeCache: sin sucursal pedida, trae las de toda la agencia', () => {
+  conBase(() => {
+    const detalle = altasDesdeCache(altasDePrueba(), '2026-09', null)
+    assert.equal(detalle?.filas.length, 3)
+  })
+})
+
+test('altasDesdeCache: sin mes anterior en el payload, la lista va vacía aunque tenga filas', () => {
+  conBase(() => {
+    const payload: AltasPayloadCache = { ...altasDePrueba(), hayMesAnterior: false }
+    const detalle = altasDesdeCache(payload, '2026-09', null)
+    assert.equal(detalle?.hayMesAnterior, false)
+    assert.deepEqual(detalle?.filas, [])
+  })
+})
+
+test('altasConCache: sin nada en el caché, cae al cálculo local (altasDelMes)', () => {
+  conBase(() => {
+    const detalle = altasConCache('2026-08', 'Dock Sud')
+    assert.equal(detalle.periodo, '2026-08')
+    assert.deepEqual(detalle.filas, [])
+  })
+})
+
+test('altasConCache: con el servidor calculado, usa ESE detalle y no el local — es la mitad que le faltaba al podio', () => {
+  conBase(() => {
+    guardarSnapshotDeMetrica('altas', { version: 1, calculadoEn: '2026-09-10T11:14:00.000Z', payload: altasDePrueba() })
+    const detalle = altasConCache('2026-09', 'Sarandí')
+    assert.equal(detalle.filas.length, 2)
+    assert.deepEqual(
+      detalle.filas.map((f) => f.cliente),
+      ['GONZALEZ JOSE', 'LARRAZ IAN'],
+    )
+  })
+})
+
+test('altasConCache: si el servidor y el cálculo local no coinciden, lo anota por consola y nunca lo muestra en el resultado', () => {
+  conBase(() => {
+    // La base local está vacía: `altasDelMes` da 0 filas para Sarandí. El payload del servidor trae 2 a
+    // propósito, para que el cotejo lo note — el mismo caso del podio que muestra 3 y la lista trae 7.
+    guardarSnapshotDeMetrica('altas', { version: 1, calculadoEn: '2026-09-10T11:14:00.000Z', payload: altasDePrueba() })
+
+    const { resultado: detalle, llamadas } = conConsoleErrorCapturado(() => altasConCache('2026-09', 'Sarandí'))
+
+    assert.equal(detalle.filas.length, 2)
+    assert.equal(llamadas.length, 1)
+    assert.match(String(llamadas[0]?.[0]), /no coincide con el local/)
   })
 })

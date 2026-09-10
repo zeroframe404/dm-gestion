@@ -46,9 +46,8 @@ import {
 import { cajaConCache, comisionesConCache, imputadosConCache } from './servicios/cobranzasDesdeCache'
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
-import { altasDelMes } from './servicios/metricas'
 import { leerSnapshotDeMetrica } from './servicios/metricasCache'
-import { estadisticasConCache, tableroConCache } from './servicios/metricasDesdeCache'
+import { altasConCache, estadisticasConCache, tableroConCache } from './servicios/metricasDesdeCache'
 import {
   areasDelReporte,
   catalogoDeExcel,
@@ -1485,7 +1484,7 @@ export function registrarIpc(): void {
   // ya es el listado de Cartera, y llegar a él por el atajo del podio sería una puerta de atrás.
   manejar('metricas:altas', (periodo, sucursal) => {
     exigirVista('cartera')
-    return exito(altasDelMes(periodo, sucursal))
+    return exito(altasConCache(periodo, sucursal))
   })
 
   // Reportes: exportar lo que ya se ve en pantalla. Un reporte junta datos de varios módulos, así que
