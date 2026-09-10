@@ -11,6 +11,7 @@ import type {
   RespaldoGuardado,
   ResumenCierreDeMes,
   SesionUsuario,
+  SituacionDeConexion,
 } from '../../shared/tipos'
 import { db } from '../db/base'
 import { extraerIdDeHoja, FuenteGoogleSheets, type FuenteHoja } from '../importacion/fuente'
@@ -18,7 +19,7 @@ import { ejecutarImportacion } from '../importacion/importador'
 import { ahoraIso } from '../importacion/normalizar'
 import { clasificarPestana } from '../importacion/pestanas'
 import { carpetaDatos } from '../rutas'
-import { anotarEvento, reintentarFallidas } from '../sincronizacion/cola'
+import { anotarEvento, reintentarFallidas, usarDespertadorDeLaCola } from '../sincronizacion/cola'
 import { leerContexto } from '../sincronizacion/hoja'
 import { MotorDeSincronizacion } from '../sincronizacion/motor'
 import { crearPestanaDelMesEstricta, tituloParaPestanaNueva } from '../sincronizacion/pestanasApp'
@@ -158,16 +159,21 @@ async function importarTodo(pestanas?: string[]): Promise<void> {
 }
 
 /**
- * Si el aviso en vivo está andando. Lo pone `index.ts` al arrancar, apuntando al vigía.
+ * En qué anda el canal en vivo. Lo pone `index.ts` al arrancar, apuntando a `canal().estado()`.
  *
- * Va por acá y no con un `import` directo del vigía a propósito: el vigía necesita `obtenerMotor()`,
- * y si además la sincronización lo importara a él quedaría un círculo entre los dos módulos. Es el
- * mismo motivo por el que el cartero de la mensajería se engancha desde `index.ts` y no desde acá.
+ * Va por acá y no con un `import` directo del canal a propósito: el canal necesita `obtenerMotor()` y
+ * `credencialesDelPuente()`, y si además la sincronización lo importara a él quedaría un círculo entre
+ * los dos módulos. Es el mismo motivo por el que el cartero de la mensajería se engancha desde
+ * `index.ts` y no desde acá.
+ *
+ * Por defecto dice `sin-puente`, que es «no hay canal y tampoco tiene por qué haberlo»: es lo que
+ * corresponde en el banco de pruebas y en la máquina de desarrollo, donde el motor tiene que seguir
+ * deduciendo el corte de las fallas de red como hasta la 13.x.
  */
-let avisoEnVivoAndando: () => boolean = () => false
+let situacionDelCanal: (() => SituacionDeConexion) | null = null
 
-export function usarAvisoEnVivo(esta: () => boolean): void {
-  avisoEnVivoAndando = esta
+export function usarSituacionDelCanal(mirar: () => SituacionDeConexion): void {
+  situacionDelCanal = mirar
 }
 
 export function obtenerMotor(): MotorDeSincronizacion {
@@ -186,11 +192,16 @@ export function obtenerMotor(): MotorDeSincronizacion {
           pestanas: pestanas.map((p) => p.titulo),
           tipos: [...new Set(pestanas.map((p) => p.tipo))],
         }),
-      hayAvisoEnVivo: () => avisoEnVivoAndando(),
+      situacionDelCanal: () => situacionDelCanal?.() ?? 'sin-puente',
       // 12.6: los adjuntos suben al servidor en el mismo ciclo que la cola, después de ella.
       hayArchivosPendientes: hayAdjuntosPendientes,
       subirArchivos: () => subirAdjuntosPendientes(dadorDeTokenDeGoogle()),
     })
+    // 14.0: el reloj de los diez segundos se fue y lo reemplaza esto. Cada `encolar` —los 57 lugares
+    // del programa que anotan un cambio, sin tocar ninguno— despierta al motor, que sube con 100 ms de
+    // respiro. Se registra acá, al armar el motor, porque acá es donde existe el motor de verdad; el
+    // banco de pruebas arma el suyo y le pide las subidas a mano.
+    usarDespertadorDeLaCola(() => motor?.apurarSubida())
   }
   return motor
 }

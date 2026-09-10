@@ -87,7 +87,7 @@ export function DialogoRechazo({ poliza, alCerrar, alAvisar, alFallar }: Props) 
           <Boton onClick={alCerrar} disabled={guardando}>
             Cancelar
           </Boton>
-          <Boton variante="primario" icono="campana" onClick={() => void avisar()} cargando={guardando} disabled={!sucursal.trim()}>
+          <Boton escribe variante="primario" icono="campana" onClick={() => void avisar()} cargando={guardando} disabled={!sucursal.trim()}>
             Avisar a la sucursal
           </Boton>
         </>

@@ -254,6 +254,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
               />
               <div className="flex justify-end">
                 <Boton
+                  escribe
                   variante="primario"
                   icono="mas"
                   disabled={!observacion.trim() || !puedeEditar}
@@ -596,7 +597,7 @@ function DialogoTarea({
           <Boton onClick={alCerrar} disabled={guardando}>
             Cancelar
           </Boton>
-          <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!titulo.trim()}>
+          <Boton escribe variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!titulo.trim()}>
             Crear tarea
           </Boton>
         </>

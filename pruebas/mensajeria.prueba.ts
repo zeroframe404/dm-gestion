@@ -2,8 +2,10 @@
 // Sud, con sus dos confirmaciones, sus emojis enteros y sus archivos.
 //
 // Las dos computadoras tienen su propia base y su propia carpeta de archivos, y hablan con el mismo
-// servidor simulado. `unaVueltaDelCartero` corre una vuelta sin el bucle ni las esperas: es lo mismo
-// que hace el programa de verdad cada vez que el servidor le contesta.
+// servidor simulado. `unaVueltaDelCartero` despacha lo que está saliendo y trae lo que hay: desde la
+// 14.0 esas dos mitades están separadas en el cartero de verdad —el bucle del long-poll se fue, ahora
+// las dispara el canal en vivo cuando el servidor avisa `{t:'mensajes'}`— y esta función las junta
+// para que la prueba pueda pedirlas de a una.
 //
 // Qué se prueba acá y no en el servidor: el ida y vuelta completo. Que el mensaje salga de una base y
 // entre en la otra, que el acuse vuelva y mueva el tilde, que un mensaje escrito sin internet espere y
@@ -15,7 +17,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { VpsSimulado } from '../scripts/vps-simulado.mjs'
 import { abrirBaseDeDatos, cerrarBaseDeDatos, usarBaseDeDatos, type BaseDeDatos } from '../src/main/db/base'
-import { unaVueltaDelCartero } from '../src/main/mensajeria/cartero'
+import { traerNovedadesDeMensajes, unaVueltaDelCartero } from '../src/main/mensajeria/cartero'
 import { PuenteDeMensajes, usarPuenteDeMensajesDePrueba } from '../src/main/mensajeria/puente'
 import { hayAdjuntosPendientes, subirAdjuntosPendientes, usarCarpetaDeAdjuntosDePrueba } from '../src/main/servicios/adjuntos'
 import {
@@ -110,6 +112,39 @@ async function dosComputadoras(): Promise<Escenario> {
 }
 
 // ---------------------------------------------------------------------------
+
+// Dos avisos del canal pegados. Pasa todos los días: un mensaje y el zumbido que va atrás, dos
+// mensajes seguidos, o un mensaje mientras el «leído» de otra conversación dispara su propio frame. El
+// servidor manda dos `{t:'mensajes'}` con milisegundos de diferencia y cada uno larga su pedido.
+//
+// Sin candado los dos pedidos se encimaban, y como `/mensajes/novedades` devuelve TODO lo que todavía
+// no tiene acuse —y el acuse se manda recién al final— los dos traían el mismo mensaje: dos carteles de
+// Windows por un mensaje, la ventana sacudida dos veces y el sonido del zumbido pisado consigo mismo.
+// Hasta la 13.x lo impedía el bucle del cartero; ahora lo impide el candado de `traerNovedadesDeMensajes`.
+test('dos avisos del canal pegados no traen el mismo mensaje dos veces', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Llegó el pago de Pérez' })
+  await unaVueltaDelCartero(ANA)
+
+  en(dockSud)
+  const acusesAntes = servidor.llamadas.mensajesEntregados
+  // Los dos avisos, sin esperarse: es exactamente lo que hace `vivo/mensajes.ts` con cada frame.
+  await Promise.all([traerNovedadesDeMensajes(BETO), traerNovedadesDeMensajes(BETO)])
+
+  // El acuse de llegada sale UNA vez. Es la marca de que el mensaje se procesó una sola vez: con los
+  // dos pedidos encimados, los dos lo veían sin acusar y los dos lo acusaban (y los dos avisaban).
+  assert.equal(servidor.llamadas.mensajesEntregados - acusesAntes, 1, 'el mensaje se procesó una sola vez')
+  const hilo = await hiloDe(BETO, conversacionesDe(BETO)[0].id)
+  assert.equal(hilo.mensajes.length, 1)
+  assert.equal(avisosDe(BETO).sinLeer, 1)
+})
 
 test('un mensaje escrito en Lanús aparece en Dock Sud, con sus dos confirmaciones', async (t) => {
   const { servidor, lanus, dockSud } = await dosComputadoras()

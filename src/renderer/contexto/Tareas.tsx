@@ -5,18 +5,18 @@
 // mismo número: dos consultas por su cuenta se habrían desfasado por el tiempo que va de un reloj al
 // otro, y encima serían dos viajes al proceso principal para lo mismo.
 //
-// Cuándo se vuelve a preguntar:
-//  - cada dos minutos, como red de contención;
-//  - cuando la sincronización baja tareas de otra computadora (evento `tareas:cambiaron`, que dispara
-//    el carril rápido del motor cada 30 segundos): esto es lo que hace que una tarea asignada desde
-//    otra sucursal aparezca sola, sin que nadie recargue nada;
+// Cuándo se vuelve a preguntar (14.0: ya no hay reloj de respaldo, ver abajo):
+//  - cuando bajan tareas de otra computadora (evento `tareas:cambiaron`): esto es lo que hace que una
+//    tarea asignada desde otra sucursal aparezca sola, sin que nadie recargue nada;
 //  - cuando alguien da una por terminada, acá o en otra máquina.
+//
+// El reloj de dos minutos se fue con la 14.0. Existía porque la bajada era por reloj y el aviso podía
+// perderse entre dos ciclos; con el canal en vivo el aviso llega empujado en el momento y, si el canal
+// se cae, al volver se reconcilia entero (`reconciliar()` en `vivo/canal.ts`) y vuelve a disparar el
+// evento. Un reloj además de eso es consultar la base para escribir el mismo número que ya estaba.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { AvisosDeTareas } from '../../shared/tipos'
 import { usePermisos } from './Permisos'
-
-/** La red de contención. No es lo que hace que las tareas lleguen rápido: eso es `tareas:cambiaron`. */
-const CADA_CUANTO_MS = 2 * 60_000
 
 interface ContextoTareas {
   /** null mientras no llegó la primera respuesta. Sirve para no hacer sonar la campana al abrir. */
@@ -54,11 +54,9 @@ export function ProveedorTareas({ children }: { children: ReactNode }) {
       return
     }
     void refrescar()
-    const reloj = setInterval(() => void refrescar(), CADA_CUANTO_MS)
     const dejarDeEscucharCambios = window.dm.tareas.alCambiarDeAfuera(() => void refrescar())
     const dejarDeEscucharCompletadas = window.dm.tareas.alCompletarse(() => void refrescar())
     return () => {
-      clearInterval(reloj)
       dejarDeEscucharCambios()
       dejarDeEscucharCompletadas()
     }

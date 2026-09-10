@@ -793,7 +793,7 @@ export function altasDelMes(periodoPedido: string | null, sucursalPedida: string
 
 // SUPERADA (13.2): el handler 'metricas:podio' de ipc.ts ya no llama a esta función — el podio ahora lo
 // calcula el servidor y esta computadora sólo lee el resultado (ver servicios/metricasCache.ts y
-// sincronizacion/vigia.ts). Queda acá sin tocar porque una fase más adelante borra de una vez todo este
+// vivo/grilla.ts). Queda acá sin tocar porque una fase más adelante borra de una vez todo este
 // cómputo local ya muerto, cuando el resto de las pantallas de Métricas también se muden.
 export function podioDelMes(): PodioMensual {
   const estadisticas = estadisticasDeCarteraLocal(null, [], false)

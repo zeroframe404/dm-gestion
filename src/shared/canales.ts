@@ -360,6 +360,14 @@ export interface Canales {
   'config:plantillaAviso': () => Resultado<PlantillaAviso>
   'config:guardarPlantillaAviso': (texto: string) => Resultado<PlantillaAviso>
 
+  /**
+   * En qué anda el canal en vivo con la base de la agencia (14.0). Lo pide el proveedor de conexión
+   * del renderer al montarse, para no arrancar en blanco: después se entera de los cambios por el
+   * evento del mismo nombre. Sin sesión abierta también contesta —el Login mira si hay servidor— y
+   * por eso no exige nada más que estar del otro lado del IPC.
+   */
+  'conexion:estado': () => Resultado<EstadoDeConexion>
+
   'sincronizacion:estado': () => Resultado<EstadoSincronizacion>
   'sincronizacion:panel': () => Resultado<PanelSincronizacion>
   /** Sube lo pendiente y baja lo que haya. Con `completa`, relee todas las pestañas. */
@@ -815,6 +823,15 @@ export interface Eventos {
    * Los títulos van igual, para la bitácora y para el día que haga falta afinar el filtro.
    */
   'datos:cambiaron': { pestanas: string[]; tipos: TipoPestana[] }
+  /**
+   * Un cambio de esta computadora NO se escribió porque la base ya decía otra cosa (14.0): alguien lo
+   * editó antes desde otro mostrador y, desde la 14.0, gana la base (ver `sincronizacion/subida.ts`).
+   *
+   * Lleva todo lo que hace falta para el cartel —«la cuota de PEREZ la cambió otra computadora a
+   * $18.000; tu $19.000 no se guardó»— sin que la pantalla tenga que ir a buscar nada. Cuando el aviso
+   * llega, la pestaña ya se está bajando: el valor que ganó aparece solo.
+   */
+  'datos:pisados': { pestana: string; filaId: string; campo: string; valorLocal: string; valorServidor: string }
   /**
    * El servidor terminó de calcular de nuevo una métrica (el podio de sucursales, por ahora) y esta
    * computadora ya guardó el resultado nuevo (ver servicios/metricasCache.ts): la pantalla que la

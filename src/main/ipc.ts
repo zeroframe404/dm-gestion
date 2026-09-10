@@ -269,7 +269,7 @@ import {
   vistaPreviaDeSacarCuota,
 } from './servicios/duplicados'
 import { eliminarRegistro, vistaPreviaDeEliminacion } from './servicios/eliminacion'
-import { ErrorDeNegocio } from './servicios/errores'
+import { ErrorDeNegocio, SinConexion } from './servicios/errores'
 import { estadoDelMesh } from './servicios/mesh'
 import { elegirImagenesDelReporte, enviarReporteDeError, imagenDelPortapapeles } from './servicios/soporte'
 import { estadoDeLaBaseVps, migrarAlVps } from './servicios/migracionVps'
@@ -297,6 +297,7 @@ import { actualizarAhora, buscarActualizaciones, estadoDeActualizacion, instalar
 import { cambiarActivo, crearUsuario, editarUsuario, listarUsuarios, resetearClave } from './servicios/usuarios'
 import { enteroPositivo } from './servicios/validacion'
 import { emitirATodas } from './servicios/avisos'
+import { canal } from './vivo/canal'
 
 type Manejador<C extends NombreCanal> = (...args: ArgumentosDe<C>) => RespuestaDe<C> | Promise<RespuestaDe<C>>
 
@@ -307,6 +308,13 @@ function manejar<C extends NombreCanal>(canal: C, manejador: Manejador<C>): void
     try {
       return await manejador(...(args as ArgumentosDe<C>))
     } catch (error) {
+      // «Sin conexión» vuelve marcado (14.0). Es un ErrorDeNegocio como cualquier otro —el mensaje se
+      // muestra tal cual— pero la pantalla necesita distinguirlo: no es un dato mal cargado que se
+      // corrige, es el estado de la computadora, y lo que corresponde es el banner de arriba y volver
+      // a intentar cuando vuelva internet, no un cartel rojo al lado de un campo.
+      if (error instanceof SinConexion) {
+        return { ok: false, error: error.message, codigo: 'sin-conexion' } satisfies Resultado<never>
+      }
       if (error instanceof ErrorDeNegocio) {
         return { ok: false, error: error.message } satisfies Resultado<never>
       }
@@ -388,7 +396,20 @@ export function registrarIpc(): void {
     return exito(null)
   })
   manejar('auth:sesion', () => exito(sesion()))
-  manejar('auth:cambiarClave', async (datos) => exito(await cambiarClave(datos, exigirSesion())))
+  // Los canales que escriben pasan casi todos por `exigirEdicion` (servicios/permisos.ts), y ahí está
+  // el candado de «ver sí, tocar no» de la 14.0. Los que siguen son la excepción: escriben, pero se
+  // piden por ROL o por VISTA, así que el candado va a mano. Son éstos y nadie más —cambiar la clave,
+  // tocar usuarios, guardar la matriz de permisos, los tildes de rechazos y mensajes, adoptar las
+  // referencias, sincronizar ahora y el reporte de soporte—; lo que sí es de esta computadora (la
+  // impresora, la configuración, el catálogo de vehículos, ingresar y salir, las actualizaciones)
+  // NUNCA lleva candado: sin internet la app se tiene que poder abrir, leer y actualizar.
+  manejar('auth:cambiarClave', async (datos) => {
+    const actor = exigirSesion()
+    // La clave se guarda en la base de usuarios compartida: sin canal no hay dónde escribirla, y una
+    // clave cambiada sólo acá dejaría a la persona afuera de las otras cuatro computadoras.
+    canal().exigirConexion()
+    return exito(await cambiarClave(datos, actor))
+  })
   // Sin sesión a propósito: el Login lo usa para decir si hay internet y quién puede entrar sin ella.
   manejar('auth:estadoDeAcceso', async (comprobar) => exito(comprobar === true ? await comprobarAcceso() : estadoDeAcceso()))
 
@@ -413,23 +434,47 @@ export function registrarIpc(): void {
     exigirRol('SUPER_ADMIN')
     return exito(listarUsuarios())
   })
-  manejar('usuarios:crear', async (datos) => exito(await crearUsuario(datos, exigirRol('SUPER_ADMIN'))))
-  manejar('usuarios:editar', async (id, datos) => exito(await editarUsuario(id, datos, exigirRol('SUPER_ADMIN'))))
-  manejar('usuarios:cambiarActivo', async (id, activo) => exito(await cambiarActivo(id, activo, exigirRol('SUPER_ADMIN'))))
-  manejar('usuarios:resetearClave', async (id, claveTemporal) =>
-    exito(await resetearClave(id, claveTemporal, exigirRol('SUPER_ADMIN'))),
-  )
+  // Todo lo que toca la base de usuarios va contra GitHub y vale para las cinco computadoras: sin
+  // canal no se escribe (14.0). Listar sí, que es mirar.
+  manejar('usuarios:crear', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    canal().exigirConexion()
+    return exito(await crearUsuario(datos, actor))
+  })
+  manejar('usuarios:editar', async (id, datos) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    canal().exigirConexion()
+    return exito(await editarUsuario(id, datos, actor))
+  })
+  manejar('usuarios:cambiarActivo', async (id, activo) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    canal().exigirConexion()
+    return exito(await cambiarActivo(id, activo, actor))
+  })
+  manejar('usuarios:resetearClave', async (id, claveTemporal) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    canal().exigirConexion()
+    return exito(await resetearClave(id, claveTemporal, actor))
+  })
   manejar('usuarios:estado', async (comprobar) => {
     exigirRol('SUPER_ADMIN')
     return exito(await estadoDeUsuarios(comprobar === true))
   })
-  manejar('usuarios:subirLocales', async () => exito(await subirLocales(exigirRol('SUPER_ADMIN'))))
+  manejar('usuarios:subirLocales', async () => {
+    const actor = exigirRol('SUPER_ADMIN')
+    canal().exigirConexion()
+    return exito(await subirLocales(actor))
+  })
 
   // Permisos por rol. Qué puede hacer uno mismo lo puede preguntar cualquiera (es lo que el renderer
   // usa para mostrar u ocultar); la matriz entera la mira y la toca sólo el SUPER_ADMIN.
   manejar('permisos:mios', () => exito(misPermisos(exigirSesion())))
   manejar('permisos:matriz', () => exito(matrizDePermisos(exigirRol('SUPER_ADMIN'))))
-  manejar('permisos:guardar', async (permisos) => exito(await guardarPermisos(permisos, exigirRol('SUPER_ADMIN'))))
+  manejar('permisos:guardar', async (permisos) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    canal().exigirConexion()
+    return exito(await guardarPermisos(permisos, actor))
+  })
   conectarAvisoDePermisos(() => {
     const actual = sesion()
     if (actual) emitirATodas('permisos:cambiaron', misPermisos(actual))
@@ -615,8 +660,11 @@ export function registrarIpc(): void {
     exigirVista('cartera', 'polizas')
     return exito(avisosDeRechazos(exigirSesion()))
   })
+  // Se pide con VISTA (mirar la campana no es editar pólizas) pero escribe: deja anotado hasta dónde
+  // leyó esta persona, y eso sube y vale en las cinco computadoras. Por eso el candado a mano (14.0).
   manejar('rechazos:marcarVistos', () => {
     exigirVista('cartera', 'polizas')
+    canal().exigirConexion()
     return exito(marcarRechazosVistos(exigirSesion()))
   })
   manejar('rechazos:resolver', (rechazoId) => exito(resolverRechazoDesdeLaCampana(rechazoId, exigirEdicion('cartera', 'polizas'))))
@@ -760,6 +808,12 @@ export function registrarIpc(): void {
     return exito(plantilla)
   })
 
+  // El canal en vivo con la base de la agencia (14.0). Va sin sesión a propósito, como
+  // `auth:estadoDeAcceso`: es la primera pregunta que hace la pantalla al montarse (el banner de
+  // arriba de todo) y no dice nada de nadie, sólo si hay con quién hablar. Los cambios posteriores
+  // llegan solos por el evento del mismo nombre, que emite `vivo/canal.ts`.
+  manejar('conexion:estado', () => exito(canal().estado()))
+
   // Sincronización con la hoja de Google. El estado y el «sincronizar ahora» son de la barra superior
   // y los usa todo el equipo; el panel con el detalle y los reintentos, no.
   manejar('sincronizacion:estado', () => {
@@ -773,6 +827,9 @@ export function registrarIpc(): void {
   })
   manejar('sincronizacion:ahora', async (completa) => {
     exigirSesion()
+    // El botón «sincronizar ahora» no tiene nada que hacer con el canal caído: no hay con quién
+    // hablar. Decirlo con el mismo cartel que el resto es mejor que un reintento que no puede salir.
+    canal().exigirConexion()
     return exito(await sincronizarAhora(completa === true))
   })
   manejar('sincronizacion:reintentar', () => {
@@ -1093,6 +1150,9 @@ export function registrarIpc(): void {
   })
   manejar('referencias:adoptar', async () => {
     const actor = exigirVista('companias')
+    // Se pide con VISTA porque es «traerme lo del servidor», pero pisa las listas locales con lo que
+    // baja: sin canal ni siquiera hay de dónde traerlas (14.0).
+    canal().exigirConexion()
     // Desde el botón sí se pisa lo local: es alguien eligiendo quedarse con lo del servidor.
     const resultado = await adoptarReferenciasDelVps({ pisarLoLocal: true })
     return exito({ ...resultado, listas: listasDeCompanias(actor) })
@@ -1268,7 +1328,13 @@ export function registrarIpc(): void {
     apurarAlCartero()
     return exito(mensaje)
   })
-  manejar('mensajes:marcarLeidos', (conversacionId) => exito(marcarConversacionLeida(exigirVista('mensajes'), conversacionId)))
+  manejar('mensajes:marcarLeidos', (conversacionId) => {
+    const actor = exigirVista('mensajes')
+    // El tilde azul viaja: el que escribió tiene que verlo del otro lado. Sin canal no se marca nada,
+    // porque un «leído» que se queda en esta computadora es peor que no tenerlo (14.0).
+    canal().exigirConexion()
+    return exito(marcarConversacionLeida(actor, conversacionId))
+  })
   manejar('mensajes:avisos', () => exito(avisosDeMensajeria(exigirVista('mensajes'))))
   manejar('mensajes:borrar', async (mensajeId) => {
     await eliminarMensajePropio(exigirEdicion('mensajes'), mensajeId)
@@ -1314,7 +1380,7 @@ export function registrarIpc(): void {
   // vea cualquiera —lo tenga habilitado en Métricas o no—, para que el primero quiera seguir primero.
   //
   // Lo calcula el servidor (13.2), una sola vez para toda la agencia: esta computadora sólo relee lo
-  // último que le llegó por el aviso en vivo (ver sincronizacion/vigia.ts) y le agrega la frescura, que
+  // último que le llegó por el canal en vivo (ver vivo/grilla.ts) y le agrega la frescura, que
   // sale del mismo indicador de conexión que ya usa la barra superior (`motor.estado().situacion`), no
   // de uno nuevo. `null` es «todavía no llegó ningún podio a esta computadora».
   manejar('metricas:podio', () => {
@@ -1665,6 +1731,9 @@ export function registrarIpc(): void {
   })
   manejar('soporte:reportar', async (reporte) => {
     const actor = exigirSesion()
+    // El reporte abre un issue en GitHub: sin canal no sale, y quedarse esperando el envío es peor
+    // que decirle a la persona que lo mande cuando vuelva internet (14.0).
+    canal().exigirConexion()
     return exito(
       await enviarReporteDeError(reporte, {
         quien: actor.nombre,

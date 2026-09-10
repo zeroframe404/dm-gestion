@@ -2,10 +2,10 @@
 //
 // El servidor no manda datos: manda una FOTO —la generación, `{pestaña: versión}` y lo mismo para las
 // métricas que él calcula— y cada computadora compara esa foto contra lo que ya tiene y baja nada más
-// lo distinto. Es lo que antes hacía el vigía con su long-poll (`sincronizacion/vigia.ts`, 13.1) y es
-// exactamente la misma lógica: lo único que cambió es de dónde llega el aviso. Por eso vive acá y no
-// adentro de `canal.ts`: `bienvenida` y `grilla` traen la misma foto, y el banco de pruebas la puede
-// aplicar a mano, sin socket y sin servidor.
+// lo distinto. Es lo que hacía el vigía con su long-poll (`sincronizacion/vigia.ts`, 13.1, borrado en
+// la 14.0), con exactamente la misma lógica: lo único que cambió es de dónde llega el aviso. Por eso
+// vive acá y no adentro de `canal.ts`: `bienvenida` y `grilla` traen la misma foto, y el banco de
+// pruebas la puede aplicar a mano, sin socket y sin servidor.
 //
 // EL ORDEN NO ES CASUAL. Las versiones se adoptan RECIÉN DESPUÉS de haber bajado bien. Adoptarlas
 // antes sería decir «ya tengo esto» sin tenerlo: si la bajada falla —o ni siquiera corre porque el

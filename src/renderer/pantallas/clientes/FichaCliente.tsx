@@ -407,7 +407,7 @@ function PestanaDatos({
       )}
 
       <div className="mt-5 flex items-center gap-2 border-t border-slate-200 pt-4">
-        <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios || !puedeEditar}>
+        <Boton escribe variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!hayCambios || !puedeEditar}>
           Guardar cambios
         </Boton>
         <Boton variante="fantasma" onClick={() => setBorrador(datosDe(ficha))} disabled={!hayCambios || guardando}>
@@ -778,7 +778,7 @@ function PestanaNotas({
             ayuda="Queda con tu nombre y la fecha. Las notas no se borran."
           />
           <div className="mt-3 flex justify-end">
-            <Boton variante="primario" icono="mas" onClick={() => void agregar()} cargando={guardando} disabled={!texto.trim() || !puedeAnotar}>
+            <Boton escribe variante="primario" icono="mas" onClick={() => void agregar()} cargando={guardando} disabled={!texto.trim() || !puedeAnotar}>
               Agregar nota
             </Boton>
           </div>
@@ -948,7 +948,7 @@ function DialogoNuevaTarea({
           <Boton onClick={alCerrar} disabled={guardando}>
             Cancelar
           </Boton>
-          <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!titulo.trim()}>
+          <Boton escribe variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!titulo.trim()}>
             Crear tarea
           </Boton>
         </>

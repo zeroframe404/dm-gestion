@@ -11,6 +11,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react'
+import { useConexion } from '../contexto/Conexion'
 import { Icono, type NombreIcono } from './Icono'
 
 /** Une clases ignorando valores falsos. */
@@ -41,7 +42,21 @@ interface PropsBoton extends ButtonHTMLAttributes<HTMLButtonElement> {
   tamano?: 'md' | 'sm'
   icono?: NombreIcono
   cargando?: boolean
+  /**
+   * Este botón GUARDA algo (14.0): sin canal en vivo queda apagado y el `title` dice por qué.
+   *
+   * Es cortesía, no la barrera: la de verdad está en el proceso principal (`permisos.ts`, que corta
+   * toda escritura sin conexión). Acá sirve para que nadie llene una ficha entera y se entere recién
+   * al tocar Guardar. Por eso alcanza con ponérselo a los botones grandes de guardar y crear y no hay
+   * que perseguir hasta el último botón de la aplicación.
+   */
+  escribe?: boolean
 }
+
+/** Lo que se lee al pasar el mouse por un botón apagado por falta de canal. Ver `escribe`. */
+const SIN_CANAL_NO_SE_GUARDA =
+  'Sin conexión no se puede guardar: los cambios se perderían o pisarían lo que cargó otra computadora. ' +
+  'Volvé a intentar cuando vuelva internet.'
 
 const CLASES_VARIANTE: Record<VarianteBoton, string> = {
   primario: 'bg-marino-700 text-white shadow-marca hover:bg-marino-600 focus-visible:ring-marino-500/40',
@@ -53,14 +68,23 @@ const CLASES_VARIANTE: Record<VarianteBoton, string> = {
 }
 
 export const Boton = forwardRef<HTMLButtonElement, PropsBoton>(function Boton(
-  { variante = 'secundario', tamano = 'md', icono, cargando = false, className, children, disabled, type = 'button', ...resto },
+  { variante = 'secundario', tamano = 'md', icono, cargando = false, escribe = false, className, children, disabled, title, type = 'button', ...resto },
   ref,
 ) {
+  // El hook se llama siempre (no se puede llamar condicionalmente) y devuelve `sin-puente` cuando no
+  // hay proveedor arriba —el Login—, que es lo mismo que decir «acá no hay nada que apagar».
+  const { puedeEscribir } = useConexion()
+  const apagadoPorConexion = escribe && !puedeEscribir
+  // El motivo de la conexión pisa al `title` que traiga el botón: cuando no hay canal, que falte una
+  // patente o un aviso de antigüedad ya no es lo que impide guardar.
+  const explicacion = apagadoPorConexion ? SIN_CANAL_NO_SE_GUARDA : title
+
   return (
     <button
       ref={ref}
       type={type}
-      disabled={disabled || cargando}
+      title={explicacion}
+      disabled={disabled || cargando || apagadoPorConexion}
       className={cx(
         'inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60',

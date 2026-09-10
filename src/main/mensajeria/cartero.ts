@@ -1,24 +1,25 @@
-// El cartero: lo único que habla con el servidor de mensajes, y lo que hace que un mensaje aparezca
-// del otro lado en el momento y no dentro de media hora.
+// El cartero: lo único que habla con el servidor de mensajes.
 //
-// La vuelta, en orden:
+// POR EVENTOS, NO POR UN BUCLE (14.0). Hasta la 13.x esto era una vuelta sin fin: acusar, despachar y
+// dejar un pedido colgado hasta 25 segundos esperando novedades; cuando contestaba, otra vuelta. Ahora
+// el canal en vivo (`vivo/canal.ts`) avisa con un frame `{t:'mensajes'}` y el cartero sale a buscar lo
+// que hay, con `espera: 0`. Los mismos endpoints de siempre; lo que se fue es la espera.
 //
-//   1. **Confirmar lo que llegó.** Los mensajes que esta computadora bajó y guardó se le acusan al
-//      servidor. Ése es el «entregado» que el otro ve como el segundo tilde. Va PRIMERO a propósito:
-//      si el programa se cierra en el medio, lo peor que pasa es que un mensaje ya guardado se vuelva
-//      a recibir la próxima vez (y se guarde encima del mismo, que es inofensivo). Al revés
-//      —acusar y después guardar— un cierre en el medio perdería el mensaje para siempre.
-//   2. **Despachar la cola.** Los mensajes escritos acá que ya tienen sus archivos arriba.
-//   3. **Preguntar si hay algo nuevo**, con un pedido que el servidor deja abierto hasta 25 segundos.
-//      Contesta apenas aparece algo, así que el mensaje llega cuando llega y no cuando toca el reloj.
+// La vuelta quedó partida en dos mitades, porque ahora se piden en momentos distintos:
 //
-// Y entonces vuelve a empezar. No hay `setInterval`: la espera está adentro del propio pedido. Es lo
-// que hace que esto no sea «revisar cada 30 segundos» sino algo que se siente instantáneo, sin
-// websockets y sin tocar la configuración del servidor de la agencia.
+//   · `despacharSalida(actor)` — acusar lo que ya llegó y vaciar la cola de salida. Se llama al
+//     escribir un mensaje (`apurarAlCartero`, con 100 ms de respiro) y al abrir sesión.
+//   · `traerNovedadesDeMensajes(actor)` — pedir lo que haya, guardarlo, acusarlo y avisar. Se llama
+//     cuando el canal dice que hay algo, y al reconciliar tras una reconexión.
+//
+// EL ORDEN DE ADENTRO NO CAMBIÓ, Y ES LO QUE MÁS IMPORTA: primero se GUARDA y después se ACUSA. Si el
+// programa se cierra en el medio, lo peor que pasa es que un mensaje ya guardado vuelva a llegar la
+// próxima vez (y se guarde encima del mismo, que es inofensivo). Al revés —acusar y después guardar—
+// un cierre en el medio perdería el mensaje para siempre.
 //
 // Cuándo arranca y cuándo para: arranca cuando alguien ingresa y para cuando cierra sesión o se cierra
-// el programa. Cerrar corta el pedido a mitad de camino con un `AbortController`; sin eso, apagar la
-// aplicación esperaría los 25 segundos del pedido abierto.
+// el programa. Sin bucle no hay nada que cortar a mitad de camino: lo único que se cancela al parar es
+// el respiro de `apurarAlCartero`.
 import type { SesionUsuario } from '../../shared/tipos'
 import { resumenDeMensaje } from '../../shared/texto'
 import { llamarLaAtencion, notificarEnElSistema, sacudirLaVentana } from '../servicios/avisos'
@@ -40,40 +41,46 @@ import {
   pendientesDeConfirmarLlegada,
   posponerEnvio,
 } from '../servicios/mensajeria'
-import { esRechazoDefinitivo, ESPERA_DEL_LONG_POLL_SEGUNDOS, puenteDeMensajes } from './puente'
+import { esRechazoDefinitivo, puenteDeMensajes } from './puente'
 import { emitirATodas as emitir } from '../servicios/avisos'
 
-/** Después de una vuelta con error se espera esto antes de volver a intentar, para no golpear al servidor caído. */
-const ESPERA_TRAS_ERROR_MS = 15_000
-/** Después de una vuelta normal, un respiro mínimo: la espera de verdad la hace el long-poll. */
-const RESPIRO_MS = 250
+/**
+ * El respiro de `apurarAlCartero` (14.0). Mandar un mensaje con tres adjuntos deja tres avisos casi
+ * juntos; con este respiro salen todos en el mismo despacho.
+ */
+const RESPIRO_MS = 100
 
-let corriendo = false
-let cortar: AbortController | null = null
 let quienSoy: SesionUsuario | null = null
+let apuro: ReturnType<typeof setTimeout> | null = null
 
 /**
- * Espera `ms`, o menos si cortan. El oyente se saca siempre al terminar: sin eso, cada vuelta le deja
- * uno pegado a la misma señal y en un día de trabajo se juntan miles.
+ * El pedido de novedades que está en vuelo, por persona (14.0), y si mientras corría llegó otro aviso.
+ *
+ * UN SOLO PEDIDO A LA VEZ. Hasta la 13.x esto lo garantizaba el bucle del cartero (`corriendo`): la
+ * vuelta siguiente no salía hasta que terminara la anterior. Ahora el pedido lo dispara cada frame
+ * `{t:'mensajes'}` del canal, y dos frames con 50 ms de diferencia —un mensaje y el zumbido que va
+ * atrás— largaban dos pedidos encimados. Como `GET /mensajes/novedades` devuelve TODO lo que todavía
+ * no tiene acuse y el acuse se manda recién al final, los dos traían el mismo mensaje: dos carteles de
+ * Windows por un mensaje, la ventana sacudida dos veces y el sonido del zumbido pisado consigo mismo.
+ *
+ * El aviso que llega mientras hay uno en vuelo no se pierde ni larga otro pedido: se anota y se da UNA
+ * vuelta más al terminar, que es lo mismo que hace `hayMas` en `motor.apurarSubida`.
+ *
+ * Va por persona y no en una sola variable por el banco de pruebas: en el programa hay una sesión por
+ * proceso, pero en las pruebas dos computadoras comparten el proceso y un candado único haría que el
+ * pedido de Beto se colgara del de Ana y volviera sin haber traído lo suyo.
  */
-function esperar(ms: number, senal: AbortSignal): Promise<void> {
-  if (senal.aborted) return Promise.resolve()
-  return new Promise((seguir) => {
-    const terminar = () => {
-      clearTimeout(reloj)
-      senal.removeEventListener('abort', terminar)
-      seguir()
-    }
-    const reloj = setTimeout(terminar, ms)
-    senal.addEventListener('abort', terminar, { once: true })
-  })
-}
+const enVuelo = new Map<number, Promise<void>>()
+const hayQueVolver = new Set<number>()
 
 /**
- * Una vuelta completa. Devuelve true si trajo algo nuevo (para que la pantalla se entere) y lanza si
- * el servidor o la red fallaron, que es lo que hace esperar a la vuelta siguiente.
+ * Acusa lo que ya llegó y vacía la cola de salida (14.0: la mitad de la vuelta que MANDA).
+ *
+ * Lanza si el servidor o la red fallaron: quien la llama decide qué hacer con eso. Los mensajes que el
+ * servidor rechazó de una forma que no se arregla reintentando quedan marcados como fallados con el
+ * motivo a la vista, igual que siempre.
  */
-async function unaVuelta(actor: SesionUsuario, senal: AbortSignal): Promise<void> {
+export async function despacharSalida(actor: SesionUsuario): Promise<void> {
   const puente = puenteDeMensajes()
   if (!puente) return
   const yo = actorDelPuente(actor)
@@ -112,14 +119,51 @@ async function unaVuelta(actor: SesionUsuario, senal: AbortSignal): Promise<void
     }
   }
   if (saliAlgo) emitir('mensajes:cambiaron', null)
+}
 
-  // 3. Preguntar si hay algo nuevo, esperando.
-  const novedades = await puente.novedades(
-    yo,
-    { desdeAcuses: cursorDeAcuses(), esperaSegundos: ESPERA_DEL_LONG_POLL_SEGUNDOS },
-    senal,
-  )
-  if (senal.aborted) return
+/**
+ * Pide lo que haya para esta persona y lo guarda (14.0: la mitad de la vuelta que TRAE).
+ *
+ * La pide con `espera: 0` —«contestá lo que tengas ahora»— porque quien avisa que hay algo es el canal
+ * en vivo. Hasta la 13.x este mismo pedido se dejaba colgado 25 segundos esperando que apareciera algo;
+ * ésa era la forma de enterarse sin websockets, y es justo lo que el canal vino a reemplazar.
+ *
+ * De a UNO por persona: si ya hay un pedido en vuelo, este aviso se le suma como una vuelta más al
+ * terminar en vez de largar otro encima (ver `enVuelo`, arriba).
+ *
+ * Lanza si el servidor o la red fallaron. Lo que se perdió por eso no se pierde para siempre: el
+ * pedido no acusa nada que no haya guardado, así que el aviso siguiente —o la reconciliación de la
+ * reconexión— lo vuelve a traer.
+ */
+export function traerNovedadesDeMensajes(actor: SesionUsuario): Promise<void> {
+  const enCurso = enVuelo.get(actor.id)
+  if (enCurso) {
+    // Ya hay uno en vuelo: se le suma otra vuelta al terminar y se espera ésa. Quien llamó recién no
+    // se queda con el pedido viejo: la vuelta de más sale después de su aviso.
+    hayQueVolver.add(actor.id)
+    return enCurso
+  }
+  const vuelta = (async () => {
+    try {
+      await unaTraida(actor)
+      // Cada vuelta de más se hace por UN aviso o por veinte: la bandera se prende una sola vez.
+      while (hayQueVolver.delete(actor.id)) await unaTraida(actor)
+    } finally {
+      enVuelo.delete(actor.id)
+      hayQueVolver.delete(actor.id)
+    }
+  })()
+  enVuelo.set(actor.id, vuelta)
+  return vuelta
+}
+
+async function unaTraida(actor: SesionUsuario): Promise<void> {
+  const puente = puenteDeMensajes()
+  if (!puente) return
+  const yo = actorDelPuente(actor)
+  const miClave = miClaveDe(actor)
+
+  const novedades = await puente.novedades(yo, { desdeAcuses: cursorDeAcuses(), esperaSegundos: 0 })
 
   for (const conversacion of novedades.conversaciones) guardarConversacion(conversacion)
 
@@ -138,9 +182,9 @@ async function unaVuelta(actor: SesionUsuario, senal: AbortSignal): Promise<void
   const acusesMovidos = guardarAcusesSueltos(novedades.acuses)
   guardarCursorDeAcuses(novedades.cursorAcuses)
 
-  // Confirmar la llegada de lo que se acaba de guardar, sin esperar a la vuelta siguiente: el segundo
-  // tilde tiene que aparecer del otro lado apenas el mensaje está acá, no un ciclo después. El paso 1
-  // sigue existiendo igual, para lo que quedó sin confirmar de una vuelta que se cortó a la mitad.
+  // Confirmar la llegada de lo que se acaba de guardar, sin esperar a nada más: el segundo tilde tiene
+  // que aparecer del otro lado apenas el mensaje está acá. El acuse de `despacharSalida` sigue
+  // existiendo igual, para lo que quedó sin confirmar de un pedido que falló a la mitad.
   const reciénGuardados = pendientesDeConfirmarLlegada(miClave)
   if (reciénGuardados.length) {
     await puente.avisarEntregados(
@@ -195,56 +239,62 @@ function avisarQueLlegaron(llegados: { autor: string; cuerpo: string; adjuntos: 
   llamarLaAtencion()
 }
 
-/** Arranca el cartero para quien acaba de ingresar. Si ya estaba corriendo para otra persona, lo cambia. */
+/**
+ * Arranca el cartero para quien acaba de ingresar: se queda con quién es y sale a buscar lo que quedó
+ * pendiente de la sesión anterior. De ahí en más trabaja cuando lo llaman —el canal cuando avisa que
+ * hay algo, o alguien que escribe un mensaje—, sin ningún reloj propio.
+ *
+ * Si ya estaba andando para la misma persona no sale de nuevo: `alCambiarLaSesion` se dispara también
+ * cuando se refrescan los datos del usuario, y eso no es una sesión nueva.
+ */
 export function arrancarCartero(actor: SesionUsuario): void {
-  if (corriendo && quienSoy?.id === actor.id) return
-  pararCartero()
+  const yaEstaba = quienSoy?.id === actor.id
   quienSoy = actor
-  corriendo = true
-  const control = new AbortController()
-  cortar = control
-  void reparto(actor, control.signal)
+  if (yaEstaba) return
+  enSegundoPlano(unaVueltaDelCartero(actor), 'la vuelta de arranque')
 }
 
 export function pararCartero(): void {
-  corriendo = false
   quienSoy = null
-  cortar?.abort()
-  cortar = null
+  if (apuro) clearTimeout(apuro)
+  apuro = null
 }
 
-/** Despierta al cartero para que salga ya, sin esperar: se usa al mandar un mensaje. */
+/**
+ * Despierta al cartero para que despache ya: se usa al mandar un mensaje y al terminar de subir sus
+ * archivos. Con 100 ms de respiro, para que un mensaje con varios adjuntos salga en un solo despacho.
+ *
+ * Sólo DESPACHA. Lo que llega no se pide acá: eso lo avisa el canal.
+ */
 export function apurarAlCartero(): void {
-  // Cortar el pedido que está esperando hace que la vuelta termine y arranque la siguiente enseguida,
-  // que es exactamente lo que hace falta para que el mensaje recién escrito salga sin demora.
-  if (!corriendo || !quienSoy) return
-  const anterior = cortar
-  const control = new AbortController()
-  cortar = control
-  anterior?.abort()
-  void reparto(quienSoy, control.signal)
+  if (!quienSoy || apuro) return
+  apuro = setTimeout(() => {
+    apuro = null
+    const actor = quienSoy
+    if (actor) enSegundoPlano(despacharSalida(actor), 'el despacho')
+  }, RESPIRO_MS)
+  // El respiro no tiene por qué mantener vivo el proceso al cerrar el programa.
+  apuro.unref?.()
 }
 
-async function reparto(actor: SesionUsuario, senal: AbortSignal): Promise<void> {
-  while (corriendo && !senal.aborted) {
-    try {
-      await unaVuelta(actor, senal)
-      anotarVueltaDelCartero(null)
-      await esperar(RESPIRO_MS, senal)
-    } catch (error) {
-      if (senal.aborted) return
+/**
+ * Deja anotado lo que salió mal y sigue. Sin internet no se anota como error del servidor: es el
+ * estado normal de una notebook que se llevaron a otro lado, y llenar la pantalla de errores rojos por
+ * eso no ayuda a nadie.
+ */
+function enSegundoPlano(trabajo: Promise<unknown>, cual: string): void {
+  void trabajo.then(
+    () => anotarVueltaDelCartero(null),
+    (error: unknown) => {
       const motivo = error instanceof Error ? error.message : String(error)
-      // Sin internet no se anota como error del servidor: es el estado normal de una notebook que se
-      // llevaron a otro lado, y llenar la pantalla de errores rojos por eso no ayuda a nadie.
       anotarVueltaDelCartero(esFallaDeRed(error) ? null : motivo)
-      if (!esFallaDeRed(error)) console.error('[mensajería] La vuelta del cartero falló:', motivo)
-      await esperar(ESPERA_TRAS_ERROR_MS, senal)
-    }
-  }
+      if (!esFallaDeRed(error)) console.error(`[mensajería] Falló ${cual}:`, motivo)
+    },
+  )
 }
 
-/** Para las pruebas: correr una sola vuelta, sin bucle ni esperas. */
+/** Para las pruebas: las dos mitades, una atrás de la otra, que es lo que era una vuelta. */
 export async function unaVueltaDelCartero(actor: SesionUsuario): Promise<void> {
-  const control = new AbortController()
-  await unaVuelta(actor, control.signal)
+  await despacharSalida(actor)
+  await traerNovedadesDeMensajes(actor)
 }

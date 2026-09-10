@@ -30,7 +30,7 @@ export const AYUDA_TAREAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'La campana de tareas',
         parrafos: [
-          'Arriba de la aplicación, la campana avisa cuando hay algo tuyo para mirar: un punto rojo significa que te asignaron algo nuevo que todavía no viste, o que algo tuyo está vencido o vence hoy; el número al lado dice cuántas tenés pendientes en total. Una tarea que te asignás vos mismo no enciende el aviso de «nueva» porque ya la viste al crearla; si te la reasigna otra persona, sí. Se actualiza sola cada dos minutos, así que si alguien te asigna algo desde otra computadora lo vas a ver sin tener que refrescar nada.',
+          'Arriba de la aplicación, la campana avisa cuando hay algo tuyo para mirar: un punto rojo significa que te asignaron algo nuevo que todavía no viste, o que algo tuyo está vencido o vence hoy; el número al lado dice cuántas tenés pendientes en total. Una tarea que te asignás vos mismo no enciende el aviso de «nueva» porque ya la viste al crearla; si te la reasigna otra persona, sí. Se actualiza sola en el momento, así que si alguien te asigna algo desde otra computadora lo vas a ver sin tener que refrescar nada.',
         ],
       },
     ],

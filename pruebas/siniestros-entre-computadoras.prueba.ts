@@ -133,6 +133,13 @@ function cerrarTodo(): void {
   cerrarBaseDeDatos()
 }
 
+/**
+ * Las pestañas que traía el carril rápido de las tareas hasta la 13.x. Desde la 14.0 no hay carril
+ * rápido —el canal en vivo dice qué cambió y el motor baja eso— así que acá se pide lo mismo por su
+ * nombre, que es lo que hace la aplicación de verdad cuando el servidor la nombra.
+ */
+const PESTANAS_DE_TAREAS = ['APP TAREAS', 'APP COMENTARIOS', 'APP ADJUNTOS']
+
 async function subirTodo(pc: Computadora): Promise<void> {
   en(pc)
   apurarAgrupadas()
@@ -365,7 +372,7 @@ test('el renglón «Abogado: …» de una versión anterior completa la ficha de
   await subirTodo(lanus)
 
   en(dockSud)
-  await dockSud.motor.ciclarTareas()
+  await dockSud.motor.ciclarBajadaDe(PESTANAS_DE_TAREAS)
   const alla = fichaDeSiniestro(siniestroPorFila(dockSud.db, robo.filaId)).siniestro
   assert.equal(alla.abogado, 'Dra. López, 11-5555-0000', 'el renglón llenó el campo vacío')
   assert.equal(alla.terceroPatente, 'AC999ZZ')
@@ -446,7 +453,7 @@ test('un documento que todavía no subió no figura «en el servidor», y una im
 
   // Dock Sud se entera por el carril rápido, y ahora sí lo abre.
   en(dockSud)
-  const rapido = await dockSud.motor.ciclarTareas()
+  const rapido = await dockSud.motor.ciclarBajadaDe(PESTANAS_DE_TAREAS)
   assert.ok(rapido)
   assert.equal(rapido.necesitaImportacion, false)
   alla = fichaDeSiniestro(idAlla).adjuntos[0]!

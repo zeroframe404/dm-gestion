@@ -175,7 +175,7 @@ Cómo funciona, en corto:
   (pestañas ordenadas, filas numeradas base 1, celdas de texto) y `FuenteVps`
   (`src/main/vps/fuenteVps.ts`) implementa la misma interfaz `FuenteHoja` de siempre: el motor de
   sincronización, la cola, los conflictos y el importador corren tal cual, sólo cambió el transporte.
-  Sin internet se sigue trabajando local y la cola espera, igual que siempre.
+  (Lo que sí cambió, y en la 14.0: sin internet se **mira** pero no se escribe, ver «Canal en vivo».)
 - **La URL y el token van embebidos** (`src/main/servicios/config.ts`, mismo criterio que
   `UPDATE_TOKEN`): las PCs se actualizan y quedan conectadas sin configurar nada. El token tiene que
   coincidir con el `DMG_SYNC_TOKEN` del `.env` del VPS, y desde la v12.4 es también el que abre la base
@@ -537,32 +537,42 @@ administradores.
 
 La aplicación y la hoja se mantienen iguales solas, usando la columna `_ID` como clave fila a fila.
 
-- **Subida**: cada cambio se anota en `cola_sync` en el mismo momento en que se toca algo, y un proceso
-  en segundo plano la vacía cada 10 segundos. Escribe **sólo valores** (no toca formatos ni colores) y
-  agrupa todo: una tanda de 200 cambios usa 2 llamadas a Google, no 200. Los reintentos son
-  exponenciales (10 s, 20 s, 40 s… hasta 10 minutos) y los errores que no se arreglan reintentando
-  («esa pestaña no existe») quedan marcados para que alguien los mire.
-- **Bajada**: cuando el servidor avisa que algo cambió (ver «Sincronización en vivo», más abajo), al
-  abrir sesión, cada 5 minutos como red de seguridad, y con «Sincronizar ahora». Compara cada fila
-  contra la huella de la última vez y sólo toca lo que cambió: la hoja entera (25 pestañas, 28.000
-  filas) se revisa en ~400 ms con **3 llamadas**. Las filas que alguien cargó a mano en Google se
-  incorporan con la importación completa, que es la que les escribe el `_ID` en la hoja.
+- **Subida**: cada cambio se anota en `cola_sync` en el mismo momento en que se toca algo, y **anotarlo
+  es lo que dispara la subida** (14.0): la cola despierta al motor y la tanda sale con 100 ms de
+  respiro —lo justo para que guardar una ficha, que encola el cliente, el vehículo y la póliza, viaje
+  en un solo pedido—. Hasta la 13.x la vaciaba un reloj de 10 segundos. Escribe **sólo valores** (no
+  toca formatos ni colores) y agrupa todo: una tanda de 200 cambios usa 2 llamadas, no 200. Los
+  reintentos son exponenciales (10 s, 20 s, 40 s… hasta 10 minutos) y los errores que no se arreglan
+  reintentando («esa pestaña no existe») quedan marcados para que alguien los mire.
+- **Bajada**: cuando el canal en vivo avisa que algo cambió (ver «Canal en vivo», más abajo), al abrir
+  sesión, cada vez que el canal se reconecta, y con «Sincronizar ahora». **La bajada de seguridad de
+  los cinco minutos se fue en la 14.0**: existía para tapar los avisos que el long-poll podía perder,
+  y el canal ya no pierde ninguno —si se corta, al volver reconcilia entero—. Compara cada fila contra
+  la huella de la última vez y sólo toca lo que cambió: la hoja entera (25 pestañas, 28.000 filas) se
+  revisa en ~400 ms con **3 llamadas**. Las filas que alguien cargó a mano en Google se incorporan con
+  la importación completa, que es la que les escribe el `_ID` en la hoja.
 - **Bajas**: la fila se agrega a la pestaña «BAJAS …» y se elimina de la planilla del mes, igual que el
-  cortar y pegar de siempre. **Los borrados esperan un minuto antes de subir** (`ESPERA_DE_AGRUPADO_MS`)
-  y, cuando sale uno, viajan con él todos los que estén esperando: borrar una fila en Google corre las
-  de abajo y obliga a recalcular la planilla entera, así que dando de baja pólizas una atrás de otra la
-  hoja se reestructuraba una vez por baja y se le trababa a quien tuviera «el general» abierto. Ahora
-  las bajas de una misma seguidilla se aplican juntas, y las filas contiguas van en un solo
-  `deleteDimension` (`tramosDeFilas`). «Sincronizar ahora» no espera: `apurarAgrupadas()` las larga en
-  el momento.
-- **Sin internet**: todo sigue funcionando, la cola espera y se vacía sola al volver la conexión. El
-  indicador de la barra superior muestra verde «Sincronizado hace X», amarillo «N cambios por subir» o
-  rojo «Sin conexión — trabajando local».
-- **Conflictos**: antes de bajar se vacía la cola, y la fila que igual no llegó a subir queda afuera de
-  esa bajada, así lo más reciente no se pisa. El resto de la hoja se actualiza igual: un cambio trabado
-  no deja a toda la aplicación sin novedades. Si un mismo campo cambió de los dos lados, el que pierde
-  queda en `historial` marcado como «pisado por sincronización» y aparece en los movimientos de la
-  pantalla de Sincronización.
+  cortar y pegar de siempre. **Los borrados ya no esperan** (14.0). El minuto de agrupado
+  (`ESPERA_DE_AGRUPADO_MS`) era de la época de Google: borrar una fila allá corre las de abajo y
+  obliga a recalcular la planilla entera, así que dando de baja pólizas una atrás de otra la hoja se
+  reestructuraba una vez por baja y se le trababa a quien tuviera «el general» abierto. La base del
+  VPS es SQL y no recalcula nada, así que ese minuto era lo único que quedaba entre dar de baja una
+  póliza y verla desaparecer en la otra computadora. Las bajas de una misma seguidilla siguen saliendo
+  juntas —caen en la misma tanda— y las filas contiguas van en un solo borrado (`tramosDeFilas`).
+- **Sin internet**: **ver sí, tocar no** (14.0). Se sigue mirando la copia local con todo lo que ya
+  estaba bajado, pero **no se escribe**: los botones de guardar se apagan y un banner rojo lo dice.
+  Hasta la 13.x se guardaba local y la cola subía al volver, y eso pisaba trabajo ajeno de verdad (ver
+  «Conflictos», acá abajo). El indicador de la barra superior dice «En vivo», «Reconectando…», «Sin
+  conexión», «Guardando…» o «N cambios sin subir».
+- **Conflictos**: **gana la base** (14.0). Cada celda viaja con el valor que esta computadora creía que
+  la base tenía (`previo`) y el servidor la escribe **sólo si sigue siendo ése**; si en el medio la
+  tocó otra sucursal, la escritura de acá no entra y vuelve rechazada con el valor de verdad. La
+  entrada de la cola se cierra con el motivo a la vista, la pestaña se baja en el mismo ciclo —así la
+  pantalla muestra el número que ganó, no el que no se guardó— y aparece un aviso. Hasta la 13.x era
+  al revés: ganaba el cambio local y lo que había en la base quedaba pisado, anotado en un `historial`
+  que en la práctica nadie mira. Lo que no cambió: antes de bajar se vacía la cola, y la fila que igual
+  no llegó a subir queda afuera de esa bajada; el resto de la hoja se actualiza igual, un cambio
+  trabado no deja a toda la aplicación sin novedades.
 - **Respaldos**: son **dos** y son distintos a propósito (ver «Respaldos y rebobinar», más abajo). El
   del **servidor** (12.5) lo hace el VPS solo, una vez por día, y sirve para **volver atrás**. La copia
   **local** sigue existiendo: la primera vez que la aplicación está abierta después de las 20:00
@@ -570,46 +580,92 @@ La aplicación y la hoja se mantienen iguales solas, usando la columna `_ID` com
   carpeta «Respaldos DM» del Drive; si Drive falla, la copia local igual queda guardada. Ésa sirve para
   abrir en Excel y mirar.
 
-### Sincronización en vivo (13.1)
+### Canal en vivo (14.0)
 
 Hasta la 13.0 un cambio hecho en una sucursal aparecía en las otras cuando les tocaba el reloj: hasta
-**cinco minutos** para la planilla del mes, los clientes, las pólizas, los siniestros y las cobranzas
-(sólo las tareas tenían un carril rápido de 30 segundos). Y aunque el dato llegara, la pantalla que ya
-estaba abierta seguía mostrando lo viejo hasta que alguien navegaba a otro lado y volvía.
+**cinco minutos** para la planilla del mes, los clientes, las pólizas, los siniestros y las cobranzas.
+La 13.1 acortó eso con un long-poll (el «vigía»), y la 13.2 le colgó las métricas del servidor. En la
+14.0 se fueron los dos: hay **un canal abierto de punta a punta de la jornada**, un WebSocket contra el
+VPS, y el servidor **avisa** en vez de dejarse preguntar.
 
-Ahora los cambios viajan **en el momento**, y son dos piezas:
+**Cómo se conecta.** El proceso principal abre `<el VPS>/api/dmg/vivo` —la URL del puente de siempre
+con `http` cambiado por `ws`— apenas se ingresa (`src/main/vivo/canal.ts`) y lo cierra al salir. El renderer nunca abre sockets: toda la red sigue
+pasando por el main. El token del puente —el mismo `DMG_SYNC_TOKEN` de siempre— viaja **en el primer
+frame y nunca en la URL**, porque la URL queda escrita en los registros del nginx de la agencia. Si el
+canal se corta, se reintenta con espera creciente (1 s → 30 s, con un poco de azar para que las cinco
+computadoras no vuelvan todas en el mismo milisegundo). Cada lado late cada 20 segundos: cincuenta
+segundos de silencio y la conexión se da por muerta, que es la única forma de enterarse de un cable
+cortado en el medio —ahí nadie manda un FIN y el socket queda «abierto» para siempre—.
 
-- **El vigía** (`src/main/sincronizacion/vigia.ts`) tiene un pedido abierto contra el servidor
-  (`POST /api/dmg/novedades`) que se queda esperando hasta 25 segundos y **contesta apenas alguien
-  escribe**. Es el mismo mecanismo que ya usaba la mensajería interna: un long-poll, sin websockets y
-  sin tocar la configuración del servidor de la agencia. Cuando contesta, se bajan **sólo las pestañas
-  que cambiaron** —casi siempre una— en vez de las catorce del ciclo de todos los días.
+**Qué viaja.** Señales, no datos (el protocolo está en `src/main/vivo/protocolo.ts`, copia exacta del
+archivo del repositorio del servidor):
 
-  La señal es la versión de cada pestaña, que el servidor ya llevaba para el espejo hacia Google. El
-  programa manda el mapa `{pestaña: versión}` que conoce y el servidor le contesta el actual: la
-  comparación es «igual o distinto», así que no hay ninguna marca de agua que pueda saltearse un
-  cambio. Una pestaña se da por vista **recién después** de haberla bajado bien; lo que no se pudo
-  bajar queda pendiente y se reintenta.
+| Frame | Qué significa | Qué hace la computadora |
+| --- | --- | --- |
+| `hola` | «Soy Ana, de Lanús, con el token X» | Es lo primero que sale al abrir el socket |
+| `bienvenida` | La foto de la grilla, los perfiles, quién está y la configuración de las llamadas | Reconcilia (ver abajo) |
+| `grilla` | «Algo cambió»: generación, `{pestaña: versión}` y las versiones de las métricas | Compara contra lo que tiene y baja **sólo lo distinto** |
+| `mensajes` | «Hay algo tuyo» | Pide `GET /mensajes/novedades?espera=0`, como desde la 12.8 |
+| `presencia` | Quién está conectado y en qué está trabajando | Dibuja el glow y las burbujas (Fase C) |
+| `foco`, `perfil`, `reaccion`, `llamada`, `latido` | El resto del vivo | Fases C, D y E |
 
-- **La pantalla se refresca sola.** El proceso principal avisa `datos:cambiaron` y las siete pantallas
-  que viven de la cartera se recargan sin que nadie toque nada. Si el usuario está editando una celda
-  o tiene un diálogo abierto, **el refresco espera** hasta que lo cierre: no se le pisa lo que está
-  escribiendo.
+Los datos siguen viajando por los endpoints HTTP de siempre. El canal reemplazó a los relojes y a los
+long-polls, no al puente.
 
-- **Las métricas que calcula el servidor** (13.2) viajan por el mismo pedido: la respuesta de
-  `/novedades` trae además `metricasVersiones`, la versión de cada métrica que el servidor ya sabe
-  calcular (el podio de sucursales de Inicio, por ahora). Cuando una versión no coincide con la que
-  esta computadora ya tiene guardada, el vigía la trae aparte (`GET /api/dmg/metricas/:clave`) y la
-  deja en la tabla local `metricas_cache`; la pantalla que la muestre se entera por el evento
-  `metricas:actualizaron` y vuelve a pedirla por su canal de siempre. Es la manera de sacarle a cada
-  computadora una cuenta que antes hacía sola con su propia base —y que por eso podía dar un número
-  distinto en cada sucursal en el mismo instante— sin inventar un segundo mecanismo de aviso: el
-  servidor la calcula una sola vez, para toda la agencia, y la empuja por el mismo long-poll.
+**La reconciliación al conectar** es lo que reemplaza a la bajada de seguridad de los cinco minutos.
+Cada vez que el canal se abre —al ingresar y en cada reconexión— la `bienvenida` trae la foto de cómo
+está la base **ahora**, y de compararla contra lo que esta computadora tiene por visto sale exactamente
+lo que hay que bajar. Después se apura la cola de subida, y al final se piden los mensajes. El orden no
+es casual: primero se BAJA y recién después se SUBE, porque una escritura que salga tiene que viajar
+con el valor recién bajado en el `previo` (ver «Conflictos», más arriba). Una pestaña se da por vista
+**recién después** de haberla bajado bien; lo que no se pudo bajar queda pendiente y se reintenta solo.
 
-Qué pasa si algo falla: el reloj de los cinco minutos sigue encendido como red de seguridad y casi
-siempre no encuentra nada. Contra un servidor anterior a la 13.1 el vigía se apaga solo tras el primer
-404, vuelve a encenderse el carril rápido de las tareas, y se reintenta cada diez minutos: cuando el
-VPS se actualiza, las computadoras se enganchan solas sin que nadie las reinicie.
+**Ya no hay relojes.** Se fueron los tres `setInterval` del motor (subida cada 10 s, bajada cada 5 min,
+carril rápido de tareas cada 30 s), el long-poll del vigía, el bucle del cartero y los cuatro que
+tenían las pantallas (las dos campanas, el contexto de tareas y el panel de Sincronización). La subida sale porque `encolar` despierta al
+motor; la bajada, porque el servidor avisó. En una jornada entera la aplicación no le pregunta nada al
+servidor si nadie escribe.
+
+Lo único que sigue teniendo hora es el REINTENTO: una tanda que falló (un 502 del VPS mientras se
+reinicia, por ejemplo) espera 10 s, 20 s, 40 s… antes de volver a intentar, y al terminar cada subida
+el motor deja armado un `setTimeout` puntual hasta ese vencimiento. No es un reloj de fondo —muere ni
+bien se usa— pero hace falta: sin él, el pago que falló se quedaría en la cola hasta que alguien
+volviera a escribir algo, con la persona convencida de que lo guardó. Y mientras quede cola sin subir
+la vuelta se repite, porque una tanda sube como mucho 200 entradas y «Cerrar mes» encola unas 2.400 de
+un saque.
+
+**«Ver sí, tocar no».** Sin canal no se escribe. `canal().exigirConexion()` es el único portero, lo
+llama `servicios/permisos.ts` en cada operación que modifica algo, y la pantalla acompaña: banner rojo
+«Sin conexión», ámbar «Reconectando…» y los botones de guardar apagados con el motivo en el globito. La
+barrera de verdad es la del proceso principal; los botones apagados son cortesía. En la máquina de
+desarrollo y en el banco de pruebas —donde no hay ningún puente configurado— no exige nada: ahí no hay
+servidor al que conectarse y no habría a quién proteger.
+
+**El conflicto lo resuelve la base.** Ver «Conflictos» en la sección de arriba: cada celda viaja con su
+`previo` y el servidor rechaza la que ya no coincide. La presencia (Fase C) es el aviso temprano —se ve
+quién está parado en esa celda antes de escribirla— y el `previo` es la red que atrapa a los dos que
+entraron en el mismo instante.
+
+**La pantalla se refresca sola.** El proceso principal avisa `datos:cambiaron` y las pantallas que
+viven de la cartera se recargan sin que nadie toque nada. Si el usuario está editando una celda o tiene
+un diálogo abierto, **el refresco espera** hasta que lo cierre: no se le pisa lo que está escribiendo.
+
+**Las métricas que calcula el servidor** (13.2) viajan en la misma foto: `metricasVersiones` trae la
+versión de cada métrica que el servidor sabe calcular (el podio de sucursales de Inicio, por ahora).
+Cuando una versión no coincide con la que esta computadora tiene guardada, se trae aparte
+(`GET /api/dmg/metricas/:clave`) y se deja en la tabla local `metricas_cache`; la pantalla que la
+muestre se entera por el evento `metricas:actualizaron`. Es la manera de sacarle a cada computadora una
+cuenta que antes hacía sola con su propia base —y que por eso podía dar un número distinto en cada
+sucursal en el mismo instante— sin inventar un segundo mecanismo de aviso.
+
+**Cómo se prueba sin un VPS.** El simulador (`scripts/vps-simulado.mjs`) levanta el canal de verdad
+sobre el mismo servidor http que atiende el puente, con `ws`: entiende el `hola`, reparte un color por
+persona, contesta la `bienvenida`, difunde la presencia con cada `foco` y avisa la grilla cada vez que
+alguien sube una versión. `pruebas/vivo.prueba.ts` levanta dos computadoras contra él —una escribe, la
+otra tiene que verlo en menos de un segundo—, le corta el canal a una con `cerrarConexionesDe` para
+comprobar que al volver reconcilia sola, y verifica las dos ramas de `exigirConexion`.
+`pruebas/sincronizacion-en-vivo.prueba.ts` prueba la otra mitad —qué se baja y cuándo se da por
+vista— sin socket en el medio, pasándole a mano la misma foto.
 
 ### Respaldos y rebobinar (12.5)
 
@@ -641,8 +697,9 @@ DE CLIENTES entero. Lo hace su propio reloj (`respaldos.jobs.ts`, cada 6 h por d
   enteran solas en su próxima bajada. Quién restauró y a qué respaldo queda en `historial`, con la
   acción `restauracion`.
 
-**Cuota de Google**: la subida usa como mucho 4 llamadas por tanda (6 tandas por minuto = 24) y la
-bajada 3 cada 5 minutos. Bien por debajo de las ~50 por minuto.
+**Cuota de Google**: la subida usa como mucho 4 llamadas por tanda y la bajada 3 por vez. Con la
+tanda saliendo por evento (14.0) el pico teórico lo pone el respiro de los 100 ms; en el mostrador
+real son unas pocas tandas por minuto, bien por debajo de las ~50 por minuto que permite Google.
 
 **Ojo con la cuenta de servicio y Drive**: una cuenta de servicio no tiene espacio propio en Drive. Para
 que el respaldo suba, creá la carpeta «Respaldos DM» con tu cuenta de Google y compartila con el correo
@@ -1213,12 +1270,13 @@ siniestro); acá está el módulo propio.
 - **Se asignan entre cualquiera**: la lista de responsables son todos los usuarios activos, sin mirar el
   rol. Un empleado le puede anotar una tarea al superadministrador y al revés; lo único que se rechaza
   es un responsable que no existe o que está dado de baja.
-- **Llegan en el momento**: además de la bajada de los cinco minutos, el motor tiene un **carril rápido**
-  que cada 30 segundos baja una sola pestaña, APP TAREAS (`ciclarTareas` en `sincronizacion/motor.ts`).
-  Cuando trae algo emite `tareas:cambiaron`, y con ese aviso se vuelven a pedir la campana, el círculo
-  del menú, el listado del módulo y las tareas de Inicio, sin esperar a ningún reloj. El carril rápido
-  no toca la marca de «última bajada» ni dispara la importación completa: es una pestaña sola, no la
-  bajada de la aplicación.
+- **Llegan en el momento**: cuando otra computadora anota una tarea, el servidor avisa por el canal en
+  vivo y acá se baja **sólo APP TAREAS** (ver «Canal en vivo»). Cuando trae algo emite
+  `tareas:cambiaron`, y con ese aviso se vuelven a pedir la campana, el círculo del menú, el listado del
+  módulo y las tareas de Inicio, sin esperar a ningún reloj. Hasta la 13.x esto lo hacía un carril
+  rápido propio que bajaba esa pestaña cada 30 segundos (`ciclarTareas`); se fue en la 14.0 junto con
+  los otros dos relojes del motor, porque el canal trae las tareas igual de rápido y encima trae todo
+  lo demás.
 - La que uno se pone a sí mismo **no** enciende su propia campana.
 
 ### Las pestañas nuevas de la hoja
@@ -1776,7 +1834,7 @@ Lo que se hizo para que el programa abra y la planilla aparezca antes:
   `pagos` entera por cada fila.
 - Cada módulo de la interfaz se carga la primera vez que se abre (`React.lazy`): el ingreso ya no espera
   a que el navegador lea Marketing y Reportes. El panel de Sincronización se refresca cada 30 segundos en
-  vez de 10 (igual se refresca solo con cada cambio de estado).
+  vez de 10 (en la 14.0 ese reloj también se fue: vive del evento `sincronizacion:estado`).
 
 Y en la 12.7, que es donde estaba el problema de verdad:
 
@@ -1795,7 +1853,8 @@ Y en la 12.7, que es donde estaba el problema de verdad:
   vencimiento, aviso, pago, observaciones). Antes, un pago recién anotado podía volver a «sin pagar» si
   en el medio corría una importación.
 - Los tres relojes del motor (10 s, 30 s, 5 min) ya no vencen juntos, el buscador de Siniestros espera
-  200 ms antes de pedir el listado, y los adjuntos suben de a diez por ciclo.
+  200 ms antes de pedir el listado, y los adjuntos suben de a diez por ciclo. (Los tres relojes se
+  fueron enteros en la 14.0, ver «Canal en vivo».)
 
 ## Lo que viaja y lo que no (12.7)
 
@@ -1952,14 +2011,17 @@ acuse **por destinatario** y una consulta barata de «qué me falta recibir». C
 además un espejo local en SQLite (migraciones 25 y 26), para poder leer sin internet y para que un mensaje
 escrito con la conexión caída tenga dónde esperar.
 
-**Cómo llega en el momento, sin websockets.** El «cartero» (`src/main/mensajeria/cartero.ts`) le
-pregunta al servidor si hay algo, y el servidor **no contesta enseguida**: se queda con el pedido
-abierto hasta 25 segundos y contesta apenas aparece algo (`GET /api/dmg/mensajes/novedades`). Es un
-long-poll y no un websocket porque el nginx de la agencia ya deja pasar pedidos de hasta 300 segundos
-(`proxy_read_timeout`): no hay nada que configurar en el servidor, ningún puerto que abrir y ningún
-antivirus que convencer. El cartero arranca cuando alguien ingresa y para cuando cierra sesión o se
-cierra el programa (cerrar corta el pedido a mitad de camino: sin eso, apagar la aplicación esperaría
-los 25 segundos).
+**Cómo llega en el momento.** Desde la 14.0 lo avisa el canal en vivo: cuando hay algo para esta
+persona el servidor manda `{t:'mensajes'}` —una señal, sin el mensaje adentro— y el «cartero»
+(`src/main/mensajeria/cartero.ts`) pide las novedades por HTTP como siempre, ahora con `espera: 0`
+(`GET /api/dmg/mensajes/novedades`). Los datos no cambiaron de camino; lo que se fue es la espera.
+
+Hasta la 13.x el cartero tenía su propio long-poll: dejaba el pedido abierto hasta 25 segundos y el
+servidor contestaba apenas aparecía algo. Funcionaba, pero eran dos pedidos colgados las ocho horas del
+día por computadora (éste y el del vigía de la grilla) y dos mecanismos distintos para la misma idea.
+El cartero sigue arrancando cuando alguien ingresa y parando cuando cierra sesión o se cierra el
+programa; lo que despacha hacia afuera (los acuses y la cola de salida) sale por evento, igual que la
+cola de la grilla.
 
 **Las dos confirmaciones.** Cada mensaje deja una fila por destinatario en `dmg_mensaje_estados`, y esa
 fila es a la vez el acuse y la cola de reparto:
@@ -2077,7 +2139,7 @@ protege esto»): esto ordena el trabajo de la agencia, no defiende los mensajes 
 a escribir pedidos a mano con el token en la mano.
 
 Código: `src/main/servicios/mensajeria.ts` (el servicio), `src/main/mensajeria/puente.ts` (el cliente),
-`src/main/mensajeria/cartero.ts` (el long-poll), `src/renderer/pantallas/mensajes/` (la pantalla),
+`src/main/mensajeria/cartero.ts` (el que despacha y trae, avisado por el canal), `src/renderer/pantallas/mensajes/` (la pantalla),
 `src/renderer/componentes/CampanaDeMensajes.tsx` (la campana y el sonido),
 `src/renderer/componentes/AvisoDeZumbido.tsx` con `src/main/servicios/avisos.ts` (el zumbido) y
 `server/src/modules/dmg/mensajes.service.ts` del repositorio web. Pruebas:
@@ -2329,7 +2391,7 @@ Cuatro reglas que atraviesan todos los planes:
 ### Lo que el cartel avisa, y por qué
 
 - **La cola de subida.** Los renglones salen de la hoja recién cuando la sincronización llegue a subirlos
-  (los borrados esperan hasta un minuto para viajar juntos, ver `ESPERA_DE_AGRUPADO_MS`). Hasta entonces,
+  (desde la 14.0 sale enseguida: los borrados ya no esperan su minuto de agrupado). Hasta entonces,
   una importación completa volvería a crear lo que se borró. Sólo se avisa para los tipos que el
   importador sabe reconstruir desde la hoja: leads, presupuestos y tareas no se reimportan.
 - **Las otras computadoras.** Cada PC tiene su propia base y lo único que viaja es la hoja. Cuando el

@@ -25,6 +25,7 @@ import {
 } from '../../shared/permisos'
 import type { MatrizDePermisos, MisPermisos, SesionUsuario } from '../../shared/tipos'
 import { ahoraIso } from '../importacion/normalizar'
+import { canal } from '../vivo/canal'
 import * as compartida from './baseDeUsuarios'
 import { conectarAvisoDeCopia, fechaDeLaCopia, guardarCopiaLocal, leerCopiaLocal } from './copiaDePermisos'
 import { ErrorDeNegocio } from './errores'
@@ -145,11 +146,28 @@ function negar(areas: Area[], minimo: Nivel): never {
  * Exige la sesión abierta y, además, el nivel pedido en alguna de las áreas. Se admite más de una
  * porque hay pantallas que cruzan módulos: el formulario de póliza busca clientes, la ficha del
  * cliente cobra una cuota de la planilla. Alcanza con tener permiso en una de las dos puntas.
+ *
+ * Y desde la 14.0, si lo que se pide es EDITAR, también se exige el canal en vivo: «ver sí, tocar no».
+ *
+ * EL CANDADO VA ACÁ Y NO EN CADA MANEJADOR. `exigirEdicion` es la puerta por la que ya pasa todo lo
+ * que escribe —doscientos y pico de canales de `ipc.ts`, más `exigirBorrado`, que la llama por
+ * adentro—, así que ponerlo en este renglón lo deja cubierto de una y, sobre todo, deja cubierto lo
+ * que se escriba mañana: un canal nuevo que se olvide del candado no existe, porque el permiso no se
+ * puede olvidar. Repartido por los manejadores sería una lista que alguien tiene que acordarse de
+ * completar, y la que falte es justo la que pisa el trabajo de otro mostrador.
+ *
+ * El orden importa: primero el rol y después la conexión. A quien no tiene permiso hay que decirle
+ * que no tiene permiso, esté como esté internet; que le aparezca «sin conexión» lo mandaría a
+ * reiniciar el router por algo que no se le va a arreglar nunca.
+ *
+ * Los pocos canales que escriben sin pasar por acá (cambiar la clave, tocar usuarios, el reporte de
+ * soporte) llaman a `canal().exigirConexion()` a mano; están todos juntos y anotados en `ipc.ts`.
  */
 function exigir(minimo: Nivel, areas: Area[]): SesionUsuario {
   const actor = exigirSesion()
   const matriz = matrizVigente()
   if (!areas.some((area) => alcanza(nivelDe(matriz, actor.rol, area), minimo))) negar(areas, minimo)
+  if (minimo === 'editar') canal().exigirConexion()
   return actor
 }
 

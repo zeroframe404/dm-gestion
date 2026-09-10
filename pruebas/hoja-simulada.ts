@@ -215,6 +215,7 @@ export class HojaSimulada implements FuenteHoja, AlmacenDeAdjuntos {
     this.exigirConexion()
     if (this.soloLectura) throw Object.assign(new Error('The caller does not have permission'), { status: 403 })
     const noEncontradas: Array<{ titulo: string; id: string }> = []
+    const rechazadas: Array<{ titulo: string; id: string; columna: number; actual: string }> = []
     for (const celda of celdas) {
       const p = this.buscarPorTitulo(celda.titulo)
       let fila = celda.fila
@@ -227,13 +228,23 @@ export class HojaSimulada implements FuenteHoja, AlmacenDeAdjuntos {
         }
         fila = resuelto
       }
+      // El «comparar y escribir» de la 14.0, igual que en la base de la agencia: la celda que llega con
+      // `previo` se escribe SÓLO si la hoja sigue teniendo eso. Si no, gana lo que hay acá —que es lo
+      // que escribió la otra computadora— y la celda vuelve rechazada con el valor de verdad.
+      if (celda.previo !== undefined) {
+        const actual = (p.valores[fila - 1]?.[celda.columna] ?? '').trim()
+        if (actual !== celda.previo.trim()) {
+          rechazadas.push({ titulo: celda.titulo, id: celda.id ?? '', columna: celda.columna, actual })
+          continue
+        }
+      }
       if (celda.columna >= p.columnas) p.columnas = celda.columna + 1
       while (p.valores.length < fila) p.valores.push([])
       const destino = p.valores[fila - 1]!
       while (destino.length <= celda.columna) destino.push('')
       destino[celda.columna] = celda.valor
     }
-    return { noEncontradas }
+    return { noEncontradas, rechazadas }
   }
 
   async agregarFilas(titulo: string, filas: string[][]): Promise<ResultadoDeAgregado> {

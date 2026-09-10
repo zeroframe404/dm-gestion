@@ -1,6 +1,8 @@
 // Raíz de la interfaz: decide entre carga, login, cambio de contraseña obligatorio y el escritorio.
 import { lazy, Suspense, type ReactNode } from 'react'
 import { AvisoActualizacion } from './componentes/AvisoActualizacion'
+import { AvisoDePisado } from './componentes/AvisoDePisado'
+import { BannerSinConexion } from './componentes/BannerSinConexion'
 import { CartelActualizacionDisponible } from './componentes/CartelActualizacionDisponible'
 import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
 import { AvisoDeZumbido } from './componentes/AvisoDeZumbido'
@@ -13,6 +15,7 @@ import { Alerta } from './componentes/ui'
 import { ProveedorNavegacion, useNavegacion } from './contexto/Navegacion'
 import { ProveedorPermisos, usePermisos } from './contexto/Permisos'
 import { useSesion } from './contexto/Sesion'
+import { ProveedorConexion } from './contexto/Conexion'
 import { ProveedorDatosEnVivo } from './contexto/DatosEnVivo'
 import { ProveedorTareas } from './contexto/Tareas'
 import { buscarModulo, esAreaDePermisos, type IdModulo } from './modulos'
@@ -50,14 +53,18 @@ export function App() {
   return (
     <ProveedorPermisos>
       <ProveedorNavegacion>
-        {/* Adentro de los permisos: lo que se pregunta depende de a qué módulos entra esta persona. */}
-        <ProveedorTareas>
-          {/* El aviso de que bajaron datos de otra computadora, para que la pantalla abierta se
-              recargue sola. Un solo suscriptor para toda la aplicación. */}
-          <ProveedorDatosEnVivo>
-            <ConPermisosCargados />
-          </ProveedorDatosEnVivo>
-        </ProveedorTareas>
+        {/* Si hay canal en vivo (14.0). Envuelve a todo el escritorio porque lo miran el banner de
+            arriba de todo, el indicador de la barra y cada botón que guarda. */}
+        <ProveedorConexion>
+          {/* Adentro de los permisos: lo que se pregunta depende de a qué módulos entra esta persona. */}
+          <ProveedorTareas>
+            {/* El aviso de que bajaron datos de otra computadora, para que la pantalla abierta se
+                recargue sola. Un solo suscriptor para toda la aplicación. */}
+            <ProveedorDatosEnVivo>
+              <ConPermisosCargados />
+            </ProveedorDatosEnVivo>
+          </ProveedorTareas>
+        </ProveedorConexion>
       </ProveedorNavegacion>
     </ProveedorPermisos>
   )
@@ -173,6 +180,8 @@ function Marco({
     <div className="flex h-full">
       <BarraLateral moduloActivo={moduloActivo} alElegir={alElegir} />
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* Arriba del aviso de actualización: que no se pueda guardar nada no puede quedar segundo. */}
+        <BannerSinConexion />
         <AvisoActualizacion />
         <BarraSuperior titulo={titulo} />
         <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</main>
@@ -183,6 +192,9 @@ function Marco({
       <AvisoDeTareaHecha />
       {/* Un zumbido llega estando en cualquier pantalla: por eso el sonido y el cartel viven acá. */}
       <AvisoDeZumbido />
+      {/* Ídem: el rechazo por «ya lo cambió otro» (14.0) lo trae el ciclo de subida, esté abierta la
+          pantalla que esté. */}
+      <AvisoDePisado />
       {/* Igual que el resto de estos avisos: vive acá para saltar sin importar en qué pantalla se esté. */}
       <CartelActualizacionDisponible />
     </div>

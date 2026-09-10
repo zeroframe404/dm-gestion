@@ -16,12 +16,14 @@ import {
   registrarPago,
 } from '../src/main/servicios/cartera'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
+import { obtenerMotor, usarFuenteDePrueba } from '../src/main/servicios/sincronizacion'
 import { ErrorDelServidorVps } from '../src/main/vps/fuenteVps'
 import { avisarRechazo, avisosDeRechazos, listarRechazos } from '../src/main/servicios/rechazos'
-import { apurarAgrupadas, cuantasFallidas, cuantasPendientes, encolar, esperaDeReintento } from '../src/main/sincronizacion/cola'
+import { apurarAgrupadas, cuantasFallidas, cuantasPendientes, encolar, esperaDeReintento, usarDespertadorDeLaCola } from '../src/main/sincronizacion/cola'
 import { leerContexto } from '../src/main/sincronizacion/hoja'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { hacerRespaldo, listarRespaldos, rotar, tocaRespaldar, type ServicioDeRespaldo } from '../src/main/sincronizacion/respaldo'
+import { subirTanda } from '../src/main/sincronizacion/subida'
 import type { FilaCartera, SesionUsuario } from '../src/shared/tipos'
 import { unico } from './ayuda'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
@@ -84,6 +86,11 @@ function enLaHoja(hoja: HojaSimulada, pestana: string, filaId: string, encabezad
   return encontrada ? ((encontrada[columna] ?? '').trim() ?? '') : null
 }
 
+/** Deja correr los relojes cortos del motor (el respiro de `apurarSubida` son 100 ms). */
+function esperar(ms: number): Promise<void> {
+  return new Promise((seguir) => setTimeout(seguir, ms))
+}
+
 /** Una fila cargada a mano en AGOSTO desde Google: con datos y con la columna del _ID vacía. */
 function agregarFilaAMano(hoja: HojaSimulada, nombre: string, dni: string): void {
   const encabezados = hoja.encabezadosDe('AGOSTO')
@@ -122,6 +129,89 @@ test('un cambio en la aplicación llega a la hoja en el próximo ciclo', async (
   cerrarBaseDeDatos()
 })
 
+// El motor ya no tiene reloj de subida (14.0): la cola lo despierta. Es lo que hace que escribir una
+// celda se vea del otro lado en lo que tarda el viaje y no «hasta diez segundos después», y también lo
+// más fácil de romper sin que se note —si el despertador se desengancha, todo sigue subiendo igual…
+// cuando alguien apriete «Sincronizar ahora»—.
+test('encolar despierta al motor y la subida sale sola, sin reloj', async () => {
+  const { hoja, motor } = await escenario()
+  let avisos = 0
+  // Es lo mismo que hace `obtenerMotor()` en el programa de verdad; acá se engancha a mano porque el
+  // motor es el del escenario y no el del proceso.
+  usarDespertadorDeLaCola(() => {
+    avisos++
+    motor.apurarSubida()
+  })
+  try {
+    const gonzalez = fila(CLIENTES.gonzalez.nombre)
+    editarCelda(gonzalez.filaId, 'telefono', '11-5555-4444', DANIEL)
+    assert.equal(avisos, 1, 'encolar avisa en el momento, no en el próximo ciclo')
+
+    // Nadie llama a `ciclarSubida`: la subida sale sola pasado el respiro de los 100 ms, que existe
+    // para que guardar una ficha —que encola el cliente, el vehículo y la póliza— viaje en una tanda.
+    await esperar(400)
+    assert.equal(cuantasPendientes(), 0, 'la cola se vació sin que nadie la empujara')
+    assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'TELEFONO'), '11-5555-4444')
+  } finally {
+    // El despertador es del proceso: si queda enganchado a este motor, las pruebas que siguen encolan
+    // contra un motor apagado y con la base cerrada.
+    usarDespertadorDeLaCola(() => undefined)
+  }
+  cerrarBaseDeDatos()
+})
+
+// La otra mitad del despertador: que en el programa de verdad haya uno REGISTRADO. Lo engancha
+// `obtenerMotor()` (servicios/sincronizacion.ts) al armar el motor, y es un renglón solo que se puede
+// borrar sin que se caiga nada —la prueba de acá arriba engancha el suyo a mano, así que no lo notaría—.
+// Si se desengancha, la cuota que se cobra queda en `cola_sync` y no sube hasta que alguien apriete
+// «Sincronizar ahora», con el indicador clavado en «Guardando…».
+test('el motor del programa queda enganchado a la cola al armarse', async () => {
+  const { hoja } = await escenario()
+  usarFuenteDePrueba(hoja)
+  const motor = obtenerMotor()
+  motor.encender()
+  try {
+    const gonzalez = fila(CLIENTES.gonzalez.nombre)
+    editarCelda(gonzalez.filaId, 'telefono', '11-7777-3333', DANIEL)
+    // Nadie llama a nada: si el despertador está enganchado, la subida sale sola.
+    await esperar(400)
+    assert.equal(cuantasPendientes(), 0, 'subió sin que nadie la empujara')
+    assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'TELEFONO'), '11-7777-3333')
+  } finally {
+    motor.apagar()
+    usarFuenteDePrueba(null)
+    // El despertador y el motor son del PROCESO: si quedan enganchados a esta base, las pruebas que
+    // siguen encolan contra un motor apagado y con la base cerrada.
+    usarDespertadorDeLaCola(() => undefined)
+  }
+  cerrarBaseDeDatos()
+})
+
+// Una ráfaga más grande que una tanda. «Cerrar mes» recorre la cartera en un bucle sincrónico y encola
+// las ~2.400 filas del mes nuevo de un saque: caen todas dentro del mismo respiro de 100 ms, así que
+// son UN aviso y una sola vuelta de subida. Como una tanda sube 200 (ver `pendientes` en cola.ts), sin
+// repetir la vuelta el resto se quedaba en la cola —las otras computadoras veían el mes con 200
+// renglones y el resto vacío— hasta el próximo `encolar` suelto: con el reloj de los diez segundos de
+// la 13.x eso se drenaba solo y no se notaba, sin reloj no lo drena nadie.
+test('una ráfaga más grande que una tanda se sube entera, no de a 200', async () => {
+  const { hoja, motor } = await escenario()
+  const cuantas = 250
+  for (let i = 0; i < cuantas; i++) {
+    encolar(
+      { operacion: 'crear', pestana: 'BAJAS AGOSTO', filaId: `RAFAGA${String(i).padStart(6, '0')}`, campos: { nombre: `CLIENTE ${i}`, motivo: 'VENDIO' } },
+      DANIEL,
+    )
+  }
+  assert.equal(cuantasPendientes(), cuantas, 'las 250 entraron de un saque, como en «Cerrar mes»')
+
+  // Un solo aviso, como el que dispara `encolar`: la subida tiene que seguir hasta vaciar la cola.
+  motor.apurarSubida()
+  await esperar(900)
+  assert.equal(cuantasPendientes(), 0, 'la cola tiene que quedar vacía, no con 50 adentro')
+  assert.equal(enLaHoja(hoja, 'BAJAS AGOSTO', 'RAFAGA000249', 'NOMBRE'), 'CLIENTE 249', 'la última de la ráfaga también llegó')
+  cerrarBaseDeDatos()
+})
+
 test('varios cambios de la misma fila viajan juntos y no se pisan', async () => {
   const { hoja, motor } = await escenario()
   const lopez = fila(CLIENTES.lopez.nombre)
@@ -157,12 +247,10 @@ test('dar de baja saca la fila de la planilla y la agrega a BAJAS, como el corta
   darDeBaja(martinez.filaId, { motivo: 'VENDIO', nota: 'Vendió la camioneta' }, DANIEL)
   assert.equal(cuantasPendientes(), 2, 'una entrada para agregar a BAJAS y otra para sacar de la planilla')
 
-  // El borrado espera su ventana de agrupado (ver ESPERA_DE_AGRUPADO_MS): el ciclo automático de recién
-  // sube la fila a BAJAS pero todavía no toca la planilla.
-  await motor.ciclarSubida()
-  assert.equal(hoja.filasDe('AGOSTO').length, filasAntes, 'el borrado espera para juntarse con otros')
-
-  apurarAgrupadas()
+  // 14.0: las dos entradas viajan en el MISMO ciclo. Hasta la 13.x el borrado esperaba su ventana de
+  // agrupado (eran 60 segundos) para juntarse con otros y no hacer recalcular la planilla de Google
+  // una vez por baja; la base de la agencia es SQL y no recalcula nada, así que ese minuto era lo
+  // único que quedaba entre dar de baja una póliza y verla desaparecer en la otra computadora.
   await motor.ciclarSubida()
   assert.equal(hoja.filasDe('AGOSTO').length, filasAntes - 1, 'la fila tiene que desaparecer de la planilla del mes')
   assert.equal(hoja.filasDe('BAJAS AGOSTO').length, bajasAntes + 1, 'y aparecer en BAJAS')
@@ -184,11 +272,9 @@ test('varias bajas seguidas borran las filas en una sola pasada por la hoja', as
     darDeBaja(fila(nombre).filaId, { motivo: 'ANULA POR FALTA DE PAGO', nota: '' }, DANIEL)
   }
 
-  // Mientras corre la ventana de agrupado sólo viajan los agregados a BAJAS: la planilla no se toca.
-  await motor.ciclarSubida()
-  assert.equal(hoja.llamadas.borrarFilas, borradosAntes, 'ningún borrado todavía')
-
-  apurarAgrupadas()
+  // 14.0: sin ventana de agrupado, las tres salen en el mismo ciclo. Que salgan en UN solo borrado
+  // sigue importando —y por eso esta prueba sigue existiendo— pero ya no lo sostiene el minuto de
+  // espera sino la tanda: las tres entradas caen juntas y `subirTanda` agrupa por pestaña.
   await motor.ciclarSubida()
   assert.equal(hoja.filasDe('AGOSTO').length, filasAntes - 3, 'las tres filas salieron de la planilla')
   assert.equal(hoja.llamadas.borrarFilas, borradosAntes + 1, 'y salieron en un solo borrado, no en tres')
@@ -348,7 +434,15 @@ test('primero se sube y recién después se baja: un cambio local nunca se pisa'
   cerrarBaseDeDatos()
 })
 
-test('si el mismo campo cambió de los dos lados, el que pierde queda anotado en el historial', async () => {
+// El choque de dos computadoras sobre la misma celda, que es LO QUE CAMBIÓ DE FONDO en la 14.0.
+//
+// Hasta la 13.x ganaba el cambio local —el que todavía no había subido— y lo que había en la base
+// quedaba pisado, anotado en un historial que en la práctica nadie mira. Con dos mostradores cargando
+// el mismo mes eso perdía trabajo ajeno de verdad. Ahora cada celda viaja con el valor que esta
+// computadora creía que tenía la base (`previo`) y la base la escribe SÓLO si sigue siendo ése: la que
+// pierde es la de acá, la entrada se cierra con el motivo a la vista y la pestaña se baja enseguida
+// para que la pantalla muestre el número que ganó.
+test('si el mismo campo cambió de los dos lados, gana la base y el de acá queda anotado', async () => {
   const { hoja, motor, db } = await escenario()
   const perez = fila(CLIENTES.perezAuto.nombre)
 
@@ -361,14 +455,56 @@ test('si el mismo campo cambió de los dos lados, el que pierde queda anotado en
   editarCelda(perez.filaId, 'cuota', '$ 22.222', DANIEL)
 
   await motor.ciclarSubida()
-  assert.equal(enLaHoja(hoja, 'AGOSTO', perez.filaId, 'CUOTA'), '$ 22.222', 'gana el cambio local, que es el más nuevo')
+  assert.equal(enLaHoja(hoja, 'AGOSTO', perez.filaId, 'CUOTA'), '$ 11.111', 'la base no se pisa: sigue lo que había')
+  assert.equal(cuantasPendientes(), 0, 'la entrada no queda reintentando: la base ya decidió')
 
-  const pisado = db
-    .prepare(`SELECT campo, valor_anterior, valor_nuevo FROM historial WHERE campo LIKE '%pisado por sincronización%' AND fila_id = ?`)
-    .get(perez.filaId) as { campo: string; valor_anterior: string; valor_nuevo: string } | undefined
-  assert.ok(pisado, 'el valor que había en la hoja tiene que quedar registrado')
-  assert.equal(pisado.valor_anterior, '$ 11.111')
-  assert.equal(pisado.valor_nuevo, '$ 22.222')
+  // Y la copia local termina mostrando lo que ganó, sin que nadie apriete nada: la subida se trae la
+  // pestaña pisada en el mismo ciclo (ver `bajarLoQuePisoLaBase` en motor.ts).
+  assert.equal(fila(CLIENTES.perezAuto.nombre).cuota, '$ 11.111', 'la pantalla queda mostrando el valor de la base')
+
+  const conflicto = db
+    .prepare(`SELECT detalle FROM eventos_sync WHERE tipo = 'conflicto' ORDER BY id DESC LIMIT 1`)
+    .get() as { detalle: string } | undefined
+  assert.ok(conflicto, 'el choque tiene que quedar anotado en la bitácora de sincronización')
+  assert.ok(conflicto.detalle.includes('$ 11.111'), `el anotado dice qué había en la base: ${conflicto.detalle}`)
+  assert.ok(conflicto.detalle.includes('$ 22.222'), `y qué no se escribió: ${conflicto.detalle}`)
+  cerrarBaseDeDatos()
+})
+
+// La otra mitad de lo mismo, mirada por dentro: qué devuelve la subida cuando la base rechaza una
+// celda. De eso salen las tres cosas que ve la persona —la pestaña que hay que bajar YA para mostrar
+// el valor que ganó, el motivo que queda en la entrada de la cola, y el aviso `datos:pisados` que
+// dispara el cartel—. El evento en sí no se puede escuchar acá (sin Electron no hay ventanas a las
+// que emitir), pero sale de la misma función que escribe el anotado en la bitácora, así que lo que se
+// afirma abajo es exactamente lo que viaja a la pantalla.
+test('una celda con el previo viejo queda pisada, marca su pestaña para bajar y deja el motivo', async () => {
+  const { hoja, db } = await escenario()
+  const perez = fila(CLIENTES.perezAuto.nombre)
+
+  const columna = hoja.encabezadosDe('AGOSTO').findIndex((e) => e.trim() === 'OBS')
+  const columnaId = hoja.columnaIdDe('AGOSTO')
+  const numeroDeFila = hoja.filasDe('AGOSTO').findIndex((f) => (f[columnaId] ?? '').trim() === perez.filaId) + 1
+  hoja.editarCelda('AGOSTO', numeroDeFila, columna, 'Lo anotó Lanús')
+  editarCelda(perez.filaId, 'observaciones', 'Lo anoté yo', DANIEL)
+
+  const contexto = await leerContexto(hoja)
+  const resultado = await subirTanda(hoja, contexto)
+  assert.equal(resultado.pisadas, 1, 'la única celda de la tanda no se escribió')
+  assert.deepEqual(resultado.pestanasPisadas, ['AGOSTO'], 'la pestaña a bajar ya, para mostrar lo que ganó')
+  assert.equal(enLaHoja(hoja, 'AGOSTO', perez.filaId, 'OBS'), 'Lo anotó Lanús', 'la base quedó intacta')
+
+  // La entrada sale de la cola —no hay nada que reintentar— pero conserva el motivo a la vista, que es
+  // lo que se lee en Administración → Sincronización cuando alguien pregunta «¿y mi cambio?».
+  assert.equal(cuantasPendientes(), 0)
+  const entrada = db
+    .prepare(`SELECT estado, ultimo_error FROM cola_sync WHERE fila_id = ? ORDER BY id DESC LIMIT 1`)
+    .get(perez.filaId) as { estado: string; ultimo_error: string | null } | undefined
+  assert.ok(entrada, 'la entrada tiene que seguir en la tabla, cerrada')
+  assert.notEqual(entrada.estado, 'pendiente')
+  assert.ok(
+    (entrada.ultimo_error ?? '').includes('base'),
+    `el motivo tiene que decir que ganó la base: ${entrada.ultimo_error}`,
+  )
   cerrarBaseDeDatos()
 })
 
@@ -431,11 +567,77 @@ test('un cambio esperando su reintento no frena la bajada de las demás filas', 
   assert.equal(fila(CLIENTES.rodriguez.nombre).cuota, '$ 77.777', 'lo de la hoja llega a la aplicación')
   assert.equal(fila(CLIENTES.gonzalez.nombre).observaciones, 'Pasa mañana', 'y la fila con el cambio sin subir no se pisa')
 
-  // Y cuando la entrada por fin sube, la fila deja de estar bloqueada.
+  // Y cuando la entrada por fin sale, la fila deja de estar bloqueada. Lo que escribe NO llega a la
+  // hoja, y es lo correcto (14.0): mientras esperaba el reintento, la hoja pasó a decir otra cosa, así
+  // que el `previo` que viaja con la celda ya no coincide y la base la rechaza. La cola queda vacía
+  // igual —una celda pisada no es algo que haya que reintentar— y la bajada que dispara la subida deja
+  // la copia local mostrando lo que ganó.
   db.prepare(`UPDATE cola_sync SET proximo_intento = NULL WHERE estado = 'pendiente'`).run()
   await motor.ciclarSubida()
   assert.equal(cuantasPendientes(), 0)
-  assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'OBS'), 'Pasa mañana')
+  assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'OBS'), 'Lo escribió otro', 'gana la base')
+  assert.equal(fila(CLIENTES.gonzalez.nombre).observaciones, 'Lo escribió otro', 'y acá se ve lo que ganó')
+  cerrarBaseDeDatos()
+})
+
+// Y cuando la espera vence, ¿quién la despierta? Desde la 14.0 no hay ningún reloj de fondo: si nadie
+// vuelve a mirar la cola, el pago que falló por un 502 del VPS se queda ahí hasta el día siguiente, con
+// la persona convencida de que lo guardó. Por eso cada vuelta de subida deja armado un reloj puntual
+// hasta el vencimiento más cercano (ver `programarElReintentoDeLaCola` en motor.ts).
+test('lo que quedó esperando un reintento se despierta solo cuando vence la espera', async () => {
+  const { hoja, motor, db } = await escenario()
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  editarCelda(gonzalez.filaId, 'telefono', '11-2222-3333', DANIEL)
+  // Como si la escritura hubiera fallado: sigue pendiente, pero no hay nada para intentar todavía. La
+  // espera de verdad son 10 segundos (ver `esperaDeReintento`); acá se acorta para no dormir la prueba.
+  db.prepare(`UPDATE cola_sync SET intentos = 1, proximo_intento = ?, ultimo_error = 'no se pudo escribir' WHERE estado = 'pendiente'`).run(
+    new Date(Date.now() + 300).toISOString(),
+  )
+
+  // Esta vuelta no sube nada —la espera no venció— y es la que deja armado el reloj.
+  await motor.ciclarSubida()
+  assert.equal(cuantasPendientes(), 1, 'todavía está esperando su turno')
+
+  // Y nadie la empuja: no hay reloj de subida, no entra nada más en la cola, el canal no avisa nada.
+  await esperar(800)
+  assert.equal(cuantasPendientes(), 0, 'al vencer la espera la subida sale sola')
+  assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'TELEFONO'), '11-2222-3333')
+  cerrarBaseDeDatos()
+})
+
+// El «comparar y escribir» compara del lado de la BASE, y la base no limpia como esta computadora:
+// ella recorta los bordes y nada más, acá `limpiar()` además cambia el espacio duro U+00A0 por uno
+// normal (la base entera salió de una planilla de Google, que los arrastra de a montones). Sin igualar
+// la regla, esa celda quedaba imposible de escribir: se mandaba «PAGA EN EFECTIVO» con espacio normal
+// contra el mismo texto con espacio duro, la base rechazaba, se bajaba la pestaña y se veía exactamente
+// el mismo texto, y el intento siguiente perdía igual, para siempre y sin nada que lo explicara.
+//
+// La bajada es la que deja la copia local así: la importación completa guarda `datos_json` con las
+// celdas tal cual (ver `crudo()` en el importador) y la bajada de todos los días las guarda limpias, o
+// sea que cualquier fila que otra computadora haya tocado desde la última importación entra en este
+// caso. Por eso acá se baja con `ciclarBajada()` y no con la completa.
+test('una celda con un espacio duro se puede escribir igual: no es un valor distinto', async () => {
+  const { hoja, motor, db } = await escenario()
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  const columnaId = hoja.columnaIdDe('AGOSTO')
+  const numeroDeFila = hoja.filasDe('AGOSTO').findIndex((f) => (f[columnaId] ?? '').trim() === gonzalez.filaId) + 1
+  const columnaObs = hoja.encabezadosDe('AGOSTO').findIndex((e) => e.trim() === 'OBS')
+
+  // Así vienen los valores migrados desde Google. Al bajar, la copia local lo guarda con el espacio
+  // normal, y en la pantalla los dos textos son el mismo.
+  hoja.editarCelda('AGOSTO', numeroDeFila, columnaObs, 'PAGA\u00a0EN EFECTIVO')
+  await motor.ciclarBajada()
+  const enLaCopiaLocal = () =>
+    (JSON.parse((db.prepare(`SELECT datos_json FROM filas_crudas WHERE fila_id = ?`).get(gonzalez.filaId) as { datos_json: string }).datos_json) as Record<string, string>)['OBS'] ?? ''
+  assert.equal(fila(CLIENTES.gonzalez.nombre).observaciones, 'PAGA EN EFECTIVO')
+  assert.equal(enLaCopiaLocal(), 'PAGA EN EFECTIVO', 'la copia local lo guardó con el espacio normal…')
+  assert.equal(hoja.filasDe('AGOSTO')[numeroDeFila - 1]?.[columnaObs], 'PAGA\u00a0EN EFECTIVO', '…y la base sigue con el duro')
+
+  // Alguien corrige la observación: tiene que escribirse, no rebotar contra un valor que se ve igual.
+  editarCelda(gonzalez.filaId, 'observaciones', 'PAGA CON DEBITO', DANIEL)
+  await motor.ciclarSubida()
+  assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'OBS'), 'PAGA CON DEBITO', 'el cambio llega a la base')
+  assert.equal(cuantasPendientes(), 0)
   cerrarBaseDeDatos()
 })
 
@@ -509,7 +711,7 @@ test('una ficha creada y borrada sin internet no deja una fila fantasma en la ba
   encolar({ operacion: 'crear', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: { nombre: 'NADIE', motivo: 'VENDIO' } }, DANIEL)
   encolar({ operacion: 'actualizar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: { motivo: 'ANULA' } }, DANIEL)
   assert.equal(cuantasPendientes(), 1)
-  encolar({ operacion: 'borrar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: {} }, DANIEL, { sinEspera: true })
+  encolar({ operacion: 'borrar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0001', campos: {} }, DANIEL)
   const deLaPrimera = db.prepare(`SELECT operacion FROM cola_sync WHERE estado = 'pendiente' AND fila_id = 'FANTASMA0001'`).all() as Array<{
     operacion: string
   }>
@@ -531,7 +733,7 @@ test('una ficha creada y borrada sin internet no deja una fila fantasma en la ba
     0,
     'juntar campos contra un «crear» le borra los intentos: por eso no se los puede usar para saber si salió',
   )
-  encolar({ operacion: 'borrar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0002', campos: {} }, DANIEL, { sinEspera: true })
+  encolar({ operacion: 'borrar', pestana: 'BAJAS AGOSTO', filaId: 'FANTASMA0002', campos: {} }, DANIEL)
   assert.equal(hoja.filasDe('BAJAS AGOSTO').length, filasAntes + 1, 'la fila del «crear» aplicado está en la base')
 
   hoja.conectar()

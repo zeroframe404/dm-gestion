@@ -425,6 +425,7 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
             />
           )}
           <Boton
+            escribe
             variante="primario"
             icono="ok"
             onClick={() => void guardar()}

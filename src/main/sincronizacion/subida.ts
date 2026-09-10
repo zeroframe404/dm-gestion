@@ -5,6 +5,7 @@ import type { Campo } from '../importacion/encabezados'
 import type { CeldaAEscribir, FilaABorrar, FuenteHoja } from '../importacion/fuente'
 import { ahoraIso, limpiar } from '../importacion/normalizar'
 import { db } from '../db/base'
+import { emitirATodas } from '../servicios/avisos'
 import { ErrorDeNegocio } from '../servicios/errores'
 import {
   achicarProximaTanda,
@@ -13,6 +14,7 @@ import {
   biseccionAtascada,
   marcarFallidas,
   marcarListas,
+  marcarPisadas,
   marcarSinArreglo,
   pendientes,
   restablecerTanda,
@@ -24,18 +26,21 @@ import { esPestanaDeLaApp, esPestanaDelMes } from './pestanasApp'
 
 export interface ResultadoSubida {
   subidas: number
-  conflictos: number
+  /** Celdas que la base no dejó escribir porque había cambiado desde que esta computadora la miró. */
+  pisadas: number
+  /** Las pestañas de esas celdas: hay que bajarlas ya, para mostrar el valor que ganó. */
+  pestanasPisadas: string[]
   llamadas: number
   error: string | null
 }
 
-/** Un conflicto: el mismo campo cambió acá y en la hoja desde la última bajada. */
-export interface Conflicto {
+/** Una celda que perdió: la base tenía otra cosa y ganó ella (14.0). */
+export interface Pisada {
   filaId: string
   pestana: string
   campo: string
   valorLocal: string
-  valorRemoto: string
+  valorServidor: string
 }
 
 interface FilaBase {
@@ -66,15 +71,48 @@ function valorBase(base: FilaBase | undefined, pestana: PestanaSincronizable, ca
 }
 
 /**
- * Sube una tanda. Devuelve cuántas entradas se subieron y cuántos conflictos hubo (el conflicto lo gana
- * el cambio local, que es el que todavía no se había subido; el valor que había en la hoja queda anotado
- * en el historial como «pisado por sincronización»).
+ * El `previo` que se manda, con la regla de comparación de LA BASE y no la de acá (14.0).
+ *
+ * Las dos puntas no limpian igual. Lo que esta computadora conoce sale de `filas_crudas.datos_json`, y
+ * la bajada de todos los días lo guarda pasado por `limpiar()` —recorta los bordes Y cambia el espacio
+ * duro U+00A0 por uno normal, ver `importacion/normalizar.ts`— así que cualquier fila que otra
+ * computadora haya tocado desde la última importación completa está normalizada acá. La base, en
+ * cambio, guarda la celda tal cual llegó y compara con un `trim()` pelado. Hasta la 13.x eso no
+ * molestaba porque el que comparaba era el cliente, con `limpiar` de los dos lados; la 14.0 movió la
+ * decisión al servidor y la normalización se quedó de este lado.
+ *
+ * Sin esto, una celda con un espacio duro adentro —los hay a montones: vienen de la planilla de Google,
+ * que es de dónde salió toda la base— quedaba IMPOSIBLE de escribir desde el programa: se mandaba
+ * «JUAN PEREZ» con espacio normal contra un «JUAN PEREZ» con espacio duro, la base rechazaba, la
+ * pestaña se volvía a bajar y mostraba exactamente el mismo texto, y el intento siguiente perdía igual,
+ * para siempre y sin nada visible que lo explicara.
+ *
+ * La solución es mandar el texto CRUDO de esa celda —el de la lectura que la subida acaba de hacer—
+ * pero sólo cuando es el mismo valor que esta computadora conoce. Si de verdad cambió, `limpiar` de los
+ * dos lados da distinto y se manda lo conocido, que es lo que la base tiene que rechazar. O sea: el
+ * «comparar y escribir» sigue comparando contra lo que la persona vio, y lo único que se ignora es una
+ * diferencia de espacios que en la pantalla no existe.
+ */
+function previoParaLaBase(conocido: string, enLaLectura: unknown): string {
+  const crudo = enLaLectura === null || enLaLectura === undefined ? '' : String(enLaLectura)
+  return limpiar(crudo) === limpiar(conocido) ? crudo : conocido
+}
+
+/**
+ * Sube una tanda. Devuelve cuántas entradas se subieron y cuántas celdas rechazó la base.
+ *
+ * GANA LA BASE (14.0). Cada celda de la que se conoce el valor anterior viaja con él (`previo`) y el
+ * servidor la escribe SÓLO si sigue siendo ése. Hasta la 13.x era al revés: ganaba el cambio local
+ * —el que todavía no había subido— y lo que había en la base quedaba pisado, anotado en un historial
+ * que en la práctica nadie mira. Con dos mostradores cargando el mismo mes eso perdía trabajo ajeno
+ * de verdad. Ahora la que pierde es la celda de acá, y quien escribió se entera en el momento: la
+ * entrada se cierra con el motivo, la pestaña se baja enseguida y la pantalla muestra un aviso.
  */
 export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, limite = 200): Promise<ResultadoSubida> {
   const entradas = pendientes(limite)
   if (entradas.length === 0) {
     restablecerTanda()
-    return { subidas: 0, conflictos: 0, llamadas: 0, error: null }
+    return { subidas: 0, pisadas: 0, pestanasPisadas: [], llamadas: 0, error: null }
   }
 
   const titulos = [...new Set(entradas.map((e) => e.pestana))].filter((t) => contexto.porTitulo.has(t))
@@ -94,7 +132,7 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   // cola se quedaba subiendo de a una para siempre.
   if (titulos.length === 0) {
     restablecerTanda()
-    return { subidas: 0, conflictos: 0, llamadas: 0, error: null }
+    return { subidas: 0, pisadas: 0, pestanasPisadas: [], llamadas: 0, error: null }
   }
 
   let llamadas = 0
@@ -133,7 +171,13 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   const celdas: CeldaAEscribir[] = []
   const aAgregar = new Map<string, Array<{ entrada: EntradaCola; fila: string[] }>>()
   const aBorrar = new Map<string, { sheetId: number; columnaId: number; filas: FilaABorrar[] }>()
-  const conflictos: Conflicto[] = []
+  /**
+   * Qué fue cada celda que se manda, para poder leer las rechazadas que vuelvan: la base contesta con
+   * `titulo|id|columna` y de acá sale el campo, el valor que se quería escribir y la entrada de la
+   * cola que hay que cerrar.
+   */
+  const loQueSeManda = new Map<string, { entrada: EntradaCola; campo: string; valor: string }>()
+  const claveDeCelda = (titulo: string, id: string, columna: number) => `${titulo}\u0000${id}\u0000${columna}`
   const hechas: number[] = []
   const fallidas: Array<{ id: number; motivo: string }> = []
 
@@ -237,13 +281,14 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
       continue
     }
 
-    // Actualizar: se comparan los valores contra lo último que sabíamos de la hoja.
+    // Actualizar: cada celda viaja con lo último que sabíamos de la hoja, y la base decide.
     const base = bases.get(entrada.filaId)
-    const celdasDeLaFila = valores[numeroDeFila - 1] ?? []
     let algoQueEscribir = false
     for (const [nombreCampo, valor] of Object.entries(entrada.campos)) {
       const nuevo = valor ?? ''
       if (nombreCampo === '_id') {
+        // El _ID no viaja con `previo`: no es un dato que dos personas puedan estar editando, es la
+        // identidad del renglón, y compararlo contra sí mismo sólo podría hacer fallar la escritura.
         celdas.push({ titulo: entrada.pestana, fila: numeroDeFila, columna: columnaId, valor: nuevo, id: entrada.filaId })
         algoQueEscribir = true
         continue
@@ -254,12 +299,18 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
         if (limpiar(nuevo)) anotarSinColumna(entrada.pestana, nombreCampo)
         continue
       }
-      const remoto = limpiar(celdasDeLaFila[columna])
+      // Lo último que esta computadora vio en esa celda. Sin base conocida —una fila recién creada
+      // acá, que nadie bajó todavía— no hay contra qué comparar y la celda se escribe como siempre.
       const anterior = valorBase(base, pestana, campo)
-      if (anterior !== null && limpiar(anterior) !== remoto && remoto !== limpiar(nuevo)) {
-        conflictos.push({ filaId: entrada.filaId, pestana: entrada.pestana, campo, valorLocal: nuevo, valorRemoto: remoto })
-      }
-      celdas.push({ titulo: entrada.pestana, fila: numeroDeFila, columna, valor: nuevo, id: entrada.filaId })
+      celdas.push({
+        titulo: entrada.pestana,
+        fila: numeroDeFila,
+        columna,
+        valor: nuevo,
+        id: entrada.filaId,
+        ...(anterior === null ? {} : { previo: previoParaLaBase(anterior, valores[numeroDeFila - 1]?.[columna]) }),
+      })
+      loQueSeManda.set(claveDeCelda(entrada.pestana, entrada.filaId, columna), { entrada, campo, valor: nuevo })
       algoQueEscribir = true
     }
     if (algoQueEscribir) hechas.push(entrada.id)
@@ -271,11 +322,30 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   // arriba y esta escritura): sus celdas no se escribieron en ningún lado y sus entradas no se dan por
   // subidas. Hasta la 12.5 esa celda creaba una fila fantasma al final de la pestaña.
   const perdidas = new Set<string>()
+  /** Las celdas que la base no dejó escribir porque ya decían otra cosa (14.0). */
+  const rechazadas: Array<{ clave: string; pisada: Pisada }> = []
   try {
     if (celdas.length > 0) {
       const resultado = await fuente.escribirCeldas(celdas, Object.fromEntries(columnaIdPorPestana))
       llamadas++
       for (const fila of resultado.noEncontradas) perdidas.add(`${fila.titulo}|${fila.id}`)
+      for (const fila of resultado.rechazadas ?? []) {
+        const clave = claveDeCelda(fila.titulo, fila.id, fila.columna)
+        const mandada = loQueSeManda.get(clave)
+        // Una rechazada que no reconocemos no puede tumbar la subida: se ignora. Pasa si el servidor
+        // devuelve una columna distinta de la que se le mandó, y no hay nada sensato que mostrar.
+        if (!mandada) continue
+        rechazadas.push({
+          clave,
+          pisada: {
+            filaId: mandada.entrada.filaId,
+            pestana: fila.titulo,
+            campo: mandada.campo,
+            valorLocal: mandada.valor,
+            valorServidor: fila.actual,
+          },
+        })
+      }
     }
     for (const [titulo, lista] of aAgregar) {
       const { numeros } = await fuente.agregarFilas(
@@ -318,11 +388,18 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
       )
       restablecerTanda()
     }
-    return { subidas: 0, conflictos: 0, llamadas, error: motivo }
+    return { subidas: 0, pisadas: 0, pestanasPisadas: [], llamadas, error: motivo }
   }
   restablecerTanda()
 
-  const celdasEscritas = celdas.filter((celda) => !perdidas.has(`${celda.titulo}|${celda.id ?? ''}`))
+  const noSeEscribieron = new Set(rechazadas.map((r) => r.clave))
+  // Las rechazadas no se escribieron en ningún lado: no pueden entrar en la copia local de la fila. Si
+  // entraran, esta computadora creería que la base dice lo que ella quiso escribir y la bajada de acá
+  // abajo no traería nada.
+  const celdasEscritas = celdas.filter(
+    (celda) =>
+      !perdidas.has(`${celda.titulo}|${celda.id ?? ''}`) && !noSeEscribieron.has(claveDeCelda(celda.titulo, celda.id ?? '', celda.columna)),
+  )
   const entradasEscritas = entradas.filter((entrada) => {
     if (entrada.operacion !== 'actualizar' || !perdidas.has(`${entrada.pestana}|${entrada.filaId}`)) return true
     const posicion = hechas.indexOf(entrada.id)
@@ -332,10 +409,29 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
   })
 
   // --- Dejar la base local al día con lo que quedó en la hoja.
-  actualizarBaseLocal(contexto, valoresPorTitulo, entradasEscritas, celdasEscritas)
+  //
+  // Las filas que tuvieron alguna celda rechazada quedan AFUERA (14.0), y es lo que hace que el
+  // «gana la base» se vea en la pantalla. `actualizarBaseLocal` le recalcula la huella a la fila con
+  // lo que la base dice hoy; si eso corriera también acá, la bajada que sale enseguida
+  // (`pestanasPisadas` → `bajarLoQuePisoLaBase` en motor.ts) vería la fila «sin cambios» y no la
+  // releería nunca: la copia local se quedaría para siempre con el número que la base no aceptó, que
+  // es exactamente lo que esto vino a evitar. Dejándoles la huella vieja, esa bajada las trae enteras.
+  const filasPisadas = new Set(rechazadas.map(({ pisada }) => `${pisada.pestana}\u0000${pisada.filaId}`))
+  actualizarBaseLocal(
+    contexto,
+    valoresPorTitulo,
+    entradasEscritas.filter((entrada) => !filasPisadas.has(`${entrada.pestana}\u0000${entrada.filaId}`)),
+    celdasEscritas,
+  )
   marcarListas(hechas)
   for (const { id, motivo } of fallidas) marcarSinArreglo([id], motivo)
-  for (const conflicto of conflictos) anotarConflicto(conflicto)
+  // Después de `marcarListas`: las entradas pisadas también salen de la cola —no hay nada que
+  // reintentar, la base ya decidió— pero conservan el motivo a la vista.
+  for (const { pisada } of rechazadas) anotarPisada(pisada)
+  marcarPisadas(
+    [...new Set(rechazadas.map((r) => loQueSeManda.get(r.clave)!.entrada.id))],
+    'La base tenía otro valor: ganó el de la base (lo cambiaron desde otra computadora).',
+  )
   for (const [clave, filas] of sinColumna) {
     const [pestana, campo] = clave.split('\u0000')
     anotarEvento(
@@ -346,7 +442,13 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
     )
   }
 
-  return { subidas: hechas.length, conflictos: conflictos.length, llamadas, error: null }
+  return {
+    subidas: hechas.length,
+    pisadas: rechazadas.length,
+    pestanasPisadas: [...new Set(rechazadas.map((r) => r.pisada.pestana))],
+    llamadas,
+    error: null,
+  }
 }
 
 /**
@@ -366,18 +468,22 @@ function esRechazoDelContenido(error: unknown): boolean {
   return status === 400 || status === 422
 }
 
-/** Deja anotado en el historial el valor que había en la hoja y quedó pisado por el cambio local. */
-function anotarConflicto(conflicto: Conflicto): void {
-  db()
-    .prepare(
-      `INSERT INTO historial (fecha, usuario_id, usuario_nombre, accion, tabla, registro_id, fila_id, campo, valor_anterior, valor_nuevo)
-       VALUES (?, NULL, 'Sincronización', 'sincronizacion', ?, NULL, ?, ?, ?, ?)`,
-    )
-    .run(ahoraIso(), conflicto.pestana, conflicto.filaId, `${conflicto.campo} (pisado por sincronización)`, conflicto.valorRemoto, conflicto.valorLocal)
+/**
+ * Deja anotado que la base tenía otro valor y ganó ella (14.0), y se lo dice a la pantalla.
+ *
+ * El evento va a la bitácora de sincronización, que es donde se mira «qué pasó con este cambio»; el
+ * aviso al renderer es lo que hace que la persona se entere ahora y no cuando note que su número no
+ * está. La pantalla ya tiene el valor que ganó cuando el aviso llega: la pestaña se baja enseguida
+ * (ver `ResultadoSubida.pestanasPisadas`).
+ */
+function anotarPisada(pisada: Pisada): void {
   anotarEvento(
     'conflicto',
-    `«${conflicto.campo}» de la fila ${conflicto.filaId} había cambiado en la base («${conflicto.valorRemoto}»): ganó el cambio de la aplicación («${conflicto.valorLocal}»).`,
+    `«${pisada.campo}» de la fila ${pisada.filaId} ya había cambiado en la base («${pisada.valorServidor}»): ` +
+      `no se escribió lo de esta computadora («${pisada.valorLocal}»).`,
+    { conError: true },
   )
+  emitirATodas('datos:pisados', pisada)
 }
 
 /**

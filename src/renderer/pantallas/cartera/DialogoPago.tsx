@@ -69,7 +69,7 @@ export function DialogoPago({ fila, mediosDePago, hoy, alCerrar, alGuardar, alFa
           <Boton onClick={alCerrar} disabled={guardando}>
             Cancelar
           </Boton>
-          <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando}>
+          <Boton escribe variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando}>
             {textoDeGuardar(opciones, fila)}
           </Boton>
         </>

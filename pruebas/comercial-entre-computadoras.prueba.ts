@@ -134,6 +134,13 @@ function cerrarTodo(): void {
   cerrarBaseDeDatos()
 }
 
+/**
+ * Las pestañas que traía el carril rápido de las tareas hasta la 13.x. Desde la 14.0 no hay carril
+ * rápido —el canal en vivo dice qué cambió y el motor baja eso— así que acá se pide lo mismo por su
+ * nombre, que es lo que hace la aplicación de verdad cuando el servidor la nombra.
+ */
+const PESTANAS_DE_TAREAS = ['APP TAREAS', 'APP COMENTARIOS', 'APP ADJUNTOS']
+
 async function subirTodo(pc: Computadora): Promise<void> {
   en(pc)
   apurarAgrupadas()
@@ -217,7 +224,7 @@ test('una consulta con su nota y un presupuesto con sus opciones llegan enteros 
   agregarNotaDeLead(lead.lead.id, 'Aceptó', MILAGROS)
   await subirTodo(lanus)
   en(dockSud)
-  await dockSud.motor.ciclarTareas()
+  await dockSud.motor.ciclarBajadaDe(PESTANAS_DE_TAREAS)
   assert.ok(fichaDeLead(leadAlla.id).notas.some((n) => n.texto === 'Aceptó'), 'la nota nueva llega sin importar nada')
 
   // Reimportar todo no duplica ni desordena nada.
@@ -330,7 +337,7 @@ test('una tarea borrada en una computadora desaparece de la otra', async () => {
   ejecutarEliminacion('tarea', tarea.id, DANIEL)
   await subirTodo(lanus)
   en(dockSud)
-  await dockSud.motor.ciclarTareas()
+  await dockSud.motor.ciclarBajadaDe(PESTANAS_DE_TAREAS)
   assert.ok(!listarTareas(FILTROS_COMERCIALES).filas.some((t) => t.titulo === 'Ordenar el archivo'), 'la tarea borrada allá ya no está acá')
   cerrarTodo()
 })

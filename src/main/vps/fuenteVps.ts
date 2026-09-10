@@ -530,6 +530,7 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
     const datos = (await this.pedir('escribir celdas', 'POST', '/api/dmg/celdas', { celdas, columnaId: columnaIdPorTitulo })) as {
       escritas?: number
       noEncontradas?: Array<{ titulo?: unknown; id?: unknown }>
+      rechazadas?: Array<{ titulo?: unknown; id?: unknown; columna?: unknown; actual?: unknown }>
       versiones?: Record<string, unknown>
     } | null
     adoptarVersionesPropias(datos?.versiones)
@@ -539,6 +540,17 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
       noEncontradas: contesta
         ? datos!.noEncontradas!.map((fila) => ({ titulo: String(fila.titulo ?? ''), id: String(fila.id ?? '') }))
         : [],
+      // 14.0: las celdas que el servidor no escribió porque la base tenía otro valor que el `previo`
+      // que viajó con ellas. Un servidor anterior no manda la clave y quedan en `undefined`, que es
+      // «este servidor no rechaza nada»: ahí la escritura se comporta como hasta la 13.x.
+      rechazadas: Array.isArray(datos?.rechazadas)
+        ? datos!.rechazadas!.map((fila) => ({
+            titulo: String(fila.titulo ?? ''),
+            id: String(fila.id ?? ''),
+            columna: Number(fila.columna ?? -1),
+            actual: String(fila.actual ?? ''),
+          }))
+        : undefined,
     }
   }
 

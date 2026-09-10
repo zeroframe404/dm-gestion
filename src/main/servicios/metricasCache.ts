@@ -1,5 +1,5 @@
 // Caché local de las métricas que ahora calcula el servidor: el podio de sucursales, primero (ver
-// sincronizacion/vigia.ts, que es quien la llena). Esta computadora ya no hace la cuenta; guarda acá
+// vivo/grilla.ts, que es quien la llena). Esta computadora ya no hace la cuenta; guarda acá
 // lo último que el servidor le mandó y lo relee al toque, sin ir a buscarlo de nuevo.
 import { ahoraIso } from '../importacion/normalizar'
 import { db } from '../db/base'
