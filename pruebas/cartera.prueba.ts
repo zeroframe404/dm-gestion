@@ -28,6 +28,7 @@ import { listarClientes } from '../src/main/servicios/clientes'
 import { editarCompania, listarCompanias } from '../src/main/servicios/companias'
 import { listarRiesgos } from '../src/main/servicios/riesgos'
 import { historialDeFila } from '../src/main/servicios/historial'
+import { deshacerEntradaDeHistorial } from '../src/main/servicios/deshacer'
 import { guardarPlantillaDeAviso } from '../src/main/servicios/plantillas'
 import { calcularAlerta, periodoDeHoy, periodoSiguiente } from '../src/shared/semaforo'
 import type { FilaCartera, FiltrosClientes, SesionUsuario } from '../src/shared/tipos'
@@ -185,6 +186,63 @@ test('«Avisado» no necesita teléfono: es para cuando ya se avisó por otro la
   const fila = buscar(planillaDelMes(null).filas, CLIENTES.suarez.nombre)
   editarCelda(fila.filaId, 'telefono', '', DANIEL)
   assert.equal(marcarAvisado(fila.filaId, DANIEL).aviso, 'ENVIADO')
+  cerrarBaseDeDatos()
+})
+
+test('deshacer un «Avisado» por error saca la fila de Avisados hoy, no sólo le limpia el texto', async () => {
+  await carteraDePrueba()
+  const planilla = planillaDelMes(null)
+  const fila = buscar(planilla.filas, CLIENTES.lopez.nombre)
+  const avisoDeAntes = fila.aviso
+
+  marcarAvisado(fila.filaId, DANIEL)
+  const entrada = historialDeFila(fila.filaId)[0]!
+  assert.equal(entrada.campo, 'OB. AVISOS')
+  assert.equal(entrada.puedeDeshacerse, true)
+  assert.equal(entrada.deshechoEn, null)
+
+  const deshecha = deshacerEntradaDeHistorial(entrada.id, DANIEL)
+  assert.equal(deshecha.aviso, avisoDeAntes)
+  assert.equal(deshecha.fechaEnvio, null, 'si no, la fila seguiría contando en «Avisados hoy»')
+
+  const historial = historialDeFila(fila.filaId)
+  // La entrada vieja queda marcada (no se borra ni se pisa) y el deshacer en sí queda anotado aparte.
+  assert.equal(historial[1]!.id, entrada.id)
+  assert.notEqual(historial[1]!.deshechoEn, null)
+  assert.equal(historial[1]!.deshechoPor, 'Daniel Martínez')
+  assert.equal(historial[1]!.puedeDeshacerse, false, 'ya se deshizo: no se ofrece de nuevo')
+  assert.equal(historial[0]!.campo, 'OB. AVISOS')
+  assert.equal(historial[0]!.valorNuevo, avisoDeAntes)
+
+  // Deshacer la misma entrada dos veces no vuelve a escribir nada: se corta con un error claro.
+  assert.throws(() => deshacerEntradaDeHistorial(entrada.id, DANIEL), /ya lo había deshecho/)
+  cerrarBaseDeDatos()
+})
+
+test('deshacer una edición simple vuelve la celda a lo que decía antes', async () => {
+  await carteraDePrueba()
+  const fila = buscar(planillaDelMes(null).filas, CLIENTES.gonzalez.nombre)
+  const telefonoDeAntes = fila.telefono
+
+  editarCelda(fila.filaId, 'telefono', '11-9999-8888', DANIEL)
+  const entrada = historialDeFila(fila.filaId)[0]!
+  assert.equal(entrada.campo, 'telefono')
+  assert.equal(entrada.puedeDeshacerse, true)
+
+  const deshecha = deshacerEntradaDeHistorial(entrada.id, DANIEL)
+  assert.equal(deshecha.telefono, telefonoDeAntes)
+  cerrarBaseDeDatos()
+})
+
+test('dar de baja no se puede deshacer desde el historial: eso ya lo hace Cartera → Bajas', async () => {
+  await carteraDePrueba()
+  const fila = buscar(planillaDelMes(null).filas, CLIENTES.lopez.nombre)
+  darDeBaja(fila.filaId, { motivo: 'VENDIO', nota: '' }, DANIEL)
+
+  const entrada = historialDeFila(fila.filaId)[0]!
+  assert.equal(entrada.accion, 'baja')
+  assert.equal(entrada.puedeDeshacerse, false)
+  assert.throws(() => deshacerEntradaDeHistorial(entrada.id, DANIEL), /todavía no se puede deshacer/)
   cerrarBaseDeDatos()
 })
 

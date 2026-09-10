@@ -958,6 +958,12 @@ export interface EntradaHistorial {
   campo: string
   valorAnterior: string | null
   valorNuevo: string | null
+  /** Cuándo se deshizo este cambio, o `null` si sigue en pie. */
+  deshechoEn: string | null
+  /** Quién lo deshizo. */
+  deshechoPor: string | null
+  /** Si el botón «Deshacer» tiene sentido acá: no es un tipo de cambio reversible, o ya se deshizo. */
+  puedeDeshacerse: boolean
 }
 
 /** Plantilla del mensaje de WhatsApp, con {nombre}, {cuota} y {vencimiento}. */

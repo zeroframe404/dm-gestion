@@ -621,6 +621,21 @@ const NOMBRE_DE_CAMPO: Partial<Record<CampoEditable, string>> = {
   vehiculo: 'VEHICULO',
 }
 
+/**
+ * La vuelta de `NOMBRE_DE_CAMPO`: del rótulo que quedó anotado en el historial («FECHA DE VENC») al
+ * campo con el que se edita la celda (`diaVencimiento`). Los campos sin rótulo propio quedan igual
+ * para los dos lados (`NOMBRE_DE_CAMPO[campo] ?? campo` es lo que anotó `editarCelda`), así que armar
+ * el mapa al revés alcanza para reconocer cualquier entrada de tipo `edicion`. La usa `deshacer.ts`
+ * para saber, dado un renglón del historial, qué campo hay que volver a escribir.
+ */
+const CAMPO_POR_ETIQUETA: Partial<Record<string, CampoEditable>> = Object.fromEntries(
+  (Object.keys(DESTINOS) as CampoEditable[]).map((campo) => [NOMBRE_DE_CAMPO[campo] ?? campo, campo]),
+)
+
+export function campoEditableDesdeEtiqueta(etiqueta: string): CampoEditable | null {
+  return CAMPO_POR_ETIQUETA[etiqueta] ?? null
+}
+
 function idDelDestino(destino: DestinoDeCampo, fila: FilaCruda): number | null {
   if (destino.tabla === 'cuotas_mes') return fila.cuota_id
   if (destino.tabla === 'clientes') return fila.cliente_id
@@ -747,6 +762,40 @@ export function marcarAvisado(filaId: string, actor: SesionUsuario): FilaCartera
     campo: 'OB. AVISOS',
     valorAnterior: cruda.aviso,
     valorNuevo: `ENVIADO (${hoy}, marcado a mano)`,
+  })
+  return devolverFila(cruda.fila_id)
+}
+
+/**
+ * Deshace un aviso marcado por error (el botón «Deshacer» del historial de la fila): vuelve `aviso` a
+ * lo que decía antes y borra la fecha de envío y la marca de enviado. Que además de arreglar la
+ * columna la fila salga de «Avisados hoy» es la razón de tocar las tres: ese contador se fija en
+ * `fechaEnvio`, no en el texto de `aviso` (ver `entraEnElContador` en `PlanillaDelMes.tsx`), así que
+ * limpiar sólo `aviso` la habría dejado contada igual.
+ *
+ * `valorAnterior` ya lo tiene el historial —es lo que anotó `marcarAvisado`/`prepararAvisoDeCuota`
+ * antes de escribir ENVIADO— así que no hace falta reconstruirlo acá.
+ */
+export function deshacerAviso(filaId: string, valorAnterior: string | null, actor: SesionUsuario): FilaCartera {
+  const cruda = buscarFila(texto(filaId, 'La fila', 1, 64))
+  exigirMesAbierto(cruda.periodo, actor)
+
+  db()
+    .prepare(`UPDATE cuotas_mes SET aviso = ?, aviso_enviado = 0, fecha_envio = NULL, actualizado_en = ? WHERE id = ?`)
+    .run(valorAnterior, ahoraIso(), cruda.cuota_id)
+  encolar(
+    { operacion: 'actualizar', pestana: cruda.pestana, filaId: cruda.fila_id, campos: { aviso: valorAnterior ?? '', fecha_envio: '' } },
+    actor,
+  )
+
+  registrarCambio(actor, {
+    accion: 'aviso',
+    tabla: 'cuotas_mes',
+    registroId: cruda.cuota_id,
+    filaId: cruda.fila_id,
+    campo: 'OB. AVISOS',
+    valorAnterior: cruda.aviso,
+    valorNuevo: valorAnterior,
   })
   return devolverFila(cruda.fila_id)
 }

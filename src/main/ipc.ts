@@ -249,6 +249,7 @@ import {
 import { crearRespaldoEnElVps, listarRespaldosDelVps, restaurarRespaldoDelVps } from './servicios/respaldosVps'
 import { guardarPlantillaDeAviso, plantillaDeAviso } from './servicios/plantillas'
 import { historialDeFila } from './servicios/historial'
+import { deshacerEntradaDeHistorial } from './servicios/deshacer'
 import {
   arrancarSincronizacion,
   cerrarMesConLaBase,
@@ -654,6 +655,11 @@ export function registrarIpc(): void {
     exigirVista('cartera')
     return exito(historialDeFila(filaId))
   })
+  // El mismo permiso que hace falta para hacer el cambio alcanza para deshacerlo: no es una acción
+  // aparte, es la misma edición de celda (o el mismo aviso) yendo para el otro lado.
+  manejar('cartera:deshacerHistorial', (entradaId) =>
+    exito(deshacerEntradaDeHistorial(enteroPositivo(entradaId, 'La entrada del historial'), exigirEdicion('cartera'))),
+  )
 
   // Avisos de rechazo del débito. Avisar sale de la póliza, así que pide poder editar Pólizas o
   // Cartera; mirarlos y darlos por resueltos lo hace la sucursal, que es la que atiende al cliente:
