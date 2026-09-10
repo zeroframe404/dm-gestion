@@ -36,7 +36,7 @@ import { olvidarLasLlamadas, recibirConfiguracionIce, recibirEventoDeLlamada } f
 import { alLlegarAvisoDeMensajes } from './mensajes'
 import { olvidarLosPerfiles, recibirPerfil, recibirPerfiles } from './perfiles'
 import { olvidarLaPresencia, recibirPresencia } from './presencia'
-import { recibirReaccion } from './reacciones'
+import { olvidarLasReacciones, recibirReaccion } from './reacciones'
 import {
   LATIDO_MS,
   RUTA_DEL_CANAL,
@@ -103,12 +103,22 @@ export interface OpcionesDelCanal {
    * Qué hacer con cada frame que llega. Sin esto, el reparto de siempre: la grilla a `grilla.ts`, los
    * mensajes al cartero, la presencia y los perfiles a sus buzones. El banco de pruebas lo reemplaza
    * para mirar los frames crudos.
+   *
+   * Ojo con usarlo para probar: lo REEMPLAZA. Una prueba que quiere ver los frames Y que el canal haga
+   * lo suyo va con `espiar`, si no lo único que queda probado es el socket.
    */
   despachar?: (mensaje: DelServidor) => void
   /**
-   * Cómo se abre el socket. Existe por dos motivos: `index.ts` puede enchufar acá el paquete `ws` si
-   * alguna vez toca un Electron sin `WebSocket` global, y el banco de pruebas puede enchufar un socket
-   * de mentira.
+   * Se llama con cada frame ANTES de repartirlo, sin reemplazar nada (14.0). Existe para el banco de
+   * pruebas: así una prueba puede afirmar qué llegó por el socket y, además, dejar correr el reparto
+   * de verdad —el `case 'grilla'`, el `reconciliar()` de la bienvenida—, que es el renglón que une el
+   * canal con el resto del programa y el que ninguna otra prueba toca.
+   */
+  espiar?: (mensaje: DelServidor) => void
+  /**
+   * Cómo se abre el socket. Sin esto, el `WebSocket` global. Existe para el banco de pruebas —que
+   * puede enchufar un socket de mentira— y como el lugar por donde entraría un respaldo si algún día
+   * tocara un Electron sin `WebSocket` global (hoy no hay ninguno: ver `abrirSocket`).
    */
   abrirSocket?: (url: string) => SocketEnVivo
   /** El motor al que se le piden las bajadas. El banco arma el suyo, con su base en memoria. */
@@ -194,6 +204,7 @@ export class CanalEnVivo {
     reiniciarLaGrilla()
     olvidarLaPresencia()
     olvidarLosPerfiles()
+    olvidarLasReacciones()
     olvidarLasLlamadas()
     this.cambiarA('sin-conexion')
   }
@@ -293,8 +304,11 @@ export class CanalEnVivo {
     if (this.opciones.abrirSocket) return this.opciones.abrirSocket(url)
     const Constructor = (globalThis as { WebSocket?: new (url: string) => SocketEnVivo }).WebSocket
     if (!Constructor) {
-      // Electron 43 corre sobre Node 22, que lo trae: si esto pasa alguna vez, `index.ts` es el que
-      // tiene que enchufar el paquete `ws` por `abrirSocket`.
+      // Electron 43 corre sobre Node 22, que lo trae, y `index.ts` lo comprueba al arrancar y lo deja
+      // anotado en la bitácora (ver `engancharElCanal`). No hay respaldo con el paquete `ws`: hoy `ws`
+      // está sólo entre las dependencias de desarrollo (lo usa el simulador del banco de pruebas) y
+      // meterlo en lo que se publica sería cargar el instalador para un caso que no existe. Si algún
+      // día existiera, se enchufa por `abrirSocket` sin tocar esta clase.
       throw new Error('Esta versión de Electron no tiene WebSocket: el canal en vivo no puede abrirse.')
     }
     return new Constructor(url)
@@ -442,6 +456,13 @@ export class CanalEnVivo {
   }
 
   private despachar(mensaje: DelServidor): void {
+    if (this.opciones.espiar) {
+      try {
+        this.opciones.espiar(mensaje)
+      } catch (error) {
+        console.error('[vivo] El espía de los frames falló:', error instanceof Error ? error.message : error)
+      }
+    }
     if (this.opciones.despachar) {
       this.opciones.despachar(mensaje)
       return

@@ -30,6 +30,7 @@ import {
   limpiarImposibles,
   limpiarViejas,
   pestanasPendientes,
+  proximoReintento,
 } from './cola'
 import { bajarCambios, type ResultadoBajada } from './bajada'
 import { leerContexto, type ContextoHoja } from './hoja'
@@ -165,6 +166,8 @@ export class MotorDeSincronizacion {
   private apuro: NodeJS.Timeout | null = null
   /** Entró algo en la cola mientras la subida estaba corriendo: hay que dar otra vuelta al terminar. */
   private hayMas = false
+  /** El reloj puntual que despierta a lo que quedó esperando un reintento (ver `programarElReintentoDeLaCola`). */
+  private reintento: NodeJS.Timeout | null = null
   /** Pestañas donde la base rechazó una escritura: se bajan apenas la subida suelta el turno (14.0). */
   private readonly pisadas = new Set<string>()
   private contexto: ContextoHoja | null = null
@@ -202,6 +205,8 @@ export class MotorDeSincronizacion {
   apagar(): void {
     if (this.apuro) clearTimeout(this.apuro)
     this.apuro = null
+    if (this.reintento) clearTimeout(this.reintento)
+    this.reintento = null
     this.hayMas = false
     this.encendido = false
     this.contexto = null
@@ -286,23 +291,51 @@ export class MotorDeSincronizacion {
   }
 
   /**
-   * Una vuelta de subida, y otra si mientras subía entró algo más.
+   * Vueltas de subida hasta que la cola quede vacía.
    *
-   * El motor puede estar en el medio de una bajada o de una importación cuando vence el respiro: en
-   * ese caso se espera el turno en vez de perder el aviso, porque no va a haber otro —la cola avisa
-   * cuando algo entra, no cada tanto—.
+   * Se da otra vuelta por dos motivos distintos, y hacen falta los dos:
+   *
+   *   · Entró algo mientras esta subida corría (`hayMas`). El motor puede estar en el medio de una
+   *     bajada o de una importación cuando vence el respiro: ahí se espera el turno en vez de perder
+   *     el aviso, porque no va a haber otro —la cola avisa cuando algo entra, no cada tanto—.
+   *   · QUEDÓ COLA SIN SUBIR. Una tanda sube como mucho 200 entradas (ver `pendientes` en cola.ts) y
+   *     «Cerrar mes» encola las 2.400 filas del mes nuevo de un saque, todas antes de que venza el
+   *     respiro de los 100 ms: son un solo aviso. Hasta que esto se arregló, esa única vuelta subía
+   *     200 filas y las otras 2.200 se quedaban en `cola_sync` hasta el próximo `encolar` suelto —con
+   *     el reloj de los diez segundos de la 13.x eso se drenaba solo y no se notaba—.
+   *
+   * Se corta si la vuelta no bajó la cuenta: si `ciclarSubida` no pudo hacer nada —el motor apagado,
+   * sin fuente configurada, sin internet— insistir en el acto sería girar en el vacío.
    */
   private async subirLoQueEspera(): Promise<void> {
     for (let vueltas = 0; vueltas < VUELTAS_SEGUIDAS_MAXIMAS; vueltas++) {
       this.hayMas = false
+      const antes = cuantasListasParaSubir()
       await this.esperarTurno()
       await this.ciclarSubida()
-      if (!this.hayMas) return
+      const quedan = cuantasListasParaSubir()
+      if (!this.hayMas && (quedan === 0 || quedan >= antes)) return
+    }
+    // Se acabaron las vueltas seguidas y la cola sigue teniendo cosas: se cede el turno (el respiro de
+    // `apurarSubida` deja respirar al resto del programa) y se sigue vaciando enseguida.
+    this.apurarSubida()
+  }
+
+  /**
+   * Vacía la cola. Devuelve cuántas entradas se subieron.
+   *
+   * Al salir, siempre, se programa el reloj del reintento (14.0): es lo único que despierta a una
+   * entrada que falló y está esperando su turno. Ver `programarElReintentoDeLaCola`.
+   */
+  async ciclarSubida(): Promise<number> {
+    try {
+      return await this.unaVueltaDeSubida()
+    } finally {
+      this.programarElReintentoDeLaCola()
     }
   }
 
-  /** Vacía la cola. Devuelve cuántas entradas se subieron. */
-  async ciclarSubida(): Promise<number> {
+  private async unaVueltaDeSubida(): Promise<number> {
     if (this.trabajando || !this.encendido) {
       // Ocupado: lo que espera no se pierde, se sube en la vuelta siguiente de `subirLoQueEspera`.
       if (this.trabajando) this.hayMas = true
@@ -321,6 +354,46 @@ export class MotorDeSincronizacion {
     // y contestaría null.
     await this.bajarLoQuePisoLaBase()
     return subidas
+  }
+
+  /**
+   * El reloj del reintento (14.0): un `setTimeout` puntual para la entrada que falló y está esperando.
+   *
+   * Una tanda que falla queda `pendiente` con `proximo_intento = ahora + 10 s, 20 s, 40 s…` (ver
+   * `marcarFallidas`), y hasta que esa hora llegue `cuantasListasParaSubir()` no la cuenta. En la 13.x
+   * el que volvía a mirar era el reloj de los diez segundos; sin él, la espera exponencial quedaba
+   * programada contra un reloj que ya no existe: si el error era del servidor y el canal seguía vivo,
+   * nadie volvía a intentarlo y el pago que la persona creía guardado no salía hasta el día siguiente.
+   *
+   * No es un reloj de fondo: se arma para el vencimiento MÁS CERCANO y muere ahí. Y sólo si ese
+   * vencimiento está en el futuro: una entrada ya vencida que la vuelta recién terminada no se llevó
+   * es que algo más la frena (el motor apagado, sin fuente), y volver en cero sería girar sin avanzar.
+   */
+  private programarElReintentoDeLaCola(): void {
+    if (this.reintento) clearTimeout(this.reintento)
+    this.reintento = null
+    if (!this.encendido) return
+    // Se arma en un `finally`, así que puede correr con la subida ya rota (la base cerrada, por
+    // ejemplo): un reloj que no se pudo armar no puede tumbar nada, y sobre todo no puede tapar el
+    // error que venía de abajo.
+    let cuando: string | null = null
+    try {
+      cuando = proximoReintento()
+    } catch (error) {
+      console.error('[motor] No se pudo mirar cuándo vence el próximo reintento:', error)
+      return
+    }
+    if (!cuando) return
+    const espera = Date.parse(cuando) - Date.now()
+    if (!(espera > 0)) return
+    // El milisegundo de más es para que la entrada esté vencida de verdad cuando la vuelta la busque:
+    // `pendientes` compara con `<=` sobre la hora en texto y despertar en el mismo instante exacto
+    // depende de cómo redondee el reloj.
+    this.reintento = setTimeout(() => {
+      this.reintento = null
+      this.apurarSubida()
+    }, espera + 1)
+    this.reintento.unref?.()
   }
 
   /**

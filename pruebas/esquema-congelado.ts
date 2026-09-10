@@ -53,6 +53,8 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   27: '0d45daf3aac857e4',
   // La 28 crea metricas_cache: la caché local de las métricas que ahora calcula el servidor (el podio
   // de sucursales, primero), llenada por el aviso en vivo (ver vivo/grilla.ts; en la 13.2 lo traía el
-  // vigía, que la 14.0 reemplazó por el canal).
+  // vigía, que la 14.0 reemplazó por el canal). El comentario del SQL de esa migración sigue nombrando
+  // a `sincronizacion/vigia.ts`, que ya no existe: las migraciones publicadas no se editan, ni siquiera
+  // sus comentarios, así que queda aclarado acá y no allá.
   28: '3a654b789e365ef4',
 }

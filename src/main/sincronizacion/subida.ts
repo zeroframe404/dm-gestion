@@ -71,6 +71,34 @@ function valorBase(base: FilaBase | undefined, pestana: PestanaSincronizable, ca
 }
 
 /**
+ * El `previo` que se manda, con la regla de comparación de LA BASE y no la de acá (14.0).
+ *
+ * Las dos puntas no limpian igual. Lo que esta computadora conoce sale de `filas_crudas.datos_json`, y
+ * la bajada de todos los días lo guarda pasado por `limpiar()` —recorta los bordes Y cambia el espacio
+ * duro U+00A0 por uno normal, ver `importacion/normalizar.ts`— así que cualquier fila que otra
+ * computadora haya tocado desde la última importación completa está normalizada acá. La base, en
+ * cambio, guarda la celda tal cual llegó y compara con un `trim()` pelado. Hasta la 13.x eso no
+ * molestaba porque el que comparaba era el cliente, con `limpiar` de los dos lados; la 14.0 movió la
+ * decisión al servidor y la normalización se quedó de este lado.
+ *
+ * Sin esto, una celda con un espacio duro adentro —los hay a montones: vienen de la planilla de Google,
+ * que es de dónde salió toda la base— quedaba IMPOSIBLE de escribir desde el programa: se mandaba
+ * «JUAN PEREZ» con espacio normal contra un «JUAN PEREZ» con espacio duro, la base rechazaba, la
+ * pestaña se volvía a bajar y mostraba exactamente el mismo texto, y el intento siguiente perdía igual,
+ * para siempre y sin nada visible que lo explicara.
+ *
+ * La solución es mandar el texto CRUDO de esa celda —el de la lectura que la subida acaba de hacer—
+ * pero sólo cuando es el mismo valor que esta computadora conoce. Si de verdad cambió, `limpiar` de los
+ * dos lados da distinto y se manda lo conocido, que es lo que la base tiene que rechazar. O sea: el
+ * «comparar y escribir» sigue comparando contra lo que la persona vio, y lo único que se ignora es una
+ * diferencia de espacios que en la pantalla no existe.
+ */
+function previoParaLaBase(conocido: string, enLaLectura: unknown): string {
+  const crudo = enLaLectura === null || enLaLectura === undefined ? '' : String(enLaLectura)
+  return limpiar(crudo) === limpiar(conocido) ? crudo : conocido
+}
+
+/**
  * Sube una tanda. Devuelve cuántas entradas se subieron y cuántas celdas rechazó la base.
  *
  * GANA LA BASE (14.0). Cada celda de la que se conoce el valor anterior viaja con él (`previo`) y el
@@ -280,7 +308,7 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
         columna,
         valor: nuevo,
         id: entrada.filaId,
-        ...(anterior === null ? {} : { previo: anterior }),
+        ...(anterior === null ? {} : { previo: previoParaLaBase(anterior, valores[numeroDeFila - 1]?.[columna]) }),
       })
       loQueSeManda.set(claveDeCelda(entrada.pestana, entrada.filaId, columna), { entrada, campo, valor: nuevo })
       algoQueEscribir = true

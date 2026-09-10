@@ -9,7 +9,7 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos, db } from '../src/main/db/base'
 import { ingresar } from '../src/main/servicios/auth'
 import * as base from '../src/main/servicios/baseDeUsuarios'
 import { cambiarClave } from '../src/main/servicios/auth'
-import { ErrorDeNegocio } from '../src/main/servicios/errores'
+import { ErrorDeNegocio, SinConexion } from '../src/main/servicios/errores'
 import {
   conectarAvisoDePermisos,
   exigirEdicion,
@@ -26,6 +26,7 @@ import { establecerSesion, sesion } from '../src/main/servicios/sesion'
 import { AlmacenEnMemoria } from '../src/main/usuarios/almacen'
 import { AlmacenDeCredencial, cifradorDePrueba } from '../src/main/usuarios/credencial'
 import { escribirDocumento, leerDocumento } from '../src/main/usuarios/documento'
+import { CanalEnVivo, usarCanal } from '../src/main/vivo/canal'
 import { normalizarMatriz, permisosPorDefecto, type MatrizPermisos } from '../src/shared/permisos'
 import type { SesionUsuario } from '../src/shared/tipos'
 
@@ -217,6 +218,40 @@ test('exigirVista y exigirEdicion frenan lo que no corresponde y explican por qu
   conSesion(DANIEL, () => {
     assert.equal(exigirEdicion('marketing').rol, 'SUPER_ADMIN')
   })
+})
+
+// El otro candado de `exigir()`, el que la 14.0 puso al lado del rol: «ver sí, tocar no». Sin él
+// vuelve en silencio el comportamiento de la 13.x —se guarda local, la cola espera y al volver internet
+// sube con el `previo` viejo, pisando lo que otro mostrador escribió mientras tanto—, y no hay ninguna
+// otra prueba que lo note: `vivo.prueba.ts` llama a `exigirConexion()` contra la clase, nunca a través
+// de `exigirEdicion`, que es el renglón que los une.
+test('sin canal en vivo se puede mirar pero no tocar', async () => {
+  baseLocal()
+  const recortada = permisosPorDefecto()
+  recortada.EMPLEADO.marketing = 'ninguno'
+  await guardarPermisos(recortada, DANIEL)
+  try {
+    // La computadora sin internet: hay puente configurado (el VPS de la agencia) y el socket cerrado.
+    // No se llama a `arrancar()`, así que no se abre nada: alcanza con que el canal exista y esté caído.
+    usarCanal(new CanalEnVivo({ credenciales: { urlBase: 'http://vps-de-la-agencia.invalido', token: 'x' } }))
+    conSesion(MARIA, () => {
+      // Mirar sigue andando: la copia local está y la gente tiene que poder atender el mostrador.
+      assert.equal(exigirVista('cartera').usuario, 'maria')
+      assert.throws(() => exigirEdicion('cartera'), SinConexion, 'sin canal no se escribe')
+      // El orden importa: a quien NO tiene permiso hay que decirle que no tiene permiso, no que no hay
+      // internet, porque eso lo manda a reiniciar el router por algo que no se le va a arreglar nunca.
+      assert.throws(() => exigirEdicion('marketing'), /No tenés permiso para modificar Marketing/)
+    })
+
+    // Sin puente configurado —la máquina de desarrollo y el resto de este banco— no se exige nada:
+    // ahí no hay servidor al que conectarse y trabar el programa entero no protegería a nadie.
+    usarCanal(new CanalEnVivo({ credenciales: null }))
+    conSesion(MARIA, () => {
+      assert.equal(exigirEdicion('cartera').usuario, 'maria')
+    })
+  } finally {
+    usarCanal(null)
+  }
 })
 
 test('sin sesión abierta no se exige permiso: primero hay que ingresar', () => {

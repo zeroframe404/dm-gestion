@@ -16,6 +16,7 @@ import {
   registrarPago,
 } from '../src/main/servicios/cartera'
 import { ErrorDeNegocio } from '../src/main/servicios/errores'
+import { obtenerMotor, usarFuenteDePrueba } from '../src/main/servicios/sincronizacion'
 import { ErrorDelServidorVps } from '../src/main/vps/fuenteVps'
 import { avisarRechazo, avisosDeRechazos, listarRechazos } from '../src/main/servicios/rechazos'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes, encolar, esperaDeReintento, usarDespertadorDeLaCola } from '../src/main/sincronizacion/cola'
@@ -156,6 +157,58 @@ test('encolar despierta al motor y la subida sale sola, sin reloj', async () => 
     // contra un motor apagado y con la base cerrada.
     usarDespertadorDeLaCola(() => undefined)
   }
+  cerrarBaseDeDatos()
+})
+
+// La otra mitad del despertador: que en el programa de verdad haya uno REGISTRADO. Lo engancha
+// `obtenerMotor()` (servicios/sincronizacion.ts) al armar el motor, y es un renglón solo que se puede
+// borrar sin que se caiga nada —la prueba de acá arriba engancha el suyo a mano, así que no lo notaría—.
+// Si se desengancha, la cuota que se cobra queda en `cola_sync` y no sube hasta que alguien apriete
+// «Sincronizar ahora», con el indicador clavado en «Guardando…».
+test('el motor del programa queda enganchado a la cola al armarse', async () => {
+  const { hoja } = await escenario()
+  usarFuenteDePrueba(hoja)
+  const motor = obtenerMotor()
+  motor.encender()
+  try {
+    const gonzalez = fila(CLIENTES.gonzalez.nombre)
+    editarCelda(gonzalez.filaId, 'telefono', '11-7777-3333', DANIEL)
+    // Nadie llama a nada: si el despertador está enganchado, la subida sale sola.
+    await esperar(400)
+    assert.equal(cuantasPendientes(), 0, 'subió sin que nadie la empujara')
+    assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'TELEFONO'), '11-7777-3333')
+  } finally {
+    motor.apagar()
+    usarFuenteDePrueba(null)
+    // El despertador y el motor son del PROCESO: si quedan enganchados a esta base, las pruebas que
+    // siguen encolan contra un motor apagado y con la base cerrada.
+    usarDespertadorDeLaCola(() => undefined)
+  }
+  cerrarBaseDeDatos()
+})
+
+// Una ráfaga más grande que una tanda. «Cerrar mes» recorre la cartera en un bucle sincrónico y encola
+// las ~2.400 filas del mes nuevo de un saque: caen todas dentro del mismo respiro de 100 ms, así que
+// son UN aviso y una sola vuelta de subida. Como una tanda sube 200 (ver `pendientes` en cola.ts), sin
+// repetir la vuelta el resto se quedaba en la cola —las otras computadoras veían el mes con 200
+// renglones y el resto vacío— hasta el próximo `encolar` suelto: con el reloj de los diez segundos de
+// la 13.x eso se drenaba solo y no se notaba, sin reloj no lo drena nadie.
+test('una ráfaga más grande que una tanda se sube entera, no de a 200', async () => {
+  const { hoja, motor } = await escenario()
+  const cuantas = 250
+  for (let i = 0; i < cuantas; i++) {
+    encolar(
+      { operacion: 'crear', pestana: 'BAJAS AGOSTO', filaId: `RAFAGA${String(i).padStart(6, '0')}`, campos: { nombre: `CLIENTE ${i}`, motivo: 'VENDIO' } },
+      DANIEL,
+    )
+  }
+  assert.equal(cuantasPendientes(), cuantas, 'las 250 entraron de un saque, como en «Cerrar mes»')
+
+  // Un solo aviso, como el que dispara `encolar`: la subida tiene que seguir hasta vaciar la cola.
+  motor.apurarSubida()
+  await esperar(900)
+  assert.equal(cuantasPendientes(), 0, 'la cola tiene que quedar vacía, no con 50 adentro')
+  assert.equal(enLaHoja(hoja, 'BAJAS AGOSTO', 'RAFAGA000249', 'NOMBRE'), 'CLIENTE 249', 'la última de la ráfaga también llegó')
   cerrarBaseDeDatos()
 })
 
@@ -524,6 +577,67 @@ test('un cambio esperando su reintento no frena la bajada de las demás filas', 
   assert.equal(cuantasPendientes(), 0)
   assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'OBS'), 'Lo escribió otro', 'gana la base')
   assert.equal(fila(CLIENTES.gonzalez.nombre).observaciones, 'Lo escribió otro', 'y acá se ve lo que ganó')
+  cerrarBaseDeDatos()
+})
+
+// Y cuando la espera vence, ¿quién la despierta? Desde la 14.0 no hay ningún reloj de fondo: si nadie
+// vuelve a mirar la cola, el pago que falló por un 502 del VPS se queda ahí hasta el día siguiente, con
+// la persona convencida de que lo guardó. Por eso cada vuelta de subida deja armado un reloj puntual
+// hasta el vencimiento más cercano (ver `programarElReintentoDeLaCola` en motor.ts).
+test('lo que quedó esperando un reintento se despierta solo cuando vence la espera', async () => {
+  const { hoja, motor, db } = await escenario()
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  editarCelda(gonzalez.filaId, 'telefono', '11-2222-3333', DANIEL)
+  // Como si la escritura hubiera fallado: sigue pendiente, pero no hay nada para intentar todavía. La
+  // espera de verdad son 10 segundos (ver `esperaDeReintento`); acá se acorta para no dormir la prueba.
+  db.prepare(`UPDATE cola_sync SET intentos = 1, proximo_intento = ?, ultimo_error = 'no se pudo escribir' WHERE estado = 'pendiente'`).run(
+    new Date(Date.now() + 300).toISOString(),
+  )
+
+  // Esta vuelta no sube nada —la espera no venció— y es la que deja armado el reloj.
+  await motor.ciclarSubida()
+  assert.equal(cuantasPendientes(), 1, 'todavía está esperando su turno')
+
+  // Y nadie la empuja: no hay reloj de subida, no entra nada más en la cola, el canal no avisa nada.
+  await esperar(800)
+  assert.equal(cuantasPendientes(), 0, 'al vencer la espera la subida sale sola')
+  assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'TELEFONO'), '11-2222-3333')
+  cerrarBaseDeDatos()
+})
+
+// El «comparar y escribir» compara del lado de la BASE, y la base no limpia como esta computadora:
+// ella recorta los bordes y nada más, acá `limpiar()` además cambia el espacio duro U+00A0 por uno
+// normal (la base entera salió de una planilla de Google, que los arrastra de a montones). Sin igualar
+// la regla, esa celda quedaba imposible de escribir: se mandaba «PAGA EN EFECTIVO» con espacio normal
+// contra el mismo texto con espacio duro, la base rechazaba, se bajaba la pestaña y se veía exactamente
+// el mismo texto, y el intento siguiente perdía igual, para siempre y sin nada que lo explicara.
+//
+// La bajada es la que deja la copia local así: la importación completa guarda `datos_json` con las
+// celdas tal cual (ver `crudo()` en el importador) y la bajada de todos los días las guarda limpias, o
+// sea que cualquier fila que otra computadora haya tocado desde la última importación entra en este
+// caso. Por eso acá se baja con `ciclarBajada()` y no con la completa.
+test('una celda con un espacio duro se puede escribir igual: no es un valor distinto', async () => {
+  const { hoja, motor, db } = await escenario()
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  const columnaId = hoja.columnaIdDe('AGOSTO')
+  const numeroDeFila = hoja.filasDe('AGOSTO').findIndex((f) => (f[columnaId] ?? '').trim() === gonzalez.filaId) + 1
+  const columnaObs = hoja.encabezadosDe('AGOSTO').findIndex((e) => e.trim() === 'OBS')
+
+  // Así vienen los valores migrados desde Google. Al bajar, la copia local lo guarda con el espacio
+  // normal, y en la pantalla los dos textos son el mismo.
+  hoja.editarCelda('AGOSTO', numeroDeFila, columnaObs, 'PAGA\u00a0EN EFECTIVO')
+  await motor.ciclarBajada()
+  const enLaCopiaLocal = () =>
+    (JSON.parse((db.prepare(`SELECT datos_json FROM filas_crudas WHERE fila_id = ?`).get(gonzalez.filaId) as { datos_json: string }).datos_json) as Record<string, string>)['OBS'] ?? ''
+  assert.equal(fila(CLIENTES.gonzalez.nombre).observaciones, 'PAGA EN EFECTIVO')
+  assert.equal(enLaCopiaLocal(), 'PAGA EN EFECTIVO', 'la copia local lo guardó con el espacio normal…')
+  assert.equal(hoja.filasDe('AGOSTO')[numeroDeFila - 1]?.[columnaObs], 'PAGA\u00a0EN EFECTIVO', '…y la base sigue con el duro')
+
+  // Alguien corrige la observación: tiene que escribirse, no rebotar contra un valor que se ve igual.
+  editarCelda(gonzalez.filaId, 'observaciones', 'PAGA CON DEBITO', DANIEL)
+  await motor.ciclarSubida()
+  assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'OBS'), 'PAGA CON DEBITO', 'el cambio llega a la base')
+  assert.equal(cuantasPendientes(), 0)
   cerrarBaseDeDatos()
 })
 

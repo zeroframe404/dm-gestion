@@ -24,6 +24,7 @@ import { detenerSincronizacion, usarSituacionDelCanal } from './servicios/sincro
 import { canal } from './vivo/canal'
 import { alCambiarLaSesion } from './servicios/sesion'
 import { detenerActualizaciones, iniciarActualizaciones } from './servicios/updater'
+import { anotarEvento } from './sincronizacion/cola'
 import { AlmacenDeCredencial } from './usuarios/credencial'
 import { AlmacenGitHub, REPO_DATOS, TOKEN_DATOS, TOKEN_DATOS_ANTERIOR } from './usuarios/github'
 import { AlmacenVps } from './usuarios/vps'
@@ -250,6 +251,19 @@ function prepararBaseDeUsuarios(): void {
  * necesita el motor.
  */
 function engancharElCanal(): void {
+  // La guardia del arranque (14.0). El canal se abre con el `WebSocket` global, que Electron 43 trae
+  // porque corre sobre Node 22. Si algún día un Electron no lo trajera, `CanalEnVivo.abrirSocket`
+  // lanza, `conectar()` lo atrapa y programa otra reconexión: quedaría un bucle cada 30 segundos que
+  // no puede funcionar nunca, con todos los botones de guardar apagados y NI UNA LÍNEA que lo explique
+  // —que es lo peor que puede pasarle a un soporte por teléfono—. Se comprueba una sola vez, acá, y se
+  // deja dicho en la bitácora y en la consola.
+  if (typeof (globalThis as { WebSocket?: unknown }).WebSocket !== 'function') {
+    const motivo =
+      'Esta versión de Electron no trae WebSocket: el canal en vivo no puede abrirse y, sin canal, el ' +
+      'programa deja mirar pero no deja guardar. Hay que actualizar el programa.'
+    console.error(`[vivo] ${motivo}`)
+    anotarEvento('conexion', motivo, { conError: true })
+  }
   usarSituacionDelCanal(() => canal().estado().situacion)
   alCambiarLaSesion((quien) => {
     if (quien) {

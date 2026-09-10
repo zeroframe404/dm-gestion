@@ -259,8 +259,10 @@ export class PuenteDeMensajes {
    * algo; se conserva porque el servidor lo sigue soportando y porque una computadora sin canal (un
    * VPS anterior a la 14.0) tiene que poder volver a ese camino.
    *
-   * `senal` es la que se dispara al cerrar sesión o al cerrar la aplicación: sin ella, apagar el
-   * programa con un pedido colgado esperaría a que termine.
+   * `senal` NO la pasa nadie hoy (14.0): era la del bucle del cartero, que se disparaba al cerrar
+   * sesión para no dejar colgado el long-poll de 25 segundos. Sin bucle y con `espera: 0` no hay nada
+   * colgado que cortar. Se conserva el parámetro porque es lo que haría falta para volver al long-poll
+   * contra un servidor anterior a la 14.0, que es el otro motivo por el que la espera sigue existiendo.
    */
   async novedades(
     actor: ActorDelPuente,

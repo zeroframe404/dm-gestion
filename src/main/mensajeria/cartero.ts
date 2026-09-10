@@ -54,6 +54,26 @@ let quienSoy: SesionUsuario | null = null
 let apuro: ReturnType<typeof setTimeout> | null = null
 
 /**
+ * El pedido de novedades que está en vuelo, por persona (14.0), y si mientras corría llegó otro aviso.
+ *
+ * UN SOLO PEDIDO A LA VEZ. Hasta la 13.x esto lo garantizaba el bucle del cartero (`corriendo`): la
+ * vuelta siguiente no salía hasta que terminara la anterior. Ahora el pedido lo dispara cada frame
+ * `{t:'mensajes'}` del canal, y dos frames con 50 ms de diferencia —un mensaje y el zumbido que va
+ * atrás— largaban dos pedidos encimados. Como `GET /mensajes/novedades` devuelve TODO lo que todavía
+ * no tiene acuse y el acuse se manda recién al final, los dos traían el mismo mensaje: dos carteles de
+ * Windows por un mensaje, la ventana sacudida dos veces y el sonido del zumbido pisado consigo mismo.
+ *
+ * El aviso que llega mientras hay uno en vuelo no se pierde ni larga otro pedido: se anota y se da UNA
+ * vuelta más al terminar, que es lo mismo que hace `hayMas` en `motor.apurarSubida`.
+ *
+ * Va por persona y no en una sola variable por el banco de pruebas: en el programa hay una sesión por
+ * proceso, pero en las pruebas dos computadoras comparten el proceso y un candado único haría que el
+ * pedido de Beto se colgara del de Ana y volviera sin haber traído lo suyo.
+ */
+const enVuelo = new Map<number, Promise<void>>()
+const hayQueVolver = new Set<number>()
+
+/**
  * Acusa lo que ya llegó y vacía la cola de salida (14.0: la mitad de la vuelta que MANDA).
  *
  * Lanza si el servidor o la red fallaron: quien la llama decide qué hacer con eso. Los mensajes que el
@@ -108,11 +128,36 @@ export async function despacharSalida(actor: SesionUsuario): Promise<void> {
  * en vivo. Hasta la 13.x este mismo pedido se dejaba colgado 25 segundos esperando que apareciera algo;
  * ésa era la forma de enterarse sin websockets, y es justo lo que el canal vino a reemplazar.
  *
+ * De a UNO por persona: si ya hay un pedido en vuelo, este aviso se le suma como una vuelta más al
+ * terminar en vez de largar otro encima (ver `enVuelo`, arriba).
+ *
  * Lanza si el servidor o la red fallaron. Lo que se perdió por eso no se pierde para siempre: el
  * pedido no acusa nada que no haya guardado, así que el aviso siguiente —o la reconciliación de la
  * reconexión— lo vuelve a traer.
  */
-export async function traerNovedadesDeMensajes(actor: SesionUsuario): Promise<void> {
+export function traerNovedadesDeMensajes(actor: SesionUsuario): Promise<void> {
+  const enCurso = enVuelo.get(actor.id)
+  if (enCurso) {
+    // Ya hay uno en vuelo: se le suma otra vuelta al terminar y se espera ésa. Quien llamó recién no
+    // se queda con el pedido viejo: la vuelta de más sale después de su aviso.
+    hayQueVolver.add(actor.id)
+    return enCurso
+  }
+  const vuelta = (async () => {
+    try {
+      await unaTraida(actor)
+      // Cada vuelta de más se hace por UN aviso o por veinte: la bandera se prende una sola vez.
+      while (hayQueVolver.delete(actor.id)) await unaTraida(actor)
+    } finally {
+      enVuelo.delete(actor.id)
+      hayQueVolver.delete(actor.id)
+    }
+  })()
+  enVuelo.set(actor.id, vuelta)
+  return vuelta
+}
+
+async function unaTraida(actor: SesionUsuario): Promise<void> {
   const puente = puenteDeMensajes()
   if (!puente) return
   const yo = actorDelPuente(actor)

@@ -249,6 +249,22 @@ export function cuantasListasParaSubir(): number {
 }
 
 /**
+ * Cuándo vence la espera del reintento más cercano, o null si no hay ninguna esperando (14.0).
+ *
+ * Lo usa el motor para armar un reloj puntual hasta esa hora: sin el `setInterval` de los diez
+ * segundos, la espera exponencial de `marcarFallidas` no la despertaba nadie. Devuelve el texto ISO
+ * tal como está guardado, que es con el que compara `pendientes`.
+ */
+export function proximoReintento(): string | null {
+  const fila = db()
+    .prepare(
+      `SELECT MIN(proximo_intento) AS cuando FROM cola_sync WHERE estado = 'pendiente' AND proximo_intento IS NOT NULL`,
+    )
+    .get() as { cuando: string | null }
+  return fila.cuando
+}
+
+/**
  * Filas con cambios locales sin subir: la bajada no las toca para no pisarlos. Cuentan también las
  * entradas dadas por perdidas (`fallido`, 12.7): hasta la 12.6 sólo contaban las pendientes, así que
  * la bajada pisaba la fila de una entrada fallida y, al apretar «Volver a intentar», el valor viejo

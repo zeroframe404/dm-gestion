@@ -31,7 +31,7 @@ import { planillaDelMes } from '../src/main/servicios/cartera'
 import { SinConexion } from '../src/main/servicios/errores'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { CanalEnVivo } from '../src/main/vivo/canal'
-import { aplicarFotoDeLaGrilla, reiniciarLaGrilla } from '../src/main/vivo/grilla'
+import { reiniciarLaGrilla } from '../src/main/vivo/grilla'
 import type { DelServidor } from '../src/main/vivo/protocolo'
 import { FuenteVps } from '../src/main/vps/fuenteVps'
 import type { SesionUsuario } from '../src/shared/tipos'
@@ -126,18 +126,21 @@ async function unaComputadora(
     credenciales: { urlBase: simulador.url, token: TOKEN },
     version: '14.0.0',
     motor: () => motor,
-    despachar: (mensaje) => {
-      recibidos.push(mensaje)
-      if (!aplicaLoQueLlega) return
-      if (mensaje.t !== 'bienvenida' && mensaje.t !== 'grilla') return
-      // El `en(db)` es lo único que este despacho agrega al del programa: allá hay una base por
-      // computadora y acá una sola para las dos. Lo que sigue —comparar la foto y bajar lo distinto—
-      // es exactamente lo que hace `canal.reconciliar`.
-      usarBaseDeDatos(db)
-      void aplicarFotoDeLaGrilla(mensaje, motor).catch((error: unknown) => {
-        console.error('[prueba] no se pudo aplicar la foto:', error)
-      })
-    },
+    // La que APLICA usa el reparto de verdad del canal (`espiar` mira y deja pasar): así lo que esta
+    // prueba verifica es el renglón que une el socket con el resto del programa —el `case 'grilla'` y
+    // el `reconciliar()` de la bienvenida—, que es justo lo que no prueba nadie más. Con un `despachar`
+    // propio, que lo REEMPLAZA, se puede borrar `reconciliar` entero y la prueba sigue en verde.
+    //
+    // Lo único que el espía agrega al programa es el `en(db)`: allá hay una base por computadora y acá
+    // una sola para las dos, y el reparto que viene atrás tiene que encontrar la de esta computadora.
+    ...(aplicaLoQueLlega
+      ? {
+          espiar: (mensaje: DelServidor) => {
+            recibidos.push(mensaje)
+            usarBaseDeDatos(db)
+          },
+        }
+      : { despachar: (mensaje: DelServidor) => recibidos.push(mensaje) }),
   })
   return { quien, db, fuente, motor, canal, recibidos }
 }

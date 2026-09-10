@@ -200,8 +200,13 @@ export function alReaparecerEnLaHoja(base: BaseDeDatos, filaId: string, tipo: Ti
 
 /**
  * Llegó (o se confirmó) en BAJAS una baja hecha desde la aplicación: la cuota que nombra su `_ID`
- * sale de la planilla del mes también en esta computadora, aunque su fila todavía esté en la hoja
- * (el borrado de la planilla viaja un minuto después que el alta en BAJAS, ver ESPERA_DE_AGRUPADO_MS).
+ * sale de la planilla del mes también en esta computadora, aunque su fila todavía esté en la hoja.
+ *
+ * Hace falta porque las dos mitades de una baja —el alta en BAJAS y el borrado de la fila del mes—
+ * llegan a la otra computadora por separado: la bajada las trae pestaña por pestaña, y entre una y
+ * otra la persona ve al cliente todavía en la planilla del mes. (Hasta la 13.x había además un minuto
+ * de distancia porque los borrados esperaban su ventana de agrupado, `ESPERA_DE_AGRUPADO_MS`; esa
+ * espera se fue en la 14.0 y las dos entradas salen en la misma tanda, pero siguen bajando aparte.)
  *
  * Sólo la cuota DEL MES DE LA BAJA: la baja de una póliza que no estaba en el mes abierto (ver
  * `darDeBajaPoliza`) lleva en el _ID la fila donde nació la póliza, que es de un mes viejo, y ése no

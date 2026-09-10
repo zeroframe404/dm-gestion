@@ -626,6 +626,14 @@ tenían las pantallas (las dos campanas, el contexto de tareas y el panel de Sin
 motor; la bajada, porque el servidor avisó. En una jornada entera la aplicación no le pregunta nada al
 servidor si nadie escribe.
 
+Lo único que sigue teniendo hora es el REINTENTO: una tanda que falló (un 502 del VPS mientras se
+reinicia, por ejemplo) espera 10 s, 20 s, 40 s… antes de volver a intentar, y al terminar cada subida
+el motor deja armado un `setTimeout` puntual hasta ese vencimiento. No es un reloj de fondo —muere ni
+bien se usa— pero hace falta: sin él, el pago que falló se quedaría en la cola hasta que alguien
+volviera a escribir algo, con la persona convencida de que lo guardó. Y mientras quede cola sin subir
+la vuelta se repite, porque una tanda sube como mucho 200 entradas y «Cerrar mes» encola unas 2.400 de
+un saque.
+
 **«Ver sí, tocar no».** Sin canal no se escribe. `canal().exigirConexion()` es el único portero, lo
 llama `servicios/permisos.ts` en cada operación que modifica algo, y la pantalla acompaña: banner rojo
 «Sin conexión», ámbar «Reconectando…» y los botones de guardar apagados con el motivo en el globito. La
