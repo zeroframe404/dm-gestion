@@ -264,6 +264,33 @@ test('la renovación con número nuevo hecha en OTRA computadora tampoco es un a
   db.close()
 })
 
+test('dos altas nuevas sin número de póliza, patente ni documento no se confunden entre sí', async () => {
+  // Una venta nueva típica: la compañía todavía no emitió el número de póliza y el cliente recién
+  // cargado no tiene el DNI puesto en la planilla del mes. Sin ninguno de los tres datos que arma la
+  // clave escrita (`claveEscrita`), dos altas SIN NINGUNA RELACIÓN entre sí pisaban la misma identidad
+  // («X:||») y `unaPorIdentidad` se quedaba con una sola: el podio de Sarandí mostraba menos altas de
+  // las que la sucursal realmente había hecho (issue #103, «Contador»).
+  const db = baseDePrueba()
+  usarBaseDeDatos(db)
+  const ahora = ahoraIso()
+  const insertar = db.prepare(
+    `INSERT INTO cuotas_mes (fila_id, periodo, pestana, cliente_nombre, sucursal_texto, creado_en, actualizado_en)
+     VALUES (?, ?, ?, ?, 'Sarandí', ?, ?)`,
+  )
+  // Julio sólo hace falta para que haya «mes anterior»: ningún dato suyo se relaciona con las altas de agosto.
+  insertar.run('f-julio-base', '2026-07', 'JULIO', 'CLIENTE DE JULIO', ahora, ahora)
+  insertar.run('f-agosto-uno', '2026-08', 'AGOSTO', 'ROMERO ESTEBAN EZEQUIEL', ahora, ahora)
+  insertar.run('f-agosto-dos', '2026-08', 'AGOSTO', 'CAÑETE SEBASTIAN SILVESTRE', ahora, ahora)
+
+  const detalle = altasDelMes('2026-08', 'Sarandí')
+  assert.deepEqual(
+    detalle.filas.map((f) => f.cliente).sort(),
+    ['CAÑETE SEBASTIAN SILVESTRE', 'ROMERO ESTEBAN EZEQUIEL'],
+    'las dos altas cuentan, aunque ninguna tenga número de póliza, patente ni documento',
+  )
+  db.close()
+})
+
 test('cambiar de vehículo SÍ es un alta; cambiar de compañía con el mismo auto, no', async () => {
   // Otro auto en la misma compañía: es otro riesgo, la póliza del auto viejo se fue y entró una nueva.
   const otroAuto = await baseConGonzalezCambiadaEnAgosto({ DOMINIO: 'AG333NN', 'NRO DE POLIZA': '3030303' })

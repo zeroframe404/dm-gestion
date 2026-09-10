@@ -74,6 +74,7 @@ interface FilaReconocible {
   numero_poliza: string | null
   patente: string | null
   documento: string | null
+  cliente_nombre: string | null
 }
 
 /**
@@ -82,9 +83,22 @@ interface FilaReconocible {
  * aplicación— porque la hoja la escriben cinco personas: «AB 123 CD» y «AB123CD» son la misma patente
  * y «12.345.678» el mismo DNI, y comparando el texto pelado el mismo auto cambiaba de nombre de un mes
  * al otro y entraba como alta.
+ *
+ * Sin número de póliza, patente NI documento —una venta nueva a la que la compañía todavía no le dio
+ * número, de un cliente que todavía no tiene el DNI cargado en la planilla— la clave quedaba `X:||`
+ * para CUALQUIER fila así, de cualquier cliente y cualquier sucursal: dos altas genuinas sin ninguna
+ * relación entre sí pisaban la misma identidad y `unaPorIdentidad` se quedaba con una sola, así que el
+ * podio mostraba menos altas de las que la agencia realmente hizo (issue #103). Con el nombre de
+ * respaldo dos clientes distintos ya no se confunden; dos filas del mismo cliente con los tres datos
+ * vacíos —mucho menos común— siguen colisionando, pero ya estaban mal antes de este cambio.
  */
 function claveEscrita(fila: FilaReconocible): string {
-  return `X:${normalizarNumeroPoliza(fila.numero_poliza)}|${normalizarPatente(fila.patente)}|${normalizarDocumento(fila.documento)}`
+  const numero = normalizarNumeroPoliza(fila.numero_poliza)
+  const patente = normalizarPatente(fila.patente)
+  const documento = normalizarDocumento(fila.documento)
+  if (numero || patente || documento) return `X:${numero}|${patente}|${documento}`
+  const nombre = normalizarTexto(fila.cliente_nombre)
+  return nombre ? `N:${nombre}` : `X:${numero}|${patente}|${documento}`
 }
 
 /**
