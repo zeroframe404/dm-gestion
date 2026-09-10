@@ -12,6 +12,10 @@
 // Cuando salen dos comprobantes se mandan como DOS trabajos de impresión separados, uno después del
 // otro, y no como un trabajo de dos copias: la guillotina de la térmica corta al terminar cada
 // trabajo, así que un trabajo de dos copias devolvía los dos tickets pegados en la misma tira.
+//
+// El comprobante se compone más angosto que el rollo a propósito: el cabezal de una térmica no llega
+// hasta el borde del papel y todo lo que se dibuje más allá no se imprime, no se corta prolijo. Ver
+// `anchoUtilDelTicket`.
 import { BrowserWindow } from 'electron'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -324,40 +328,102 @@ function linea(etiqueta: string, valor: string): string {
 }
 
 /**
+ * Una térmica no imprime todo el ancho del rollo: en una POS-80 el papel mide 80 mm pero el cabezal
+ * cubre unos 72, y lo que se dibuje más allá no sale. Se reservan 10 —los 8 que el cabezal no alcanza
+ * más 2 de resguardo, porque cada driver corre el margen a su gusto— y toda esa reserva queda del lado
+ * derecho: el texto arranca pegado a la izquierda en vez de ir centrado.
+ *
+ * Centrado, la reserva se repartía entre los dos lados y el final de cada línea caía justo sobre el
+ * borde que se recorta. Eso es lo que en Lanús dejaba la hora sin los minutos y el teléfono cortado a
+ * la mitad.
+ */
+const RESERVA_DEL_CABEZAL_MM = 10
+
+/** Lo que el texto se despega del borde izquierdo, que tampoco imprime desde el punto cero. */
+export const SANGRIA_DEL_TICKET_MM = 1.5
+
+/** El ancho de texto que entra de verdad en un papel de `anchoMm`. */
+export function anchoUtilDelTicket(anchoMm: number): number {
+  return Math.max(anchoMm - RESERVA_DEL_CABEZAL_MM - SANGRIA_DEL_TICKET_MM, 30)
+}
+
+/** Courier New es monoespaciada: cada carácter ocupa 0,6 em. De ahí sale, exacta, cuánto mide una línea. */
+const ANCHO_DE_CARACTER_EM = 0.6
+const MM_POR_PUNTO = 25.4 / 72
+
+/** Los milímetros que ocupa una línea de `caracteres` en Courier New de `puntos`. */
+export function anchoDeLineaMm(caracteres: number, puntos: number): number {
+  return caracteres * ANCHO_DE_CARACTER_EM * puntos * MM_POR_PUNTO
+}
+
+/**
+ * Los datos de la agencia —provincia y teléfono, CUIT, inicio de actividades— tienen que entrar en una
+ * línea cada uno: partidos al medio se leen como si el número de inscripción fuera otro dato. Como la
+ * tipografía es monoespaciada la cuenta es exacta, así que en vez de fijar 8 pt y cruzar los dedos se
+ * achica lo justo, de a medio punto y nunca por debajo de 6: más chico que eso el papel térmico ya no
+ * se lee, y ahí es preferible que la línea baje de renglón antes que salir ilegible.
+ */
+export function puntosDelEncabezado(utilMm: number, caracteresDeLaLineaMasLarga: number): number {
+  const MAXIMO = 8
+  const MINIMO = 6
+  if (caracteresDeLaLineaMasLarga <= 0) return MAXIMO
+  const justo = utilMm / (caracteresDeLaLineaMasLarga * ANCHO_DE_CARACTER_EM * MM_POR_PUNTO)
+  const enPasosDeMedioPunto = Math.floor(justo * 2) / 2
+  return Math.min(MAXIMO, Math.max(MINIMO, enPasosDeMedioPunto))
+}
+
+/**
  * El ticket en HTML, con la forma del comprobante que la agencia ya usaba. Sin logo de imagen a
  * propósito: en una térmica de 80 mm el texto sale nítido y una imagen depende del driver. Ancho en
  * milímetros para que el navegador lo componga a escala real.
  *
  * Fijo: los datos de la agencia (provincia, CUIT, inicio de actividades), la sección/ramo y las dos
  * leyendas del pie. Variable: la dirección y el teléfono de la sucursal que cobró y todo lo del pago.
+ *
+ * Nada queda pegado al borde derecho y nada se sale del ancho útil: lo que no entra baja de renglón,
+ * que en un ticket se lee igual, mientras que lo que se pasa del cabezal directamente no existe.
  */
-function htmlDelTicket(datos: DatosDeTicket, anchoMm: number): string {
-  const util = Math.max(anchoMm - 6, 30)
+export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number): string {
+  const util = anchoUtilDelTicket(anchoMm)
+  // El teléfono va en un bloque que no se parte: si la línea no entra, baja entero al renglón
+  // siguiente. Medio número de teléfono impreso es peor que ninguno.
+  const provinciaYTelefono = datos.telefono ? `${AGENCIA.provincia} - Tel: ${datos.telefono}` : AGENCIA.provincia
+  const provinciaYTelefonoHtml = datos.telefono
+    ? `${escapar(AGENCIA.provincia)} - <span class="junto">Tel: ${escapar(datos.telefono)}</span>`
+    : escapar(AGENCIA.provincia)
+  const puntosDeAgencia = puntosDelEncabezado(
+    util,
+    Math.max(provinciaYTelefono.length, AGENCIA.cuit.length, AGENCIA.inicioDeActividades.length),
+  )
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Comprobante</title><style>
   @page { margin: 0; }
-  body { width: ${util}mm; margin: 0 auto; padding: 3mm 0 6mm; font-family: "Courier New", monospace; font-size: 10pt; line-height: 1.35; color: #000; }
+  /* Sin centrar y con sangría a la izquierda: la reserva del cabezal queda toda del lado que se recorta. */
+  body { width: ${util}mm; margin: 0 0 0 ${SANGRIA_DEL_TICKET_MM}mm; padding: 3mm 0 6mm; font-family: "Courier New", monospace; font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
   p { margin: 0; }
-  /* Los datos de la agencia van más chicos que el resto para que entren en una línea de 80 mm. */
-  .encabezado { font-size: 8pt; }
+  /* Los datos de la agencia van más chicos que el resto: cuánto, lo decide el ancho del papel. */
+  .encabezado { font-size: ${puntosDeAgencia}pt; }
   .encabezado .direccion { font-weight: bold; font-size: 10pt; }
   hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
-  .cuando { display: flex; justify-content: space-between; gap: 2mm; font-size: 9pt; }
+  /* Fecha y hora salen una al lado de la otra desde la izquierda. Antes iban separadas a los extremos
+     («space-between»), que dejaba la hora justo sobre el borde que la térmica no imprime. */
+  .cuando { display: flex; flex-wrap: wrap; gap: 0 6mm; font-size: 9pt; }
+  .junto { white-space: nowrap; }
   .numero { margin-top: .5mm; font-weight: bold; text-align: center; }
-  .dato { padding: .3mm 0; word-break: break-word; }
+  .dato { padding: .3mm 0; }
   .vencimiento { margin-top: 2mm; font-weight: bold; text-align: center; }
   .pie { margin-top: 3mm; font-size: 7.5pt; }
   .pie .cuidado { margin-top: 2mm; font-weight: bold; text-align: center; }
 </style></head><body>
   <div class="encabezado">
     ${datos.direccion ? `<p class="direccion">${escapar(datos.direccion)}</p>` : ''}
-    <p>${escapar(datos.telefono ? `${AGENCIA.provincia} - Tel: ${datos.telefono}` : AGENCIA.provincia)}</p>
+    <p>${provinciaYTelefonoHtml}</p>
     <p>${escapar(AGENCIA.cuit)}</p>
     <p>${escapar(AGENCIA.inicioDeActividades)}</p>
   </div>
   <p class="numero">${escapar(datos.numero)}</p>
   <hr>
-  <div class="cuando"><span>FECHA: ${escapar(datos.fecha)}</span><span>HORA: ${escapar(datos.hora)}</span></div>
+  <div class="cuando"><span class="junto">FECHA: ${escapar(datos.fecha)}</span><span class="junto">HORA: ${escapar(datos.hora)}</span></div>
   <hr>
   ${linea('Importe', datos.importe)}
   ${linea('Periodo', datos.periodo)}

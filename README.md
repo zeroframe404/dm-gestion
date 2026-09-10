@@ -1157,6 +1157,13 @@ prueba. Con el ticket activo, cada pago registrado imprime en silencio un compro
 «SEGUROS DANIEL MARTÍNEZ», la sucursal, la fecha y hora, el cliente, la patente, la póliza, el importe,
 el medio y quién atendió.
 
+**El comprobante se compone más angosto que el rollo.** Una térmica no imprime hasta el borde del
+papel: en una POS-80 el cabezal cubre unos 72 de los 80 mm, y lo que se dibuja más allá no sale
+—no sale cortado prolijo, directamente no está—. El ticket reserva esos 8 mm más 2 de resguardo, toda
+la reserva del lado derecho, y nada queda pegado a ese borde: fecha y hora arrancan las dos desde la
+izquierda y el teléfono baja entero de renglón antes que partirse por la mitad. El «ancho del papel»
+de la pantalla es el del rollo, no el del texto.
+
 **El ticket nunca puede frenar un cobro**: se manda a imprimir en segundo plano y, si falla, el pago ya
 está guardado y el motivo queda anotado en esa misma pantalla. Sin impresora configurada no se imprime
 nada y todo funciona igual.
