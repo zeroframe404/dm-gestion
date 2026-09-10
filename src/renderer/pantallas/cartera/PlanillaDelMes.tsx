@@ -12,20 +12,57 @@ import {
   type ColorAlerta,
 } from '../../../shared/semaforo'
 import { coincideAlguno, mismoTextoDeFiltro } from '../../../shared/filtros'
+import { claveDeCelda } from '../../../shared/presencia'
 import { NOMBRE_RAMA, ramaDeVehiculo, type Rama } from '../../../shared/ramas'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { CampoEditable, FilaCartera, PlanillaDelMes as DatosPlanilla } from '../../../shared/tipos'
 import { DialogoRechazo } from '../../componentes/DialogoRechazo'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
+import { MarcaDePresencia, motivoDelBloqueo } from '../../componentes/Presencia'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { Alerta as Aviso, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
+import { useBloqueoDe, useReportarFoco } from '../../contexto/Presencia'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoBaja } from './DialogoBaja'
 import { DialogoPago } from './DialogoPago'
 import { PanelDetalle } from './PanelDetalle'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
+
+/**
+ * De qué campo lógico es cada columna que se puede editar.
+ *
+ * Existe por el glow de la 14.0: el foco de una celda viaja como `celda:<filaId>:<campo>` y tiene que
+ * ser el mismo texto en las cinco computadoras, así que no puede ser el id de la columna —que es de
+ * esta pantalla— sino el campo. Cuatro no coinciden («vencimiento» es `diaVencimiento`, «póliza» es
+ * `numeroPoliza», «desde» y «hasta» son `vigenciaDesde` y `vigenciaHasta`), y antes de esto el par
+ * vivía suelto en cada declaración de columna. Acá está una sola vez y `celdaEditable` lo lee de acá.
+ */
+const CAMPO_DE_LA_COLUMNA = {
+  nombre: 'nombre',
+  sucursal: 'sucursal',
+  telefono: 'telefono',
+  documento: 'documento',
+  vencimiento: 'diaVencimiento',
+  cuota: 'cuota',
+  formaPago: 'formaPago',
+  aviso: 'aviso',
+  vehiculo: 'vehiculo',
+  marca: 'marca',
+  modelo: 'modelo',
+  patente: 'patente',
+  anio: 'anio',
+  cobertura: 'cobertura',
+  compania: 'compania',
+  poliza: 'numeroPoliza',
+  propuesta: 'propuesta',
+  desde: 'vigenciaDesde',
+  hasta: 'vigenciaHasta',
+  observaciones: 'observaciones',
+} as const satisfies Record<string, CampoEditable>
+
+type ColumnaEditable = keyof typeof CAMPO_DE_LA_COLUMNA
 
 /** Fila con su alerta y su rama ya calculadas: se calculan una vez por render, no por celda. */
 interface FilaConAlerta {
@@ -219,6 +256,26 @@ export function PlanillaDelMes() {
     postergar: () => editando !== null || pagoDe !== null || bajaDe !== null || rechazoDe !== null || cerrando,
   })
 
+  /**
+   * El foco de la 14.0: mientras esta computadora tiene una celda abierta, las otras cuatro la ven
+   * con el anillo de este color y no la pueden abrir.
+   *
+   * Va en un efecto colgado de `editando` y no en cada llamador porque los caminos de salida son
+   * cuatro —Enter, Escape, perder el foco, y el guardado que falla y muestra el error— y en todos
+   * `editando` vuelve a `null` antes de cualquier `await`. Con la limpieza escrita a mano en los
+   * cuatro, el que se olvidara dejaría a esta computadora reportando para siempre que está editando
+   * una celda que ya cerró, y a los demás sin poder tocarla nunca más.
+   */
+  const reportarFoco = useReportarFoco()
+  const periodo = datos?.periodo ?? null
+  useEffect(() => {
+    if (!editando || !periodo) {
+      reportarFoco(null)
+      return
+    }
+    reportarFoco({ tipo: 'celda', pestana: periodo, filaId: editando.filaId, campo: editando.campo, editando: true })
+  }, [reportarFoco, editando, periodo])
+
   /** Reemplaza una fila en memoria después de editarla, sin recargar las 2.300. */
   const reemplazar = useCallback((fila: FilaCartera) => {
     setDatos((previo) => (previo ? { ...previo, filas: previo.filas.map((f) => (f.filaId === fila.filaId ? fila : f)) } : previo))
@@ -410,18 +467,23 @@ export function PlanillaDelMes() {
   // --- Columnas -------------------------------------------------------------
 
   const columnas = useMemo<Array<ColumnaTabla<FilaConAlerta>>>(() => {
-    const celdaEditable = (campo: CampoEditable, opciones?: string[]) => (entrada: FilaConAlerta) => (
-      <Celda
-        fila={entrada.fila}
-        campo={campo}
-        opciones={opciones}
-        editando={editando?.filaId === entrada.fila.filaId && editando.campo === campo}
-        soloLectura={soloLectura}
-        alEditar={() => setEditando({ filaId: entrada.fila.filaId, campo })}
-        alCancelar={() => setEditando(null)}
-        alGuardar={(valor) => void guardarCelda(entrada.fila.filaId, campo, valor)}
-      />
-    )
+    // Se le pasa el ID DE LA COLUMNA y el campo sale de `CAMPO_DE_LA_COLUMNA`: así el id que se
+    // declara al lado y el campo que viaja en el foco no pueden separarse (ver el comentario del mapa).
+    const celdaEditable = (columna: ColumnaEditable, opciones?: string[]) => {
+      const campo: CampoEditable = CAMPO_DE_LA_COLUMNA[columna]
+      return (entrada: FilaConAlerta) => (
+        <Celda
+          fila={entrada.fila}
+          campo={campo}
+          opciones={opciones}
+          editando={editando?.filaId === entrada.fila.filaId && editando.campo === campo}
+          soloLectura={soloLectura}
+          alEditar={() => setEditando({ filaId: entrada.fila.filaId, campo })}
+          alCancelar={() => setEditando(null)}
+          alGuardar={(valor) => void guardarCelda(entrada.fila.filaId, campo, valor)}
+        />
+      )
+    }
     const catalogos = datos?.catalogos
 
     // El orden importa: la primera es la única fija, y es el nombre. Con veintidós columnas, correr
@@ -486,7 +548,7 @@ export function PlanillaDelMes() {
       { id: 'sucursal', titulo: 'Sucursal', ancho: 120, celda: celdaEditable('sucursal', catalogos?.sucursales) },
       { id: 'telefono', titulo: 'Teléfono', ancho: 130, celda: celdaEditable('telefono') },
       { id: 'documento', titulo: 'DNI/CUIT', ancho: 110, celda: celdaEditable('documento') },
-      { id: 'vencimiento', titulo: 'Fecha de venc', ancho: 100, alinear: 'centro', celda: celdaEditable('diaVencimiento') },
+      { id: 'vencimiento', titulo: 'Fecha de venc', ancho: 100, alinear: 'centro', celda: celdaEditable('vencimiento') },
       { id: 'cuota', titulo: 'Cuota', ancho: 100, alinear: 'derecha', celda: celdaEditable('cuota') },
       { id: 'formaPago', titulo: 'Forma de pago', ancho: 130, celda: celdaEditable('formaPago', catalogos?.formasDePago) },
       { id: 'aviso', titulo: 'OB. avisos', ancho: 150, celda: celdaEditable('aviso') },
@@ -505,10 +567,10 @@ export function PlanillaDelMes() {
       { id: 'anio', titulo: 'Año', ancho: 70, alinear: 'centro', celda: celdaEditable('anio') },
       { id: 'cobertura', titulo: 'Cobertura', ancho: 160, celda: celdaEditable('cobertura', catalogos?.coberturas) },
       { id: 'compania', titulo: 'Compañía', ancho: 140, celda: celdaEditable('compania', catalogos?.companias) },
-      { id: 'poliza', titulo: 'Póliza', ancho: 120, celda: celdaEditable('numeroPoliza') },
+      { id: 'poliza', titulo: 'Póliza', ancho: 120, celda: celdaEditable('poliza') },
       { id: 'propuesta', titulo: 'Propuesta', ancho: 120, celda: celdaEditable('propuesta') },
-      { id: 'desde', titulo: 'Desde', ancho: 100, celda: celdaEditable('vigenciaDesde') },
-      { id: 'hasta', titulo: 'Hasta', ancho: 100, celda: celdaEditable('vigenciaHasta') },
+      { id: 'desde', titulo: 'Desde', ancho: 100, celda: celdaEditable('desde') },
+      { id: 'hasta', titulo: 'Hasta', ancho: 100, celda: celdaEditable('hasta') },
       { id: 'observaciones', titulo: 'Observaciones', ancho: 240, celda: celdaEditable('observaciones') },
     ]
   }, [avisar, datos, editando, guardarCelda, imputarAdelanto, marcarAvisado, soloLectura])
@@ -715,6 +777,14 @@ export function PlanillaDelMes() {
           filaSeleccionada={seleccionada}
           alHacerClic={({ fila }) => setSeleccionada((previa) => (previa === fila.filaId ? null : fila.filaId))}
           vacio={mensajeDeVacio(filtros.sucursales, sinSucursal, contadores.total)}
+          // El glow por celda (14.0). Sólo en las columnas que se pueden editar: en «Alerta» o en las
+          // acciones nadie puede estar parado, y devolver `null` ahí es lo que hace que el decorado no
+          // cueste nada en las cuatrocientas celdas que se dibujan a la vez.
+          decorarCelda={({ fila }, columna) => {
+            const campo = CAMPO_DE_LA_COLUMNA[columna.id as ColumnaEditable]
+            if (!campo) return null
+            return <MarcaDePresencia claveDeFoco={claveDeCelda(fila.filaId, campo)} />
+          }}
         />
         {filaSeleccionada && (
           <PanelDetalle
@@ -890,6 +960,12 @@ function Celda({
   const valor = (fila[campo as keyof FilaCartera] as string | null) ?? ''
   const entrada = useRef<HTMLInputElement | null>(null)
   const idLista = `lista-${campo}`
+  // El bloqueo suave de la 14.0: si otra computadora tiene esta misma celda abierta, acá no se abre.
+  // No protege nada por sí solo (la barrera de verdad es el `previo` que viaja con la escritura y el
+  // 409 del servidor), evita el choque cuando se puede evitar antes de que pase. Se pregunta desde la
+  // celda y no desde la planilla a propósito: así una persona que entra o sale redibuja las celdas que
+  // toca y no la tabla entera.
+  const bloqueadaPor = useBloqueoDe(claveDeCelda(fila.filaId, campo))
 
   useEffect(() => {
     if (editando) {
@@ -902,15 +978,20 @@ function Celda({
     return (
       <span
         onDoubleClick={
-          soloLectura
+          soloLectura || bloqueadaPor
             ? undefined
             : (evento) => {
                 evento.stopPropagation()
                 alEditar()
               }
         }
-        title={valor || undefined}
-        className={cx('block w-full truncate', !soloLectura && 'cursor-text')}
+        // Cuando está trabada, el globito dice quién la tiene y no repite el valor: el valor se lee
+        // igual en la celda, y lo que la persona necesita saber es a quién esperar.
+        title={bloqueadaPor ? motivoDelBloqueo(bloqueadaPor) : valor || undefined}
+        className={cx(
+          'block w-full truncate',
+          bloqueadaPor ? 'cursor-not-allowed' : !soloLectura && 'cursor-text',
+        )}
       >
         {valor}
       </span>

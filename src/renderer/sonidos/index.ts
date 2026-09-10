@@ -1,4 +1,4 @@
-// Los cuatro sonidos de aviso del programa.
+// Los sonidos de aviso del programa.
 //
 // La agencia trabaja con la aplicación de fondo y la vista puesta en otra cosa —el teléfono, un
 // papel, la persona del mostrador—, así que un punto rojo en una campana que nadie está mirando no
@@ -8,7 +8,11 @@
 //   campana        una tarea nueva, algo que vence hoy, o un mensaje que llegó
 //   rechazo        un débito que rebotó y hay que salir a cobrarlo a mano
 //   tareaHecha     alguien terminó una tarea (es el único que además es una buena noticia)
-//   zumbido        alguien tocó el botón de zumbar: es el único que interrumpe a propósito
+//   zumbido        alguien tocó el botón de zumbar: interrumpe a propósito
+//   tonoDeLlamada  alguien está llamando por voz (14.0): el único que suena EN BUCLE, hasta que se
+//                  atiende, se rechaza o el que llama se cansa
+//   colgar         la llamada se cortó (14.0): el «clac» del tubo, para saber que se terminó sin
+//                  tener que mirar la pantalla
 //
 // Los archivos se importan con `?url`: Vite los copia al empaquetado y devuelve la ruta relativa, que
 // es lo que la CSP de producción permite cargar (`media-src 'self'`).
@@ -24,14 +28,18 @@ import campanaUrl from './campana.m4a?url'
 import rechazoUrl from './debito-rechazado.mp3?url'
 import tareaHechaUrl from './tarea-completa.mp3?url'
 import zumbidoUrl from './zumbido.wav?url'
+import tonoDeLlamadaUrl from './tono-llamada.wav?url'
+import colgarUrl from './colgar.wav?url'
 
-export type NombreDeSonido = 'campana' | 'rechazo' | 'tareaHecha' | 'zumbido'
+export type NombreDeSonido = 'campana' | 'rechazo' | 'tareaHecha' | 'zumbido' | 'tonoDeLlamada' | 'colgar'
 
 const ARCHIVOS: Record<NombreDeSonido, string> = {
   campana: campanaUrl,
   rechazo: rechazoUrl,
   tareaHecha: tareaHechaUrl,
   zumbido: zumbidoUrl,
+  tonoDeLlamada: tonoDeLlamadaUrl,
+  colgar: colgarUrl,
 }
 
 const CLAVE_SILENCIO = 'dm.sonidos.silenciados'
@@ -93,14 +101,17 @@ export function guardarVolumen(volumen: number): void {
 /**
  * El volumen con el que sale cada aviso.
  *
- * El zumbido va un escalón más arriba que el resto (sin pasarse del tope) porque es lo único que
- * interrumpe a propósito: si suena igual que la campana no se distingue de un mensaje cualquiera y el
- * botón no sirve para nada. Sigue respetando el volumen de esta computadora y el interruptor de
- * silencio: nadie puede hacer sonar algo en una oficina que eligió no escuchar nada.
+ * El zumbido y el tono de llamada (14.0) van un escalón más arriba que el resto (sin pasarse del tope)
+ * porque son los dos que interrumpen a propósito: si suenan igual que la campana no se distinguen de
+ * un mensaje cualquiera y el botón —o la llamada— no sirven para nada. Siguen respetando el volumen de
+ * esta computadora y el interruptor de silencio: nadie puede hacer sonar algo en una oficina que
+ * eligió no escuchar nada. Que una llamada entrante se pueda perder por tener el silencio puesto es
+ * exactamente lo que quiere quien lo puso; para eso además se mueve la ventana y salta la notificación
+ * del sistema, que no hacen ruido.
  */
 function volumenDeSonido(nombre: NombreDeSonido): number {
   const base = volumenDeLosSonidos()
-  return nombre === 'zumbido' ? Math.min(1, base * 1.25) : base
+  return nombre === 'zumbido' || nombre === 'tonoDeLlamada' ? Math.min(1, base * 1.25) : base
 }
 
 /**
@@ -143,6 +154,50 @@ export function reproducir(nombre: NombreDeSonido): void {
     if (promesa && typeof promesa.catch === 'function') promesa.catch(() => undefined)
   } catch {
     /* ver el comentario de arriba: un aviso que no suena no puede romper la pantalla */
+  }
+}
+
+/**
+ * Un sonido que suena hasta que se lo corta: hoy es uno solo, el tono de una llamada entrante (14.0).
+ *
+ * Devuelve la función que lo para, para que quien lo arrancó no tenga que guardarse el `<audio>`. Se
+ * llama desde un efecto de React y la función que devuelve es su limpieza: el tono se corta al
+ * atender, al rechazar, cuando el que llama se cansa y también si la ventana se recarga en el medio.
+ *
+ * Tres diferencias con `reproducir`, todas a propósito:
+ *   1. NO pasa por el respiro de medio segundo entre iguales: no son dos avisos, es uno que dura.
+ *   2. Se crea un `<audio>` nuevo cada vez y no se clona el precargado, porque hay que quedarse con la
+ *      referencia para poder pararlo.
+ *   3. El silencio se mira UNA vez, al arrancar. Cambiar el interruptor con el teléfono sonando no lo
+ *      calla —y no hace falta: el botón de silencio está en la barra de arriba, a un clic del de
+ *      atender—.
+ */
+export function reproducirEnBucle(nombre: NombreDeSonido): () => void {
+  if (sonidosSilenciados()) return () => undefined
+
+  let audio: HTMLAudioElement | null = null
+  try {
+    audio = new Audio(ARCHIVOS[nombre])
+    audio.loop = true
+    audio.volume = volumenDeSonido(nombre)
+    const promesa = audio.play()
+    if (promesa && typeof promesa.catch === 'function') promesa.catch(() => undefined)
+  } catch {
+    /* ídem que en `reproducir`: un aviso que no suena no puede romper la pantalla que lo pidió */
+  }
+
+  return () => {
+    if (!audio) return
+    try {
+      audio.pause()
+      // A cero además de pausado: un `<audio>` que quedó a mitad de camino con `loop` puesto vuelve a
+      // arrancar solo si el navegador lo reanuda (pasa al volver de una suspensión).
+      audio.currentTime = 0
+      audio.loop = false
+    } catch {
+      /* ídem */
+    }
+    audio = null
   }
 }
 

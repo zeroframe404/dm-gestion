@@ -1766,6 +1766,104 @@ export const MIGRACIONES: Migracion[] = [
       );
     `,
   },
+  {
+    version: 29,
+    descripcion: 'El espejo de la colaboración en vivo: perfiles, reacciones de los mensajes y el tipo LLAMADA',
+    sql: `
+      -- La foto y el color de cada persona de la agencia (14.0). El perfil es de la PERSONA y no de la
+      -- computadora: la clave es \`claveDeUsuario(usuario)\`, la misma identidad con la que viajan los
+      -- mensajes y la presencia entre las cinco máquinas. El color es un índice 0-11 de la paleta
+      -- (\`src/shared/paleta.ts\`) y quien cuida que no haya dos personas con el mismo es el servidor:
+      -- acá no hay UNIQUE porque esto es un ESPEJO, y un espejo que rechaza lo que le mandan deja de
+      -- reflejar (dos claves con el mismo color durante el instante en que dos cambios se cruzan es
+      -- algo que pasa, y la respuesta correcta es guardarlo, no romper la bajada).
+      --
+      -- La foto va como BLOB y no como el \`data:image/jpeg;base64,…\` que viaja por el canal: son los
+      -- mismos bytes ocupando un tercio menos, y la pantalla los quiere igual como data URL, así que
+      -- el ida y vuelta lo hace \`usuarios/perfiles.ts\` en un solo lugar.
+      --
+      -- Para qué está acá y no sólo en memoria: para que las caras se sigan viendo al abrir el programa
+      -- sin internet. «Ver sí, tocar no» vale también para los perfiles.
+      CREATE TABLE perfiles (
+        clave TEXT PRIMARY KEY,
+        color INTEGER NOT NULL,
+        foto BLOB,
+        version INTEGER NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+
+      -- Los mensajes vuelven a nacer para que \`tipo\` acepte LLAMADA (14.0).
+      --
+      -- La migración 26 le puso \`CHECK (tipo IN ('NORMAL', 'ZUMBIDO'))\`, y un CHECK en SQLite no se
+      -- edita: la única forma de cambiarlo son los doce pasos del manual —crear la tabla nueva al lado,
+      -- copiar, borrar la vieja, renombrar y rehacer los índices—. Sin esto, la fila que deja una
+      -- llamada de voz («Llamada de voz · 3:12», «Llamada perdida») no se puede guardar: la escritura
+      -- muere con «CHECK constraint failed» y el mensaje que el servidor ya tiene no entra nunca en el
+      -- espejo de esta computadora.
+      --
+      -- Las claves foráneas están apagadas mientras esto corre: lo hace \`ejecutarMigraciones\`, que es
+      -- el único lugar desde donde se puede (el PRAGMA no hace nada dentro de una transacción). Sin eso,
+      -- borrar la tabla vieja teniendo \`mensaje_acuses\` y \`mensaje_adjuntos\` apuntándole falla, aunque
+      -- las filas vuelvan enteras con los mismos ids un renglón más abajo.
+      CREATE TABLE mensajes_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remoto_id TEXT NOT NULL,
+        conversacion_id INTEGER NOT NULL REFERENCES conversaciones(id),
+        orden INTEGER,
+        autor_clave TEXT NOT NULL,
+        autor_nombre TEXT NOT NULL,
+        cuerpo TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'enCola' CHECK (estado IN ('enCola', 'enviado', 'entregado', 'leido', 'fallado')),
+        error TEXT,
+        intentos INTEGER NOT NULL DEFAULT 0,
+        proximo_intento TEXT,
+        eliminado_en TEXT,
+        eliminado_por TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL,
+        tipo TEXT NOT NULL DEFAULT 'NORMAL' CHECK (tipo IN ('NORMAL', 'ZUMBIDO', 'LLAMADA'))
+      );
+
+      -- Las columnas van nombradas una por una y no con un \`SELECT *\`: así el día que alguien agregue
+      -- una columna a \`mensajes\` esta copia falla en el banco de pruebas en vez de copiar de más.
+      -- Es la única sentencia de esta migración que no se puede volver a correr sola (la reconciliación
+      -- del esquema repite los INSERT de una migración cuando tuvo que reponerle una tabla); si algún
+      -- día pasa, queda anotado como falla y nada más: la tabla \`mensajes\` ya tiene su forma final.
+      INSERT INTO mensajes_nueva (id, remoto_id, conversacion_id, orden, autor_clave, autor_nombre, cuerpo,
+                                  estado, error, intentos, proximo_intento, eliminado_en, eliminado_por,
+                                  creado_en, actualizado_en, tipo)
+        SELECT id, remoto_id, conversacion_id, orden, autor_clave, autor_nombre, cuerpo,
+               estado, error, intentos, proximo_intento, eliminado_en, eliminado_por,
+               creado_en, actualizado_en, tipo
+          FROM mensajes;
+
+      DROP TABLE mensajes;
+      ALTER TABLE mensajes_nueva RENAME TO mensajes;
+
+      -- Los índices se van con la tabla vieja: vuelven exactamente como los dejó la migración 25.
+      CREATE UNIQUE INDEX idx_mensajes_remoto ON mensajes (remoto_id);
+      CREATE INDEX idx_mensajes_hilo ON mensajes (conversacion_id, orden, id);
+      CREATE INDEX idx_mensajes_cola ON mensajes (estado, proximo_intento);
+
+      -- Las reacciones de WhatsApp: un emoji por persona y por mensaje (14.0). La clave primaria es
+      -- (mensaje_id, clave) porque eso es una reacción —una persona reacciona UNA vez a un mensaje—:
+      -- volver a tocar el mismo emoji lo saca y tocar otro lo cambia, sin dejar dos filas.
+      --
+      -- \`ON DELETE CASCADE\` y no la limpieza a mano de \`mensaje_acuses\`: una reacción no significa
+      -- nada sin el mensaje al que le corresponde, y el mensaje se borra de verdad cuando se borra la
+      -- conversación entera.
+      --
+      -- La verdad está en el servidor, como con todo lo demás de la mensajería: acá se guarda la lista
+      -- COMPLETA que el servidor manda de cada mensaje (ver \`servicios/mensajeria.ts\`), no el cambio.
+      CREATE TABLE mensaje_reacciones (
+        mensaje_id INTEGER NOT NULL REFERENCES mensajes(id) ON DELETE CASCADE,
+        clave TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        creado_en TEXT NOT NULL,
+        PRIMARY KEY (mensaje_id, clave)
+      );
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {
@@ -1774,11 +1872,32 @@ export function ejecutarMigraciones(db: Database): void {
     (a, b) => a.version - b.version,
   )
 
-  for (const migracion of pendientes) {
-    db.transaction(() => {
-      db.exec(migracion.sql)
-      db.pragma('user_version = ' + migracion.version)
-    })()
-    console.log('[db] Migración ' + migracion.version + ' aplicada: ' + migracion.descripcion)
+  if (!pendientes.length) return
+
+  // Las claves foráneas se apagan mientras corren las migraciones y se vuelven a encender al terminar
+  // (14.0). Es lo que manda el manual de SQLite para rehacer una tabla —los doce pasos de la migración
+  // 29, que vuelve a crear `mensajes` para que `tipo` acepte LLAMADA—: mientras la tabla vieja no está,
+  // `mensaje_acuses` y `mensaje_adjuntos` apuntan a algo que todavía no existe, y con el control
+  // encendido el borrado ni siquiera se puede intentar.
+  //
+  // Tiene que ser ACÁ y no adentro del SQL de la migración: `PRAGMA foreign_keys` no hace nada dentro de
+  // una transacción (y cada migración corre en una), así que el único lugar desde donde se puede apagar
+  // es antes de abrirla. `defer_foreign_keys`, que sí anda adentro, no alcanza: lo que posterga es el
+  // aviso, y el borrado de la tabla vieja queda contado como violación aunque las filas vuelvan enteras.
+  //
+  // No se pierde ningún control real: lo que corre acá son cambios de FORMA escritos en este archivo, no
+  // datos que entren de afuera. Al salir queda como estaba y la base sigue rechazando una fila huérfana.
+  const estaban = db.pragma('foreign_keys', { simple: true }) === 1
+  if (estaban) db.pragma('foreign_keys = OFF')
+  try {
+    for (const migracion of pendientes) {
+      db.transaction(() => {
+        db.exec(migracion.sql)
+        db.pragma('user_version = ' + migracion.version)
+      })()
+      console.log('[db] Migración ' + migracion.version + ' aplicada: ' + migracion.descripcion)
+    }
+  } finally {
+    if (estaban) db.pragma('foreign_keys = ON')
   }
 }

@@ -17,6 +17,7 @@ import {
 import { NOMBRE_ESTADO_TAREA } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
+import { InsigniaDePresencia, useCursorAdentro, useFichaEnVivo } from '../../componentes/Presencia'
 import { SelectorDeAdjuntos } from '../../componentes/SelectorDeAdjuntos'
 import { EtiquetaDeEstado } from '../polizas/AdjuntosDePoliza'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Dialogo, Selector, Tarjeta, cx } from '../../componentes/ui'
@@ -53,8 +54,16 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
   const [tareaAbierta, setTareaAbierta] = useState(false)
   const [adjuntarAbierto, setAdjuntarAbierto] = useState(false)
 
-  // Sin permiso de edición la ficha se lee entera, pero no se toca nada: como estar guardando.
-  const bloqueado = trabajando || !puedeEditar
+  // Acá no hay botón de Guardar: los datos se corrigen con doble clic y se guardan al salir del
+  // campo, así que lo que se reporta como «editando» es tener el cursor adentro. Ver `useCursorAdentro`.
+  const [conCursor, propsDelCursor] = useCursorAdentro()
+  // El glow de la ficha (14.0). `filaId` es el `_ID` de la hoja: el mismo siniestro en las cinco.
+  const { claveDeFoco, bloqueadaPor, motivo } = useFichaEnVivo('siniestro', ficha?.siniestro.filaId, conCursor)
+
+  // Sin permiso de edición la ficha se lee entera, pero no se toca nada: como estar guardando. Y desde
+  // la 14.0 también cuando otra computadora la tiene abierta y con algo tocado: acá cada campo se
+  // guarda solo, así que no hay un botón que apagar y lo que se traba es la ficha entera.
+  const bloqueado = trabajando || !puedeEditar || bloqueadaPor !== null
 
   /** Abre el documento; si lo cargó otra computadora, se baja del servidor antes y la ficha se relee. */
   const abrirAdjunto = async (adjuntoId: number) => {
@@ -103,7 +112,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
   const s = ficha.siniestro
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6" {...propsDelCursor}>
       <div className="flex flex-wrap items-start gap-3">
         <Boton icono="flechaIzquierda" onClick={alVolver}>
           Volver
@@ -116,6 +125,10 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
           <p className="mt-1 text-sm text-slate-600">
             {[s.compania, s.numeroPoliza, s.cobertura, s.patente].filter(Boolean).join(' · ') || 'Sin datos de póliza'}
           </p>
+          {/* Quién más tiene el siniestro abierto (14.0). */}
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <InsigniaDePresencia claveDeFoco={claveDeFoco} />
+          </div>
         </div>
         <label className="text-sm font-semibold text-slate-700">
           Estado del trámite
@@ -136,6 +149,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
       </div>
 
       {error && <Alerta tono="error">{error}</Alerta>}
+      {motivo && <Alerta tono="aviso">{motivo}</Alerta>}
       {s.estadoTexto && (
         <Alerta tono="info">
           En la planilla, la columna ESTADO de este siniestro dice «{s.estadoTexto}». Se está mostrando como{' '}

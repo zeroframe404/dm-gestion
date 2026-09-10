@@ -7,23 +7,59 @@
 //
 // Lo que NO hace: reemplazar al teclado de emojis de Windows (Win + .). La caja de texto acepta
 // cualquier carácter Unicode venga de donde venga; esto es un atajo para no tener que ir a buscarlo.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Icono } from '../../componentes/Icono'
 import { cx } from '../../componentes/ui'
-import { buscarEmojis, CATEGORIAS_DE_EMOJIS, EMOJIS_RAPIDOS, type Emoji } from './emojis'
+import { ALTO_DEL_CAJON_DE_EMOJIS, buscarEmojis, CATEGORIAS_DE_EMOJIS, EMOJIS_RAPIDOS, haciaDondeSeAbre, type Emoji } from './emojis'
 
 interface Props {
   /** Qué hacer con el emoji elegido: se inserta donde está el cursor de la caja. */
   alElegir: (emoji: string) => void
   disabled?: boolean
+  /**
+   * Qué se ve en el botón que abre el cajón (14.0). Por defecto la carita, que es lo que se lee como
+   * «emojis» al lado de la caja de escribir; la barra de reacciones le pone un «más», porque ahí los
+   * seis de siempre ya están a la vista y el cajón es «los otros».
+   */
+  cara?: ReactNode
+  /** Cómo se llama el botón para quien no ve el dibujo. Acompaña a `cara`. */
+  etiqueta?: string
+  /** `sm` para el botón chico de la barra de reacciones, que va apretado entre seis emojis (14.0). */
+  tamano?: 'md' | 'sm'
+  /**
+   * Hacia dónde se abre el panel, que mide 320 px de ancho (14.0). `derecha` lo pega al borde derecho
+   * del botón y crece hacia la izquierda —lo que corresponde cuando el botón está sobre el margen
+   * derecho de la pantalla, como en la caja de escribir o en una burbuja propia—; `izquierda` es al
+   * revés, para las burbujas ajenas, que arrancan pegadas al margen izquierdo del hilo.
+   */
+  lado?: 'derecha' | 'izquierda'
 }
 
-export function SelectorDeEmojis({ alElegir, disabled = false }: Props) {
+export function SelectorDeEmojis({
+  alElegir,
+  disabled = false,
+  cara,
+  etiqueta = 'Elegir un emoji',
+  tamano = 'md',
+  lado = 'derecha',
+}: Props) {
   const [abierto, setAbierto] = useState(false)
   const [categoria, setCategoria] = useState(CATEGORIAS_DE_EMOJIS[0].id)
   const [busqueda, setBusqueda] = useState('')
+  const [haciaDonde, setHaciaDonde] = useState<'arriba' | 'abajo'>('arriba')
   const contenedor = useRef<HTMLDivElement | null>(null)
   const campoDeBusqueda = useRef<HTMLInputElement | null>(null)
+
+  // De qué lado se abre se mide al abrirlo, contra lo que RECORTA. El cajón puede estar colgado de la
+  // caja de escribir (donde arriba siempre sobra lugar) o de la fila de acciones de un mensaje, que
+  // vive adentro del hilo, y el hilo es una caja que scrollea: lo que se sale por arriba de su borde no
+  // se puede alcanzar de ninguna manera. Ver `haciaDondeSeAbre`.
+  useLayoutEffect(() => {
+    if (!abierto || !contenedor.current) return
+    const caja = contenedor.current.getBoundingClientRect()
+    const marco = loQueRecorta(contenedor.current)
+    setHaciaDonde(haciaDondeSeAbre(caja.top - marco.arriba, marco.abajo - caja.bottom, ALTO_DEL_CAJON_DE_EMOJIS))
+  }, [abierto])
 
   useEffect(() => {
     if (!abierto) return
@@ -57,20 +93,28 @@ export function SelectorDeEmojis({ alElegir, disabled = false }: Props) {
         type="button"
         disabled={disabled}
         onClick={() => setAbierto((antes) => !antes)}
-        aria-label="Elegir un emoji"
+        aria-label={etiqueta}
+        title={etiqueta}
         aria-expanded={abierto}
         className={cx(
-          'inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors',
+          'inline-flex items-center justify-center rounded-lg text-slate-600 transition-colors',
+          tamano === 'md' ? 'h-9 w-9' : 'h-6 w-6',
           'hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40',
           'disabled:cursor-not-allowed disabled:opacity-60',
           abierto && 'bg-slate-100 text-slate-900',
         )}
       >
-        <span className="text-lg leading-none">🙂</span>
+        {cara ?? <span className="text-lg leading-none">🙂</span>}
       </button>
 
       {abierto && (
-        <div className="absolute bottom-full right-0 z-30 mb-2 w-80 rounded-xl border border-slate-200 bg-white shadow-lg">
+        <div
+          className={cx(
+            'absolute z-30 w-80 rounded-xl border border-slate-200 bg-white shadow-lg',
+            haciaDonde === 'arriba' ? 'bottom-full mb-2' : 'top-full mt-2',
+            lado === 'derecha' ? 'right-0' : 'left-0',
+          )}
+        >
           <div className="border-b border-slate-100 p-2">
             <div className="relative">
               <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">
@@ -144,4 +188,22 @@ export function SelectorDeEmojis({ alElegir, disabled = false }: Props) {
       )}
     </div>
   )
+}
+
+/**
+ * Los bordes de arriba y de abajo de lo primero que recorta al cajón: la caja que scrollea más cercana
+ * o, si no hay ninguna, la ventana.
+ *
+ * Se mira `overflow-y` y no el tamaño: una caja con `overflow-y: auto` que hoy entra entera igual va a
+ * recortar en cuanto tenga tres mensajes más, y el cajón se abre una vez y se queda ahí.
+ */
+function loQueRecorta(desde: HTMLElement): { arriba: number; abajo: number } {
+  for (let actual = desde.parentElement; actual; actual = actual.parentElement) {
+    const desborde = getComputedStyle(actual).overflowY
+    if (desborde === 'auto' || desborde === 'scroll' || desborde === 'hidden') {
+      const caja = actual.getBoundingClientRect()
+      return { arriba: caja.top, abajo: caja.bottom }
+    }
+  }
+  return { arriba: 0, abajo: window.innerHeight }
 }

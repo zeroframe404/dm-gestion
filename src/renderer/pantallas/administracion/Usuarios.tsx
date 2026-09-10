@@ -12,9 +12,11 @@ import {
   type Sucursal,
   type Usuario,
 } from '../../../shared/tipos'
+import { BloqueDePerfil } from '../../componentes/DialogoMiPerfil'
 import { Alerta, Boton, Campo, CampoClave, Cargando, Dialogo, Etiqueta, Selector, Tarjeta, cx, haceCuanto } from '../../componentes/ui'
 import { avisoDeVencimiento } from '../../contexto/Acceso'
 import { useSesion, useUsuarioActual } from '../../contexto/Sesion'
+import { claveDeUsuario } from '../../../shared/texto'
 
 type EstadoDialogo =
   | { tipo: 'crear' }
@@ -578,6 +580,22 @@ function DialogoFormulario({ usuario, sucursales, alCerrar, alGuardado }: PropsF
         </div>
         {error && <Alerta tono="error">{error}</Alerta>}
       </form>
+
+      {/* La foto y el color, el mismo bloque que «Mi perfil» (14.0). Va FUERA del formulario y con su
+          propio botón de guardar porque el perfil no vive en la misma base: los datos de arriba están
+          en `dmg_usuarios` (cifrado, va con la cola de subida) y el perfil en `dmg_perfiles`, que se
+          guarda directo contra el servidor y exige conexión. Un solo Guardar para los dos mentiría.
+          Sólo al editar: un usuario que todavía no existe no tiene a quién ponerle la foto. */}
+      {editando && usuario && (
+        <section className="mt-5 border-t border-slate-200 pt-5">
+          <h3 className="mb-1 font-display text-base font-bold text-slate-900">Foto y color</h3>
+          <p className="mb-4 text-xs leading-relaxed text-slate-500">
+            Con esto se lo ve en las otras computadoras cuando está trabajando en la misma fila. Se guarda aparte de los datos
+            de arriba y necesita conexión.
+          </p>
+          <BloqueDePerfil clave={claveDeUsuario(usuario.usuario)} nombre={usuario.nombre} />
+        </section>
+      )}
     </Dialogo>
   )
 }

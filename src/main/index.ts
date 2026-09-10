@@ -1,5 +1,5 @@
 // Proceso principal de Electron: ventana, base de datos e IPC.
-import { app, BrowserWindow, dialog, Menu, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, dialog, Menu, safeStorage, session, shell } from 'electron'
 import path from 'node:path'
 import {
   anotar,
@@ -285,6 +285,64 @@ function engancharElCanal(): void {
   })
 }
 
+/**
+ * El candado de los permisos del navegador (14.0): sólo el micrófono, y sólo para esta pantalla.
+ *
+ * Hasta la 14.0 no había ningún manejador puesto, y eso NO significa que estuviera todo negado:
+ * Electron, sin manejador, **concede por omisión**. Cualquier cosa que la pantalla pidiera —cámara,
+ * ubicación, notificaciones del navegador, portapapeles, punteros— salía sin preguntar nada. Con las
+ * llamadas de voz aparece el primer permiso que el programa sí necesita (el micrófono), así que en vez
+ * de dejar la puerta abierta para todos se abre uno solo y se cierra el resto a mano.
+ *
+ * Los dos manejadores hacen cosas distintas y hay que poner los dos:
+ *   REQUEST  el pedido de verdad: `getUserMedia({audio:true})`. Es el que decide si se prende el
+ *            micrófono, y acá se exige que el pedido sea de audio y NADA MÁS: un pedido que además
+ *            traiga video (una cámara) se niega entero, no se recorta.
+ *   CHECK    la consulta previa que hace Chromium («¿esto estaría permitido?»). Si contesta que no, el
+ *            pedido no llega nunca al de arriba y `getUserMedia` falla sin pasar por ninguna parte.
+ *
+ * Por qué el CHECK deja pasar `mediaType: 'unknown'` y el REQUEST no: la consulta previa no siempre
+ * sabe qué se va a pedir, y negar lo que no se sabe rompería el micrófono sin dejar rastro (falla en
+ * el renderer, con la ventana ya abierta y nada en la bitácora). La barrera real es la del pedido, que
+ * es la única que enciende un dispositivo; el CHECK sólo contesta una pregunta.
+ *
+ * Y todo esto vale sólo para NUESTRA pantalla: se compara contra el `webContents` de la ventana
+ * principal, no contra el origen. La app se carga desde `file://` en producción y desde
+ * `http://localhost:5173` en desarrollo, así que un origen no distingue nada; el `webContents`, sí.
+ */
+function blindarLosPermisos(): void {
+  const nuestraPantalla = (contenido: Electron.WebContents | null | undefined): boolean => {
+    const ventana = ventanaPrincipal
+    if (!ventana || ventana.isDestroyed() || !contenido) return false
+    return contenido.id === ventana.webContents.id
+  }
+
+  session.defaultSession.setPermissionRequestHandler((contenido, permiso, responder, detalles) => {
+    const deLaPantalla = nuestraPantalla(contenido)
+    if (permiso !== 'media' || !deLaPantalla) {
+      // Queda anotado: si alguna vez algo del programa necesita otro permiso, esta línea de la bitácora
+      // es la que lo explica. Sin ella sería una función del navegador que «no anda» y nada más.
+      anotar(`[permisos] Negado «${permiso}» (${deLaPantalla ? 'la pantalla' : 'otro contenido'}).`)
+      responder(false)
+      return
+    }
+    // `detalles` es una unión (media, archivos, abrir en el navegador): el `in` es lo que le dice a
+    // TypeScript que éste es el de medios. Sin `mediaTypes` no se concede nada: un pedido de audio
+    // siempre los trae, así que la lista vacía es algo que no sabemos qué es.
+    const tipos: string[] = 'mediaTypes' in detalles ? (detalles.mediaTypes ?? []) : []
+    const soloAudio = tipos.length > 0 && tipos.every((tipo) => tipo === 'audio')
+    if (!soloAudio) {
+      anotar(`[permisos] Negado un pedido de medios que no era sólo audio: ${tipos.join(', ') || 'sin tipo'}.`)
+    }
+    responder(soloAudio)
+  })
+
+  session.defaultSession.setPermissionCheckHandler((contenido, permiso, _origen, detalles) => {
+    if (permiso !== 'media' || !nuestraPantalla(contenido)) return false
+    return detalles.mediaType === 'audio' || detalles.mediaType === 'unknown' || detalles.mediaType === undefined
+  })
+}
+
 function arrancar(): void {
   // En producción no hay menú. En desarrollo se conserva el de Electron por las herramientas de desarrollo.
   if (app.isPackaged) Menu.setApplicationMenu(null)
@@ -306,6 +364,8 @@ function arrancar(): void {
   if (!paso('la preparación de la base de usuarios', prepararBaseDeUsuarios)) return
   if (!paso('el registro de los canales internos', registrarIpc)) return
   if (!paso('el canal en vivo con la base de la agencia', engancharElCanal)) return
+  // Antes de la ventana: el candado tiene que estar puesto antes de que la pantalla pueda pedir nada.
+  if (!paso('el candado de los permisos de la pantalla', blindarLosPermisos)) return
   if (!paso('la creación de la ventana', crearVentana)) return
   listoParaVentana = true
 

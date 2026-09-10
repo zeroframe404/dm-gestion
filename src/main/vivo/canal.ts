@@ -31,11 +31,19 @@ import { credencialesDelPuente, obtenerMotor } from '../servicios/sincronizacion
 import { anotarEvento } from '../sincronizacion/cola'
 import type { MotorDeSincronizacion } from '../sincronizacion/motor'
 import { generacionConocida, versionesConocidas } from '../sincronizacion/versiones'
+import { dejarDeSerElCanalActivo, usarCanalActivo } from './emisor'
 import { aplicarFotoDeLaGrilla, reiniciarLaGrilla } from './grilla'
-import { olvidarLasLlamadas, recibirConfiguracionIce, recibirEventoDeLlamada } from './llamadas'
+import {
+  colgarPorCierre,
+  elCanalSeCorto,
+  elCanalVolvio,
+  olvidarLasLlamadas,
+  recibirConfiguracionIce,
+  recibirEventoDeLlamada,
+} from './llamadas'
 import { alLlegarAvisoDeMensajes } from './mensajes'
 import { olvidarLosPerfiles, recibirPerfil, recibirPerfiles } from './perfiles'
-import { olvidarLaPresencia, recibirPresencia } from './presencia'
+import { olvidarLaPresencia, recibirPresencia, reenviarElFoco } from './presencia'
 import { olvidarLasReacciones, recibirReaccion } from './reacciones'
 import {
   LATIDO_MS,
@@ -195,6 +203,9 @@ export class CanalEnVivo {
 
   /** Al cerrar sesión y al cerrar el programa. Deja todo apagado y sin relojes colgando. */
   parar(): void {
+    // Primero se cuelga y después se cierra el socket: el «colgué» tiene que salir por este mismo
+    // socket, si no del otro lado se le sigue hablando a una computadora que ya se apagó.
+    colgarPorCierre()
     this.quien = null
     this.cancelarReconexion()
     this.pararElLatido()
@@ -206,6 +217,7 @@ export class CanalEnVivo {
     olvidarLosPerfiles()
     olvidarLasReacciones()
     olvidarLasLlamadas()
+    dejarDeSerElCanalActivo(this)
     this.cambiarA('sin-conexion')
   }
 
@@ -316,6 +328,9 @@ export class CanalEnVivo {
 
   private saludar(token: string): void {
     if (!this.quien) return
+    // Desde acá salen los frames que no manda esta clase: el foco de la presencia y la señalización de
+    // las llamadas (ver `emisor.ts`, que existe para que esos dos módulos no tengan que importar a éste).
+    usarCanalActivo(this)
     this.ultimoFrameEn = Date.now()
     this.enviar({
       t: 'hola',
@@ -339,6 +354,9 @@ export class CanalEnVivo {
   private alCerrarse(): void {
     this.pararElLatido()
     this.socket = null
+    // Una llamada abierta no se corta acá: el audio va punto a punto y sigue andando. Se le da el
+    // aguante de los quince segundos y, si el canal no vuelve, la corta `llamadas.ts`.
+    elCanalSeCorto()
     // Cerramos nosotros (cierre de sesión o del programa): no hay nada que reintentar.
     if (!this.quien) return
 
@@ -472,6 +490,11 @@ export class CanalEnVivo {
         recibirPerfiles(mensaje.perfiles)
         recibirPresencia(mensaje.presencia)
         recibirConfiguracionIce(mensaje.ice)
+        // El servidor pierde la presencia con el socket: al volver hay que decirle otra vez dónde está
+        // parada esta computadora, o el glow no reaparece hasta que la persona se mueva de celda.
+        reenviarElFoco()
+        // Y si había una llamada abierta cuando se cortó, se cancela el corte por desconexión.
+        elCanalVolvio()
         void this.reconciliar(mensaje)
         break
       case 'grilla':

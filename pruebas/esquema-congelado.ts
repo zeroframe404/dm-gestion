@@ -57,4 +57,13 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // a `sincronizacion/vigia.ts`, que ya no existe: las migraciones publicadas no se editan, ni siquiera
   // sus comentarios, así que queda aclarado acá y no allá.
   28: '3a654b789e365ef4',
+  // La 29 trae el espejo de la colaboración en vivo (14.0): `perfiles` (la foto y el color de cada
+  // persona), `mensaje_reacciones` (un emoji por persona y por mensaje) y los doce pasos que vuelven a
+  // crear `mensajes` para que su CHECK de `tipo` acepte también LLAMADA. Ojo: la huella mira la forma
+  // (columnas, tipos, valores por defecto, índices) y NO los CHECK ni los datos, así que lo que la
+  // mueve son las dos tablas nuevas. Lo que la huella no ve lo prueban dos:
+  //   - que la llamada se pueda guardar en el hilo → `colaboracion-en-vivo.prueba.ts`;
+  //   - que rehacer `mensajes` no desenganche ningún acuse ni ningún archivo, con las claves foráneas
+  //     prendidas y la tabla con datos → `esquema.prueba.ts`, «la migración 29 rehace mensajes…».
+  29: 'af6f2ed764ba8b8d',
 }

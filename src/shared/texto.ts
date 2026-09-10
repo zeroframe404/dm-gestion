@@ -93,3 +93,21 @@ export function resumenDeMensaje(cuerpo: string, maximo = 80): string {
   const recortado = recortarPorPuntos(enUnaLinea, maximo)
   return recortado.length < enUnaLinea.length ? `${recortado}…` : recortado
 }
+
+/**
+ * Las iniciales con las que se dibuja a una persona cuando no hay foto: «Ana Gómez» → «AG».
+ *
+ * Vive acá y no en la barra superior desde la 14.0: la misma persona se dibuja en el avatar de la
+ * barra, en la burbuja de la presencia, en la lista de conversaciones y en el encabezado del hilo, y
+ * las cuatro tienen que decir las mismas dos letras. Toma la primera y la ÚLTIMA palabra (no las dos
+ * primeras): «María de los Ángeles Pérez» es «MP», que es como la nombra cualquiera de la agencia.
+ *
+ * Recorre puntos de código como todo lo de este archivo: un nombre puede empezar con un emoji pegado
+ * desde otro lado, y con `[0]` quedaría media unidad sustituta suelta.
+ */
+export function obtenerIniciales(nombre: string): string {
+  const partes = (typeof nombre === 'string' ? nombre : '').trim().split(/\s+/).filter(Boolean)
+  const primera = partes.length > 0 ? (Array.from(partes[0]!)[0] ?? '') : ''
+  const ultima = partes.length > 1 ? (Array.from(partes[partes.length - 1]!)[0] ?? '') : ''
+  return (primera + ultima).toUpperCase() || '?'
+}

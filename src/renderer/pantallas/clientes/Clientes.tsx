@@ -15,6 +15,8 @@ import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePuedeEditar } from '../../contexto/Permisos'
+import { claveDeObjeto } from '../../../shared/presencia'
+import { MarcaDePresencia } from '../../componentes/Presencia'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { DialogoDeudores } from './DialogoDeudores'
 import { DialogoNuevoCliente } from './DialogoNuevoCliente'
@@ -354,6 +356,12 @@ function ListadoDeClientes({
           columnas={visibles}
           claveDe={(fila) => String(fila.id)}
           alHacerClic={(fila) => alAbrirCliente(fila.id)}
+          // El glow por renglón (14.0): quién tiene abierta la ficha de este cliente en otra
+          // computadora. Va por `filaId` (el `_ID` que comparten las cinco) y no por `id`, que es
+          // local: sin `filaId` el cliente todavía no se subió y no hay foco posible.
+          decorarFila={(fila) =>
+            fila.filaId ? <MarcaDePresencia claveDeFoco={claveDeObjeto('cliente', fila.filaId)} burbujas="izquierda" /> : null
+          }
           vacio={
             hayFiltros ? (
               <>

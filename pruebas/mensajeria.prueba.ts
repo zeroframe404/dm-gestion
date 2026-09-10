@@ -29,6 +29,7 @@ import {
   eliminarMensajePropio,
   hiloDe,
   marcarConversacionLeida,
+  reaccionarA,
   registroDeMensajes,
   zumbar,
 } from '../src/main/servicios/mensajeria'
@@ -615,4 +616,53 @@ test('sin conexión el zumbido no espera en la cola: avisa que no se pudo', asyn
   const escrito = encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Esto sí espera' })
   assert.equal(escrito.estado, 'enCola')
   await assert.rejects(() => zumbar(ANA, conversacion.id), /conexión/i)
+})
+
+// Las reacciones de WhatsApp (14.0). Lo que se prueba acá es la SUBIDA: que el clic en un emoji llegue
+// al servidor por la ruta y con los nombres de campo que el servidor espera, y que la regla del
+// interruptor —una persona reacciona UNA vez a cada mensaje— la cumplan los dos lados y no sólo el
+// espejo. La bajada por el canal (que del otro lado aparezca sola) está en `vivo.prueba.ts`.
+test('la reacción es un interruptor: el mismo emoji la saca y otro la reemplaza', async (t) => {
+  const { servidor, lanus, dockSud } = await dosComputadoras()
+  t.after(async () => {
+    cerrarTodo()
+    await servidor.cerrar()
+  })
+
+  en(lanus)
+  const conversacion = await abrirConversacionCon(ANA, 'beto')
+  encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'Llegó el pago de Pérez' })
+  await unaVueltaDelCartero(ANA)
+
+  en(dockSud)
+  await unaVueltaDelCartero(BETO)
+  const suConversacion = conversacionesDe(BETO)[0].id
+  const mensaje = (await hiloDe(BETO, suConversacion)).mensajes[0]
+  assert.deepEqual(mensaje.reacciones, [], 'todavía no reaccionó nadie')
+
+  // Un pulgar. Vuelve la lista COMPLETA del mensaje —no el cambio— y ya viene con el nombre para el
+  // globito y con `mia`, que es lo que resalta la pastilla propia.
+  const conPulgar = await reaccionarA(BETO, mensaje.id, '👍')
+  assert.deepEqual(conPulgar.reacciones, [{ emoji: '👍', claves: ['beto'], nombres: ['Beto'], mia: true }])
+  assert.deepEqual(servidor.reaccionesDe(mensaje.remotoId!), [{ emoji: '👍', claves: ['beto'] }])
+
+  // El mismo emoji otra vez la saca: es tocar la pastilla propia.
+  assert.deepEqual((await reaccionarA(BETO, mensaje.id, '👍')).reacciones, [])
+  assert.deepEqual(servidor.reaccionesDe(mensaje.remotoId!), [])
+
+  // Y otro emoji REEMPLAZA al que había, no se suma: una persona reacciona una vez a cada mensaje.
+  await reaccionarA(BETO, mensaje.id, '👍')
+  const cambiada = await reaccionarA(BETO, mensaje.id, '❤️')
+  assert.deepEqual(cambiada.reacciones, [{ emoji: '❤️', claves: ['beto'], nombres: ['Beto'], mia: true }])
+
+  // `null` la saca también: es lo que manda la pantalla al tocar la pastilla propia de la fila de abajo.
+  assert.deepEqual((await reaccionarA(BETO, mensaje.id, null)).reacciones, [])
+
+  // A lo que todavía no salió de esta computadora no se le puede reaccionar: el servidor no lo conoce
+  // y la pastilla quedaría puesta contra un id que no existe.
+  en(lanus)
+  servidor.errorFijo = { estado: 503, mensaje: 'apagado' }
+  const enCola = encolarMensaje(ANA, { conversacionId: conversacion.id, cuerpo: 'esto no sale' })
+  servidor.errorFijo = null
+  await assert.rejects(reaccionarA(ANA, enCola.id, '👍'), /todavía no salió/)
 })

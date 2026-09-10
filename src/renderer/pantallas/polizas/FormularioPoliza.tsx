@@ -32,6 +32,7 @@ import { Icono } from '../../componentes/Icono'
 import { SelectorDeVehiculo } from '../../componentes/SelectorDeVehiculo'
 import { AdjuntosDePoliza } from './AdjuntosDePoliza'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Selector } from '../../componentes/ui'
+import { InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -131,6 +132,17 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
   const [resultados, setResultados] = useState<FilaCliente[]>([])
   const [buscando, setBuscando] = useState(false)
 
+  /**
+   * Si alguien tocó algo del formulario desde que se abrió (14.0).
+   *
+   * Se marca con un solo `onInputCapture` en el contenedor y no con un `tocado` en cada campo: este
+   * formulario tiene más de cuarenta controles y el que faltara reportaría a las otras computadoras
+   * que acá no se está editando nada, que es justo la mentira que el glow no puede decir. No es un
+   * «hay diferencias con lo guardado» —volver un campo a su valor original lo deja marcado igual—, y
+   * está bien que sea así: mientras el formulario está abierto y tocado, nadie más debería guardarlo.
+   */
+  const [tocado, setTocado] = useState(false)
+
   const [avisoCobertura, setAvisoCobertura] = useState<AvisoDeCobertura | null>(null)
   const [confirmado, setConfirmado] = useState(false)
 
@@ -154,6 +166,8 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
 
   useEffect(() => {
     let vigente = true
+    // Abrir otra póliza empieza de cero: lo tocado de la anterior no cuenta (14.0).
+    setTocado(false)
     const preparar = async () => {
       const catalogo = await window.dm.polizas.catalogos()
       if (!vigente) return
@@ -371,12 +385,19 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
     else setError(resultado.error)
   }
 
+  // El glow de la ficha (14.0): mientras este formulario está abierto, las otras computadoras ven la
+  // póliza marcada, y con algo tocado la ven trabada. Una póliza nueva todavía no tiene `_ID`, así que
+  // no reporta nada: no hay nada que las demás puedan mirar.
+  const { claveDeFoco, motivo } = useFichaEnVivo('poliza', poliza?.filaId, tocado)
+
   if (cargando) return <Cargando texto={enEdicion ? 'Abriendo la póliza…' : 'Preparando el formulario…'} />
 
   const sinVehiculos = vehiculos.length === 0
 
   return (
-    <div className="flex flex-col gap-4 p-6">
+    // `onInputCapture` en el contenedor: un solo lugar para enterarse de que se tocó cualquiera de los
+    // cuarenta y pico de controles de abajo. Ver `tocado`.
+    <div className="flex flex-col gap-4 p-6" onInputCapture={() => setTocado(true)}>
       {/* La barra queda pegada arriba: el formulario es largo y «Guardar» tiene que estar siempre a mano. */}
       <div
         ref={cima}
@@ -386,9 +407,14 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
           Volver
         </Boton>
         <div className="min-w-0">
-          <h2 className="font-display text-lg font-extrabold tracking-tight text-slate-900">
-            {enEdicion ? 'Editar póliza' : 'Nueva póliza'}
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-lg font-extrabold tracking-tight text-slate-900">
+              {enEdicion ? 'Editar póliza' : 'Nueva póliza'}
+            </h2>
+            {/* Quién más tiene esta póliza abierta (14.0), en la barra que queda pegada arriba: se ve
+                sin importar cuánto se haya bajado en un formulario que es largo. */}
+            <InsigniaDePresencia claveDeFoco={claveDeFoco} />
+          </div>
           <p className="truncate text-xs text-slate-500">
             {enEdicion
               ? [poliza?.compania, poliza?.numero && `N.° ${poliza.numero}`, poliza?.patente ?? poliza?.vehiculo].filter(Boolean).join(' · ') ||
@@ -430,9 +456,11 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
             icono="ok"
             onClick={() => void guardar()}
             cargando={guardando}
-            disabled={bloqueadoPorAviso || !puedeEditar}
+            disabled={bloqueadoPorAviso || !puedeEditar || motivo !== undefined}
             title={
-              !puedeEditar
+              motivo
+                ? motivo
+                : !puedeEditar
                 ? 'Tenés Pólizas en sólo lectura.'
                 : bloqueadoPorAviso
                   ? puedeConfirmarAvisos

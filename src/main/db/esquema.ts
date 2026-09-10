@@ -240,15 +240,57 @@ function migracionQueCreaElIndice(nombre: string): number | null {
 }
 
 /**
+ * Las tablas que quedan cuando terminan todas las migraciones.
+ *
+ * Se lee del texto de las migraciones y no de una base de referencia porque acá sólo hacen falta los
+ * NOMBRES, y armar la base cuesta bastante más que leer tres expresiones regulares. El orden dentro de
+ * una misma migración no importa: una tabla que se crea y se borra en la misma versión (la de al lado
+ * de una tabla que se rehace) no está al final, se mire como se mire.
+ */
+function tablasDelEsquemaFinal(): Set<string> {
+  const tablas = new Set<string>()
+  for (const migracion of migracionesEnOrden()) {
+    for (const [, nombre] of migracion.sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/gi)) {
+      tablas.add(nombre.toLowerCase())
+    }
+    for (const [, nombre] of migracion.sql.matchAll(/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?"?(\w+)"?/gi)) {
+      tablas.delete(nombre.toLowerCase())
+    }
+    for (const [, viejo, nuevo] of migracion.sql.matchAll(/ALTER\s+TABLE\s+"?(\w+)"?\s+RENAME\s+TO\s+"?(\w+)"?/gi)) {
+      tablas.delete(viejo.toLowerCase())
+      tablas.add(nuevo.toLowerCase())
+    }
+  }
+  return tablas
+}
+
+/** A qué tabla le escribe una sentencia de datos, o null si no se pudo leer. */
+function tablaQueEscribe(sentencia: string): string | null {
+  const encontrado = /^(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|UPDATE|DELETE\s+FROM)\s+"?(\w+)"?/i.exec(sentencia)
+  return encontrado ? encontrado[1]!.toLowerCase() : null
+}
+
+/**
  * Las sentencias de datos de una migración (semillas y rellenos), listas para volver a correr: los INSERT
  * pasan a ser `INSERT OR IGNORE` para no chocar con lo que ya esté. Los UPDATE de las migraciones están
  * escritos con un WHERE que los hace idempotentes (lo verifica pruebas/esquema.prueba.ts).
+ *
+ * Quedan afuera las que le escriben a una tabla que YA NO EXISTE al final de las migraciones (14.0). Ésas
+ * no son semillas: son la copia del medio de una tabla rehecha con los doce pasos de SQLite —la migración
+ * 29 vuelve a crear `mensajes` para que `tipo` acepte LLAMADA y la copia pasa por `mensajes_nueva`, que
+ * al terminar ya no está—. Repetirlas no repone ningún dato: falla con «no such table» y ensucia el
+ * informe de la reparación con un problema que no existe.
  */
 export function sentenciasDeDatos(version: number): string[] {
   const migracion = MIGRACIONES.find((m) => m.version === version)
   if (!migracion) return []
+  const finales = tablasDelEsquemaFinal()
   return sentenciasDe(migracion.sql)
     .filter((s) => /^(INSERT|UPDATE|DELETE)\b/i.test(s))
+    .filter((s) => {
+      const destino = tablaQueEscribe(s)
+      return destino === null || finales.has(destino)
+    })
     .map((s) => s.replace(/^INSERT\s+INTO\b/i, 'INSERT OR IGNORE INTO'))
 }
 

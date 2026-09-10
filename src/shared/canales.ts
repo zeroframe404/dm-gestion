@@ -196,7 +196,18 @@ import type {
   ResultadoDeSegmento,
   TableroMetricas,
   VistaPreviaDeReporte,
+  // Perfiles, presencia y llamadas de voz (14.0).
+  ConfiguracionDeIce,
+  DatosDePerfil,
+  EstadoDeLlamada,
+  PerfilDeUsuario,
+  SenalDeLlamada,
+  SenalParaMandar,
 } from './tipos'
+// El foco y la presencia son del protocolo del canal, que es la copia exacta de lo que declara el
+// servidor (14.0). Se toman de ahí y no se vuelven a escribir acá: sólo el tipo, así que la flecha se
+// borra al compilar, igual que la de `shared/presencia.ts`.
+import type { Foco, Presente } from '../main/vivo/protocolo'
 
 /** Llamados renderer → main (request/response). */
 export interface Canales {
@@ -367,6 +378,35 @@ export interface Canales {
    * por eso no exige nada más que estar del otro lado del IPC.
    */
   'conexion:estado': () => Resultado<EstadoDeConexion>
+
+  // La foto y el color de cada persona de la agencia (14.0). La lista sale del espejo local, así que
+  // contesta igual sin internet; los dos «guardar» hablan con el servidor, que es el que cuida que no
+  // haya dos personas con el mismo color.
+  'perfiles:listar': () => Resultado<PerfilDeUsuario[]>
+  'perfiles:guardarMio': (datos: DatosDePerfil) => Resultado<PerfilDeUsuario>
+  /** El perfil de OTRA persona: es de administradores (la foto del que no se la carga, un color repetido). */
+  'perfiles:guardarDe': (clave: string, datos: DatosDePerfil) => Resultado<PerfilDeUsuario>
+
+  /**
+   * En qué está trabajando esta computadora (14.0): la celda, la ficha o la pantalla donde está parada
+   * la persona. Es lo único que escribe SIN exigir conexión: sin canal el frame no sale y listo, un foco
+   * que no llegó no descoloca ningún dato (ver `ipc.ts`).
+   */
+  'vivo:foco': (foco: Foco | null) => Resultado<null>
+  /** Quién está conectado y en qué. La foto completa, tal como la mandó el servidor. */
+  'vivo:presencia': () => Resultado<Presente[]>
+
+  // Llamadas de voz de a dos (14.0). La señalización pasa por el canal; el audio va derecho de una
+  // computadora a la otra y lo maneja el renderer, que es el dueño de la RTCPeerConnection.
+  'llamadas:invitar': (conversacionId: number) => Resultado<EstadoDeLlamada>
+  'llamadas:aceptar': () => Resultado<EstadoDeLlamada>
+  'llamadas:rechazar': () => Resultado<EstadoDeLlamada>
+  'llamadas:colgar': () => Resultado<EstadoDeLlamada>
+  /** Lo que produjo la RTCPeerConnection para la otra punta: la oferta o la respuesta, y los candidatos. */
+  'llamadas:senal': (llamadaId: string, senal: SenalParaMandar) => Resultado<null>
+  /** Los STUN y el TURN del VPS, tal como vinieron en el saludo del canal. Null si todavía no saludó. */
+  'llamadas:ice': () => Resultado<ConfiguracionDeIce | null>
+  'llamadas:estado': () => Resultado<EstadoDeLlamada>
 
   'sincronizacion:estado': () => Resultado<EstadoSincronizacion>
   'sincronizacion:panel': () => Resultado<PanelSincronizacion>
@@ -585,6 +625,12 @@ export interface Canales {
    * atención sobre nada. Devuelve el mensaje para que la pantalla lo dibuje en el hilo.
    */
   'mensajes:zumbar': (conversacionId: number) => Resultado<MensajeInterno>
+  /**
+   * La reacción de WhatsApp (14.0): pone el emoji, lo cambia o lo saca (con `null`, o con el mismo que
+   * ya estaba). Tampoco pasa por la cola: una reacción es un tilde sobre algo de otro, y con el canal
+   * caído no se manda. Devuelve el mensaje con su lista de reacciones al día.
+   */
+  'mensajes:reaccionar': (mensajeId: number, emoji: string | null) => Resultado<MensajeInterno>
   /** Volver a intentar uno que el servidor rechazó. */
   'mensajes:reintentar': (mensajeId: number) => Resultado<MensajeInterno>
   /** La confirmación de lectura: apaga el globito y se lo cuenta al servidor. */
@@ -858,10 +904,14 @@ export interface Eventos {
    */
   'perfiles:cambiaron': null
   /**
-   * Se movió algo de una llamada de voz: entrante, aceptada, cortada (14.0). Por ahora no lleva
-   * datos: la fase E le pone el evento adentro, cuando exista la máquina de estados que lo entiende.
+   * Se movió algo de una llamada de voz: entrante, aceptada, cortada (14.0).
+   *
+   * Lleva el estado entero —no un «volvé a preguntar»— y, cuando lo que llegó es señalización, la señal
+   * adentro. Van juntos porque el orden importa: la oferta SDP de la otra punta no se puede aplicar
+   * antes de saber que la llamada existe, y con dos avisos sueltos ese orden dependería de cómo Electron
+   * despache los eventos.
    */
-  'llamadas:evento': null
+  'llamadas:evento': { estado: EstadoDeLlamada; senal: SenalDeLlamada | null }
 }
 
 export type NombreCanal = keyof Canales

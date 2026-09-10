@@ -7,6 +7,8 @@ import { NOMBRE_RANGO_MORA, type FilaMora, type FiltrosMora, type ListadoMora, t
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
+import { claveDeFilaDeCelda } from '../../../shared/presencia'
+import { MarcaDePresencia } from '../../componentes/Presencia'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -256,6 +258,10 @@ export function Mora() {
         filas={datos.filas}
         columnas={visibles}
         claveDe={(fila) => fila.filaId}
+        // El glow por renglón (14.0). La clave es la de la FILA de la planilla y no la de un cliente:
+        // cada renglón de acá es una cuota impaga de un mes, la misma fila que alguien puede estar
+        // editando en Cartera → Planilla del mes, y así el anillo aparece también en esta pantalla.
+        decorarFila={(fila) => <MarcaDePresencia claveDeFoco={claveDeFilaDeCelda(fila.filaId)} burbujas="izquierda" />}
         vacio={
           datos.total === 0
             ? 'No hay ninguna cuota vencida sin pagar. No se listan las pólizas dadas de baja ni, salvo que lo pidas, las de débito automático.'

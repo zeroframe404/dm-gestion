@@ -14,6 +14,7 @@ import {
 } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
+import { InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
 import { SelectorDeAdjuntos } from '../../componentes/SelectorDeAdjuntos'
 import { EtiquetaDeEstado } from '../polizas/AdjuntosDePoliza'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Selector, Tarjeta, cx } from '../../componentes/ui'
@@ -45,6 +46,11 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
   const [trabajando, setTrabajando] = useState(false)
   const [comentario, setComentario] = useState('')
   const [edicion, setEdicion] = useState<DatosDeEdicionDeTarea | null>(null)
+
+  // El glow de la ficha (14.0). `edicion` no es null exactamente cuando hay cambios sin guardar: se
+  // llena al tocar el primer campo y se vacía al guardar o al descartar, así que sirve tal cual de
+  // `editando`. `filaId` es el `_ID` de la hoja; una tarea recién creada y sin subir no reporta nada.
+  const { claveDeFoco, motivo } = useFichaEnVivo('tarea', ficha?.tarea.filaId, edicion !== null)
 
   const cargar = useCallback(async () => {
     const resultado = await window.dm.tareas.ficha(tareaId)
@@ -131,6 +137,8 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">
             <span>Creada por {t.creadoPor} el {fechaYHora(t.creadoEn)}</span>
             <EtiquetaDeVencimiento tarea={t} />
+            {/* Quién más tiene la tarea abierta (14.0). */}
+            <InsigniaDePresencia claveDeFoco={claveDeFoco} />
           </p>
         </div>
 
@@ -155,6 +163,7 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
       </div>
 
       {error && <Alerta tono="error">{error}</Alerta>}
+      {motivo && <Alerta tono="aviso">{motivo}</Alerta>}
 
       {t.vinculo !== 'suelta' && (
         <Alerta tono="info">
@@ -182,6 +191,8 @@ export function FichaTarea({ tareaId, alVolver }: { tareaId: number; alVolver: (
                   variante="primario"
                   icono="ok"
                   cargando={trabajando}
+                  disabled={motivo !== undefined}
+                  title={motivo}
                   onClick={() => void hacer(() => window.dm.tareas.editar(t.id, actuales))}
                 >
                   Guardar

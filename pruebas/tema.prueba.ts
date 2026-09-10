@@ -112,7 +112,7 @@ test('todo fondo pálido que usan las pantallas tiene su regla en el tema oscuro
   // `-50` y `-100` son los fondos de los paneles, los carteles y las vistas previas: sin regla
   // oscura quedan como un rectángulo casi blanco en el medio de una pantalla oscura.
   const sinRegla = [
-    ...contar(/\bbg-(marino|cielo|slate|red|green|amber|violet|sky|orange|white|black)-(?:50|100)\b/g).keys(),
+    ...contar(/\bbg-(marino|cielo|slate|red|green|emerald|amber|violet|sky|orange|white|black)-(?:50|100)\b/g).keys(),
   ]
     .filter((clase) => !tieneReglaOscura(clase))
     .sort()
@@ -134,7 +134,7 @@ test('los fondos pálidos CON TRANSPARENCIA también tienen su regla', () => {
   // Como el `\b` de la prueba anterior corta justo antes de la barra, ahí el caso pasaba desapercibido:
   // se veía `bg-amber-100`, que sí tiene regla. Por eso ésta busca la clase ENTERA, con su `/NN`.
   const sinRegla = [
-    ...contar(/\bbg-(marino|cielo|slate|red|green|amber|violet|sky|orange|white|black)-(?:50|100)\/\d{1,3}\b/g).keys(),
+    ...contar(/\bbg-(marino|cielo|slate|red|green|emerald|amber|violet|sky|orange|white|black)-(?:50|100)\/\d{1,3}\b/g).keys(),
   ]
     .filter((clase) => !tieneReglaOscura(clase))
     .sort()
@@ -150,7 +150,7 @@ test('toda la tinta oscura que usan las pantallas tiene su regla en el tema oscu
   // La tinta de `600` para arriba es la que va sobre los fondos pálidos de arriba: si no se aclara,
   // queda casi negra sobre casi negro. Desde tres usos: con uno o dos suele ser un detalle suelto.
   const sinRegla = [
-    ...contar(/\btext-(marino|cielo|slate|red|green|amber|violet|sky|orange|white|black)-(?:600|700|800|900)\b/g),
+    ...contar(/\btext-(marino|cielo|slate|red|green|emerald|amber|violet|sky|orange|white|black)-(?:600|700|800|900)\b/g),
   ]
     .filter(([clase, veces]) => veces >= 3 && !tieneReglaOscura(clase))
     .map(([clase]) => clase)

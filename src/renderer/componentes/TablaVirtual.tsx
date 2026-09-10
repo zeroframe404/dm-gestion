@@ -34,6 +34,17 @@ interface PropsTablaVirtual<T> {
   alHacerClic?: (fila: T) => void
   filaSeleccionada?: string | null
   vacio?: ReactNode
+  /**
+   * La calcomanía que se apoya encima de una celda (14.0): el anillo del glow de quien está editando
+   * ahí, y la burbuja con su cara. Devolver `null` es lo normal —casi ninguna celda tiene a nadie— y
+   * no cuesta nada; lo que se dibuja se posiciona `absolute` porque la celda pasa a `relative`.
+   *
+   * Es un decorado y no una columna a propósito: el glow no ocupa lugar y no puede correr el texto ni
+   * cambiar el ancho, y la planilla ya tiene veintidós columnas peleando por el espacio.
+   */
+  decorarCelda?: (fila: T, columna: ColumnaTabla<T>) => ReactNode
+  /** Ídem para el renglón entero: el anillo alrededor de la fila de Mora que alguien está tocando. */
+  decorarFila?: (fila: T) => ReactNode
 }
 
 const ALINEACION = { izquierda: 'justify-start text-left', derecha: 'justify-end text-right', centro: 'justify-center text-center' }
@@ -48,6 +59,8 @@ export function TablaVirtual<T>({
   alHacerClic,
   filaSeleccionada,
   vacio,
+  decorarCelda,
+  decorarFila,
 }: PropsTablaVirtual<T>) {
   const contenedor = useRef<HTMLDivElement | null>(null)
   const [desplazamiento, setDesplazamiento] = useState(0)
@@ -131,9 +144,14 @@ export function TablaVirtual<T>({
                       'group flex border-b border-slate-100',
                       seleccionada ? 'bg-marino-50' : 'bg-white hover:bg-slate-50',
                       alHacerClic && 'cursor-pointer',
+                      // `relative` sólo cuando hay algo que decorar: las tablas que no usan el glow
+                      // quedan exactamente como estaban, con las columnas fijas apoyadas en el
+                      // contenedor que scrollea y no en el renglón.
+                      decorarFila && 'relative',
                       claseDeFila?.(fila),
                     )}
                   >
+                    {decorarFila?.(fila)}
                     {columnas.map((columna) => (
                       <div
                         key={columna.id}
@@ -145,10 +163,12 @@ export function TablaVirtual<T>({
                           'flex shrink-0 items-center px-2 text-sm text-slate-700',
                           columna.fija && 'border-r border-slate-200',
                           columna.fija && (seleccionada ? 'bg-marino-50' : 'bg-white group-hover:bg-slate-50'),
+                          decorarCelda && 'relative',
                           ALINEACION[columna.alinear ?? 'izquierda'],
                         )}
                       >
                         {columna.celda(fila, primera + posicion)}
+                        {decorarCelda?.(fila, columna)}
                       </div>
                     ))}
                   </div>

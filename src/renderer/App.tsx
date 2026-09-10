@@ -6,6 +6,8 @@ import { BannerSinConexion } from './componentes/BannerSinConexion'
 import { CartelActualizacionDisponible } from './componentes/CartelActualizacionDisponible'
 import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
 import { AvisoDeZumbido } from './componentes/AvisoDeZumbido'
+import { AvisoDeLlamadaEntrante } from './componentes/AvisoDeLlamadaEntrante'
+import { BarraDeLlamada } from './componentes/BarraDeLlamada'
 import { BarraLateral } from './componentes/BarraLateral'
 import { BarraSuperior } from './componentes/BarraSuperior'
 import { Icono } from './componentes/Icono'
@@ -16,7 +18,10 @@ import { ProveedorNavegacion, useNavegacion } from './contexto/Navegacion'
 import { ProveedorPermisos, usePermisos } from './contexto/Permisos'
 import { useSesion } from './contexto/Sesion'
 import { ProveedorConexion } from './contexto/Conexion'
+import { ProveedorLlamada } from './contexto/Llamada'
 import { ProveedorDatosEnVivo } from './contexto/DatosEnVivo'
+import { ProveedorPerfiles } from './contexto/Perfiles'
+import { ProveedorPresencia, useFocoDeModulo } from './contexto/Presencia'
 import { ProveedorTareas } from './contexto/Tareas'
 import { buscarModulo, esAreaDePermisos, type IdModulo } from './modulos'
 import { CambiarClave } from './pantallas/CambiarClave'
@@ -61,7 +66,22 @@ export function App() {
             {/* El aviso de que bajaron datos de otra computadora, para que la pantalla abierta se
                 recargue sola. Un solo suscriptor para toda la aplicación. */}
             <ProveedorDatosEnVivo>
-              <ConPermisosCargados />
+              {/* La foto y el color de cada uno (14.0). Va afuera de la presencia porque el avatar de
+                  la barra superior los necesita aunque el canal esté caído: los perfiles ya están en
+                  el espejo local y la presencia, en cambio, no existe sin canal. */}
+              <ProveedorPerfiles>
+                {/* Quién está trabajando en qué (14.0): el glow de colores. Adentro de la sesión
+                    porque tiene que saber cuál es la clave propia para no dibujarse a uno mismo. */}
+                <ProveedorPresencia>
+                  {/* Las llamadas de voz (14.0). Va lo más adentro que se puede y envolviendo a todo el
+                      escritorio: la `RTCPeerConnection` y el micrófono tienen que sobrevivir a que se
+                      cambie de módulo en el medio de la charla, y la cara de quien llama la dibuja el
+                      `Avatar`, que necesita los perfiles de acá arriba. */}
+                  <ProveedorLlamada>
+                    <ConPermisosCargados />
+                  </ProveedorLlamada>
+                </ProveedorPresencia>
+              </ProveedorPerfiles>
             </ProveedorDatosEnVivo>
           </ProveedorTareas>
         </ProveedorConexion>
@@ -93,6 +113,11 @@ function Escritorio() {
   const { modulo: moduloActivo, ir } = useNavegacion()
   const { puedeVer } = usePermisos()
   const modulo = buscarModulo(moduloActivo)
+
+  // El piso de la presencia (14.0): mientras no haya una celda ni una ficha abierta, lo que las otras
+  // computadoras ven de esta es «está en Cartera». Alcanza para saber a quién preguntarle algo y para
+  // que la burbuja de una persona no desaparezca del todo entre una ficha y la siguiente.
+  useFocoDeModulo(modulo.nombre)
 
   // Sin permiso no se abre el módulo, aunque se haya llegado por un atajo (Inicio, la campana de
   // tareas o el módulo que quedó abierto cuando le sacaron el permiso mientras trabajaba).
@@ -182,6 +207,10 @@ function Marco({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Arriba del aviso de actualización: que no se pueda guardar nada no puede quedar segundo. */}
         <BannerSinConexion />
+        {/* Y la llamada en curso (14.0) arriba del aviso de actualización por lo mismo: mientras se
+            está hablando hay que poder cortar desde cualquier pantalla. Debajo del banner de conexión,
+            que es el que explica por qué no se puede guardar. */}
+        <BarraDeLlamada />
         <AvisoActualizacion />
         <BarraSuperior titulo={titulo} />
         <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</main>
@@ -192,6 +221,8 @@ function Marco({
       <AvisoDeTareaHecha />
       {/* Un zumbido llega estando en cualquier pantalla: por eso el sonido y el cartel viven acá. */}
       <AvisoDeZumbido />
+      {/* Ídem la llamada que entra (14.0): el tono y la cara de quien llama, con atender y rechazar. */}
+      <AvisoDeLlamadaEntrante />
       {/* Ídem: el rechazo por «ya lo cambió otro» (14.0) lo trae el ciclo de subida, esté abierta la
           pantalla que esté. */}
       <AvisoDePisado />

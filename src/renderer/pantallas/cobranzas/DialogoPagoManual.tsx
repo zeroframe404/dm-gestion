@@ -324,6 +324,8 @@ export function DialogoPagoManual({ fecha, sucursales, sucursalPorDefecto, medio
 /** Marcador para cargar un pago de alguien que todavía no está en la base. */
 const SIN_CLIENTE: FilaCliente = {
   id: 0,
+  // No sale de ninguna fila de la planilla: es el marcador de «todavía no está en la base».
+  filaId: null,
   nombre: '',
   documento: null,
   telefono: null,
