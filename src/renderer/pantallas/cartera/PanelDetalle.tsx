@@ -4,7 +4,7 @@ import type { CampoEditable, EntradaHistorial, FilaCartera } from '../../../shar
 import type { ResultadoDeEliminacion } from '../../../shared/eliminacion'
 import { claveDeFilaDeCelda } from '../../../shared/presencia'
 import { Icono } from '../../componentes/Icono'
-import { InsigniaDePresencia, motivoDelBloqueo, useCursorAdentro } from '../../componentes/Presencia'
+import { Glow, InsigniaDePresencia, motivoDelBloqueo, useCursorAdentro } from '../../componentes/Presencia'
 import { seGuardaAlSalir } from '../../componentes/presencia-reglas'
 import { cx } from '../../componentes/ui'
 import { useBloqueoDe, useFocoDeObjeto } from '../../contexto/Presencia'
@@ -110,18 +110,18 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar 
   return (
     <aside className="flex w-96 shrink-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white" {...propsDelCursor}>
       <header className="flex items-start justify-between gap-2 border-b border-slate-200 px-4 py-3">
-        <div className="min-w-0">
+        {/* El aura envuelve todo el bloque del nombre: acá la insignia va debajo, no al lado —el
+            panel mide 24rem y no entra junto al botón de cerrar. */}
+        <Glow claveDeFoco={claveDeFoco} redondeo="rounded-md" className="block min-w-0">
           <p className="truncate font-display text-base font-bold text-slate-900">{fila.nombre ?? 'Sin nombre'}</p>
           <p className="truncate text-xs text-slate-500">
             {fila.compania ?? '—'} · {fila.numeroPoliza ?? 'sin póliza'} · {fila.patente ?? 'sin patente'}
           </p>
-          {/* Quién más está en esta fila (14.0). Debajo del nombre y no al costado: el panel mide 24
-              rem y el cartel con la cara y el texto no entra en la misma línea que el botón de cerrar. */}
           <div className="mt-1 flex flex-wrap gap-1">
             <InsigniaDePresencia claveDeFoco={claveDeFoco} />
           </div>
           {bloqueadaPor && <p className="mt-1 text-xs font-semibold text-amber-700">{motivoDelBloqueo(bloqueadaPor)}</p>}
-        </div>
+        </Glow>
         <button type="button" aria-label="Cerrar el detalle" onClick={alCerrar} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
           <Icono nombre="cerrar" tamano={16} />
         </button>

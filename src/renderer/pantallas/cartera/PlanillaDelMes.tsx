@@ -12,7 +12,7 @@ import {
   type ColorAlerta,
 } from '../../../shared/semaforo'
 import { coincideAlguno, mismoTextoDeFiltro } from '../../../shared/filtros'
-import { claveDeCelda } from '../../../shared/presencia'
+import { claveDeCelda, claveDeFilaDeCelda } from '../../../shared/presencia'
 import { NOMBRE_RAMA, ramaDeVehiculo, type Rama } from '../../../shared/ramas'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { CampoEditable, FilaCartera, PlanillaDelMes as DatosPlanilla } from '../../../shared/tipos'
@@ -785,6 +785,11 @@ export function PlanillaDelMes() {
             if (!campo) return null
             return <MarcaDePresencia claveDeFoco={claveDeCelda(fila.filaId, campo)} />
           }}
+          // El aura de la fila entera (14.0): se prende con cualquier celda de esa fila que alguien
+          // esté tocando (`indexarPresencia` ya anota cada celda también bajo la clave de la fila) y
+          // con el panel de detalle abierto, que usa esta misma clave. Antes sólo brillaba la celda
+          // puntual; el cliente en sí no se distinguía en la planilla salvo abriendo su ficha.
+          decorarFila={({ fila }) => <MarcaDePresencia claveDeFoco={claveDeFilaDeCelda(fila.filaId)} burbujas="izquierda" />}
         />
         {filaSeleccionada && (
           <PanelDetalle

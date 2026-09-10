@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FichaPresupuesto as Ficha, OpcionDePresupuesto } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
-import { InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
+import { Glow, InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
@@ -104,17 +104,17 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
         <Boton icono="flechaIzquierda" onClick={alVolver}>
           Volver
         </Boton>
-        <div className="min-w-0 flex-1">
+        {/* El aura envuelve el título y el renglón de abajo, donde vive la insignia. */}
+        <Glow claveDeFoco={claveDeFoco} redondeo="rounded-md" className="block min-w-0 flex-1">
           <h1 className="font-display text-2xl font-extrabold tracking-tight text-slate-900">
             {p.numero}
             {p.version > 1 && <span className="ml-2 align-middle text-base font-bold text-slate-400">versión {p.version}</span>}
           </h1>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">
             <span>{[p.clienteNombre, vehiculo, p.patente, p.sucursal].filter(Boolean).join(' · ')}</span>
-            {/* Quién más tiene el presupuesto abierto (14.0). */}
             <InsigniaDePresencia claveDeFoco={claveDeFoco} />
           </p>
-        </div>
+        </Glow>
         <span className={cx('rounded-full border px-3 py-1 text-sm font-semibold', CLASES_ESTADO_PRESUPUESTO[p.estado])}>{p.estado}</span>
         <BotonEliminar tipo="presupuesto" id={p.id} tamano="md" etiqueta="Eliminar" alBorrar={alVolver} />
       </div>

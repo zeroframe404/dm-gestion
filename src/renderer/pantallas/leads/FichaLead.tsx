@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { ESTADOS_DE_LEAD, NOMBRE_ORIGEN_LEAD, type EstadoLead, type FichaLead as Ficha } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
-import { InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
+import { Glow, InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
 import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos } from '../../contexto/Permisos'
@@ -98,14 +98,14 @@ export function FichaLead({ leadId, alVolver }: { leadId: number; alVolver: () =
         <Boton icono="flechaIzquierda" onClick={alVolver}>
           Volver
         </Boton>
-        <div className="min-w-0 flex-1">
+        {/* El aura envuelve el título y el renglón de abajo, donde vive la insignia. */}
+        <Glow claveDeFoco={claveDeFoco} redondeo="rounded-md" className="block min-w-0 flex-1">
           <h1 className="font-display text-2xl font-extrabold tracking-tight text-slate-900">{lead.nombre}</h1>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">
             <span>{[lead.telefono, lead.sucursal, NOMBRE_ORIGEN_LEAD[lead.origen]].filter(Boolean).join(' · ')}</span>
-            {/* Quién más tiene la consulta abierta (14.0). */}
             <InsigniaDePresencia claveDeFoco={claveDeFoco} />
           </p>
-        </div>
+        </Glow>
 
         <select
           value={lead.estado}

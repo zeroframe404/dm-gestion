@@ -32,7 +32,7 @@ import { Icono } from '../../componentes/Icono'
 import { SelectorDeVehiculo } from '../../componentes/SelectorDeVehiculo'
 import { AdjuntosDePoliza } from './AdjuntosDePoliza'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Selector } from '../../componentes/ui'
-import { InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
+import { Glow, InsigniaDePresencia, useFichaEnVivo } from '../../componentes/Presencia'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -407,14 +407,14 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
           Volver
         </Boton>
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
+          {/* El aura envuelve el título, en la barra que queda pegada arriba: se ve sin importar cuánto
+              se haya bajado en un formulario que es largo. */}
+          <Glow claveDeFoco={claveDeFoco} redondeo="rounded-md" className="flex flex-wrap items-center gap-2">
             <h2 className="font-display text-lg font-extrabold tracking-tight text-slate-900">
               {enEdicion ? 'Editar póliza' : 'Nueva póliza'}
             </h2>
-            {/* Quién más tiene esta póliza abierta (14.0), en la barra que queda pegada arriba: se ve
-                sin importar cuánto se haya bajado en un formulario que es largo. */}
             <InsigniaDePresencia claveDeFoco={claveDeFoco} />
-          </div>
+          </Glow>
           <p className="truncate text-xs text-slate-500">
             {enEdicion
               ? [poliza?.compania, poliza?.numero && `N.° ${poliza.numero}`, poliza?.patente ?? poliza?.vehiculo].filter(Boolean).join(' · ') ||

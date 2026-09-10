@@ -44,3 +44,15 @@ export function esIndiceDePaleta(valor: unknown): valor is number {
 export function colorDePaleta(indice: number): ColorDePaleta {
   return PALETA[esIndiceDePaleta(indice) ? indice : CANTIDAD_DE_COLORES - 1]!
 }
+
+/**
+ * El mismo color, pero transparente (14.0): para el halo difuminado del aura de presencia, que se
+ * dibuja por encima de la celda y no puede taparla. `alpha` va de 0 (invisible) a 1 (opaco).
+ */
+export function colorConAlpha(color: ColorDePaleta, alpha: number): string {
+  const numero = Number.parseInt(color.hex.slice(1), 16)
+  const r = (numero >> 16) & 255
+  const g = (numero >> 8) & 255
+  const b = numero & 255
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
