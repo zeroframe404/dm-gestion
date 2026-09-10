@@ -176,7 +176,7 @@ export function Impresora() {
             max={120}
             value={anchoMm}
             onChange={(evento) => setAnchoMm(evento.target.value)}
-            ayuda="Una POS-80 usa 80 mm. Si el ticket sale cortado o muy angosto, ajustá este número."
+            ayuda="Es el ancho del rollo, no el del texto: el comprobante ya se compone más angosto porque el cabezal no llega al borde del papel. Una POS-80 usa 80 mm."
             className="max-w-40"
           />
 
