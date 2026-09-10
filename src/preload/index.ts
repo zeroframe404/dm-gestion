@@ -94,6 +94,7 @@ const api: ApiDm = {
     bajas: (periodo) => invocar('cartera:bajas', periodo),
     cerrarMes: () => invocar('cartera:cerrarMes'),
     historialDeFila: (filaId) => invocar('cartera:historialDeFila', filaId),
+    deshacerHistorial: (entradaId) => invocar('cartera:deshacerHistorial', entradaId),
   },
   rechazos: {
     avisar: (polizaId, datos) => invocar('rechazos:avisar', polizaId, datos),

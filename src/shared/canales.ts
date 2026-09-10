@@ -303,6 +303,11 @@ export interface Canales {
   'cartera:bajas': (periodo: string | null) => Resultado<FilaBaja[]>
   'cartera:cerrarMes': () => Resultado<ResumenCierreDeMes>
   'cartera:historialDeFila': (filaId: string) => Resultado<EntradaHistorial[]>
+  /**
+   * Deshace una entrada del historial (una edición de celda o un aviso marcado a mano) y devuelve la
+   * fila ya actualizada. `EntradaHistorial.puedeDeshacerse` dice cuándo tiene sentido ofrecerlo.
+   */
+  'cartera:deshacerHistorial': (entradaId: number) => Resultado<FilaCartera>
 
   // Avisos de rechazo del débito automático: le rebotó el CBU a alguien y la sucursal que lo atiende
   // tiene que enterarse para llamarlo.

@@ -66,4 +66,8 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   //   - que rehacer `mensajes` no desenganche ningún acuse ni ningún archivo, con las claves foráneas
   //     prendidas y la tabla con datos → `esquema.prueba.ts`, «la migración 29 rehace mensajes…».
   29: 'af6f2ed764ba8b8d',
+  // La 30 le suma a `historial` las dos columnas de «Deshacer»: `deshecho_en` y `deshecho_por`. No
+  // borra ni pisa nada —el registro sigue siendo el mismo de siempre—, sólo anota si a ESE cambio ya
+  // se le dio vuelta y quién lo hizo, para no ofrecer el botón dos veces sobre el mismo renglón.
+  30: '5cac24e3d6e30267',
 }

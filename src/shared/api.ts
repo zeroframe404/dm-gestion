@@ -74,6 +74,7 @@ export interface ApiDm {
     bajas: Remota<'cartera:bajas'>
     cerrarMes: Remota<'cartera:cerrarMes'>
     historialDeFila: Remota<'cartera:historialDeFila'>
+    deshacerHistorial: Remota<'cartera:deshacerHistorial'>
   }
   rechazos: {
     avisar: Remota<'rechazos:avisar'>

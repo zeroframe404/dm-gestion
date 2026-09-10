@@ -17,6 +17,8 @@ interface Props {
   alGuardar: (campo: CampoEditable, valor: string) => void
   /** Se borró la fila de la planilla. Sólo lo puede hacer un superadministrador. */
   alBorrar: (resultado: ResultadoDeEliminacion) => void
+  /** Se deshizo una entrada del historial: la fila queda como estaba antes de ese cambio. */
+  alDeshacer: (fila: FilaCartera, mensaje: string) => void
 }
 
 const GRUPOS: Array<{ titulo: string; campos: Array<{ campo: CampoEditable; etiqueta: string }> }> = [
@@ -73,9 +75,11 @@ const GRUPOS: Array<{ titulo: string; campos: Array<{ campo: CampoEditable; etiq
   },
 ]
 
-export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar }: Props) {
+export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar, alDeshacer }: Props) {
   const [historial, setHistorial] = useState<EntradaHistorial[]>([])
   const [verHistorial, setVerHistorial] = useState(false)
+  const [deshaciendo, setDeshaciendo] = useState<number | null>(null)
+  const [errorDeshacer, setErrorDeshacer] = useState<string | null>(null)
   // Acá no hay botón de Guardar: cada campo se guarda al perder el foco, así que lo que hace de
   // «cambios sin guardar» es tener el cursor adentro de un campo. Ver `useCursorAdentro`.
   const [conCursor, propsDelCursor] = useCursorAdentro()
@@ -105,7 +109,31 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar 
   useEffect(() => {
     setVerHistorial(false)
     setHistorial([])
+    setErrorDeshacer(null)
   }, [fila.filaId])
+
+  /**
+   * Deshacer una entrada: al volver bien se recarga el historial entero (no sólo se tacha la fila a
+   * mano) porque deshacer TAMBIÉN queda anotado como un cambio más —es el mismo `registrarCambio` de
+   * siempre—, así que la lista tiene un renglón nuevo además de la marca de «deshecho» en el viejo.
+   */
+  const deshacer = async (entrada: EntradaHistorial) => {
+    if (trabado || deshaciendo !== null) return
+    setDeshaciendo(entrada.id)
+    setErrorDeshacer(null)
+    const resultado = await window.dm.cartera.deshacerHistorial(entrada.id)
+    setDeshaciendo(null)
+    if (!resultado.ok) {
+      setErrorDeshacer(resultado.error)
+      return
+    }
+    const historialActualizado = await window.dm.cartera.historialDeFila(fila.filaId)
+    if (historialActualizado.ok) setHistorial(historialActualizado.datos)
+    alDeshacer(
+      resultado.datos,
+      `Se deshizo «${entrada.campo}» de ${resultado.datos.nombre ?? 'la fila'}: volvió a ${entrada.valorAnterior ? `«${entrada.valorAnterior}»` : 'estar vacío'}.`,
+    )
+  }
 
   return (
     <aside className="flex w-96 shrink-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white" {...propsDelCursor}>
@@ -170,11 +198,30 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar 
                       {' → '}
                       <strong className="font-semibold">{entrada.valorNuevo ?? '(vacío)'}</strong>
                     </p>
-                    <p className="text-[11px] text-slate-400">{new Date(entrada.fecha).toLocaleString('es-AR')}</p>
+                    <div className="mt-0.5 flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-slate-400">{new Date(entrada.fecha).toLocaleString('es-AR')}</p>
+                      {entrada.deshechoEn ? (
+                        <p className="text-[11px] font-semibold text-slate-400">
+                          Deshecho por {entrada.deshechoPor} · {new Date(entrada.deshechoEn).toLocaleString('es-AR')}
+                        </p>
+                      ) : (
+                        entrada.puedeDeshacerse && (
+                          <button
+                            type="button"
+                            disabled={trabado || deshaciendo !== null}
+                            onClick={() => void deshacer(entrada)}
+                            className="shrink-0 font-semibold text-marino-600 hover:text-marino-800 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline"
+                          >
+                            {deshaciendo === entrada.id ? 'Deshaciendo…' : 'Deshacer'}
+                          </button>
+                        )
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
             ))}
+          {verHistorial && errorDeshacer && <p className="mt-2 text-xs font-semibold text-red-600">{errorDeshacer}</p>}
         </section>
       </div>
 

@@ -803,6 +803,11 @@ export function PlanillaDelMes() {
               setAviso(`Se borró de la base la fila de ${resultado.titulo}.`)
               void cargar(datos.periodo)
             }}
+            alDeshacer={(fila, mensaje) => {
+              setError(null)
+              reemplazar(fila)
+              setAviso(mensaje)
+            }}
           />
         )}
       </div>

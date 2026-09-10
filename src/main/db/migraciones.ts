@@ -1864,6 +1864,19 @@ export const MIGRACIONES: Migracion[] = [
       );
     `,
   },
+  {
+    version: 30,
+    descripcion: 'Deshacer desde el historial: marca qué entrada ya se revirtió, y quién',
+    sql: `
+      -- El historial ya guardaba el valor de antes de cada cambio; lo único que faltaba era poder
+      -- volver a ponerlo con un clic en vez de tener que copiarlo a mano a la celda. Estas dos columnas
+      -- son sólo la marca de que una entrada YA se deshizo (para no ofrecer el botón dos veces sobre el
+      -- mismo cambio) y quién lo hizo: el registro en sí no se toca ni se borra, como el resto del
+      -- historial —deshacer un cambio queda anotado, no lo tapa.
+      ALTER TABLE historial ADD COLUMN deshecho_en TEXT;
+      ALTER TABLE historial ADD COLUMN deshecho_por TEXT;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {
