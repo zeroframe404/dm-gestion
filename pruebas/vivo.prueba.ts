@@ -429,10 +429,27 @@ test('perfiles: la foto y el color van y vuelven, y un color tomado se rechaza c
       'el cambio de perfil viaja por el canal',
     )
 
+    // Y al revés, que es lo que pasa de verdad en la agencia: Ana elige su color en SU computadora y en
+    // la de Beto el anillo se repinta solo. Del lado de Beto no hay ningún pedido: lo único que llegó
+    // fue el frame `perfil`, y de ahí sale tanto lo que muestra la pantalla como lo que queda en el
+    // espejo para la próxima vez que abra sin internet.
+    en(ana.db)
+    const deAna = await subirMiPerfil(ANA, { color: 3 })
+    assert.equal(deAna.color, 3)
+    en(beto.db)
+    await esperarHasta(() => String(perfilDe('ana')?.color), '3', 2_000)
+    en(beto.db)
+    assert.equal(
+      perfilesLocales().find((perfil) => perfil.clave === 'ana')?.color,
+      3,
+      'el color de Ana también quedó en el espejo de Beto',
+    )
+
     // El color es único: es lo que hace que un anillo diga quién está sin leer ningún nombre. El 409
     // llega con el texto del servidor y la pantalla lo muestra tal cual («elegí otro»).
     await assert.rejects(subirMiPerfil(ANA, { color: 7 }), /ya lo está usando/)
-    assert.equal(perfilDe('ana')?.color !== 7, true, 'el color de Ana no se movió')
+    assert.equal(perfilDe('ana')?.color, 3, 'el color de Ana no se movió')
+    assert.equal(perfilDe('beto')?.color, 7, 'y el de Beto tampoco: el rechazado no pisa nada')
   } finally {
     olvidarLosPerfiles()
     cerrar(beto)
@@ -584,6 +601,10 @@ test('llamadas: Ana llama, a Beto le suena, se hablan, y al colgar queda el reng
     ana.canal.enviar({ t: 'llamada', evento: { tipo: 'colgar', llamadaId: 'l-1', motivo: 'terminada' } })
     const corte = await esperarEvento(beto, 'colgar')
     assert.equal(corte.motivo, 'terminada')
+    // Y al que cortó no le vuelve el eco: ya cerró su `RTCPeerConnection` antes de mandar el frame
+    // (`colgarLlamada` en `main/vivo/llamadas.ts` corta primero y avisa después), así que devolvérselo
+    // sólo serviría para que la máquina de estados tuviera que aprender a descartar su propio corte.
+    assert.equal(ana.eventos.filter((evento) => evento.tipo === 'colgar').length, 0, 'el que corta ya lo sabe')
     const renglon = simulador.mensajes.find((mensaje) => mensaje.tipo === 'LLAMADA')
     assert.ok(renglon, 'la llamada deja su renglón en la conversación')
     assert.equal(renglon.conversacionId, 'c-ana-beto')
@@ -639,6 +660,52 @@ test('llamadas: la que se corta el cable no queda abierta, y a la que no atiende
     // La que se cortó se había atendido, así que tiene duración; la otra nunca sonó.
     assert.match(renglones[0]!, /^Llamada de voz · \d+:\d\d$/)
     assert.equal(renglones[1], 'Llamada perdida')
+  } finally {
+    ana.canal.parar()
+    beto.canal.parar()
+    await simulador.cerrar()
+  }
+})
+
+// El teléfono que suena y nadie atiende. Es la única de las tres decisiones del servidor que depende
+// de un reloj, y va con `timbreDeLlamadaMs` en un cuarto de segundo en vez de los cuarenta y cinco
+// del VPS: lo que hay que proteger es QUIÉN corta y a quiénes les avisa, no cuánto espera. Un banco de
+// pruebas que se queda cuarenta y cinco segundos mirando un timbre no lo corre nadie.
+test('llamadas: la que nadie atiende la corta el servidor, les llega a los dos y queda la perdida', async () => {
+  const simulador = new VpsSimulado({ pestanas: hojaDeLaAgencia() })
+  simulador.timbreDeLlamadaMs = 250
+  await simulador.escuchar()
+  unaDirectaEnElServidor(simulador, 'c-ana-beto', [ANA, BETO])
+  const ana = unTelefono(simulador, ANA)
+  const beto = unTelefono(simulador, BETO)
+
+  try {
+    await esperarElTelefono(ana)
+    await esperarElTelefono(beto)
+
+    // Ana llama y a Beto le suena, pero Beto se fue del mostrador y no toca nada.
+    ana.canal.enviar({
+      t: 'llamada',
+      evento: { tipo: 'invitar', llamadaId: 'l-5', para: 'beto', conversacionId: 'c-ana-beto' },
+    })
+    await esperarEvento(beto, 'timbrar')
+
+    // Acá los DOS reciben el corte, y no como cuando alguien cuelga: nadie cortó, cortó el servidor, y
+    // ninguna de las dos computadoras tiene manera de saberlo sola. A Ana le apaga el tono de llamada y
+    // a Beto el timbre, que si no seguiría sonando en una oficina vacía.
+    const paraAna = await esperarEvento(ana, 'rechazar')
+    assert.equal(paraAna.llamadaId, 'l-5')
+    assert.equal(paraAna.motivo, 'sin-respuesta')
+    const paraBeto = await esperarEvento(beto, 'rechazar')
+    assert.equal(paraBeto.motivo, 'sin-respuesta', 'al teléfono que sonaba también se le avisa')
+    assert.equal(simulador.llamadasAbiertas.size, 0, 'no queda ninguna llamada abierta en el servidor')
+
+    // Y queda escrita en la conversación, que es cómo Beto se entera de que lo llamaron.
+    const renglon = simulador.mensajes.find((mensaje) => mensaje.tipo === 'LLAMADA')
+    assert.ok(renglon, 'la llamada que nadie atendió también deja su renglón')
+    assert.equal(renglon.conversacionId, 'c-ana-beto')
+    assert.equal(renglon.autorClave, 'ana')
+    assert.equal(renglon.cuerpo, 'Llamada perdida')
   } finally {
     ana.canal.parar()
     beto.canal.parar()
@@ -748,6 +815,26 @@ test('reacciones: el pulgar que pone Ana aparece en el hilo de Beto sin que nadi
       async () => String((await hiloDe(BETO, conversacionId)).mensajes[0]?.reacciones?.length),
       '0',
       2_000,
+    )
+
+    // Y cambiar de emoji no suma una segunda pastilla: cada persona reacciona UNA vez a cada mensaje,
+    // así que el corazón reemplaza al pulgar en lugar de convivir con él. Es la mitad del interruptor
+    // que se rompe sin que se note —la de sacar deja la cuenta en cero y se ve enseguida; la de
+    // reemplazar deja dos pastillas donde tenía que haber una y parece que anduvo—.
+    await puente.reaccionar(actorAna, 'm-1', '👍')
+    const cambiada = await puente.reaccionar(actorAna, 'm-1', '❤️')
+    assert.deepEqual(cambiada.reacciones, [{ emoji: '❤️', claves: ['ana'] }])
+    en(beto.db)
+    await esperarHasta(
+      async () => (await hiloDe(BETO, conversacionId)).mensajes[0]?.reacciones?.[0]?.emoji,
+      '❤️',
+      2_000,
+    )
+    const conCorazon = await hiloDe(BETO, conversacionId)
+    assert.deepEqual(
+      conCorazon.mensajes[0]!.reacciones,
+      [{ emoji: '❤️', claves: ['ana'], nombres: ['Ana Ruiz'], mia: false }],
+      'una sola pastilla: el espejo tiene que BORRAR el pulgar, no dejarlo al lado',
     )
   } finally {
     cerrar(beto)
