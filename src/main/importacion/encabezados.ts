@@ -30,6 +30,9 @@ export type Campo =
   | 'avisar_vto'
   | 'pago'
   | 'observaciones'
+  // 15.3: la nota de la liquidación (Cartera → Planilla del mes, al lado de LOCAL/sucursal), aparte de
+  // OBSERVACIONES: «debe una», «debe sólo septiembre»…
+  | 'obs_pago'
   | 'marca'
   | 'modelo'
   | 'anio'
@@ -131,6 +134,9 @@ const SINONIMOS: Record<Campo, string[]> = {
   avisar_vto: ['AVISAR VTO', 'AVISAR VENCIMIENTO', 'AVISAR'],
   pago: ['PAGO', 'PAGOS', 'FECHA DE PAGO', 'FECHA PAGO', 'PAGADO', 'COBRADO', 'ABONO', 'ABONADO', 'FECHA COBRO', 'CUANDO PAGO', 'FECHA EN QUE PAGO', 'PAGO EL', 'F DE PAGO', 'FECHA DEL PAGO'],
   observaciones: ['OBSERVACIONES', 'OBSERVACION', 'OBS', 'OB', 'OB DE COBERTURAS', 'OBS DE COBERTURAS', 'OB COBERTURAS', 'OBS COBERTURAS', 'OBSERVACIONES DE COBERTURA', 'OBSERVACIONES DE COBERTURAS', 'OBSERVACIONES COBERTURA', 'NOTAS', 'NOTA', 'COMENTARIOS', 'COMENTARIO', 'ACLARACIONES', 'ACLARACION', 'OBSERV', 'OBSERVACIONES GENERALES', 'OBS DE PAGOS', 'AVISOS DE PAGOS', 'OB DE PAGOS', 'OBSERVACIONES DE PAGOS'],
+  // 15.3: OBS PAGO es la nota de la liquidación («debe una», «debe sólo septiembre»), aparte de
+  // OBSERVACIONES. Sinónimos en singular para no chocar con los de arriba, que ya usan el plural.
+  obs_pago: ['OBS PAGO', 'OBS. PAGO', 'OBS DE PAGO', 'OB DE PAGO', 'OBSERVACION DE PAGO', 'NOTA DE PAGO', 'NOTA DE LA LIQUIDACION', 'ESTADO DE PAGO', 'ESTADO DEL PAGO'],
   marca: ['MARCA', 'MARCA VEHICULO', 'MARCA DEL VEHICULO', 'MARCAS'],
   modelo: ['MODELO', 'UNIDAD', 'MODELO VEHICULO', 'MARCA Y MODELO', 'MARCA MODELO', 'MODELO MARCA', 'MARCA MOD', 'VEHICULO MODELO', 'AUTOMOTOR', 'RODADO', 'MODELO DEL VEHICULO', 'VEHICULOS', 'MOVIL'],
   anio: ['ANO', 'ANIO', 'MODELO ANO', 'ANO MODELO', 'ANO DEL VEHICULO', 'ANO VEHICULO', 'ANO DEL AUTO', 'ANO FABRICACION', 'ANO DE FABRICACION'],
@@ -369,7 +375,7 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
 
 /** Campos que tienen sentido en cada tipo de pestaña. Los demás quedan sólo en los datos crudos. */
 const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
-  MENSUAL: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'sucursal', 'fecha_nacimiento', 'compania', 'numero_poliza', 'cobertura', 'prima', 'forma_pago', 'productor', 'estado', 'vigencia_desde', 'vigencia_hasta', 'alta', 'cuota', 'dia_vencimiento', 'aviso', 'fecha_envio', 'avisar_vto', 'pago', 'observaciones', 'marca', 'modelo', 'anio', 'patente', 'motor', 'chasis', 'tipo_vehiculo', 'uso', 'color', 'suma_asegurada'],
+  MENSUAL: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'sucursal', 'fecha_nacimiento', 'compania', 'numero_poliza', 'cobertura', 'prima', 'forma_pago', 'productor', 'estado', 'vigencia_desde', 'vigencia_hasta', 'alta', 'cuota', 'dia_vencimiento', 'aviso', 'fecha_envio', 'avisar_vto', 'pago', 'observaciones', 'obs_pago', 'marca', 'modelo', 'anio', 'patente', 'motor', 'chasis', 'tipo_vehiculo', 'uso', 'color', 'suma_asegurada'],
   BAJAS: ['nombre', 'documento', 'telefono', 'sucursal', 'compania', 'numero_poliza', 'cobertura', 'patente', 'marca', 'modelo', 'motivo', 'fecha_baja', 'mes', 'observaciones', 'cuota', 'productor'],
   RIESGOS_VARIOS: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'sucursal', 'emision', 'tipo_riesgo', 'descripcion', 'compania', 'numero_poliza', 'prima', 'cuota', 'vigencia_desde', 'vigencia_hasta', 'forma_pago', 'dia_vencimiento', 'aviso', 'pago', 'observaciones', 'productor', 'estado', 'patente', 'marca', 'modelo'],
   SINIESTROS: [
@@ -835,6 +841,7 @@ const ENCABEZADO_PARA_AGREGAR: Partial<Record<Campo, string>> = {
   estado: 'ESTADO',
   importe: 'IMPORTE',
   observaciones: 'OBSERVACIONES',
+  obs_pago: 'OBS PAGO',
   abogado: 'ABOGADO',
   tercero_compania: 'COMPAÑIA DEL TERCERO',
   tercero_telefono: 'TELEFONO DEL TERCERO',

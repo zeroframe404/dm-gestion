@@ -146,6 +146,26 @@ test('editar una celda guarda donde corresponde y queda en el historial', async 
   cerrarBaseDeDatos()
 })
 
+test('OBS PAGO es una columna aparte de Observaciones, al lado de Sucursal, y sigue al mes que se abre', async () => {
+  await carteraDePrueba()
+  const agosto = planillaDelMes(null)
+  const fila = buscar(agosto.filas, CLIENTES.lopez.nombre)
+  assert.equal(fila.obsPago, null, 'arranca vacía')
+
+  const editada = editarCelda(fila.filaId, 'obsPago', 'DEBE DOS', DANIEL)
+  assert.equal(editada.obsPago, 'DEBE DOS')
+  assert.equal(editada.observaciones, fila.observaciones, 'no toca Observaciones, que es otra columna')
+
+  const historial = historialDeFila(fila.filaId)
+  assert.equal(historial[0]!.campo, 'OBS PAGO')
+  assert.equal(historial[0]!.valorNuevo, 'DEBE DOS')
+
+  const resumen = cerrarMes(DANIEL)
+  const nueva = buscar(planillaDelMes(resumen.periodo).filas, CLIENTES.lopez.nombre)
+  assert.equal(nueva.obsPago, 'DEBE DOS', 'la nota de la liquidación se arrastra igual que Observaciones')
+  cerrarBaseDeDatos()
+})
+
 test('avisar arma el WhatsApp y deja la fila como ENVIADO con la fecha', async () => {
   await carteraDePrueba()
   guardarPlantillaDeAviso('Hola {nombre}, vence el {vencimiento} tu cuota de ${cuota}.')
@@ -155,7 +175,7 @@ test('avisar arma el WhatsApp y deja la fila como ENVIADO con la fecha', async (
   const aviso = prepararAviso(fila.filaId, DANIEL)
   assert.match(aviso.url, /^https:\/\/wa\.me\/5491144445555\?text=/)
   assert.equal(aviso.mensaje, 'Hola MARIA, vence el 10 tu cuota de $$ 24.420.')
-  assert.equal(aviso.fila.aviso, 'ENVIADO')
+  assert.equal(aviso.fila.aviso, `ENVIADO ${Number(planilla.hoy.slice(8, 10))}`)
   assert.equal(aviso.fila.fechaEnvio, planilla.hoy)
   assert.equal(decodeURIComponent(aviso.url.split('text=')[1]!), aviso.mensaje)
 
@@ -172,7 +192,7 @@ test('«Avisado» deja la fila igual que el WhatsApp, pero sin abrirlo', async (
   assert.notEqual(fila.aviso, 'ENVIADO', 'arranca sin avisar')
 
   const marcada = marcarAvisado(fila.filaId, DANIEL)
-  assert.equal(marcada.aviso, 'ENVIADO')
+  assert.equal(marcada.aviso, `ENVIADO ${Number(planilla.hoy.slice(8, 10))}`)
   assert.equal(marcada.fechaEnvio, planilla.hoy, 'con la fecha de hoy, que es lo que cuenta «Avisados hoy»')
 
   const historial = historialDeFila(fila.filaId)
@@ -185,7 +205,7 @@ test('«Avisado» no necesita teléfono: es para cuando ya se avisó por otro la
   await carteraDePrueba()
   const fila = buscar(planillaDelMes(null).filas, CLIENTES.suarez.nombre)
   editarCelda(fila.filaId, 'telefono', '', DANIEL)
-  assert.equal(marcarAvisado(fila.filaId, DANIEL).aviso, 'ENVIADO')
+  assert.match(marcarAvisado(fila.filaId, DANIEL).aviso ?? '', /^ENVIADO \d+$/)
   cerrarBaseDeDatos()
 })
 

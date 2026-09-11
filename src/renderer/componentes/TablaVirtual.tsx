@@ -40,7 +40,7 @@ interface PropsTablaVirtual<T> {
    * no cuesta nada; lo que se dibuja se posiciona `absolute` porque la celda pasa a `relative`.
    *
    * Es un decorado y no una columna a propósito: el glow no ocupa lugar y no puede correr el texto ni
-   * cambiar el ancho, y la planilla ya tiene veintidós columnas peleando por el espacio.
+   * cambiar el ancho, y la planilla ya tiene veintitrés columnas peleando por el espacio.
    */
   decorarCelda?: (fila: T, columna: ColumnaTabla<T>) => ReactNode
   /** Ídem para el renglón entero: el anillo alrededor de la fila de Mora que alguien está tocando. */

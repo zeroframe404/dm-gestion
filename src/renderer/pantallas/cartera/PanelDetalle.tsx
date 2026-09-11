@@ -32,6 +32,7 @@ const GRUPOS: Array<{ titulo: string; campos: Array<{ campo: CampoEditable; etiq
       { campo: 'direccion', etiqueta: 'Dirección' },
       { campo: 'localidad', etiqueta: 'Localidad' },
       { campo: 'sucursal', etiqueta: 'Sucursal' },
+      { campo: 'obsPago', etiqueta: 'Obs. pago' },
     ],
   },
   {

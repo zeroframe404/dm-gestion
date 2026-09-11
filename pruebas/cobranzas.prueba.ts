@@ -321,13 +321,13 @@ test('«Avisar» desde la mora arma el WhatsApp y sólo marca la fila si el mes 
   const aviso = avisarMora(delMesAbierto.filaId, DANIEL, HOY)
   assert.match(aviso.url, /^https:\/\/wa\.me\/549\d+\?text=/)
   assert.equal(aviso.marcada, true)
-  assert.equal(aviso.fila.aviso, 'ENVIADO')
+  assert.match(aviso.fila.aviso ?? '', /^ENVIADO \d+$/)
 
   const deMesCerrado = listado.filas.find((f) => !f.mesAbierto && f.telefono)
   assert.ok(deMesCerrado, 'tiene que haber cuotas impagas de meses anteriores')
   const avisoViejo = avisarMora(deMesCerrado.filaId, DANIEL, HOY)
   assert.equal(avisoViejo.marcada, false, 'un mes cerrado no se toca')
-  assert.notEqual(avisoViejo.fila.aviso, 'ENVIADO')
+  assert.doesNotMatch(avisoViejo.fila.aviso ?? '', /^ENVIADO \d+$/)
   // Pero queda constancia de que se avisó.
   const historial = historialDeFila(deMesCerrado.filaId)
   assert.equal(historial[0]!.campo, 'OB. AVISOS')

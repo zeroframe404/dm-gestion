@@ -543,7 +543,7 @@ test('editar la plantilla de aviso cambia lo que manda el botón «Avisar» de C
   assert.match(despues.mensaje, /^Hola ANA: la cuota de FEDERACION PATRONAL por 0KM vence el 10 y sale /)
   assert.ok(!despues.mensaje.includes('{'), 'no puede quedar ninguna variable sin reemplazar')
   assert.match(despues.url, /^https:\/\/wa\.me\/549/)
-  assert.equal(despues.fila.aviso, 'ENVIADO', 'agosto es el mes abierto: la fila queda como ENVIADO')
+  assert.match(despues.fila.aviso ?? '', /^ENVIADO \d+$/, 'agosto es el mes abierto: la fila queda como ENVIADO')
 
   // Y vuelve a quedar como estaba para las pruebas que siguen.
   guardarPlantillaDeAviso('Hola {nombre}, te recordamos que el {vencimiento} vence la cuota de tu seguro por ${cuota}. Cualquier duda escribinos. Seguros Daniel Martínez.')

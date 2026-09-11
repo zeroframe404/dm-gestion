@@ -83,7 +83,7 @@ export const SELECT_PLANILLA = `
     cl.email, cl.direccion, cl.localidad,
     c.dia_vencimiento, c.dia_vencimiento_numero, c.cuota, c.cuota_monto,
     COALESCE(c.forma_pago, p.forma_pago) AS forma_pago,
-    c.aviso, c.fecha_envio, c.avisar_vto, c.pago, c.pago_fecha, c.observaciones,
+    c.aviso, c.fecha_envio, c.avisar_vto, c.pago, c.pago_fecha, c.observaciones, c.obs_pago,
     v.tipo AS vehiculo, v.categoria AS categoria_vehiculo,
     v.marca, v.modelo, COALESCE(c.patente, v.patente) AS patente,
     v.anio, v.motor, v.chasis, v.uso, v.color,
@@ -159,6 +159,7 @@ export interface FilaCruda {
   pago: string | null
   pago_fecha: string | null
   observaciones: string | null
+  obs_pago: string | null
   vehiculo: string | null
   categoria_vehiculo: string | null
   marca: string | null
@@ -203,6 +204,7 @@ export function aFila(cruda: FilaCruda, dias: Record<string, number>): FilaCarte
     clienteId: cruda.cliente_id,
     vehiculoId: cruda.vehiculo_id,
     sucursal: cruda.sucursal,
+    obsPago: cruda.obs_pago,
     nombre: cruda.nombre,
     telefono: cruda.telefono,
     documento: cruda.documento,
@@ -564,6 +566,7 @@ const DESTINOS: Record<CampoEditable, DestinoDeCampo> = {
   aviso: { tabla: 'cuotas_mes', columna: 'aviso' },
   avisarVto: { tabla: 'cuotas_mes', columna: 'avisar_vto' },
   observaciones: { tabla: 'cuotas_mes', columna: 'observaciones' },
+  obsPago: { tabla: 'cuotas_mes', columna: 'obs_pago' },
   pago: {
     tabla: 'cuotas_mes',
     columna: 'pago',
@@ -612,6 +615,7 @@ const NOMBRE_DE_CAMPO: Partial<Record<CampoEditable, string>> = {
   diaVencimiento: 'FECHA DE VENC',
   formaPago: 'FORMA DE PAGO',
   aviso: 'OB. AVISOS',
+  obsPago: 'OBS PAGO',
   avisarVto: 'AVISAR VTO',
   numeroPoliza: 'POLIZA',
   propuesta: 'PROPUESTA',
@@ -707,6 +711,7 @@ function campoALectura(campo: CampoEditable): string {
     vigenciaDesde: 'vigencia_desde',
     vigenciaHasta: 'vigencia_hasta',
     avisarVto: 'avisar_vto',
+    obsPago: 'obs_pago',
   }
   return mapa[campo] ?? campo
 }
@@ -734,6 +739,11 @@ export function armarMensaje(plantilla: string, fila: FilaCartera): string {
   })
 }
 
+/** «ENVIADO 11»: lo que antes había que escribir a mano en OB. AVISOS, ahora lo deja puesto el aviso. */
+function textoEnviado(hoy: string): string {
+  return `ENVIADO ${Number(hoy.slice(8, 10))}`
+}
+
 export function prepararAviso(filaId: string, actor: SesionUsuario): AvisoPreparado {
   return prepararAvisoDeCuota(filaId, actor, true)
 }
@@ -748,11 +758,12 @@ export function marcarAvisado(filaId: string, actor: SesionUsuario): FilaCartera
   const cruda = buscarFila(texto(filaId, 'La fila', 1, 64))
   exigirMesAbierto(cruda.periodo, actor)
   const hoy = hoyLocal()
+  const aviso = textoEnviado(hoy)
 
   db()
-    .prepare(`UPDATE cuotas_mes SET aviso = 'ENVIADO', aviso_enviado = 1, fecha_envio = ?, actualizado_en = ? WHERE id = ?`)
-    .run(hoy, ahoraIso(), cruda.cuota_id)
-  encolar({ operacion: 'actualizar', pestana: cruda.pestana, filaId: cruda.fila_id, campos: { aviso: 'ENVIADO', fecha_envio: hoy } }, actor)
+    .prepare(`UPDATE cuotas_mes SET aviso = ?, aviso_enviado = 1, fecha_envio = ?, actualizado_en = ? WHERE id = ?`)
+    .run(aviso, hoy, ahoraIso(), cruda.cuota_id)
+  encolar({ operacion: 'actualizar', pestana: cruda.pestana, filaId: cruda.fila_id, campos: { aviso, fecha_envio: hoy } }, actor)
 
   registrarCambio(actor, {
     accion: 'aviso',
@@ -761,7 +772,7 @@ export function marcarAvisado(filaId: string, actor: SesionUsuario): FilaCartera
     filaId: cruda.fila_id,
     campo: 'OB. AVISOS',
     valorAnterior: cruda.aviso,
-    valorNuevo: `ENVIADO (${hoy}, marcado a mano)`,
+    valorNuevo: `${aviso} (marcado a mano)`,
   })
   return devolverFila(cruda.fila_id)
 }
@@ -825,14 +836,15 @@ export function prepararAvisoDeCuota(
 
   const mensaje = armarMensaje(plantilla?.trim() ? plantilla : plantillaDeAviso(), fila)
   const hoy = hoyLocal()
+  const aviso = textoEnviado(hoy)
   const periodos = periodosDisponibles()
   const marcada = periodos.length === 0 || periodos[0]!.periodo === cruda.periodo
 
   if (marcada) {
     db()
-      .prepare(`UPDATE cuotas_mes SET aviso = 'ENVIADO', aviso_enviado = 1, fecha_envio = ?, actualizado_en = ? WHERE id = ?`)
-      .run(hoy, ahoraIso(), cruda.cuota_id)
-    encolar({ operacion: 'actualizar', pestana: cruda.pestana, filaId: cruda.fila_id, campos: { aviso: 'ENVIADO', fecha_envio: hoy } }, actor)
+      .prepare(`UPDATE cuotas_mes SET aviso = ?, aviso_enviado = 1, fecha_envio = ?, actualizado_en = ? WHERE id = ?`)
+      .run(aviso, hoy, ahoraIso(), cruda.cuota_id)
+    encolar({ operacion: 'actualizar', pestana: cruda.pestana, filaId: cruda.fila_id, campos: { aviso, fecha_envio: hoy } }, actor)
   }
 
   registrarCambio(actor, {
@@ -842,7 +854,7 @@ export function prepararAvisoDeCuota(
     filaId: cruda.fila_id,
     campo: 'OB. AVISOS',
     valorAnterior: cruda.aviso,
-    valorNuevo: marcada ? `ENVIADO (${hoy})` : `AVISADO POR MORA (${hoy}, ${cruda.periodo} ya cerrado)`,
+    valorNuevo: marcada ? aviso : `AVISADO POR MORA (${hoy}, ${cruda.periodo} ya cerrado)`,
   })
 
   return {
@@ -1695,11 +1707,11 @@ export function cerrarMes(actor: SesionUsuario, opciones: OpcionesDeCierre = {})
   const insertar = db().prepare(`
     INSERT INTO cuotas_mes (fila_id, periodo, pestana, poliza_id, cliente_id, cliente_nombre, documento, compania,
                             numero_poliza, patente, sucursal_texto, cuota, cuota_monto, dia_vencimiento,
-                            dia_vencimiento_numero, aviso, aviso_enviado, pago, pago_fecha, observaciones,
+                            dia_vencimiento_numero, aviso, aviso_enviado, pago, pago_fecha, observaciones, obs_pago,
                             forma_pago, fecha_envio, avisar_vto, creada_en_la_app, dada_de_baja, creado_en, actualizado_en)
     VALUES (@fila_id, @periodo, @pestana, @poliza_id, @cliente_id, @cliente_nombre, @documento, @compania,
             @numero_poliza, @patente, @sucursal_texto, @cuota, @cuota_monto, @dia_vencimiento,
-            @dia_vencimiento_numero, @aviso, NULL, @pago, @pago_fecha, @observaciones,
+            @dia_vencimiento_numero, @aviso, NULL, @pago, @pago_fecha, @observaciones, @obs_pago,
             @forma_pago, NULL, @avisar_vto, 1, 0, @ahora, @ahora)`)
 
   db().transaction(() => {
@@ -1737,6 +1749,7 @@ export function cerrarMes(actor: SesionUsuario, opciones: OpcionesDeCierre = {})
         dia_vencimiento_numero: fila.dia_vencimiento_numero,
         aviso: fila.aviso,
         observaciones: fila.observaciones,
+        obs_pago: fila.obs_pago,
         forma_pago: fila.forma_pago,
         avisar_vto: fila.avisar_vto,
         pago: acreditado ? acreditado.fecha : null,
@@ -1806,6 +1819,7 @@ function campoDeLaHoja(campo: CampoEditable): string {
     avisarVto: 'avisar_vto',
     vehiculo: 'tipo_vehiculo',
     anio: 'anio',
+    obsPago: 'obs_pago',
   }
   return mapa[campo] ?? campo
 }
@@ -1859,6 +1873,7 @@ function camposDeLaFila(fila: FilaCruda): Record<string, string> {
     forma_pago: fila.forma_pago ?? '',
     aviso: fila.aviso ?? '',
     observaciones: fila.observaciones ?? '',
+    obs_pago: fila.obs_pago ?? '',
     vigencia_desde: fila.vigencia_desde ?? '',
     vigencia_hasta: fila.vigencia_hasta ?? '',
   }
