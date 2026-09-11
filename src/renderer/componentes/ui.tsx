@@ -28,6 +28,13 @@ export function haceCuanto(iso: string | null): string {
   return `hace ${dias} días`
 }
 
+/** Una fecha 'AAAA-MM-DD' como se muestra en toda la app: «31/08/2026». Si no hay ISO, cae al texto tal cual. */
+export function fechaCorta(iso: string | null | undefined, texto?: string | null): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? '')
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`
+  return texto ?? iso ?? '—'
+}
+
 export function cx(...clases: Array<string | false | null | undefined>): string {
   return clases.filter(Boolean).join(' ')
 }
