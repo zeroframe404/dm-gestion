@@ -54,6 +54,7 @@ const ETIQUETA_EN_LA_HOJA: Record<TipoDeMovimientoDeCaja, string> = {
   GASTO: 'GASTO',
   CAJA_FUERTE: 'CAJA FUERTE',
   CIERRE: 'CIERRE',
+  OBSERVACION: 'OBSERVACION',
 }
 
 /** Lo que la hoja puede traer escrito en TIPO, incluso a mano, y qué renglón es. */
@@ -70,6 +71,9 @@ const TIPO_DESDE_LA_HOJA: Record<string, TipoDeMovimientoDeCaja> = {
   CIERRE: 'CIERRE',
   ARQUEO: 'CIERRE',
   CONTADO: 'CIERRE',
+  OBSERVACION: 'OBSERVACION',
+  OBSERVACIONES: 'OBSERVACION',
+  NOTA: 'OBSERVACION',
 }
 
 /** El renglón que nombra ese texto, o null si no es ninguno de los cuatro. */
@@ -279,7 +283,9 @@ export function guardarMovimientoDeCaja(datos: DatosDeMovimientoDeCaja, actor: S
   const sucursal = sucursalCanonica(pedida) ?? pedida
   const detalle = limpiar(datos?.detalle).slice(0, 200)
   if (tipo === 'GASTO' && !detalle) throw new ErrorDeNegocio('Poné de qué es el gasto (nafta, limpieza, un envío…).')
-  const importe = importeDelMovimiento(datos?.importe)
+  if (tipo === 'OBSERVACION' && !detalle) throw new ErrorDeNegocio('Escribí la observación.')
+  // La observación es una nota, no plata: no tiene importe y por eso no entra en ninguna cuenta de la caja.
+  const importe = tipo === 'OBSERVACION' ? 0 : importeDelMovimiento(datos?.importe)
   const unico = MOVIMIENTOS_UNICOS_DEL_DIA.includes(tipo)
   const ahora = ahoraIso()
 

@@ -196,6 +196,39 @@ test('un gasto sale de la caja chica y se carga con el concepto al lado', async 
   cerrarBaseDeDatos()
 })
 
+test('una observación queda anotada en la caja pero no toca ninguna cuenta', async () => {
+  await cajaDePrueba()
+  cargarMovimientoDeCaja({ fecha: DIA, sucursal: 'Dock Sud', tipo: 'APERTURA', detalle: '', importe: '24900' }, BRENDA)
+  cargarMovimientoDeCaja(
+    { fecha: DIA, sucursal: 'Dock Sud', tipo: 'CAJA_FUERTE', detalle: 'Dani se llevó $740.000', importe: '740000' },
+    BRENDA,
+  )
+  const antes = arqueoDe()
+
+  const caja = cargarMovimientoDeCaja(
+    { fecha: DIA, sucursal: 'Dock Sud', tipo: 'OBSERVACION', detalle: 'Dani se llevó la plata a las 20:51', importe: '' },
+    BRENDA,
+  )
+
+  assert.equal(caja.arqueo?.esperado, antes.esperado, 'la observación no cambia lo que debería quedar en el cajón')
+  assert.equal(caja.arqueo?.debe, antes.debe)
+  assert.equal(caja.arqueo?.haber, antes.haber)
+  assert.equal(caja.arqueo?.descuadre, 0)
+  const observacion = caja.arqueo?.movimientos.find((movimiento) => movimiento.tipo === 'OBSERVACION')
+  assert.equal(observacion?.detalle, 'Dani se llevó la plata a las 20:51')
+  assert.equal(observacion?.importe, 0)
+
+  assert.throws(
+    () => cargarMovimientoDeCaja({ fecha: DIA, sucursal: 'Dock Sud', tipo: 'OBSERVACION', detalle: '', importe: '' }, BRENDA),
+    /Escribí la observación/,
+  )
+
+  // Sacarla no cambia ninguna cuenta tampoco.
+  const sinObservacion = quitarMovimientoDeCaja(observacion!.id, BRENDA)
+  assert.equal(sinObservacion.arqueo?.esperado, antes.esperado)
+  cerrarBaseDeDatos()
+})
+
 test('el cierre de un día es la caja chica con la que abre el siguiente', async () => {
   await cajaDePrueba()
   cargarMovimientoDeCaja({ fecha: DIA_ANTERIOR, sucursal: 'Dock Sud', tipo: 'APERTURA', detalle: '', importe: '36600' }, BRENDA)

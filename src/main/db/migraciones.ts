@@ -1877,6 +1877,48 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE historial ADD COLUMN deshecho_por TEXT;
     `,
   },
+  {
+    version: 31,
+    descripcion: 'La caja acepta OBSERVACION: una nota del día que no es plata y no entra en ninguna cuenta',
+    sql: `
+      -- \`caja_movimientos\` vuelve a nacer para que \`tipo\` acepte OBSERVACION (ver la migración 29 para
+      -- la misma cirugía sobre \`mensajes\`: un CHECK de SQLite no se edita, así que se crea la tabla
+      -- nueva al lado, se copia, se borra la vieja y se rehacen los índices).
+      --
+      -- La OBSERVACION es una nota para dejar asentado algo del día del cajón (qué se llevó alguien, una
+      -- aclaración) sin que sea plata: no tiene importe (siempre 0) y por eso no la suma ninguna cuenta
+      -- de \`arqueoDeLaCaja\` — a propósito no entra en \`MOVIMIENTOS_UNICOS_DEL_DIA\`, así que puede haber
+      -- varias en el mismo día, como los gastos y las bajadas a la caja fuerte.
+      CREATE TABLE caja_movimientos_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fila_id TEXT NOT NULL UNIQUE,
+        pestana TEXT NOT NULL,
+        fecha_iso TEXT NOT NULL,
+        sucursal TEXT NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('APERTURA', 'GASTO', 'CAJA_FUERTE', 'CIERRE', 'OBSERVACION')),
+        detalle TEXT,
+        importe REAL NOT NULL DEFAULT 0,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        usuario_nombre TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+
+      INSERT INTO caja_movimientos_nueva (id, fila_id, pestana, fecha_iso, sucursal, tipo, detalle, importe,
+                                          usuario_id, usuario_nombre, creado_en, actualizado_en)
+        SELECT id, fila_id, pestana, fecha_iso, sucursal, tipo, detalle, importe,
+               usuario_id, usuario_nombre, creado_en, actualizado_en
+          FROM caja_movimientos;
+
+      DROP TABLE caja_movimientos;
+      ALTER TABLE caja_movimientos_nueva RENAME TO caja_movimientos;
+
+      -- Los índices vuelven exactamente como los dejó la migración 27.
+      CREATE INDEX idx_caja_movimientos_dia ON caja_movimientos (fecha_iso, sucursal);
+      CREATE UNIQUE INDEX idx_caja_unicos ON caja_movimientos (fecha_iso, sucursal, tipo)
+        WHERE tipo IN ('APERTURA', 'CIERRE');
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

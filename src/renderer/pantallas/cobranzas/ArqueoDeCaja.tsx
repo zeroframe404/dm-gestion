@@ -38,6 +38,7 @@ export function ArqueoDeCaja({ arqueo, puedeEditar, alCambiar }: Props) {
 
   const cuadra = arqueo.descuadre === 0
   const sueltos = arqueo.movimientos.filter((movimiento) => movimiento.tipo === 'GASTO' || movimiento.tipo === 'CAJA_FUERTE')
+  const observaciones = arqueo.movimientos.filter((movimiento) => movimiento.tipo === 'OBSERVACION')
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white">
@@ -58,6 +59,9 @@ export function ArqueoDeCaja({ arqueo, puedeEditar, alCambiar }: Props) {
             </Boton>
             <Boton tamano="sm" icono="candado" onClick={() => setCargando('CAJA_FUERTE')}>
               A la caja fuerte
+            </Boton>
+            <Boton tamano="sm" icono="mensaje" onClick={() => setCargando('OBSERVACION')}>
+              Observación
             </Boton>
             <Boton tamano="sm" variante="primario" icono="ok" onClick={() => setCargando('CIERRE')}>
               {arqueo.contado === null ? 'Cerrar la caja' : 'Corregir el cierre'}
@@ -119,6 +123,28 @@ export function ArqueoDeCaja({ arqueo, puedeEditar, alCambiar }: Props) {
                 <span className="w-36 shrink-0 text-slate-500">{NOMBRE_MOVIMIENTO_DE_CAJA[movimiento.tipo]}</span>
                 <span className="min-w-0 flex-1 truncate text-slate-800">{movimiento.detalle ?? '—'}</span>
                 <span className="tabular-nums font-semibold text-slate-900">{pesos(movimiento.importe)}</span>
+                <span className="w-28 shrink-0 truncate text-right text-xs text-slate-500">
+                  {movimiento.hora ?? ''} {movimiento.usuarioNombre ?? ''}
+                </span>
+                {puedeEditar && (
+                  <Boton tamano="sm" variante="fantasma" icono="basura" onClick={() => void borrar(movimiento)} disabled={borrando}>
+                    Sacar
+                  </Boton>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {observaciones.length > 0 && (
+        <div className="border-t border-slate-200 px-4 py-3">
+          <Titulo>Observaciones</Titulo>
+          <p className="mt-0.5 text-xs text-slate-400">Notas del día que no afectan el cuadre de la caja.</p>
+          <ul className="mt-1 flex flex-col gap-1">
+            {observaciones.map((movimiento) => (
+              <li key={movimiento.id} className="flex items-center gap-2 text-sm">
+                <span className="min-w-0 flex-1 text-slate-800">{movimiento.detalle}</span>
                 <span className="w-28 shrink-0 truncate text-right text-xs text-slate-500">
                   {movimiento.hora ?? ''} {movimiento.usuarioNombre ?? ''}
                 </span>
@@ -230,6 +256,11 @@ const AYUDA: Record<TipoDeMovimientoDeCaja, { titulo: string; descripcion: strin
     descripcion: 'Contá lo que quedó en el cajón y escribilo acá. Es lo que mañana va a ser la caja chica de apertura.',
     pideDetalle: false,
   },
+  OBSERVACION: {
+    titulo: 'Observación',
+    descripcion: 'Una nota para dejar asentado algo del día (qué se llevó alguien, una aclaración). No es plata: no lleva importe y no cambia ninguna cuenta de la caja.',
+    pideDetalle: true,
+  },
 }
 
 function DialogoMovimientoDeCaja({
@@ -259,7 +290,7 @@ function DialogoMovimientoDeCaja({
       sucursal: arqueo.sucursal,
       tipo,
       detalle,
-      importe,
+      importe: tipo === 'OBSERVACION' ? '0' : importe,
     })
     setGuardando(false)
     if (resultado.ok) alGuardar(resultado.datos)
@@ -292,17 +323,28 @@ function DialogoMovimientoDeCaja({
             contaste: la diferencia queda a la vista en vez de taparse.
           </Alerta>
         )}
-        <Campo
-          etiqueta="Importe"
-          value={importe}
-          autoFocus
-          onChange={(evento) => setImporte(evento.target.value)}
-          ayuda="Como 4.600 o 4600,50."
-        />
-        {ayuda.pideDetalle && (
+        {tipo !== 'OBSERVACION' && (
+          <Campo
+            etiqueta="Importe"
+            value={importe}
+            autoFocus
+            onChange={(evento) => setImporte(evento.target.value)}
+            ayuda="Como 4.600 o 4600,50."
+          />
+        )}
+        {tipo === 'OBSERVACION' && (
+          <Campo
+            etiqueta="Observación"
+            value={detalle}
+            autoFocus
+            onChange={(evento) => setDetalle(evento.target.value)}
+            ayuda="Por ejemplo, lo que se llevó Dani y por qué."
+          />
+        )}
+        {tipo !== 'OBSERVACION' && ayuda.pideDetalle && (
           <Campo etiqueta="Concepto" value={detalle} onChange={(evento) => setDetalle(evento.target.value)} ayuda="Limpieza, nafta, un envío…" />
         )}
-        {!ayuda.pideDetalle && (
+        {tipo !== 'OBSERVACION' && !ayuda.pideDetalle && (
           <Campo
             etiqueta="Aclaración (opcional)"
             value={detalle}

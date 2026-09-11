@@ -70,4 +70,9 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // borra ni pisa nada —el registro sigue siendo el mismo de siempre—, sólo anota si a ESE cambio ya
   // se le dio vuelta y quién lo hizo, para no ofrecer el botón dos veces sobre el mismo renglón.
   30: '5cac24e3d6e30267',
+  // La 31 rehace caja_movimientos para que `tipo` acepte OBSERVACION (los doce pasos de la 29, esta vez
+  // sobre la caja). La huella no se mueve: mira columnas, tipos, defaults e índices, y ninguno cambia
+  // (la tabla vuelve con la misma forma exacta); lo único distinto es el CHECK, que la huella no ve —
+  // lo prueba la observación no siendo rechazada en caja.prueba.ts.
+  31: '5cac24e3d6e30267',
 }

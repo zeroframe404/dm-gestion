@@ -1980,8 +1980,10 @@ export interface CajaDelDia {
  * - `GASTO`: lo que se pagó del cajón (la nafta, la limpieza), con el concepto al lado.
  * - `CAJA_FUERTE`: la plata que se bajó en efectivo y se guardó en la caja fuerte.
  * - `CIERRE`: lo que se contó en el cajón al cerrar. Uno solo por día y sucursal: es el arqueo.
+ * - `OBSERVACION`: una nota de texto para dejar asentado algo del día (qué se llevó alguien, una
+ *   aclaración) sin que sea plata: no tiene importe y no entra en ninguna cuenta de la caja.
  */
-export const TIPOS_DE_MOVIMIENTO_DE_CAJA = ['APERTURA', 'GASTO', 'CAJA_FUERTE', 'CIERRE'] as const
+export const TIPOS_DE_MOVIMIENTO_DE_CAJA = ['APERTURA', 'GASTO', 'CAJA_FUERTE', 'CIERRE', 'OBSERVACION'] as const
 export type TipoDeMovimientoDeCaja = (typeof TIPOS_DE_MOVIMIENTO_DE_CAJA)[number]
 
 export const NOMBRE_MOVIMIENTO_DE_CAJA: Record<TipoDeMovimientoDeCaja, string> = {
@@ -1989,6 +1991,7 @@ export const NOMBRE_MOVIMIENTO_DE_CAJA: Record<TipoDeMovimientoDeCaja, string> =
   GASTO: 'Gasto',
   CAJA_FUERTE: 'A la caja fuerte',
   CIERRE: 'Contado al cerrar',
+  OBSERVACION: 'Observación',
 }
 
 /** Los dos que son únicos por día y sucursal: cargarlos de nuevo corrige el que ya estaba. */
