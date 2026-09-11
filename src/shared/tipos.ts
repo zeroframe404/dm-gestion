@@ -526,6 +526,8 @@ export interface FilaCartera {
   vehiculoId: number | null
 
   sucursal: string | null
+  /** Notas de la liquidación («debe una», «debe sólo septiembre»…), libres y aparte de OBSERVACIONES. */
+  obsPago: string | null
   nombre: string | null
   telefono: string | null
   documento: string | null
@@ -597,6 +599,7 @@ export interface FilaCartera {
 /** Campos de la planilla que se pueden editar con doble clic. */
 export type CampoEditable =
   | 'sucursal'
+  | 'obsPago'
   | 'nombre'
   | 'telefono'
   | 'documento'

@@ -1,7 +1,7 @@
 // Barra lateral azul marino con los módulos que el usuario puede ver y, separada al pie, Administración.
 //
 // Se puede achicar a una tira de iconos con el botón de arriba. No es un adorno: la planilla del mes
-// tiene veintidós columnas y en la notebook del mostrador esos 272 píxeles de menú son dos columnas
+// tiene veintitrés columnas y en la notebook del mostrador esos 272 píxeles de menú son dos columnas
 // menos a la vista. La elección se guarda en esta computadora (ver `preferencias.ts`), así que la
 // notebook puede quedar siempre angosta y el monitor de la oficina siempre ancho.
 import { useMemo, useState } from 'react'

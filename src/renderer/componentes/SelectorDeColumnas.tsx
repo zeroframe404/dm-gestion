@@ -1,7 +1,7 @@
 // «Columnas»: el desplegable que decide qué se ve en una tabla, y el enganche que se acuerda de la
 // elección en esta computadora.
 //
-// La planilla del mes tiene veintidós columnas y en el mostrador se trabaja con seis. Antes había que
+// La planilla del mes tiene veintitrés columnas y en el mostrador se trabaja con seis. Antes había que
 // arrastrar la barra de abajo hasta encontrar la que se necesitaba; ahora se apagan las que no se
 // usan y el nombre —que nunca se puede apagar— queda a la izquierda, pegado, mientras se mira el
 // resto.

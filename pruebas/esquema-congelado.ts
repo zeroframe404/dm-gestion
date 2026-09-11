@@ -75,4 +75,7 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // (la tabla vuelve con la misma forma exacta); lo único distinto es el CHECK, que la huella no ve —
   // lo prueba la observación no siendo rechazada en caja.prueba.ts.
   31: '5cac24e3d6e30267',
+  // La 32 suma a `cuotas_mes` la columna `obs_pago`: la nota de la liquidación, al lado de Sucursal en
+  // la planilla, aparte de `observaciones`.
+  32: '48dbd87014b3b103',
 }

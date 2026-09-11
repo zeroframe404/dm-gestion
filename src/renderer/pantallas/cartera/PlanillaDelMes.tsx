@@ -42,6 +42,7 @@ import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 const CAMPO_DE_LA_COLUMNA = {
   nombre: 'nombre',
   sucursal: 'sucursal',
+  obsPago: 'obsPago',
   telefono: 'telefono',
   documento: 'documento',
   vencimiento: 'diaVencimiento',
@@ -486,7 +487,7 @@ export function PlanillaDelMes() {
     }
     const catalogos = datos?.catalogos
 
-    // El orden importa: la primera es la única fija, y es el nombre. Con veintidós columnas, correr
+    // El orden importa: la primera es la única fija, y es el nombre. Con veintitrés columnas, correr
     // la barra horizontal para mirar la patente dejaba la fila sin dueño; ahora el nombre queda
     // pegado a la izquierda y el resto pasa por debajo. Las demás se pueden apagar desde «Columnas».
     return [
@@ -546,6 +547,7 @@ export function PlanillaDelMes() {
         ),
       },
       { id: 'sucursal', titulo: 'Sucursal', ancho: 120, celda: celdaEditable('sucursal', catalogos?.sucursales) },
+      { id: 'obsPago', titulo: 'Obs. pago', ancho: 150, celda: celdaEditable('obsPago') },
       { id: 'telefono', titulo: 'Teléfono', ancho: 130, celda: celdaEditable('telefono') },
       { id: 'documento', titulo: 'DNI/CUIT', ancho: 110, celda: celdaEditable('documento') },
       { id: 'vencimiento', titulo: 'Fecha de venc', ancho: 100, alinear: 'centro', celda: celdaEditable('vencimiento') },

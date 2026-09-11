@@ -27,7 +27,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         titulo: 'Las cinco acciones por fila',
         parrafos: [
           'En la columna «Acciones» hay cinco botones chiquitos para cada fila: avisar por WhatsApp, marcar como avisado, registrar un pago, avisar un rechazo del débito y dar de baja.',
-          '«Avisar» (el globito) abre WhatsApp con un mensaje ya armado para ese cliente y deja la fila marcada como avisada. «Avisado» (el tilde) hace lo mismo con la planilla —deja la fila en ENVIADO con la fecha de hoy y la suma a «Avisados hoy»— pero sin abrir WhatsApp: es para cuando ya se le avisó por otro lado, por teléfono, en el mostrador o desde el celular. No hace falta que el cliente tenga teléfono cargado.',
+          '«Avisar» (el globito) abre WhatsApp con un mensaje ya armado para ese cliente y deja la fila marcada como avisada. «Avisado» (el tilde) hace lo mismo con la planilla —deja la columna «OB. avisos» en ENVIADO seguido del día de hoy (por ejemplo «ENVIADO 11») y suma la fila a «Avisados hoy»— pero sin abrir WhatsApp: es para cuando ya se le avisó por otro lado, por teléfono, en el mostrador o desde el celular. No hace falta que el cliente tenga teléfono cargado.',
           '«Registrar pago» abre un formulario para cargar cómo y cuándo se pagó esa cuota, sin salir de la planilla. «Avisar rechazo del débito» (el triángulo) le manda un aviso a la sucursal que atiende al cliente para que lo llame y lo cobre a mano: es para cuando la compañía rebota el CBU o la tarjeta. «Dar de baja» saca la póliza de la cartera activa y la manda a Cartera → Bajas, pidiendo el motivo.',
           'Las cinco acciones quedan deshabilitadas en un mes cerrado (sólo lectura). En la fila que tiene un pago adelantado esperando aparece un sexto botón (el calendario): «Imputar el pago adelantado» deja la cuota paga con la fecha en que se cobró.',
         ],
@@ -59,7 +59,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Elegir qué columnas se ven',
         parrafos: [
-          'La planilla tiene veintidós columnas y nadie las usa todas al mismo tiempo. Con el botón «Columnas», al lado de los filtros, se apagan las que no hacen falta: quedan tildadas las que se ven y se destildan las demás. Lo que elijas se guarda en esa computadora —no en tu usuario ni en la agencia—, así que la notebook del mostrador puede quedar con seis columnas y el monitor de la oficina con todas. «Mostrar todas» las vuelve a prender.',
+          'La planilla tiene veintitrés columnas y nadie las usa todas al mismo tiempo. Con el botón «Columnas», al lado de los filtros, se apagan las que no hacen falta: quedan tildadas las que se ven y se destildan las demás. Lo que elijas se guarda en esa computadora —no en tu usuario ni en la agencia—, así que la notebook del mostrador puede quedar con seis columnas y el monitor de la oficina con todas. «Mostrar todas» las vuelve a prender.',
           'La columna «Nombre y apellido» es la primera y no se puede apagar: queda pegada a la izquierda y no se mueve mientras corrés la tabla para el costado. Es lo que evita perder de vista de quién es la fila cuando estás mirando la patente o la póliza, allá a la derecha.',
         ],
       },

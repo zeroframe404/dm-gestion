@@ -9,7 +9,7 @@
 //
 // UN SOLO SUSCRIPTOR, como `DatosEnVivo` y `Conexion`: el proveedor se monta una vez en `App.tsx`.
 // Acá pesa más que en los otros: la presencia se pregunta desde CADA celda visible de la planilla
-// —dos mil filas por veintidós columnas—, así que lo que se dibuja tiene que ser una lectura de un
+// —dos mil filas por veintitrés columnas—, así que lo que se dibuja tiene que ser una lectura de un
 // `Map` ya armado y no un recorrido de la lista por celda.
 //
 // LA CLAVE PROPIA NO CUENTA. El servidor manda la foto entera, la de esta computadora incluida, pero

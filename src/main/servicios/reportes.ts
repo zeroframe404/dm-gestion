@@ -130,6 +130,7 @@ function col(id: string, titulo: string, ancho: number, numerica = false): Colum
 
 const COLUMNAS_DE_CARTERA: ColumnaDeReporte[] = [
   col('sucursal', 'Sucursal', 14),
+  col('obsPago', 'Obs. pago', 20),
   col('nombre', 'Apellido y nombre', 30),
   col('documento', 'DNI / CUIT', 15),
   col('telefono', 'Teléfono', 16),
@@ -172,6 +173,7 @@ const REPORTES: Reporte[] = [
         const fila = aFila(cruda, dias)
         return {
           sucursal: fila.sucursal,
+          obsPago: fila.obsPago,
           nombre: fila.nombre,
           documento: fila.documento,
           telefono: fila.telefono,

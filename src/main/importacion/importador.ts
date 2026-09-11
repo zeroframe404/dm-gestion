@@ -417,10 +417,10 @@ function prepararSentencias(db: BaseDeDatos) {
     cuota: db.prepare(`
       INSERT INTO cuotas_mes (fila_id, periodo, pestana, poliza_id, cliente_id, cliente_nombre, documento, compania, numero_poliza, patente,
                               sucursal_texto, cuota, cuota_monto, dia_vencimiento, dia_vencimiento_numero, aviso, aviso_enviado, pago, pago_fecha,
-                              observaciones, forma_pago, fecha_envio, avisar_vto, creado_en, actualizado_en)
+                              observaciones, obs_pago, forma_pago, fecha_envio, avisar_vto, creado_en, actualizado_en)
       VALUES (@fila_id, @periodo, @pestana, @poliza_id, @cliente_id, @cliente_nombre, @documento, @compania, @numero_poliza, @patente,
               @sucursal_texto, @cuota, @cuota_monto, @dia_vencimiento, @dia_vencimiento_numero, @aviso, @aviso_enviado, @pago, @pago_fecha,
-              @observaciones, @forma_pago, @fecha_envio, @avisar_vto, @ahora, @ahora)
+              @observaciones, @obs_pago, @forma_pago, @fecha_envio, @avisar_vto, @ahora, @ahora)
       ON CONFLICT(fila_id) DO UPDATE SET
         periodo = excluded.periodo, pestana = excluded.pestana,
         poliza_id = COALESCE(excluded.poliza_id, cuotas_mes.poliza_id), cliente_id = COALESCE(excluded.cliente_id, cuotas_mes.cliente_id),
@@ -443,6 +443,7 @@ function prepararSentencias(db: BaseDeDatos) {
         pago = CASE WHEN @sin_subir = 1 THEN cuotas_mes.pago ELSE excluded.pago END,
         pago_fecha = CASE WHEN @sin_subir = 1 THEN cuotas_mes.pago_fecha ELSE excluded.pago_fecha END,
         observaciones = CASE WHEN @sin_subir = 1 THEN cuotas_mes.observaciones ELSE excluded.observaciones END,
+        obs_pago = CASE WHEN @sin_subir = 1 THEN cuotas_mes.obs_pago ELSE excluded.obs_pago END,
         forma_pago = CASE WHEN @sin_subir = 1 THEN cuotas_mes.forma_pago ELSE excluded.forma_pago END,
         fecha_envio = CASE WHEN @sin_subir = 1 THEN cuotas_mes.fecha_envio ELSE excluded.fecha_envio END,
         avisar_vto = CASE WHEN @sin_subir = 1 THEN cuotas_mes.avisar_vto ELSE excluded.avisar_vto END,
@@ -1992,6 +1993,7 @@ class TrabajoDeImportacion {
       pago: oNulo(pagoTexto),
       pago_fecha: pago.iso,
       observaciones: oNulo(fila.valor('observaciones')),
+      obs_pago: oNulo(fila.valor('obs_pago')),
       forma_pago: oNulo(fila.valor('forma_pago')),
       fecha_envio: oNulo(fila.valor('fecha_envio')),
       avisar_vto: oNulo(fila.valor('avisar_vto')),

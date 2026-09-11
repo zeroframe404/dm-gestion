@@ -1919,6 +1919,15 @@ export const MIGRACIONES: Migracion[] = [
         WHERE tipo IN ('APERTURA', 'CIERRE');
     `,
   },
+  {
+    version: 32,
+    descripcion: 'Cartera: columna OBS PAGO al lado de Sucursal, para anotar «debe una», «debe sólo septiembre»…',
+    sql: `
+      -- Aparte de OBSERVACIONES: es la nota que Dani usa en la liquidación de agrosalta para saber
+      -- cuántas cuotas debe cada cliente, y no tiene por qué compartir columna con las notas de cobertura.
+      ALTER TABLE cuotas_mes ADD COLUMN obs_pago TEXT;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

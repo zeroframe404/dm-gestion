@@ -87,7 +87,7 @@ export function MarcaDePresencia({
   /**
    * De qué lado se cuelgan las caras.
    *
-   * A la izquierda en las tablas anchas: el renglón mide lo que suman las veintidós columnas, así que
+   * A la izquierda en las tablas anchas: el renglón mide lo que suman las veintitrés columnas, así que
    * su borde derecho casi siempre está fuera de la pantalla y las burbujas quedarían escondidas atrás
    * de la barra horizontal. La primera columna, en cambio, es la fija y siempre se ve.
    */
