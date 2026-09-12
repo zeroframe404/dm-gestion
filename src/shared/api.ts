@@ -378,6 +378,17 @@ export interface ApiDm {
     resolver: Remota<'vehiculos:resolver'>
     alProgresar: Suscripcion<'vehiculos:progreso'>
   }
+  galeno: {
+    estado: Remota<'galeno:estado'>
+    bandeja: Remota<'galeno:bandeja'>
+    aplicar: Remota<'galeno:aplicar'>
+    descartar: Remota<'galeno:descartar'>
+    drenar: Remota<'galeno:drenar'>
+    sincronizar: Remota<'galeno:sincronizar'>
+    probar: Remota<'galeno:probar'>
+    estadoCompartido: Remota<'galeno:estadoCompartido'>
+    guardarCredenciales: Remota<'galeno:guardarCredenciales'>
+  }
   redes: {
     panel: Remota<'redes:panel'>
     estadoMeta: Remota<'redes:estadoMeta'>

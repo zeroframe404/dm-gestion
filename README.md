@@ -1798,6 +1798,12 @@ arrancar.
 | App de Meta y **la dirección de vuelta** | Administración → Redes sociales | Superadministrador |
 | Catálogo de compañías y la plantilla del aviso | Administración → Compañías | Administrador o superadministrador |
 | Encabezado del ticket (dirección y teléfono) | Administración → Impresora | Cualquier rol, **el de su sucursal** |
+| Usuario y clave del portal de Galeno | Administración → Galeno | Superadministrador |
+
+La de Galeno es la única de la lista que **no se guarda en esta computadora**: va derecho al servidor
+y ninguna PC la adopta. La razón es simple: quien la usa es el servidor, que es el que consulta el
+portal de Galeno. Repartir en las cinco máquinas una credencial que ninguna necesita sería regalar
+superficie de ataque a cambio de nada.
 | Las cuatro listas del módulo Compañías | Compañías → «Publicar para todas» | Superadministrador |
 
 **La conexión con Google es OBLIGATORIA (12.5).** Es la única de la tabla que lo es, y la razón es que
@@ -1840,6 +1846,45 @@ excepción: ve las cuatro, así que lo que tiene en pantalla es lo que manda.
 **orden de las claves importa** y por eso está escrito a mano en cada `valorCompartidoDe…`: dos objetos
 con los mismos datos en distinto orden darían huellas distintas y la pantalla diría «desactualizada»
 para siempre. Por lo mismo, las listas (compañías, direcciones) viajan ordenadas por una clave estable.
+
+## Galeno: la cartera que se sincroniza sola (15.4)
+
+Una póliza de Galeno se cargaba dos veces —en el portal de Galeno y a mano acá— y, peor, cuando en
+Galeno la anulaban o le cambiaban la vigencia, en la cartera de la agencia seguía figurando como
+estaba. Es la primera integración con una compañía aseguradora del programa.
+
+**Quién hace qué.** El servidor del VPS consulta el portal de productores de Galeno cada quince
+minutos, guarda lo que dice y calcula qué cambió (`server/src/modules/galeno/` del otro repositorio).
+El **alta** la aplica esta computadora, por `crearPoliza()` / `editarPoliza()`
+(`src/main/servicios/galeno.ts`).
+
+Ese reparto no es casual. La consulta va en el servidor porque está siempre encendido y tiene **una**
+sola credencial: si dependiera de que alguien abra el programa, un fin de semana largo no habría
+ninguna pasada. Y el alta va acá porque en `polizas.ts` viven las reglas de la agencia —la validación
+de cobertura por antigüedad, el catálogo de vehículos, los riesgos, los duplicados, el historial, la
+fila del mes— y reimplementarlas del lado del servidor sería tener dos verdades que empiezan iguales y
+divergen en tres meses.
+
+Consecuencia a tener presente: con las cinco computadoras apagadas las novedades **se guardan igual**
+en el VPS, pero entran a la cartera cuando alguien abre el programa. No se pierde nada: la cola se
+drena sola al ingresar (`auth:ingresar`, sólo para quien puede editar la cartera).
+
+**Qué entra solo.** El emparejamiento es **siempre por documento, nunca por nombre** — «PEREZ JUAN» y
+«PEREZ, JUAN C.» pueden ser la misma persona o dos distintas y no hay forma de saberlo desde el
+nombre. Con un único cliente que coincida por documento (mismo criterio que el alta manual: el CUIT
+`20-12345678-3` y el DNI `12345678` son la misma persona), la póliza se da de alta sola. Con ninguno o
+con más de uno, espera en **Cartera → Galeno** a que una persona elija o cree el cliente.
+
+**Lo que nunca hace.** Ninguna baja es automática: una póliza anulada en Galeno se marca y se avisa, y
+la da de baja una persona desde la póliza, que es donde están el motivo y la fecha. Un error del lado
+de Galeno —o del mapeo— no puede borrar datos de la agencia.
+
+**El contrato de Galeno no está documentado.** Se dedujo leyendo el JavaScript público de su portal:
+base `/seguros-rest`, OAuth2 password grant y la consulta de pólizas vigentes. Puede cambiar sin
+aviso, así que todo está detrás de una interfaz (`ProveedorGaleno`) y el estado de la última pasada se
+ve en la pantalla. Cuando deje de sincronizar, lo primero es
+`node server/scripts/probar-galeno.mjs` en el repositorio del VPS, que pide usuario y clave por
+consola y prueba el login contra el endpoint real.
 
 ## Reportar un error (Inicio → «Reportar error»)
 

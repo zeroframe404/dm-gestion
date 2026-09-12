@@ -365,6 +365,17 @@ const api: ApiDm = {
     resolver: (tipo, marcaId, modeloId, lineaId, anio) => invocar('vehiculos:resolver', tipo, marcaId, modeloId, lineaId, anio),
     alProgresar: (escuchar) => suscribir('vehiculos:progreso', escuchar),
   },
+  galeno: {
+    estado: () => invocar('galeno:estado'),
+    bandeja: () => invocar('galeno:bandeja'),
+    aplicar: (id, clienteId, crearElCliente) => invocar('galeno:aplicar', id, clienteId, crearElCliente),
+    descartar: (id, motivo) => invocar('galeno:descartar', id, motivo),
+    drenar: () => invocar('galeno:drenar'),
+    sincronizar: () => invocar('galeno:sincronizar'),
+    probar: () => invocar('galeno:probar'),
+    estadoCompartido: () => invocar('galeno:estadoCompartido'),
+    guardarCredenciales: (datos) => invocar('galeno:guardarCredenciales', datos),
+  },
   redes: {
     panel: () => invocar('redes:panel'),
     estadoMeta: () => invocar('redes:estadoMeta'),

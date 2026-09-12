@@ -289,6 +289,7 @@ import {
   guardarPermisos,
   matrizDePermisos,
   misPermisos,
+  puedeEditar,
   puedeVer as puedeVerElArea,
 } from './servicios/permisos'
 import { exigirRol, exigirSesion, sesion } from './servicios/sesion'
@@ -298,6 +299,17 @@ import { actualizarAhora, buscarActualizaciones, estadoDeActualizacion, instalar
 import { cambiarActivo, crearUsuario, editarUsuario, listarUsuarios, resetearClave } from './servicios/usuarios'
 import { enteroPositivo } from './servicios/validacion'
 import { emitirATodas } from './servicios/avisos'
+import {
+  aplicarNovedad as aplicarNovedadDeGaleno,
+  bandejaDeGaleno,
+  descartarNovedad as descartarNovedadDeGaleno,
+  drenarGaleno,
+  estadoCompartidoDeGaleno,
+  estadoDeGaleno,
+  guardarCredencialesDeGaleno,
+  probarGaleno,
+  sincronizarGaleno,
+} from './servicios/galeno'
 import { perfilesLocales, subirMiPerfil, subirPerfilDe } from './usuarios/perfiles'
 import { canal } from './vivo/canal'
 import {
@@ -400,6 +412,16 @@ export function registrarIpc(): void {
     // Al abrir sesión se enciende la sincronización y se baja lo que haya. No se espera: la pantalla
     // tiene que abrir igual aunque Google esté lento o no haya internet.
     void arrancarSincronizacion().catch((error) => console.error('[sync] No se pudo arrancar:', error))
+    // Y se drena la cola de Galeno: lo que el servidor trajo mientras las computadoras estaban
+    // apagadas entra a la cartera ahora. Sólo lo que emparejó por documento con un único cliente; el
+    // resto espera en Cartera → Galeno a que alguien decida.
+    //
+    // No se espera, por lo mismo que la sincronización: la pantalla tiene que abrir aunque el VPS
+    // esté lento o no haya internet. Y sólo lo intenta quien puede escribir en la cartera, para que a
+    // un usuario de sólo lectura no le quede un error en el log cada vez que entra.
+    if (puedeEditar(sesion, 'cartera')) {
+      void drenarGaleno(sesion).catch((error) => console.error('[galeno] No se pudo drenar la cola:', error))
+    }
     return exito(sesion)
   })
   manejar('auth:salir', () => {
@@ -1650,6 +1672,51 @@ export function registrarIpc(): void {
     exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirVista('administracion')
     return exito(await probarProveedorDeVehiculos())
+  })
+
+  // Cartera → Galeno (15.4). La sincronización corre en el VPS; acá se baja lo que cambió y se aplica
+  // a la cartera. Los cuatro primeros van por el permiso de CARTERA —quien atiende el mostrador tiene
+  // que poder resolver la bandeja— y la credencial, por Administración y sólo el superadministrador.
+  manejar('galeno:estado', async () => {
+    exigirVista('cartera')
+    return exito(await estadoDeGaleno())
+  })
+  manejar('galeno:bandeja', async () => {
+    exigirVista('cartera')
+    return exito(await bandejaDeGaleno())
+  })
+  manejar('galeno:aplicar', async (id, clienteId, crearElCliente) => {
+    const actor = exigirEdicion('cartera')
+    return exito(await aplicarNovedadDeGaleno({ id, clienteId: clienteId ?? null, crearElCliente }, actor))
+  })
+  manejar('galeno:descartar', async (id, motivo) => {
+    const actor = exigirEdicion('cartera')
+    await descartarNovedadDeGaleno(id, motivo, actor)
+    return exito(null)
+  })
+  manejar('galeno:drenar', async () => {
+    const actor = exigirEdicion('cartera')
+    return exito(await drenarGaleno(actor))
+  })
+  manejar('galeno:sincronizar', async () => {
+    exigirEdicion('cartera')
+    return exito(await sincronizarGaleno())
+  })
+  manejar('galeno:probar', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('administracion')
+    return exito(await probarGaleno())
+  })
+  manejar('galeno:estadoCompartido', async () => {
+    exigirVista('administracion')
+    return exito(await estadoCompartidoDeGaleno())
+  })
+  manejar('galeno:guardarCredenciales', async (datos) => {
+    // Sólo el superadministrador: es la credencial del portal de Galeno de la agencia entera, y con
+    // ella se ve toda la cartera de la compañía.
+    const actor = exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await guardarCredencialesDeGaleno(datos, actor))
   })
   manejar('vehiculos:refrescar', async (tipo) => {
     exigirRol('SUPER_ADMIN', 'ADMIN')

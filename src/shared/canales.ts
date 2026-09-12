@@ -103,6 +103,13 @@ import type {
   AdopcionDeCredencialesDeVehiculos,
   DatosDelProveedorDeVehiculos,
   EstadoDeAjusteCompartido,
+  // Galeno Seguros (15.4).
+  CredencialesDeGaleno,
+  EstadoDeGaleno,
+  FilaDeBandejaDeGaleno,
+  PruebaDeGaleno,
+  ResumenDeAplicacionDeGaleno,
+  ResumenDePasadaDeGaleno,
   EstadoDeCredencialesDeVehiculos,
   EstadoDelCatalogo,
   EstadoDelMesh,
@@ -760,6 +767,32 @@ export interface Canales {
     lineaId: string,
     anio: string,
   ) => Resultado<VehiculoDelCatalogo>
+
+  // Cartera → Galeno (15.4). La sincronización con el portal de Galeno corre en el VPS —está siempre
+  // encendido y tiene una sola credencial—; esta computadora baja lo que cambió y lo aplica a la
+  // cartera por `crearPoliza`/`editarPoliza`, que es donde viven las reglas de la agencia.
+  //
+  // Ninguna baja es automática: una póliza anulada en Galeno se marca y se avisa, y la da de baja una
+  // persona desde la pantalla de la póliza.
+  'galeno:estado': () => Resultado<EstadoDeGaleno>
+  /** Las novedades pendientes, ya emparejadas contra los clientes de esta computadora. */
+  'galeno:bandeja': () => Resultado<FilaDeBandejaDeGaleno[]>
+  /**
+   * Aplica una novedad. Sin `clienteId` ni `crearElCliente` sólo funciona cuando el documento
+   * emparejó con un único cliente; en cualquier otro caso hay que decir con cuál va.
+   */
+  'galeno:aplicar': (id: number, clienteId?: number | null, crearElCliente?: boolean) => Resultado<number | null>
+  'galeno:descartar': (id: number, motivo: string) => Resultado<null>
+  /** Aplica de una sola vez todo lo que no necesita a nadie. Es lo que corre al abrir el programa. */
+  'galeno:drenar': () => Resultado<ResumenDeAplicacionDeGaleno>
+  /** El botón «Sincronizar ahora»: fuerza una pasada en el servidor sin esperar los quince minutos. */
+  'galeno:sincronizar': () => Resultado<ResumenDePasadaDeGaleno>
+  /** Prueba las credenciales contra Galeno sin guardar ni tocar nada. */
+  'galeno:probar': () => Resultado<PruebaDeGaleno>
+  /** Cómo está la credencial de Galeno en el VPS, para Ajustes compartidos. */
+  'galeno:estadoCompartido': () => Resultado<EstadoDeAjusteCompartido>
+  /** Sólo el superadministrador: carga el usuario y la clave y los publica cifrados en el VPS. */
+  'galeno:guardarCredenciales': (datos: CredencialesDeGaleno) => Resultado<EstadoDeAjusteCompartido>
 
   // Marketing → Redes: publicar en la Página de Facebook/Instagram de cada sucursal. El App ID y el
   // App Secret se cargan en Administración; el token de cada Página vive cifrado en el servidor del

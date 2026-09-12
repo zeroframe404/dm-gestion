@@ -170,6 +170,53 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'cartera.galeno': {
+    clave: 'cartera.galeno',
+    titulo: 'Cartera → Galeno',
+    resumen: 'Lo que se cargó, se cambió o se anuló en el portal de Galeno y todavía no está en la cartera.',
+    secciones: [
+      {
+        titulo: 'Para qué sirve',
+        parrafos: [
+          'Hasta ahora una póliza de Galeno se cargaba dos veces: una en el portal de Galeno y otra a mano acá. Y, peor, cuando en Galeno le cambiaban la vigencia o la anulaban, en la cartera de la agencia seguía figurando como estaba.',
+          'Ahora el servidor del VPS consulta el portal de Galeno cada quince minutos con el usuario de la agencia y trae lo que cambió. Lo que se puede resolver solo entra a la cartera sin que nadie haga nada; lo que necesita una decisión aparece en esta pantalla.',
+          'Como lo hace el servidor y no esta computadora, funciona con las cinco máquinas apagadas: las novedades quedan guardadas en el VPS igual, y entran a la cartera cuando alguien abre el programa.',
+        ],
+      },
+      {
+        titulo: 'Qué entra solo y qué llega acá',
+        parrafos: [
+          'El emparejamiento es SIEMPRE por documento, nunca por nombre: «PEREZ JUAN» y «PEREZ, JUAN C.» pueden ser la misma persona o dos distintas y no hay forma de saberlo desde el nombre.',
+          'Si el documento del tomador coincide con un único cliente de la cartera, la póliza se da de alta sola y no llega a esta pantalla. Si no coincide con ninguno, o coincide con más de uno, la novedad espera acá para que alguien elija el cliente o lo cree con los datos que mandó Galeno.',
+          'Una modificación sobre una póliza que ya está cargada también se aplica sola: el cliente ya está resuelto y no hay nada que decidir.',
+        ],
+      },
+      {
+        titulo: 'Las tres solapas',
+        parrafos: [
+          'Nuevas son las pólizas que Galeno tiene y la cartera no, y a las que les falta decidir el cliente. Cada una muestra los botones de los clientes que coinciden por documento, y «Crear cliente y cargar» cuando no coincide ninguno.',
+          'Cambios son las modificaciones que no se pudieron aplicar solas. Debajo de cada una se ve qué cambió: lo que decía antes tachado y al lado lo que dice Galeno ahora.',
+          'Anuladas son las pólizas que Galeno anuló. Acá NO hay botón de dar de baja, y es a propósito: la baja lleva motivo y fecha y ésos se cargan en la póliza, que es donde se ve todo. El botón «Ya la di de baja» sólo saca el aviso de la bandeja.',
+        ],
+      },
+      {
+        titulo: 'Lo que este sistema nunca hace',
+        parrafos: [
+          'Nunca da de baja una póliza solo. Un error del lado de Galeno, o del programa que traduce sus datos, no puede borrar nada de la cartera de la agencia: lo peor que puede pasar es que aparezca un aviso de más en la solapa Anuladas.',
+          'Nunca inventa un cliente cuando hay dudas. Si el documento coincide con dos personas, espera; crear al que no era es mucho más caro de arreglar que una fila esperando en la bandeja.',
+          'Y si el servidor no pudo consultar un legajo, no toca NADA de ese legajo y lo reintenta a los quince minutos. Es lo que impide que un corte de internet a mitad de una consulta se lea como «Galeno dio de baja todo».',
+        ],
+      },
+      {
+        titulo: 'Si deja de sincronizar',
+        parrafos: [
+          'Arriba de todo se ve cuándo fue la última sincronización que salió bien, cuántas novedades hay pendientes y, si la última pasada falló, el motivo.',
+          'El botón «Sincronizar ahora» fuerza una consulta sin esperar los quince minutos. Sirve para ver en el momento si el problema sigue.',
+          'Si el error dice que Galeno rechazó el usuario o la clave, hay que volver a cargarlas en Administración → Ajustes compartidos: sólo el superadministrador puede hacerlo, y el botón «Probar conexión» de esa pantalla dice si sirven antes de guardarlas.',
+        ],
+      },
+    ],
+  },
   'cartera.rechazos': {
     clave: 'cartera.rechazos',
     titulo: 'Cartera → Rechazos',

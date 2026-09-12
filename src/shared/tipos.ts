@@ -148,6 +148,140 @@ export interface ResumenMigracionVps {
 }
 
 // ---------------------------------------------------------------------------
+// Galeno Seguros — 15.4
+// ---------------------------------------------------------------------------
+//
+// Quién hace qué: el VPS consulta el portal de Galeno cada quince minutos y deja en una cola lo que
+// cambió (altas, modificaciones y anulaciones). Esta computadora baja esa cola y la aplica a la
+// cartera por el camino de siempre —`crearPoliza`, `editarPoliza`—, que es donde viven las reglas de
+// la agencia. El servidor NO da de alta nada: duplicar acá la validación de cobertura, los riesgos y
+// los duplicados sería verlos divergir en tres meses.
+//
+// Y ninguna baja es automática. Una póliza anulada en Galeno se marca y se avisa; quien la da de
+// baja es una persona.
+
+/** Una póliza de Galeno, ya traducida a los nombres de la agencia por el servidor. */
+export interface PolizaDeGaleno {
+  legajo: string
+  rama: string
+  numeroPoliza: string
+  riesgo: string
+  suplemento: string
+  compania: string
+
+  nombre: string
+  /** Sólo dígitos: si es CUIT o DNI lo resuelve `documento.ts`, como en toda la cartera. */
+  documento: string
+  tipoDocumento: string
+  direccion: string
+  localidad: string
+  codigoPostal: string
+
+  vigenciaDesde: string
+  vigenciaHasta: string
+  formaPago: string
+  cantidadDeRiesgos: string
+
+  /** Con fecha, Galeno la anuló ese día. Vacío, sigue viva. */
+  fechaAnulacion: string
+  renovadaPor: string
+  renuevaA: string
+
+  patente: string
+  marca: string
+  modelo: string
+  version: string
+  anio: string
+  motor: string
+  chasis: string
+  cobertura: string
+  codigoCobertura: string
+  sumaAsegurada: number | null
+}
+
+export type TipoDeNovedadDeGaleno = 'ALTA' | 'MODIFICACION' | 'ANULACION'
+
+export interface NovedadDeGaleno {
+  id: number
+  tipo: TipoDeNovedadDeGaleno
+  datos: PolizaDeGaleno
+  /** Lo que el espejo decía ANTES, en una modificación: es lo que la pantalla muestra al lado. */
+  anterior: PolizaDeGaleno | null
+  motivo: string | null
+  creadoEn: string
+}
+
+export interface EstadoDeGaleno {
+  configurado: boolean
+  enCurso: boolean
+  pendientes: number
+  /** Sólo sube. Es lo que esta computadora compara para saber si tiene que volver a bajar la cola. */
+  version: number
+  ultimaPasadaEn: string | null
+  ultimoExitoEn: string | null
+  ultimoError: string | null
+  legajos: Array<{ legajo: string; polizasVistas: number; ultimoError: string | null; ultimoExitoEn: string | null }>
+}
+
+export interface ResumenDePasadaDeGaleno {
+  legajos: number
+  polizasVistas: number
+  altas: number
+  modificaciones: number
+  anulaciones: number
+  /** Legajos que fallaron: quedaron intactos y se reintentan en la pasada siguiente. */
+  errores: Array<{ legajo: string; detalle: string }>
+}
+
+export interface PruebaDeGaleno {
+  ok: boolean
+  detalle: string
+  legajosEncontrados: number
+}
+
+/** Las credenciales del portal, tal como se cargan en Ajustes compartidos. */
+export interface CredencialesDeGaleno {
+  usuario: string
+  clave: string
+  /** Vacío quiere decir «todos los que Galeno declare para este usuario». */
+  legajos: string[]
+  ramas: string[]
+  activo: boolean
+}
+
+/**
+ * Qué se puede hacer con una novedad, ya resuelto contra la cartera de esta computadora. Lo calcula
+ * el servicio, no la pantalla: la pantalla no tiene que saber buscar clientes por documento.
+ */
+export type ResolucionDeNovedadDeGaleno =
+  /** Se aplicó sola: el documento emparejó con un único cliente. */
+  | 'automatica'
+  /** Hay que elegir o crear el cliente a mano. */
+  | 'falta-cliente'
+  /** El documento emparejó con más de un cliente: alguien tiene que decir cuál. */
+  | 'cliente-ambiguo'
+  /** Galeno la anuló. Nunca se aplica sola. */
+  | 'anulada-en-galeno'
+  /** Se intentó aplicar y falló. */
+  | 'error'
+
+export interface FilaDeBandejaDeGaleno {
+  novedad: NovedadDeGaleno
+  resolucion: ResolucionDeNovedadDeGaleno
+  /** Los clientes que emparejaron por documento, para que la pantalla ofrezca elegir. */
+  candidatos: Array<{ clienteId: number; nombre: string; documento: string }>
+  /** La póliza que ya existe en la cartera con ese número, si la hay. */
+  polizaExistenteId: number | null
+  detalle: string
+}
+
+export interface ResumenDeAplicacionDeGaleno {
+  aplicadas: number
+  pendientes: number
+  fallidas: number
+}
+
+// ---------------------------------------------------------------------------
 // Base de usuarios compartida (GitHub) e ingreso sin internet — Fase 11
 // ---------------------------------------------------------------------------
 
