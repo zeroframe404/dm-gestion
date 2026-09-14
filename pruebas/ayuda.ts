@@ -145,7 +145,7 @@ export function desplegablesDeSucursal(hoy?: string): Array<[string, string[]]> 
     // Imputados tiene desplegable de sucursal desde la 12.5: entra acá para que no repita el problema
     // de Sarandí, que fue exactamente una pantalla que quedó afuera de este arreglo.
     ['Imputados', imputados(null, [], []).sucursales],
-    ['Mora', mora({ busqueda: '', sucursales: [], companias: [], rangos: [], incluirDebito: true }, hoy).sucursales],
+    ['Mora', mora({ busqueda: '', sucursales: [], companias: [], fechas: [], rangos: [], incluirDebito: true }, hoy).sucursales],
     ['Deudores', buscarDeudores(DEUDORES_SIN_FILTROS, hoy).sucursales],
     ['Riesgos varios', listarRiesgos().sucursales],
     ['Siniestros', listarSiniestros(sinFiltros).sucursales],

@@ -2,6 +2,7 @@
 // así que se ordena por días de atraso y cada fila tiene el mismo «Avisar» de la planilla.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
+import { fechaCorta } from '../../../shared/polizas'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { NOMBRE_RANGO_MORA, type FilaMora, type FiltrosMora, type ListadoMora, type RangoDeMora } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
@@ -14,7 +15,7 @@ import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { numero, pesos } from './formato'
 
-const FILTROS_VACIOS: FiltrosMora = { busqueda: '', sucursales: [], companias: [], rangos: [], incluirDebito: false }
+const FILTROS_VACIOS: FiltrosMora = { busqueda: '', sucursales: [], companias: [], fechas: [], rangos: [], incluirDebito: false }
 
 const CLASES_RANGO: Record<Exclude<RangoDeMora, ''>, string> = {
   '1-7': 'bg-amber-100 text-amber-900 border-amber-200',
@@ -173,7 +174,12 @@ export function Mora() {
   if (!datos) return <div className="p-8">{error && <Alerta tono="error">{error}</Alerta>}</div>
 
   const hayFiltros = Boolean(
-    filtros.busqueda || filtros.sucursales.length || filtros.companias.length || filtros.rangos.length || filtros.incluirDebito,
+    filtros.busqueda ||
+      filtros.sucursales.length ||
+      filtros.companias.length ||
+      filtros.fechas.length ||
+      filtros.rangos.length ||
+      filtros.incluirDebito,
   )
 
   return (
@@ -223,6 +229,13 @@ export function Mora() {
           valores={filtros.companias}
           opciones={datos.companias}
           alCambiar={(v) => setFiltros((f) => ({ ...f, companias: v }))}
+        />
+        <FiltroMultiple
+          etiqueta="Vencimiento"
+          valores={filtros.fechas}
+          opciones={datos.fechas}
+          textoDe={fechaCorta}
+          alCambiar={(v) => setFiltros((f) => ({ ...f, fechas: v }))}
         />
         <FiltroMultiple
           etiqueta="Días de atraso"

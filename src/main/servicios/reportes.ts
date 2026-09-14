@@ -518,6 +518,7 @@ const REPORTES: Reporte[] = [
         busqueda: filtros.busqueda,
         sucursales: filtros.sucursales,
         companias: filtros.companias,
+        fechas: [],
         rangos: [],
         incluirDebito: false,
       }).filas.map((fila) => ({
