@@ -472,6 +472,45 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
     ],
   },
 
+  'administracion.galenonovedades': {
+    clave: 'administracion.galenonovedades',
+    titulo: 'Administración → Galeno (novedades)',
+    resumen: 'El usuario y la clave con los que el servidor consulta el portal de productores de Galeno.',
+    secciones: [
+      {
+        titulo: 'Qué cambia con esto',
+        parrafos: [
+          'Con estas credenciales cargadas, el servidor del VPS consulta el portal de Galeno cada quince minutos y trae las pólizas que se cargaron, se modificaron o se anularon con ese usuario. Lo que se puede resolver solo entra a la cartera sin que nadie haga nada; el resto espera en Cartera → Galeno.',
+          'Sin ellas no pasa nada malo: el resto del programa funciona igual y las pólizas de Galeno se siguen cargando a mano, como siempre.',
+        ],
+      },
+      {
+        titulo: 'Dónde vive la clave',
+        parrafos: [
+          'La clave NO se guarda en esta computadora. Va derecho al servidor, que la guarda cifrada, porque el que la usa es el servidor. Por eso tampoco hay un botón de «traer del servidor» como en el catálogo de vehículos: acá no hay nada que traer.',
+          'Y por eso el campo de la clave aparece siempre vacío, aunque ya esté cargada: el servidor no la devuelve. Escribir una nueva la reemplaza; dejar el campo vacío no la toca.',
+          'La carga sólo el superadministrador. Con ese usuario se ve la cartera entera de la compañía, así que no es una credencial de mostrador.',
+        ],
+      },
+      {
+        titulo: 'Los tres campos',
+        parrafos: ['Son los mismos datos con los que se entra al portal de Galeno desde el navegador, más un filtro opcional.'],
+        lista: [
+          'Usuario: el del portal de productores. El de la agencia empieza con «USWS»: son los que Galeno genera desde su propia pantalla de Administración → Usuarios WS, pensados justamente para que un sistema de gestión se conecte.',
+          'Clave: la de ese usuario. Viaja por https al servidor y ahí queda cifrada; nunca se escribe en el disco de esta computadora.',
+          'Legajos: cuáles legajos PAS sincronizar, separados por coma. Dejarlo vacío es lo normal y quiere decir «todos los que Galeno declare para este usuario»: así, si mañana Galeno le suma un legajo a la agencia, entra solo en vez de quedar sin sincronizar sin que nadie se entere.',
+        ],
+      },
+      {
+        titulo: 'Probar conexión',
+        parrafos: [
+          'Prueba lo que YA está guardado en el servidor, no lo que está escrito en los campos: primero se guarda y después se prueba. Si anda, dice qué legajos encontró.',
+          'Si contesta que Galeno rechazó el usuario o la clave, lo primero es volver a cargarlos. Si con las credenciales correctas sigue fallando, puede ser que el usuario «USWS…» no sirva contra el portal y haga falta el web service para sistemas de gestión: se pide a serviciosalproductor@galenoseguros.com.ar, o al 0-800-333-7784.',
+        ],
+      },
+    ],
+  },
+
   'administracion.vehiculos': {
     clave: 'administracion.vehiculos',
     titulo: 'Administración → Catálogo de vehículos',

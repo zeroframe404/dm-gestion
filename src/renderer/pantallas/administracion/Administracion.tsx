@@ -19,6 +19,7 @@ import { Companias } from './Companias'
 import { ConexionGoogle } from './ConexionGoogle'
 import { ControlRemoto } from './ControlRemoto'
 import { Galeno } from './Galeno'
+import { GalenoNovedades } from './GalenoNovedades'
 import { ImportarGoogle } from './ImportarGoogle'
 import { Impresora } from './Impresora'
 import { Permisos } from './Permisos'
@@ -42,6 +43,7 @@ type IdSeccion =
   | 'redessociales'
   | 'vehiculos'
   | 'galeno'
+  | 'galenonovedades'
   | 'controlremoto'
   | 'acerca'
 
@@ -86,6 +88,10 @@ export function Administracion() {
       // lectura (Consultas, Cuenta Corriente y ART) — mismo criterio que el catálogo de vehículos:
       // son credenciales y una integración con un tercero, no algo que necesite el mostrador.
       lista.push({ id: 'galeno', nombre: 'Galeno', icono: 'escudo', ayuda: 'administracion.galeno' })
+      // La credencial del PORTAL de Galeno (15.4): la usa el servidor, que consulta las novedades cada
+      // quince minutos y las deja en la bandeja de Cartera. No tiene nada que ver con la de arriba —esa
+      // es la API REST que usa Presupuestos para cotizar y emitir— por eso es una pestaña aparte.
+      lista.push({ id: 'galenonovedades', nombre: 'Galeno (novedades)', icono: 'nube', ayuda: 'administracion.galenonovedades' })
     }
     // El control remoto lo ve CUALQUIER rol. Es la pantalla que hace falta justo cuando en una
     // sucursal hay algo que no anda y hay gente esperando en el mostrador: pedirle a un administrador
@@ -133,6 +139,7 @@ export function Administracion() {
         {seccion === 'redessociales' && <RedesSociales />}
         {seccion === 'vehiculos' && <CatalogoVehiculos />}
         {seccion === 'galeno' && <Galeno />}
+        {seccion === 'galenonovedades' && <GalenoNovedades />}
         {seccion === 'controlremoto' && <ControlRemoto />}
         {seccion === 'acerca' && <AcercaDe />}
       </div>

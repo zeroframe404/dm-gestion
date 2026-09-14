@@ -402,6 +402,17 @@ const api: ApiDm = {
     detalleDeLiquidaciones: (filtros) => invocar('galeno:detalleDeLiquidaciones', filtros),
     imprimir: (pedido) => invocar('galeno:imprimir', pedido),
   },
+  galenoNovedades: {
+    estado: () => invocar('galenoNovedades:estado'),
+    bandeja: () => invocar('galenoNovedades:bandeja'),
+    aplicar: (id, clienteId, crearElCliente) => invocar('galenoNovedades:aplicar', id, clienteId, crearElCliente),
+    descartar: (id, motivo) => invocar('galenoNovedades:descartar', id, motivo),
+    drenar: () => invocar('galenoNovedades:drenar'),
+    sincronizar: () => invocar('galenoNovedades:sincronizar'),
+    probar: () => invocar('galenoNovedades:probar'),
+    estadoCompartido: () => invocar('galenoNovedades:estadoCompartido'),
+    guardarCredenciales: (datos) => invocar('galenoNovedades:guardarCredenciales', datos),
+  },
   redes: {
     panel: () => invocar('redes:panel'),
     estadoMeta: () => invocar('redes:estadoMeta'),

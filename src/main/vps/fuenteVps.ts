@@ -2,7 +2,13 @@
 // `FuenteHoja` que usaba Google Sheets, contra los endpoints /api/dmg del servidor de
 // dmartinezseguros.com: el importador y el motor de sincronización no cambian nada.
 // Sólo corre en el proceso principal, igual que la fuente de Google.
-import type { EstadoBaseVps } from '../../shared/tipos'
+import type {
+  EstadoBaseVps,
+  EstadoDeGalenoNovedades as EstadoDeGalenoVps,
+  NovedadDeGaleno as NovedadDeGalenoVps,
+  PruebaDeGalenoNovedades as PruebaDeGalenoVps,
+  ResumenDePasadaDeGaleno as ResumenDePasadaVps,
+} from '../../shared/tipos'
 import {
   numerosDeFilas,
   type CeldaAEscribir,
@@ -685,6 +691,63 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
 
   async borrarAjuste(clave: string): Promise<void> {
     await this.pedir(`borrar el ajuste «${clave}»`, 'POST', `/api/dmg/ajustes/${encodeURIComponent(clave)}/borrar`, {})
+  }
+
+  // --- Galeno Seguros --------------------------------------------------------
+  //
+  // La sincronización con el portal de Galeno corre en el SERVIDOR (está siempre encendido y tiene una
+  // sola credencial); esta computadora sólo baja lo que cambió y lo aplica a la cartera por el camino
+  // de siempre (`crearPoliza`), que es donde viven las reglas de la agencia.
+  //
+  // `resolverNovedadDeGaleno` es lo que impide el alta doble: el servidor es el único que ve las cinco
+  // computadoras a la vez, así que es él quien decide quién se quedó con cada novedad.
+
+  async estadoDeGaleno(): Promise<EstadoDeGalenoVps> {
+    return (await this.pedir('consultar el estado de Galeno', 'GET', '/api/dmg/galeno/estado', undefined, {
+      // Dibuja una pantalla: esperar cuatro reintentos con espera exponencial contra un servidor caído
+      // sería dejarla colgada medio minuto para terminar diciendo lo mismo.
+      reintentarSinRespuesta: false,
+    })) as EstadoDeGalenoVps
+  }
+
+  async pendientesDeGaleno(limite = 500): Promise<NovedadDeGalenoVps[]> {
+    const datos = (await this.pedir(
+      'bajar las novedades de Galeno',
+      'GET',
+      `/api/dmg/galeno/pendientes?limite=${encodeURIComponent(String(limite))}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { novedades: NovedadDeGalenoVps[] }
+    return datos?.novedades ?? []
+  }
+
+  /**
+   * «Esta novedad ya está resuelta.» NO se reintenta sin respuesta a propósito: si el servidor la
+   * marcó y la respuesta se perdió en el camino, el reintento vuelve con 409 —correcto pero
+   * confuso—, y la próxima bajada ya no la va a traer. Un reintento no arregla nada acá.
+   */
+  async resolverNovedadDeGaleno(datos: {
+    id: number
+    resultado: 'APLICADA' | 'DESCARTADA' | 'ERROR'
+    por: string | null
+    motivo?: string | null
+    polizaDmgId?: string | null
+  }): Promise<void> {
+    await this.pedir('marcar la novedad de Galeno', 'POST', '/api/dmg/galeno/aplicar', datos, {
+      reintentarSinRespuesta: false,
+    })
+  }
+
+  async forzarPasadaDeGaleno(): Promise<ResumenDePasadaVps> {
+    return (await this.pedir('sincronizar con Galeno', 'POST', '/api/dmg/galeno/pasada', {}, {
+      reintentarSinRespuesta: false,
+    })) as ResumenDePasadaVps
+  }
+
+  async probarGaleno(): Promise<PruebaDeGalenoVps> {
+    return (await this.pedir('probar la conexión con Galeno', 'POST', '/api/dmg/galeno/probar', {}, {
+      reintentarSinRespuesta: false,
+    })) as PruebaDeGalenoVps
   }
 
   // --- Respaldos del estado de la base ---------------------------------------

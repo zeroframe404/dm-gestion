@@ -413,6 +413,18 @@ export interface ApiDm {
     detalleDePoliza: Remota<'galeno:detalleDePoliza'>
     detalleDeLiquidaciones: Remota<'galeno:detalleDeLiquidaciones'>
     imprimir: Remota<'galeno:imprimir'>
+  },
+  /** Cartera → Galeno: las novedades del portal (distinto de `galeno`, la API REST). Ver canales.ts. */
+  galenoNovedades: {
+    estado: Remota<'galenoNovedades:estado'>
+    bandeja: Remota<'galenoNovedades:bandeja'>
+    aplicar: Remota<'galenoNovedades:aplicar'>
+    descartar: Remota<'galenoNovedades:descartar'>
+    drenar: Remota<'galenoNovedades:drenar'>
+    sincronizar: Remota<'galenoNovedades:sincronizar'>
+    probar: Remota<'galenoNovedades:probar'>
+    estadoCompartido: Remota<'galenoNovedades:estadoCompartido'>
+    guardarCredenciales: Remota<'galenoNovedades:guardarCredenciales'>
   }
   redes: {
     panel: Remota<'redes:panel'>

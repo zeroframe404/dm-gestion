@@ -10,17 +10,19 @@ import { Amp } from './Amp'
 import { Bajas } from './Bajas'
 import { Duplicados } from './Duplicados'
 import { Estadisticas } from './Estadisticas'
+import { Galeno } from './Galeno'
 import { PlanillaDelMes } from './PlanillaDelMes'
 import { Rechazos } from './Rechazos'
 import { ReglasCobertura } from './ReglasCobertura'
 import { RiesgosVarios } from './RiesgosVarios'
 
-type IdSeccion = 'planilla' | 'bajas' | 'rechazos' | 'riesgos' | 'amp' | 'imputados' | 'reglas' | 'estadisticas' | 'duplicados'
+type IdSeccion = 'planilla' | 'bajas' | 'rechazos' | 'galeno' | 'riesgos' | 'amp' | 'imputados' | 'reglas' | 'estadisticas' | 'duplicados'
 
 const SECCIONES: ItemDePestana<IdSeccion>[] = [
   { id: 'planilla', nombre: 'Planilla del mes', icono: 'tabla', ayuda: 'cartera.planilla', excel: 'cartera' },
   { id: 'bajas', nombre: 'Bajas', icono: 'cerrar', ayuda: 'cartera.bajas', excel: 'bajas' },
   { id: 'rechazos', nombre: 'Rechazos', icono: 'alerta', ayuda: 'cartera.rechazos' },
+  { id: 'galeno', nombre: 'Galeno', icono: 'nube', ayuda: 'cartera.galeno' },
   { id: 'riesgos', nombre: 'Riesgos varios', icono: 'escudo', ayuda: 'cartera.riesgos', excel: 'riesgos' },
   { id: 'amp', nombre: 'AMP', icono: 'mas', ayuda: 'cartera.amp' },
   { id: 'imputados', nombre: 'Imputados', icono: 'billete', ayuda: 'imputados' },
@@ -62,6 +64,7 @@ export function Cartera() {
         {seccion.id === 'planilla' && <PlanillaDelMes />}
         {seccion.id === 'bajas' && <Bajas />}
         {seccion.id === 'rechazos' && <Rechazos />}
+        {seccion.id === 'galeno' && <Galeno />}
         {seccion.id === 'riesgos' && <RiesgosVarios />}
         {seccion.id === 'amp' && <Amp />}
         {seccion.id === 'imputados' && <Imputados />}
