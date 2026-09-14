@@ -78,4 +78,7 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // La 32 suma a `cuotas_mes` la columna `obs_pago`: la nota de la liquidación, al lado de Sucursal en
   // la planilla, aparte de `observaciones`.
   32: '48dbd87014b3b103',
+  // La 33 suma a `clientes` la columna `fila_id_app_clientes`: el _ID de su fila propia en APP
+  // CLIENTES, independiente de si tiene una póliza viva este mes.
+  33: '555e16ccbb77bc13',
 }

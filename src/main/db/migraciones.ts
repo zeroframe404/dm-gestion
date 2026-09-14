@@ -1928,6 +1928,18 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE cuotas_mes ADD COLUMN obs_pago TEXT;
     `,
   },
+  {
+    version: 33,
+    descripcion: 'Fila propia del cliente en APP CLIENTES: sincroniza aunque no tenga ninguna póliza este mes',
+    sql: `
+      -- Hasta ahora los datos del cliente (teléfono, email, dirección...) viajaban montados en la fila
+      -- de su póliza del mes abierto: un cliente sin póliza activa ese mes, o sin póliza todavía, no
+      -- tenía ninguna fila a la que subir un cambio. Esta columna guarda el _ID de la fila propia del
+      -- cliente en la pestaña APP CLIENTES (que la aplicación crea sola, como con Leads o Tareas):
+      -- existe independientemente de si hay una póliza viva, así el dato sincroniza siempre.
+      ALTER TABLE clientes ADD COLUMN fila_id_app_clientes TEXT;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

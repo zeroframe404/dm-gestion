@@ -9,6 +9,8 @@
 // que no se encolan; sí quedan en el historial, como todo lo que se toca desde acá.
 import { diasParaVencer, estadoDePoliza, aDia } from '../../shared/polizas'
 import {
+  DIRECCION_VACIA,
+  direccionTienePartes,
   sanearDireccion,
   textoDeDireccion,
   type DireccionEstructurada,
@@ -55,9 +57,12 @@ import {
   soloDigitos,
 } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
+import { PESTANAS_DE_LA_APP } from '../sincronizacion/pestanasApp'
 import { avisarTareaCompletada } from './avisos'
 import { ErrorDeNegocio } from './errores'
+import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
+import { nombreDePestana } from './hojas'
 import { idDeSucursalPorNombre, sucursalesParaElegir, sucursalParaGuardar } from './sucursales'
 import { registrarTareaNueva } from './tareas'
 import { enteroPositivo, objeto, texto as validarTexto } from './validacion'
@@ -108,6 +113,8 @@ interface ClienteCrudo extends FilaClienteCruda {
   sin_altura: number
   provincia: string | null
   codigo_postal: string | null
+  /** El _ID de la fila propia del cliente en APP CLIENTES. Null hasta que se cree (15.4). */
+  fila_id_app_clientes: string | null
 }
 
 interface Agregados {
@@ -478,7 +485,7 @@ function buscarCliente(id: number): ClienteCrudo {
   const fila = db()
     .prepare(
       `SELECT ${COLUMNAS_DE_FILA}, clave, direccion, fecha_nacimiento,
-              calle, calle2, altura, sin_altura, provincia, codigo_postal
+              calle, calle2, altura, sin_altura, provincia, codigo_postal, fila_id_app_clientes
          FROM clientes WHERE id = ?`,
     )
     .get(id) as ClienteCrudo | undefined
@@ -830,9 +837,17 @@ interface CamposDeCliente {
   codigoPostal: string
 }
 
-/** La dirección en partes tal como está guardada en la ficha. */
+/**
+ * La dirección en partes tal como está guardada en la ficha.
+ *
+ * Las partes son de ESTA computadora (no viajan) y el renglón `direccion` es el que viaja. Si otra
+ * computadora, la hoja o una celda de Cartera cambiaron el renglón, las partes de acá quedaron viejas:
+ * ya no arman el renglón guardado. Entonces no se devuelven, porque la ficha las mostraría en lugar
+ * de la dirección nueva, y al guardar cualquier otro campo `validarDatos` rearmaría el renglón con
+ * ellas y le subiría a todos la dirección vieja.
+ */
 function direccionDe(cliente: ClienteCrudo): DireccionEstructurada {
-  return sanearDireccion({
+  const guardada = sanearDireccion({
     calle: cliente.calle ?? '',
     calle2: cliente.calle2 ?? '',
     altura: cliente.altura ?? '',
@@ -841,6 +856,14 @@ function direccionDe(cliente: ClienteCrudo): DireccionEstructurada {
     localidad: cliente.localidad ?? '',
     codigoPostal: cliente.codigo_postal ?? '',
   })
+  // Comparación exacta, no con `normalizarTexto`: guardadas acá, las partes y el renglón salen del mismo
+  // detalle y coinciden letra por letra. Plegar tildes y mayúsculas dejaría pasar una corrección de
+  // «Hipolito» a «Hipólito» hecha en otra computadora, y el próximo guardado la desharía.
+  const armanElRenglon = textoDeDireccion(guardada) === limpiar(cliente.direccion)
+  if (!direccionTienePartes(guardada) || armanElRenglon) return guardada
+  // Sólo la calle queda vieja. La provincia y el código postal no forman parte del renglón, no viajan
+  // y no hay otra copia: descartarlos acá haría que guardar el celular los borrara para siempre.
+  return { ...DIRECCION_VACIA, localidad: guardada.localidad, provincia: guardada.provincia, codigoPostal: guardada.codigoPostal }
 }
 
 /** Campo que puede venir vacío: se acepta el vacío y sólo se controla el largo cuando trae algo. */
@@ -865,7 +888,7 @@ function validarDatos(datos: DatosDeCliente): CamposDeCliente {
    * tomar eso por «cargada» hacía que guardar cualquier otro campo —el celular, el email— reemplazara
    * el renglón de la dirección por uno vacío y le borrara la dirección al cliente.
    */
-  const cargoLaDireccion = Boolean(detalle.calle || detalle.calle2 || detalle.altura || detalle.sinAltura)
+  const cargoLaDireccion = direccionTienePartes(detalle)
 
   // El documento se guarda como se escribió, siempre. La detección de DNI vs CUIT (y el aviso de que
   // el verificador no cierra) es de la PANTALLA, para que quien carga se dé cuenta en el momento; acá
@@ -885,7 +908,9 @@ function validarDatos(datos: DatosDeCliente): CamposDeCliente {
     localidad: cargoLaDireccion ? detalle.localidad : opcional(d.localidad, 'La localidad', 80),
     sucursal: opcional(d.sucursal, 'La sucursal', 80),
     fechaNacimiento: opcional(d.fechaNacimiento, 'La fecha de nacimiento', 20),
-    calle: opcional(detalle.calle, 'La calle', 120),
+    // El mismo tope que el renglón: una dirección vieja de texto libre entra entera en la calle cuando
+    // se abre la ventanita para completarla, y no puede rechazarse algo que el usuario no tipeó.
+    calle: opcional(detalle.calle, 'La calle', 160),
     calle2: opcional(detalle.calle2, 'La segunda calle', 120),
     altura: opcional(detalle.altura, 'La altura', 20),
     sinAltura: detalle.sinAltura ? '1' : '',
@@ -1008,9 +1033,12 @@ export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): Resul
     })
   const id = Number(resultado.lastInsertRowid)
 
-  // No se encola nada: la hoja de Google es UNA FILA POR PÓLIZA, así que un cliente sin pólizas no
-  // tiene dónde vivir allá. Viaja recién cuando se le crea la primera póliza, que es la que arma la
-  // fila (`fila_id` queda en NULL hasta entonces, igual que `pestana_origen`).
+  // Nada se encola a una fila de PÓLIZA: la planilla mensual es UNA FILA POR PÓLIZA, así que un
+  // cliente sin pólizas no tiene dónde vivir ahí. Eso viaja recién cuando se le crea la primera
+  // póliza (`fila_id` y `pestana_origen` quedan en NULL hasta entonces). Pero SÍ se le crea de una su
+  // fila propia en APP CLIENTES (15.4): así un cliente cargado sin ninguna póliza todavía sincroniza.
+  asegurarFilaDeCliente(id, null, campos, actor)
+
   registrarCambio(actor, {
     accion: 'edicion',
     tabla: 'clientes',
@@ -1051,12 +1079,58 @@ const CAMPOS_DEL_CLIENTE = [
   { campo: 'calle2', columna: 'calle2', etiqueta: 'ENTRE CALLES', enLaCuota: null, enLaHoja: null },
   { campo: 'altura', columna: 'altura', etiqueta: 'ALTURA', enLaCuota: null, enLaHoja: null },
   { campo: 'sinAltura', columna: 'sin_altura', etiqueta: 'SIN ALTURA', enLaCuota: null, enLaHoja: null },
-  { campo: 'provincia', columna: 'provincia', etiqueta: 'PROVINCIA', enLaCuota: null, enLaHoja: null },
-  { campo: 'codigoPostal', columna: 'codigo_postal', etiqueta: 'CODIGO POSTAL', enLaCuota: null, enLaHoja: null },
+  // La provincia y el código postal SÍ viajan (a diferencia de la calle en partes): no forman el
+  // renglón `direccion`, así que no hay ambigüedad de cuál manda, y quedarse sólo en esta computadora
+  // era el hueco que se cerró acá.
+  { campo: 'provincia', columna: 'provincia', etiqueta: 'PROVINCIA', enLaCuota: null, enLaHoja: 'provincia' },
+  { campo: 'codigoPostal', columna: 'codigo_postal', etiqueta: 'CODIGO POSTAL', enLaCuota: null, enLaHoja: 'codigo_postal' },
 ] as const
 
 /** Cómo se llaman en la base compartida los datos del cliente que viajan (ver `enLaHoja`). */
 type CampoDeLaHoja = NonNullable<(typeof CAMPOS_DEL_CLIENTE)[number]['enLaHoja']>
+
+const PESTANA_CLIENTES_POR_DEFECTO = PESTANAS_DE_LA_APP.find((p) => p.tipo === 'APP_CLIENTES')!.titulo
+
+/**
+ * La pestaña «APP CLIENTES» (15.4) donde vive la fila propia de cada cliente, independiente de si
+ * tiene una póliza viva este mes. Mismo patrón que `pestanaDeTareas`/`pestanaDeRechazos`.
+ */
+function pestanaDeClientes(): string {
+  return nombreDePestana('APP_CLIENTES', PESTANA_CLIENTES_POR_DEFECTO)
+}
+
+/** Todos los campos del cliente que viajan a la hoja, con su valor actual (no sólo los que cambiaron). */
+function camposDeClienteParaLaHoja(campos: CamposDeCliente): Partial<Record<CampoDeLaHoja, string>> {
+  const salida: Partial<Record<CampoDeLaHoja, string>> = {}
+  for (const c of CAMPOS_DEL_CLIENTE) {
+    if (c.enLaHoja !== null) salida[c.enLaHoja] = campos[c.campo]
+  }
+  return salida
+}
+
+/**
+ * La fila propia del cliente en APP CLIENTES, creándola si todavía no existe (15.4). Es «lazy» a
+ * propósito: no hay una migración que le arme la fila a los ~2.100 clientes que ya estaban antes de
+ * esto — la primera vez que se toca cada uno, se le crea sola, con TODOS sus campos actuales (no sólo
+ * el que se está editando: si la fila nace, tiene que nacer completa).
+ */
+function asegurarFilaDeCliente(clienteId: number, filaIdExistente: string | null, campos: CamposDeCliente, actor: SesionUsuario): void {
+  const pestana = pestanaDeClientes()
+  if (filaIdExistente) {
+    encolar({ operacion: 'actualizar', pestana, filaId: filaIdExistente, campos: camposDeClienteParaLaHoja(campos) }, actor)
+    return
+  }
+  // La marca y el encolado van en la MISMA transacción (la regla de sincronizacion/cola.ts): un corte
+  // justo entre las dos deja al cliente con `fila_id_app_clientes` puesto pero nada esperando para
+  // subir, y esa fila fantasma no se cura sola —lo que la limpia es que la fila desaparezca DE LA
+  // HOJA, y una que nunca llegó a subir no puede desaparecer de donde nunca estuvo.
+  const filaId = generarId()
+  db().transaction(() => {
+    db().prepare('UPDATE clientes SET fila_id_app_clientes = ? WHERE id = ?').run(filaId, clienteId)
+    registrarFilaDeLaApp({ filaId, pestana, tipoPestana: 'APP_CLIENTES', periodo: null })
+    encolar({ operacion: 'crear', pestana, filaId, campos: camposDeClienteParaLaHoja(campos) }, actor)
+  })()
+}
 
 export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: SesionUsuario): FichaCliente {
   const id = enteroPositivo(clienteId, 'El cliente')
@@ -1158,12 +1232,16 @@ export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: S
     }
   })()
 
-  // A la hoja viajan sólo los campos que la planilla mensual tiene, y una vez por cada fila del mes
-  // abierto de este cliente: allá cada póliza es una fila distinta con el nombre repetido.
   if (Object.keys(camposDeLaHoja).length > 0) {
+    // A la fila de la póliza del mes, una vez por cada una: allá cada póliza es una fila distinta con
+    // el nombre repetido, y es lo que arma la planilla mensual que mira la agencia.
     for (const cuota of cuotas) {
       encolar({ operacion: 'actualizar', pestana: cuota.pestana, filaId: cuota.fila_id, campos: camposDeLaHoja }, actor)
     }
+    // Y a la fila PROPIA del cliente (15.4), que existe tenga o no una póliza viva este mes: es la que
+    // hace que un cliente sin cuota del mes abierto —o directamente sin ninguna póliza— también
+    // sincronice. `cuotas` puede estar vacía y esto se hace igual.
+    asegurarFilaDeCliente(id, actual.fila_id_app_clientes, campos, actor)
   }
 
   // Un renglón por campo que cambió de verdad: «se editó el cliente» no sirve para nada dentro de seis

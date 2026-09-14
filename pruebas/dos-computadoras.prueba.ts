@@ -8,7 +8,7 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos, usarBaseDeDatos, type BaseDeDatos 
 import { ejecutarImportacion } from '../src/main/importacion/importador'
 import { ahoraIso } from '../src/main/importacion/normalizar'
 import { bajasDelMes, darDeBaja, deshacerBaja, editarCelda, periodosDisponibles, planillaDelMes, registrarPago } from '../src/main/servicios/cartera'
-import { editarCliente, fichaDeCliente, listarClientes } from '../src/main/servicios/clientes'
+import { crearCliente, editarCliente, fichaDeCliente, listarClientes } from '../src/main/servicios/clientes'
 import { cajaDelDia, cambiarResultado, cargarMovimientoDeCaja, imputados } from '../src/main/servicios/cobranzas'
 import { filaIdDelMovimiento } from '../src/main/servicios/caja'
 import { PESTANA_APP } from '../src/main/servicios/filas'
@@ -737,6 +737,65 @@ test('lo que se completa en la ficha del cliente llega a la otra computadora y l
   assert.equal(alLado.localidad, 'Sarandí')
   assert.equal(alLado.fechaNacimiento, '12/05/1980')
   assert.equal(alLado.sucursal, 'Lanús')
+  cerrarTodo()
+})
+
+test('un cliente sin ninguna póliza sincroniza igual, por su fila propia en APP CLIENTES (15.4)', async () => {
+  const { lanus1, lanus2 } = await dosComputadoras()
+
+  // Milagros carga un cliente en Lanús 1 antes de tener ninguna póliza para él: hasta la 15.4 esto no
+  // tenía dónde subir nada (la planilla mensual es una fila por póliza, y éste no tiene ninguna).
+  en(lanus1)
+  const alta = crearCliente({ nombre: 'RAMIREZ SOLEDAD', documento: '30999888', telefono: '', email: '', direccion: '', localidad: '', sucursal: 'Lanús', fechaNacimiento: '', direccionDetalle: sanearDireccion({}) }, MILAGROS)
+  assert.equal(alta.creado, true)
+  if (!alta.creado) throw new Error('inalcanzable')
+  const id = alta.cliente.id
+  await subirTodo(lanus1)
+
+  // Y ya en Lanús 2, sin haber corrido ninguna importación completa: sólo el ciclo de bajada.
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  const idEnLanus2 = clienteLlamado('RAMIREZ SOLEDAD')
+  assert.equal(fichaDeCliente(idEnLanus2).sucursal, 'Lanús')
+
+  // Milagros completa la ficha (el celular, el email) en Lanús 1: sigue sin ninguna póliza.
+  en(lanus1)
+  editarCliente(id, { ...fichaDeCliente(id), telefono: '11-4444-3333', email: 'soledad@ejemplo.com.ar' } as DatosDeCliente, MILAGROS)
+  await subirTodo(lanus1)
+
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  const completa = fichaDeCliente(clienteLlamado('RAMIREZ SOLEDAD'))
+  assert.equal(completa.telefono, '11-4444-3333')
+  assert.equal(completa.email, 'soledad@ejemplo.com.ar')
+  cerrarTodo()
+})
+
+test('cargarle el DNI a un cliente sin póliza, después de que ya sincronizó, no lo duplica en la otra computadora', async () => {
+  const { lanus1, lanus2 } = await dosComputadoras()
+
+  // Sin DNI todavía: la clave sale del nombre. Sincroniza por su fila propia en APP CLIENTES.
+  en(lanus1)
+  const alta = crearCliente({ nombre: 'TORRES ROMINA', documento: '', telefono: '', email: '', direccion: '', localidad: '', sucursal: '', fechaNacimiento: '', direccionDetalle: sanearDireccion({}) }, MILAGROS)
+  assert.equal(alta.creado, true)
+  if (!alta.creado) throw new Error('inalcanzable')
+  await subirTodo(lanus1)
+
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  assert.equal(listarClientes({ busqueda: 'TORRES ROMINA', sucursales: [], companias: [], estado: '' }).filas.length, 1)
+
+  // Milagros le carga el DNI: la clave cambia de «por nombre» a «por documento», en la MISMA fila.
+  en(lanus1)
+  editarCliente(alta.cliente.id, { ...fichaDeCliente(alta.cliente.id), documento: '32444555' } as DatosDeCliente, MILAGROS)
+  await subirTodo(lanus1)
+
+  // La otra computadora tiene que actualizar el registro que ya tenía, no crear uno al lado.
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  const encontrados = listarClientes({ busqueda: 'TORRES ROMINA', sucursales: [], companias: [], estado: '' })
+  assert.equal(encontrados.filas.length, 1, 'sigue siendo un solo cliente, no dos')
+  assert.equal(encontrados.filas[0]!.documento, '32444555')
   cerrarTodo()
 })
 

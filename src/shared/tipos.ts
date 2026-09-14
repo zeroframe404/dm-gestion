@@ -324,6 +324,10 @@ export type TipoPestana =
   // 12.10: la caja chica de cada mostrador (el cambio del día, los gastos, lo que baja a la caja
   // fuerte y el arqueo del cierre). Lo cobrado ya viaja por APP PAGOS: acá va sólo lo demás.
   | 'APP_CAJA'
+  // 15.4: la fila propia de cada cliente, independiente de si tiene una póliza viva este mes. Sin
+  // esta pestaña un cliente sin póliza (o con la única póliza en un mes ya cerrado) no tenía dónde
+  // subir un cambio de teléfono, email o dirección: el dato viajaba montado en la fila de la póliza.
+  | 'APP_CLIENTES'
   | 'OTRA'
 
 export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
@@ -343,6 +347,7 @@ export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
   APP_ADJUNTOS: 'Adjuntos (la escribe DM Gestión)',
   APP_COMENTARIOS: 'Comentarios y observaciones (la escribe DM Gestión)',
   APP_CAJA: 'Caja chica (la escribe DM Gestión)',
+  APP_CLIENTES: 'Clientes (la escribe DM Gestión)',
   OTRA: 'Sin clasificar (sólo crudo)',
 }
 

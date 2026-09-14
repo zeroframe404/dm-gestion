@@ -16,3 +16,7 @@ config.json
 
 # Estado local de Claude Code, no es parte de la aplicación.
 .claude/
+
+# Volcados de herramientas que se cuelan en el directorio de trabajo, no son parte del repo.
+repomix-output.xml
+session_memory.json

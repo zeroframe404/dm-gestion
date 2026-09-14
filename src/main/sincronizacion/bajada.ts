@@ -323,6 +323,8 @@ const DESTINOS_DEL_CLIENTE: Partial<Record<Campo, string>> = {
   email: 'email',
   direccion: 'direccion',
   localidad: 'localidad',
+  provincia: 'provincia',
+  codigo_postal: 'codigo_postal',
   fecha_nacimiento: 'fecha_nacimiento',
 }
 
@@ -487,7 +489,12 @@ function aplicarPestana(
         if (pestana.tipo === 'APP_PRESUPUESTOS' && (campo === 'opciones_json' || campo === 'opciones')) opcionesCambiadas = true
         const pisado = aplicarCampo(pestana, id, campo, remoto)
         resultado.camposAplicados++
-        if (pisado !== null && limpiar(pisado) !== anterior) {
+        // «pisado» es lo que había en la columna ANTES de este `aplicarCampo`. Si ya era igual a lo
+        // que se está bajando, no hubo nada que pisar: pasa con el teléfono, el email o la dirección
+        // del cliente (15.4), que desde acá viajan a DOS filas —la cuota del mes y la fila propia en
+        // APP CLIENTES— y la segunda encuentra la columna que la primera, en el mismo ciclo, ya dejó
+        // con el valor nuevo. Sin este chequeo, ese caso normal salía como un conflicto falso.
+        if (pisado !== null && limpiar(pisado) !== anterior && limpiar(pisado) !== remoto) {
           anotarPisado(pestana.titulo, id, campo, pisado, remoto)
           resultado.pisados++
         }
@@ -658,14 +665,47 @@ function aplicarCampo(pestana: PestanaSincronizable, filaId: string, campo: Camp
   // Los datos del cliente viajan en la planilla del mes. En las otras pestañas, «telefono» es el
   // teléfono de ESA fila (el riesgo, el aviso), no el de la ficha del cliente: hasta la 12.6 el atajo
   // se los comía y nunca llegaban a su tabla.
-  const columnaCliente = pestana.tipo === 'MENSUAL' ? DESTINOS_DEL_CLIENTE[campo] : undefined
+  //
+  // Desde la 15.4 hay DOS caminos hacia la misma columna, según la pestaña: la del mes resuelve el
+  // cliente por su cuota (join con `cuotas_mes`, como siempre); APP CLIENTES lo resuelve directo por
+  // `fila_id_app_clientes`, porque esa fila es del cliente y no de ninguna póliza en particular.
+  const columnaCliente = pestana.tipo === 'MENSUAL' || pestana.tipo === 'APP_CLIENTES' ? DESTINOS_DEL_CLIENTE[campo] : undefined
   if (columnaCliente) {
-    const cliente = sentencia(
-      `SELECT c.id, c.${columnaCliente} AS valor FROM clientes c
-         JOIN cuotas_mes q ON q.cliente_id = c.id WHERE q.fila_id = ?`,
-    ).get(filaId) as { id: number; valor: string | null } | undefined
+    const cliente =
+      pestana.tipo === 'APP_CLIENTES'
+        ? (sentencia(`SELECT id, ${columnaCliente} AS valor FROM clientes WHERE fila_id_app_clientes = ?`).get(filaId) as
+            | { id: number; valor: string | null }
+            | undefined)
+        : (sentencia(
+            `SELECT c.id, c.${columnaCliente} AS valor FROM clientes c
+               JOIN cuotas_mes q ON q.cliente_id = c.id WHERE q.fila_id = ?`,
+          ).get(filaId) as { id: number; valor: string | null } | undefined)
     if (!cliente) return null
     sentencia(`UPDATE clientes SET ${columnaCliente} = ?, actualizado_en = ? WHERE id = ?`).run(valor || null, ahoraIso(), cliente.id)
+    return cliente.valor ?? ''
+  }
+
+  // Nombre, documento y sucursal son del cliente en ESTA pestaña, a diferencia de MENSUAL: ahí son la
+  // copia de la cuota (ver DESTINOS.MENSUAL, más abajo) y `clientes` recién los recibe en la próxima
+  // importación completa, que reconcilia desde la planilla. Acá no hay ninguna cuota de la que
+  // copiarlos —la fila ES el cliente—, así que si no se aplican ahora quedan sin sincronizar hasta esa
+  // importación completa, que es justo la demora que esta pestaña existe para evitar.
+  if (pestana.tipo === 'APP_CLIENTES' && (campo === 'nombre' || campo === 'documento' || campo === 'sucursal')) {
+    const columna = campo === 'sucursal' ? 'sucursal_texto' : campo
+    const cliente = sentencia(`SELECT id, ${columna} AS valor FROM clientes WHERE fila_id_app_clientes = ?`).get(filaId) as
+      | { id: number; valor: string | null }
+      | undefined
+    if (!cliente) return null
+    const extra = campo === 'documento' ? ', documento_normalizado = @documento_normalizado' : ''
+    // El nombre nunca se pone en null: es NOT NULL en la tabla, y un valor vacío no puede pasar de
+    // todas formas (la ficha lo exige al cargar y al editar).
+    const valorAGuardar = campo === 'nombre' ? valor : valor || null
+    sentencia(`UPDATE clientes SET ${columna} = @valor${extra}, actualizado_en = @ahora WHERE id = @id`).run({
+      valor: valorAGuardar,
+      documento_normalizado: campo === 'documento' ? normalizarDocumento(valor) || null : null,
+      ahora: ahoraIso(),
+      id: cliente.id,
+    })
     return cliente.valor ?? ''
   }
 

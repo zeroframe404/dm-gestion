@@ -181,6 +181,15 @@ export const PESTANAS_DE_LA_APP: PestanaDeLaApp[] = [
     tipo: 'APP_COMENTARIOS',
     encabezados: ['FECHA', 'TIPO', 'VINCULO', 'USUARIO', 'TEXTO', ENCABEZADO_ID],
   },
+  // 15.4: la fila propia de cada cliente, independiente de si tiene una póliza viva este mes. Hasta
+  // ahora sus datos viajaban montados en la fila de la póliza del mes abierto (`cuotas_mes`): un
+  // cliente sin póliza —o con la única póliza en un mes ya cerrado— no tenía ninguna fila a la que
+  // subir un cambio de teléfono, email o dirección. Esta pestaña sí existe siempre.
+  {
+    titulo: 'APP CLIENTES',
+    tipo: 'APP_CLIENTES',
+    encabezados: ['NOMBRE', 'DNI/CUIT', 'TELEFONO', 'EMAIL', 'DIRECCION', 'LOCALIDAD', 'PROVINCIA', 'CODIGO POSTAL', 'LOCAL', 'FECHA DE NACIMIENTO', ENCABEZADO_ID],
+  },
 ]
 
 /** Las pestañas de los adjuntos y los comentarios, por su título de fábrica. */

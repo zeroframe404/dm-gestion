@@ -14,7 +14,9 @@ import {
   PROVINCIAS,
   direccionCompleta,
   direccionEstaVacia,
+  direccionTienePartes,
   faltantesDeDireccion,
+  partesDesdeRenglon,
   sanearDireccion,
   type DireccionEstructurada,
 } from '../../../shared/direccion'
@@ -25,19 +27,28 @@ const LISTA_LOCALIDADES = 'lista-localidades-direccion'
 interface Props {
   abierto: boolean
   direccion: DireccionEstructurada
+  /** La dirección guardada como texto. Si todavía no hay partes, arranca desde acá. */
+  renglon?: string
   /** Localidades ya cargadas en la agencia, para sugerir sin obligar. */
   localidadesConocidas?: string[]
   alCerrar: () => void
   alGuardar: (direccion: DireccionEstructurada) => void
 }
 
-export function DialogoDireccion({ abierto, direccion, localidadesConocidas = [], alCerrar, alGuardar }: Props) {
+export function DialogoDireccion({ abierto, direccion, renglon = '', localidadesConocidas = [], alCerrar, alGuardar }: Props) {
   const [borrador, setBorrador] = useState<DireccionEstructurada>(direccion)
 
   // Se recarga cada vez que se abre: si alguien cerró con la cruz y vuelve a entrar, tiene que ver lo
   // que estaba guardado y no lo que había tipeado y descartó.
+  //
+  // Sin partes pero con renglón guardado, la calle arranca con el renglón. Abrir con la calle en blanco
+  // obligaba a tipear de nuevo una dirección que ya estaba, y confirmar así («Usar esta dirección» con
+  // sólo la localidad) armaba un renglón vacío que al guardar le borraba la calle al cliente.
   useEffect(() => {
-    if (abierto) setBorrador(sanearDireccion(direccion))
+    if (!abierto) return
+    const guardada = sanearDireccion(direccion)
+    const arrancaDelRenglon = !direccionTienePartes(guardada) && renglon.trim() !== ''
+    setBorrador(arrancaDelRenglon ? sanearDireccion({ ...guardada, ...partesDesdeRenglon(renglon) }) : guardada)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto])
 

@@ -98,6 +98,45 @@ export function direccionEstaVacia(direccion: DireccionEstructurada): boolean {
 }
 
 /**
+ * Si la dirección tiene cargadas las partes que arman el RENGLÓN: la calle, la otra calle o la altura.
+ *
+ * No es lo contrario de `direccionEstaVacia`, y la diferencia es el bug de la 15.3: la localidad NO
+ * cuenta. La localidad es una columna que viaja y la calle en partes no, así que en cualquier otra
+ * computadora —y en toda ficha que vino de la hoja— la dirección en partes llega con la localidad y
+ * nada más. Tomar eso por «cargada» escondía el renglón guardado detrás de un «Lanús» a secas.
+ * Es la misma regla que `validarDatos` en el proceso principal.
+ */
+export function direccionTienePartes(direccion: DireccionEstructurada): boolean {
+  return Boolean(direccion.calle || direccion.calle2 || direccion.altura || direccion.sinAltura)
+}
+
+/**
+ * Las partes de la calle sacadas del renglón guardado, para no hacer tipear de nuevo lo que ya está.
+ *
+ * Sólo separa lo que `textoDeDireccion` sabe volver a armar IGUAL («Mitre 1234», «Mitre s/n»,
+ * «Mitre 1234, esq. Belgrano»). Un renglón libre de la hoja («Mitre 1234 Lanús», «al lado de la
+ * plaza») va entero a la calle: así se ve lo que había y quien carga lo corrige, en vez de perderlo.
+ */
+export function partesDesdeRenglon(renglon: string): Pick<DireccionEstructurada, 'calle' | 'calle2' | 'altura' | 'sinAltura'> {
+  const texto = limpiarParte(renglon)
+  const entero = { calle: texto, calle2: '', altura: '', sinAltura: false }
+  const partes = /^(.+?)(?: (s\/n|\d{1,6}[a-z]?))?(?:, esq\. (.{1,120}))?$/i.exec(texto)
+  if (!partes) return entero
+  const [, calle = '', numero = '', calle2 = ''] = partes
+  // «Mitre 1234 Dto 5», «Mz 4 Casa 7», «Mitre 1234 5B»: el último número no es la altura sino el
+  // departamento o el lote. Si lo que queda antes termina en otro número o en una de esas palabras,
+  // no se adivina.
+  const ultima = calle.split(' ').pop() ?? ''
+  const sinAltura = numero.toLowerCase() === 's/n'
+  if (numero && !sinAltura && (/^\d/.test(ultima) || UNIDADES.test(ultima))) return entero
+  const separada = { calle, calle2, altura: sinAltura ? '' : numero, sinAltura }
+  const vuelveIgual = textoDeDireccion({ ...DIRECCION_VACIA, ...separada }) === texto
+  return vuelveIgual ? separada : entero
+}
+
+const UNIDADES = /^(dto|dpto|depto|departamento|piso|pb|mz|mza|manzana|casa|lote|km|torre|block|monoblock|unidad|uf|of|oficina|local)\.?$/i
+
+/**
  * El renglón de siempre: «Mitre 1234, entre Belgrano y San Martín». Es lo que se guarda en la columna
  * `direccion`, lo que sube a la hoja y lo que sale impreso en el ticket, así que no puede cambiar de
  * forma según quién la haya cargado.

@@ -258,13 +258,19 @@ interface Identidad {
  * Sentencias para «anclar» un registro al _ID de la fila que lo originó. Si la clave calculada cambia
  * (se corrigió el DNI, se patentó un 0KM, la póliza recibió número) se renombra el registro existente
  * en vez de crear uno nuevo al lado.
+ *
+ * `columna` es por qué _ID se ancla: `fila_id` para las tres tablas de siempre, y desde la 15.4
+ * también `fila_id_app_clientes` para el cliente por su fila propia en APP CLIENTES —sin esto, un
+ * cliente sin póliza al que se le corrige el DNI después de la primera sincronización se duplicaba en
+ * la otra computadora: la fila seguía siendo la F1 de siempre, pero la clave nueva (`DOC:...`) ya no
+ * era la del cliente que esa F1 había creado, y el upsert por clave no encontraba a quién actualizar.
  */
-function sentenciasDeAncla(db: BaseDeDatos, tabla: 'clientes' | 'vehiculos' | 'polizas') {
+function sentenciasDeAncla(db: BaseDeDatos, tabla: 'clientes' | 'vehiculos' | 'polizas', columna: string = 'fila_id') {
   return {
-    porFila: db.prepare(`SELECT id, clave FROM ${tabla} WHERE fila_id = ?`),
+    porFila: db.prepare(`SELECT id, clave FROM ${tabla} WHERE ${columna} = ?`),
     porClave: db.prepare(`SELECT id FROM ${tabla} WHERE clave = ?`),
     renombrar: db.prepare(`UPDATE ${tabla} SET clave = @clave, actualizado_en = @ahora WHERE id = @id`),
-    soltarFila: db.prepare(`UPDATE ${tabla} SET fila_id = NULL WHERE id = ?`),
+    soltarFila: db.prepare(`UPDATE ${tabla} SET ${columna} = NULL WHERE id = ?`),
   }
 }
 
@@ -273,6 +279,7 @@ type SentenciasDeAncla = ReturnType<typeof sentenciasDeAncla>
 function prepararSentencias(db: BaseDeDatos) {
   return {
     anclaClientes: sentenciasDeAncla(db, 'clientes'),
+    anclaClientesPorAppClientes: sentenciasDeAncla(db, 'clientes', 'fila_id_app_clientes'),
     anclaVehiculos: sentenciasDeAncla(db, 'vehiculos'),
     anclaPolizas: sentenciasDeAncla(db, 'polizas'),
     filaCruda: db.prepare(`
@@ -298,9 +305,9 @@ function prepararSentencias(db: BaseDeDatos) {
     // Primera vez que aparece el cliente en esta corrida: lo que dice la planilla más nueva manda.
     clienteCompleto: db.prepare(`
       INSERT INTO clientes (clave, documento, documento_normalizado, nombre, telefono, email, direccion, localidad,
-                            sucursal_id, sucursal_texto, fecha_nacimiento, fila_id, pestana_origen, creado_en, actualizado_en)
+                            provincia, codigo_postal, sucursal_id, sucursal_texto, fecha_nacimiento, fila_id, pestana_origen, creado_en, actualizado_en)
       VALUES (@clave, @documento, @documento_normalizado, @nombre, @telefono, @email, @direccion, @localidad,
-              @sucursal_id, @sucursal_texto, @fecha_nacimiento, @fila_id, @pestana_origen, @ahora, @ahora)
+              @provincia, @codigo_postal, @sucursal_id, @sucursal_texto, @fecha_nacimiento, @fila_id, @pestana_origen, @ahora, @ahora)
       -- Lo que la fila trae manda sobre lo que hay acá, MIENTRAS esta computadora no tenga un cambio
       -- suyo esperando subir (12.7, issue #75): es el mismo freno que la fila del mes, y por el mismo
       -- motivo. La ficha que alguien acaba de completar todavía no llegó a la base compartida, así que
@@ -315,6 +322,8 @@ function prepararSentencias(db: BaseDeDatos) {
         email = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.email ELSE excluded.email END, clientes.email),
         direccion = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.direccion ELSE excluded.direccion END, clientes.direccion),
         localidad = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.localidad ELSE excluded.localidad END, clientes.localidad),
+        provincia = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.provincia ELSE excluded.provincia END, clientes.provincia),
+        codigo_postal = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.codigo_postal ELSE excluded.codigo_postal END, clientes.codigo_postal),
         -- El texto manda, pero el id sólo se pisa si se pudo resolver: una sucursal escrita como no
         -- está en el catálogo devuelve texto sin id (ver resolverSucursal), y con el CASE de antes ese
         -- texto borraba el id que ya estaba bien resuelto.
@@ -337,6 +346,8 @@ function prepararSentencias(db: BaseDeDatos) {
         email = COALESCE(email, @email),
         direccion = COALESCE(direccion, @direccion),
         localidad = COALESCE(localidad, @localidad),
+        provincia = COALESCE(provincia, @provincia),
+        codigo_postal = COALESCE(codigo_postal, @codigo_postal),
         sucursal_id = COALESCE(sucursal_id, @sucursal_id),
         sucursal_texto = COALESCE(sucursal_texto, @sucursal_texto),
         fecha_nacimiento = COALESCE(fecha_nacimiento, @fecha_nacimiento)
@@ -353,6 +364,35 @@ function prepararSentencias(db: BaseDeDatos) {
         sucursal_id = COALESCE(sucursal_id, @sucursal_id),
         sucursal_texto = @sucursal_texto
       WHERE id = @id AND (sucursal_texto IS NULL OR TRIM(sucursal_texto) = '')`),
+
+    /**
+     * La fila propia del cliente en APP CLIENTES (15.4): la única que crea o actualiza un cliente sin
+     * pasar por `fila_id`/`pestana_origen` (esas dos son de la planilla mensual, para la presencia).
+     * Omitirlas de las dos listas —el INSERT y el ON CONFLICT— es lo que evita que pisen la fila de
+     * una póliza que el cliente sí tiene: nunca se mencionan, así que quedan como estaban.
+     */
+    clienteDesdeAppClientes: db.prepare(`
+      INSERT INTO clientes (clave, documento, documento_normalizado, nombre, telefono, email, direccion, localidad,
+                            provincia, codigo_postal, sucursal_id, sucursal_texto, fecha_nacimiento,
+                            fila_id_app_clientes, creado_en, actualizado_en)
+      VALUES (@clave, @documento, @documento_normalizado, @nombre, @telefono, @email, @direccion, @localidad,
+              @provincia, @codigo_postal, @sucursal_id, @sucursal_texto, @fecha_nacimiento,
+              @fila_id, @ahora, @ahora)
+      ON CONFLICT(clave) DO UPDATE SET
+        documento = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.documento ELSE excluded.documento END, clientes.documento),
+        documento_normalizado = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.documento_normalizado ELSE excluded.documento_normalizado END, clientes.documento_normalizado),
+        nombre = CASE WHEN excluded.nombre <> '' AND @sin_subir = 0 THEN excluded.nombre ELSE clientes.nombre END,
+        telefono = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.telefono ELSE excluded.telefono END, clientes.telefono),
+        email = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.email ELSE excluded.email END, clientes.email),
+        direccion = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.direccion ELSE excluded.direccion END, clientes.direccion),
+        localidad = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.localidad ELSE excluded.localidad END, clientes.localidad),
+        provincia = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.provincia ELSE excluded.provincia END, clientes.provincia),
+        codigo_postal = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.codigo_postal ELSE excluded.codigo_postal END, clientes.codigo_postal),
+        sucursal_id = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.sucursal_id ELSE excluded.sucursal_id END, clientes.sucursal_id),
+        sucursal_texto = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.sucursal_texto ELSE excluded.sucursal_texto END, clientes.sucursal_texto),
+        fecha_nacimiento = COALESCE(CASE WHEN @sin_subir = 1 THEN clientes.fecha_nacimiento ELSE excluded.fecha_nacimiento END, clientes.fecha_nacimiento),
+        fila_id_app_clientes = excluded.fila_id_app_clientes, actualizado_en = excluded.actualizado_en
+      RETURNING id`),
 
     clientePorClave: db.prepare('SELECT id FROM clientes WHERE clave = ?'),
     clientePorId: db.prepare('SELECT id, nombre, documento FROM clientes WHERE id = ?'),
@@ -1277,9 +1317,13 @@ class TrabajoDeImportacion {
       .filter((p) => p.tipo === 'MENSUAL' && p !== this.masNueva)
       .sort((a, b) => (a.periodo ?? '').localeCompare(b.periodo ?? '') || a.indice - b.indice)
     orden.push(...mensuales)
-    // Las APP_* van al final: son las que escribe la aplicación y no aportan clientes ni pólizas, pero
-    // igual se leen para que sus filas queden en los datos crudos y conserven su lugar en la hoja.
+    // Las APP_* van al final: son las que escribe la aplicación y no aportan pólizas, pero igual se
+    // leen para que sus filas queden en los datos crudos y conserven su lugar en la hoja. APP CLIENTES
+    // es la excepción: SÍ puede crear un cliente (el que todavía no tiene ninguna póliza), así que va
+    // primera de la lista, antes de RIESGOS_VARIOS o SINIESTROS, que sólo saben referenciar a uno que
+    // ya exista y en la misma corrida podrían no encontrarlo si esto corriera después.
     const prioridad: TipoPestana[] = [
+      'APP_CLIENTES',
       'BAJAS',
       'RIESGOS_VARIOS',
       'PAGOS',
@@ -1574,6 +1618,9 @@ class TrabajoDeImportacion {
               break
             case 'RIESGOS_VARIOS':
               this.guardarRiesgoVario(p, fila, resumen)
+              break
+            case 'APP_CLIENTES':
+              this.guardarFilaDeCliente(p, fila, resumen)
               break
             case 'SINIESTROS':
               this.guardarSiniestro(p, fila, resumen)
@@ -2049,6 +2096,8 @@ class TrabajoDeImportacion {
       email: oNulo(fila.valor('email')),
       direccion: oNulo(fila.valor('direccion')),
       localidad: oNulo(fila.valor('localidad')),
+      provincia: oNulo(fila.valor('provincia')),
+      codigo_postal: oNulo(fila.valor('codigo_postal')),
       sucursal_id: sucursalId,
       sucursal_texto: oNulo(sucursalTexto),
       fecha_nacimiento: oNulo(fila.valor('fecha_nacimiento')),
@@ -2361,6 +2410,48 @@ class TrabajoDeImportacion {
     })
     this.contar(resumen, 'riesgos_varios')
     if (clienteId === null) this.contar(resumen, 'riesgos_sin_cliente_en_cartera')
+  }
+
+  /**
+   * La fila propia de un cliente en APP CLIENTES (15.4): a diferencia de RIESGOS_VARIOS o SINIESTROS
+   * —que sólo REFERENCIAN a un cliente que ya existe—, esta fila es la ficha misma. Por eso, si no
+   * hay un cliente con esa clave todavía, ACÁ SÍ se crea uno: es exactamente el caso que esta pestaña
+   * viene a resolver, un cliente que en esta computadora todavía no tiene ninguna póliza.
+   */
+  private guardarFilaDeCliente(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {
+    if (this.sinDatosUtiles(p, fila)) return
+    const ident = this.identificar(p, fila)
+    const clave = this.claveCliente(ident, fila.id)
+
+    // Si el DNI o el nombre cambiaron desde la última vez que esta fila creó o encontró un cliente, la
+    // clave calculada ya no es la del registro que esta fila es dueña: sin anclar por `fila_id_app_clientes`
+    // (igual que `guardarCliente` ancla por `fila_id`), el upsert de más abajo no lo encontraría por la
+    // clave nueva y crearía un cliente duplicado al lado. `sin_subir` no importa acá —el ancla no toca
+    // ningún dato del cliente, sólo su clave— así que corre siempre, con la corrección la haya hecho
+    // esta computadora o cualquier otra.
+    if (this.anclarPorFila(this.sentencias.anclaClientesPorAppClientes, fila.id, clave)) this.contar(resumen, 'clientes_con_clave_corregida')
+
+    const sucursalTexto = this.sucursalDeLaFila(fila)
+    const sucursalId = this.resolverSucursal(p, fila, sucursalTexto)
+    this.sentencias.clienteDesdeAppClientes.get({
+      clave,
+      fila_id: fila.id,
+      documento: oNulo(ident.documento),
+      documento_normalizado: oNulo(ident.documentoNormalizado),
+      nombre: ident.nombre,
+      telefono: oNulo(fila.valor('telefono')),
+      email: oNulo(fila.valor('email')),
+      direccion: oNulo(fila.valor('direccion')),
+      localidad: oNulo(fila.valor('localidad')),
+      provincia: oNulo(fila.valor('provincia')),
+      codigo_postal: oNulo(fila.valor('codigo_postal')),
+      sucursal_id: sucursalId,
+      sucursal_texto: oNulo(sucursalTexto),
+      fecha_nacimiento: oNulo(fila.valor('fecha_nacimiento')),
+      sin_subir: this.sinSubir.has(fila.id) ? 1 : 0,
+      ahora: this.ahora,
+    })
+    this.contar(resumen, 'clientes')
   }
 
   private guardarSiniestro(p: PestanaTrabajo, fila: Fila, resumen: ResumenPestana): void {

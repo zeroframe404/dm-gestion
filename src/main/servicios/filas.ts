@@ -157,6 +157,12 @@ function borrarRegistroQueYaNoEsta(base: BaseDeDatos, filaId: string, tipo: Tipo
     case 'APP_RECHAZOS':
       base.prepare('DELETE FROM rechazos_debito WHERE fila_id = ?').run(filaId)
       return
+    // La fila propia de un cliente (15.4). Que la fila se haya ido de la hoja NUNCA borra al cliente:
+    // sólo se olvida el enlace, así la próxima edición le crea una fila nueva sola (ver
+    // `asegurarFilaDeCliente` en servicios/clientes.ts).
+    case 'APP_CLIENTES':
+      base.prepare('UPDATE clientes SET fila_id_app_clientes = NULL WHERE fila_id_app_clientes = ?').run(filaId)
+      return
     case 'APP_CAJA':
       base.prepare('DELETE FROM caja_movimientos WHERE fila_id = ?').run(filaId)
       return

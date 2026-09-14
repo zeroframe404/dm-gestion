@@ -141,6 +141,9 @@ function pestanasDeTodosLosDias(contexto: ContextoHoja): string[] {
       p.tipo === 'SINIESTROS' ||
       p.tipo === 'APP_RECHAZOS' ||
       p.tipo === 'APP_TAREAS' ||
+      // 15.4: la fila propia de cada cliente. Un cambio de teléfono, email o dirección tiene que
+      // llegar a las otras sucursales igual que un lead o una tarea, no esperar a la bajada completa.
+      p.tipo === 'APP_CLIENTES' ||
       p.tipo === 'APP_ADJUNTOS' ||
       p.tipo === 'APP_COMENTARIOS' ||
       // 12.7: las consultas, los presupuestos, las ampliaciones y las reglas de cobertura también se

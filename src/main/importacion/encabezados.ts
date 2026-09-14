@@ -11,6 +11,11 @@ export type Campo =
   | 'email'
   | 'direccion'
   | 'localidad'
+  // La dirección EN PARTES sólo tiene estas dos con sentido para la hoja: la provincia y el código
+  // postal no forman parte del renglón (`direccion`) que ya viajaba, y hasta ahora se quedaban en
+  // esta computadora sin columna donde escribirse.
+  | 'provincia'
+  | 'codigo_postal'
   | 'sucursal'
   | 'fecha_nacimiento'
   | 'compania'
@@ -115,6 +120,8 @@ const SINONIMOS: Record<Campo, string[]> = {
   email: ['EMAIL', 'E MAIL', 'MAIL', 'CORREO', 'CORREO ELECTRONICO', 'EMAILS'],
   direccion: ['DIRECCION', 'DOMICILIO', 'DOM', 'CALLE', 'DIRECCION COMPLETA'],
   localidad: ['LOCALIDAD', 'CIUDAD', 'PARTIDO', 'BARRIO', 'ZONA'],
+  provincia: ['PROVINCIA', 'PCIA', 'PROV'],
+  codigo_postal: ['CODIGO POSTAL', 'COD POSTAL', 'CP', 'C P'],
   sucursal: ['LOCAL', 'SUCURSAL', 'SUC', 'OFICINA', 'SEDE', 'AGENCIA'],
   fecha_nacimiento: ['FECHA DE NACIMIENTO', 'FECHA NACIMIENTO', 'NACIMIENTO', 'F NAC', 'FEC NAC', 'F NACIMIENTO', 'FECHA NAC', 'FEC NACIMIENTO', 'CUMPLEANOS'],
   compania: ['COMPANIA', 'CIA', 'COMP', 'ASEGURADORA', 'EMPRESA', 'COMPANIA ASEGURADORA', 'CIA ASEGURADORA', 'COMPANIAS', 'COMPANY'],
@@ -375,7 +382,7 @@ const AJUSTES_POR_TIPO: Partial<Record<TipoPestana, Record<string, Campo>>> = {
 
 /** Campos que tienen sentido en cada tipo de pestaña. Los demás quedan sólo en los datos crudos. */
 const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
-  MENSUAL: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'sucursal', 'fecha_nacimiento', 'compania', 'numero_poliza', 'cobertura', 'prima', 'forma_pago', 'productor', 'estado', 'vigencia_desde', 'vigencia_hasta', 'alta', 'cuota', 'dia_vencimiento', 'aviso', 'fecha_envio', 'avisar_vto', 'pago', 'observaciones', 'obs_pago', 'marca', 'modelo', 'anio', 'patente', 'motor', 'chasis', 'tipo_vehiculo', 'uso', 'color', 'suma_asegurada'],
+  MENSUAL: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'provincia', 'codigo_postal', 'sucursal', 'fecha_nacimiento', 'compania', 'numero_poliza', 'cobertura', 'prima', 'forma_pago', 'productor', 'estado', 'vigencia_desde', 'vigencia_hasta', 'alta', 'cuota', 'dia_vencimiento', 'aviso', 'fecha_envio', 'avisar_vto', 'pago', 'observaciones', 'obs_pago', 'marca', 'modelo', 'anio', 'patente', 'motor', 'chasis', 'tipo_vehiculo', 'uso', 'color', 'suma_asegurada'],
   BAJAS: ['nombre', 'documento', 'telefono', 'sucursal', 'compania', 'numero_poliza', 'cobertura', 'patente', 'marca', 'modelo', 'motivo', 'fecha_baja', 'mes', 'observaciones', 'cuota', 'productor'],
   RIESGOS_VARIOS: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'sucursal', 'emision', 'tipo_riesgo', 'descripcion', 'compania', 'numero_poliza', 'prima', 'cuota', 'vigencia_desde', 'vigencia_hasta', 'forma_pago', 'dia_vencimiento', 'aviso', 'pago', 'observaciones', 'productor', 'estado', 'patente', 'marca', 'modelo'],
   SINIESTROS: [
@@ -416,6 +423,9 @@ const CAMPOS_POR_TIPO: Record<TipoPestana, Campo[] | 'todos'> = {
   APP_ADJUNTOS: ['fecha', 'tipo_registro', 'vinculo', 'descripcion', 'archivo_nombre', 'categoria', 'archivo', 'tamano', 'sha256', 'usuario', 'subido'],
   APP_COMENTARIOS: ['fecha', 'tipo_registro', 'vinculo', 'usuario', 'texto'],
   APP_CAJA: ['fecha', 'sucursal', 'tipo_registro', 'detalle', 'importe', 'usuario'],
+  // 15.4: sólo los campos del CLIENTE, nunca los de una póliza puntual (compania, prima, cuota...):
+  // esta pestaña es la ficha de la persona, no la de un seguro.
+  APP_CLIENTES: ['nombre', 'documento', 'telefono', 'email', 'direccion', 'localidad', 'provincia', 'codigo_postal', 'sucursal', 'fecha_nacimiento'],
   OTRA: 'todos',
 }
 
@@ -842,6 +852,8 @@ const ENCABEZADO_PARA_AGREGAR: Partial<Record<Campo, string>> = {
   importe: 'IMPORTE',
   observaciones: 'OBSERVACIONES',
   obs_pago: 'OBS PAGO',
+  provincia: 'PROVINCIA',
+  codigo_postal: 'CODIGO POSTAL',
   abogado: 'ABOGADO',
   tercero_compania: 'COMPAÑIA DEL TERCERO',
   tercero_telefono: 'TELEFONO DEL TERCERO',

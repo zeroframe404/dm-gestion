@@ -4,7 +4,14 @@
 // Que el alta detecte el CUIT y la ficha no sería peor que si ninguna de las dos lo hiciera: quien
 // carga aprende una regla en una pantalla y descubre que en la otra no vale.
 import { useMemo, useState } from 'react'
-import { direccionCompleta, direccionEstaVacia, textoDeDireccion, type DireccionEstructurada } from '../../../shared/direccion'
+import {
+  direccionCompleta,
+  direccionEstaVacia,
+  direccionTienePartes,
+  textoDeDireccion,
+  textoDeLocalidad,
+  type DireccionEstructurada,
+} from '../../../shared/direccion'
 import { detectarDocumento } from '../../../shared/documento'
 import { calcularEdad } from '../../../shared/edad'
 import type { DatosDeCliente } from '../../../shared/tipos'
@@ -141,19 +148,29 @@ export function CampoDeNacimiento({ valor, alCambiar }: { valor: string; alCambi
 /**
  * El botón «Dirección», que reemplazó a los dos campos sueltos de antes. Muestra lo que hay cargado en
  * un renglón; el detalle se edita en la ventanita.
+ *
+ * `renglon` es la dirección guardada como texto (la columna que viaja). Cuando no hay partes —otra
+ * computadora, una ficha que vino de la hoja— es lo único que dice dónde vive el cliente, y hay que
+ * mostrarlo: armar el texto sólo con las partes dejaba un «Lanús» a secas y parecía que lo cargado
+ * no se había guardado.
  */
 export function BotonDeDireccion({
   direccion,
+  renglon = '',
   alCambiar,
   localidadesConocidas,
 }: {
   direccion: DireccionEstructurada
+  renglon?: string
   alCambiar: (direccion: DireccionEstructurada) => void
   localidadesConocidas?: string[]
 }) {
   const [abierto, setAbierto] = useState(false)
-  const vacia = direccionEstaVacia(direccion)
-  const texto = direccionCompleta(direccion)
+  const soloRenglon = !direccionTienePartes(direccion) && renglon.trim() !== ''
+  const vacia = direccionEstaVacia(direccion) && !soloRenglon
+  const texto = soloRenglon
+    ? [renglon.trim(), textoDeLocalidad(direccion)].filter(Boolean).join(' · ')
+    : direccionCompleta(direccion)
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -166,6 +183,7 @@ export function BotonDeDireccion({
       <DialogoDireccion
         abierto={abierto}
         direccion={direccion}
+        renglon={renglon}
         localidadesConocidas={localidadesConocidas}
         alCerrar={() => setAbierto(false)}
         alGuardar={(nueva) => {

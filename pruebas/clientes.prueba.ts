@@ -15,7 +15,7 @@ import {
 } from '../src/main/servicios/clientes'
 import { cuotasDelClienteEnElMes } from '../src/main/servicios/cartera'
 import { crearSiniestro } from '../src/main/servicios/siniestros'
-import { DIRECCION_VACIA, sanearDireccion } from '../src/shared/direccion'
+import { DIRECCION_VACIA, direccionTienePartes, partesDesdeRenglon, sanearDireccion, textoDeDireccion } from '../src/shared/direccion'
 import { hoyLocal } from '../src/shared/semaforo'
 import { darDeBajaPoliza } from '../src/main/servicios/polizas'
 import { cuantasPendientes } from '../src/main/sincronizacion/cola'
@@ -293,8 +293,9 @@ test('un cliente nuevo con un documento que no está se crea normalmente', async
   assert.equal(resultado.cliente.nombre, 'ALVAREZ LUCIA')
   assert.equal(listarClientes(SIN_FILTROS).filas.length, antes + 1)
 
-  // Un cliente sin póliza no tiene fila en la hoja (la hoja es una fila por póliza): nada que subir.
-  assert.equal(cuantasPendientes(), 0, 'el alta de un cliente sin póliza no encola nada')
+  // Un cliente sin póliza no tiene fila de PÓLIZA en la hoja (la mensual es una fila por póliza), pero
+  // desde la 15.4 sí se le crea su fila propia en APP CLIENTES, así que algo queda para subir.
+  assert.equal(cuantasPendientes(), 1, 'el alta encola la fila propia del cliente en APP CLIENTES')
 })
 
 test('el nombre es obligatorio y el documento puede faltar', async () => {
@@ -361,6 +362,87 @@ test('cargar la dirección en partes reemplaza el renglón viejo, y vaciarla no 
   const vaciada = editarCliente(id, { ...base, direccion: '', localidad: '', direccionDetalle: DIRECCION_VACIA }, DANIEL)
   assert.equal(vaciada.direccion, null)
   assert.equal(vaciada.direccionDetalle.calle, '')
+})
+
+test('la dirección que cambió otra computadora se ve, y guardar otro campo no le sube la vieja', async () => {
+  const db = await carteraDePrueba()
+  const id = idDe(CLIENTES.lopez.nombre)
+  const base = datosDe(fichaDeCliente(id))
+
+  // Esta computadora la cargó en partes.
+  editarCliente(
+    id,
+    { ...base, direccionDetalle: sanearDireccion({ calle: 'Belgrano', altura: '567', provincia: 'Buenos Aires', localidad: 'Sarandí' }) },
+    DANIEL,
+  )
+  // El refresco devuelve las mismas partes: el renglón es de ellas.
+  assert.equal(fichaDeCliente(id).direccionDetalle.calle, 'Belgrano')
+
+  // Otra computadora la cambió: a esta base baja SOLO el renglón y la localidad (bajada.ts / importador),
+  // las partes de acá no se tocan.
+  db.prepare(`UPDATE clientes SET direccion = 'Mitre 1234', localidad = 'Lanús' WHERE id = ?`).run(id)
+
+  const ficha = fichaDeCliente(id)
+  assert.equal(ficha.direccion, 'Mitre 1234')
+  assert.equal(ficha.direccionDetalle.calle, '', 'las partes viejas no pueden tapar la dirección nueva')
+  assert.equal(ficha.direccionDetalle.localidad, 'Lanús')
+  assert.equal(ficha.direccionDetalle.provincia, 'Buenos Aires', 'la provincia no es del renglón: perderla con la calle vieja sería peor, porque a diferencia de la calle sí sincroniza sola')
+
+  // Y cambiar sólo el celular no rearma el renglón con las partes viejas.
+  const despues = editarCliente(id, { ...datosDe(ficha), telefono: '11-4444-5555' }, DANIEL)
+  assert.equal(despues.direccion, 'Mitre 1234')
+  assert.equal(despues.localidad, 'Lanús')
+  assert.equal(despues.direccionDetalle.provincia, 'Buenos Aires')
+})
+
+test('una corrección de tilde o mayúsculas hecha en otra computadora no se deshace al guardar acá', async () => {
+  const db = await carteraDePrueba()
+  const id = idDe(CLIENTES.lopez.nombre)
+  const base = datosDe(fichaDeCliente(id))
+  editarCliente(id, { ...base, direccionDetalle: sanearDireccion({ calle: 'Hipolito Yrigoyen', altura: '450', localidad: 'Lanús' }) }, DANIEL)
+
+  db.prepare(`UPDATE clientes SET direccion = 'Hipólito Yrigoyen 450' WHERE id = ?`).run(id)
+
+  const ficha = fichaDeCliente(id)
+  assert.equal(ficha.direccionDetalle.calle, '', 'la calle sin tilde ya no es la guardada')
+  const despues = editarCliente(id, { ...datosDe(ficha), telefono: '11-4444-5555' }, DANIEL)
+  assert.equal(despues.direccion, 'Hipólito Yrigoyen 450')
+})
+
+test('la provincia y el código postal se encolan hacia la hoja, a diferencia de las partes de la calle', async () => {
+  const db = await carteraDePrueba()
+  const id = idDe(CLIENTES.lopez.nombre)
+  const base = datosDe(fichaDeCliente(id))
+
+  editarCliente(
+    id,
+    { ...base, direccionDetalle: sanearDireccion({ calle: 'Belgrano', altura: '567', provincia: 'Buenos Aires', codigoPostal: 'B1872', localidad: 'Sarandí' }) },
+    DANIEL,
+  )
+
+  const filaIds = (db.prepare(`SELECT fila_id FROM cuotas_mes WHERE cliente_id = ?`).all(id) as Array<{ fila_id: string }>).map((f) => f.fila_id)
+  const encoladas = db.prepare(`SELECT campos_json FROM cola_sync WHERE fila_id IN (${filaIds.map(() => '?').join(',')})`).all(...filaIds) as Array<{ campos_json: string }>
+  const campos = encoladas.flatMap((fila) => Object.keys(JSON.parse(fila.campos_json)))
+  assert.ok(campos.includes('provincia'), 'la provincia tiene que viajar a la hoja')
+  assert.ok(campos.includes('codigo_postal'), 'el código postal tiene que viajar a la hoja')
+  assert.ok(!campos.includes('calle'), 'la calle en partes sigue siendo sólo de esta computadora')
+})
+
+test('el renglón guardado se separa en partes sólo cuando se puede volver a armar igual', () => {
+  assert.deepEqual(partesDesdeRenglon('Mitre 1234'), { calle: 'Mitre', calle2: '', altura: '1234', sinAltura: false })
+  assert.deepEqual(partesDesdeRenglon('Pasaje 5 s/n, esq. Belgrano'), { calle: 'Pasaje 5', calle2: 'Belgrano', altura: '', sinAltura: true })
+  assert.deepEqual(partesDesdeRenglon('25 de Mayo 300'), { calle: '25 de Mayo', calle2: '', altura: '300', sinAltura: false })
+  // Texto libre de la hoja: va entero a la calle, no se pierde nada.
+  assert.equal(partesDesdeRenglon('al lado de la plaza').calle, 'al lado de la plaza')
+  assert.equal(partesDesdeRenglon('Mitre 1234 Lanús').calle, 'Mitre 1234 Lanús')
+  // El último número es el departamento o el lote, no la altura: no se adivina.
+  for (const renglon of ['Mitre 1234 Dto 5', 'Barrio Los Pinos Mz 4 Casa 7', 'Mitre 1234 5B', 'Barrio Manzana 12-Lote-34-Casa-5-Depto-B']) {
+    assert.deepEqual(partesDesdeRenglon(renglon), { calle: renglon, calle2: '', altura: '', sinAltura: false }, renglon)
+  }
+  for (const renglon of ['Mitre 1234', 'Pasaje 5 s/n, esq. Belgrano', 'Mitre 1234 Lanús', 'MITRE S/N', 'Mitre 1234 Dto 5']) {
+    assert.equal(textoDeDireccion({ ...DIRECCION_VACIA, ...partesDesdeRenglon(renglon) }), renglon)
+  }
+  assert.equal(direccionTienePartes({ ...DIRECCION_VACIA, localidad: 'Lanús' }), false, 'la localidad sola no es una dirección cargada')
 })
 
 test('editar el cliente actualiza su ficha y encola el cambio hacia la hoja', async () => {

@@ -6,8 +6,8 @@
 //    «12/05/1980», «12-05-80» y «MAYO 80» conviviendo, y reformatear sería inventar.
 //  · Las cuatro acciones del encabezado (nueva póliza, registrar pago, cargar siniestro, nueva tarea)
 //    son las que se hacen con el cliente delante, por teléfono o en el mostrador.
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { direccionEstaVacia, sanearDireccion } from '../../../shared/direccion'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { direccionTienePartes, sanearDireccion } from '../../../shared/direccion'
 import { diasParaVencer, estadoDePoliza, NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
 import { hoyLocal } from '../../../shared/semaforo'
 import {
@@ -26,6 +26,7 @@ import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { detalleDeRiesgo, esVehiculo, nombreDeTipoDeRiesgo } from '../../../shared/riesgos'
 import { EtiquetaDeEstado } from '../siniestros/Siniestros'
+import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos, usePuedeEditar } from '../../contexto/Permisos'
 import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, conDireccion, recortar } from './CamposDeCliente'
@@ -65,6 +66,27 @@ function datosDe(ficha: FichaCliente): DatosDeCliente {
 /** Dos fichas son iguales si lo son campo a campo, con la dirección comparada por su contenido. */
 function hayDiferencias(a: DatosDeCliente, b: DatosDeCliente): boolean {
   return JSON.stringify(a) !== JSON.stringify(b)
+}
+
+/**
+ * El borrador con lo que trajo la ficha nueva en los campos que el usuario no tocó. La dirección va como
+ * un bloque (renglón, localidad y partes): mezclar la calle de una computadora con la localidad de la
+ * otra armaría una dirección que no cargó nadie.
+ */
+function fusionarConLaFicha(borrador: DatosDeCliente, anterior: DatosDeCliente, nueva: DatosDeCliente): DatosDeCliente {
+  const igual = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+  const fusion = { ...borrador }
+  const simples = ['nombre', 'documento', 'telefono', 'email', 'sucursal', 'fechaNacimiento'] as const
+  for (const campo of simples) {
+    if (borrador[campo] === anterior[campo]) fusion[campo] = nueva[campo]
+  }
+  const direccionDe = (d: DatosDeCliente) => [d.direccion, d.localidad, d.direccionDetalle]
+  if (igual(direccionDe(borrador), direccionDe(anterior))) {
+    fusion.direccion = nueva.direccion
+    fusion.localidad = nueva.localidad
+    fusion.direccionDetalle = nueva.direccionDetalle
+  }
+  return fusion
 }
 
 export function FichaDelCliente({
@@ -117,6 +139,15 @@ export function FichaDelCliente({
   useEffect(() => {
     void cargar()
   }, [cargar])
+
+  // Lo que guarda otra computadora (la dirección, el celular) baja a la base, pero la ficha abierta lo
+  // leía una sola vez al entrar y seguía mostrando lo de antes hasta salir y volver. Espera mientras
+  // hay cambios sin guardar o un diálogo abierto, igual que el listado.
+  useRefrescoEnVivo({
+    tipos: ['MENSUAL', 'BAJAS'],
+    recargar: cargar,
+    postergar: () => conCambios || pagoAbierto || siniestroAbierto || tareaAbierta,
+  })
 
   if (cargando && !ficha) return <Cargando texto="Abriendo la ficha…" />
 
@@ -356,6 +387,20 @@ function PestanaDatos({
   const original = datosDe(ficha)
   const hayCambios = hayDiferencias(borrador, original)
 
+  // Si la ficha llega con otros datos (el refresco en vivo trajo lo que guardó otra computadora), el
+  // borrador los toma campo por campo: lo que acá no se tocó sigue a la ficha, lo tipeado se respeta.
+  // De a un campo y no todo o nada: si el refresco cae justo cuando alguien empieza a escribir el
+  // celular, quedarse con el borrador entero haría que guardar el celular deshiciera el email nuevo.
+  const originalAnterior = useRef(original)
+  const originalActual = JSON.stringify(original)
+  useEffect(() => {
+    const anterior = originalAnterior.current
+    originalAnterior.current = original
+    if (JSON.stringify(anterior) === originalActual) return
+    setBorrador((previo) => fusionarConLaFicha(previo, anterior, original))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originalActual])
+
   // El aviso sale en un efecto y no en el cuerpo: cambiarle el estado al padre mientras se dibuja el
   // hijo es lo que React llama actualizar durante el render, y con esta ficha adentro de un módulo
   // perezoso terminaba en un bucle de dibujados.
@@ -412,6 +457,7 @@ function PestanaDatos({
         />
         <BotonDeDireccion
           direccion={borrador.direccionDetalle}
+          renglon={borrador.direccion}
           alCambiar={(direccionDetalle) => setBorrador((previo) => conDireccion(previo, direccionDetalle))}
           localidadesConocidas={localidades}
         />
@@ -425,12 +471,12 @@ function PestanaDatos({
         <CampoDeNacimiento valor={borrador.fechaNacimiento} alCambiar={cambiarTexto('fechaNacimiento')} />
       </div>
 
-      {/* Las fichas viejas sólo tienen el renglón libre que vino de la hoja: se muestra tal cual hasta
-          que alguien cargue la dirección en partes, y ahí este cartel desaparece solo. */}
-      {direccionEstaVacia(borrador.direccionDetalle) && (borrador.direccion || borrador.localidad) && (
+      {/* Las fichas sin partes (las que vinieron de la hoja, o las de otra computadora) muestran el
+          renglón debajo del botón. Antes iba acá, pero la condición contaba la localidad como «partes»
+          y con una localidad cargada el cartel no salía nunca. */}
+      {!direccionTienePartes(borrador.direccionDetalle) && borrador.direccion && (
         <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          Dirección cargada de la hoja: <span className="font-medium text-slate-800">{[borrador.direccion, borrador.localidad].filter(Boolean).join(', ')}</span>.
-          Cargala con el botón de arriba para dejarla en partes.
+          La dirección está guardada como un solo renglón. Tocá «Cambiar la dirección» para completarla en partes.
         </p>
       )}
 
