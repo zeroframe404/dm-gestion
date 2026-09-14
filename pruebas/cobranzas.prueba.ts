@@ -49,7 +49,7 @@ const BRENDA: SesionUsuario = {
   debeCambiarClave: false,
 }
 
-const SIN_FILTROS: FiltrosMora = { busqueda: '', sucursales: [], companias: [], rangos: [], incluirDebito: false }
+const SIN_FILTROS: FiltrosMora = { busqueda: '', sucursales: [], companias: [], fechas: [], rangos: [], incluirDebito: false }
 
 async function cobranzasDePrueba(): Promise<BaseDeDatos> {
   cerrarBaseDeDatos()

@@ -2141,6 +2141,8 @@ export interface FiltrosMora {
   /** Vacías = todas. Ver `src/shared/filtros.ts`: la lista vacía nunca filtra. */
   sucursales: string[]
   companias: string[]
+  /** Vacías = todas las fechas. Los días puntuales (vencimiento) que se tildaron en el filtro. */
+  fechas: string[]
   /** Vacíos = todos los tramos de atraso. Los carteles de arriba siguen contando los tres por separado. */
   rangos: Array<Exclude<RangoDeMora, ''>>
   /** El débito automático se cobra solo: por omisión no se lista. */
@@ -2151,6 +2153,7 @@ export interface ListadoMora {
   filas: FilaMora[]
   sucursales: string[]
   companias: string[]
+  fechas: string[]
   /** Cuántas cuotas vencidas hay en total, antes de filtrar. */
   total: number
   /** Cuánto suman las cuotas que quedaron después de los filtros (lo que se ve en pantalla). */

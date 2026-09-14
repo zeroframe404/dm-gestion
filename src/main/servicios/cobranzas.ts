@@ -587,12 +587,14 @@ export function mora(filtros: FiltrosMora, hoy = hoyLocal()): ListadoMora {
   const busqueda = normalizarTexto(filtros.busqueda).replace(/ /g, '')
   const sucursales = listaDeFiltro(filtros.sucursales)
   const companias = listaDeFiltro(filtros.companias)
+  const fechas = listaDeFiltro(filtros.fechas)
 
   const sinRango = todas.filter(
     (fila) =>
       coincideConLaBusqueda(fila, busqueda) &&
       coincideAlguno(sucursales, fila.sucursal, mismaSucursal) &&
-      coincideAlguno(companias, fila.compania, mismaCosa),
+      coincideAlguno(companias, fila.compania, mismaCosa) &&
+      coincideAlguno(fechas, fila.vencimiento),
   )
   const rangos = listaDeFiltro(filtros.rangos).filter((r): r is Exclude<RangoDeMora, ''> =>
     (RANGOS_DE_MORA as readonly string[]).includes(r) && r !== '',
@@ -608,6 +610,7 @@ export function mora(filtros: FiltrosMora, hoy = hoyLocal()): ListadoMora {
     // el mostrador parece que la mora es de las otras y que a esta pantalla le falta la sucursal.
     sucursales: sucursalesParaElegir(todas.map((f) => f.sucursal)),
     companias: distintos(todas.map((f) => f.compania)),
+    fechas: distintos(todas.map((f) => f.vencimiento)).sort(),
     total: todas.length,
     totalDeuda: filas.reduce((suma, fila) => suma + (fila.cuotaMonto ?? 0), 0),
     porRango,

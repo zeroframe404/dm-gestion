@@ -30,7 +30,6 @@ import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useNavegacion } from '../../contexto/Navegacion'
-import { useUsuarioActual } from '../../contexto/Sesion'
 
 /** Se compara sin tildes, sin mayúsculas y sin puntuación: «ABC 123» encuentra a «abc-123». */
 function normalizar(valor: string | null | undefined): string {
@@ -123,11 +122,11 @@ function nombreDeRama(baja: FilaBaja): string {
 }
 
 export function Bajas() {
-  const usuario = useUsuarioActual()
   const { ir } = useNavegacion()
   const puedeEditarCartera = usePuedeEditar('cartera')
-  // Deshacer y poner vigente mueven la planilla de todos: como cerrar el mes, piden administrador.
-  const esAdministrador = usuario.rol !== 'EMPLEADO' && puedeEditarCartera
+  // Deshacer y poner vigente piden el mismo permiso que dar de baja: editar cartera. Cualquier rol
+  // que puede dar de baja puede también reactivar.
+  const esAdministrador = puedeEditarCartera
 
   const [periodos, setPeriodos] = useState<PeriodoCartera[]>([])
   const [periodo, setPeriodo] = useState<string | null>(null)

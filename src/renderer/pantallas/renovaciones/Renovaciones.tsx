@@ -41,6 +41,8 @@ interface Filtros {
   /** Vacía = todos; 'sin' son las que no tienen responsable y el resto son ids de usuario en texto. */
   responsables: string[]
   estados: EstadoRenovacion[]
+  /** Vacía = todas las fechas. Los días puntuales (venceEl) que se tildaron en el filtro. */
+  fechas: string[]
   ocultarResueltas: boolean
   /**
    * 'manual' (lo normal) deja sólo las compañías que la agencia renueva a mano —Agrosalta cada 4
@@ -50,7 +52,7 @@ interface Filtros {
   renovacion: 'manual' | 'todas'
 }
 
-const FILTROS_VACIOS: Filtros = { responsables: [], estados: [], ocultarResueltas: false, renovacion: 'manual' }
+const FILTROS_VACIOS: Filtros = { responsables: [], estados: [], fechas: [], ocultarResueltas: false, renovacion: 'manual' }
 
 /**
  * Las que se pueden apagar con «Columnas». El cliente no —sin él la fila no se sabe de quién es— ni la
@@ -135,6 +137,12 @@ export function Renovaciones() {
   )
   const automaticas = todas.length - todas.filter((fila) => fila.renovacionManual).length
 
+  /** Las fechas de vencimiento presentes en el alcance elegido, para tildar días puntuales. */
+  const fechasDisponibles = useMemo(
+    () => [...new Set(delAlcance.map((fila) => fila.venceEl))].sort(),
+    [delAlcance],
+  )
+
   // Los contadores de arriba cuentan lo que hay que trabajar, así que respetan el alcance (no tiene
   // sentido decir «40 urgentes» si 35 son de compañías que renuevan solas). Los otros filtros, no:
   // son el tablero, y tienen que seguir diciendo lo mismo mientras se filtra.
@@ -162,6 +170,7 @@ export function Renovaciones() {
       if (filtros.responsables.length > 0 && !filtros.responsables.includes(fila.responsableId === null ? 'sin' : String(fila.responsableId))) {
         return false
       }
+      if (filtros.fechas.length > 0 && !filtros.fechas.includes(fila.venceEl)) return false
       return true
     }
     return bandeja.semanas
@@ -170,7 +179,12 @@ export function Renovaciones() {
   }, [bandeja, filtros])
 
   const visibles = useMemo(() => semanasVisibles.reduce((suma, semana) => suma + semana.filas.length, 0), [semanasVisibles])
-  const hayFiltros = filtros.responsables.length > 0 || filtros.estados.length > 0 || filtros.ocultarResueltas || filtros.renovacion !== 'manual'
+  const hayFiltros =
+    filtros.responsables.length > 0 ||
+    filtros.estados.length > 0 ||
+    filtros.fechas.length > 0 ||
+    filtros.ocultarResueltas ||
+    filtros.renovacion !== 'manual'
 
   if (cargando && !bandeja) return <Cargando texto="Buscando lo que vence…" />
 
@@ -232,6 +246,14 @@ export function Renovaciones() {
           opciones={ESTADOS_DE_RENOVACION.map((e) => ({ valor: e, texto: NOMBRE_ESTADO_RENOVACION[e] }))}
           plural="todos"
           alCambiar={(v) => setFiltros((f) => ({ ...f, estados: v as EstadoRenovacion[] }))}
+        />
+        <FiltroMultiple
+          etiqueta="Fecha de vencimiento"
+          valores={filtros.fechas}
+          opciones={fechasDisponibles}
+          textoDe={fechaCorta}
+          plural="todas"
+          alCambiar={(v) => setFiltros((f) => ({ ...f, fechas: v }))}
         />
         <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
           <input

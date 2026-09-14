@@ -631,13 +631,13 @@ export function registrarIpc(): void {
   manejar('cartera:darDeBaja', (filaId, datos) => exito(darDeBaja(filaId, datos, exigirEdicion('cartera'))))
   manejar('cartera:deshacerBaja', (bajaId) => {
     exigirEdicion('cartera')
-    return exito(deshacerBaja(enteroPositivo(bajaId, 'La baja'), exigirRol('SUPER_ADMIN', 'ADMIN')))
+    return exito(deshacerBaja(enteroPositivo(bajaId, 'La baja'), exigirSesion()))
   })
-  // «Poner vigente» devuelve una póliza a la cartera. Como el cierre de mes y como deshacer una baja,
-  // mueve la planilla de todos: pide administrador además del permiso de edición.
+  // «Poner vigente» devuelve una póliza a la cartera. El único control es el permiso de edición en
+  // cartera, igual que darla de baja: cualquier rol con ese permiso puede reactivarla.
   manejar('cartera:reactivarBaja', (bajaId, cambios) => {
     exigirEdicion('cartera')
-    return exito(reactivarBaja(enteroPositivo(bajaId, 'La baja'), exigirRol('SUPER_ADMIN', 'ADMIN'), cambios))
+    return exito(reactivarBaja(enteroPositivo(bajaId, 'La baja'), exigirSesion(), cambios))
   })
   manejar('cartera:bajas', (periodo) => {
     exigirVista('cartera')
