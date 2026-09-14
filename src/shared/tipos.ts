@@ -4472,3 +4472,401 @@ export interface EstadoDeMensajeria {
   enCola: number
   ultimoError: string | null
 }
+
+// ---------------------------------------------------------------------------
+// Galeno Seguros — API REST (Cotización, Emisión, Consultas, Cuenta Corriente y ART)
+//
+// El código de rama de Galeno (4 = autos, 28 = motos) coincide 1 a 1 con el `TipoDeVehiculo` que ya
+// usa el catálogo de InfoAuto: no hace falta un tipo nuevo, alcanza con este mapa.
+// ---------------------------------------------------------------------------
+
+export const RAMA_GALENO_DE_TIPO: Record<TipoDeVehiculo, number> = { AUTO: 4, MOTO: 28 }
+
+/** Un valor de una lista de Galeno: rama, plan comercial, marca, condición de pago, etc. */
+export interface OpcionGaleno {
+  codigo: string
+  descripcion: string
+}
+
+/** Un sub-modelo (versión) del catálogo propio de Galeno — no tiene relación con los códigos de InfoAuto. */
+export interface SubModeloGaleno {
+  version: string
+  codigoMarca: number
+  codigoModelo: number
+  codigoSubModelo: number
+}
+
+/** Puede haber más de una localidad para el mismo código postal (distinto `subCodigoPostal`). */
+export interface CodigoPostalGaleno {
+  codigoRama: string
+  codigoPostal: string
+  subCodigoPostal: string
+  localidad: string
+}
+
+/** Lo que hay cargado de la cuenta de Galeno en esta computadora. La clave nunca viaja al renderer. */
+export interface EstadoDeGaleno {
+  configurado: boolean
+  usuario: string
+  ambiente: 'desa' | 'produccion'
+  /** El legajo del productor, tal como lo devolvió el web Service de Planes Comerciales. */
+  productorCodigo: string | null
+  rutaDeConfig: string
+  actualizadoEn: string | null
+}
+
+export interface DatosDeGaleno {
+  usuario: string
+  clave: string
+  ambiente: 'desa' | 'produccion'
+  /** Sólo hace falta para producción: la URL de pruebas del manual va embebida. */
+  urlBase?: string
+  /** El «Authorization: Basic ...» fijo del endpoint de token. Sólo hace falta para producción. */
+  authorizationBasic?: string
+}
+
+export interface PruebaDeGaleno {
+  ok: boolean
+  detalle: string
+  ramasEncontradas: number
+}
+
+// --- Cotización --------------------------------------------------------------
+
+/** Lo que hace falta para cotizar un auto o una moto con Galeno. */
+export interface DatosDeCotizacionGaleno {
+  tipoVehiculo: TipoDeVehiculo
+  planComercialCodigo: string
+  ceroKm: boolean
+  /** Si el vehículo tiene CODIA de InfoAuto alcanza con esto: no hace falta marca/modelo/submodelo. */
+  idInfoAuto?: string | null
+  marcaCodigo?: string
+  modeloCodigo?: string
+  subModeloCodigo?: string
+  anioFabricacion: string
+  tomadorTipoPersona: string
+  tomadorNombre: string
+  codigoPostal: string
+  subCodigoPostal: string
+  condicionPagoCodigo: string
+  vigenciaDesde: string
+  modoFacturacionCodigo: string
+  formaPagoCodigo: string
+  sumaAsegurada?: number
+  tipoUso?: string
+  poseeEquipoGnc?: boolean
+  equipoGncValor?: number
+  poseeEquipoRastreo?: boolean
+  equipoRastreoCodigo?: string
+  clausulaAjusteCodigo?: string
+  tomadorCategoriaIVACodigo?: string
+  tomadorIIBBCodigo?: string
+}
+
+export interface CoberturaCotizadaGaleno {
+  item: number
+  cobertura: string
+  descripcionCobertura: string
+  prima: number
+  bonificacion: number
+  recargoAdministrativo: number
+  recargoFinanciero: number
+  derechoEmision: number
+  impuestos: number
+  premio: number
+  importeCuota1: number
+  importeRestoCuotas: number
+  comision: number
+  listaAdicionales: string[]
+  franquicia: string
+}
+
+export interface ExcepcionGaleno {
+  item: number
+  tipo: string
+  motivo: number
+  detalle?: string
+  observaciones?: string
+  estado: string
+}
+
+export interface CotizacionGaleno {
+  rama: number
+  solicitud: number
+  instalacion: number
+  descripcionVehiculo: string
+  coberturas: CoberturaCotizadaGaleno[]
+  excepciones: ExcepcionGaleno[]
+  errores: string[] | null
+}
+
+// --- Emisión -------------------------------------------------------------
+
+/** Los datos de una persona (tomador, asegurado, representante legal o acreedor prendario). */
+export interface PersonaGaleno {
+  tipoDocumentoCodigo: string
+  documentoNumero: string
+  nacionalidadCodigo?: string
+  nombre: string
+  tipoPersona?: string
+  categoriaIVACodigo: string
+  calleNombre: string
+  calleNumero: string
+  callePiso?: string
+  calleDepto?: string
+  codigoPostal: string
+  subCodigoPostal: string
+  telefono?: string
+  email?: string
+  fechaNacimiento?: string
+  sexo?: string
+  estadoCivilCodigo?: string
+  lugarNacimiento?: string
+}
+
+/** Lo que el manual agrupa como «declaraciones»: sujeto obligado, PEP y subrogación. Se usan poco. */
+export interface DeclaracionesGaleno {
+  pep?: 'S' | 'N' | ''
+  cargo?: string
+  organismo?: string
+  relacion?: string
+  declaraTitular?: 'S' | ''
+  declaranteNombre?: string
+  declaranteTipoDocumentoCodigo?: string
+  declaranteDocumentoNumero?: string
+  declaranteCaracter?: string
+  declaranteDenominacion?: string
+  declaranteCUIT?: string
+  declaranteObservaciones?: string
+  documentacionPresentadaListaMiembros?: 'S' | ''
+  documentacionPresentadaDDJJ?: 'S' | ''
+  documentacionPresentadaRespaldatoria?: string
+  documentacionPresentadaReferencias?: string
+  conClausulaSubrogacion?: 'S' | ''
+  clausulaSubrogacionId?: string
+  subrogacionEmpresaBeneficiaria1?: string
+  subrogacionEmpresaBeneficiaria2?: string
+  subrogacionEmpresaBeneficiaria3?: string
+  subrogacionEmpresaBeneficiaria4?: string
+  subrogacionEmpresaBeneficiaria5?: string
+}
+
+export interface TomadorGaleno extends PersonaGaleno, DeclaracionesGaleno {
+  conyugeNombre?: string
+  conyugeTipoDocumentoCodigo?: string
+  conyugeDocumentoNumero?: string
+  relacionEmpleado?: 'E' | 'C' | 'H' | 'J' | 'P'
+  empleadoLegajo?: string
+  sujetoObligadoActividadCodigo?: string
+  sujetoObligadoActividadDetalle?: string
+  sujetoObligadoRazonSocial?: string
+  representanteLegal?: PersonaGaleno
+}
+
+export interface AseguradoGaleno extends PersonaGaleno, DeclaracionesGaleno {
+  relacionEmpleado?: 'E' | 'C' | 'H' | 'J' | 'P'
+  empleadoLegajo?: string
+  representanteLegal?: PersonaGaleno
+}
+
+export interface AcreedorPrendarioGaleno extends PersonaGaleno {
+  vencimientoPrestamo?: string
+  numeroPrestamo?: string
+}
+
+export interface VehiculoParaEmisionGaleno {
+  patente: string
+  motor: string
+  chasis: string
+  equipoGNCCodigo?: string
+  equipoGNCIdentificacion?: string
+  rastreoIdentificacion?: string
+  rastreoDatosContacto1?: string
+  rastreoDatosContacto2?: string
+  ruta?: number
+  poseeAcreedorPrendario?: 'S' | ''
+  acreedorPrendario?: AcreedorPrendarioGaleno
+}
+
+export interface FormaDePagoParaEmisionGaleno {
+  formaPagoTarjetaCodigo?: string
+  formaPagoTarjetaNumero?: string
+  formaPagoTarjetaBancoCodigo?: string
+  formaPagoTarjetaVencimiento?: string
+  formaPagoDebitoCBU?: string
+  formaPagoDebitoBancoCodigo?: string
+  formaPagoOBBancoCodigo?: string
+  formaPagoOBSucursalCodigo?: string
+  formaPagoOBOperatoriaId?: string
+  formaPagoOBNumeroCuenta?: string
+  formaPagoOBTipoCuenta?: string
+  formaPagoOBTipoDocumentoCodigo?: string
+  formaPagoOBNumeroDocumento?: string
+  formaPagoOBNumeroContrato?: string
+  formaPagoOBVencimientoContrato?: string
+}
+
+/** El código de servicio de inspección, para `emitirConInspeccion`. */
+export const CODIGOS_DE_INSPECCION_GALENO = ['101', '6', '8', '7', '2'] as const
+export type CodigoDeInspeccionGaleno = (typeof CODIGOS_DE_INSPECCION_GALENO)[number]
+
+export const NOMBRE_INSPECCION_GALENO: Record<CodigoDeInspeccionGaleno, string> = {
+  '101': 'Photobook',
+  '6': 'Coordinar inspección',
+  '8': 'Constancia de cobertura',
+  '7': 'Certificado de no rodamiento',
+  '2': 'Adjuntar fotos',
+}
+
+export interface DatosDeEmisionGaleno {
+  rama: number
+  solicitud: number
+  instalacion: number
+  cobertura: string
+  tomador: TomadorGaleno
+  aseguradoEsTomador: boolean
+  asegurado?: AseguradoGaleno
+  aseguradoRUTA?: string
+  formaPago: FormaDePagoParaEmisionGaleno
+  /** Cambia la forma de pago elegida al cotizar; el código sale del web Service de Formas de Pago. */
+  formaPagoCodigo?: string
+  paseCartera?: boolean
+  paseCarteraVencimiento?: string
+  paseCarteraPlanComercialCodigo?: string
+  polizaElectronicaAceptar?: boolean
+  polizaElectronicaEmail?: string
+  vehiculo: VehiculoParaEmisionGaleno
+  origen?: string
+  referenciaInterna?: string
+  referenciaVendedor?: string
+  observacionesVendedor?: string
+  nuevaVigenciaDesde?: string
+  /** Sólo para `emitirConInspeccion`; ignorado en `emitir`. */
+  codServicioInspeccion?: CodigoDeInspeccionGaleno
+}
+
+export interface ErrorDeEmisionGaleno {
+  codigo: number
+  descripcion: string
+  nivel: string
+}
+
+export interface EmisionGaleno {
+  idServicioEmision: number
+  rama: number
+  poliza: number
+  endoso: number
+  estadoSolicitud: string
+  impuestos: number
+  premio: number
+  excepciones: ExcepcionGaleno[]
+  errores: ErrorDeEmisionGaleno[]
+  urlInspeccion?: string | null
+  observacionesInspeccion?: string | null
+}
+
+// --- Consultas, Cuenta Corriente y ART ---------------------------------------
+//
+// Son más de diez reportes de solo lectura, cada uno con sus columnas documentadas en el manual.
+// En vez de un tipo TypeScript por reporte, el servicio de cada uno arma sus propias columnas (con
+// el título en español) y filas, y la pantalla los muestra con una sola tabla genérica.
+
+export interface FilaDeReporteGaleno {
+  [columna: string]: string | number | null
+}
+
+export interface ColumnaDeReporteGaleno {
+  clave: string
+  titulo: string
+}
+
+export interface ReporteGaleno {
+  columnas: ColumnaDeReporteGaleno[]
+  filas: FilaDeReporteGaleno[]
+}
+
+export const REPORTES_DE_GALENO = [
+  'POLIZAS_POR_LEGAJO',
+  'RIESGOS_DE_POLIZA',
+  'DETALLE_DE_POLIZA',
+  'PRODUCCION_DE_AUTOMOTORES',
+  'CUOTAS_IMPAGAS',
+  'CUOTAS_COBRADAS',
+  'POLIZAS_VIGENTES',
+  'ENDOSOS',
+  'CUENTA_CORRIENTE',
+  'CONTRATOS_ART',
+] as const
+export type ReporteDeGaleno = (typeof REPORTES_DE_GALENO)[number]
+
+export const NOMBRE_REPORTE_GALENO: Record<ReporteDeGaleno, string> = {
+  POLIZAS_POR_LEGAJO: 'Pólizas por legajo',
+  RIESGOS_DE_POLIZA: 'Riesgos de una póliza',
+  DETALLE_DE_POLIZA: 'Detalle de póliza',
+  PRODUCCION_DE_AUTOMOTORES: 'Producción de automotores',
+  CUOTAS_IMPAGAS: 'Cuotas impagas',
+  CUOTAS_COBRADAS: 'Cuotas cobradas',
+  POLIZAS_VIGENTES: 'Pólizas vigentes',
+  ENDOSOS: 'Endosos',
+  CUENTA_CORRIENTE: 'Cuenta corriente',
+  CONTRATOS_ART: 'Contratos ART',
+}
+
+/** Los filtros de cada reporte son distintos; se mandan sueltos y el servicio arma el body de Galeno. */
+export interface FiltrosDeReporteGaleno {
+  rama?: number
+  poliza?: string
+  nroRiesgo?: string
+  inicioVigencia?: string
+  finVigencia?: string
+  estado?: string
+  tipoSeguro?: 'TODOS' | 'AUT' | 'VID'
+  patente?: string
+  fechaEmisionDesde?: string
+  fechaEmisionHasta?: string
+  cuitTomador?: string
+  fechaImputacionContableDesde?: string
+  fechaImputacionContableHasta?: string
+  pagina?: number
+  cantRegistrosPagina?: number
+  /** Cuenta corriente: 27 = ART, 20 = Seguros y Autos. */
+  idNegocio?: 27 | 20
+  mesDesde?: string
+  mesHasta?: string
+  soloPendientesDeFacturar?: boolean
+  mesLiquidacion?: string
+  nroFactura?: string
+  tipoFactura?: string
+  codConcepto?: string
+  fechaFactura?: string
+  fechaMovIngFact?: string
+  /** Contratos ART: mes/año en vez de rango. */
+  mes?: string
+  anio?: string
+}
+
+// --- Impresión -----------------------------------------------------------
+
+export const TIPOS_DE_IMPRESION_GALENO = ['P', 'C', 'M'] as const
+export type TipoDeImpresionGaleno = (typeof TIPOS_DE_IMPRESION_GALENO)[number]
+
+export const NOMBRE_IMPRESION_GALENO: Record<TipoDeImpresionGaleno, string> = {
+  P: 'Póliza',
+  C: 'Certificado de cobertura',
+  M: 'Certificado Mercosur',
+}
+
+export interface PedidoDeImpresionGaleno {
+  tipoImpresion: TipoDeImpresionGaleno
+  poliza: string
+  rama: number
+  legajo: string
+  idRiesgo?: string
+  nroEndoso?: number
+}
+
+/** El PDF ya se guardó en una carpeta temporal de esta computadora; `ruta` es donde quedó. */
+export interface ImpresionGaleno {
+  ruta: string
+  nombre: string
+}

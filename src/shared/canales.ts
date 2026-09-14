@@ -203,6 +203,22 @@ import type {
   PerfilDeUsuario,
   SenalDeLlamada,
   SenalParaMandar,
+  // Galeno Seguros: cotización, emisión, consultas, cuenta corriente y ART.
+  CodigoPostalGaleno,
+  CotizacionGaleno,
+  DatosDeCotizacionGaleno,
+  DatosDeEmisionGaleno,
+  DatosDeGaleno,
+  EmisionGaleno,
+  EstadoDeGaleno,
+  FiltrosDeReporteGaleno,
+  ImpresionGaleno,
+  OpcionGaleno,
+  PedidoDeImpresionGaleno,
+  PruebaDeGaleno,
+  ReporteDeGaleno,
+  ReporteGaleno,
+  SubModeloGaleno,
 } from './tipos'
 // El foco y la presencia son del protocolo del canal, que es la copia exacta de lo que declara el
 // servidor (14.0). Se toman de ahí y no se vuelven a escribir acá: sólo el tipo, así que la flecha se
@@ -760,6 +776,49 @@ export interface Canales {
     lineaId: string,
     anio: string,
   ) => Resultado<VehiculoDelCatalogo>
+
+  // Galeno Seguros: la cuenta, cotización, emisión y los reportes de sólo lectura (Consultas, Cuenta
+  // Corriente y ART). El detalle de una API entera de un tercero — nombres de campo, formas de las
+  // respuestas — vive en main/aseguradoras/galeno/*; acá sólo está el contrato con el renderer.
+  'galeno:estado': () => Resultado<EstadoDeGaleno>
+  'galeno:guardarCredenciales': (datos: DatosDeGaleno) => Resultado<EstadoDeGaleno>
+  'galeno:borrarCredenciales': () => Resultado<EstadoDeGaleno>
+  'galeno:probar': () => Resultado<PruebaDeGaleno>
+  // Listas de valores para los diálogos de Cotizar y Emitir.
+  'galeno:planesComerciales': (tipoVehiculo: TipoDeVehiculo) => Resultado<OpcionGaleno[]>
+  'galeno:marcas': (tipoVehiculo: TipoDeVehiculo) => Resultado<OpcionGaleno[]>
+  'galeno:modelos': (marcaCodigo: string) => Resultado<OpcionGaleno[]>
+  'galeno:anios': (marcaCodigo: string, modeloCodigo: string) => Resultado<OpcionGaleno[]>
+  'galeno:subModelos': (marcaCodigo: string, modeloCodigo: string, anio: string) => Resultado<SubModeloGaleno[]>
+  'galeno:tiposDePersona': () => Resultado<OpcionGaleno[]>
+  'galeno:codigoPostal': (tipoVehiculo: TipoDeVehiculo, codigoPostal: string) => Resultado<CodigoPostalGaleno[]>
+  'galeno:modosDeFacturacion': (tipoVehiculo: TipoDeVehiculo, planComercialCodigo: string) => Resultado<OpcionGaleno[]>
+  'galeno:condicionesDePago': (tipoVehiculo: TipoDeVehiculo, modoFacturacionCodigo: string) => Resultado<OpcionGaleno[]>
+  'galeno:formasDePago': (tipoVehiculo: TipoDeVehiculo, modoFacturacionCodigo: string, planComercialCodigo: string) => Resultado<OpcionGaleno[]>
+  'galeno:equipoGnc': () => Resultado<OpcionGaleno[]>
+  'galeno:equiposDeRastreo': () => Resultado<OpcionGaleno[]>
+  'galeno:clausulasDeAjuste': () => Resultado<OpcionGaleno[]>
+  'galeno:accesorios': () => Resultado<OpcionGaleno[]>
+  'galeno:categoriasIva': () => Resultado<OpcionGaleno[]>
+  'galeno:codigosIIBB': () => Resultado<OpcionGaleno[]>
+  'galeno:tiposDeUso': () => Resultado<OpcionGaleno[]>
+  'galeno:tiposDeDocumento': () => Resultado<OpcionGaleno[]>
+  'galeno:nacionalidades': () => Resultado<OpcionGaleno[]>
+  'galeno:sexos': () => Resultado<OpcionGaleno[]>
+  'galeno:estadosCiviles': () => Resultado<OpcionGaleno[]>
+  'galeno:bancos': () => Resultado<OpcionGaleno[]>
+  'galeno:tarjetasDeCredito': () => Resultado<OpcionGaleno[]>
+  /** Guarda en el `solicitud`/`instalacion`/`cobertura` que se usan después para emitir. */
+  'galeno:cotizar': (datos: DatosDeCotizacionGaleno) => Resultado<CotizacionGaleno>
+  'galeno:emitir': (datos: DatosDeEmisionGaleno) => Resultado<EmisionGaleno>
+  'galeno:emitirConInspeccion': (datos: DatosDeEmisionGaleno) => Resultado<EmisionGaleno>
+  /** Uno solo para los ocho reportes de Consultas + Cuenta Corriente + ART: ver `ReporteDeGaleno`. */
+  'galeno:reporte': (tipo: ReporteDeGaleno, filtros: FiltrosDeReporteGaleno) => Resultado<ReporteGaleno>
+  /** El detalle de una póliza no es tabular (trae tomador, riesgos y cuotas anidados). */
+  'galeno:detalleDePoliza': (rama: number, poliza?: string, nroRiesgo?: string) => Resultado<unknown>
+  'galeno:detalleDeLiquidaciones': (filtros: FiltrosDeReporteGaleno) => Resultado<ReporteGaleno>
+  /** Guarda el PDF en una carpeta temporal y devuelve la ruta; el renderer pide abrirlo aparte. */
+  'galeno:imprimir': (pedido: PedidoDeImpresionGaleno) => Resultado<ImpresionGaleno>
 
   // Marketing → Redes: publicar en la Página de Facebook/Instagram de cada sucursal. El App ID y el
   // App Secret se cargan en Administración; el token de cada Página vive cifrado en el servidor del

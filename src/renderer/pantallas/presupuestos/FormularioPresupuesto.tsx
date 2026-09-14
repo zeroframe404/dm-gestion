@@ -8,6 +8,7 @@ import type { DatosDeOpcion, DatosDePresupuesto, FichaPresupuesto, FilaCliente }
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Dialogo, cx } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
+import { DialogoCotizarGaleno } from './DialogoCotizarGaleno'
 
 interface Props {
   /** El presupuesto que se está editando, o null si es nuevo. */
@@ -46,6 +47,7 @@ export function FormularioPresupuesto({ ficha, leadId, clienteId, companias, cob
   const [guardando, setGuardando] = useState(false)
   const [buscando, setBuscando] = useState('')
   const [candidatos, setCandidatos] = useState<FilaCliente[]>([])
+  const [cotizandoConGaleno, setCotizandoConGaleno] = useState(false)
 
   // Si se entra desde una consulta o un cliente, los datos se traen solos: el punto es no re-tipear.
   useEffect(() => {
@@ -127,6 +129,7 @@ export function FormularioPresupuesto({ ficha, leadId, clienteId, companias, cob
   const celda = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 placeholder:text-slate-400'
 
   return (
+    <>
     <Dialogo
       abierto
       ancho="lg"
@@ -221,7 +224,12 @@ export function FormularioPresupuesto({ ficha, leadId, clienteId, companias, cob
 
         {/* --- Las opciones cotizadas --- */}
         <section className="flex flex-col gap-2">
-          <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Opciones cotizadas</h3>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Opciones cotizadas</h3>
+            <Boton icono="enlace" onClick={() => setCotizandoConGaleno(true)}>
+              Cotizar con Galeno
+            </Boton>
+          </div>
           <datalist id="companias-presupuesto">
             {companias.map((c) => (
               <option key={c} value={c} />
@@ -315,5 +323,17 @@ export function FormularioPresupuesto({ ficha, leadId, clienteId, companias, cob
         />
       </div>
     </Dialogo>
+    {cotizandoConGaleno && (
+      <DialogoCotizarGaleno
+        tipoVehiculoSugerido={/moto/i.test(datos.tipoVehiculo) ? 'MOTO' : 'AUTO'}
+        nombreSugerido={datos.clienteNombre}
+        patenteSugerida={datos.patente}
+        documentoSugerido={datos.documento}
+        telefonoSugerido={datos.telefono}
+        alCerrar={() => setCotizandoConGaleno(false)}
+        alAgregarOpciones={(nuevas) => setDatos((previos) => ({ ...previos, opciones: [...previos.opciones, ...nuevas] }))}
+      />
+    )}
+    </>
   )
 }

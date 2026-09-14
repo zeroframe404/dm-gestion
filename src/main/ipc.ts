@@ -234,6 +234,42 @@ import {
   resolverVehiculoDelCatalogo,
 } from './servicios/catalogoVehiculos'
 import {
+  accesoriosGaleno,
+  aniosGaleno,
+  bancosGaleno,
+  borrarGaleno,
+  categoriasIvaGaleno,
+  clausulasDeAjusteGaleno,
+  codigoPostalGaleno,
+  codigosIIBBGaleno,
+  condicionesDePagoGaleno,
+  cotizarGaleno,
+  detalleDeLiquidacionesGaleno,
+  detalleDePolizaGaleno,
+  emitirConInspeccionGaleno,
+  emitirGaleno,
+  equipoGncGaleno,
+  equiposDeRastreoGaleno,
+  estadoGaleno,
+  estadosCivilesGaleno,
+  formasDePagoGaleno,
+  guardarGaleno,
+  imprimirGaleno,
+  marcasGaleno,
+  modelosGaleno,
+  modosDeFacturacionGaleno,
+  nacionalidadesGaleno,
+  planesComercialesGaleno,
+  probarGaleno,
+  reporteGaleno,
+  sexosGaleno,
+  subModelosGaleno,
+  tarjetasDeCreditoGaleno,
+  tiposDeDocumentoGaleno,
+  tiposDePersonaGaleno,
+  tiposDeUsoGaleno,
+} from './servicios/galeno'
+import {
   adoptarVehiculosDelVps,
   borrarMetaDelVps,
   borrarVehiculosDelVps,
@@ -1675,6 +1711,155 @@ export function registrarIpc(): void {
   manejar('vehiculos:resolver', (tipo, marcaId, modeloId, lineaId, anio) => {
     exigirVista('polizas', 'presupuestos', 'cartera')
     return exito(resolverVehiculoDelCatalogo(tipo, marcaId, modeloId, lineaId, anio))
+  })
+
+  // --- Galeno Seguros ----------------------------------------------------------
+  //
+  // Las credenciales las carga sólo un administrador, igual que el catálogo de vehículos y la app de
+  // Meta. Cotizar y sus listas de valores las puede usar cualquiera que trabaje con Presupuestos —es
+  // lo que reemplaza cargar la cobertura a mano—; emitir, en cambio, pide EDITAR Presupuestos: crea
+  // una póliza real contra un tercero. Las Consultas, la Cuenta Corriente, los Contratos de ART y la
+  // Impresión son reportes de sólo lectura y van con el mismo permiso que el resto de Administración.
+  manejar('galeno:estado', () => {
+    exigirVista('administracion')
+    return exito(estadoGaleno())
+  })
+  manejar('galeno:guardarCredenciales', (datos) => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(guardarGaleno(datos))
+  })
+  manejar('galeno:borrarCredenciales', () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(borrarGaleno())
+  })
+  manejar('galeno:probar', async () => {
+    exigirVista('administracion')
+    return exito(await probarGaleno())
+  })
+  manejar('galeno:planesComerciales', async (tipoVehiculo) => {
+    exigirVista('presupuestos')
+    return exito(await planesComercialesGaleno(tipoVehiculo))
+  })
+  manejar('galeno:marcas', async (tipoVehiculo) => {
+    exigirVista('presupuestos')
+    return exito(await marcasGaleno(tipoVehiculo))
+  })
+  manejar('galeno:modelos', async (marcaCodigo) => {
+    exigirVista('presupuestos')
+    return exito(await modelosGaleno(marcaCodigo))
+  })
+  manejar('galeno:anios', async (marcaCodigo, modeloCodigo) => {
+    exigirVista('presupuestos')
+    return exito(await aniosGaleno(marcaCodigo, modeloCodigo))
+  })
+  manejar('galeno:subModelos', async (marcaCodigo, modeloCodigo, anio) => {
+    exigirVista('presupuestos')
+    return exito(await subModelosGaleno(marcaCodigo, modeloCodigo, anio))
+  })
+  manejar('galeno:tiposDePersona', async () => {
+    exigirVista('presupuestos')
+    return exito(await tiposDePersonaGaleno())
+  })
+  manejar('galeno:codigoPostal', async (tipoVehiculo, codigoPostal) => {
+    exigirVista('presupuestos')
+    return exito(await codigoPostalGaleno(tipoVehiculo, codigoPostal))
+  })
+  manejar('galeno:modosDeFacturacion', async (tipoVehiculo, planComercialCodigo) => {
+    exigirVista('presupuestos')
+    return exito(await modosDeFacturacionGaleno(tipoVehiculo, planComercialCodigo))
+  })
+  manejar('galeno:condicionesDePago', async (tipoVehiculo, modoFacturacionCodigo) => {
+    exigirVista('presupuestos')
+    return exito(await condicionesDePagoGaleno(tipoVehiculo, modoFacturacionCodigo))
+  })
+  manejar('galeno:formasDePago', async (tipoVehiculo, modoFacturacionCodigo, planComercialCodigo) => {
+    exigirVista('presupuestos')
+    return exito(await formasDePagoGaleno(tipoVehiculo, modoFacturacionCodigo, planComercialCodigo))
+  })
+  manejar('galeno:equipoGnc', async () => {
+    exigirVista('presupuestos')
+    return exito(await equipoGncGaleno())
+  })
+  manejar('galeno:equiposDeRastreo', async () => {
+    exigirVista('presupuestos')
+    return exito(await equiposDeRastreoGaleno())
+  })
+  manejar('galeno:clausulasDeAjuste', async () => {
+    exigirVista('presupuestos')
+    return exito(await clausulasDeAjusteGaleno())
+  })
+  manejar('galeno:accesorios', async () => {
+    exigirVista('presupuestos')
+    return exito(await accesoriosGaleno())
+  })
+  manejar('galeno:categoriasIva', async () => {
+    exigirVista('presupuestos')
+    return exito(await categoriasIvaGaleno())
+  })
+  manejar('galeno:codigosIIBB', async () => {
+    exigirVista('presupuestos')
+    return exito(await codigosIIBBGaleno())
+  })
+  manejar('galeno:tiposDeUso', async () => {
+    exigirVista('presupuestos')
+    return exito(await tiposDeUsoGaleno())
+  })
+  manejar('galeno:tiposDeDocumento', async () => {
+    exigirVista('presupuestos')
+    return exito(await tiposDeDocumentoGaleno())
+  })
+  manejar('galeno:nacionalidades', async () => {
+    exigirVista('presupuestos')
+    return exito(await nacionalidadesGaleno())
+  })
+  manejar('galeno:sexos', async () => {
+    exigirVista('presupuestos')
+    return exito(await sexosGaleno())
+  })
+  manejar('galeno:estadosCiviles', async () => {
+    exigirVista('presupuestos')
+    return exito(await estadosCivilesGaleno())
+  })
+  manejar('galeno:bancos', async () => {
+    exigirVista('presupuestos')
+    return exito(await bancosGaleno())
+  })
+  manejar('galeno:tarjetasDeCredito', async () => {
+    exigirVista('presupuestos')
+    return exito(await tarjetasDeCreditoGaleno())
+  })
+  manejar('galeno:cotizar', async (datos) => {
+    exigirEdicion('presupuestos')
+    return exito(await cotizarGaleno(datos))
+  })
+  manejar('galeno:emitir', async (datos) => {
+    exigirEdicion('presupuestos')
+    return exito(await emitirGaleno(datos))
+  })
+  manejar('galeno:emitirConInspeccion', async (datos) => {
+    exigirEdicion('presupuestos')
+    return exito(await emitirConInspeccionGaleno(datos))
+  })
+  manejar('galeno:reporte', async (tipo, filtros) => {
+    exigirVista('administracion')
+    return exito(await reporteGaleno(tipo, filtros))
+  })
+  manejar('galeno:detalleDePoliza', async (rama, poliza, nroRiesgo) => {
+    exigirVista('administracion')
+    return exito(await detalleDePolizaGaleno(rama, poliza, nroRiesgo))
+  })
+  manejar('galeno:detalleDeLiquidaciones', async (filtros) => {
+    exigirVista('administracion')
+    return exito(await detalleDeLiquidacionesGaleno(filtros))
+  })
+  manejar('galeno:imprimir', async (pedido) => {
+    exigirVista('administracion')
+    const documento = await imprimirGaleno(pedido)
+    const error = await shell.openPath(documento.ruta)
+    if (error) console.error('[galeno] No se pudo abrir el PDF impreso:', error)
+    return exito(documento)
   })
 
   // --- Marketing → Redes -----------------------------------------------------
