@@ -529,6 +529,34 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
     ],
   },
 
+  'administracion.galeno': {
+    clave: 'administracion.galeno',
+    titulo: 'Administración → Galeno',
+    resumen: 'La cuenta de Galeno Seguros y los reportes de sólo lectura de su API: pólizas, cuotas, endosos, cuenta corriente y contratos de ART.',
+    secciones: [
+      {
+        titulo: 'Qué se puede hacer con esto',
+        parrafos: [
+          'Con las credenciales cargadas, Presupuestos puede cotizar con Galeno en el momento —en vez de anotar la cobertura y el precio a mano— y, si el cliente acepta esa opción, emitir la póliza sin salir de la app.',
+          'Acá abajo, en «Consultas, Cuenta Corriente y ART», se puede mirar lo que Galeno ya tiene cargado: pólizas por legajo, los riesgos y el detalle de una póliza, la producción de automotores, las cuotas impagas y cobradas, las pólizas vigentes, los endosos, la cuenta corriente (de Seguros y de ART) y los contratos de ART.',
+        ],
+      },
+      {
+        titulo: 'Pruebas y producción',
+        parrafos: [
+          'El manual de Galeno sólo documenta un ambiente de pruebas: mientras se trabaje ahí, alcanza con el usuario y la clave. Para producción, Galeno da aparte una URL y un «Authorization» distintos —no están en el manual—, y hay que cargarlos acá antes de pasar el ambiente a «Producción».',
+          'Si al probar la conexión Galeno dice algo como «Usuario no registrado», casi siempre es que esas credenciales son de producción y todavía está elegido el ambiente de pruebas (o al revés).',
+        ],
+      },
+      {
+        titulo: 'El legajo del productor',
+        parrafos: [
+          'Casi todos los reportes de acá abajo piden el legajo del productor conectado. No hay que cargarlo a mano: se completa solo la primera vez que se prueba la conexión o se cotiza, tomado de la lista de planes comerciales que devuelve Galeno.',
+        ],
+      },
+    ],
+  },
+
   'administracion.controlremoto': {
     clave: 'administracion.controlremoto',
     titulo: 'Administración → Control remoto',

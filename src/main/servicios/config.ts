@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { PROVEEDORES_DE_CATALOGO, type EstadoConexionGoogle, type EstadoDeMeta, type ProveedorDeCatalogo } from '../../shared/tipos'
+import { PROVEEDORES_DE_CATALOGO, type EstadoConexionGoogle, type EstadoDeGaleno, type EstadoDeMeta, type ProveedorDeCatalogo } from '../../shared/tipos'
 import { rutaConfig } from '../rutas'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
@@ -76,12 +76,33 @@ interface ConfigMesh {
   url?: string
 }
 
+/**
+ * La cuenta de Galeno Seguros para su API REST. El manual sólo documenta el ambiente de pruebas
+ * (`desa`): la URL y el `Authorization: Basic` de producción los tiene que dar Galeno aparte, así
+ * que `urlBase`/`authorizationBasic` quedan vacíos mientras se trabaje contra pruebas y son
+ * obligatorios recién al pasar `ambiente` a `'produccion'`.
+ *
+ * `productorCodigo` no lo carga una persona: lo completa el propio servicio la primera vez que
+ * prueba la conexión o cotiza, tomado del web Service de Planes Comerciales (es el legajo del
+ * productor conectado, y lo piden casi todos los servicios de Consultas y Cuenta Corriente).
+ */
+interface ConfigGaleno {
+  usuario: string
+  clave: string
+  ambiente: 'desa' | 'produccion'
+  urlBase?: string
+  authorizationBasic?: string
+  productorCodigo?: string
+  actualizadoEn: string
+}
+
 interface Config {
   google?: ConfigGoogle
   vps?: ConfigVps
   meta?: ConfigMeta
   vehiculos?: ConfigVehiculos
   mesh?: ConfigMesh
+  galeno?: ConfigGaleno
 }
 
 /**
@@ -571,5 +592,101 @@ export function guardarGoogle(datos: unknown): EstadoConexionGoogle {
   config.google = { cuentaServicio, urlHoja, actualizadoEn: new Date().toISOString() }
   escribirConfig(config)
   return aEstado(config.google)
+}
+
+// ---------------------------------------------------------------------------
+// Galeno Seguros
+// ---------------------------------------------------------------------------
+
+export function estadoGaleno(): EstadoDeGaleno {
+  const galeno = leerConfig().galeno
+  if (!galeno?.usuario || !galeno.clave) {
+    return { configurado: false, usuario: '', ambiente: 'desa', productorCodigo: null, rutaDeConfig: rutaSegura(), actualizadoEn: null }
+  }
+  return {
+    configurado: true,
+    usuario: galeno.usuario,
+    ambiente: galeno.ambiente,
+    productorCodigo: galeno.productorCodigo ?? null,
+    rutaDeConfig: rutaSegura(),
+    actualizadoEn: galeno.actualizadoEn,
+  }
+}
+
+/** Las credenciales completas, sólo para el proceso principal (el cliente de Galeno). */
+export function credencialesGaleno(): {
+  usuario: string
+  clave: string
+  ambiente: 'desa' | 'produccion'
+  urlBase?: string
+  authorizationBasic?: string
+} | null {
+  const galeno = leerConfig().galeno
+  if (!galeno?.usuario || !galeno.clave) return null
+  return {
+    usuario: galeno.usuario,
+    clave: galeno.clave,
+    ambiente: galeno.ambiente,
+    urlBase: galeno.urlBase,
+    authorizationBasic: galeno.authorizationBasic,
+  }
+}
+
+export function guardarCredencialesGaleno(datos: unknown): EstadoDeGaleno {
+  const d = objeto(datos, 'Los datos de Galeno')
+  const usuario = texto(d.usuario, 'El usuario de Galeno', 1, 120)
+
+  const config = leerConfig()
+  const anterior = config.galeno
+  // Con la clave vacía se conserva la que ya estaba: así se puede corregir el usuario o el ambiente
+  // sin tener que volver a pegar una clave que ya se cargó una vez.
+  const escrita = typeof d.clave === 'string' ? d.clave.trim() : ''
+  const clave = escrita || anterior?.clave || ''
+  if (!clave) throw new ErrorDeNegocio('Falta la clave de Galeno.')
+
+  const ambiente: 'desa' | 'produccion' = d.ambiente === 'produccion' ? 'produccion' : 'desa'
+  const urlBase = typeof d.urlBase === 'string' ? d.urlBase.trim() : ''
+  const authorizationBasic = typeof d.authorizationBasic === 'string' ? d.authorizationBasic.trim() : ''
+  // El manual de Galeno sólo documenta el ambiente de pruebas: la URL y el Authorization de
+  // producción hay que pedírselos a Galeno aparte, así que sin ellos no tiene sentido guardar
+  // "producción" — se probaría contra pruebas creyendo que se está en producción.
+  if (ambiente === 'produccion' && (!urlBase || !authorizationBasic)) {
+    throw new ErrorDeNegocio(
+      'Para el ambiente de producción hacen falta la URL base y el "Authorization" que da Galeno: no están en el manual de pruebas, hay que pedírselos aparte.',
+    )
+  }
+  if (urlBase && !/^https:\/\//i.test(urlBase)) throw new ErrorDeNegocio('La URL base de Galeno tiene que empezar con https://.')
+
+  // Cambiar el usuario o el ambiente puede ser otro productor: el legajo guardado no se arrastra.
+  const mismaCuenta = anterior?.usuario === usuario && anterior?.ambiente === ambiente
+  config.galeno = {
+    usuario,
+    clave,
+    ambiente,
+    ...(urlBase ? { urlBase } : {}),
+    ...(authorizationBasic ? { authorizationBasic } : {}),
+    ...(mismaCuenta && anterior?.productorCodigo ? { productorCodigo: anterior.productorCodigo } : {}),
+    actualizadoEn: new Date().toISOString(),
+  }
+  escribirConfig(config)
+  return estadoGaleno()
+}
+
+export function borrarCredencialesGaleno(): EstadoDeGaleno {
+  const config = leerConfig()
+  delete config.galeno
+  escribirConfig(config)
+  return estadoGaleno()
+}
+
+/**
+ * Lo guarda el propio servicio, no una persona: la primera vez que identifica el legajo del
+ * productor conectado (web Service de Planes Comerciales), para no tener que volver a pedirlo en
+ * cada consulta de Cuenta Corriente o de Pólizas por Legajo.
+ */
+export function guardarProductorCodigoGaleno(productorCodigo: string): void {
+  const config = leerConfig()
+  if (!config.galeno) return
+  escribirConfig({ ...config, galeno: { ...config.galeno, productorCodigo } })
 }
 

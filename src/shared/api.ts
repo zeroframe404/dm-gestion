@@ -378,6 +378,42 @@ export interface ApiDm {
     resolver: Remota<'vehiculos:resolver'>
     alProgresar: Suscripcion<'vehiculos:progreso'>
   }
+  galeno: {
+    estado: Remota<'galeno:estado'>
+    guardarCredenciales: Remota<'galeno:guardarCredenciales'>
+    borrarCredenciales: Remota<'galeno:borrarCredenciales'>
+    probar: Remota<'galeno:probar'>
+    planesComerciales: Remota<'galeno:planesComerciales'>
+    marcas: Remota<'galeno:marcas'>
+    modelos: Remota<'galeno:modelos'>
+    anios: Remota<'galeno:anios'>
+    subModelos: Remota<'galeno:subModelos'>
+    tiposDePersona: Remota<'galeno:tiposDePersona'>
+    codigoPostal: Remota<'galeno:codigoPostal'>
+    modosDeFacturacion: Remota<'galeno:modosDeFacturacion'>
+    condicionesDePago: Remota<'galeno:condicionesDePago'>
+    formasDePago: Remota<'galeno:formasDePago'>
+    equipoGnc: Remota<'galeno:equipoGnc'>
+    equiposDeRastreo: Remota<'galeno:equiposDeRastreo'>
+    clausulasDeAjuste: Remota<'galeno:clausulasDeAjuste'>
+    accesorios: Remota<'galeno:accesorios'>
+    categoriasIva: Remota<'galeno:categoriasIva'>
+    codigosIIBB: Remota<'galeno:codigosIIBB'>
+    tiposDeUso: Remota<'galeno:tiposDeUso'>
+    tiposDeDocumento: Remota<'galeno:tiposDeDocumento'>
+    nacionalidades: Remota<'galeno:nacionalidades'>
+    sexos: Remota<'galeno:sexos'>
+    estadosCiviles: Remota<'galeno:estadosCiviles'>
+    bancos: Remota<'galeno:bancos'>
+    tarjetasDeCredito: Remota<'galeno:tarjetasDeCredito'>
+    cotizar: Remota<'galeno:cotizar'>
+    emitir: Remota<'galeno:emitir'>
+    emitirConInspeccion: Remota<'galeno:emitirConInspeccion'>
+    reporte: Remota<'galeno:reporte'>
+    detalleDePoliza: Remota<'galeno:detalleDePoliza'>
+    detalleDeLiquidaciones: Remota<'galeno:detalleDeLiquidaciones'>
+    imprimir: Remota<'galeno:imprimir'>
+  }
   redes: {
     panel: Remota<'redes:panel'>
     estadoMeta: Remota<'redes:estadoMeta'>
