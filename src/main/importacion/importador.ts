@@ -165,6 +165,17 @@ function oNulo(texto: string): string | null {
   return texto === '' ? null : texto
 }
 
+/**
+ * Dos vigencias (ISO) se superponen, o son iguales; a falta de las dos puntas en cualquiera de las dos
+ * no hay con qué adivinar, así que se considera que NO se superponen (conservador: mejor no fusionar
+ * que fusionar mal). Usada por `anclarPolizaSinNumero` para no pegarle a ciegas el número de una fila
+ * nueva a una póliza sin número del mismo cliente/vehículo/compañía si en realidad es de otro período.
+ */
+function seSuperponenVigencias(a: { desde: string | null; hasta: string | null }, b: { desde: string | null; hasta: string | null }): boolean {
+  if (!a.desde || !a.hasta || !b.desde || !b.hasta) return false
+  return a.desde <= b.hasta && b.desde <= a.hasta
+}
+
 /** Una fila de datos con acceso por campo (según el mapeo de encabezados de su pestaña). */
 class Fila {
   constructor(
@@ -451,6 +462,21 @@ function prepararSentencias(db: BaseDeDatos) {
       FROM polizas p
       LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
       LEFT JOIN clientes c ON c.id = p.cliente_id`),
+
+    // Candidatas a «pegarle» el número que acaba de llegar (ver `anclarPolizaSinNumero`): del mismo
+    // cliente y vehículo, sin número propio y sin fila que ya las tenga enganchadas. NO se exige
+    // `activa = 1`: la huérfana puede haber quedado inactiva por el barrido de `inactivarPolizas` en
+    // alguna importación intermedia (normal: `renovar()` es una acción manual, no corre dentro de una
+    // importación, así que puede pasar más de un ciclo de importación —de este cliente o de cualquier
+    // otro— antes de que el número real aparezca en la hoja). Tampoco es candidata una que ya tenga una
+    // baja anotada (se dio de baja de verdad, con motivo) ni una que ya tenga una sucesora (ya está
+    // enganchada a otra renovación): en los dos casos la ambigüedad de la vigencia decide si corresponde.
+    polizasSinNumeroDelVehiculo: db.prepare(`
+      SELECT p.id, p.compania, p.vigencia_desde_iso, p.vigencia_hasta_iso FROM polizas p
+      WHERE p.cliente_id = @cliente_id AND p.vehiculo_id = @vehiculo_id
+        AND p.fila_id IS NULL AND (p.numero IS NULL OR p.numero = '')
+        AND NOT EXISTS (SELECT 1 FROM bajas b WHERE b.poliza_id = p.id)
+        AND NOT EXISTS (SELECT 1 FROM polizas s WHERE s.poliza_anterior_id = p.id)`),
 
     inactivarPolizas: db.prepare(`UPDATE polizas SET activa = 0, actualizado_en = @ahora WHERE activa = 1 AND actualizado_en <> @ahora`),
 
@@ -1874,6 +1900,57 @@ class TrabajoDeImportacion {
     return true
   }
 
+  /**
+   * Busca una póliza del mismo cliente y vehículo (activa o ya barrida a inactiva) que todavía no tiene
+   * número propio ni fila que la tenga enganchada, para pegarle encima el número que acaba de llegar en
+   * vez de crear una póliza aparte. Es el caso de una renovación que se guardó sin período abierto: la
+   * póliza nueva queda sin `fila_id` y con una clave provisoria (`DOCPAT:`/`NOMPAT:`), así que cuando el
+   * número real aparece en una fila de la hoja el upsert de siempre no la encuentra —esa clave la
+   * calcula esta fila, no la vieja— y sin esto quedaría duplicada, con la original convertida en una
+   * baja sin motivo por el barrido de `inactivarPolizas`.
+   *
+   * Sólo actúa con UN candidato: con dos o más (dos renovaciones sin número del mismo auto, por
+   * ejemplo) no hay forma conservadora de elegir y se deja el comportamiento de siempre —una póliza
+   * nueva, a revisar a mano— en vez de adivinar. Tampoco alcanza con que compañía y vehículo coincidan:
+   * la vigencia de la fila nueva tiene que superponerse con la de la candidata (si a cualquiera de las
+   * dos le falta una punta, no se adivina), porque sin eso «misma compañía, mismo auto» también describe
+   * a dos pólizas de períodos distintos que no tienen nada que ver entre sí.
+   */
+  private anclarPolizaSinNumero(
+    p: PestanaTrabajo,
+    fila: Fila,
+    clienteId: number,
+    vehiculoId: number | null,
+    companiaNormalizada: string,
+    claveNueva: string,
+    vigenciaDesdeIso: string | null,
+    vigenciaHastaIso: string | null,
+  ): void {
+    if (!vehiculoId || !companiaNormalizada) return
+    // La clave ya es de alguien (el caso normal: la renovación conservó el número): alcanza el upsert de siempre.
+    if (this.sentencias.anclaPolizas.porClave.get(claveNueva)) return
+    const candidatas = this.sentencias.polizasSinNumeroDelVehiculo.all({ cliente_id: clienteId, vehiculo_id: vehiculoId }) as Array<{
+      id: number
+      compania: string | null
+      vigencia_desde_iso: string | null
+      vigencia_hasta_iso: string | null
+    }>
+    const compatibles = candidatas.filter(
+      (c) =>
+        normalizarTexto(c.compania) === companiaNormalizada &&
+        seSuperponenVigencias({ desde: c.vigencia_desde_iso, hasta: c.vigencia_hasta_iso }, { desde: vigenciaDesdeIso, hasta: vigenciaHastaIso }),
+    )
+    if (compatibles.length !== 1) return
+    this.sentencias.anclaPolizas.renombrar.run({ clave: claveNueva, id: compatibles[0]!.id, ahora: this.ahora })
+    this.problema(
+      p.titulo,
+      fila.numero,
+      fila.id,
+      'número asignado a una póliza sin número',
+      'se enganchó con la póliza sin número que ya tenía este cliente en este vehículo y esta compañía, en vez de crear una nueva',
+    )
+  }
+
   private claveCliente(ident: Identidad, filaId: string): string {
     if (ident.documentoValido) return `DOC:${ident.documentoNormalizado}`
     if (ident.nombreNormalizado) return `NOM:${ident.nombreNormalizado}`
@@ -2255,18 +2332,26 @@ class TrabajoDeImportacion {
       this.problema(p.titulo, fila.numero, fila.id, 'póliza repetida en la planilla', `${ident.compania} ${ident.numero || ident.patente} aparece en más de una fila de esta planilla; las dos filas quedan en la misma póliza`)
       return repetida
     }
-    if (this.anclarPorFila(this.sentencias.anclaPolizas, fila.id, clave)) this.contar(resumen, 'polizas_con_clave_corregida')
-
-    const prima = fila.valor('prima')
     // Las vigencias vienen como texto («27/4/2026»). La bandeja de renovaciones y el estado de la
     // póliza necesitan la fecha de verdad, así que se derivan acá igual que `cuota_monto` o `pago_fecha`:
     // sin reemplazar al texto original. Para la de HASTA se corre un año la ventana de años aceptados,
-    // porque una vigencia que termina el año que viene es lo normal, no una fecha fuera de rango.
+    // porque una vigencia que termina el año que viene es lo normal, no una fecha fuera de rango. Se
+    // calculan ANTES de `anclarPolizaSinNumero` porque esa fusión necesita comparar esta vigencia contra
+    // la de la candidata (ver el comentario de esa función).
     const anioBase = this.anioDelPeriodo(p.periodo) ?? p.anio ?? this.anioDelPeriodo(this.masNueva?.periodo ?? null)
     const desdeTexto = fila.valor('vigencia_desde')
     const hastaTexto = fila.valor('vigencia_hasta')
     const desdeIso = interpretarFecha(desdeTexto, anioBase, this.anioActual).iso
     const hastaIso = interpretarFecha(hastaTexto, anioBase, this.anioActual + 1).iso
+
+    if (this.anclarPorFila(this.sentencias.anclaPolizas, fila.id, clave)) this.contar(resumen, 'polizas_con_clave_corregida')
+    // La fila trae un número recién asignado: si nadie más tiene todavía esa clave, puede ser la
+    // renovación (u otra alta) que se guardó sin él. Sólo cuando el número es el que decide la clave:
+    // con DOCPAT/NOMPAT/FILA de por medio la coincidencia no viene de un número nuevo y no hay nada que
+    // enganchar acá (ver `anclarPolizaSinNumero`).
+    else if (ident.numeroValido) this.anclarPolizaSinNumero(p, fila, clienteId, vehiculoId, ident.companiaNormalizada, clave, desdeIso, hastaIso)
+
+    const prima = fila.valor('prima')
 
     const { id } = this.sentencias.poliza.get({
       clave,

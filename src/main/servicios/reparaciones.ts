@@ -16,7 +16,7 @@
 //    `elegirPlanillaPorPeriodo` en el importador) y acá se sacan las copias que ya habían entrado.
 import { db } from '../db/base'
 import { resolverCampo, type Campo } from '../importacion/encabezados'
-import { ahoraIso, limpiar } from '../importacion/normalizar'
+import { ahoraIso, limpiar, normalizarTexto } from '../importacion/normalizar'
 import { registrarLoQueNoViajo } from './adjuntos'
 import { anotarEvento, encolar } from '../sincronizacion/cola'
 import { filasConCambiosSinSubir, PESTANA_APP, PREFIJO_DE_BAJA } from './filas'
@@ -410,6 +410,166 @@ export function reenviarSiniestrosIncompletos(): number {
     anotarEvento('reparacion', `${reenviados} siniestros cargados en esta computadora tenían datos que no habían llegado a la base: se vuelven a mandar.`, { filas: reenviados })
   }
   return reenviados
+}
+
+// ---------------------------------------------------------------------------
+// Renovaciones sin número que quedaron huérfanas (arreglo puntual, NO automático)
+// ---------------------------------------------------------------------------
+//
+// `renovar()` (ver servicios/renovaciones.ts) acepta un número de póliza vacío —algunas compañías lo
+// avisan después— y, sin período abierto, la póliza nueva queda sin `fila_id`. Antes del arreglo del
+// importador (`anclarPolizaSinNumero`, en importacion/importador.ts), cuando el número real llegaba
+// después en una fila de la hoja no había forma de engancharlo con esa póliza: se creaba una póliza
+// aparte y la original quedaba huérfana —el barrido de `inactivarPolizas` la pasa a `activa = 0` sin
+// ninguna baja anotada, así que la pantalla la muestra como BAJA «sin motivo cargado», sin fecha— en
+// vez de RENOVADA, que es lo que pasó de verdad.
+//
+// Esto repara las que ya quedaron así en una base existente. A diferencia de las reparaciones de
+// arriba, ACÁ NO HAY ENGANCHE: no se llama desde `repararAlArrancar` ni desde `repararDuplicados`. La
+// coincidencia sale de adivinar por cliente + vehículo + compañía + vigencia superpuesta, no de una
+// clave exacta (`fila_id`, `_ID`…) como las de arriba, así que antes de tocar la base de un cliente
+// conviene que la vea una persona. `detectarRenovacionesHuerfanas` es de sólo lectura, para esa vista
+// previa (y para que las pruebas chequeen la detección sin mutar nada); `repararRenovacionesHuerfanas`
+// aplica el arreglo elegido: LIGAR la activa a la huérfana por `poliza_anterior_id`, exactamente lo que
+// hace una renovación de verdad. No se borra ni se reasigna ninguna fila —la huérfana sigue existiendo
+// con su propio id, así que un pago, un siniestro o un adjunto que ya la referenciara sigue intacto—,
+// sólo cambia cómo la lee `polizasDe()` en clientes.ts: con `poliza_anterior_id` puesto, `tiene_sucesora`
+// pasa a 1 y la pantalla la muestra RENOVADA en vez de BAJA. Es la opción menos destructiva posible.
+//
+// Recomendación para conectarla: una acción de administrador (un botón «Revisar y reparar» en alguna
+// pantalla de mantenimiento) que primero muestre `detectarRenovacionesHuerfanas()` y recién después,
+// con confirmación, corra `repararRenovacionesHuerfanas()` — NO una migración. Una migración corre sola
+// al abrir la aplicación, sin que nadie la vea, y acá la coincidencia depende de datos (vigencias,
+// compañía tal como quedó escrita) que pueden tener casos borde que conviene que alguien confirme la
+// primera vez; además, a diferencia de una migración de esquema, no hace falta que corra en todas las
+// bases ni una sola vez: es idempotente y se puede repetir después de importar más filas.
+
+export interface RenovacionHuerfana {
+  /** La póliza inactiva, sin número, que quedó mostrándose como BAJA sin motivo. */
+  huerfanaId: number
+  /** La póliza activa, con número, que en realidad la reemplazó. */
+  activaId: number
+  clienteId: number
+  clienteNombre: string | null
+  compania: string | null
+  numeroActiva: string | null
+  vigenciaHuerfana: { desde: string | null; hasta: string | null }
+  vigenciaActiva: { desde: string | null; hasta: string | null }
+}
+
+interface PolizaParaHuerfanas {
+  id: number
+  cliente_id: number
+  cliente_nombre: string | null
+  vehiculo_id: number | null
+  compania: string | null
+  numero: string | null
+  activa: number
+  poliza_anterior_id: number | null
+  vigencia_desde_iso: string | null
+  vigencia_hasta_iso: string | null
+}
+
+/**
+ * Las dos mitades de un posible par: pólizas inactivas sin número y sin ninguna baja ni sucesora
+ * anotada (huérfanas candidatas), y pólizas activas con número que todavía no tienen anterior
+ * (candidatas a ser la renovación que faltaba enganchar). El cruce entre las dos listas lo hace
+ * `detectarRenovacionesHuerfanas`, en JS: acá sólo se trae lo que hace falta para cruzarlas.
+ */
+const SELECT_CANDIDATAS_HUERFANAS = `
+  SELECT p.id, p.cliente_id, cl.nombre AS cliente_nombre, p.vehiculo_id, p.compania, p.numero, p.activa,
+         p.poliza_anterior_id, p.vigencia_desde_iso, p.vigencia_hasta_iso
+  FROM polizas p
+  JOIN clientes cl ON cl.id = p.cliente_id
+  WHERE p.vehiculo_id IS NOT NULL
+    AND (
+      (p.activa = 0 AND (p.numero IS NULL OR p.numero = '')
+        AND NOT EXISTS (SELECT 1 FROM bajas b WHERE b.poliza_id = p.id)
+        AND NOT EXISTS (SELECT 1 FROM polizas s WHERE s.poliza_anterior_id = p.id))
+      OR
+      (p.activa = 1 AND p.numero IS NOT NULL AND p.numero <> '' AND p.poliza_anterior_id IS NULL)
+    )
+`
+
+/** Dos vigencias se superponen (o son iguales); sin las dos fechas de las dos puntas no se adivina. */
+function seSuperponen(a: { desde: string | null; hasta: string | null }, b: { desde: string | null; hasta: string | null }): boolean {
+  if (!a.desde || !a.hasta || !b.desde || !b.hasta) return false
+  return a.desde <= b.hasta && b.desde <= a.hasta
+}
+
+/**
+ * Sólo lectura: qué pares detecta, sin tocar la base. Cliente + vehículo + compañía (normalizada) +
+ * vigencia superpuesta; con más de una huérfana o más de una activa candidatas para el mismo grupo, no
+ * se adivina ninguna (igual que `anclarPolizaSinNumero` en el importador: la ambigüedad se deja para
+ * mirar a mano, nunca se resuelve sola).
+ */
+export function detectarRenovacionesHuerfanas(): RenovacionHuerfana[] {
+  const filas = db().prepare(SELECT_CANDIDATAS_HUERFANAS).all() as PolizaParaHuerfanas[]
+  const huerfanas = filas.filter((f) => f.activa === 0)
+  const activas = filas.filter((f) => f.activa === 1)
+
+  const claveDe = (f: PolizaParaHuerfanas) => `${f.cliente_id}|${f.vehiculo_id}|${normalizarTexto(f.compania)}`
+  const agrupar = (lista: PolizaParaHuerfanas[]) => {
+    const mapa = new Map<string, PolizaParaHuerfanas[]>()
+    for (const f of lista) mapa.set(claveDe(f), [...(mapa.get(claveDe(f)) ?? []), f])
+    return mapa
+  }
+  const huerfanasPorClave = agrupar(huerfanas)
+  const activasPorClave = agrupar(activas)
+
+  const pares: RenovacionHuerfana[] = []
+  for (const [clave, grupoHuerfanas] of huerfanasPorClave) {
+    const grupoActivas = activasPorClave.get(clave)
+    if (!grupoActivas || grupoActivas.length !== 1 || grupoHuerfanas.length !== 1) continue
+    const huerfana = grupoHuerfanas[0]!
+    const activa = grupoActivas[0]!
+    const vigenciaHuerfana = { desde: huerfana.vigencia_desde_iso, hasta: huerfana.vigencia_hasta_iso }
+    const vigenciaActiva = { desde: activa.vigencia_desde_iso, hasta: activa.vigencia_hasta_iso }
+    if (!seSuperponen(vigenciaHuerfana, vigenciaActiva)) continue
+    pares.push({
+      huerfanaId: huerfana.id,
+      activaId: activa.id,
+      clienteId: huerfana.cliente_id,
+      clienteNombre: huerfana.cliente_nombre,
+      compania: huerfana.compania,
+      numeroActiva: activa.numero,
+      vigenciaHuerfana,
+      vigenciaActiva,
+    })
+  }
+  return pares
+}
+
+/**
+ * Aplica el arreglo: liga cada activa a su huérfana por `poliza_anterior_id`. Conservador —nunca borra
+ * ni reasigna nada— e idempotente: correrla de nuevo no vuelve a tocar un par ya ligado (el `WHERE`
+ * exige `poliza_anterior_id IS NULL`), así que se puede repetir después de una detección más nueva sin
+ * pisar un enganche legítimo que haya puesto otra cosa mientras tanto. Devuelve cuántos pares ligó.
+ *
+ * Sin argumento, detecta y aplica en el mismo llamado; con la lista de una vista previa ya mostrada
+ * (por ejemplo, la que confirmó una persona), aplica exactamente esos pares. NO se llama desde
+ * `repararAlArrancar` ni desde `repararDuplicados`: ver la nota de arriba sobre por qué conviene una
+ * acción de administrador antes que una migración automática.
+ */
+export function repararRenovacionesHuerfanas(pares: RenovacionHuerfana[] = detectarRenovacionesHuerfanas()): number {
+  if (pares.length === 0) return 0
+  const ahora = ahoraIso()
+  let ligadas = 0
+  db().transaction(() => {
+    for (const par of pares) {
+      const cambio = db()
+        .prepare('UPDATE polizas SET poliza_anterior_id = ?, actualizado_en = ? WHERE id = ? AND poliza_anterior_id IS NULL AND activa = 1')
+        .run(par.huerfanaId, ahora, par.activaId).changes
+      if (cambio > 0) ligadas++
+    }
+  })()
+  if (ligadas > 0) {
+    anotarEvento(
+      'reparacion',
+      `${ligadas} pólizas sin número que habían quedado como BAJA sin motivo (una renovación sin período abierto cuyo número real no se llegó a enganchar) se marcan como RENOVADA.`,
+    )
+  }
+  return ligadas
 }
 
 /** Las dos reparaciones de siniestros juntas: la local y la que vuelve a mandar lo que faltó. */

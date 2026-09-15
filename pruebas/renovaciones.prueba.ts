@@ -522,3 +522,265 @@ test('la renovación se encola contra la pestaña REAL de la hoja, no contra el 
   )
   motor.apagar()
 })
+
+// ---------------------------------------------------------------------------
+// Renovar sin número y sin período abierto: el número real, cuando llega, no puede duplicar la póliza
+// ---------------------------------------------------------------------------
+//
+// Caso real: ABELLEIRA MARIANO FERNANDO quedó con una póliza ACTIVA de AGROSALTA (con número) y una
+// BAJA sin número, misma compañía, mismo vehículo, misma vigencia, «sin motivo cargado». La causa:
+// `renovar()` acepta un número vacío (algunas compañías lo avisan después) y, sin período abierto, la
+// póliza nueva queda sin `fila_id` y con una clave provisoria (DOCPAT/NOMPAT). Cuando el número real
+// aparece en una fila de la hoja, `guardarPoliza()` calcula OTRA clave (POL:cía|número) que nadie
+// ocupa todavía: sin enganchar esa fila con la póliza sin número, el upsert inserta una póliza aparte y
+// el barrido de `inactivarPolizas` deja la original como una BAJA huérfana.
+
+/** Encabezados mínimos que el mapeador reconoce (nombre, documento, compañía, número, patente, vigencia). */
+const ENC_MINIMA = ['NOMBRE', 'DNI', 'CIA', 'N POLIZA', 'PATENTE', 'MARCA', 'MODELO', 'VIGENCIA DESDE', 'VIGENCIA HASTA', 'CUOTA', 'FORMA DE PAGO', 'COBERTURA']
+
+interface FilaMinima {
+  nombre: string
+  dni: string
+  cia: string
+  numero: string
+  patente: string
+  marca?: string
+  modelo?: string
+  desde?: string
+  hasta?: string
+}
+
+function filaMinima(f: FilaMinima): string[] {
+  return [f.nombre, f.dni, f.cia, f.numero, f.patente, f.marca ?? 'FORD', f.modelo ?? 'FIESTA', f.desde ?? '', f.hasta ?? '', '$ 20.000', 'DEBITO', 'TERCEROS COMPLETO']
+}
+
+async function importarUnica(db: BaseDeDatos, hoja: HojaSimulada): Promise<void> {
+  const { id } = db.prepare(`INSERT INTO importaciones (iniciada_en, estado) VALUES (?, 'EN_CURSO') RETURNING id`).get(ahoraIso()) as { id: number }
+  await ejecutarImportacion({ db, fuente: hoja, importacionId: id, anioActual: 2026 })
+}
+
+/** Una base nueva con UNA sola pestaña mensual: así es, sin ambigüedad, «la más nueva». */
+async function escenarioMinimo(titulo: string, filasIniciales: FilaMinima[]): Promise<BaseDeDatos> {
+  motorAnterior?.apagar()
+  cerrarBaseDeDatos()
+  const registrar = console.log
+  console.log = () => undefined
+  const db = abrirBaseDeDatos(':memory:')
+  console.log = registrar
+  await importarUnica(db, new HojaSimulada([{ titulo, valores: [ENC_MINIMA, ...filasIniciales.map(filaMinima)] }]))
+  return db
+}
+
+/** Reemplaza la hoja por UNA sola pestaña nueva (una fila fresca, sin _ID) y reimporta. */
+async function reimportarConUnaFila(db: BaseDeDatos, titulo: string, fila: FilaMinima): Promise<void> {
+  await importarUnica(db, new HojaSimulada([{ titulo, valores: [ENC_MINIMA, filaMinima(fila)] }]))
+}
+
+interface PolizaCruda {
+  id: number
+  numero: string | null
+  fila_id: string | null
+  activa: number
+  compania: string | null
+  vehiculo_id: number | null
+  poliza_anterior_id: number | null
+}
+
+function polizasDeCliente(db: BaseDeDatos, documentoNormalizado: string): PolizaCruda[] {
+  return db
+    .prepare(
+      `SELECT p.id, p.numero, p.fila_id, p.activa, p.compania, p.vehiculo_id, p.poliza_anterior_id
+       FROM polizas p JOIN clientes c ON c.id = p.cliente_id
+       WHERE c.documento_normalizado = ?
+       ORDER BY p.id`,
+    )
+    .all(documentoNormalizado) as PolizaCruda[]
+}
+
+/** Sin período abierto: se cierran todas las cuotas del mes que sembró `escenarioMinimo`. */
+function sinPeriodoAbierto(db: BaseDeDatos): void {
+  db.prepare('UPDATE cuotas_mes SET dada_de_baja = 1').run()
+}
+
+const DATOS_RENOVACION_SIN_NUMERO = (desde: string, hasta: string) => ({
+  vigenciaDesde: desde,
+  vigenciaHasta: hasta,
+  cuota: '$ 22.000',
+  numero: '',
+  propuesta: '',
+  observaciones: '',
+})
+
+test('renovar sin número y sin período abierto: cuando el número real llega en una fila nueva, se pega a la renovación en vez de duplicarla', async () => {
+  const dni = '30111000'
+  const db = await escenarioMinimo('ENERO', [{ nombre: 'ABELLEIRA MARIANO FERNANDO', dni, cia: 'AGROSALTA', numero: '8589509', patente: 'AB123CD', marca: 'VOLKSWAGEN', modelo: 'SAVEIRO' }])
+  const original = polizaDe('8589509')
+  sinPeriodoAbierto(db)
+
+  renovar(original.id, DATOS_RENOVACION_SIN_NUMERO('22/8/2026', '22/12/2026'), DANIEL)
+
+  const antes = polizasDeCliente(db, dni)
+  const huerfana = antes.find((p) => p.numero === null)
+  assert.ok(huerfana, 'la renovación tiene que haber creado la póliza sin número, sin período abierto')
+  assert.equal(huerfana!.fila_id, null, 'sin período abierto no hay fila del mes que enganchar')
+  assert.equal(huerfana!.activa, 1)
+  assert.equal(huerfana!.poliza_anterior_id, original.id)
+
+  // El número real llega en una fila NUEVA de la hoja (la que en la vida real terminó agregándose a
+  // mano), con la misma compañía, el mismo vehículo y la misma vigencia que la renovación.
+  await reimportarConUnaFila(db, 'FEBRERO', { nombre: 'ABELLEIRA MARIANO FERNANDO', dni, cia: 'AGROSALTA', numero: '8589509-R', patente: 'AB123CD', desde: '22/8/2026', hasta: '22/12/2026' })
+
+  const despues = polizasDeCliente(db, dni)
+  const activas = despues.filter((p) => p.activa === 1)
+  assert.equal(activas.length, 1, 'sólo tiene que quedar UNA póliza activa, no dos')
+  assert.equal(activas[0]!.numero, '8589509-R')
+  assert.equal(activas[0]!.id, huerfana!.id, 'el número real se pega a la póliza de la renovación; no crea otra al lado')
+  assert.ok(activas[0]!.fila_id, 'queda enganchada a la fila de la hoja')
+  assert.equal(activas[0]!.poliza_anterior_id, original.id, 'la cadena de la renovación se conserva')
+
+  assert.equal(
+    despues.filter((p) => p.numero === null).length,
+    0,
+    'no puede quedar una póliza BAJA sin número, sin motivo y sin fecha de baja',
+  )
+
+  const anteriorDespues = despues.find((p) => p.id === original.id)!
+  assert.equal(anteriorDespues.activa, 0, 'la póliza original de la renovación sigue histórica')
+  assert.equal(anteriorDespues.numero, '8589509', 'y conserva su propio número')
+})
+
+test('renovar sin número: si hay dos candidatas (dos renovaciones sin número del mismo auto), no se fusiona ninguna', async () => {
+  const dni = '30111002'
+  const db = await escenarioMinimo('ENERO', [
+    { nombre: 'DOS CANDIDATAS SA', dni, cia: 'SANCOR', numero: '200100', patente: 'AC456EF' },
+    { nombre: 'DOS CANDIDATAS SA', dni, cia: 'SANCOR', numero: '200200', patente: 'AC456EF' },
+  ])
+  const polizaA = polizaDe('200100')
+  const polizaB = polizaDe('200200')
+  sinPeriodoAbierto(db)
+
+  renovar(polizaA.id, DATOS_RENOVACION_SIN_NUMERO('1/1/2026', '1/1/2027'), DANIEL)
+  renovar(polizaB.id, DATOS_RENOVACION_SIN_NUMERO('1/1/2026', '1/1/2027'), DANIEL)
+
+  const huerfanas = polizasDeCliente(db, dni).filter((p) => p.numero === null)
+  assert.equal(huerfanas.length, 2, 'las dos renovaciones sin número tienen que existir, del mismo vehículo y compañía')
+
+  await reimportarConUnaFila(db, 'FEBRERO', { nombre: 'DOS CANDIDATAS SA', dni, cia: 'SANCOR', numero: '200300', patente: 'AC456EF' })
+
+  const despues = polizasDeCliente(db, dni)
+  const conNumeroNuevo = despues.find((p) => p.numero === '200300')!
+  assert.ok(conNumeroNuevo, 'la fila nueva tiene que haber creado su propia póliza')
+  assert.ok(
+    huerfanas.every((h) => conNumeroNuevo.id !== h.id),
+    'con dos candidatas ambiguas no se elige ninguna: la póliza nueva no puede ser ninguna de las dos huérfanas',
+  )
+  assert.equal(despues.filter((p) => p.numero === null).length, 2, 'las dos siguen sin número: no se tocó ninguna')
+})
+
+test('renovar sin número: si el vehículo de la fila nueva es otro, no se fusiona', async () => {
+  const dni = '30111003'
+  const db = await escenarioMinimo('ENERO', [{ nombre: 'OTRO VEHICULO SA', dni, cia: 'SANCOR', numero: '300100', patente: 'AD789GH' }])
+  const original = polizaDe('300100')
+  sinPeriodoAbierto(db)
+  renovar(original.id, DATOS_RENOVACION_SIN_NUMERO('1/1/2026', '1/1/2027'), DANIEL)
+  const huerfana = polizasDeCliente(db, dni).find((p) => p.numero === null)!
+
+  // Mismo cliente, misma compañía, pero OTRA patente: no es el mismo vehículo.
+  await reimportarConUnaFila(db, 'FEBRERO', { nombre: 'OTRO VEHICULO SA', dni, cia: 'SANCOR', numero: '300100-R', patente: 'ZZZ999' })
+
+  const despues = polizasDeCliente(db, dni)
+  const conNumeroNuevo = despues.find((p) => p.numero === '300100-R')!
+  assert.notEqual(conNumeroNuevo.id, huerfana.id, 'un vehículo distinto no puede quedarse con el número de otro')
+  assert.ok(
+    despues.some((p) => p.id === huerfana.id && p.numero === null),
+    'la póliza sin número del vehículo original sigue como estaba',
+  )
+})
+
+test('renovar sin número: si la fila nueva es de otra compañía, no se fusiona', async () => {
+  const dni = '30111004'
+  const db = await escenarioMinimo('ENERO', [{ nombre: 'OTRA CIA SA', dni, cia: 'SANCOR', numero: '400100', patente: 'AE111JK' }])
+  const original = polizaDe('400100')
+  sinPeriodoAbierto(db)
+  renovar(original.id, DATOS_RENOVACION_SIN_NUMERO('1/1/2026', '1/1/2027'), DANIEL)
+  const huerfana = polizasDeCliente(db, dni).find((p) => p.numero === null)!
+
+  // Mismo cliente, mismo vehículo, pero OTRA compañía: no es la misma póliza sin número.
+  await reimportarConUnaFila(db, 'FEBRERO', { nombre: 'OTRA CIA SA', dni, cia: 'ZURICH', numero: '400100-R', patente: 'AE111JK' })
+
+  const despues = polizasDeCliente(db, dni)
+  const conNumeroNuevo = despues.find((p) => p.numero === '400100-R')!
+  assert.notEqual(conNumeroNuevo.id, huerfana.id, 'otra compañía no puede quedarse con el número de la huérfana')
+  assert.ok(
+    despues.some((p) => p.id === huerfana.id && p.numero === null),
+    'la póliza sin número de SANCOR sigue como estaba',
+  )
+})
+
+test('renovar sin número y sin período abierto: si una importación de OTRO cliente corre antes de que llegue el número real, la fusión igual funciona', async () => {
+  const dni = '30111006'
+  const db = await escenarioMinimo('ENERO', [{ nombre: 'ABELLEIRA MARIANO FERNANDO', dni, cia: 'AGROSALTA', numero: '8589509', patente: 'AB123CD', marca: 'VOLKSWAGEN', modelo: 'SAVEIRO' }])
+  const original = polizaDe('8589509')
+  sinPeriodoAbierto(db)
+
+  renovar(original.id, DATOS_RENOVACION_SIN_NUMERO('22/8/2026', '22/12/2026'), DANIEL)
+  const huerfana = polizasDeCliente(db, dni).find((p) => p.numero === null)!
+  assert.equal(huerfana.activa, 1)
+
+  // `renovar()` es una acción manual: no corre dentro de una importación. Antes de que llegue el número
+  // real puede pasar un ciclo de importación entero para CUALQUIER otro cliente — y el barrido de
+  // `inactivarPolizas` (que corre en TODA importación) deja la huérfana en activa=0 sin que nadie la
+  // haya tocado todavía.
+  await reimportarConUnaFila(db, 'FEBRERO', { nombre: 'OTRO CLIENTE INTERMEDIO SA', dni: '30111099', cia: 'SANCOR', numero: '999999', patente: 'ZZ000ZZ' })
+  const huerfanaTrasElBarrido = polizasDeCliente(db, dni).find((p) => p.id === huerfana.id)!
+  assert.equal(huerfanaTrasElBarrido.activa, 0, 'una importación de otro cliente la dejó inactiva antes de que llegara el número real')
+
+  // Recién ahora, en una importación posterior, llega la fila con el número real.
+  await reimportarConUnaFila(db, 'MARZO', { nombre: 'ABELLEIRA MARIANO FERNANDO', dni, cia: 'AGROSALTA', numero: '8589509-R', patente: 'AB123CD', desde: '22/8/2026', hasta: '22/12/2026' })
+
+  const despues = polizasDeCliente(db, dni)
+  const activas = despues.filter((p) => p.activa === 1)
+  assert.equal(activas.length, 1, 'sólo tiene que quedar UNA póliza activa para Abelleira, no dos')
+  assert.equal(activas[0]!.id, huerfana.id, 'el número real se pega a la huérfana aunque ya estuviera inactiva por el barrido de otra importación')
+  assert.equal(despues.filter((p) => p.numero === null).length, 0, 'no puede quedar una póliza BAJA sin número, sin motivo y sin fecha de baja')
+})
+
+test('renovar sin número: si la vigencia de la fila nueva no se superpone con la de la huérfana, no se fusiona', async () => {
+  const dni = '30111007'
+  const db = await escenarioMinimo('ENERO', [{ nombre: 'VIGENCIA DISTINTA SA', dni, cia: 'SANCOR', numero: '600100', patente: 'AG333NP' }])
+  const original = polizaDe('600100')
+  sinPeriodoAbierto(db)
+  renovar(original.id, DATOS_RENOVACION_SIN_NUMERO('1/1/2026', '1/6/2026'), DANIEL)
+  const huerfana = polizasDeCliente(db, dni).find((p) => p.numero === null)!
+
+  // Mismo cliente, mismo vehículo, misma compañía — pero una vigencia que no se superpone: podría ser
+  // una póliza distinta, sin relación con la renovación que quedó sin número, y fusionarlas a ciegas
+  // pisaría los datos de una con los de la otra.
+  await reimportarConUnaFila(db, 'FEBRERO', { nombre: 'VIGENCIA DISTINTA SA', dni, cia: 'SANCOR', numero: '600100-R', patente: 'AG333NP', desde: '1/1/2027', hasta: '1/6/2027' })
+
+  const despues = polizasDeCliente(db, dni)
+  const conNumeroNuevo = despues.find((p) => p.numero === '600100-R')!
+  assert.notEqual(conNumeroNuevo.id, huerfana.id, 'una vigencia que no se superpone no puede fusionarse a ciegas')
+  assert.ok(
+    despues.some((p) => p.id === huerfana.id && p.numero === null),
+    'la huérfana sigue sin número: no se tocó',
+  )
+})
+
+test('renovar sin número: una póliza que YA tiene número no es candidata, aunque después llegue otro número para el mismo auto', async () => {
+  const dni = '30111005'
+  // Acá no hay renovación: la póliza YA nace con número y con fila propia (la de la importación inicial).
+  const db = await escenarioMinimo('ENERO', [{ nombre: 'YA TIENE NUMERO SA', dni, cia: 'SANCOR', numero: '500100', patente: 'AF222LM' }])
+  const original = polizaDe('500100')
+
+  await reimportarConUnaFila(db, 'FEBRERO', { nombre: 'YA TIENE NUMERO SA', dni, cia: 'SANCOR', numero: '500200', patente: 'AF222LM' })
+
+  const despues = polizasDeCliente(db, dni)
+  const conNumeroNuevo = despues.find((p) => p.numero === '500200')!
+  assert.ok(conNumeroNuevo, 'la fila nueva tiene que haber creado su propia póliza')
+  assert.notEqual(conNumeroNuevo.id, original.id, 'una póliza que ya tenía número y fila no es candidata a que se la reemplace')
+  assert.ok(
+    despues.some((p) => p.id === original.id && p.numero === '500100'),
+    'la póliza original conserva su propio número',
+  )
+})
