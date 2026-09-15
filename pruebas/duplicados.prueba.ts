@@ -92,6 +92,40 @@ test('dos fichas con el mismo DNI y el mismo nombre se juntan solas, y todo lo d
   db.close()
 })
 
+test('a igual clave de documento, gana la que sigue teniendo cartera, no la que más pólizas arrastra en total', async () => {
+  const { db } = await baseImportada()
+  const ahora = ahoraIso()
+  const nombre = 'TESTIGO DUPLICADO'
+
+  // Ninguna de las dos tiene documento: empatan en puntaje y decide el desempate de pólizas.
+  const conBajas = fichaRepetida(db, nombre, null, 'APP:conBajas')
+  const conActiva = fichaRepetida(db, nombre, null, 'APP:conActiva')
+
+  const nuevaPoliza = (clienteId: number, clave: string, activa: number) =>
+    db
+      .prepare(
+        `INSERT INTO polizas (clave, cliente_id, periodo_origen, pestana_origen, activa, creado_en, actualizado_en)
+         VALUES (?, ?, '2026-08', 'AGOSTO', ?, ?, ?)`,
+      )
+      .run(clave, clienteId, activa, ahora, ahora)
+
+  // Esta ficha arrastra más historia (tres pólizas), pero ninguna sigue en cartera: son bajas viejas.
+  nuevaPoliza(conBajas, 'TEST:BAJA1', 0)
+  nuevaPoliza(conBajas, 'TEST:BAJA2', 0)
+  nuevaPoliza(conBajas, 'TEST:BAJA3', 0)
+  // La otra tiene una sola póliza, pero esa sigue vigente.
+  nuevaPoliza(conActiva, 'TEST:ACTIVA1', 1)
+
+  const grupo = clientesRepetidos().find((g) => g.clientes.some((c) => c.id === conActiva))
+  assert.ok(grupo, 'el detector agrupa a las dos fichas por el nombre')
+  assert.equal(
+    grupo.clientes.find((c) => c.sugerida)?.id,
+    conActiva,
+    'antes ganaba la de más pólizas en total (conBajas, con 3 contra 1); ahora gana la que sigue en cartera',
+  )
+  db.close()
+})
+
 test('mismo DNI con OTRO nombre no se junta solo: puede ser un DNI mal tipeado', async () => {
   const { db } = await baseImportada()
   // La hoja de prueba trae a Martínez con el DNI de González a propósito: son dos personas.

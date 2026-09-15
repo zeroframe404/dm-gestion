@@ -76,13 +76,13 @@ export const AYUDA_CLIENTES: Record<string, ContenidoDeAyuda> = {
     clave: 'clientes.vehiculos',
     titulo: 'Ficha del cliente → Vehículos y riesgos',
     resumen:
-      'Todo lo que el cliente tiene asegurado: sus autos y motos con patente, marca, modelo y año, y también su casa, su comercio, su bicicleta o las personas de un accidentes personales, con cuántas pólizas tiene cada uno.',
+      'Todo lo que el cliente tiene asegurado: sus autos y motos con patente, marca, modelo y año, y también su casa, su comercio, su bicicleta o las personas de un accidentes personales, con cuántas pólizas en cartera tiene cada uno.',
     secciones: [
       {
         titulo: 'Cómo se carga un vehículo o un riesgo',
         parrafos: [
           'Esta pestaña es sólo para consultar: no hay ningún botón para agregar un vehículo suelto. Los vehículos y los demás riesgos se dan de alta junto con la póliza, así que si el cliente compró un auto nuevo o contrató un seguro de hogar, la forma de cargarlo es «Nueva póliza» desde el encabezado de la ficha: ahí se elige el tipo de riesgo y se completa con su patente, su dirección o sus integrantes al mismo tiempo que la póliza.',
-          'La columna «Detalle» muestra lo que distingue a los riesgos que no son vehículos: la dirección de la casa o del local, las personas cubiertas, o a nombre de quién está.',
+          'La columna «Detalle» muestra lo que distingue a los riesgos que no son vehículos: la dirección de la casa o del local, las personas cubiertas, o a nombre de quién está. La columna «Pólizas» sólo cuenta las que siguen en cartera: una póliza dada de baja o renovada con otro número no suma ahí, aunque siga viéndose en la pestaña Pólizas.',
         ],
       },
     ],
@@ -90,17 +90,21 @@ export const AYUDA_CLIENTES: Record<string, ContenidoDeAyuda> = {
   'clientes.polizas': {
     clave: 'clientes.polizas',
     titulo: 'Ficha del cliente → Pólizas',
-    resumen: 'Las pólizas del cliente separadas en dos grupos: las activas arriba y el histórico de bajas abajo.',
+    resumen: 'Las pólizas del cliente: las vigentes arriba, y las dadas de baja o renovadas detrás del botón «Pólizas dadas de baja».',
     secciones: [
       {
-        titulo: 'Activas e histórico',
+        titulo: 'Activas y dadas de baja',
         parrafos: [
-          'Arriba están las pólizas vigentes o vencidas (una póliza vencida sigue en este grupo, en ámbar, porque sigue siendo cartera: hay que renovarla, no se dio de baja). Abajo está el histórico, con el motivo y la fecha de cada baja cuando se cargaron. Tocar cualquier fila abre esa póliza en el módulo Pólizas, con todos sus datos y el botón para editarla.',
+          'Arriba están las pólizas vigentes o vencidas (una póliza vencida sigue en este grupo, en ámbar, porque sigue siendo cartera: hay que renovarla, no se dio de baja). Las que ya salieron de la cartera —dadas de baja o renovadas con otro número— no cuentan más ahí arriba, ni en el número de la solapa: quedan plegadas detrás del botón «Pólizas dadas de baja», que muestra cuántas hay y las despliega al tocarlo, con el motivo y la fecha de cada baja cuando se cargaron. Tocar cualquier fila abre esa póliza en el módulo Pólizas, con todos sus datos y el botón para editarla.',
         ],
       },
     ],
     conceptos: [
       { termino: 'Vencida', explicacion: 'La póliza ya pasó su fecha de vigencia pero no se dio de baja: sigue siendo cartera y hay que gestionar la renovación.' },
+      {
+        termino: 'Renovada',
+        explicacion: 'Salió de la cartera porque se renovó con otro número: la póliza nueva es la que sigue contando, así que ésta queda detrás de «Pólizas dadas de baja» sin ser una baja real.',
+      },
     ],
   },
   'clientes.pagos': {

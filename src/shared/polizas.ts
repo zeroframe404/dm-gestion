@@ -153,6 +153,22 @@ export const NOMBRE_ESTADO_POLIZA: Record<EstadoPoliza, string> = {
   VENCIDA: 'Vencida',
 }
 
+/**
+ * Si la póliza sigue siendo cartera de la agencia (cuenta en los totales, en el listado por defecto,
+ * en cuántas pólizas tiene un vehículo…) o ya salió de ella. Es la misma pregunta que `estaEnLaCartera`
+ * tenía duplicada en `main/servicios/clientes.ts`: una sola regla acá para que renderer y main no puedan
+ * discrepar. ACTIVA y VENCIDA cuentan; BAJA y RENOVADA no —la renovada no se perdió, pero la sigue
+ * contando la póliza nueva, no ésta, así que sumarla de nuevo duplicaría la cartera.
+ */
+export function estaEnLaCartera(estado: EstadoPoliza): boolean {
+  return estado === 'ACTIVA' || estado === 'VENCIDA'
+}
+
+/** El complemento de `estaEnLaCartera`: true para BAJA y RENOVADA, las dos formas de salir de la cartera. */
+export function seSalioDeLaCartera(estado: EstadoPoliza): boolean {
+  return !estaEnLaCartera(estado)
+}
+
 /** Las tres categorías del resumen de cartera. No incluye RENOVADA a propósito (ver `categoriaDeCartera`). */
 export type CategoriaDeCartera = 'ACTIVA' | 'VENCIDA' | 'BAJA'
 

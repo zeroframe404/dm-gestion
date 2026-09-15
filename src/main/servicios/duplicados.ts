@@ -103,19 +103,30 @@ function fichaRepetida(c: ClienteCrudo, sugerida: boolean): ClienteRepetido {
 
 /**
  * Cuál de las fichas repetidas conviene conservar. La que ya tiene la clave del documento
- * (`DOC:<dni>`) es la que la importación reconoce; si ninguna, la que más pólizas arrastra; y a
- * igualdad la más vieja (el id más chico). Es la misma regla que usa la fusión automática, así que la
- * sugerencia de la pantalla y lo que el programa haría solo no pueden discrepar.
+ * (`DOC:<dni>`) es la que la importación reconoce; si ninguna, la que más pólizas en cartera tiene —no
+ * la que más pólizas arrastra en total, que cuenta también las dadas de baja y las renovadas y podía
+ * hacer ganar a la ficha vieja sólo por tener más historia—; a igualdad de cartera, la que más pólizas
+ * arrastra en total; y a igualdad de las dos, la más vieja (el id más chico). Es la misma regla que usa
+ * la fusión automática, así que la sugerencia de la pantalla y lo que el programa haría solo no pueden
+ * discrepar.
  */
-export function elegirClienteQueQueda<T extends { id: number; clave: string; documento_normalizado: string | null; polizas?: number }>(grupo: T[]): T {
+export function elegirClienteQueQueda<
+  T extends { id: number; clave: string; documento_normalizado: string | null; polizas?: number; polizasActivas?: number },
+>(grupo: T[]): T {
   const puntaje = (c: T) => (c.documento_normalizado && c.clave === `DOC:${c.documento_normalizado}` ? 1 : 0)
-  return [...grupo].sort((a, b) => puntaje(b) - puntaje(a) || (b.polizas ?? 0) - (a.polizas ?? 0) || a.id - b.id)[0]!
+  return [...grupo].sort(
+    (a, b) =>
+      puntaje(b) - puntaje(a) || (b.polizasActivas ?? 0) - (a.polizasActivas ?? 0) || (b.polizas ?? 0) - (a.polizas ?? 0) || a.id - b.id,
+  )[0]!
 }
 
 function armarGrupo(motivo: MotivoDeClienteRepetido, crudos: ClienteCrudo[]): GrupoDeClientesRepetidos {
   const conPolizas = crudos.map((c) => ({
     ...c,
     polizas: (db().prepare('SELECT COUNT(*) AS n FROM polizas WHERE cliente_id = ?').get(c.id) as { n: number }).n,
+    // La misma cuenta que fichaRepetida(): sólo lo que sigue en cartera, para que el desempate no lo
+    // gane quien más historia arrastra (bajas y renovadas incluidas).
+    polizasActivas: (db().prepare('SELECT COUNT(*) AS n FROM polizas WHERE cliente_id = ? AND activa = 1').get(c.id) as { n: number }).n,
   }))
   const queda = elegirClienteQueQueda(conPolizas)
   return { motivo, clientes: conPolizas.map((c) => fichaRepetida(c, c.id === queda.id)) }

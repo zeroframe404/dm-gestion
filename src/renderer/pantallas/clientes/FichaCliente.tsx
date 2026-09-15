@@ -8,7 +8,7 @@
 //    son las que se hacen con el cliente delante, por teléfono o en el mostrador.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { direccionTienePartes, sanearDireccion } from '../../../shared/direccion'
-import { diasParaVencer, estadoDePoliza, NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
+import { diasParaVencer, estadoDePoliza, estaEnLaCartera, NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
 import { hoyLocal } from '../../../shared/semaforo'
 import {
   NOMBRE_ESTADO_TAREA,
@@ -170,7 +170,9 @@ export function FichaDelCliente({
   const cuentas: Record<IdPestana, number | null> = {
     datos: null,
     vehiculos: ficha.vehiculos.length,
-    polizas: ficha.polizas.length,
+    // Sólo las que siguen en cartera: una dada de baja o renovada sigue viéndose en la pestaña, pero no
+    // tiene que inflar el número de la solapa (14.1).
+    polizas: ficha.polizas.filter((poliza) => estaEnLaCartera(poliza.estado)).length,
     pagos: ficha.pagos.length,
     siniestros: ficha.siniestros.length,
     notas: ficha.notas.length + ficha.tareas.length,
@@ -577,15 +579,16 @@ function PestanaVehiculos({ ficha }: { ficha: FichaCliente }) {
 }
 
 // ---------------------------------------------------------------------------
-// Pólizas: activas arriba, historial abajo
+// Pólizas: activas arriba, dadas de baja detrás de un botón
 // ---------------------------------------------------------------------------
 
 function PestanaPolizas({ ficha, hoy, alAbrirPoliza }: { ficha: FichaCliente; hoy: string; alAbrirPoliza: (polizaId: number) => void }) {
   // Al histórico entran las dos formas de salir de la cartera: la que se dio de baja y la que se
   // renovó con otro número. Preguntar por «!== BAJA» dejaba a la renovada arriba, como si estuviera
   // vigente, y a la vez su número viejo compitiendo con el nuevo en la misma lista.
-  const activas = ficha.polizas.filter((poliza) => poliza.estado === 'ACTIVA' || poliza.estado === 'VENCIDA')
-  const historico = ficha.polizas.filter((poliza) => poliza.estado === 'BAJA' || poliza.estado === 'RENOVADA')
+  const activas = ficha.polizas.filter((poliza) => estaEnLaCartera(poliza.estado))
+  const historico = ficha.polizas.filter((poliza) => !estaEnLaCartera(poliza.estado))
+  const [historicoAbierto, setHistoricoAbierto] = useState(false)
 
   return (
     <div className="flex flex-col gap-5">
@@ -620,54 +623,79 @@ function PestanaPolizas({ ficha, hoy, alAbrirPoliza }: { ficha: FichaCliente; ho
         )}
       </div>
 
-      <div>
-        <Rotulo texto="Histórico" cantidad={historico.length} />
-        {historico.length === 0 ? (
-          <Vacio titulo="No hay pólizas dadas de baja.">Cuando se dé de baja alguna, acá va a quedar con el motivo y la fecha.</Vacio>
-        ) : (
-          <Caja>
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50">
-                <tr className="border-b border-slate-200">
-                  <th className={TH}>Estado</th>
-                  <th className={TH}>Compañía</th>
-                  <th className={TH}>Póliza</th>
-                  <th className={TH}>Vehículo</th>
-                  <th className={TH}>Vigencia</th>
-                  <th className={TH}>Motivo de la baja</th>
-                  <th className={TH}>Fecha de baja</th>
-                  <th className={TH} />
-                </tr>
-              </thead>
-              <tbody>
-                {historico.map((poliza) => (
-                  <tr
-                    key={poliza.id}
-                    onClick={() => alAbrirPoliza(poliza.id)}
-                    className="cursor-pointer border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
-                  >
-                    <td className={TD}>
-                      <Etiqueta tono="neutro">{NOMBRE_ESTADO_POLIZA.BAJA}</Etiqueta>
-                    </td>
-                    <td className={cx(TD, 'font-medium text-slate-900')}>{poliza.compania ?? '—'}</td>
-                    <td className={cx(TD, 'font-mono text-xs')}>{poliza.numero ?? '—'}</td>
-                    <td className={TD}>
-                      {poliza.vehiculo ?? '—'}
-                      {poliza.patente && <span className="ml-1 font-mono text-xs text-slate-500">{poliza.patente}</span>}
-                    </td>
-                    <td className={cx(TD, 'whitespace-nowrap tabular-nums')}>{rangoDeVigencia(poliza)}</td>
-                    <td className={TD}>{poliza.motivoBaja ?? <span className="text-slate-400">sin motivo cargado</span>}</td>
-                    <td className={cx(TD, 'whitespace-nowrap tabular-nums')}>{poliza.fechaBaja ?? '—'}</td>
-                    <td className={cx(TD, 'text-right')}>
-                      <BotonAbrir onClick={() => alAbrirPoliza(poliza.id)} />
-                    </td>
+      {/* Las dadas de baja (y las renovadas con otro número) quedan atrás de este botón: se ven, pero
+          no se cuentan ni inflan la pestaña por default. Si no hay ninguna, ni se muestra el botón. */}
+      {historico.length > 0 && (
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-suave">
+          <button
+            type="button"
+            onClick={() => setHistoricoAbierto((abierto) => !abierto)}
+            aria-expanded={historicoAbierto}
+            aria-controls="polizas-dadas-de-baja"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40"
+          >
+            <Icono
+              nombre="flechaDerecha"
+              tamano={14}
+              className={cx('shrink-0 text-slate-400 transition-transform', historicoAbierto && 'rotate-90')}
+            />
+            <span className="font-display text-sm font-bold tracking-tight text-slate-900">Pólizas dadas de baja</span>
+            <span className="ml-auto rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-slate-600">
+              {historico.length}
+            </span>
+          </button>
+
+          {historicoAbierto && (
+            <div id="polizas-dadas-de-baja" className="overflow-x-auto border-t border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50">
+                  <tr className="border-b border-slate-200">
+                    <th className={TH}>Estado</th>
+                    <th className={TH}>Compañía</th>
+                    <th className={TH}>Póliza</th>
+                    <th className={TH}>Vehículo</th>
+                    <th className={TH}>Vigencia</th>
+                    <th className={TH}>Motivo de la baja</th>
+                    <th className={TH}>Fecha de baja</th>
+                    <th className={TH} />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </Caja>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {historico.map((poliza) => (
+                    <tr
+                      key={poliza.id}
+                      onClick={() => alAbrirPoliza(poliza.id)}
+                      className="cursor-pointer border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                    >
+                      <td className={TD}>
+                        <Etiqueta tono="neutro">{NOMBRE_ESTADO_POLIZA[poliza.estado]}</Etiqueta>
+                      </td>
+                      <td className={cx(TD, 'font-medium text-slate-900')}>{poliza.compania ?? '—'}</td>
+                      <td className={cx(TD, 'font-mono text-xs')}>{poliza.numero ?? '—'}</td>
+                      <td className={TD}>
+                        {poliza.vehiculo ?? '—'}
+                        {poliza.patente && <span className="ml-1 font-mono text-xs text-slate-500">{poliza.patente}</span>}
+                      </td>
+                      <td className={cx(TD, 'whitespace-nowrap tabular-nums')}>{rangoDeVigencia(poliza)}</td>
+                      <td className={TD}>
+                        {poliza.estado === 'RENOVADA' ? (
+                          <span className="text-slate-400">Se renovó con otro número</span>
+                        ) : (
+                          (poliza.motivoBaja ?? <span className="text-slate-400">sin motivo cargado</span>)
+                        )}
+                      </td>
+                      <td className={cx(TD, 'whitespace-nowrap tabular-nums')}>{poliza.fechaBaja ?? '—'}</td>
+                      <td className={cx(TD, 'text-right')}>
+                        <BotonAbrir onClick={() => alAbrirPoliza(poliza.id)} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   )
 }
