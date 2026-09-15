@@ -1596,6 +1596,12 @@ export interface FiltrosPolizas {
   coberturas: string[]
   /** Las siete de `src/shared/ramas.ts`, más lo que la base tenga fuera del catálogo. */
   ramas: string[]
+  /**
+   * El botón «Pólizas dadas de baja» (14.1): apagado (u omitido, para no romper a quien todavía no lo
+   * manda) muestra la cartera vigente; prendido, sólo BAJA y RENOVADA. Si `estados` trae algo elegido a
+   * mano, ese filtro manda y este interruptor no importa.
+   */
+  verDadasDeBaja?: boolean
 }
 
 /** Una regla de la matriz de coberturas: qué antigüedad de vehículo acepta cada compañía. */
@@ -1902,7 +1908,16 @@ export interface CatalogosDePoliza {
 
 export interface ListadoPolizas {
   filas: PolizaDeCliente[]
+  /** Cuántas pólizas hay en cartera (ACTIVA o VENCIDA) en TODA la base: no baja con los demás filtros. */
   total: number
+  /** Cuántas están dadas de baja o renovadas con otro número: lo que cuenta el botón para mostrarlas. */
+  totalDadasDeBaja: number
+  /**
+   * Con una búsqueda escrita y el botón de dadas de baja apagado, cuántas de las que quedaron afuera
+   * por eso coinciden igual con lo que se buscó. 0 cuando no aplica (sin búsqueda, con el botón
+   * prendido, o con un estado elegido a mano). Es lo que dispara el aviso «¿buscabas una dada de baja?».
+   */
+  coincidenDadasDeBaja: number
   catalogos: CatalogosDePoliza
   hoy: string
 }

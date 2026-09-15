@@ -32,7 +32,7 @@ export const TONO_DE_ESTADO: Record<EstadoPoliza, 'exito' | 'aviso' | 'neutro'> 
   BAJA: 'neutro',
 }
 
-const FILTROS_VACIOS: FiltrosPolizas = { busqueda: '', estados: [], companias: [], sucursales: [], coberturas: [], ramas: [] }
+const FILTROS_VACIOS: FiltrosPolizas = { busqueda: '', estados: [], companias: [], sucursales: [], coberturas: [], ramas: [], verDadasDeBaja: false }
 
 /** Qué se está mostrando. El formulario no es otra pantalla del menú: es un modo de ésta. */
 type Vista = { pantalla: 'listado' } | { pantalla: 'formulario'; polizaId: number | null; clienteIdInicial: number | null }
@@ -262,17 +262,27 @@ export function Polizas() {
       filtros.companias.length ||
       filtros.sucursales.length ||
       filtros.coberturas.length ||
-      filtros.ramas.length,
+      filtros.ramas.length ||
+      filtros.verDadasDeBaja,
   )
   const catalogos = datos?.catalogos
+  const verDadasDeBaja = filtros.verDadasDeBaja ?? false
+  // Con un estado elegido a mano ese filtro manda: el botón deja de decidir qué se ve, así que el
+  // aviso de «hay dadas de baja ocultas» tampoco tiene sentido ahí.
+  const estadoElegidoAMano = filtros.estados.length > 0
+  // El número grande de arriba describe lo que se está mirando: con el botón prendido son las dadas
+  // de baja, no la cartera. Si no, quedaba «Pólizas 2.300» encima de una tabla llena de bajas.
+  const mirandoDadasDeBaja = verDadasDeBaja && !estadoElegidoAMano
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
       <div className="flex flex-wrap items-center gap-3">
         <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5">
-          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Pólizas</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+            {mirandoDadasDeBaja ? 'Dadas de baja' : 'Pólizas'}
+          </span>
           <span className="ml-2 font-display text-lg font-extrabold tabular-nums text-slate-900">
-            {(datos?.total ?? 0).toLocaleString('es-AR')}
+            {((mirandoDadasDeBaja ? datos?.totalDadasDeBaja : datos?.total) ?? 0).toLocaleString('es-AR')}
           </span>
         </div>
         <p className="max-w-xl text-sm text-slate-500">Una fila por póliza. Hacé clic en cualquiera para abrirla y editarla.</p>
@@ -338,6 +348,15 @@ export function Polizas() {
           textoDe={(r) => NOMBRE_RAMA[r as Rama] ?? r}
           alCambiar={(v) => setFiltros((f) => ({ ...f, ramas: v }))}
         />
+        <Boton
+          tamano="sm"
+          variante={verDadasDeBaja ? 'primario' : 'secundario'}
+          icono="carpeta"
+          aria-pressed={verDadasDeBaja}
+          onClick={() => setFiltros((f) => ({ ...f, verDadasDeBaja: !(f.verDadasDeBaja ?? false) }))}
+        >
+          Pólizas dadas de baja ({(datos?.totalDadasDeBaja ?? 0).toLocaleString('es-AR')})
+        </Boton>
         {(hayFiltros || texto) && (
           <Boton
             tamano="sm"
@@ -353,9 +372,35 @@ export function Polizas() {
         )}
         <SelectorDeColumnas columnas={columnas} ocultas={ocultas} alAlternar={alternarColumna} alMostrarTodas={mostrarTodas} />
         <span className="ml-auto text-sm text-slate-500 tabular-nums">
-          {(datos?.filas.length ?? 0).toLocaleString('es-AR')} de {(datos?.total ?? 0).toLocaleString('es-AR')} pólizas
+          {mirandoDadasDeBaja ? (
+            <>
+              {(datos?.filas.length ?? 0).toLocaleString('es-AR')} de {(datos?.totalDadasDeBaja ?? 0).toLocaleString('es-AR')} pólizas dadas de
+              baja
+            </>
+          ) : (
+            <>
+              {(datos?.filas.length ?? 0).toLocaleString('es-AR')} de {(datos?.total ?? 0).toLocaleString('es-AR')} pólizas
+            </>
+          )}
         </span>
       </div>
+
+      {/* Con la búsqueda escrita y el botón apagado, una dada de baja que coincide no desaparece sin
+          avisar: acá está el atajo para ir a verla, en vez de que la agencia crea que se perdió. */}
+      {!verDadasDeBaja && !estadoElegidoAMano && (datos?.coincidenDadasDeBaja ?? 0) > 0 && (
+        <p className="text-sm text-slate-600">
+          {datos!.coincidenDadasDeBaja === 1
+            ? 'Hay una póliza dada de baja que coincide con la búsqueda y no se está mostrando.'
+            : `Hay ${datos!.coincidenDadasDeBaja} pólizas dadas de baja que coinciden con la búsqueda y no se están mostrando.`}{' '}
+          <button
+            type="button"
+            className="font-semibold text-marino-700 underline"
+            onClick={() => setFiltros((f) => ({ ...f, verDadasDeBaja: true }))}
+          >
+            Ver pólizas dadas de baja
+          </button>
+        </p>
+      )}
 
       {error && <Alerta tono="error">{error}</Alerta>}
       {aviso && <Alerta tono="exito">{aviso}</Alerta>}

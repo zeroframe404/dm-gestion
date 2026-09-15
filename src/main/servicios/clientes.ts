@@ -7,7 +7,7 @@
 //
 // Notas y tareas son internas de la aplicación: en la hoja no hay ninguna columna donde ponerlas, así
 // que no se encolan; sí quedan en el historial, como todo lo que se toca desde acá.
-import { diasParaVencer, estadoDePoliza, aDia } from '../../shared/polizas'
+import { diasParaVencer, estadoDePoliza, estaEnLaCartera, aDia } from '../../shared/polizas'
 import {
   DIRECCION_VACIA,
   direccionTienePartes,
@@ -26,7 +26,6 @@ import {
   type DatosDeCliente,
   type DatosDeTarea,
   type EstadoDeCliente,
-  type EstadoPoliza,
   type EstadoTarea,
   type FichaCliente,
   type FilaCliente,
@@ -224,7 +223,12 @@ function clientesConDeuda(clienteId: number | null): Set<number> {
     .prepare(
       `SELECT c.cliente_id, c.poliza_id, c.pago_fecha, COALESCE(c.forma_pago, p.forma_pago) AS forma_pago
        FROM cuotas_mes c LEFT JOIN polizas p ON p.id = c.poliza_id
-       WHERE c.periodo = @periodo AND c.dada_de_baja = 0 AND (@cliente IS NULL OR c.cliente_id = @cliente)`,
+       WHERE c.periodo = @periodo AND c.dada_de_baja = 0
+         -- La misma guarda que usan deudores.ts y cobranzas.ts: una póliza dada de baja no debe
+         -- contarse como deuda, aunque la fila del mes haya quedado sin marcar. Sin póliza (LEFT JOIN
+         -- sin coincidencia) se la trata como activa: no hay motivo para no pedirle la cuota a ese cliente.
+         AND COALESCE(p.activa, 1) = 1
+         AND (@cliente IS NULL OR c.cliente_id = @cliente)`,
     )
     .all({ periodo, cliente: clienteId }) as Array<{
     cliente_id: number | null
@@ -527,11 +531,6 @@ function describirVehiculo(cruda: PolizaCruda): string | null {
   return descripcion || limpiar(cruda.tipo) || null
 }
 
-/** Las que siguen siendo cartera de la agencia. Fuera quedan la baja y la que se renovó con otro número. */
-function estaEnLaCartera(estado: EstadoPoliza): boolean {
-  return estado === 'ACTIVA' || estado === 'VENCIDA'
-}
-
 function polizasDe(cliente: ClienteCrudo, hoy: string): PolizaDeCliente[] {
   const base = db()
   const crudas = base
@@ -632,6 +631,9 @@ function vehiculosDe(clienteId: number, polizas: PolizaDeCliente[]): VehiculoDeC
   const porVehiculo = new Map<number, number>()
   for (const poliza of polizas) {
     if (poliza.vehiculoId === null) continue
+    // Sólo las que siguen en cartera: una póliza dada de baja o renovada no debería seguir sumando en
+    // la columna «Pólizas» de la pestaña Vehículos y riesgos, aunque siga viéndose en el histórico.
+    if (!estaEnLaCartera(poliza.estado)) continue
     porVehiculo.set(poliza.vehiculoId, (porVehiculo.get(poliza.vehiculoId) ?? 0) + 1)
   }
   const filas = db()

@@ -10,6 +10,7 @@ import {
   comoTextoDeFecha,
   diasParaVencer,
   estadoDePoliza,
+  estaEnLaCartera,
   pareceIso,
   validarAntiguedad,
 } from '../../shared/polizas'
@@ -262,7 +263,10 @@ export function vehiculosDeCliente(clienteId: number): VehiculoDeCliente[] {
     .prepare(
       `SELECT v.id, v.patente, v.marca, v.modelo, v.linea, v.anio, v.anio_numero, v.tipo, v.categoria, v.motor, v.chasis, v.uso, v.color,
               v.direccion_riesgo, v.titular_nombre, v.titular_documento, v.integrantes,
-              (SELECT COUNT(*) FROM polizas p WHERE p.vehiculo_id = v.id) AS polizas
+              -- Sólo las que siguen en cartera (ACTIVA o VENCIDA): 'activa = 1' alcanza porque
+              -- BAJA y RENOVADA sólo se derivan cuando el flag está en 0 (ver esRenovada() arriba y
+              -- estadoDePoliza() en shared/polizas.ts) — no hace falta repetir esa cuenta acá.
+              (SELECT COUNT(*) FROM polizas p WHERE p.vehiculo_id = v.id AND p.activa = 1) AS polizas
        FROM vehiculos v WHERE v.cliente_id = ? ORDER BY v.patente, v.marca, v.id`,
     )
     .all(id) as Array<{
@@ -378,6 +382,7 @@ export function listarPolizas(filtros: FiltrosPolizas): ListadoPolizas {
   const sucursales = listaDeFiltro(f.sucursales)
   const coberturas = listaDeFiltro(f.coberturas)
   const ramas = listaDeFiltro(f.ramas)
+  const verDadasDeBaja = Boolean(f.verDadasDeBaja)
   const hoy = hoyLocal()
 
   // Todos los filtros se resuelven en memoria, con `normalizarTexto`. En SQL no se puede: `UPPER()` de
@@ -389,7 +394,18 @@ export function listarPolizas(filtros: FiltrosPolizas): ListadoPolizas {
     .prepare(`${SELECT_POLIZAS} ORDER BY cliente_nombre COLLATE NOCASE, p.id`)
     .all({ periodo: periodoAbierto() }) as FilaCrudaPoliza[]
 
-  const filas = crudas
+  // El total y las dadas de baja son el encabezado de la pantalla: cuántas pólizas HAY, no cuántas
+  // quedaron después de filtrar. Por eso se cuentan sobre TODA la cartera, antes de compañía, sucursal,
+  // cobertura, rama o búsqueda —los mismos que antes dejaban el número de arriba clavado, sólo que
+  // ahora además hay que separar cartera vigente de dada de baja.
+  let total = 0
+  let totalDadasDeBaja = 0
+  for (const cruda of crudas) {
+    if (estaEnLaCartera(aPoliza(cruda, hoy).estado)) total++
+    else totalDadasDeBaja++
+  }
+
+  const filtradas = crudas
     .filter((fila) => coincideAlguno(companias, fila.compania, mismoTexto))
     .filter((fila) => coincideAlguno(coberturas, fila.cobertura, mismoTexto))
     // La sucursal no se compara con el texto pelado: la compara `mismaSucursal`, que además de las
@@ -406,10 +422,20 @@ export function listarPolizas(filtros: FiltrosPolizas): ListadoPolizas {
     })
     .filter((fila) => coincideLaBusqueda(fila, busqueda))
     .map((fila) => aPoliza(fila, hoy))
-    .filter((poliza) => estados.length === 0 || estados.includes(poliza.estado))
 
-  const total = (db().prepare('SELECT COUNT(*) AS n FROM polizas').get() as { n: number }).n
-  return { filas, total, catalogos: catalogosDePoliza(), hoy }
+  // Si el usuario eligió un estado a mano, esa elección manda sobre el botón de dadas de baja: pedir
+  // «Baja» de la lista de Estado tiene que traer bajas aunque el botón esté apagado. Sin nada elegido,
+  // el botón decide entre la cartera vigente (por default) y las dos formas de salir de ella.
+  const filas = filtradas.filter((poliza) =>
+    estados.length > 0 ? estados.includes(poliza.estado) : estaEnLaCartera(poliza.estado) !== verDadasDeBaja,
+  )
+
+  // Con la búsqueda escrita y el botón apagado, una póliza dada de baja que coincide no puede
+  // desaparecer sin avisar: se cuenta aparte para que la pantalla ofrezca el atajo a «dadas de baja».
+  const coincidenDadasDeBaja =
+    estados.length === 0 && !verDadasDeBaja && busqueda ? filtradas.filter((poliza) => !estaEnLaCartera(poliza.estado)).length : 0
+
+  return { filas, total, totalDadasDeBaja, coincidenDadasDeBaja, catalogos: catalogosDePoliza(), hoy }
 }
 
 /** Se busca por nombre, documento, número de póliza y patente, que es lo que se tiene a mano en el mostrador. */

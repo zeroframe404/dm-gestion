@@ -17,7 +17,7 @@ import { cuotasDelClienteEnElMes } from '../src/main/servicios/cartera'
 import { crearSiniestro } from '../src/main/servicios/siniestros'
 import { DIRECCION_VACIA, direccionTienePartes, partesDesdeRenglon, sanearDireccion, textoDeDireccion } from '../src/shared/direccion'
 import { hoyLocal } from '../src/shared/semaforo'
-import { darDeBajaPoliza } from '../src/main/servicios/polizas'
+import { darDeBajaPoliza, polizasDeCliente } from '../src/main/servicios/polizas'
 import { cuantasPendientes } from '../src/main/sincronizacion/cola'
 import type { DatosDeCliente, FichaCliente, FiltrosClientes, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
@@ -185,6 +185,23 @@ test('el que se fue queda como baja y el que nunca tuvo póliza no', async () =>
   assert.ok(listarClientes({ ...SIN_FILTROS, estado: 'sin-polizas' }).filas.some((f) => f.id === recienCreado.id))
 })
 
+test('una póliza dada de baja no arrastra su cuota impaga a la deuda del cliente (14.1)', async () => {
+  await carteraDePrueba()
+  // La agencia se quejó de que los dados de baja seguían empujando el semáforo de deuda: la baja saca
+  // la póliza de la cartera, pero la fila de `cuotas_mes` de ese mes queda como estaba.
+  const antes = listarClientes({ ...SIN_FILTROS, estado: 'activos-con-deuda' }).filas
+  assert.ok(antes.length > 0, 'la hoja simulada tiene que traer alguien con deuda para poder probar esto')
+  const deudor = antes[0]!
+
+  for (const poliza of polizasDeCliente(deudor.id).filter((p) => p.estado === 'ACTIVA')) {
+    darDeBajaPoliza(poliza.id, { motivo: 'VENDIO', nota: '' }, DANIEL)
+  }
+
+  const despues = listarClientes({ ...SIN_FILTROS, busqueda: deudor.nombre }).filas[0]
+  assert.ok(despues)
+  assert.equal(despues.conDeuda, false, 'sin pólizas activas no le queda ninguna cuota que perseguir')
+})
+
 test('el débito automático no cuenta como deuda aunque la cuota no esté paga', async () => {
   await carteraDePrueba()
   // González paga por DEBITO en la hoja simulada: se cobra sola, no hay que perseguirla.
@@ -229,6 +246,9 @@ test('la ficha separa las pólizas activas del histórico, con el motivo de cada
   const laMoto = fichaDeCliente(perez).polizas.find((p) => p.numero === CLIENTES.perezMoto.poliza)
   assert.ok(laMoto, 'la moto tiene que estar entre las pólizas de Pérez')
 
+  const motoAntes = fichaDeCliente(perez).vehiculos.find((v) => v.patente === CLIENTES.perezMoto.patente)
+  assert.equal(motoAntes?.polizas, 1, 'antes de la baja, la moto cuenta su única póliza')
+
   darDeBajaPoliza(laMoto.id, { motivo: 'VENDIO', nota: 'Vendió la moto' }, DANIEL)
 
   const ficha = fichaDeCliente(perez)
@@ -240,6 +260,11 @@ test('la ficha separa las pólizas activas del histórico, con el motivo de cada
   assert.equal(historico.length, 1, 'y la moto pasa al histórico')
   assert.equal(historico[0]!.motivoBaja, 'VENDIO', 'con su motivo, que es lo que se mira al reclamar')
   assert.ok(historico[0]!.fechaBaja, 'y con la fecha')
+
+  // 14.1: la póliza dada de baja sigue viéndose en la ficha del vehículo, pero deja de contar en la
+  // columna «Pólizas» de la pestaña Vehículos y riesgos —es cartera perdida, no cartera vigente.
+  const motoDespues = ficha.vehiculos.find((v) => v.patente === CLIENTES.perezMoto.patente)
+  assert.equal(motoDespues?.polizas, 0, 'la póliza dada de baja no cuenta más en el vehículo')
 })
 
 test('la ficha de un cliente con dos vehículos muestra las dos pólizas activas', async () => {

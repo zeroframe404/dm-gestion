@@ -20,7 +20,7 @@ import { editarRegla, matrizDeCobertura, crearRegla } from '../src/main/servicio
 import { cuantasPendientes } from '../src/main/sincronizacion/cola'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { hoyLocal } from '../src/shared/semaforo'
-import type { DatosDePoliza, FiltrosPolizas, SesionUsuario } from '../src/shared/tipos'
+import { ESTADOS_DE_POLIZA, type DatosDePoliza, type FiltrosPolizas, type SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
 import { importar } from './ayuda'
@@ -44,6 +44,8 @@ const EMPLEADA: SesionUsuario = {
 }
 
 const SIN_FILTROS: FiltrosPolizas = { busqueda: '', estados: [], companias: [], sucursales: [], coberturas: [], ramas: [] }
+/** Con los cuatro estados elegidos a mano: el estado explícito manda, así que trae TODO, cartera y baja. */
+const TODOS_LOS_ESTADOS: FiltrosPolizas = { ...SIN_FILTROS, estados: [...ESTADOS_DE_POLIZA] }
 
 /**
  * Dos importaciones, como pasa mes a mes: primero la hoja hasta JULIO y después con AGOSTO. Es lo único
@@ -123,7 +125,9 @@ function datosBase(clienteId: number): DatosDePoliza {
 
 test('el listado muestra una fila por póliza, con su estado calculado', async () => {
   await carteraDePrueba()
-  const listado = listarPolizas(SIN_FILTROS)
+  // Con los cuatro estados elegidos a mano se ve todo, cartera y baja: es la forma de mirar el
+  // listado entero en esta prueba sin depender del comportamiento por default (ver más abajo).
+  const listado = listarPolizas(TODOS_LOS_ESTADOS)
 
   assert.ok(listado.filas.length >= 7, `esperaba al menos 7 pólizas, hubo ${listado.filas.length}`)
   assert.equal(listado.hoy, hoyLocal())
@@ -152,7 +156,7 @@ test('el listado muestra una fila por póliza, con su estado calculado', async (
 
 test('los filtros del listado acotan por estado, compañía y búsqueda', async () => {
   await carteraDePrueba()
-  const todas = listarPolizas(SIN_FILTROS)
+  const todas = listarPolizas(TODOS_LOS_ESTADOS)
 
   const activas = listarPolizas({ ...SIN_FILTROS, estados: ['ACTIVA'] })
   assert.ok(activas.filas.every((f) => f.estado === 'ACTIVA'))
@@ -168,8 +172,67 @@ test('los filtros del listado acotan por estado, compañía y búsqueda', async 
   assert.equal(listarPolizas({ ...SIN_FILTROS, busqueda: CLIENTES.suarez.poliza }).filas.length, 1, 'por número de póliza')
   assert.equal(listarPolizas({ ...SIN_FILTROS, busqueda: CLIENTES.lopez.patente }).filas.length, 1, 'por patente')
 
-  // El total es cuántas pólizas hay, no cuántas quedaron después de filtrar.
-  assert.equal(sancor.total, todas.filas.length)
+  // El total es cuántas pólizas hay EN CARTERA, no cuántas quedaron después de filtrar: no se mueve
+  // con compañía, sucursal, cobertura, rama ni búsqueda, y tampoco cuenta la de Fernández (BAJA).
+  const enCartera = listarPolizas(SIN_FILTROS)
+  assert.equal(sancor.total, enCartera.total)
+  assert.equal(sancor.total, enCartera.filas.length, 'sin otros filtros, el total coincide con la lista entera')
+  assert.ok(sancor.total < todas.filas.length, 'el total no cuenta la de Fernández, que sí está en TODOS_LOS_ESTADOS')
+})
+
+test('por default el listado no trae las dadas de baja, pero las cuenta aparte', async () => {
+  await carteraDePrueba()
+  const porDefecto = listarPolizas(SIN_FILTROS)
+
+  assert.ok(porDefecto.filas.every((f) => f.estado === 'ACTIVA' || f.estado === 'VENCIDA'))
+  assert.ok(
+    !porDefecto.filas.some((f) => f.numero === CLIENTES.fernandez.poliza),
+    'la de Fernández (BAJA) no aparece por default',
+  )
+  assert.ok(porDefecto.totalDadasDeBaja >= 1, 'pero se cuenta en totalDadasDeBaja')
+
+  const dadasDeBaja = listarPolizas({ ...SIN_FILTROS, verDadasDeBaja: true })
+  assert.ok(dadasDeBaja.filas.length > 0)
+  assert.ok(dadasDeBaja.filas.every((f) => f.estado === 'BAJA' || f.estado === 'RENOVADA'))
+  assert.equal(dadasDeBaja.filas.length, porDefecto.totalDadasDeBaja, 'el botón trae exactamente lo que cuenta')
+  assert.ok(dadasDeBaja.filas.some((f) => f.numero === CLIENTES.fernandez.poliza))
+
+  // El total (cartera) y totalDadasDeBaja no dependen del botón: son el mismo número de los dos lados.
+  assert.equal(dadasDeBaja.total, porDefecto.total)
+  assert.equal(dadasDeBaja.totalDadasDeBaja, porDefecto.totalDadasDeBaja)
+})
+
+test('un estado elegido a mano gana, prenda o no el botón de dadas de baja', async () => {
+  await carteraDePrueba()
+  const sinBoton = listarPolizas({ ...SIN_FILTROS, estados: ['ACTIVA'] })
+  const conBoton = listarPolizas({ ...SIN_FILTROS, estados: ['ACTIVA'], verDadasDeBaja: true })
+  assert.ok(sinBoton.filas.every((f) => f.estado === 'ACTIVA'))
+  assert.deepEqual(
+    conBoton.filas.map((f) => f.id).sort(),
+    sinBoton.filas.map((f) => f.id).sort(),
+    'con un estado elegido, el botón no cambia nada',
+  )
+
+  const soloBaja = listarPolizas({ ...SIN_FILTROS, estados: ['BAJA'], verDadasDeBaja: false })
+  assert.ok(soloBaja.filas.length > 0 && soloBaja.filas.every((f) => f.estado === 'BAJA'), 'pedir Baja trae bajas aunque el botón esté apagado')
+})
+
+test('con el botón apagado, una dada de baja que coincide con la búsqueda no desaparece sin avisar', async () => {
+  await carteraDePrueba()
+  // Por la patente, que es única en la hoja de prueba: su número de póliza («111222») es sustring del
+  // DNI de Pérez («30111222») y también matchea sus pólizas activas, lo que arruinaría esta cuenta.
+  const oculta = listarPolizas({ ...SIN_FILTROS, busqueda: CLIENTES.fernandez.patente })
+  assert.equal(oculta.filas.length, 0, 'la de Fernández está dada de baja: no aparece por default')
+  assert.equal(oculta.coincidenDadasDeBaja, 1, 'pero el aviso cuenta que hay una coincidencia oculta')
+
+  const conElBoton = listarPolizas({ ...SIN_FILTROS, busqueda: CLIENTES.fernandez.patente, verDadasDeBaja: true })
+  assert.equal(conElBoton.filas.length, 1, 'con el botón prendido, aparece')
+  assert.equal(conElBoton.coincidenDadasDeBaja, 0, 'y el aviso ya no hace falta')
+
+  // Sin búsqueda no hay nada que avisar, aunque haya dadas de baja en la base.
+  assert.equal(listarPolizas(SIN_FILTROS).coincidenDadasDeBaja, 0)
+  // Ni con un estado elegido a mano: ahí ya se ve lo que se pidió, no hace falta el aviso.
+  assert.equal(listarPolizas({ ...SIN_FILTROS, busqueda: CLIENTES.fernandez.patente, estados: ['BAJA'] }).coincidenDadasDeBaja, 0)
 })
 
 test('las pólizas de un cliente y sus vehículos se pueden pedir por separado, para el formulario', async () => {
@@ -180,6 +243,22 @@ test('las pólizas de un cliente y sus vehículos se pueden pedir por separado, 
   const vehiculos = vehiculosDeCliente(perez)
   assert.equal(vehiculos.length, 2, 'el auto y la moto')
   assert.ok(vehiculos.some((v) => v.marca === 'HONDA'))
+})
+
+test('la columna «Pólizas» de un vehículo sólo cuenta las que siguen en cartera', async () => {
+  await carteraDePrueba()
+  const perez = idDeCliente(CLIENTES.perezAuto.nombre)
+  const moto = polizasDeCliente(perez).find((p) => p.numero === CLIENTES.perezMoto.poliza)!
+
+  const antesDeLaBaja = vehiculosDeCliente(perez).find((v) => v.patente === moto.patente)
+  assert.equal(antesDeLaBaja?.polizas, 1, 'la moto tiene su única póliza, activa')
+
+  darDeBajaPoliza(moto.id, { motivo: 'VENDIO', nota: '' }, DANIEL)
+
+  // El vehículo no se borra ni se le va la póliza de la ficha: lo único que cambia es que ya no cuenta
+  // en la columna, porque salió de la cartera.
+  const despuesDeLaBaja = vehiculosDeCliente(perez).find((v) => v.patente === moto.patente)
+  assert.equal(despuesDeLaBaja?.polizas, 0, 'la dada de baja no cuenta más')
 })
 
 // ---------------------------------------------------------------------------

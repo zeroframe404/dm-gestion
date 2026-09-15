@@ -10,8 +10,9 @@ export const AYUDA_POLIZAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Qué es esta pantalla',
         parrafos: [
-          'Es el listado completo de pólizas de la agencia: cliente, compañía, número, cobertura, patente y vehículo, cuota, vigencia y estado. Hacé clic en cualquier fila para abrirla y corregir lo que haga falta. Arriba tenés un buscador (por cliente, DNI/CUIT, número de póliza o patente) y cuatro filtros —Estado, Compañía, Sucursal y Cobertura— que se pueden combinar entre sí.',
-          'No es lo mismo que la Cartera: la Cartera muestra la planilla del mes con lo que hay que cobrar; Pólizas muestra el historial completo de cada póliza, esté vigente, vencida o dada de baja, sin importar el mes.',
+          'Es el listado de pólizas de la agencia: cliente, compañía, número, cobertura, patente y vehículo, cuota, vigencia y estado. Hacé clic en cualquier fila para abrirla y corregir lo que haga falta. Arriba tenés un buscador (por cliente, DNI/CUIT, número de póliza o patente) y cinco filtros —Estado, Compañía, Sucursal, Cobertura y Rama— que se pueden combinar entre sí.',
+          'Por default sólo se ven las que siguen en cartera (Activa o Vencida); las dadas de baja y las renovadas con otro número quedan afuera del listado y del número de arriba, y se cuentan aparte en el botón «Pólizas dadas de baja» de la barra de filtros, que las muestra al tocarlo. Si buscás algo con el botón apagado y hay alguna dada de baja que coincide, aparece un aviso con un atajo para ir a verla: nada se esconde sin decirlo. Elegir un estado a mano en el filtro «Estado» (por ejemplo, «Baja») manda por encima del botón.',
+          'No es lo mismo que la Cartera: la Cartera muestra la planilla del mes con lo que hay que cobrar; Pólizas muestra el historial completo de cada póliza vigente, esté activa o vencida, sin importar el mes (y las dadas de baja, detrás de su propio botón).',
         ],
       },
       {
@@ -85,6 +86,11 @@ export const AYUDA_POLIZAS: Record<string, ContenidoDeAyuda> = {
       {
         termino: '«Vence en X días»',
         explicacion: 'Aviso que aparece cuando a una póliza activa le quedan 60 días o menos de vigencia: la misma cuenta que usa la bandeja de Renovaciones.',
+      },
+      {
+        termino: 'Pólizas dadas de baja',
+        explicacion:
+          'El botón de la barra de filtros: junta las que se dieron de baja y las que se renovaron con otro número, que son las dos formas de salir de la cartera. Quedan afuera del listado y del total de arriba salvo que lo toques.',
       },
     ],
   },

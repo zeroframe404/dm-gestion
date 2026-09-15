@@ -11,12 +11,14 @@ import {
   diasEntre,
   diasParaVencer,
   estadoDePoliza,
+  estaEnLaCartera,
   fechaCorta,
   lunesDe,
   mesesDespues,
   mesesDeVigencia,
   pideAumentoAlRenovar,
   porcentajeDeAumento,
+  seSalioDeLaCartera,
   tituloDeSemana,
   unAnioDespues,
   validarAntiguedad,
@@ -175,6 +177,23 @@ test('categoriaDeCartera: la renovada no entra en ninguna categoría, para no du
 test('categoriaDeCartera: sin fecha de vigencia no se puede afirmar que venció', () => {
   assert.equal(categoriaDeCartera(true, false, null, '2026-08-21'), 'ACTIVA')
   assert.equal(categoriaDeCartera(false, false, null, '2026-08-21'), 'BAJA')
+})
+
+// ---------------------------------------------------------------------------
+// En cartera / fuera de cartera (14.1: lo que antes vivía duplicado en clientes.ts)
+// ---------------------------------------------------------------------------
+
+test('estaEnLaCartera: sólo ACTIVA y VENCIDA cuentan; BAJA y RENOVADA no', () => {
+  assert.equal(estaEnLaCartera('ACTIVA'), true)
+  assert.equal(estaEnLaCartera('VENCIDA'), true)
+  assert.equal(estaEnLaCartera('BAJA'), false)
+  assert.equal(estaEnLaCartera('RENOVADA'), false)
+})
+
+test('seSalioDeLaCartera es exactamente el complemento de estaEnLaCartera', () => {
+  for (const estado of ['ACTIVA', 'VENCIDA', 'BAJA', 'RENOVADA'] as const) {
+    assert.equal(seSalioDeLaCartera(estado), !estaEnLaCartera(estado), `discrepan en ${estado}`)
+  }
 })
 
 // ---------------------------------------------------------------------------
