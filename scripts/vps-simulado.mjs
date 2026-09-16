@@ -7,7 +7,7 @@ import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 
 /** Las mismas claves que acepta el servidor real: es una lista blanca, no un almacén libre. */
-const CLAVES_DE_AJUSTE = new Set(['vehiculos', 'referencias', 'google', 'meta', 'ticket', 'companias'])
+const CLAVES_DE_AJUSTE = new Set(['vehiculos', 'referencias', 'google', 'meta', 'ticket', 'companias', 'galeno'])
 
 const TOKEN_POR_DEFECTO = 'prueba'
 
