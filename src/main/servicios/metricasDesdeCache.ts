@@ -20,25 +20,41 @@
 // del proceso principal. Pasada la ventana de transición sin sorpresas, una limpieza aparte saca este
 // cotejo y el algoritmo local deja de correr en cada pedido.
 import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
+import { campoDeRama } from '../../shared/riesgos'
 import { mismaSucursal } from '../../shared/sucursales'
-import type {
-  BajaPorMotivo,
-  CobranzaDelMes,
-  DetalleDeAltas,
-  EstadisticasDeCartera,
-  FilaEstadistica,
-  FiltrosMetricas,
-  MesDeEvolucion,
-  PorcionMetrica,
-  ResumenDeCartera,
-  TableroMetricas,
-  TotalPorMedio,
+import {
+  NOMBRE_RAMA_DE_METRICA,
+  RAMAS_DE_METRICA,
+  type BajaPorMotivo,
+  type CobranzaDelMes,
+  type DetalleDeAltas,
+  type EstadisticasDeCartera,
+  type FilaDeAlta,
+  type FilaEstadistica,
+  type FiltrosMetricas,
+  type MesDeEvolucion,
+  type MetricasPorRama,
+  type PorcionMetrica,
+  type RamaDeMetrica,
+  type ResumenDeCartera,
+  type TableroMetricas,
+  type TotalPorMedio,
 } from '../../shared/tipos'
 import { limpiar, normalizarTexto } from '../importacion/normalizar'
 import { catalogos } from './cartera'
 import { cotejarNumeros, frescuraActual, tocaCotejar } from './cotejoDeMetricas'
 import { leerSnapshotDeMetrica } from './metricasCache'
-import { altasDelMes, claveDeLaFilaDeSucursal, estadisticasDeCarteraLocal, resumenDeCartera, tableroDeMetricasLocal } from './metricas'
+import {
+  altasDelMes,
+  cerrarPorRama,
+  claveDeLaFilaDeSucursal,
+  conteoPorRamaEnCero,
+  estadisticasDeCarteraLocal,
+  resumenDeCartera,
+  sumarConteos,
+  tableroDeMetricasLocal,
+  type ConteoPorRama,
+} from './metricas'
 
 const FORMATO_PERIODO = /^\d{4}-\d{2}$/
 const MESES_DE_EVOLUCION = 12
@@ -52,6 +68,8 @@ const MESES_DE_EVOLUCION = 12
 interface CeldaDeMetricasCache {
   sucursal: string
   compania: string
+  /** Ausente en un cálculo de una versión anterior del servidor (ver `vieneConRama`). */
+  rama?: RamaDeMetrica
   activos: number
   altas: number
   bajas: number
@@ -102,6 +120,30 @@ function esPayloadDeMetricas(valor: unknown): valor is MetricasPayloadCache {
   if (!valor || typeof valor !== 'object') return false
   const posible = valor as Partial<MetricasPayloadCache>
   return Array.isArray(posible.periodos) && typeof posible.porPeriodo === 'object' && posible.porPeriodo !== null
+}
+
+/**
+ * Si el cálculo del servidor ya viene separado por rama. Uno guardado por una versión anterior no trae
+ * `rama` en NINGUNA celda: ahí no se arma `porRama` y la pantalla muestra sólo el total, como antes —leer
+ * todo como autos y motos pondría un cero falso en riesgos varios—. Con al menos una celda que la trae,
+ * la celda sin `rama` es de autos y motos, que es como lo define el servidor.
+ */
+function vieneConRama(payload: MetricasPayloadCache): boolean {
+  return Object.values(payload.porPeriodo).some((datos) => datos.celdas.some((celda) => celda.rama !== undefined))
+}
+
+/** Suma una celda a su rama dentro de un conteo. */
+function sumarCeldaASuRama(conteo: ConteoPorRama, celda: CeldaDeMetricasCache): void {
+  const deLaRama = conteo[campoDeRama(celda.rama ?? 'AUTOS_MOTOS')]
+  deLaRama.activos += celda.activos
+  deLaRama.altas += celda.altas
+  deLaRama.bajas += celda.bajas
+}
+
+function porRamaDeCeldas(celdas: CeldaDeMetricasCache[], hayMesAnterior: boolean): MetricasPorRama {
+  const conteo = conteoPorRamaEnCero()
+  for (const celda of celdas) sumarCeldaASuRama(conteo, celda)
+  return cerrarPorRama(conteo, hayMesAnterior)
 }
 
 // ---------------------------------------------------------------------------
@@ -155,9 +197,15 @@ function aPorciones(mapa: Map<string, { etiqueta: string; cantidad: number }>, t
 
 function evolucionDesdeCache(payload: MetricasPayloadCache, periodo: string, sucursales: string[], conNumeros: boolean): MesDeEvolucion[] {
   const meses = payload.periodos.filter((p) => p <= periodo).slice(-MESES_DE_EVOLUCION)
+  // Igual que las tarjetas: la separación por rama sólo si el cálculo del servidor ya la trae.
+  const conRama = vieneConRama(payload)
   return meses.map((mes): MesDeEvolucion => {
     const datos = payload.porPeriodo[mes]
-    if (!datos) return { periodo: mes, activos: 0, altas: null, bajas: 0, cobrado: conNumeros ? 0 : null }
+    if (!datos) {
+      // El mes en cero de siempre, y su separación también en cero para que sigan sumando lo mismo.
+      const vacio: MesDeEvolucion = { periodo: mes, activos: 0, altas: null, bajas: 0, cobrado: conNumeros ? 0 : null }
+      return conRama ? { ...vacio, porRama: porRamaDeCeldas([], false) } : vacio
+    }
     const celdas = datos.celdas.filter((celda) => coincideAlguno(sucursales, celda.sucursal, mismaSucursal))
     return {
       periodo: mes,
@@ -165,6 +213,7 @@ function evolucionDesdeCache(payload: MetricasPayloadCache, periodo: string, suc
       altas: datos.hayMesAnterior ? celdas.reduce((suma, c) => suma + c.altas, 0) : null,
       bajas: celdas.reduce((suma, c) => suma + c.bajas, 0),
       cobrado: conNumeros ? celdas.reduce((suma, c) => suma + c.cobrado, 0) : null,
+      ...(conRama ? { porRama: porRamaDeCeldas(celdas, datos.hayMesAnterior) } : {}),
     }
   })
 }
@@ -182,9 +231,12 @@ export function tableroDesdeCache(payload: MetricasPayloadCache, filtros: Filtro
   const sucursales = sucursalesElegidas(filtros?.sucursales, disponiblesDeSucursal)
   const celdas = datosPeriodo.celdas.filter((celda) => coincideAlguno(sucursales, celda.sucursal, mismaSucursal))
 
+  // Las celdas vienen una por sucursal × compañía × rama, así que sumarlas todas da el total de las dos
+  // ramas juntas, que es lo que siempre dijeron estos tres números.
   const activos = celdas.reduce((suma, c) => suma + c.activos, 0)
   const altas = datosPeriodo.hayMesAnterior ? celdas.reduce((suma, c) => suma + c.altas, 0) : null
   const bajas = celdas.reduce((suma, c) => suma + c.bajas, 0)
+  const porRama = vieneConRama(payload) ? { porRama: porRamaDeCeldas(celdas, datosPeriodo.hayMesAnterior) } : {}
 
   const porCompania = new Map<string, { etiqueta: string; cantidad: number }>()
   const porSucursal = new Map<string, { etiqueta: string; cantidad: number }>()
@@ -241,6 +293,7 @@ export function tableroDesdeCache(payload: MetricasPayloadCache, filtros: Filtro
     bajas,
     bajasPorMotivo: bajasPorMotivoOrdenadas,
     hayMesAnterior: datosPeriodo.hayMesAnterior,
+    ...porRama,
     evolucion: evolucionDesdeCache(payload, periodo, sucursales, conNumeros),
     cobranza,
     siniestrosAbiertos,
@@ -260,26 +313,29 @@ interface AcumuladorDeFila {
   bajas: number
   pagos: number
   cobrado: number
+  porRama: ConteoPorRama
 }
 
 function tomarFila(mapa: Map<string, AcumuladorDeFila>, etiqueta: string): AcumuladorDeFila {
   const clave = normalizarTexto(etiqueta)
   const previa = mapa.get(clave)
   if (previa) return previa
-  const nueva: AcumuladorDeFila = { etiqueta, activos: 0, altas: 0, bajas: 0, pagos: 0, cobrado: 0 }
+  const nueva: AcumuladorDeFila = { etiqueta, activos: 0, altas: 0, bajas: 0, pagos: 0, cobrado: 0, porRama: conteoPorRamaEnCero() }
   mapa.set(clave, nueva)
   return nueva
 }
 
-function ordenarFilas(mapa: Map<string, AcumuladorDeFila>, conNumeros: boolean, hayMesAnterior: boolean): FilaEstadistica[] {
+/** `conRama` en false (un cálculo de una versión anterior del servidor) deja las filas sin `porRama`. */
+function ordenarFilas(mapa: Map<string, AcumuladorDeFila>, conNumeros: boolean, hayMesAnterior: boolean, conRama: boolean): FilaEstadistica[] {
   return [...mapa.values()]
-    .map(({ etiqueta, activos, altas, bajas, pagos, cobrado }) => ({
+    .map(({ etiqueta, activos, altas, bajas, pagos, cobrado, porRama }) => ({
       etiqueta,
       activos,
       bajas,
       pagos,
       altas: hayMesAnterior ? altas : null,
       cobrado: conNumeros ? cobrado : null,
+      ...(conRama ? { porRama: cerrarPorRama(porRama, hayMesAnterior) } : {}),
     }))
     .sort((a, b) => b.activos - a.activos || a.etiqueta.localeCompare(b.etiqueta, 'es'))
 }
@@ -303,6 +359,7 @@ export function estadisticasDesdeCache(
   const sucursales = sucursalesElegidas(sucursalesPedidas, disponiblesDeSucursal)
   const celdas = datosPeriodo.celdas.filter((celda) => coincideAlguno(sucursales, celda.sucursal, mismaSucursal))
 
+  const conRama = vieneConRama(payload)
   const companias = new Map<string, AcumuladorDeFila>()
   const sucursalesMapa = new Map<string, AcumuladorDeFila>()
   for (const celda of celdas) {
@@ -312,20 +369,22 @@ export function estadisticasDesdeCache(
       fila.bajas += celda.bajas
       fila.pagos += celda.pagos
       fila.cobrado += celda.cobrado
+      sumarCeldaASuRama(fila.porRama, celda)
     }
   }
 
-  const porCompania = ordenarFilas(companias, conNumeros, datosPeriodo.hayMesAnterior)
+  const porCompania = ordenarFilas(companias, conNumeros, datosPeriodo.hayMesAnterior, conRama)
   // El total sale de las filas por compañía, no del acumulador: cada cuota, baja y pago cae en una sola
   // fila de compañía, así que sumarlas da el total sin contar nada dos veces (mismo criterio que
   // `estadisticasDeCarteraLocal`).
+  const totalPorRama = cerrarPorRama(sumarConteos([...companias.values()].map((fila) => fila.porRama)), datosPeriodo.hayMesAnterior)
   return {
     periodo,
     periodos: payload.periodos,
     sucursalesElegidas: sucursales,
     sucursales: disponiblesDeSucursal,
     porCompania,
-    porSucursal: ordenarFilas(sucursalesMapa, conNumeros, datosPeriodo.hayMesAnterior),
+    porSucursal: ordenarFilas(sucursalesMapa, conNumeros, datosPeriodo.hayMesAnterior, conRama),
     totales: {
       etiqueta: 'Total',
       activos: porCompania.reduce((suma, fila) => suma + fila.activos, 0),
@@ -333,6 +392,7 @@ export function estadisticasDesdeCache(
       bajas: porCompania.reduce((suma, fila) => suma + fila.bajas, 0),
       pagos: porCompania.reduce((suma, fila) => suma + fila.pagos, 0),
       cobrado: conNumeros ? porCompania.reduce((suma, fila) => suma + (fila.cobrado ?? 0), 0) : null,
+      ...(conRama ? { porRama: totalPorRama } : {}),
     },
     hayMesAnterior: datosPeriodo.hayMesAnterior,
     resumenCartera,
@@ -343,6 +403,27 @@ export function estadisticasDesdeCache(
 // ---------------------------------------------------------------------------
 // Orquestación: caché primero, cálculo local como respaldo y como cotejo
 // ---------------------------------------------------------------------------
+
+type ParDeCotejo = [string, number | null, number | null]
+
+/**
+ * Los pares del cotejo separados por rama. Sólo cuando el servidor ya manda la separación: contra un
+ * cálculo de una versión anterior no hay con qué comparar, y cada cotejo anotaría una diferencia que no
+ * existe.
+ */
+function paresPorRama(local: MetricasPorRama | undefined, servidor: MetricasPorRama | undefined): ParDeCotejo[] {
+  if (!local || !servidor) return []
+  return RAMAS_DE_METRICA.flatMap((rama) => {
+    const campo = campoDeRama(rama)
+    // «activos · Riesgos varios» queda afuera del cotejo: la tabla local `riesgos_varios` no tiene
+    // columna ESTADO (ver migraciones.ts), así que acá no hay forma de saber si una fila está dada de
+    // baja o anulada, algo que el servidor sí descuenta de sus activos (metricas.riesgos.ts). Cotejar
+    // ese par marcaría una diferencia en cada carga aunque el número del servidor sea el correcto.
+    // Altas y bajas de Riesgos varios sí se comparan, porque no dependen de ESTADO.
+    const cifras = rama === 'RIESGOS_VARIOS' ? (['altas', 'bajas'] as const) : (['activos', 'altas', 'bajas'] as const)
+    return cifras.map((cifra): ParDeCotejo => [`${cifra} · ${NOMBRE_RAMA_DE_METRICA[rama]}`, local[campo][cifra], servidor[campo][cifra]])
+  })
+}
 
 /** `metricas:tablero`: usa el payload del servidor cuando lo tiene, cae al cálculo local si no. */
 export function tableroConCache(filtros: FiltrosMetricas, conNumeros: boolean): TableroMetricas {
@@ -362,6 +443,7 @@ export function tableroConCache(filtros: FiltrosMetricas, conNumeros: boolean): 
         ['cobrado', local.cobranza.cobrado, desdeCache.cobranza.cobrado],
         ['pendiente', local.cobranza.pendiente, desdeCache.cobranza.pendiente],
         ['siniestrosAbiertos', local.siniestrosAbiertos, desdeCache.siniestrosAbiertos],
+        ...paresPorRama(local.porRama, desdeCache.porRama),
       ])
     } catch (error) {
       console.error('[métricas] no se pudo cotejar el tablero contra el cálculo local:', error instanceof Error ? error.message : error)
@@ -390,6 +472,7 @@ export function estadisticasConCache(periodoPedido: string | null, sucursalesPed
         ['bajas', local.totales.bajas, desdeCache.totales.bajas],
         ['pagos', local.totales.pagos, desdeCache.totales.pagos],
         ['cobrado', local.totales.cobrado, desdeCache.totales.cobrado],
+        ...paresPorRama(local.totales.porRama, desdeCache.totales.porRama),
       ])
     } catch (error) {
       console.error('[métricas] no se pudo cotejar las estadísticas contra el cálculo local:', error instanceof Error ? error.message : error)
@@ -409,6 +492,9 @@ interface FilaDeAltaCache {
   numeroPoliza: string | null
   patente: string | null
   sucursal: string | null
+  /** Ausentes en un detalle de una versión anterior del servidor (ver `altasDesdeCache`). */
+  rama?: RamaDeMetrica
+  tipo?: string | null
 }
 
 export interface AltasPayloadCache {
@@ -434,15 +520,27 @@ export function altasDesdeCache(payload: AltasPayloadCache, periodoPedido: strin
   if (periodoLimpio && periodoLimpio !== payload.periodo) return null
 
   const sucursal = limpiar(sucursalPedida) || null
-  if (!payload.hayMesAnterior) return { periodo: payload.periodo, sucursal, hayMesAnterior: false, filas: [] }
+  // Un detalle guardado por una versión anterior del servidor no trae `rama` en ninguna fila: queda tal
+  // cual y la pantalla muestra una sola lista. Con alguna fila que la trae, la que no la trae es de autos
+  // y motos, igual que las celdas del tablero (ver `vieneConRama`).
+  const conRama = payload.filas.some((fila) => fila.rama !== undefined)
+  const filas: FilaDeAlta[] = conRama ? payload.filas.map((fila) => ({ ...fila, rama: fila.rama ?? 'AUTOS_MOTOS' })) : payload.filas
+  // Sin mes anterior no hay altas de la planilla que deducir; las de RIESGOS VARIOS salen de su fecha de
+  // emisión y sí se listan.
+  const deducibles = payload.hayMesAnterior ? filas : filas.filter((fila) => fila.rama === 'RIESGOS_VARIOS')
 
   const buscada = sucursal === null ? null : claveDeLaFilaDeSucursal(sucursal)
   return {
     periodo: payload.periodo,
     sucursal,
-    hayMesAnterior: true,
-    filas: payload.filas.filter((fila) => buscada === null || claveDeLaFilaDeSucursal(fila.sucursal) === buscada),
+    hayMesAnterior: payload.hayMesAnterior,
+    filas: deducibles.filter((fila) => buscada === null || claveDeLaFilaDeSucursal(fila.sucursal) === buscada),
   }
+}
+
+/** Cuántas filas de un detalle son de una rama. */
+function filasDeLaRama(filas: FilaDeAlta[], rama: RamaDeMetrica): number {
+  return filas.filter((fila) => fila.rama === rama).length
 }
 
 /**
@@ -463,7 +561,14 @@ export function altasConCache(periodoPedido: string | null, sucursalPedida: stri
   if (tocaCotejar(`altas:${desdeCache.periodo}:${sucursalPedida ?? ''}`)) {
     try {
       const local = altasDelMes(periodoPedido, sucursalPedida)
-      cotejarNumeros(`Altas ${desdeCache.periodo}${sucursalPedida ? ` · ${sucursalPedida}` : ''}`, [['filas', local.filas.length, desdeCache.filas.length]])
+      // Por rama sólo si el servidor ya la manda: un detalle viejo no tiene con qué compararse.
+      const porRama = desdeCache.filas.some((fila) => fila.rama !== undefined)
+        ? RAMAS_DE_METRICA.map((rama): ParDeCotejo => [`filas · ${NOMBRE_RAMA_DE_METRICA[rama]}`, filasDeLaRama(local.filas, rama), filasDeLaRama(desdeCache.filas, rama)])
+        : []
+      cotejarNumeros(`Altas ${desdeCache.periodo}${sucursalPedida ? ` · ${sucursalPedida}` : ''}`, [
+        ['filas', local.filas.length, desdeCache.filas.length],
+        ...porRama,
+      ])
     } catch (error) {
       console.error('[métricas] no se pudo cotejar el detalle de altas contra el cálculo local:', error instanceof Error ? error.message : error)
     }

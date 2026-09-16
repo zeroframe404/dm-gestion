@@ -4,7 +4,19 @@
 // cada usuario vea sus pendientes al entrar, y eso es lo que hace que alguien abra la aplicación a la
 // mañana en vez de mirar un papelito.
 import { useEffect, useRef, useState } from 'react'
-import { NOMBRE_ROL, type DetalleDeAltas, type FilaEstadistica, type FilaTarea, type PodioMensual } from '../../shared/tipos'
+import {
+  NOMBRE_RAMA_DE_METRICA,
+  NOMBRE_ROL,
+  RAMAS_DE_METRICA,
+  type ContadorPorRama,
+  type DetalleDeAltas,
+  type FilaDeAlta,
+  type FilaEstadistica,
+  type FilaTarea,
+  type PodioMensual,
+  type RamaDeMetrica,
+} from '../../shared/tipos'
+import { campoDeRama, nombreDeTipoDeRiesgo } from '../../shared/riesgos'
 import { AvisoConexionGoogle } from '../componentes/AvisoConexionGoogle'
 import { DialogoReportarError } from '../componentes/DialogoReportarError'
 import { Icono } from '../componentes/Icono'
@@ -266,6 +278,7 @@ function PodioDeSucursales() {
           <p className="mt-1 text-xs text-slate-500">
             Pólizas que están en {nombreDePeriodo(podio.periodo).toLowerCase()} y no estaban en {nombreDePeriodo(podio.periodoAnterior).toLowerCase()}.
             Las renovaciones no cuentan.
+            {podio.ranking.some((fila) => fila.porRama) && ' Los riesgos varios de la pestaña RIESGOS VARIOS cuentan en el mes de su emisión.'}
           </p>
           {/* De cuándo son los números (issue #79). Antes de la 13.2 cada computadora calculaba el podio
               con su propia base y esta línea decía de qué bajada salían; ahora lo calcula el servidor una
@@ -301,6 +314,15 @@ function PodioDeSucursales() {
               <p className="mt-1 text-xs text-slate-500">
                 {numero(fila.bajas)} baja{fila.bajas === 1 ? '' : 's'} · {numero(fila.activos)} activa{fila.activos === 1 ? '' : 's'}
               </p>
+              {/* La separación por rama sólo si el podio la trae: uno calculado por una versión anterior
+                  del servidor no la tiene, y ahí la tarjeta queda como siempre en vez de mostrar ceros. */}
+              {fila.porRama && (
+                <div className="mt-2 flex flex-col gap-0.5 border-t border-slate-200 pt-2">
+                  {RAMAS_DE_METRICA.map((rama) => (
+                    <RenglonDeRama key={rama} rama={rama} contador={fila.porRama![campoDeRama(rama)]} />
+                  ))}
+                </div>
+              )}
             </>
           )
           const aspecto = cx(
@@ -339,6 +361,17 @@ function PodioDeSucursales() {
   )
 }
 
+/** Las altas, bajas y activas de una rama, en un renglón chico debajo del total de la tarjeta. */
+function RenglonDeRama({ rama, contador }: { rama: RamaDeMetrica; contador: ContadorPorRama }) {
+  const altas = contador.altas ?? 0
+  return (
+    <p className="text-[11px] leading-snug text-slate-500">
+      <span className="font-semibold text-slate-700">{NOMBRE_RAMA_DE_METRICA[rama]}:</span> {numero(altas)} alta{altas === 1 ? '' : 's'} ·{' '}
+      {numero(contador.bajas)} baja{contador.bajas === 1 ? '' : 's'} · {numero(contador.activos)} activa{contador.activos === 1 ? '' : 's'}
+    </p>
+  )
+}
+
 /**
  * Qué pólizas son las altas de una sucursal. Es lo que convierte el podio en un número que se puede
  * discutir: la agencia vio «Dock Sud, 128 altas» y lo primero que preguntó fue qué estaba contando.
@@ -372,6 +405,25 @@ function DetalleDelPodio({ periodo, fila, alCerrar }: { periodo: string; fila: F
   // Las dos cuentas tienen que dar lo mismo. Si no dan, lo dice la pantalla en vez de dejar que alguien
   // sume la lista a mano y se entere solo de que el programa le mintió.
   const cuadra = detalle === null || detalle.filas.length === (fila.altas ?? 0)
+  // Con la rama en cada fila la lista se separa en autos y motos y riesgos varios. Un detalle guardado
+  // por una versión anterior del servidor no la trae: ahí la lista es una sola, como siempre.
+  const porRama =
+    detalle !== null && detalle.filas.some((alta) => alta.rama !== undefined)
+      ? RAMAS_DE_METRICA.map((rama) => ({
+          rama,
+          filas: detalle.filas.filter((alta) => (alta.rama ?? 'AUTOS_MOTOS') === rama),
+          // Contra qué se controla cada lista: la cifra de esa rama en la tarjeta, si la tarjeta la trae.
+          enLaTarjeta: fila.porRama ? (fila.porRama[campoDeRama(rama)].altas ?? 0) : null,
+        }))
+      : null
+
+  const avisoDeDiferencia = (enLaTarjeta: number, enLaLista: number, deQue: string) => (
+    <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+      La tarjeta dice {numero(enLaTarjeta)}
+      {deQue} y la lista trae {numero(enLaLista)}. Avisá para que lo miren: los dos números salen de la misma cuenta y tendrían que dar
+      igual.
+    </p>
+  )
 
   return (
     <Dialogo
@@ -383,6 +435,7 @@ function DetalleDelPodio({ periodo, fila, alCerrar }: { periodo: string; fila: F
         <>
           Las {numero(fila.altas ?? 0)} pólizas que están en la planilla de este mes y no estaban en la del anterior. Una renovación no
           está en esta lista: el cliente ya estaba, aunque la póliza haya cambiado de número.
+          {porRama && <> Los riesgos varios de la pestaña RIESGOS VARIOS son alta en el mes de su emisión (o de su vigencia desde, si no tienen emisión).</>}
         </>
       }
       pie={
@@ -394,39 +447,62 @@ function DetalleDelPodio({ periodo, fila, alCerrar }: { periodo: string; fila: F
       {!error && detalle !== null && detalle.filas.length === 0 && (
         <p className="text-sm text-slate-600">No hay altas de {fila.etiqueta} en este mes.</p>
       )}
-      {!error && detalle !== null && detalle.filas.length > 0 && (
+      {!error && detalle !== null && detalle.filas.length > 0 && porRama === null && (
         <>
-          {!cuadra && (
-            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              La tarjeta dice {numero(fila.altas ?? 0)} y la lista trae {numero(detalle.filas.length)}. Avisá para que lo miren: los dos
-              números salen de la misma cuenta y tendrían que dar igual.
-            </p>
-          )}
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="py-2 pr-3">Cliente</th>
-                  <th className="py-2 pr-3">Compañía</th>
-                  <th className="py-2 pr-3">N° de póliza</th>
-                  <th className="py-2">Patente</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detalle.filas.map((alta, indice) => (
-                  <tr key={`${alta.numeroPoliza ?? ''}|${alta.patente ?? ''}|${indice}`} className="border-b border-slate-100">
-                    <td className="py-2 pr-3 font-medium text-slate-900">{alta.cliente ?? '—'}</td>
-                    <td className="py-2 pr-3 text-slate-600">{alta.compania ?? '—'}</td>
-                    <td className="py-2 pr-3 tabular-nums text-slate-600">{alta.numeroPoliza ?? '—'}</td>
-                    <td className="py-2 text-slate-600">{alta.patente ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {!cuadra && avisoDeDiferencia(fila.altas ?? 0, detalle.filas.length, '')}
+          <TablaDeAltas filas={detalle.filas} />
         </>
       )}
+      {!error && detalle !== null && detalle.filas.length > 0 && porRama !== null && (
+        <div className="flex flex-col gap-5">
+          {/* Sin la cifra por rama en la tarjeta se controla el total, como siempre. */}
+          {fila.porRama === undefined && !cuadra && avisoDeDiferencia(fila.altas ?? 0, detalle.filas.length, '')}
+          {porRama.map((grupo) => (
+            <section key={grupo.rama}>
+              <h4 className="mb-2 text-sm font-semibold text-slate-800">
+                {NOMBRE_RAMA_DE_METRICA[grupo.rama]} · {numero(grupo.filas.length)}
+              </h4>
+              {grupo.enLaTarjeta !== null &&
+                grupo.enLaTarjeta !== grupo.filas.length &&
+                avisoDeDiferencia(grupo.enLaTarjeta, grupo.filas.length, ` en ${NOMBRE_RAMA_DE_METRICA[grupo.rama].toLowerCase()}`)}
+              {grupo.filas.length === 0 ? (
+                <p className="text-sm text-slate-500">Ninguna en este mes.</p>
+              ) : (
+                <TablaDeAltas filas={grupo.filas} conTipo={grupo.rama === 'RIESGOS_VARIOS'} />
+              )}
+            </section>
+          ))}
+        </div>
+      )}
     </Dialogo>
+  )
+}
+
+/** La lista de altas. En riesgos varios la última columna es el riesgo: una casa o un comercio no tienen patente. */
+function TablaDeAltas({ filas, conTipo = false }: { filas: FilaDeAlta[]; conTipo?: boolean }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <th className="py-2 pr-3">Cliente</th>
+            <th className="py-2 pr-3">Compañía</th>
+            <th className="py-2 pr-3">N° de póliza</th>
+            <th className="py-2">{conTipo ? 'Riesgo' : 'Patente'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((alta, indice) => (
+            <tr key={`${alta.numeroPoliza ?? ''}|${alta.patente ?? ''}|${indice}`} className="border-b border-slate-100">
+              <td className="py-2 pr-3 font-medium text-slate-900">{alta.cliente ?? '—'}</td>
+              <td className="py-2 pr-3 text-slate-600">{alta.compania ?? '—'}</td>
+              <td className="py-2 pr-3 tabular-nums text-slate-600">{alta.numeroPoliza ?? '—'}</td>
+              <td className="py-2 text-slate-600">{(conTipo ? nombreDeTipoDeRiesgo(alta.tipo) : alta.patente) || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 

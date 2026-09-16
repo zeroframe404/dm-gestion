@@ -26,27 +26,44 @@
 //
 //  3. BAJAS de un mes = las pólizas de la pestaña de BAJAS de ese mes, con su MOTIVO, también una vez
 //     por póliza.
+//
+// Y los tres se separan por RAMA: autos y motos por un lado y riesgos varios por el otro, siempre
+// sumando el total de siempre. Los riesgos varios llegan por dos caminos: como fila de la planilla del
+// mes (con un TIPO que no es vehículo, y ahí valen las mismas reglas de arriba) y como fila de la
+// pestaña RIESGOS VARIOS, que no tiene período y se cuenta por sus fechas (ver `riesgosVariosDelMes`).
 import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { normalizarEstadoSiniestro } from '../../shared/siniestros'
 import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import { categoriaDeCartera } from '../../shared/polizas'
+import { campoDeRama, ramaDeMetrica } from '../../shared/riesgos'
 import type {
   BajaPorMotivo,
   CobranzaDelMes,
   DetalleDeAltas,
   EstadisticasDeCartera,
+  FilaDeAlta,
   FilaEstadistica,
   FiltrosMetricas,
   MesDeEvolucion,
+  MetricasPorRama,
   PodioMensual,
   PorcionMetrica,
+  RamaDeMetrica,
   ResumenDeCartera,
   TableroMetricas,
   TotalPorMedio,
 } from '../../shared/tipos'
 import { db } from '../db/base'
-import { ahoraIso, limpiar, normalizarDocumento, normalizarNumeroPoliza, normalizarPatente, normalizarTexto } from '../importacion/normalizar'
+import {
+  ahoraIso,
+  interpretarFecha,
+  limpiar,
+  normalizarDocumento,
+  normalizarNumeroPoliza,
+  normalizarPatente,
+  normalizarTexto,
+} from '../importacion/normalizar'
 import { leerMarca } from '../sincronizacion/cola'
 import { catalogos, periodosDisponibles } from './cartera'
 import { PAGO_QUE_CUBRE_LA_CUOTA, SUCURSAL_DEL_PAGO } from './pagos'
@@ -323,6 +340,10 @@ interface CuotaDelMes {
   cuota: string | null
   formaPago: string | null
   pagada: boolean
+  /** El TIPO del vehículo de la póliza, tal como está escrito. */
+  tipo: string | null
+  /** Autos y motos o riesgos varios, según `tipo` (ver `ramaDeMetrica`). Sin vehículo, autos y motos. */
+  rama: RamaDeMetrica
 }
 
 /**
@@ -342,10 +363,12 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
               (
                 (c.pago IS NOT NULL AND TRIM(c.pago) <> '')
                 OR ${PAGO_QUE_CUBRE_LA_CUOTA}
-              ) AS pagada
+              ) AS pagada,
+              v.tipo
          FROM cuotas_mes c
          LEFT JOIN clientes cl ON cl.id = c.cliente_id
          LEFT JOIN polizas p ON p.id = c.poliza_id
+         LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
         WHERE c.periodo = ? AND c.dada_de_baja = 0
         -- Con dos renglones de la misma póliza se queda el que está pago (cuenta como cobrado) y, a
         -- igualdad, el del _ID más chico: el mismo en todas las computadoras.
@@ -364,6 +387,7 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
     cuota_monto: number | null
     forma_pago: string | null
     pagada: number
+    tipo: string | null
   }>
 
   // La identidad y la línea se calculan ANTES de recortar por sucursal, igual que se deduplicaba antes:
@@ -389,6 +413,8 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
       cuotaMonto: fila.cuota_monto,
       formaPago: fila.forma_pago,
       pagada: fila.pagada === 1,
+      tipo: fila.tipo,
+      rama: ramaDeMetrica(fila.tipo),
     }))
 }
 
@@ -397,12 +423,14 @@ interface BajaDelMes {
   motivo: string | null
   compania: string | null
   sucursal: string | null
+  numero_poliza: string | null
+  patente: string | null
 }
 
 function bajasDelMes(periodo: string, sucursales: string[]): BajaDelMes[] {
   const filas = db()
     .prepare(
-      `SELECT ${IDENTIDAD_DE_LA_BAJA} AS identidad, b.motivo, b.compania,
+      `SELECT ${IDENTIDAD_DE_LA_BAJA} AS identidad, b.motivo, b.compania, b.numero_poliza, b.patente,
               COALESCE(NULLIF(TRIM(b.sucursal_texto), ''), cl.sucursal_texto) AS sucursal
          FROM bajas b
          LEFT JOIN clientes cl ON cl.id = b.cliente_id
@@ -412,6 +440,207 @@ function bajasDelMes(periodo: string, sucursales: string[]): BajaDelMes[] {
     )
     .all(periodo) as BajaDelMes[]
   return unaPorIdentidad(filas).filter((fila) => coincideAlguno(sucursales, fila.sucursal, mismaSucursal))
+}
+
+// ---------------------------------------------------------------------------
+// La pestaña RIESGOS VARIOS y la separación por rama
+// ---------------------------------------------------------------------------
+
+/** La póliza como la escribe la planilla: compañía y número normalizados. null sin número. */
+function polizaEscrita(compania: string | null, numero: string | null): string | null {
+  const normalizado = normalizarNumeroPoliza(numero)
+  return normalizado ? `${normalizarTexto(compania)}|${normalizado}` : null
+}
+
+/** Una fila de la pestaña RIESGOS VARIOS con sus fechas ya interpretadas. */
+interface RiesgoVarioGuardado {
+  identidad: string
+  /** Ver `polizaEscrita`: con qué se reconoce la misma póliza en la planilla del mes. */
+  poliza: string | null
+  clienteNombre: string | null
+  numeroPoliza: string | null
+  patente: string | null
+  compania: string | null
+  sucursal: string | null
+  tipo: string | null
+  /** La EMISIÓN o, si no la tiene, el inicio de vigencia ('AAAA-MM-DD'). */
+  desde: string | null
+  hasta: string | null
+}
+
+/**
+ * La pestaña RIESGOS VARIOS entera. Se lee una vez por pantalla y se pasa a todos los meses que se
+ * miran, igual que `lineasDeRenovacion()`: la tabla no tiene período, así que leerla por mes sería leer
+ * lo mismo doce veces.
+ *
+ * Las fechas se interpretan con `interpretarFecha` y sin año por defecto —la misma cuenta con la que la
+ * bajada llena `emision_iso`—: una fecha sin año en una tabla sin período no se puede ubicar en ningún
+ * mes. La tabla local no tiene columna de anulación, así que acá no hay filas «dadas de baja» que
+ * descartar.
+ */
+function riesgosVariosGuardados(): RiesgoVarioGuardado[] {
+  const filas = db()
+    .prepare(
+      `SELECT r.fila_id, COALESCE(NULLIF(TRIM(r.cliente_nombre), ''), cl.nombre) AS cliente_nombre,
+              r.compania, r.numero_poliza, r.patente, r.documento, r.sucursal_texto AS sucursal, r.tipo_riesgo,
+              r.emision_iso, r.vigencia_desde, r.vigencia_hasta
+         FROM riesgos_varios r
+         LEFT JOIN clientes cl ON cl.id = r.cliente_id
+        ORDER BY r.fila_id`,
+    )
+    .all() as Array<{
+    fila_id: string
+    cliente_nombre: string | null
+    compania: string | null
+    numero_poliza: string | null
+    patente: string | null
+    documento: string | null
+    sucursal: string | null
+    tipo_riesgo: string | null
+    emision_iso: string | null
+    vigencia_desde: string | null
+    vigencia_hasta: string | null
+  }>
+  return filas.map((fila) => {
+    const poliza = polizaEscrita(fila.compania, fila.numero_poliza)
+    // La identidad tiene que seguir la misma idea que `identidadDeLaFila()` de metricas.riesgos.ts del
+    // servidor: número de póliza, patente o documento (lo primero que haya, normalizado con los mismos
+    // helpers que usa el resto del archivo), con el nombre como respaldo cuando los tres están vacíos, y
+    // el tipo de riesgo sumado al final para no pisar un hogar con un accidente personal del mismo
+    // cliente. Si una punta cambia esta cuenta sin la otra, la misma pestaña arma grupos distintos de un
+    // lado y del otro y el cotejo local/servidor vuelve a marcar diferencias que no son errores. Sin
+    // ninguno de los cuatro datos, cada renglón sigue siendo un riesgo distinto por su `fila_id`: dos
+    // altas sin nada cargado todavía no se pueden pisar entre sí.
+    const numero = normalizarNumeroPoliza(fila.numero_poliza)
+    const patente = normalizarPatente(fila.patente)
+    const documento = normalizarDocumento(fila.documento)
+    const tipo = normalizarTexto(fila.tipo_riesgo)
+    const nombre = normalizarTexto(fila.cliente_nombre)
+    const clave = numero || patente || documento
+    const identidad = clave ? `RV:X:${clave}|${tipo}` : nombre ? `RV:N:${nombre}|${tipo}` : `F:${fila.fila_id}`
+    return {
+      identidad,
+      poliza,
+      clienteNombre: fila.cliente_nombre,
+      numeroPoliza: fila.numero_poliza,
+      patente: fila.patente,
+      compania: fila.compania,
+      sucursal: fila.sucursal,
+      tipo: fila.tipo_riesgo,
+      desde: fila.emision_iso ?? interpretarFecha(fila.vigencia_desde, null).iso,
+      hasta: interpretarFecha(fila.vigencia_hasta, null).iso,
+    }
+  })
+}
+
+/** Las pólizas que la planilla de un mes ya trae como fila, de toda la agencia (ver `polizaEscrita`). */
+function polizasDeLaPlanilla(periodo: string): Set<string> {
+  const filas = db()
+    .prepare(
+      `SELECT COALESCE(NULLIF(TRIM(c.compania), ''), p.compania) AS compania, c.numero_poliza
+         FROM cuotas_mes c
+         LEFT JOIN polizas p ON p.id = c.poliza_id
+        WHERE c.periodo = ? AND c.dada_de_baja = 0`,
+    )
+    .all(periodo) as Array<{ compania: string | null; numero_poliza: string | null }>
+  return new Set(filas.flatMap((fila) => polizaEscrita(fila.compania, fila.numero_poliza) ?? []))
+}
+
+/**
+ * Lo que la pestaña RIESGOS VARIOS aporta a un mes, ya recortado por sucursal. Como no tiene período,
+ * se cuenta por sus fechas y no comparando dos meses:
+ *
+ *  - ACTIVO en el mes: empezó (emisión o, si no hay, vigencia desde) antes de que el mes termine —o no
+ *    tiene fecha— y no terminó (vigencia hasta) antes de que el mes empiece —o no tiene fecha—.
+ *  - ALTA en el mes: su emisión, o su vigencia desde si no tiene emisión, cae en ese mes. Sin ninguna de
+ *    las dos fechas nunca es un alta: no hay forma de saber cuándo entró.
+ *
+ * Una póliza que la planilla del mes YA trae como fila (misma compañía y número) se cuenta ahí y no acá:
+ * es la misma póliza, no dos. Y cada póliza cuenta una vez aunque la pestaña la repita.
+ */
+function riesgosVariosDelMes(
+  periodo: string,
+  sucursales: string[],
+  guardados: RiesgoVarioGuardado[],
+): { activos: RiesgoVarioGuardado[]; altas: RiesgoVarioGuardado[] } {
+  const enLaPlanilla = polizasDeLaPlanilla(periodo)
+  const propios = guardados.filter((riesgo) => riesgo.poliza === null || !enLaPlanilla.has(riesgo.poliza))
+  const activos = propios.filter(
+    (riesgo) => (riesgo.desde === null || riesgo.desde.slice(0, 7) <= periodo) && (riesgo.hasta === null || riesgo.hasta.slice(0, 7) >= periodo),
+  )
+  const altas = propios.filter((riesgo) => riesgo.desde !== null && riesgo.desde.slice(0, 7) === periodo)
+  const deLasSucursales = (lista: RiesgoVarioGuardado[]) =>
+    unaPorIdentidad(lista).filter((riesgo) => coincideAlguno(sucursales, riesgo.sucursal, mismaSucursal))
+  return { activos: deLasSucursales(activos), altas: deLasSucursales(altas) }
+}
+
+/**
+ * Cómo se reconoce la rama de una baja. La pestaña de BAJAS no tiene columna de tipo, así que se busca
+ * la póliza —por número y, si el número no aparece, por patente— en la planilla de ese mes y la del
+ * anterior y en la pestaña RIESGOS VARIOS. Si la encuentra como riesgo vario es un riesgo vario; si no
+ * la encuentra, o la encuentra como vehículo, es de autos y motos.
+ */
+function reconocedorDeRamaDeBajas(periodo: string, guardados: RiesgoVarioGuardado[]): (baja: BajaDelMes) => RamaDeMetrica {
+  const porNumero = new Map<string, RamaDeMetrica>()
+  const porPatente = new Map<string, RamaDeMetrica>()
+  // Con dos filas que dicen cosas distintas gana riesgos varios: es lo que la búsqueda vino a encontrar.
+  const anotar = (mapa: Map<string, RamaDeMetrica>, clave: string, rama: RamaDeMetrica) => {
+    if (clave && mapa.get(clave) !== 'RIESGOS_VARIOS') mapa.set(clave, rama)
+  }
+  const planilla = db()
+    .prepare(
+      `SELECT c.numero_poliza, c.patente, v.tipo
+         FROM cuotas_mes c
+         LEFT JOIN polizas p ON p.id = c.poliza_id
+         LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
+        WHERE c.periodo IN (?, ?)`,
+    )
+    .all(periodo, periodoAnterior(periodo)) as Array<{ numero_poliza: string | null; patente: string | null; tipo: string | null }>
+  for (const fila of planilla) {
+    anotar(porNumero, normalizarNumeroPoliza(fila.numero_poliza), ramaDeMetrica(fila.tipo))
+    anotar(porPatente, normalizarPatente(fila.patente), ramaDeMetrica(fila.tipo))
+  }
+  for (const riesgo of guardados) {
+    anotar(porNumero, normalizarNumeroPoliza(riesgo.numeroPoliza), 'RIESGOS_VARIOS')
+    anotar(porPatente, normalizarPatente(riesgo.patente), 'RIESGOS_VARIOS')
+  }
+  return (baja) =>
+    porNumero.get(normalizarNumeroPoliza(baja.numero_poliza)) ?? porPatente.get(normalizarPatente(baja.patente)) ?? 'AUTOS_MOTOS'
+}
+
+/**
+ * Activos, altas y bajas por rama mientras se recorren las filas. Las altas son siempre un número acá,
+ * igual que `cobrado` en el `Acumulador` de Estadísticas: recién `cerrarPorRama` decide cuáles viajan en
+ * null.
+ */
+export type ConteoPorRama = Record<keyof MetricasPorRama, { activos: number; altas: number; bajas: number }>
+
+export function conteoPorRamaEnCero(): ConteoPorRama {
+  return { autosMotos: { activos: 0, altas: 0, bajas: 0 }, riesgosVarios: { activos: 0, altas: 0, bajas: 0 } }
+}
+
+export function sumarConteos(conteos: ConteoPorRama[]): ConteoPorRama {
+  const total = conteoPorRamaEnCero()
+  for (const conteo of conteos) {
+    for (const campo of ['autosMotos', 'riesgosVarios'] as const) {
+      total[campo].activos += conteo[campo].activos
+      total[campo].altas += conteo[campo].altas
+      total[campo].bajas += conteo[campo].bajas
+    }
+  }
+  return total
+}
+
+/**
+ * Lo que sale de un conteo por rama. Sin mes anterior las altas de autos y motos no se pueden deducir y
+ * van en null, como el total. Las de riesgos varios SÍ viajan en número: las de la pestaña RIESGOS
+ * VARIOS salen de su fecha de emisión y no de comparar dos meses.
+ */
+export function cerrarPorRama(conteo: ConteoPorRama, hayMesAnterior: boolean): MetricasPorRama {
+  return {
+    autosMotos: { ...conteo.autosMotos, altas: hayMesAnterior ? conteo.autosMotos.altas : null },
+    riesgosVarios: { ...conteo.riesgosVarios },
+  }
 }
 
 interface PagoDelMes {
@@ -479,6 +708,7 @@ function evolucion(
   disponibles: string[],
   conNumeros: boolean,
   lineas: Map<number, string>,
+  guardados: RiesgoVarioGuardado[],
 ): MesDeEvolucion[] {
   const hasta = disponibles.filter((candidato) => candidato <= periodo).slice(0, MESES_DE_EVOLUCION)
   const meses = [...hasta].sort()
@@ -486,14 +716,29 @@ function evolucion(
   for (const mes of meses) {
     const cuotas = cuotasDelMes(mes, sucursales, lineas)
     const anteriores = cuotasDelMes(periodoAnterior(mes), sucursales, lineas)
+    const riesgos = riesgosVariosDelMes(mes, sucursales, guardados)
+    const hayMesAnterior = anteriores.length > 0
     const esAlta = contadorDeAltas(anteriores, cuotas)
-    const altas = anteriores.length === 0 ? null : cuotas.filter(esAlta).length
+    // La misma cuenta por rama que las tarjetas del tablero, mes por mes.
+    const conteo = conteoPorRamaEnCero()
+    for (const cuota of cuotas) {
+      const deLaRama = conteo[campoDeRama(cuota.rama)]
+      deLaRama.activos++
+      // `esAlta` se llama siempre y en orden: es el que tacha (ver `contadorDeAltas`).
+      if (esAlta(cuota) && hayMesAnterior) deLaRama.altas++
+    }
+    conteo.riesgosVarios.activos += riesgos.activos.length
+    conteo.riesgosVarios.altas += riesgos.altas.length
+    const bajas = bajasDelMes(mes, sucursales)
+    const ramaDeLaBaja = reconocedorDeRamaDeBajas(mes, guardados)
+    for (const baja of bajas) conteo[campoDeRama(ramaDeLaBaja(baja))].bajas++
     filas.push({
       periodo: mes,
-      activos: cuotas.length,
-      altas,
-      bajas: bajasDelMes(mes, sucursales).length,
+      activos: cuotas.length + riesgos.activos.length,
+      altas: hayMesAnterior ? conteo.autosMotos.altas + conteo.riesgosVarios.altas : null,
+      bajas: bajas.length,
       cobrado: conNumeros ? pagosDelMes(mes, sucursales).reduce((suma, pago) => suma + (pago.importe ?? 0), 0) : null,
+      porRama: cerrarPorRama(conteo, hayMesAnterior),
     })
   }
   return filas
@@ -552,22 +797,39 @@ export function tableroDeMetricasLocal(filtros: FiltrosMetricas, conNumeros: boo
   })
 
   const lineas = lineasDeRenovacion()
+  const guardados = riesgosVariosGuardados()
   const cuotas = cuotasDelMes(periodo, sucursales, lineas)
   const anteriores = cuotasDelMes(periodoAnterior(periodo), sucursales, lineas)
+  const riesgos = riesgosVariosDelMes(periodo, sucursales, guardados)
   const hayMesAnterior = anteriores.length > 0
   const esAlta = contadorDeAltas(anteriores, cuotas)
-  const altasDelMes = cuotas.filter(esAlta).length
+  const conteo = conteoPorRamaEnCero()
 
   const porCompania = new Map<string, { etiqueta: string; cantidad: number }>()
   const porSucursal = new Map<string, { etiqueta: string; cantidad: number }>()
   for (const cuota of cuotas) {
+    const deLaRama = conteo[campoDeRama(cuota.rama)]
+    deLaRama.activos++
+    // `esAlta` se llama siempre y en orden: es el que tacha (ver `contadorDeAltas`).
+    if (esAlta(cuota) && hayMesAnterior) deLaRama.altas++
     sumarUno(porCompania, cuota.compania, '(sin compañía)')
     sumarUno(porSucursal, cuota.sucursal, '(sin sucursal)')
   }
+  for (const riesgo of riesgos.activos) {
+    conteo.riesgosVarios.activos++
+    sumarUno(porCompania, riesgo.compania, '(sin compañía)')
+    sumarUno(porSucursal, riesgo.sucursal, '(sin sucursal)')
+  }
+  conteo.riesgosVarios.altas += riesgos.altas.length
+  const activos = cuotas.length + riesgos.activos.length
 
   const bajas = bajasDelMes(periodo, sucursales)
+  const ramaDeLaBaja = reconocedorDeRamaDeBajas(periodo, guardados)
   const motivos = new Map<string, { etiqueta: string; cantidad: number }>()
-  for (const baja of bajas) sumarUno(motivos, baja.motivo, '(sin motivo)')
+  for (const baja of bajas) {
+    sumarUno(motivos, baja.motivo, '(sin motivo)')
+    conteo[campoDeRama(ramaDeLaBaja(baja))].bajas++
+  }
   const bajasPorMotivo: BajaPorMotivo[] = [...motivos.values()]
     .map((fila) => ({ motivo: fila.etiqueta, cantidad: fila.cantidad }))
     .sort((a, b) => b.cantidad - a.cantidad || a.motivo.localeCompare(b.motivo, 'es'))
@@ -580,16 +842,17 @@ export function tableroDeMetricasLocal(filtros: FiltrosMetricas, conNumeros: boo
     sucursalesElegidas: sucursales,
     sucursales: disponiblesDeSucursal,
 
-    activos: cuotas.length,
-    activosPorCompania: aPorciones(porCompania, cuotas.length),
-    activosPorSucursal: aPorciones(porSucursal, cuotas.length),
+    activos,
+    activosPorCompania: aPorciones(porCompania, activos),
+    activosPorSucursal: aPorciones(porSucursal, activos),
 
-    altas: hayMesAnterior ? altasDelMes : null,
+    altas: hayMesAnterior ? conteo.autosMotos.altas + conteo.riesgosVarios.altas : null,
     bajas: bajas.length,
     bajasPorMotivo,
     hayMesAnterior,
+    porRama: cerrarPorRama(conteo, hayMesAnterior),
 
-    evolucion: evolucion(periodo, sucursales, disponibles, conNumeros, lineas),
+    evolucion: evolucion(periodo, sucursales, disponibles, conNumeros, lineas, guardados),
     cobranza: cobranzaDelMes(cuotas, pagosDelMes(periodo, sucursales), conNumeros),
 
     siniestrosAbiertos: siniestros.total,
@@ -609,10 +872,11 @@ export function tableroDeMetricasLocal(filtros: FiltrosMetricas, conNumeros: boo
  * viaja o no. Sumar `number | null` obligaría a un `?? 0` en cada paso, y ese cero terminaría
  * confundiéndose con un cobro real.
  */
-interface Acumulador extends Omit<FilaEstadistica, 'cobrado' | 'altas'> {
+interface Acumulador extends Omit<FilaEstadistica, 'cobrado' | 'altas' | 'porRama'> {
   clave: string
   altas: number
   cobrado: number
+  porRama: ConteoPorRama
 }
 
 function tomar(mapa: Map<string, Acumulador>, valor: string | null, vacio: string): Acumulador {
@@ -620,14 +884,19 @@ function tomar(mapa: Map<string, Acumulador>, valor: string | null, vacio: strin
   const clave = normalizarTexto(etiqueta)
   const previo = mapa.get(clave)
   if (previo) return previo
-  const nuevo: Acumulador = { clave, etiqueta, activos: 0, altas: 0, bajas: 0, pagos: 0, cobrado: 0 }
+  const nuevo: Acumulador = { clave, etiqueta, activos: 0, altas: 0, bajas: 0, pagos: 0, cobrado: 0, porRama: conteoPorRamaEnCero() }
   mapa.set(clave, nuevo)
   return nuevo
 }
 
 function ordenar(mapa: Map<string, Acumulador>, conNumeros: boolean, hayMesAnterior: boolean): FilaEstadistica[] {
   return [...mapa.values()]
-    .map(({ clave: _clave, cobrado, altas, ...fila }) => ({ ...fila, altas: hayMesAnterior ? altas : null, cobrado: conNumeros ? cobrado : null }))
+    .map(({ clave: _clave, cobrado, altas, porRama, ...fila }) => ({
+      ...fila,
+      altas: hayMesAnterior ? altas : null,
+      cobrado: conNumeros ? cobrado : null,
+      porRama: cerrarPorRama(porRama, hayMesAnterior),
+    }))
     .sort((a, b) => b.activos - a.activos || a.etiqueta.localeCompare(b.etiqueta, 'es'))
 }
 
@@ -690,26 +959,53 @@ export function estadisticasDeCarteraLocal(
   })
 
   const lineas = lineasDeRenovacion()
+  const guardados = riesgosVariosGuardados()
   const cuotas = cuotasDelMes(periodo, sucursales, lineas)
   const anteriores = cuotasDelMes(periodoAnterior(periodo), sucursales, lineas)
+  const riesgos = riesgosVariosDelMes(periodo, sucursales, guardados)
   const hayMesAnterior = anteriores.length > 0
   const contar = contadorDeAltas(anteriores, cuotas)
 
   const companias = new Map<string, Acumulador>()
   const sucursalesMapa = new Map<string, Acumulador>()
+  const filasDe = (compania: string | null, sucursal: string | null) => [
+    tomar(companias, compania, '(sin compañía)'),
+    tomar(sucursalesMapa, sucursal, '(sin sucursal)'),
+  ]
   for (const cuota of cuotas) {
     // `contar` va primero y se llama SIEMPRE: es el que tacha, y saltearlo cuando no hay mes anterior
     // lo dejaría descontando de más en la fila siguiente. Sin mes anterior no tacha nada igual, y las
     // altas salen en null de todos modos (ver `ordenar`).
     const esAlta = contar(cuota) && hayMesAnterior
-    for (const fila of [tomar(companias, cuota.compania, '(sin compañía)'), tomar(sucursalesMapa, cuota.sucursal, '(sin sucursal)')]) {
+    const campo = campoDeRama(cuota.rama)
+    for (const fila of filasDe(cuota.compania, cuota.sucursal)) {
       fila.activos++
-      if (esAlta) fila.altas++
+      fila.porRama[campo].activos++
+      if (esAlta) {
+        fila.altas++
+        fila.porRama[campo].altas++
+      }
     }
   }
+  for (const riesgo of riesgos.activos) {
+    for (const fila of filasDe(riesgo.compania, riesgo.sucursal)) {
+      fila.activos++
+      fila.porRama.riesgosVarios.activos++
+    }
+  }
+  for (const riesgo of riesgos.altas) {
+    for (const fila of filasDe(riesgo.compania, riesgo.sucursal)) {
+      fila.altas++
+      fila.porRama.riesgosVarios.altas++
+    }
+  }
+  const ramaDeLaBaja = reconocedorDeRamaDeBajas(periodo, guardados)
   for (const baja of bajasDelMes(periodo, sucursales)) {
-    tomar(companias, baja.compania, '(sin compañía)').bajas++
-    tomar(sucursalesMapa, baja.sucursal, '(sin sucursal)').bajas++
+    const campo = campoDeRama(ramaDeLaBaja(baja))
+    for (const fila of filasDe(baja.compania, baja.sucursal)) {
+      fila.bajas++
+      fila.porRama[campo].bajas++
+    }
   }
   for (const pago of pagosDelMes(periodo, sucursales)) {
     for (const fila of [tomar(companias, pago.compania, '(sin compañía)'), tomar(sucursalesMapa, pago.sucursal, '(sin sucursal)')]) {
@@ -737,6 +1033,7 @@ export function estadisticasDeCarteraLocal(
       bajas: porCompania.reduce((suma, fila) => suma + fila.bajas, 0),
       pagos: porCompania.reduce((suma, fila) => suma + fila.pagos, 0),
       cobrado: conNumeros ? totalCobrado : null,
+      porRama: cerrarPorRama(sumarConteos([...companias.values()].map((fila) => fila.porRama)), hayMesAnterior),
     },
     hayMesAnterior,
     resumenCartera: resumenDeCartera(),
@@ -780,6 +1077,7 @@ export function altasDelMes(periodoPedido: string | null, sucursalPedida: string
   const lineas = lineasDeRenovacion()
   const cuotas = cuotasDelMes(periodo, [], lineas)
   const anteriores = cuotasDelMes(periodoAnterior(periodo), [], lineas)
+  const riesgos = riesgosVariosDelMes(periodo, [], riesgosVariosGuardados())
   const hayMesAnterior = anteriores.length > 0
   const esAlta = contadorDeAltas(anteriores, cuotas)
   // El contador se recorre entero aunque no haya mes anterior: es el mismo paseo que hace el podio, y
@@ -788,19 +1086,33 @@ export function altasDelMes(periodoPedido: string | null, sucursalPedida: string
 
   const sucursal = limpiar(sucursalPedida) || null
   const buscada = sucursal === null ? null : claveDeLaFilaDeSucursal(sucursal)
+  const filas: FilaDeAlta[] = [
+    // Sin mes anterior no hay altas de la planilla que deducir; las de RIESGOS VARIOS sí, por su fecha.
+    ...(hayMesAnterior ? altas : []).map((cuota) => ({
+      cliente: cuota.clienteNombre,
+      compania: cuota.compania,
+      numeroPoliza: cuota.numeroPoliza,
+      patente: cuota.patente,
+      sucursal: limpiar(cuota.sucursal) || null,
+      rama: cuota.rama,
+      tipo: cuota.tipo,
+    })),
+    ...riesgos.altas.map((riesgo) => ({
+      cliente: riesgo.clienteNombre,
+      compania: riesgo.compania,
+      numeroPoliza: riesgo.numeroPoliza,
+      patente: riesgo.patente,
+      sucursal: limpiar(riesgo.sucursal) || null,
+      rama: 'RIESGOS_VARIOS' as const,
+      tipo: riesgo.tipo,
+    })),
+  ]
   return {
     periodo,
     sucursal,
     hayMesAnterior,
-    filas: (hayMesAnterior ? altas : [])
-      .filter((cuota) => buscada === null || claveDeLaFilaDeSucursal(cuota.sucursal) === buscada)
-      .map((cuota) => ({
-        cliente: cuota.clienteNombre,
-        compania: cuota.compania,
-        numeroPoliza: cuota.numeroPoliza,
-        patente: cuota.patente,
-        sucursal: limpiar(cuota.sucursal) || null,
-      }))
+    filas: filas
+      .filter((alta) => buscada === null || claveDeLaFilaDeSucursal(alta.sucursal) === buscada)
       .sort((a, b) => (a.cliente ?? '').localeCompare(b.cliente ?? '', 'es')),
   }
 }

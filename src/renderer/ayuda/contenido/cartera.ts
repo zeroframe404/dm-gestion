@@ -436,17 +436,20 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
         titulo: 'Qué se compara',
         parrafos: [
           'Muestra activos y altas por compañía (y por otros cortes según lo que traiga la pantalla), con los totales al pie. Si el mes elegido no tiene un mes anterior importado, las altas muestran un guion (no un cero), porque para calcular una alta hace falta comparar contra el mes de antes; en cuanto se importe ese mes anterior, el número aparece solo. Cada póliza se cuenta una sola vez aunque figure en dos renglones.',
+          'Activos, Altas y Bajas tienen tres columnas cada una: el Total, «Autos y motos» y «Riesgos varios», y las dos últimas siempre suman el total. Los riesgos varios de la pestaña RIESGOS VARIOS, que no tiene mes, están activos mientras su vigencia cubra el mes elegido y son alta en el mes de su fecha de emisión (o de su vigencia desde, si no tienen emisión); por eso sus altas se ven aunque falte el mes anterior. Si la tabla muestra una sola columna por cifra, el cálculo es de antes de esta versión.',
         ],
       },
     ],
     conceptos: [
       {
         termino: 'Activos',
-        explicacion: 'Las pólizas que estuvieron vigentes ese mes, sin importar si hoy siguen activas o no: es una foto de ese mes puntual, no del presente.',
+        explicacion:
+          'Las pólizas que estuvieron vigentes ese mes, sin importar si hoy siguen activas o no: es una foto de ese mes puntual, no del presente. Suma autos y motos y riesgos varios, que también se muestran por separado.',
       },
       {
         termino: 'Altas',
-        explicacion: 'Pólizas que aparecen en el mes elegido y no estaban en el mes anterior. Necesita el mes anterior importado para poder calcularse.',
+        explicacion:
+          'Pólizas que aparecen en el mes elegido y no estaban en el anterior; un riesgo vario de la pestaña RIESGOS VARIOS es alta en el mes de su emisión. Suma autos y motos y riesgos varios.',
       },
     ],
   },

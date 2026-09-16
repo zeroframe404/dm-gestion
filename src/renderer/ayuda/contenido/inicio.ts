@@ -23,8 +23,9 @@ export const AYUDA_INICIO: Record<string, ContenidoDeAyuda> = {
         titulo: 'El podio de altas',
         parrafos: [
           'Debajo del saludo está la competencia del mes entre sucursales: quién metió más altas, con la medalla del primero. Un alta es una póliza que está en la planilla de este mes y no estaba en la del mes anterior. Una renovación NO cuenta como alta, aunque la compañía le haya cambiado el número: el cliente ya estaba y la cartera no creció. Se reconoce por la patente de la fila, así que da lo mismo en qué computadora se hizo la renovación. El podio lo ve cualquiera que entre, tenga o no habilitado Métricas, porque es una carrera y no un número de la agencia.',
+          'Cada tarjeta muestra el total de la sucursal y, debajo, las mismas altas, bajas y activas separadas en «Autos y motos» y «Riesgos varios»; las dos cifras siempre suman el total. Un riesgo vario de la planilla del mes se cuenta igual que un auto. Uno de la pestaña RIESGOS VARIOS, que no tiene mes, es alta en el mes de su fecha de emisión (o de su vigencia desde, si no tiene emisión), y está activo mientras su vigencia cubra el mes. Si la tarjeta no muestra la separación, es un podio calculado antes de esta versión: aparece sola en el próximo cálculo del servidor.',
           'Debajo del título dice de cuándo son los números: a qué hora se calcularon y a qué hora esta computadora bajó por última vez los datos del servidor. Si el podio de tu máquina no coincide con el de otra sucursal, lo primero es mirar esa hora: la que bajó más tarde tiene las altas que la otra todavía no vio. Con el aviso en vivo, apenas la otra sucursal carga algo el podio se vuelve a calcular solo (salvo que tengas abierto el detalle de una tarjeta, que espera a que lo cierres).',
-          'Si además tenés permiso para ver Cartera, cada tarjeta se puede tocar: se abre la lista de esas altas, una por una, con el cliente, la compañía, el número de póliza y la patente. Es para poder controlar el número contra la planilla en vez de creerle al cartel; si un nombre de la lista es un cliente de toda la vida, avisá, porque ahí hay algo mal contado.',
+          'Si además tenés permiso para ver Cartera, cada tarjeta se puede tocar: se abre la lista de esas altas, una por una, con el cliente, la compañía, el número de póliza y la patente, separada en «Autos y motos» y «Riesgos varios» (en riesgos varios, en lugar de la patente figura el riesgo). Cada parte se controla contra su propia cifra de la tarjeta. Es para poder controlar el número contra la planilla en vez de creerle al cartel; si un nombre de la lista es un cliente de toda la vida, avisá, porque ahí hay algo mal contado.',
           'Cuando todavía no hay un mes anterior cargado en el sistema, el podio no aparece: sin con qué comparar no hay altas que calcular y no habría carrera que mostrar.',
         ],
       },
@@ -65,7 +66,8 @@ export const AYUDA_INICIO: Record<string, ContenidoDeAyuda> = {
       },
       {
         termino: 'Alta',
-        explicacion: 'Una póliza que está en la planilla de este mes y no estaba en la del anterior. Una renovación no es un alta: es la misma póliza que sigue, aunque cambie de número.',
+        explicacion:
+          'Una póliza que está en la planilla de este mes y no estaba en la del anterior, o un riesgo vario de la pestaña RIESGOS VARIOS emitido en el mes. Una renovación no es un alta: es la misma póliza que sigue, aunque cambie de número.',
       },
       {
         termino: 'Módulo',

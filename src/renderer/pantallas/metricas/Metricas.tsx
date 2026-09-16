@@ -5,12 +5,19 @@
 // no son un gráfico sino una lista (bajas por motivo, cobranza por medio, siniestros por compañía).
 import { useCallback, useEffect, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
-import type { TableroMetricas } from '../../../shared/tipos'
+import { campoDeRama } from '../../../shared/riesgos'
+import { NOMBRE_RAMA_DE_METRICA, RAMAS_DE_METRICA, type RamaDeMetrica, type TableroMetricas } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Cargando, Tarjeta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { momento, pesos, pesosRedondos } from '../cobranzas/formato'
 import { GraficoDeBarras, GraficoDeLinea, numero, Ranking, TarjetaGrande } from './graficos'
+
+/** El color de cada rama en la línea de evolución; el total mantiene el azul de siempre. */
+const COLOR_DE_RAMA: Record<RamaDeMetrica, string> = {
+  AUTOS_MOTOS: '#0f766e',
+  RIESGOS_VARIOS: '#d97706',
+}
 
 export function Metricas() {
   const [datos, setDatos] = useState<TableroMetricas | null>(null)
@@ -42,6 +49,10 @@ export function Metricas() {
   const alcance =
     datos.sucursalesElegidas.length > 0 ? `${nombreDePeriodo(datos.periodo)} · ${datos.sucursalesElegidas.join(', ')}` : nombreDePeriodo(datos.periodo)
   const seleccion = 'h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-800'
+  // La separación mes a mes, sólo si la traen TODOS los meses: con uno solo sin ella la línea de riesgos
+  // varios caería a cero ese mes y contaría una baja que no pasó. Null cuando el cálculo es de antes.
+  const mesesConRama = datos.evolucion.flatMap((mes) => (mes.porRama ? [mes.porRama] : []))
+  const evolucionPorRama = mesesConRama.length > 0 && mesesConRama.length === datos.evolucion.length ? mesesConRama : null
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
@@ -93,20 +104,30 @@ export function Metricas() {
         </p>
       )}
 
+      {/* Activos, altas y bajas separados por rama sólo si el cálculo trae la separación: uno guardado por
+          una versión anterior del servidor no la tiene, y ahí las tarjetas quedan con el total de siempre. */}
       <div className="grid shrink-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <TarjetaGrande
           etiqueta="Seguros activos"
           valor={numero(datos.activos)}
-          detalle={`Filas de la planilla de ${alcance}`}
+          detalle={`Pólizas de ${alcance}`}
           tono="marca"
+          desglose={datos.porRama && { autosMotos: datos.porRama.autosMotos.activos, riesgosVarios: datos.porRama.riesgosVarios.activos }}
         />
         <TarjetaGrande
           etiqueta="Altas del mes"
           valor={datos.altas === null ? '—' : numero(datos.altas)}
           detalle={datos.altas === null ? 'Sin mes anterior cargado no se pueden deducir' : 'Están este mes y no estaban el anterior; las renovaciones no cuentan'}
           tono="exito"
+          desglose={datos.porRama && { autosMotos: datos.porRama.autosMotos.altas, riesgosVarios: datos.porRama.riesgosVarios.altas }}
         />
-        <TarjetaGrande etiqueta="Bajas del mes" valor={numero(datos.bajas)} detalle={resumenDeMotivos(datos)} tono="peligro" />
+        <TarjetaGrande
+          etiqueta="Bajas del mes"
+          valor={numero(datos.bajas)}
+          detalle={resumenDeMotivos(datos)}
+          tono="peligro"
+          desglose={datos.porRama && { autosMotos: datos.porRama.autosMotos.bajas, riesgosVarios: datos.porRama.riesgosVarios.bajas }}
+        />
         {/* Las dos de plata sólo para quien ve los números de la agencia. Cuando no, en su lugar va la
             CANTIDAD de cuotas, que es lo mismo en términos de trabajo hecho y por hacer, y es lo que
             de verdad necesita el mostrador. Una tarjeta con un guion invitaría a preguntar por qué. */}
@@ -158,10 +179,22 @@ export function Metricas() {
           <Ranking filas={datos.activosPorSucursal} vacio="No hay pólizas en la planilla de este mes." />
         </Tarjeta>
 
+        {/* Los dos gráficos de evolución separan las ramas sólo si TODOS los meses traen la separación: un
+            cálculo guardado por una versión anterior del servidor no la tiene, y ahí quedan con el total de
+            siempre. */}
         <Tarjeta titulo="Evolución de la cartera" descripcion="Seguros activos mes a mes, hasta doce meses hacia atrás.">
           <GraficoDeLinea
             titulo="Seguros activos por mes"
             puntos={datos.evolucion.map((mes) => ({ periodo: mes.periodo, valor: mes.activos }))}
+            series={
+              evolucionPorRama
+                ? RAMAS_DE_METRICA.map((rama) => ({
+                    nombre: NOMBRE_RAMA_DE_METRICA[rama],
+                    color: COLOR_DE_RAMA[rama],
+                    valores: evolucionPorRama.map((porRama) => porRama[campoDeRama(rama)].activos),
+                  }))
+                : undefined
+            }
           />
         </Tarjeta>
 
@@ -170,7 +203,15 @@ export function Metricas() {
             titulo="Altas y bajas por mes"
             nombrePrimera="Altas"
             nombreSegunda="Bajas"
-            meses={datos.evolucion.map((mes) => ({ periodo: mes.periodo, primera: mes.altas ?? 0, segunda: mes.bajas }))}
+            meses={datos.evolucion.map((mes) => ({
+              periodo: mes.periodo,
+              primera: mes.altas ?? 0,
+              segunda: mes.bajas,
+              // Sin mes anterior la barra de altas va en cero, así que tampoco lleva parte de riesgos varios.
+              ...(evolucionPorRama && mes.porRama
+                ? { riesgosVarios: { primera: mes.altas === null ? 0 : (mes.porRama.riesgosVarios.altas ?? 0), segunda: mes.porRama.riesgosVarios.bajas } }
+                : {}),
+            }))}
           />
         </Tarjeta>
 
@@ -210,8 +251,9 @@ export function Metricas() {
 
       <p className="shrink-0 text-xs leading-relaxed text-slate-500">
         Los seguros activos son las filas de la planilla del mes elegido, que es lo mismo que cuentan los COUNTIF de la pestaña SEGUROS
-        ACT de la hoja. Las altas se deducen comparando contra el mes anterior, igual que lo hace el contador; las bajas salen de la
-        pestaña de BAJAS de ese mes.
+        ACT de la hoja, más los riesgos varios de la pestaña RIESGOS VARIOS cuya vigencia cubre el mes. Las altas se deducen comparando
+        contra el mes anterior, igual que lo hace el contador; las de la pestaña RIESGOS VARIOS, por su fecha de emisión (o de vigencia
+        desde, si no tienen emisión). Las bajas salen de la pestaña de BAJAS de ese mes.
       </p>
     </div>
   )

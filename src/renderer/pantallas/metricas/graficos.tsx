@@ -5,6 +5,7 @@
 // Todos llevan además su lectura en texto (el valor al lado de cada barra, la tabla de abajo): un
 // gráfico que sólo se entiende mirándolo no sirve para el que trabaja con la planilla al lado.
 import type { ReactNode } from 'react'
+import { NOMBRE_RAMA_DE_METRICA } from '../../../shared/tipos'
 import { cx } from '../../componentes/ui'
 
 const MESES_CORTOS = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC']
@@ -28,6 +29,8 @@ interface PropsTarjetaGrande {
   valor: string
   detalle?: ReactNode
   tono?: 'marca' | 'exito' | 'peligro' | 'neutro'
+  /** La misma cifra separada por rama. Sin él la tarjeta es la de siempre: un cálculo viejo no la trae. */
+  desglose?: { autosMotos: number | null; riesgosVarios: number | null }
 }
 
 const TONOS_DE_TARJETA = {
@@ -37,11 +40,22 @@ const TONOS_DE_TARJETA = {
   neutro: 'border-slate-200 bg-white text-slate-900',
 }
 
-export function TarjetaGrande({ etiqueta, valor, detalle, tono = 'neutro' }: PropsTarjetaGrande) {
+export function TarjetaGrande({ etiqueta, valor, detalle, tono = 'neutro', desglose }: PropsTarjetaGrande) {
+  const cifra = (cantidad: number | null) => (cantidad === null ? '—' : numero(cantidad))
   return (
     <div className={cx('min-w-0 rounded-xl border px-4 py-3 shadow-suave', TONOS_DE_TARJETA[tono])}>
       <span className="block text-[11px] font-bold uppercase tracking-[0.12em] opacity-70">{etiqueta}</span>
       <span className="mt-0.5 block font-display text-3xl leading-tight font-extrabold tabular-nums">{valor}</span>
+      {desglose && (
+        <span className="mt-1 flex flex-wrap gap-x-3 text-xs tabular-nums">
+          <span>
+            {NOMBRE_RAMA_DE_METRICA.AUTOS_MOTOS} <strong className="font-semibold">{cifra(desglose.autosMotos)}</strong>
+          </span>
+          <span>
+            {NOMBRE_RAMA_DE_METRICA.RIESGOS_VARIOS} <strong className="font-semibold">{cifra(desglose.riesgosVarios)}</strong>
+          </span>
+        </span>
+      )}
       {detalle && <span className="mt-1 block text-xs leading-relaxed opacity-80">{detalle}</span>}
     </div>
   )
@@ -130,16 +144,34 @@ export interface PuntoDeSerie {
   valor: number
 }
 
-export function GraficoDeLinea({ puntos, titulo }: { puntos: PuntoDeSerie[]; titulo: string }) {
+/** Una línea más debajo de la principal, con un valor por cada punto y en el mismo orden. */
+export interface SerieDeLinea {
+  nombre: string
+  color: string
+  valores: number[]
+}
+
+const COLOR_DE_LA_LINEA = '#235ba8'
+
+interface PropsLinea {
+  puntos: PuntoDeSerie[]
+  titulo: string
+  /** Cómo se llama la línea principal en la leyenda. Sólo se usa si hay `series`. */
+  nombre?: string
+  /** Las líneas que la separan (por ejemplo, por rama). Sin ellas el gráfico es la línea de siempre. */
+  series?: SerieDeLinea[]
+}
+
+export function GraficoDeLinea({ puntos, titulo, nombre = 'Total', series = [] }: PropsLinea) {
   if (puntos.length === 0) return <p className="py-6 text-center text-sm text-slate-500">Todavía no hay meses cargados.</p>
 
-  const tope = topeDeEje(Math.max(...puntos.map((punto) => punto.valor)))
+  const tope = topeDeEje(Math.max(...puntos.map((punto) => punto.valor), ...series.flatMap((serie) => serie.valores)))
   const util = { ancho: ANCHO - MARGEN.izquierda - MARGEN.derecha, alto: ALTO - MARGEN.arriba - MARGEN.abajo }
   const x = (i: number) => MARGEN.izquierda + (puntos.length === 1 ? util.ancho / 2 : (i / (puntos.length - 1)) * util.ancho)
   const y = (valor: number) => MARGEN.arriba + util.alto - (valor / tope) * util.alto
   const linea = puntos.map((punto, i) => `${x(i)},${y(punto.valor)}`).join(' ')
 
-  return (
+  const grafico = (
     <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="h-auto w-full" role="img" aria-label={titulo}>
       {[0, 0.5, 1].map((parte) => (
         <g key={parte}>
@@ -156,17 +188,47 @@ export function GraficoDeLinea({ puntos, titulo }: { puntos: PuntoDeSerie[]; tit
           </text>
         </g>
       ))}
-      <polyline points={linea} fill="none" stroke="#235ba8" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      {/* Las series de la separación van debajo y punteadas: la línea principal sigue siendo la que se lee primero. */}
+      {series.map((serie) => (
+        <polyline
+          key={serie.nombre}
+          points={puntos.map((_, i) => `${x(i)},${y(serie.valores[i] ?? 0)}`).join(' ')}
+          fill="none"
+          stroke={serie.color}
+          strokeWidth="2"
+          strokeDasharray="6 4"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      ))}
+      <polyline points={linea} fill="none" stroke={COLOR_DE_LA_LINEA} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
       {puntos.map((punto, i) => (
         <g key={punto.periodo}>
-          <circle cx={x(i)} cy={y(punto.valor)} r="3.5" fill="#235ba8" />
-          <title>{`${punto.periodo}: ${numero(punto.valor)}`}</title>
+          <circle cx={x(i)} cy={y(punto.valor)} r="3.5" fill={COLOR_DE_LA_LINEA} />
+          <title>
+            {[`${punto.periodo}: ${numero(punto.valor)}`, ...series.map((serie) => `${serie.nombre}: ${numero(serie.valores[i] ?? 0)}`)].join(' · ')}
+          </title>
           <text x={x(i)} y={ALTO - 8} textAnchor="middle" fontSize="11" fill="var(--grafico-rotulo)">
             {mesCorto(punto.periodo)}
           </text>
         </g>
       ))}
     </svg>
+  )
+
+  if (series.length === 0) return grafico
+  return (
+    <div>
+      {grafico}
+      <div className="mt-1 flex flex-wrap justify-center gap-4 text-xs text-slate-600">
+        {[{ nombre, color: COLOR_DE_LA_LINEA }, ...series].map((serie) => (
+          <span key={serie.nombre} className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: serie.color }} />
+            {serie.nombre}
+          </span>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -178,6 +240,11 @@ export interface MesDeBarras {
   periodo: string
   primera: number
   segunda: number
+  /**
+   * La parte de cada barra que es de riesgos varios; el resto es de autos y motos. Se dibuja arriba y en
+   * tono claro. Sin él la barra va de un solo tono, como siempre.
+   */
+  riesgosVarios?: { primera: number; segunda: number }
 }
 
 interface PropsBarras {
@@ -187,9 +254,22 @@ interface PropsBarras {
   nombreSegunda: string
 }
 
+/** Lo que dice el globito de una barra: el total y, si la trae, su separación por rama. */
+function rotuloDeBarra(periodo: string, nombre: string, valor: number, deRiesgosVarios: number | undefined): string {
+  const total = `${periodo} · ${nombre}: ${numero(valor)}`
+  if (deRiesgosVarios === undefined) return total
+  const autosMotos = `${NOMBRE_RAMA_DE_METRICA.AUTOS_MOTOS} ${numero(valor - deRiesgosVarios)}`
+  return `${total} (${autosMotos} · ${NOMBRE_RAMA_DE_METRICA.RIESGOS_VARIOS} ${numero(deRiesgosVarios)})`
+}
+
+/** El tono pleno de cada barra (la parte de autos y motos) y el claro que le va arriba (riesgos varios). */
+const COLOR_PRIMERA = { pleno: '#16a34a', claro: '#86efac' }
+const COLOR_SEGUNDA = { pleno: '#dc2626', claro: '#fca5a5' }
+
 export function GraficoDeBarras({ meses, titulo, nombrePrimera, nombreSegunda }: PropsBarras) {
   if (meses.length === 0) return <p className="py-6 text-center text-sm text-slate-500">Todavía no hay meses cargados.</p>
 
+  const hayRamas = meses.some((mes) => mes.riesgosVarios !== undefined)
   const tope = topeDeEje(Math.max(...meses.flatMap((mes) => [mes.primera, mes.segunda])))
   const util = { ancho: ANCHO - MARGEN.izquierda - MARGEN.derecha, alto: ALTO - MARGEN.arriba - MARGEN.abajo }
   const paso = util.ancho / meses.length
@@ -217,14 +297,24 @@ export function GraficoDeBarras({ meses, titulo, nombrePrimera, nombreSegunda }:
         ))}
         {meses.map((mes, i) => {
           const centro = MARGEN.izquierda + paso * i + paso / 2
+          // Cada barra es el total; encima, en tono claro, va la parte de riesgos varios. Lo que queda
+          // abajo en tono pleno es la de autos y motos, así que la barra sigue midiendo el total de antes.
+          const barra = (x: number, valor: number, deRiesgosVarios: number | undefined, color: { pleno: string; claro: string }, nombre: string) => (
+            <>
+              <rect x={x} y={base - alto(valor)} width={ancho} height={Math.max(alto(valor), 0)} fill={color.pleno} rx="2">
+                <title>{rotuloDeBarra(mes.periodo, nombre, valor, deRiesgosVarios)}</title>
+              </rect>
+              {deRiesgosVarios !== undefined && deRiesgosVarios > 0 && (
+                <rect x={x} y={base - alto(valor)} width={ancho} height={Math.max(alto(deRiesgosVarios), 0)} fill={color.claro} rx="2">
+                  <title>{rotuloDeBarra(mes.periodo, nombre, valor, deRiesgosVarios)}</title>
+                </rect>
+              )}
+            </>
+          )
           return (
             <g key={mes.periodo}>
-              <rect x={centro - ancho - 1} y={base - alto(mes.primera)} width={ancho} height={Math.max(alto(mes.primera), 0)} fill="#16a34a" rx="2">
-                <title>{`${mes.periodo} · ${nombrePrimera}: ${numero(mes.primera)}`}</title>
-              </rect>
-              <rect x={centro + 1} y={base - alto(mes.segunda)} width={ancho} height={Math.max(alto(mes.segunda), 0)} fill="#dc2626" rx="2">
-                <title>{`${mes.periodo} · ${nombreSegunda}: ${numero(mes.segunda)}`}</title>
-              </rect>
+              {barra(centro - ancho - 1, mes.primera, mes.riesgosVarios?.primera, COLOR_PRIMERA, nombrePrimera)}
+              {barra(centro + 1, mes.segunda, mes.riesgosVarios?.segunda, COLOR_SEGUNDA, nombreSegunda)}
               <text x={centro} y={ALTO - 8} textAnchor="middle" fontSize="11" fill="var(--grafico-rotulo)">
                 {mesCorto(mes.periodo)}
               </text>
@@ -232,7 +322,7 @@ export function GraficoDeBarras({ meses, titulo, nombrePrimera, nombreSegunda }:
           )
         })}
       </svg>
-      <div className="mt-1 flex justify-center gap-4 text-xs text-slate-600">
+      <div className="mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-slate-600">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm bg-green-600" />
           {nombrePrimera}
@@ -241,6 +331,12 @@ export function GraficoDeBarras({ meses, titulo, nombrePrimera, nombreSegunda }:
           <span className="h-2.5 w-2.5 rounded-sm bg-red-600" />
           {nombreSegunda}
         </span>
+        {hayRamas && (
+          <span>
+            El tono claro de cada barra es la parte de {NOMBRE_RAMA_DE_METRICA.RIESGOS_VARIOS.toLowerCase()}; el pleno, la de{' '}
+            {NOMBRE_RAMA_DE_METRICA.AUTOS_MOTOS.toLowerCase()}.
+          </span>
+        )}
       </div>
     </div>
   )
