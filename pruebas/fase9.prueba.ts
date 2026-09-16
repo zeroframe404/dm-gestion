@@ -105,7 +105,10 @@ function countifPorCompania(pestana: string): Map<string, number> {
 test('los seguros activos por compañía coinciden con los COUNTIF de la hoja', async () => {
   await prepararBase()
 
+  // Los riesgos varios de la pestaña RIESGOS VARIOS también son seguros activos del mes. En la hoja de
+  // prueba no tienen fechas, así que están vigentes todos los meses y suman su propio COUNTIF.
   const esperado = countifPorCompania('AGOSTO')
+  for (const [compania, cantidad] of countifPorCompania('RIESGOS VARIOS')) esperado.set(compania, (esperado.get(compania) ?? 0) + cantidad)
   const tablero = tableroDeMetricasLocal({ periodo: AGOSTO, sucursales: [] }, true)
 
   const total = [...esperado.values()].reduce((suma, n) => suma + n, 0)
@@ -130,8 +133,13 @@ test('el filtro de sucursal recorta el tablero sin romper los porcentajes', asyn
   const completo = tableroDeMetricasLocal({ periodo: AGOSTO, sucursales: [] }, true)
   const lanus = tableroDeMetricasLocal({ periodo: AGOSTO, sucursales: ['Lanús'] }, true)
 
-  // En AGOSTO Lanús tiene las dos pólizas de Pérez (el auto y la moto).
-  assert.equal(lanus.activos, 2)
+  // En AGOSTO Lanús tiene las dos pólizas de Pérez (el auto y la moto) y el riesgo vario de la
+  // Cooperativa El Sol, que no tiene fechas y está vigente todos los meses.
+  assert.equal(lanus.activos, 3)
+  assert.deepEqual(
+    [lanus.porRama?.autosMotos.activos, lanus.porRama?.riesgosVarios.activos],
+    [2, 1],
+  )
   assert.ok(lanus.activos < completo.activos)
   assert.equal(lanus.activosPorSucursal.length, 1, 'filtrando por una sucursal sólo puede quedar esa')
   assert.equal(lanus.activosPorSucursal[0]!.porcentaje, 100)

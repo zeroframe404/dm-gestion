@@ -3,9 +3,9 @@
 // Existe para una cosa muy concreta: poner esta pantalla al lado de la hoja de Google y comprobar,
 // fila por fila, que los activos por compañía coinciden con los COUNTIF de SEGUROS ACT. Por eso es
 // tabular, sin gráficos y con los totales abajo: para comparar, no para mirar.
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { nombreDePeriodo } from '../../../shared/semaforo'
-import type { EstadisticasDeCartera, FilaEstadistica, ResumenDeCartera } from '../../../shared/tipos'
+import { NOMBRE_RAMA_DE_METRICA, type EstadisticasDeCartera, type FilaEstadistica, type ResumenDeCartera } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
 import { momento, numero, pesos } from '../cobranzas/formato'
@@ -99,8 +99,10 @@ export function Estadisticas() {
 
       <p className="shrink-0 text-xs leading-relaxed text-slate-500">
         <strong className="font-semibold text-slate-600">Activos</strong> son las filas de la planilla del mes que no están dadas de
-        baja —lo mismo que cuenta SEGUROS ACT—. <strong className="font-semibold text-slate-600">Altas</strong> son las que están este
-        mes y no estaban el anterior: una renovación no cuenta, porque el cliente ya estaba y la cartera no creció.{' '}
+        baja —lo mismo que cuenta SEGUROS ACT—, más los riesgos varios de la pestaña RIESGOS VARIOS cuya vigencia cubre el mes.{' '}
+        <strong className="font-semibold text-slate-600">Altas</strong> son las que están este mes y no estaban el anterior: una
+        renovación no cuenta, porque el cliente ya estaba y la cartera no creció. Un riesgo vario de la pestaña RIESGOS VARIOS es alta en
+        el mes de su emisión.{' '}
         <strong className="font-semibold text-slate-600">Bajas</strong> salen de la pestaña de bajas de ese mes.{' '}
         <strong className="font-semibold text-slate-600">Pagos</strong> son los cobros imputados a ese mes.
       </p>
@@ -151,9 +153,37 @@ interface PropsTabla {
   vacio: string
 }
 
+/** Las tres cifras que se separan por rama, en el orden de las columnas. */
+const CIFRAS_POR_RAMA = [
+  { campo: 'activos', titulo: 'Activos' },
+  { campo: 'altas', titulo: 'Altas' },
+  { campo: 'bajas', titulo: 'Bajas' },
+] as const
+
+type CampoPorRama = (typeof CIFRAS_POR_RAMA)[number]['campo']
+
+/**
+ * Una cifra de una fila: los activos siempre con su número; las altas en verde y las bajas en rojo, y
+ * en cero o sin dato con un guion gris, que en una columna larga se saltea más rápido que un cero.
+ */
+function Cifra({ campo, valor, sutil = false }: { campo: CampoPorRama; valor: number | null; sutil?: boolean }) {
+  if (campo === 'activos') {
+    return <td className={cx('px-3 py-2 text-right tabular-nums', sutil ? 'text-slate-600' : 'text-slate-900')}>{numero(valor ?? 0)}</td>
+  }
+  const hayAlgo = valor !== null && valor > 0
+  const tono = !hayAlgo ? 'text-slate-300' : campo === 'altas' ? 'text-green-700' : 'text-red-700'
+  return <td className={cx('px-3 py-2 text-right tabular-nums', tono, sutil && hayAlgo && 'opacity-80')}>{hayAlgo ? numero(valor) : '—'}</td>
+}
+
 function TablaDeEstadisticas({ titulo, encabezadoDeFila, filas, totales, vacio }: PropsTabla) {
   // La columna de plata sólo existe si el proceso principal la mandó: a un empleado le llega en null.
   const conCobrado = totales.cobrado !== null
+  // Activos, altas y bajas se abren en autos y motos y riesgos varios sólo si el cálculo trae la
+  // separación: uno guardado por una versión anterior del servidor no la tiene, y ahí la tabla es la de
+  // siempre en vez de mostrar columnas en cero.
+  const porRama = totales.porRama
+  const columnas = 1 + CIFRAS_POR_RAMA.length * (porRama ? 3 : 1) + 1 + (conCobrado ? 1 : 0)
+  const filasDeEncabezado = porRama ? 2 : 1
 
   const encabezado = 'px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 whitespace-nowrap'
   return (
@@ -165,18 +195,43 @@ function TablaDeEstadisticas({ titulo, encabezadoDeFila, filas, totales, vacio }
         <table className="w-full text-sm">
           <thead className="bg-slate-50">
             <tr className="border-b border-slate-200">
-              <th className={encabezado}>{encabezadoDeFila}</th>
-              <th className={cx(encabezado, 'text-right')}>Activos</th>
-              <th className={cx(encabezado, 'text-right')}>Altas</th>
-              <th className={cx(encabezado, 'text-right')}>Bajas</th>
-              <th className={cx(encabezado, 'text-right')}>Pagos</th>
-              {conCobrado && <th className={cx(encabezado, 'text-right')}>Cobrado</th>}
+              <th rowSpan={filasDeEncabezado} className={encabezado}>
+                {encabezadoDeFila}
+              </th>
+              {CIFRAS_POR_RAMA.map(({ campo, titulo: tituloDeCifra }) => (
+                <th
+                  key={campo}
+                  colSpan={porRama ? 3 : 1}
+                  className={cx(encabezado, porRama ? 'border-l border-slate-200 text-center' : 'text-right')}
+                >
+                  {tituloDeCifra}
+                </th>
+              ))}
+              <th rowSpan={filasDeEncabezado} className={cx(encabezado, 'text-right', porRama && 'border-l border-slate-200')}>
+                Pagos
+              </th>
+              {conCobrado && (
+                <th rowSpan={filasDeEncabezado} className={cx(encabezado, 'text-right')}>
+                  Cobrado
+                </th>
+              )}
             </tr>
+            {porRama && (
+              <tr className="border-b border-slate-200">
+                {CIFRAS_POR_RAMA.map(({ campo }) => (
+                  <Fragment key={campo}>
+                    <th className={cx(encabezado, 'border-l border-slate-200 text-right')}>Total</th>
+                    <th className={cx(encabezado, 'text-right normal-case tracking-normal')}>{NOMBRE_RAMA_DE_METRICA.AUTOS_MOTOS}</th>
+                    <th className={cx(encabezado, 'text-right normal-case tracking-normal')}>{NOMBRE_RAMA_DE_METRICA.RIESGOS_VARIOS}</th>
+                  </Fragment>
+                ))}
+              </tr>
+            )}
           </thead>
           <tbody>
             {filas.length === 0 && (
               <tr>
-                <td colSpan={conCobrado ? 6 : 5} className="px-3 py-10 text-center text-slate-500">
+                <td colSpan={columnas} className="px-3 py-10 text-center text-slate-500">
                   {vacio}
                 </td>
               </tr>
@@ -184,13 +239,17 @@ function TablaDeEstadisticas({ titulo, encabezadoDeFila, filas, totales, vacio }
             {filas.map((fila) => (
               <tr key={fila.etiqueta} className="border-b border-slate-100 last:border-b-0">
                 <td className="px-3 py-2 font-medium text-slate-900">{fila.etiqueta}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(fila.activos)}</td>
-                <td className={cx('px-3 py-2 text-right tabular-nums', (fila.altas ?? 0) > 0 ? 'text-green-700' : 'text-slate-300')}>
-                  {fila.altas !== null && fila.altas > 0 ? numero(fila.altas) : '—'}
-                </td>
-                <td className={cx('px-3 py-2 text-right tabular-nums', fila.bajas > 0 ? 'text-red-700' : 'text-slate-300')}>
-                  {fila.bajas > 0 ? numero(fila.bajas) : '—'}
-                </td>
+                {CIFRAS_POR_RAMA.map(({ campo }) => (
+                  <Fragment key={campo}>
+                    <Cifra campo={campo} valor={fila[campo]} />
+                    {porRama && (
+                      <>
+                        <Cifra campo={campo} valor={fila.porRama?.autosMotos[campo] ?? null} sutil />
+                        <Cifra campo={campo} valor={fila.porRama?.riesgosVarios[campo] ?? null} sutil />
+                      </>
+                    )}
+                  </Fragment>
+                ))}
                 <td className="px-3 py-2 text-right tabular-nums text-slate-600">{numero(fila.pagos)}</td>
                 {fila.cobrado !== null && <td className="px-3 py-2 text-right tabular-nums text-slate-900">{pesos(fila.cobrado)}</td>}
               </tr>
@@ -200,9 +259,15 @@ function TablaDeEstadisticas({ titulo, encabezadoDeFila, filas, totales, vacio }
             <tfoot>
               <tr className="border-t border-slate-200 bg-slate-50 font-semibold">
                 <td className="px-3 py-2 text-slate-900">Total</td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(totales.activos)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-900">{totales.altas === null ? '—' : numero(totales.altas)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(totales.bajas)}</td>
+                {CIFRAS_POR_RAMA.map(({ campo }) => (
+                  <Fragment key={campo}>
+                    {[totales[campo], ...(porRama ? [porRama.autosMotos[campo], porRama.riesgosVarios[campo]] : [])].map((valor, indice) => (
+                      <td key={indice} className="px-3 py-2 text-right tabular-nums text-slate-900">
+                        {valor === null ? '—' : numero(valor)}
+                      </td>
+                    ))}
+                  </Fragment>
+                ))}
                 <td className="px-3 py-2 text-right tabular-nums text-slate-900">{numero(totales.pagos)}</td>
                 {totales.cobrado !== null && <td className="px-3 py-2 text-right tabular-nums text-slate-900">{pesos(totales.cobrado)}</td>}
               </tr>

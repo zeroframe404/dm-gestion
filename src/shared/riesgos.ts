@@ -1,7 +1,14 @@
 // Qué es cada riesgo asegurado y cómo se nombra en una línea. Vive en shared porque lo usan el
 // formulario de la póliza, la ficha del cliente y el proceso principal, y los tres tienen que decir lo
 // mismo: «HOGAR · Mitre 1234» acá es «HOGAR · Mitre 1234» en todos lados.
-import { NOMBRE_TIPO_RIESGO, TIPOS_DE_RIESGO, type IntegranteDePoliza, type TipoDeRiesgo } from './tipos'
+import {
+  NOMBRE_TIPO_RIESGO,
+  TIPOS_DE_RIESGO,
+  type IntegranteDePoliza,
+  type MetricasPorRama,
+  type RamaDeMetrica,
+  type TipoDeRiesgo,
+} from './tipos'
 
 function clave(valor: string | null | undefined): string {
   return (valor ?? '')
@@ -47,6 +54,21 @@ export function tipoDeRiesgo(tipo: string | null | undefined): TipoDeRiesgo | nu
 export function esVehiculo(tipo: string | null | undefined): boolean {
   const conocido = tipoDeRiesgo(tipo)
   return conocido === null || conocido === 'AUTO' || conocido === 'MOTO'
+}
+
+/**
+ * La rama de métricas de un riesgo: autos y motos para todo vehículo —incluido el tipo vacío o
+ * desconocido, igual que `esVehiculo`— y riesgos varios para el resto. Es la MISMA regla que usa el
+ * servidor para separar el podio y el tablero (vendoreada en metricas.* de ese lado): si una de las
+ * dos cambia, la otra tiene que cambiar con ella o el cotejo empieza a marcar diferencias.
+ */
+export function ramaDeMetrica(tipo: string | null | undefined): RamaDeMetrica {
+  return esVehiculo(tipo) ? 'AUTOS_MOTOS' : 'RIESGOS_VARIOS'
+}
+
+/** En qué campo de `MetricasPorRama` cae cada rama. */
+export function campoDeRama(rama: RamaDeMetrica): keyof MetricasPorRama {
+  return rama === 'RIESGOS_VARIOS' ? 'riesgosVarios' : 'autosMotos'
 }
 
 /** «Hogar», «Accidente personal»… o el texto tal cual si no es un tipo conocido. */

@@ -17,7 +17,8 @@ export const AYUDA_METRICAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Las tarjetas grandes',
         parrafos: [
-          'Seguros activos: cuántas pólizas tiene la planilla de ese mes, sea cual sea su estado actual (es una foto de ese mes puntual, no de la cartera de hoy). Altas del mes: las pólizas que están en la planilla de este mes y no estaban en la del mes anterior (una renovación no cuenta: el cliente ya estaba). Bajas del mes: las que se dieron de baja en ese mes, con el motivo más frecuente a modo de resumen.',
+          'Seguros activos: cuántas pólizas tiene la planilla de ese mes, sea cual sea su estado actual (es una foto de ese mes puntual, no de la cartera de hoy), más los riesgos varios vigentes en ese mes. Altas del mes: las pólizas que están en la planilla de este mes y no estaban en la del mes anterior (una renovación no cuenta: el cliente ya estaba). Bajas del mes: las que se dieron de baja en ese mes, con el motivo más frecuente a modo de resumen.',
+          'Esas tres tarjetas muestran además la misma cifra separada en «Autos y motos» y «Riesgos varios», que siempre suman el total de arriba. Si no aparece la separación, el cálculo es de antes de esta versión y se completa solo en el próximo cálculo del servidor.',
           'Cobrado en el mes y Pendiente de cobro: cuánta plata entró y cuánta sigue faltando cobrar de las cuotas de ese mes, con la cantidad de cuotas en cada caso. Siniestros abiertos: todos los que no están en estado Cerrado, sin importar de qué mes son (un siniestro sigue «abierto» hasta que se resuelve, más allá de cuándo se cargó).',
         ],
       },
@@ -32,21 +33,25 @@ export const AYUDA_METRICAS: Record<string, ContenidoDeAyuda> = {
         titulo: 'Cómo se cuenta cada cosa',
         parrafos: [
           'Los seguros activos de un mes son literalmente las filas de la planilla de ese mes, lo mismo que contaría alguien mirando esa pestaña a mano: no se filtra por si esa póliza sigue vigente hoy, porque eso arruinaría la lectura de los meses viejos. Las altas salen de comparar la planilla de este mes contra la del mes anterior, así que dependen de que ese mes anterior ya esté cargado en el sistema; una póliza renovada se sigue reconociendo como la misma y no se cuenta de nuevo. Las bajas del mes son las que están anotadas en Cartera → Bajas de ese mismo mes. Activos, altas y bajas se cuentan una vez por póliza: si la planilla trae la misma póliza en dos renglones (ver Cartera → Duplicados), el tablero no la cuenta dos veces.',
+          'Autos y motos o riesgos varios: una fila de la planilla del mes es riesgo vario cuando su TIPO dice bicicleta, accidente personal, hogar, integral de comercio u otro; cualquier otro tipo, o ninguno, es autos y motos. Las filas de la pestaña RIESGOS VARIOS son siempre riesgos varios: como esa pestaña no tiene mes, están activas mientras su vigencia cubra el mes elegido y son alta en el mes de su fecha de emisión (o de su vigencia desde, si no tienen emisión); una póliza que ya está en la planilla del mes se cuenta ahí y no dos veces. Una baja es riesgo vario si su número de póliza o su patente aparece como riesgo vario en la planilla o en RIESGOS VARIOS.',
+          'Los gráficos de evolución y de altas y bajas por mes también muestran las dos ramas: la línea de seguros activos suma una línea para autos y motos y otra para riesgos varios, y cada barra de altas y de bajas lleva en tono pleno la parte de autos y motos y en tono claro la de riesgos varios. Con un cálculo del servidor de antes de esta versión muestran sólo el total.',
         ],
       },
     ],
     conceptos: [
       {
         termino: 'Activos',
-        explicacion: 'La cantidad de pólizas que tiene la planilla del mes elegido, tal cual estaba ese mes (no se recalcula con el estado actual de la póliza).',
+        explicacion:
+          'Las pólizas de la planilla del mes elegido, tal cual estaba ese mes, más los riesgos varios vigentes en ese mes. Se muestran en total y separados en autos y motos y riesgos varios.',
       },
       {
         termino: 'Altas',
-        explicacion: 'Pólizas que aparecen en la planilla de este mes y no estaban en la del mes anterior. Una renovación NO es un alta: el cliente ya estaba y la cartera no creció, aunque la póliza haya cambiado de número. Sin mes anterior cargado dan un guion, no cero.',
+        explicacion:
+          'Pólizas que están en la planilla de este mes y no estaban en la del anterior (una renovación NO es un alta), más los riesgos varios emitidos en el mes. Sin mes anterior, las de autos y motos dan un guion, no cero.',
       },
       {
         termino: 'Bajas',
-        explicacion: 'Pólizas dadas de baja durante ese mes, según lo anotado en Cartera → Bajas.',
+        explicacion: 'Pólizas dadas de baja durante ese mes, según lo anotado en Cartera → Bajas, en total y separadas en autos y motos y riesgos varios.',
       },
       {
         termino: 'Siniestros abiertos',

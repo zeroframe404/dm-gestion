@@ -3177,6 +3177,39 @@ export interface BajaPorMotivo {
   cantidad: number
 }
 
+/**
+ * La RAMA con la que las métricas separan la cartera: los vehículos (autos, motos y todo lo que la
+ * planilla escribe como vehículo) de un lado, y los riesgos varios (bicicleta, accidente personal,
+ * hogar, integral de comercio, otros) del otro. Se decide con `ramaDeMetrica` de shared/riesgos.ts.
+ */
+export type RamaDeMetrica = 'AUTOS_MOTOS' | 'RIESGOS_VARIOS'
+
+/** Las dos ramas en el orden en que se muestran: primero autos y motos, que es la mayor parte de la cartera. */
+export const RAMAS_DE_METRICA: readonly RamaDeMetrica[] = ['AUTOS_MOTOS', 'RIESGOS_VARIOS']
+
+export const NOMBRE_RAMA_DE_METRICA: Record<RamaDeMetrica, string> = {
+  AUTOS_MOTOS: 'Autos y motos',
+  RIESGOS_VARIOS: 'Riesgos varios',
+}
+
+/** Activos, altas y bajas de una sola rama. Mismas reglas de null que los totales de al lado. */
+export interface ContadorPorRama {
+  activos: number
+  /** null cuando no se puede deducir: autos y motos sin mes anterior cargado. */
+  altas: number | null
+  bajas: number
+}
+
+/**
+ * Los mismos contadores separados por rama. Siempre suman el total que los acompaña. Es OPCIONAL a
+ * propósito: un cálculo del servidor guardado por una versión anterior no los trae, y ahí la pantalla
+ * muestra sólo el total —como antes— en vez de inventar un cero en riesgos varios.
+ */
+export interface MetricasPorRama {
+  autosMotos: ContadorPorRama
+  riesgosVarios: ContadorPorRama
+}
+
 /** Un mes de la evolución de los últimos doce. */
 export interface MesDeEvolucion {
   periodo: string
@@ -3186,6 +3219,8 @@ export interface MesDeEvolucion {
   bajas: number
   /** null cuando quien mira no ve los números de la agencia. Un cero diría «no se cobró nada». */
   cobrado: number | null
+  /** `activos`, `altas` y `bajas` del mes separados por rama. Ausente en un cálculo viejo del servidor. */
+  porRama?: MetricasPorRama
 }
 
 export interface CobranzaDelMes {
@@ -3223,6 +3258,8 @@ export interface TableroMetricas {
   bajasPorMotivo: BajaPorMotivo[]
   /** false si no hay mes anterior cargado: sin él las altas no se pueden deducir y van en null. */
   hayMesAnterior: boolean
+  /** `activos`, `altas` y `bajas` separados en autos y motos y riesgos varios (ver `MetricasPorRama`). */
+  porRama?: MetricasPorRama
 
   evolucion: MesDeEvolucion[]
   cobranza: CobranzaDelMes
@@ -3251,6 +3288,8 @@ export interface FilaEstadistica {
   pagos: number
   /** Cuánto suman. null cuando quien mira no ve los números de la agencia. */
   cobrado: number | null
+  /** `activos`, `altas` y `bajas` separados en autos y motos y riesgos varios (ver `MetricasPorRama`). */
+  porRama?: MetricasPorRama
 }
 
 /**
@@ -3291,6 +3330,10 @@ export interface FilaDeAlta {
   numeroPoliza: string | null
   patente: string | null
   sucursal: string | null
+  /** De qué rama es el alta. Ausente en un detalle guardado por una versión anterior del servidor. */
+  rama?: RamaDeMetrica
+  /** El tipo de riesgo tal como está escrito (TIPO de la planilla o RIESGO de RIESGOS VARIOS). */
+  tipo?: string | null
 }
 
 /**
