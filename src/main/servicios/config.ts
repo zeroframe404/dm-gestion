@@ -123,8 +123,11 @@ export function urlDeVueltaDeMeta(): string {
 }
 
 // La base del GENERAL DE CLIENTES vive en el VPS de la agencia desde la v12. La URL y el token van
-// embebidos (mismo criterio que TOKEN_DATOS y UPDATE_TOKEN: el repositorio es privado) y config.json
-// puede pisarlos para pruebas o si algún día cambia el dominio.
+// embebidos y config.json puede pisarlos para pruebas o si algún día cambia el dominio.
+//
+// OJO: ese criterio ("total el repositorio es privado") ya no vale — el repositorio es PÚBLICO, así
+// que este token, como TOKEN_DATOS, está a la vista de cualquiera. Hay que rotarlos y sacarlos del
+// código (leerlos de config.json, que no se publica). El del updater ya se sacó: no hacía falta.
 const VPS_URL_BASE = 'https://dmartinezseguros.com'
 const VPS_TOKEN = '8b8e041002f5125c317b463b551e6fd90fd6fad0ec827cac09e824d17ed3a5cb'
 

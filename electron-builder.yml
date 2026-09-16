@@ -14,11 +14,13 @@ directories:
 # script aparte, con "gh release create": en pruebas, "electron-builder --publish" creaba dos
 # Releases para el mismo tag en una carrera interna y repartía los archivos entre las dos copias
 # al azar (a veces "latest.yml" quedaba en la copia sin el instalador).
+#
+# Sin `private: true`: el repositorio es público y los Releases se leen sin credenciales, así que el
+# latest.yml no lleva ningún token y el updater tampoco necesita uno (ver src/main/servicios/updater.ts).
 publish:
   provider: github
   owner: zeroframe404
   repo: dm-gestion
-  private: true
 
 files:
   - dist/**/*

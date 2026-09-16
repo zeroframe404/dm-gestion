@@ -1,4 +1,4 @@
-// Actualizaciones automáticas: chequea el repositorio privado de GitHub al abrir la app y cada 15
+// Actualizaciones automáticas: chequea los Releases de GitHub al abrir la app y cada 15
 // minutos (sólo pregunta si hay una versión nueva, no la baja) y avisa al renderer (mismo patrón
 // `emitir` que sincronizacion.ts e importacion.ts) para que aparezca el cartel «Actualización
 // disponible encontrada». Recién baja el instalador cuando alguien aprieta «Actualizar ahora»: antes
@@ -9,14 +9,6 @@ import type { EstadoActualizacion } from '../../shared/tipos'
 import { ahoraIso } from '../importacion/normalizar'
 import { reportarRechazo, reportarVersionPropia } from './estadoDeActualizaciones'
 import { emitirATodas as emitir } from './avisos'
-
-/**
- * Token de SOLO LECTURA para leer los Releases del repo privado `zeroframe404/dm-gestion`
- * (fine-grained personal access token, permiso "Contents: Read-only", limitado a ese repo).
- * NO sirve para hacer push. Lo genera el dueño del repositorio en
- * https://github.com/settings/tokens?type=beta y se reemplaza acá.
- */
-export const UPDATE_TOKEN = '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'
 
 const QUINCE_MINUTOS_MS = 15 * 60 * 1000
 
@@ -39,6 +31,18 @@ let temporizador: NodeJS.Timeout | null = null
  */
 let instalarSolaAlTerminar = false
 
+/**
+ * El mensaje de error de electron-updater trae la URL, el volcado de la respuesta de GitHub, todas las
+ * cabeceras HTTP y el stack: media pantalla de jeroglíficos en el cartel de Acerca de. Se guarda sólo
+ * la primera línea, recortada, que es la única parte que le dice algo a alguien.
+ */
+function mensajeCorto(error: unknown): string {
+  const texto = error instanceof Error ? error.message : String(error)
+  const primeraLinea = texto.split('\n')[0].trim()
+  if (!primeraLinea) return 'Error desconocido.'
+  return primeraLinea.length > 200 ? `${primeraLinea.slice(0, 200)}…` : primeraLinea
+}
+
 function cambiarEstado(cambios: Partial<EstadoActualizacion>): void {
   estado = { ...estado, ...cambios }
   emitir('actualizaciones:estado', estado)
@@ -48,12 +52,21 @@ function cambiarEstado(cambios: Partial<EstadoActualizacion>): void {
 export function iniciarActualizaciones(): void {
   if (!app.isPackaged) return
 
+  // El repositorio es PÚBLICO, así que los Releases se leen sin credenciales: no va ningún token acá.
+  //
+  // Hasta la v15.3.2 iba `private: true` con un token de lectura embebido. Cuando ese token se venció
+  // (los fine-grained personal access token de GitHub duran como mucho un año), GitHub empezó a
+  // contestar «401 Bad credentials» a TODAS las computadoras de la agencia y el programa dejó de ver
+  // las versiones nuevas: un token que caduca es una bomba de tiempo, y además viajaba dentro del
+  // instalador, a la vista de cualquiera que lo abriera. Sin token no vence nada.
+  //
+  // Si algún día el repositorio vuelve a ser privado, esto deja de funcionar y hay que publicar los
+  // Releases en un repositorio público aparte (p. ej. `dm-gestion-releases`) en vez de volver a
+  // embeber un token.
   autoUpdater.setFeedURL({
     provider: 'github',
     owner: 'zeroframe404',
     repo: 'dm-gestion',
-    private: true,
-    token: UPDATE_TOKEN,
   })
   // El chequeo automático ya no descarga solo: sólo pregunta si hay algo nuevo (liviano, una consulta
   // al servidor de GitHub) y es el cartel el que decide si se baja, cuando alguien aprieta «Actualizar
@@ -77,7 +90,7 @@ export function iniciarActualizaciones(): void {
   autoUpdater.on('error', (error) => {
     console.error('[actualizaciones] Error buscando actualizaciones:', error)
     instalarSolaAlTerminar = false
-    cambiarEstado({ situacion: 'error', ultimoError: error.message })
+    cambiarEstado({ situacion: 'error', ultimoError: mensajeCorto(error) })
   })
 
   buscarActualizaciones()
@@ -106,7 +119,7 @@ export function actualizarAhora(): void {
   autoUpdater.downloadUpdate().catch((error: unknown) => {
     instalarSolaAlTerminar = false
     console.error('[actualizaciones] No se pudo descargar:', error)
-    cambiarEstado({ situacion: 'error', ultimoError: error instanceof Error ? error.message : String(error) })
+    cambiarEstado({ situacion: 'error', ultimoError: mensajeCorto(error) })
   })
 }
 
