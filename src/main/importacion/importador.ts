@@ -2138,6 +2138,38 @@ class TrabajoDeImportacion {
     }
   }
 
+  /**
+   * Si el cliente ya existía identificado sólo por nombre y esta fila trae documento, se le asigna el
+   * documento (misma fila de la base) en vez de crear un duplicado. Devuelve la clave por nombre, que
+   * es la que después arma el alias de la corrida.
+   *
+   * Lo usan las dos filas que son del cliente: la de la planilla más nueva y la de APP CLIENTES. En la
+   * segunda no es un detalle (issue #116): un cliente sin fila en la planilla del mes —porque
+   * su póliza se dio de baja, o porque nunca tuvo una— sólo sincroniza por APP CLIENTES, así que el DNI
+   * que alguien le carga a la ficha llega a la otra computadora ÚNICAMENTE por ahí. Sin esto, la fila
+   * creaba un cliente nuevo al lado del que ya estaba y los datos personales —la dirección, el teléfono,
+   * el email— aterrizaban en esa copia: la ficha de siempre, la que tiene las pólizas, seguía en blanco.
+   */
+  private migrarClienteQuePasoATenerDocumento(p: PestanaTrabajo, fila: Fila, ident: Identidad, clave: string, resumen: ResumenPestana): string | null {
+    const claveNombre = ident.nombreNormalizado ? `NOM:${ident.nombreNormalizado}` : null
+    if (!ident.documentoValido || !claveNombre || this.clientesEnCorrida.has(clave)) return claveNombre
+
+    const existentePorDocumento = this.sentencias.clientePorClave.get(clave) as { id: number } | undefined
+    const porNombre = this.clientesEnCorrida.get(claveNombre)?.id ?? (this.sentencias.clientePorClave.get(claveNombre) as { id: number } | undefined)?.id
+    if (existentePorDocumento || porNombre === undefined) return claveNombre
+
+    const cambios = this.sentencias.migrarClaveCliente.run({ id: porNombre, clave, documento: oNulo(ident.documento), documento_normalizado: ident.documentoNormalizado, ahora: this.ahora }).changes
+    if (cambios > 0) {
+      this.contar(resumen, 'clientes_con_documento_nuevo')
+      this.problema(p.titulo, fila.numero, fila.id, 'cliente que pasó a tener documento', `a "${ident.nombre}", que estaba sin DNI/CUIT, se le asignó ${ident.documento}; revisá que sea la misma persona`)
+    } else {
+      // El cliente con ese nombre ya tenía OTRO documento: son dos personas con el mismo nombre.
+      this.problema(p.titulo, fila.numero, fila.id, 'homónimos con documentos distintos', `hay otro cliente llamado "${ident.nombre}" con un DNI/CUIT distinto del de esta fila (${ident.documento}); se los trata como dos personas`)
+      this.clientesAmbiguosPorNombre.add(claveNombre)
+    }
+    return claveNombre
+  }
+
   private guardarCliente(p: PestanaTrabajo, fila: Fila, ident: Identidad, sucursalId: number | null, sucursalTexto: string, resumen: ResumenPestana): number {
     const clave = this.claveCliente(ident, fila.id)
     if (!ident.documentoValido && !ident.documento) this.problema(p.titulo, fila.numero, fila.id, 'cliente sin documento', `"${ident.nombre || '(sin nombre)'}" no tiene DNI/CUIT; se identifica por nombre`)
@@ -2145,24 +2177,7 @@ class TrabajoDeImportacion {
     // La fila ya creó un cliente en otra corrida: si le corrigieron el DNI, se renombra ese registro.
     if (this.anclarPorFila(this.sentencias.anclaClientes, fila.id, clave)) this.contar(resumen, 'clientes_con_clave_corregida')
 
-    // Si el cliente ya existía identificado sólo por nombre y ahora trae documento, se le asigna el
-    // documento (misma fila de la base) en vez de crear un duplicado.
-    const claveNombre = ident.nombreNormalizado ? `NOM:${ident.nombreNormalizado}` : null
-    if (ident.documentoValido && claveNombre && !this.clientesEnCorrida.has(clave)) {
-      const existentePorDocumento = this.sentencias.clientePorClave.get(clave) as { id: number } | undefined
-      const porNombre = this.clientesEnCorrida.get(claveNombre)?.id ?? (this.sentencias.clientePorClave.get(claveNombre) as { id: number } | undefined)?.id
-      if (!existentePorDocumento && porNombre !== undefined) {
-        const cambios = this.sentencias.migrarClaveCliente.run({ id: porNombre, clave, documento: oNulo(ident.documento), documento_normalizado: ident.documentoNormalizado, ahora: this.ahora }).changes
-        if (cambios > 0) {
-          this.contar(resumen, 'clientes_con_documento_nuevo')
-          this.problema(p.titulo, fila.numero, fila.id, 'cliente que pasó a tener documento', `a "${ident.nombre}", que estaba sin DNI/CUIT, se le asignó ${ident.documento}; revisá que sea la misma persona`)
-        } else {
-          // El cliente con ese nombre ya tenía OTRO documento: son dos personas con el mismo nombre.
-          this.problema(p.titulo, fila.numero, fila.id, 'homónimos con documentos distintos', `hay otro cliente llamado "${ident.nombre}" con un DNI/CUIT distinto del de esta fila (${ident.documento}); se los trata como dos personas`)
-          this.clientesAmbiguosPorNombre.add(claveNombre)
-        }
-      }
-    }
+    const claveNombre = this.migrarClienteQuePasoATenerDocumento(p, fila, ident, clave, resumen)
 
     const datos = {
       clave,
@@ -2515,6 +2530,11 @@ class TrabajoDeImportacion {
     // ningún dato del cliente, sólo su clave— así que corre siempre, con la corrección la haya hecho
     // esta computadora o cualquier otra.
     if (this.anclarPorFila(this.sentencias.anclaClientesPorAppClientes, fila.id, clave)) this.contar(resumen, 'clientes_con_clave_corregida')
+
+    // Y si el DNI se lo cargaron a un cliente que esta computadora conoce sólo por su nombre —y que no
+    // tiene fila en la planilla del mes, que es de dónde vendría si no—, la fila es del que ya está: se
+    // le asigna el documento en vez de dejar que el upsert de abajo cree otro al lado.
+    this.migrarClienteQuePasoATenerDocumento(p, fila, ident, clave, resumen)
 
     const sucursalTexto = this.sucursalDeLaFila(fila)
     const sucursalId = this.resolverSucursal(p, fila, sucursalTexto)

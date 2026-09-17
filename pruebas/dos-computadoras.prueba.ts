@@ -827,3 +827,77 @@ test('la ficha que todavía no subió no la pisa la reimportación', async () =>
   assert.equal(fichaDeCliente(id).email, 'lopez@ejemplo.com.ar')
   cerrarTodo()
 })
+
+/** Una fila de AGOSTO (la planilla más nueva) para un cliente al que nunca le cargaron el DNI. */
+function clienteSinDniEnAgosto(hoja: HojaSimulada, nombre: string): void {
+  const encabezados = hoja.encabezadosDe('AGOSTO')
+  const valores: Record<string, string> = {
+    'APELLIDO Y NOMBRE': nombre,
+    DNI: '',
+    TELEFONO: '11-2222-3333',
+    SUCURSAL: 'LANUS',
+    'COMPAÑIA': 'SANCOR',
+    'NRO DE POLIZA': '778899',
+    COBERTURA: 'TERCEROS COMPLETO',
+    'FORMA DE PAGO': 'EFECTIVO',
+    MARCA: 'FIAT',
+    MODELO: 'UNO',
+    'AÑO': '2012',
+    DOMINIO: 'AG333NP',
+    CUOTA: '$ 10.000',
+    'DIA DE VTO': '10',
+  }
+  hoja.agregarFila('AGOSTO', encabezados.map((encabezado) => valores[encabezado] ?? ''))
+}
+
+test('la dirección y el DNI que se le cargan a un cliente sin póliza del mes abierto llegan a su ficha de siempre, no a una copia', async () => {
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+
+  // El caso del issue #116: un cliente al que nunca le cargaron el DNI (las dos computadoras lo conocen
+  // por su NOMBRE) y cuya póliza se dio de baja, así que ya no tiene fila en la planilla del mes. Lo
+  // único que le queda para sincronizar es su fila propia en APP CLIENTES.
+  clienteSinDniEnAgosto(hoja, 'QUIROGA MARISA')
+  for (const pc of [lanus1, lanus2]) {
+    en(pc)
+    await pc.importar()
+  }
+  en(lanus1)
+  darDeBaja(fila('QUIROGA MARISA')!.filaId, { motivo: 'VENDIO', nota: '' }, SOFIA)
+  await subirTodo(lanus1)
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  await lanus2.importar()
+
+  // Sofía completa la ficha en su computadora: le carga el DNI y la dirección en partes.
+  en(lanus1)
+  const id = clienteLlamado('QUIROGA MARISA')
+  editarCliente(
+    id,
+    {
+      ...fichaDeCliente(id),
+      documento: '40097013',
+      direccionDetalle: sanearDireccion({ calle: 'San Luis', altura: '243', localidad: 'Lomas de Zamora', provincia: 'Buenos Aires', codigoPostal: '1821' }),
+    } as DatosDeCliente,
+    SOFIA,
+  )
+  await subirTodo(lanus1)
+
+  // Y en la otra computadora tiene que estar en la MISMA ficha: la que tiene la póliza y el siniestro.
+  // Sin la migración de clave «por nombre» → «por documento» en APP CLIENTES, la fila creaba un cliente
+  // nuevo al lado y los datos personales aterrizaban ahí: la ficha de siempre seguía sin dirección.
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  await lanus2.importar()
+  en(lanus2)
+  const encontrados = listarClientes({ busqueda: 'QUIROGA MARISA', sucursales: [], companias: [], estado: '' })
+  assert.equal(encontrados.filas.length, 1, 'sigue siendo un solo cliente, no dos')
+  const alLado = fichaDeCliente(encontrados.filas[0]!.id)
+  assert.equal(alLado.documento, '40097013', 'el DNI llega a la ficha que ya estaba')
+  assert.equal(alLado.direccion, 'San Luis 243', 'y la dirección también')
+  assert.equal(alLado.direccionDetalle.localidad, 'Lomas de Zamora')
+  assert.equal(alLado.direccionDetalle.provincia, 'Buenos Aires', 'la provincia viaja desde la 15.4')
+  assert.equal(alLado.direccionDetalle.codigoPostal, '1821', 'y el código postal')
+  assert.equal(alLado.polizas.length, 1, 'y es la ficha que tiene la póliza, no una copia vacía')
+  assert.equal(alLado.telefono, '11-2222-3333', 'lo que ya tenía la ficha sigue estando')
+  cerrarTodo()
+})
