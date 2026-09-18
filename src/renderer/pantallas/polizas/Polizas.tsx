@@ -485,7 +485,7 @@ function RangoDeFecha({
     <div
       className={cx(
         'flex h-9 items-center gap-1.5 rounded-lg border px-2 text-sm',
-        desde || hasta ? 'border-marino-400 bg-marino-50/50' : 'border-slate-300 bg-white',
+        desde || hasta ? 'border-marino-400 bg-marino-50' : 'border-slate-300 bg-white',
       )}
     >
       <span className="text-xs font-semibold text-slate-500">{etiqueta}</span>
