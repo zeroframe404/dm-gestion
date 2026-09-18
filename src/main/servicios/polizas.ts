@@ -198,6 +198,7 @@ function aPoliza(fila: FilaCrudaPoliza, hoy: string): PolizaDeCliente {
     diaVencimiento: fila.dia_vencimiento,
     vigenciaDesde: fila.vigencia_desde,
     vigenciaHasta: fila.vigencia_hasta,
+    vigenciaDesdeIso: fila.vigencia_desde_iso,
     vigenciaHastaIso: fila.vigencia_hasta_iso,
     avisarVto: fila.avisar_vto,
     observaciones: fila.observaciones,
@@ -383,6 +384,10 @@ export function listarPolizas(filtros: FiltrosPolizas): ListadoPolizas {
   const coberturas = listaDeFiltro(f.coberturas)
   const ramas = listaDeFiltro(f.ramas)
   const verDadasDeBaja = Boolean(f.verDadasDeBaja)
+  const emisionDesde = pareceIso(limpiar(f.emisionDesde)) ? limpiar(f.emisionDesde) : ''
+  const emisionHasta = pareceIso(limpiar(f.emisionHasta)) ? limpiar(f.emisionHasta) : ''
+  const vencimientoDesde = pareceIso(limpiar(f.vencimientoDesde)) ? limpiar(f.vencimientoDesde) : ''
+  const vencimientoHasta = pareceIso(limpiar(f.vencimientoHasta)) ? limpiar(f.vencimientoHasta) : ''
   const hoy = hoyLocal()
 
   // Todos los filtros se resuelven en memoria, con `normalizarTexto`. En SQL no se puede: `UPPER()` de
@@ -420,6 +425,8 @@ export function listarPolizas(filtros: FiltrosPolizas): ListadoPolizas {
       const rama = ramaDeVehiculo(fila.tipo_vehiculo, fila.categoria_vehiculo)
       return ramas.some((elegida) => (rama ? elegida === rama : mismoTexto(elegida, fila.tipo_vehiculo)))
     })
+    .filter((fila) => entreFechas(fila.vigencia_desde_iso, emisionDesde, emisionHasta))
+    .filter((fila) => entreFechas(fila.vigencia_hasta_iso, vencimientoDesde, vencimientoHasta))
     .filter((fila) => coincideLaBusqueda(fila, busqueda))
     .map((fila) => aPoliza(fila, hoy))
 
@@ -436,6 +443,19 @@ export function listarPolizas(filtros: FiltrosPolizas): ListadoPolizas {
     estados.length === 0 && !verDadasDeBaja && busqueda ? filtradas.filter((poliza) => !estaEnLaCartera(poliza.estado)).length : 0
 
   return { filas, total, totalDadasDeBaja, coincidenDadasDeBaja, catalogos: catalogosDePoliza(), hoy }
+}
+
+/**
+ * true si `valorIso` cae dentro del rango (los límites vacíos no filtran). Comparar como texto alcanza
+ * porque las dos puntas son 'AAAA-MM-DD'. Una póliza sin esa fecha cargada queda afuera en cuanto se
+ * pone algún límite: no hay forma de saber si entra o no.
+ */
+function entreFechas(valorIso: string | null, desde: string, hasta: string): boolean {
+  if (!desde && !hasta) return true
+  if (!valorIso) return false
+  if (desde && valorIso < desde) return false
+  if (hasta && valorIso > hasta) return false
+  return true
 }
 
 /** Se busca por nombre, documento, número de póliza y patente, que es lo que se tiene a mano en el mostrador. */

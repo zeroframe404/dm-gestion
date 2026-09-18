@@ -1493,6 +1493,7 @@ export interface PolizaDeCliente {
   diaVencimiento: string | null
   vigenciaDesde: string | null
   vigenciaHasta: string | null
+  vigenciaDesdeIso: string | null
   vigenciaHastaIso: string | null
   avisarVto: string | null
   observaciones: string | null
@@ -1602,6 +1603,16 @@ export interface FiltrosPolizas {
    * mano, ese filtro manda y este interruptor no importa.
    */
   verDadasDeBaja?: boolean
+  /**
+   * Rango de fecha de emisión (`vigenciaDesde`) y de vencimiento (`vigenciaHasta`), en 'AAAA-MM-DD'
+   * —lo que entrega un `<input type="date">`—. Cada límite es opcional y vacío/omitido no filtra; una
+   * póliza sin esa fecha cargada no entra si el filtro está puesto, porque no hay forma de saber si cae
+   * en el rango.
+   */
+  emisionDesde?: string
+  emisionHasta?: string
+  vencimientoDesde?: string
+  vencimientoHasta?: string
 }
 
 /** Una regla de la matriz de coberturas: qué antigüedad de vehículo acepta cada compañía. */

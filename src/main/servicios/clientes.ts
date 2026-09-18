@@ -513,6 +513,7 @@ interface PolizaCruda {
   observaciones: string | null
   vigencia_desde: string | null
   vigencia_hasta: string | null
+  vigencia_desde_iso: string | null
   vigencia_hasta_iso: string | null
   activa: number
   vehiculo_id: number | null
@@ -536,7 +537,7 @@ function polizasDe(cliente: ClienteCrudo, hoy: string): PolizaDeCliente[] {
   const crudas = base
     .prepare(
       `SELECT p.id, p.fila_id, p.numero, p.propuesta, p.compania, p.cobertura, p.forma_pago, p.avisar_vto,
-              p.observaciones, p.vigencia_desde, p.vigencia_hasta, p.vigencia_hasta_iso, p.activa, p.vehiculo_id,
+              p.observaciones, p.vigencia_desde, p.vigencia_hasta, p.vigencia_desde_iso, p.vigencia_hasta_iso, p.activa, p.vehiculo_id,
               v.patente, v.marca, v.modelo, v.tipo, v.categoria,
               -- ¿Se renovó con otro número? Es lo que separa «se renovó» de «se dio de baja»: las dos
               -- salen de la cartera, pero sólo una es cartera perdida (ver estadoDePoliza).
@@ -597,6 +598,7 @@ function polizasDe(cliente: ClienteCrudo, hoy: string): PolizaDeCliente[] {
       diaVencimiento: delMes?.diaVencimiento ?? null,
       vigenciaDesde: cruda.vigencia_desde,
       vigenciaHasta: cruda.vigencia_hasta,
+      vigenciaDesdeIso: cruda.vigencia_desde_iso,
       vigenciaHastaIso: cruda.vigencia_hasta_iso,
       avisarVto: cruda.avisar_vto,
       observaciones: cruda.observaciones,
