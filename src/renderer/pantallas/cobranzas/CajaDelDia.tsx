@@ -9,6 +9,7 @@ import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/Selec
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { ArqueoDeCaja } from './ArqueoDeCaja'
+import { DialogoAnularPago } from './DialogoAnularPago'
 import { DialogoPagoManual } from './DialogoPagoManual'
 import { momento, numero, pesos } from './formato'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -31,6 +32,7 @@ const COLUMNAS: Array<{ id: string; titulo: string; siempre?: boolean }> = [
   { id: 'sucursal', titulo: 'Sucursal' },
   { id: 'cobro_usuario', titulo: 'Cobró' },
   { id: 'cobro_estado', titulo: 'Cobro' },
+  { id: 'anular', titulo: 'Anular' },
 ]
 
 export function CajaDelDia() {
@@ -41,6 +43,7 @@ export function CajaDelDia() {
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [abrirPago, setAbrirPago] = useState(false)
+  const [pagoAAnular, setPagoAAnular] = useState<PagoRegistrado | null>(null)
   const [exportando, setExportando] = useState(false)
   const { visibles, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('cobranzas-caja', COLUMNAS)
   const ve = useMemo(() => new Set(visibles.map((columna) => columna.id)), [visibles])
@@ -76,6 +79,15 @@ export function CajaDelDia() {
     const resultado = await window.dm.cobranzas.numeroDeTicket(pago.id, numero)
     if (resultado.ok) setDatos(resultado.datos)
     else setError(resultado.error)
+  }
+
+  /** Anula el pago y, si salió bien, cierra el diálogo. El error queda en el diálogo, no acá. */
+  const anular = async (pago: PagoRegistrado, motivo: string) => {
+    const resultado = await window.dm.cobranzas.anularPago(pago.id, motivo)
+    if (!resultado.ok) throw new Error(resultado.error)
+    setDatos(resultado.datos)
+    setPagoAAnular(null)
+    setAviso('El pago quedó anulado.')
   }
 
   const exportar = async () => {
@@ -291,11 +303,36 @@ export function CajaDelDia() {
                     <EstadoDelCobro pago={pago} />
                   </td>
                 )}
+                {ve.has('anular') && (
+                  <td className="px-3 py-2">
+                    {puedeEditar && (
+                      <button
+                        type="button"
+                        onClick={() => setPagoAAnular(pago)}
+                        disabled={Boolean(pago.adelantoModo) || Boolean(pago.resultado)}
+                        title={
+                          pago.adelantoModo
+                            ? 'Un pago adelantado todavía no se puede anular desde acá.'
+                            : pago.resultado
+                              ? 'Ya tiene un resultado de rendición cargado: no se puede anular desde acá.'
+                              : 'Anular este pago: lo saca de la caja, la rendición y la hoja.'
+                        }
+                        className="rounded px-1.5 py-0.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+                      >
+                        Anular
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {pagoAAnular && (
+        <DialogoAnularPago pago={pagoAAnular} alCerrar={() => setPagoAAnular(null)} alAnular={(motivo) => anular(pagoAAnular, motivo)} />
+      )}
 
       {abrirPago && (
         <DialogoPagoManual

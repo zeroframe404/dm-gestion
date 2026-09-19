@@ -365,6 +365,8 @@ export interface Canales {
   'cobranzas:revisarPago': (pagoId: number, revisado: boolean) => Resultado<CajaDelDia>
   /** El número del comprobante (columna NRO TICKET), para cargarlo o corregirlo a mano. */
   'cobranzas:numeroDeTicket': (pagoId: number, numero: string) => Resultado<CajaDelDia>
+  /** Anula un pago cargado por error: lo saca de la caja, la rendición y la hoja. */
+  'cobranzas:anularPago': (pagoId: number, motivo: string) => Resultado<CajaDelDia>
   'cobranzas:mora': (filtros: FiltrosMora) => Resultado<ListadoMora>
   /** El mismo WhatsApp de la planilla, también para cuotas de meses ya cerrados. */
   'cobranzas:avisarMora': (filaId: string) => Resultado<AvisoDeMora>

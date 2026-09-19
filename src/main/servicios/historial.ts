@@ -8,6 +8,9 @@ export type AccionHistorial =
   | 'edicion'
   | 'aviso'
   | 'pago'
+  // Anular un pago cargado por error (ver servicios/pagos.ts): a diferencia de 'pago', esto lo saca
+  // de la caja y de la rendición en vez de registrarlo.
+  | 'pago_anulado'
   | 'baja'
   | 'reactivacion'
   | 'cierre_mes'

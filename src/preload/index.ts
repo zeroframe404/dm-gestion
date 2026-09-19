@@ -116,6 +116,7 @@ const api: ApiDm = {
     borrarMovimientoCaja: (movimientoId) => invocar('cobranzas:borrarMovimientoCaja', movimientoId),
     revisarPago: (pagoId, revisado) => invocar('cobranzas:revisarPago', pagoId, revisado),
     numeroDeTicket: (pagoId, numero) => invocar('cobranzas:numeroDeTicket', pagoId, numero),
+    anularPago: (pagoId, motivo) => invocar('cobranzas:anularPago', pagoId, motivo),
     mora: (filtros) => invocar('cobranzas:mora', filtros),
     avisarMora: (filaId) => invocar('cobranzas:avisarMora', filaId),
     imputados: (periodo, companias, sucursales) => invocar('cobranzas:imputados', periodo, companias, sucursales),
