@@ -747,7 +747,7 @@ test('un cliente sin ninguna póliza sincroniza igual, por su fila propia en APP
   // Milagros carga un cliente en Lanús 1 antes de tener ninguna póliza para él: hasta la 15.4 esto no
   // tenía dónde subir nada (la planilla mensual es una fila por póliza, y éste no tiene ninguna).
   en(lanus1)
-  const alta = crearCliente({ nombre: 'RAMIREZ SOLEDAD', documento: '30999888', telefono: '', email: '', direccion: '', localidad: '', sucursal: 'Lanús', fechaNacimiento: '', direccionDetalle: sanearDireccion({}) }, MILAGROS)
+  const alta = crearCliente({ nombre: 'RAMIREZ SOLEDAD', documento: '30999888', telefono: '', email: '', direccion: '', localidad: '', sucursal: 'Lanús', fechaNacimiento: '', profesion: '', direccionDetalle: sanearDireccion({}) }, MILAGROS)
   assert.equal(alta.creado, true)
   if (!alta.creado) throw new Error('inalcanzable')
   const id = alta.cliente.id
@@ -777,7 +777,7 @@ test('cargarle el DNI a un cliente sin póliza, después de que ya sincronizó, 
 
   // Sin DNI todavía: la clave sale del nombre. Sincroniza por su fila propia en APP CLIENTES.
   en(lanus1)
-  const alta = crearCliente({ nombre: 'TORRES ROMINA', documento: '', telefono: '', email: '', direccion: '', localidad: '', sucursal: '', fechaNacimiento: '', direccionDetalle: sanearDireccion({}) }, MILAGROS)
+  const alta = crearCliente({ nombre: 'TORRES ROMINA', documento: '', telefono: '', email: '', direccion: '', localidad: '', sucursal: '', fechaNacimiento: '', profesion: '', direccionDetalle: sanearDireccion({}) }, MILAGROS)
   assert.equal(alta.creado, true)
   if (!alta.creado) throw new Error('inalcanzable')
   await subirTodo(lanus1)

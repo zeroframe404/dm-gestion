@@ -538,6 +538,7 @@ export function convertirLeadEnCliente(leadId: number, actor: SesionUsuario): Re
       localidad: '',
       sucursal: limpiar(lead.sucursal),
       fechaNacimiento: '',
+      profesion: '',
       // Una consulta no trae dirección: se carga después, desde la ficha del cliente.
       direccionDetalle: DIRECCION_VACIA,
     },
