@@ -142,7 +142,7 @@ export function TablaVirtual<T>({
                     onClick={alHacerClic ? () => alHacerClic(fila) : undefined}
                     className={cx(
                       'group flex border-b border-slate-100',
-                      seleccionada ? 'bg-marino-50' : 'bg-white hover:bg-slate-50',
+                      seleccionada ? 'bg-slate-200' : 'bg-white hover:bg-slate-50',
                       alHacerClic && 'cursor-pointer',
                       // `relative` sólo cuando hay algo que decorar: las tablas que no usan el glow
                       // quedan exactamente como estaban, con las columnas fijas apoyadas en el
@@ -162,7 +162,7 @@ export function TablaVirtual<T>({
                         className={cx(
                           'flex shrink-0 items-center px-2 text-sm text-slate-700',
                           columna.fija && 'border-r border-slate-200',
-                          columna.fija && (seleccionada ? 'bg-marino-50' : 'bg-white group-hover:bg-slate-50'),
+                          columna.fija && (seleccionada ? 'bg-slate-200' : 'bg-white group-hover:bg-slate-50'),
                           decorarCelda && 'relative',
                           ALINEACION[columna.alinear ?? 'izquierda'],
                         )}
