@@ -63,6 +63,28 @@ export function mismaSucursal(a: unknown, b: unknown): boolean {
   return claveDeSucursal(a) === claveDeSucursal(b)
 }
 
+/**
+ * El valor del filtro para los pagos y las filas sin ninguna sucursal asignada: no es una sucursal del
+ * catálogo, nunca se guarda en la base, es sólo lo que ofrece el desplegable —cuando hace falta— y lo
+ * que reconoce `mismaSucursalOVacia` para encontrarlas.
+ *
+ * El caso real es un cliente cargado sin sucursal: su cobro no tiene mostrador y `mismaSucursal` nunca
+ * lo empata con nada, ni con una sucursal puntual ni (al elegir «todas las del catálogo», en vez de
+ * dejar la lista vacía) con las demás. La fila queda sin ninguna opción que la traiga.
+ */
+export const SIN_SUCURSAL = 'Sin sucursal'
+
+/**
+ * Como `mismaSucursal`, pero entendiendo además el valor especial `SIN_SUCURSAL`: matchea cualquier
+ * texto que no resuelva a ninguna sucursal. Sólo hace falta en los filtros que ofrecen `SIN_SUCURSAL`
+ * como opción; en todo lo demás sigue valiendo `mismaSucursal`.
+ */
+export function mismaSucursalOVacia(elegido: unknown, valor: unknown): boolean {
+  if (elegido === SIN_SUCURSAL) return claveDeSucursal(valor) === ''
+  if (valor === SIN_SUCURSAL) return claveDeSucursal(elegido) === ''
+  return mismaSucursal(elegido, valor)
+}
+
 /** El texto de la hoja pasado al nombre del catálogo. Lo que no es del catálogo se deja tal cual. */
 export function normalizarNombreDeSucursal(texto: string): string {
   return sucursalCanonica(texto) ?? texto

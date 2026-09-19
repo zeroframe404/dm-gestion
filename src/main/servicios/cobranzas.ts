@@ -6,7 +6,7 @@
 import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { veLosNumerosDeLaAgencia } from '../../shared/permisos'
-import { mismaSucursal } from '../../shared/sucursales'
+import { claveDeSucursal, mismaSucursal, mismaSucursalOVacia, SIN_SUCURSAL } from '../../shared/sucursales'
 import {
   RANGOS_DE_MORA,
   RESULTADOS_DE_IMPUTACION,
@@ -95,12 +95,29 @@ function distintos(valores: Array<string | null>): string[] {
 // Caja del día
 // ---------------------------------------------------------------------------
 
-/** Las sucursales que pueden aparecer en la caja: las del catálogo más las que traen los pagos. */
+/**
+ * Las sucursales que pueden aparecer en la caja: las del catálogo, más las que traen los pagos, más
+ * `SIN_SUCURSAL` cuando hay al menos un pago cuya sucursal —resuelta igual que `pago.sucursal`, con el
+ * respaldo del cliente incluido— sigue sin ninguna. El caso real es un cliente cargado sin sucursal:
+ * sin ese respaldo, ese pago no tenía ninguna opción del desplegable que lo trajera.
+ *
+ * La detección usa `SUCURSAL_DEL_PAGO` —la misma expresión de `SELECT_PAGOS`— y no el COALESCE corto
+ * de acá arriba: un pago sin `sucursal_cobro` ni `sucursal_texto` —todo el historial importado antes
+ * de que la app empezara a guardar `sucursal_cobro`— igual tiene sucursal si el cliente la sabe, y
+ * contarlo como «sin sucursal» ofrecería la opción para pagos que en realidad sí tienen mostrador.
+ */
 function sucursalesDeLaCaja(): string[] {
   const deLosPagos = (
     db().prepare('SELECT DISTINCT COALESCE(sucursal_cobro, sucursal_texto) AS valor FROM pagos').all() as Array<{ valor: string | null }>
   ).map((f) => f.valor)
-  return sucursalesParaElegir(deLosPagos)
+  const opciones = sucursalesParaElegir(deLosPagos)
+  const resueltas = (
+    db().prepare(`SELECT ${SUCURSAL_DEL_PAGO} AS valor FROM pagos p LEFT JOIN clientes cl ON cl.id = p.cliente_id`).all() as Array<{
+      valor: string | null
+    }>
+  ).map((f) => f.valor)
+  const haySinSucursal = resueltas.some((valor) => !claveDeSucursal(valor))
+  return haySinSucursal ? [...opciones, SIN_SUCURSAL] : opciones
 }
 
 /** Los pagos que son plata que entró: un IMPUTADO todavía no se cobró y no suma a la caja. */
@@ -163,7 +180,7 @@ export function cajaDelDia(fechaPedida: string | null, sucursalesPedidas: string
       })
 
   const crudas = db().prepare(`${SELECT_PAGOS} WHERE p.fecha_iso = ? ORDER BY p.creado_en, p.id`).all(fecha) as PagoCrudo[]
-  const pagos = crudas.map(aPagoRegistrado).filter((pago) => coincideAlguno(sucursales, pago.sucursal, mismaSucursal))
+  const pagos = crudas.map(aPagoRegistrado).filter((pago) => coincideAlguno(sucursales, pago.sucursal, mismaSucursalOVacia))
 
   return {
     fecha,
@@ -696,7 +713,7 @@ export function imputados(
   const crudas = db()
     .prepare(`${SELECT_PAGOS} WHERE ${PERIODO_DEL_PAGO} = ? ORDER BY p.fecha_iso, p.cliente_nombre`)
     .all(periodo) as PagoCrudo[]
-  const todos = crudas.map(aPagoRegistrado).filter((pago) => coincideAlguno(sucursales, pago.sucursal, mismaSucursal))
+  const todos = crudas.map(aPagoRegistrado).filter((pago) => coincideAlguno(sucursales, pago.sucursal, mismaSucursalOVacia))
 
   const companiasDisponibles = distintos(todos.map((pago) => pago.compania))
   // Se devuelven las compañías tal como las escribe el mes, no como llegaron del filtro: así el
