@@ -1940,6 +1940,14 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE clientes ADD COLUMN fila_id_app_clientes TEXT;
     `,
   },
+  {
+    version: 34,
+    descripcion: 'Ficha del cliente: profesión del asegurado, para saber qué otro seguro ofrecerle',
+    sql: `
+      -- Sólo en esta base: la planilla mensual no tiene esa columna, igual que la calle en partes.
+      ALTER TABLE clientes ADD COLUMN profesion TEXT;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

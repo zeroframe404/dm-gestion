@@ -46,6 +46,7 @@ function datosDe(ficha: FichaCliente): DatosDeCliente {
     localidad: ficha.localidad ?? '',
     sucursal: ficha.sucursal ?? '',
     fechaNacimiento: ficha.fechaNacimiento ?? '',
+    profesion: ficha.profesion ?? '',
     direccionDetalle: ficha.direccionDetalle,
   }
 }
@@ -59,6 +60,7 @@ const VACIO: DatosDeCliente = {
   localidad: '',
   sucursal: '',
   fechaNacimiento: '',
+  profesion: '',
   direccionDetalle: DIRECCION_VACIA,
 }
 

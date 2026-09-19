@@ -1439,6 +1439,8 @@ export interface DatosDeCliente {
   localidad: string
   sucursal: string
   fechaNacimiento: string
+  /** A qué se dedica el asegurado. Se pregunta al cargarlo para saber qué otro seguro ofrecerle después. */
+  profesion: string
   /** La dirección en partes. Vacía en las fichas que todavía no se pasaron al formulario nuevo. */
   direccionDetalle: DireccionEstructurada
 }
@@ -1577,6 +1579,8 @@ export interface FichaCliente {
   localidad: string | null
   sucursal: string | null
   fechaNacimiento: string | null
+  /** A qué se dedica. Sirve para saber, sin volver a preguntar, qué otro seguro ofrecerle. */
+  profesion: string | null
   /** La dirección en partes. Toda vacía en las fichas viejas: ahí sólo hay `direccion` y `localidad`. */
   direccionDetalle: DireccionEstructurada
   vehiculos: VehiculoDeCliente[]

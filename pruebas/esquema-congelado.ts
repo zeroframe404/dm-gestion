@@ -81,4 +81,7 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // La 33 suma a `clientes` la columna `fila_id_app_clientes`: el _ID de su fila propia en APP
   // CLIENTES, independiente de si tiene una póliza viva este mes.
   33: '555e16ccbb77bc13',
+  // La 34 suma a `clientes` la columna `profesion`: a qué se dedica el asegurado, para saber qué otro
+  // seguro ofrecerle sin tener que volver a preguntarle.
+  34: 'e915428abd438fbb',
 }

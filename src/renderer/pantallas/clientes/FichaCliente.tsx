@@ -59,6 +59,7 @@ function datosDe(ficha: FichaCliente): DatosDeCliente {
     localidad: ficha.localidad ?? '',
     sucursal: ficha.sucursal ?? '',
     fechaNacimiento: ficha.fechaNacimiento ?? '',
+    profesion: ficha.profesion ?? '',
     direccionDetalle: sanearDireccion(ficha.direccionDetalle),
   }
 }
@@ -76,7 +77,7 @@ function hayDiferencias(a: DatosDeCliente, b: DatosDeCliente): boolean {
 function fusionarConLaFicha(borrador: DatosDeCliente, anterior: DatosDeCliente, nueva: DatosDeCliente): DatosDeCliente {
   const igual = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
   const fusion = { ...borrador }
-  const simples = ['nombre', 'documento', 'telefono', 'email', 'sucursal', 'fechaNacimiento'] as const
+  const simples = ['nombre', 'documento', 'telefono', 'email', 'sucursal', 'fechaNacimiento', 'profesion'] as const
   for (const campo of simples) {
     if (borrador[campo] === anterior[campo]) fusion[campo] = nueva[campo]
   }
@@ -471,6 +472,13 @@ function PestanaDatos({
           autoComplete="off"
         />
         <CampoDeNacimiento valor={borrador.fechaNacimiento} alCambiar={cambiarTexto('fechaNacimiento')} />
+        <Campo
+          etiqueta="Profesión"
+          value={borrador.profesion}
+          onChange={(evento) => cambiarTexto('profesion')(evento.target.value)}
+          ayuda="Para saber qué otro seguro ofrecerle más adelante."
+          autoComplete="off"
+        />
       </div>
 
       {/* Las fichas sin partes (las que vinieron de la hoja, o las de otra computadora) muestran el

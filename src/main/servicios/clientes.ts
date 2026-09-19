@@ -106,6 +106,7 @@ interface ClienteCrudo extends FilaClienteCruda {
   clave: string
   direccion: string | null
   fecha_nacimiento: string | null
+  profesion: string | null
   calle: string | null
   calle2: string | null
   altura: string | null
@@ -488,7 +489,7 @@ export function buscarClientes(busqueda: string, limite = 20): FilaCliente[] {
 function buscarCliente(id: number): ClienteCrudo {
   const fila = db()
     .prepare(
-      `SELECT ${COLUMNAS_DE_FILA}, clave, direccion, fecha_nacimiento,
+      `SELECT ${COLUMNAS_DE_FILA}, clave, direccion, fecha_nacimiento, profesion,
               calle, calle2, altura, sin_altura, provincia, codigo_postal, fila_id_app_clientes
          FROM clientes WHERE id = ?`,
     )
@@ -807,6 +808,7 @@ export function fichaDeCliente(clienteId: number): FichaCliente {
     localidad: cliente.localidad,
     sucursal: cliente.sucursal_texto,
     fechaNacimiento: cliente.fecha_nacimiento,
+    profesion: cliente.profesion,
     direccionDetalle: direccionDe(cliente),
     vehiculos: vehiculosDe(cliente.id, polizas),
     polizas,
@@ -830,6 +832,7 @@ interface CamposDeCliente {
   localidad: string
   sucursal: string
   fechaNacimiento: string
+  profesion: string
   // La dirección en partes, aplanada a texto: así entra en la lista de campos que se compara y se
   // registra en el historial sin un caso especial para el objeto.
   calle: string
@@ -912,6 +915,7 @@ function validarDatos(datos: DatosDeCliente): CamposDeCliente {
     localidad: cargoLaDireccion ? detalle.localidad : opcional(d.localidad, 'La localidad', 80),
     sucursal: opcional(d.sucursal, 'La sucursal', 80),
     fechaNacimiento: opcional(d.fechaNacimiento, 'La fecha de nacimiento', 20),
+    profesion: opcional(d.profesion, 'La profesión', 120),
     // El mismo tope que el renglón: una dirección vieja de texto libre entra entera en la calle cuando
     // se abre la ventanita para completarla, y no puede rechazarse algo que el usuario no tipeó.
     calle: opcional(detalle.calle, 'La calle', 160),
@@ -1009,10 +1013,10 @@ export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): Resul
   const resultado = db()
     .prepare(
       `INSERT INTO clientes (clave, documento, documento_normalizado, nombre, telefono, email, direccion, localidad,
-                             sucursal_id, sucursal_texto, fecha_nacimiento, calle, calle2, altura, sin_altura,
+                             sucursal_id, sucursal_texto, fecha_nacimiento, profesion, calle, calle2, altura, sin_altura,
                              provincia, codigo_postal, fila_id, pestana_origen, creado_en, actualizado_en)
        VALUES (@clave, @documento, @documento_normalizado, @nombre, @telefono, @email, @direccion, @localidad,
-               @sucursal_id, @sucursal_texto, @fecha_nacimiento, @calle, @calle2, @altura, @sin_altura,
+               @sucursal_id, @sucursal_texto, @fecha_nacimiento, @profesion, @calle, @calle2, @altura, @sin_altura,
                @provincia, @codigo_postal, NULL, NULL, @ahora, @ahora)`,
     )
     .run({
@@ -1027,6 +1031,7 @@ export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): Resul
       sucursal_id: idDeSucursalPorNombre(campos.sucursal),
       sucursal_texto: sucursalParaGuardar(campos.sucursal),
       fecha_nacimiento: campos.fechaNacimiento || null,
+      profesion: campos.profesion || null,
       calle: campos.calle || null,
       calle2: campos.calle2 || null,
       altura: campos.altura || null,
@@ -1079,6 +1084,9 @@ const CAMPOS_DEL_CLIENTE = [
   { campo: 'direccion', columna: 'direccion', etiqueta: 'DIRECCION', enLaCuota: null, enLaHoja: 'direccion' },
   { campo: 'localidad', columna: 'localidad', etiqueta: 'LOCALIDAD', enLaCuota: null, enLaHoja: 'localidad' },
   { campo: 'fechaNacimiento', columna: 'fecha_nacimiento', etiqueta: 'FECHA DE NACIMIENTO', enLaCuota: null, enLaHoja: 'fecha_nacimiento' },
+  // No viaja a la hoja: la planilla mensual no tiene esa columna, y agregarla ahí es cosa de la agencia,
+  // no de este alta. Se guarda sólo acá, igual que la calle en partes.
+  { campo: 'profesion', columna: 'profesion', etiqueta: 'PROFESION', enLaCuota: null, enLaHoja: null },
   { campo: 'calle', columna: 'calle', etiqueta: 'CALLE', enLaCuota: null, enLaHoja: null },
   { campo: 'calle2', columna: 'calle2', etiqueta: 'ENTRE CALLES', enLaCuota: null, enLaHoja: null },
   { campo: 'altura', columna: 'altura', etiqueta: 'ALTURA', enLaCuota: null, enLaHoja: null },
@@ -1163,6 +1171,7 @@ export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: S
     direccion: limpiar(actual.direccion),
     localidad: limpiar(actual.localidad),
     fechaNacimiento: limpiar(actual.fecha_nacimiento),
+    profesion: limpiar(actual.profesion),
     calle: limpiar(actual.calle),
     calle2: limpiar(actual.calle2),
     altura: limpiar(actual.altura),
@@ -1195,7 +1204,7 @@ export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: S
         `UPDATE clientes SET clave = @clave, nombre = @nombre, documento = @documento,
                 documento_normalizado = @documento_normalizado, telefono = @telefono, email = @email,
                 direccion = @direccion, localidad = @localidad, sucursal_id = @sucursal_id,
-                sucursal_texto = @sucursal_texto, fecha_nacimiento = @fecha_nacimiento,
+                sucursal_texto = @sucursal_texto, fecha_nacimiento = @fecha_nacimiento, profesion = @profesion,
                 calle = @calle, calle2 = @calle2, altura = @altura, sin_altura = @sin_altura,
                 provincia = @provincia, codigo_postal = @codigo_postal, actualizado_en = @ahora
          WHERE id = @id`,
@@ -1219,6 +1228,7 @@ export function editarCliente(clienteId: number, datos: DatosDeCliente, actor: S
         sucursal_id: idDeSucursalPorNombre(campos.sucursal),
         sucursal_texto: sucursalParaGuardar(campos.sucursal),
         fecha_nacimiento: campos.fechaNacimiento || null,
+        profesion: campos.profesion || null,
         ahora,
       })
 
