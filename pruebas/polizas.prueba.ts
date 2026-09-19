@@ -180,6 +180,43 @@ test('los filtros del listado acotan por estado, compañía y búsqueda', async 
   assert.ok(sancor.total < todas.filas.length, 'el total no cuenta la de Fernández, que sí está en TODOS_LOS_ESTADOS')
 })
 
+test('los filtros de fecha de emisión y de vencimiento acotan el listado (issue #121)', async () => {
+  await carteraDePrueba()
+  // Toda la cartera de la hoja quedó con la misma vigencia (la de AGOSTO, 1/7/2026 al 1/1/2027): para
+  // probar el rango hace falta una póliza con otra fecha, así que se carga una a mano con la suya.
+  const clienteId = idDeCliente(CLIENTES.suarez.nombre)
+  const nueva = crearPoliza(datosBase(clienteId), DANIEL) // vigenciaDesde 1/9/2026, vigenciaHasta 1/9/2027
+  assert.equal(nueva.vigenciaDesdeIso, '2026-09-01')
+  assert.equal(nueva.vigenciaHastaIso, '2027-09-01')
+
+  const restoDeLaCartera = listarPolizas(TODOS_LOS_ESTADOS).filas.filter((f) => f.id !== nueva.id)
+  assert.ok(
+    restoDeLaCartera.every((f) => f.vigenciaHastaIso === null || f.vigenciaHastaIso <= '2027-01-01'),
+    'el resto de la cartera vence antes de que empiece la vigencia de la póliza nueva',
+  )
+
+  // «Fecha de emisión desde»: el 1/9 sólo puede haber quedado adentro la póliza recién cargada.
+  const emitidasDesdeSetiembre = listarPolizas({ ...TODOS_LOS_ESTADOS, emisionDesde: '2026-09-01' })
+  assert.deepEqual(emitidasDesdeSetiembre.filas.map((f) => f.id), [nueva.id])
+
+  // «Fecha de vencimiento hasta»: el 1/1/2027 deja afuera a la que vence en septiembre de 2027.
+  const vencenHastaEnero = listarPolizas({ ...TODOS_LOS_ESTADOS, vencimientoHasta: '2027-01-01' })
+  assert.ok(vencenHastaEnero.filas.length === restoDeLaCartera.filter((f) => f.vigenciaHastaIso).length)
+  assert.ok(!vencenHastaEnero.filas.some((f) => f.id === nueva.id), 'la que vence en septiembre queda afuera')
+
+  // El rango completo (emisión Y vencimiento) trae exactamente la póliza nueva.
+  const rangoCompleto = listarPolizas({
+    ...TODOS_LOS_ESTADOS,
+    emisionDesde: '2026-08-15',
+    emisionHasta: hoyLocal(),
+    vencimientoDesde: '2026-09-01',
+  })
+  assert.deepEqual(rangoCompleto.filas.map((f) => f.id), [nueva.id])
+
+  // Un rango sin ninguna póliza adentro deja el listado vacío.
+  assert.equal(listarPolizas({ ...TODOS_LOS_ESTADOS, emisionDesde: '2099-01-01' }).filas.length, 0)
+})
+
 test('por default el listado no trae las dadas de baja, pero las cuenta aparte', async () => {
   await carteraDePrueba()
   const porDefecto = listarPolizas(SIN_FILTROS)
