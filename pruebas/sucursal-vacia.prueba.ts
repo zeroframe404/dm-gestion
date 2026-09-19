@@ -14,10 +14,10 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos, type BaseDeDatos } from '../src/ma
 import { ejecutarMigraciones, MIGRACIONES } from '../src/main/db/migraciones'
 import { sembrarDatosIniciales } from '../src/main/db/semilla'
 import { catalogos, cerrarMes, planillaDelMes } from '../src/main/servicios/cartera'
-import { cajaDelDia } from '../src/main/servicios/cobranzas'
+import { cajaDelDia, imputados } from '../src/main/servicios/cobranzas'
 import { listarLeads } from '../src/main/servicios/leads'
 import { idDeSucursalPorNombre } from '../src/main/servicios/sucursales'
-import { mismaSucursal, SUCURSALES } from '../src/shared/sucursales'
+import { mismaSucursal, SIN_SUCURSAL, SUCURSALES } from '../src/shared/sucursales'
 import type { SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
@@ -226,6 +226,72 @@ test('la caja del día filtrada por Lanús encuentra ese cobro', () => {
 
   const enDockSud = cajaDelDia('2026-08-12', ['Dock Sud'])
   assert.equal(enDockSud.pagos.length, 0, 'y no se cuela en la caja de otra sucursal')
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// El cliente TAMPOCO tiene sucursal: ni el cobro, ni el cliente, saben de qué mostrador es.
+// ---------------------------------------------------------------------------
+//
+// El caso real: un cliente cargado sin sucursal. Su cobro no tiene `sucursal_cobro` (no se registró
+// desde la app) ni `sucursal_texto` (viene de IMPUTADOS), y el respaldo del cliente tampoco tiene nada
+// —a diferencia del caso de arriba, donde el cliente SÍ la sabía—. Antes de `SIN_SUCURSAL` esa fila no
+// tenía ninguna opción del desplegable que la trajera: ni una sucursal puntual, ni elegir las cuatro
+// del catálogo a la vez (el «Elegir todas» del desplegable), porque ninguna es «ninguna».
+
+/** Un cobro sin sucursal propia, de un cliente que tampoco la tiene: no hay ningún respaldo. */
+function baseConUnCobroSinSucursalDeNadie(): BaseDeDatos {
+  cerrarBaseDeDatos()
+  const registrar = console.log
+  console.log = () => undefined
+  const db = abrirBaseDeDatos(':memory:')
+  console.log = registrar
+  const { id } = db
+    .prepare(
+      `INSERT INTO clientes (clave, nombre, documento, sucursal_texto, creado_en, actualizado_en)
+       VALUES ('C-1', 'VILLARRUEL MARIO VICENTE', '13395027', NULL, '2026-08-01T09:00:00', '2026-08-01T09:00:00') RETURNING id`,
+    )
+    .get() as { id: number }
+  db.prepare(
+    `INSERT INTO pagos (fila_id, pestana, cliente_id, fecha, fecha_iso, cliente_nombre, importe, importe_monto,
+                        medio, periodo, sucursal_texto, sucursal_cobro, creado_en, actualizado_en)
+     VALUES ('P-2', 'IMPUTADOS', ?, '12/08/2026', '2026-08-12', 'VILLARRUEL MARIO VICENTE', '$ 20.000', 20000,
+             'EFECTIVO', '2026-08', NULL, NULL, '2026-08-12T10:00:00', '2026-08-12T10:00:00')`,
+  ).run(id)
+  return db
+}
+
+test('un cliente sin sucursal deja el cobro sin ningún filtro que lo traiga, salvo «Sin sucursal»', () => {
+  baseConUnCobroSinSucursalDeNadie()
+
+  const sinFiltro = cajaDelDia('2026-08-12', [])
+  assert.equal(sinFiltro.pagos.length, 1, 'sin filtrar («todas») el cobro se ve igual')
+  assert.ok(sinFiltro.sucursales.includes(SIN_SUCURSAL), 'el desplegable ofrece la opción para poder encontrarlo')
+
+  // Elegir las cuatro sucursales de la agencia —lo que hace «Elegir todas» del desplegable— lo deja
+  // afuera: el cobro no es de ninguna de las cuatro.
+  const conLasCuatro = cajaDelDia('2026-08-12', [...SUCURSALES])
+  assert.equal(conLasCuatro.pagos.length, 0, 'no es de ninguna de las cuatro sucursales del catálogo')
+
+  // Elegir «Sin sucursal» sí lo trae: es la única forma de aislarlo y poder gestionarlo.
+  const soloSinSucursal = cajaDelDia('2026-08-12', [SIN_SUCURSAL])
+  assert.equal(soloSinSucursal.pagos.length, 1)
+  assert.equal(soloSinSucursal.pagos[0]!.clienteNombre, 'VILLARRUEL MARIO VICENTE')
+
+  // Y una sucursal puntual lo sigue dejando afuera, como a cualquier otro cobro que no sea suyo.
+  assert.equal(cajaDelDia('2026-08-12', ['Dock Sud']).pagos.length, 0)
+  cerrarBaseDeDatos()
+})
+
+test('lo mismo en la rendición de IMPUTADOS', () => {
+  baseConUnCobroSinSucursalDeNadie()
+
+  const sinFiltro = imputados('2026-08', [], [])
+  assert.equal(sinFiltro.pagos.length, 1)
+  assert.ok(sinFiltro.sucursales.includes(SIN_SUCURSAL))
+
+  assert.equal(imputados('2026-08', [], [...SUCURSALES]).pagos.length, 0)
+  assert.equal(imputados('2026-08', [], [SIN_SUCURSAL]).pagos.length, 1)
   cerrarBaseDeDatos()
 })
 
