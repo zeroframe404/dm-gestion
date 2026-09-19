@@ -17,6 +17,7 @@ import type {
   VistaPreviaDeReporte,
 } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Alerta, Boton, Cargando, cx, Tarjeta } from '../../componentes/ui'
 import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 
@@ -350,16 +351,14 @@ function FiltrosDelReporte({ reporte, catalogo, filtros, alCambiar }: PropsFiltr
         </label>
       )}
       {reporte.filtros.includes('fechas') && (
-        <>
-          <label className={etiqueta}>
-            Desde
-            <input type="date" value={filtros.desde} onChange={(e) => cambiar('desde', e.target.value)} className={`mt-1 ${control}`} />
-          </label>
-          <label className={etiqueta}>
-            Hasta
-            <input type="date" value={filtros.hasta} onChange={(e) => cambiar('hasta', e.target.value)} className={`mt-1 ${control}`} />
-          </label>
-        </>
+        <div className="flex items-end">
+          <RangoDeFecha
+            etiqueta="Fechas"
+            desde={filtros.desde}
+            hasta={filtros.hasta}
+            alCambiar={(desde, hasta) => alCambiar({ ...filtros, desde, hasta })}
+          />
+        </div>
       )}
       {reporte.filtros.includes('sucursal') && (
         <div className={etiqueta}>

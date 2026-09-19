@@ -9,6 +9,7 @@ import { NOMBRE_RAMA, type Rama } from '../../../shared/ramas'
 import { ESTADOS_DE_POLIZA, type EstadoPoliza, type FiltrosPolizas, type ListadoPolizas, type PolizaDeCliente } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Icono } from '../../componentes/Icono'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
@@ -464,48 +465,5 @@ export function Polizas() {
 // ---------------------------------------------------------------------------
 // Piezas
 // ---------------------------------------------------------------------------
-
-/**
- * Un rango de fechas de dos puntas, cada una opcional: «Emitida» filtra por vigencia desde, «Vence»
- * por vigencia hasta. Vacío no filtra, así que arranca igual que el resto de los filtros del listado.
- */
-function RangoDeFecha({
-  etiqueta,
-  desde,
-  hasta,
-  alCambiar,
-}: {
-  etiqueta: string
-  desde: string
-  hasta: string
-  alCambiar: (desde: string, hasta: string) => void
-}) {
-  const campo = 'h-7 rounded border border-slate-200 bg-white px-1 text-xs text-slate-700'
-  return (
-    <div
-      className={cx(
-        'flex h-9 items-center gap-1.5 rounded-lg border px-2 text-sm',
-        desde || hasta ? 'border-marino-400 bg-marino-50' : 'border-slate-300 bg-white',
-      )}
-    >
-      <span className="text-xs font-semibold text-slate-500">{etiqueta}</span>
-      <input
-        type="date"
-        value={desde}
-        aria-label={`${etiqueta}, desde`}
-        onChange={(evento) => alCambiar(evento.target.value, hasta)}
-        className={campo}
-      />
-      <span className="text-slate-300">–</span>
-      <input
-        type="date"
-        value={hasta}
-        aria-label={`${etiqueta}, hasta`}
-        onChange={(evento) => alCambiar(desde, evento.target.value)}
-        className={campo}
-      />
-    </div>
-  )
-}
 
 /** Filtro de una sola línea: se pinta de azul cuando está aplicado, para verlo sin leerlo. */
