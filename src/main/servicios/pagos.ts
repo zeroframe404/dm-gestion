@@ -23,7 +23,7 @@ import { PESTANA_PAGOS_APP } from '../sincronizacion/pestanasApp'
 import { registrarFilaDeLaApp } from './filas'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
-import { enteroPositivo } from './validacion'
+import { enteroPositivo, texto as validarTexto } from './validacion'
 
 // ---------------------------------------------------------------------------
 // El RESULTADO de la rendición
@@ -352,6 +352,83 @@ export function guardarPago(datos: PagoAGuardar, actor: SesionUsuario): number {
     actor,
   )
   return id
+}
+
+/**
+ * Anula un pago cargado por error (la fila equivocada, el cliente equivocado): lo saca de la caja del
+ * día, de la rendición y de la hoja —con el mismo `borrar` que usa `borrarMovimientoDeCaja` para un
+ * renglón de la caja chica—, y si había dejado paga una cuota de la planilla la vuelve a dejar sin
+ * pagar. El pago no queda «marcado como anulado»: se borra entero, porque `registrarCambio` ya deja
+ * en el historial de la fila quién lo anuló, cuándo y por qué, que es lo único que hace falta después.
+ *
+ * Dos casos quedan afuera a propósito, con un error claro en vez de una reversión a ciegas:
+ *  - un pago ADELANTADO (`idDeLaFilaDelAdelanto`), porque además puede haber acreditado la cuota del
+ *    mes que viene, y desarmar eso desde acá es tan peligroso como el error que se quiere corregir;
+ *  - un pago que ya tiene un RESULTADO de rendición cargado, porque ya lo miró la contadora y borrarlo
+ *    le haría desaparecer algo que ya concilió.
+ */
+export function anularPago(pagoId: unknown, motivo: unknown, actor: SesionUsuario): void {
+  const id = enteroPositivo(pagoId, 'El pago')
+  const pago = db()
+    .prepare(
+      `SELECT id, fila_id, pestana, cuota_fila_id, estado_cobro, resultado, fecha, importe, medio, cliente_nombre
+         FROM pagos WHERE id = ?`,
+    )
+    .get(id) as
+    | {
+        id: number
+        fila_id: string
+        pestana: string
+        cuota_fila_id: string | null
+        estado_cobro: string | null
+        resultado: string | null
+        fecha: string | null
+        importe: string | null
+        medio: string | null
+        cliente_nombre: string | null
+      }
+    | undefined
+  if (!pago) throw new ErrorDeNegocio('No se encontró ese pago.')
+  if (pago.fila_id.startsWith('PAGO:ADELANTO:')) {
+    throw new ErrorDeNegocio('Un pago adelantado todavía no se puede anular desde acá: corregilo a mano en la hoja.')
+  }
+  if (normalizarResultado(pago.resultado)) {
+    throw new ErrorDeNegocio(
+      'Ese pago ya tiene un resultado de rendición cargado, así que no se puede anular desde acá: corregilo con administración.',
+    )
+  }
+  const motivoLimpio = limpiar(validarTexto(motivo, 'El motivo', 3, 300))
+  const ahora = ahoraIso()
+
+  db().transaction(() => {
+    db().prepare('DELETE FROM pagos WHERE id = ?').run(id)
+    if (normalizarEstadoDeCobro(pago.estado_cobro) === 'PAGO' && pago.cuota_fila_id) {
+      const cuota = db().prepare('SELECT id, fila_id, pestana, pago FROM cuotas_mes WHERE fila_id = ?').get(pago.cuota_fila_id) as
+        | { id: number; fila_id: string; pestana: string; pago: string | null }
+        | undefined
+      // Sólo se destapa si sigue siendo ESTE pago el que la dejó paga: si alguien ya cobró de nuevo esa
+      // cuota (otro pago con otra fecha) desmarcarla ahora le borraría el cobro nuevo.
+      if (cuota && limpiar(cuota.pago) === limpiar(pago.fecha)) {
+        db().prepare('UPDATE cuotas_mes SET pago = NULL, pago_fecha = NULL, actualizado_en = ? WHERE id = ?').run(ahora, cuota.id)
+        encolar({ operacion: 'actualizar', pestana: cuota.pestana, filaId: cuota.fila_id, campos: { pago: '' } }, actor)
+      }
+    }
+  })()
+
+  encolar({ operacion: 'borrar', pestana: pago.pestana, filaId: pago.fila_id, campos: {} }, actor)
+
+  registrarCambio(actor, {
+    accion: 'pago_anulado',
+    tabla: 'pagos',
+    registroId: id,
+    // A la fila de la CUOTA cuando la tiene (la misma que anotó 'CUANDO PAGO' al cobrarlo), no a la
+    // del pago: así la anulación aparece junto al cobro en el historial de esa fila de la planilla.
+    // Un pago suelto (sin cuota) no tiene otra fila que la propia.
+    filaId: pago.cuota_fila_id ?? pago.fila_id,
+    campo: 'PAGO ANULADO',
+    valorAnterior: `${pago.cliente_nombre ?? ''} · ${pago.fecha ?? ''}${pago.importe ? ` · ${pago.importe}` : ''}${pago.medio ? ` · ${pago.medio}` : ''}`.trim(),
+    valorNuevo: `Anulado: ${motivoLimpio}`,
+  })
 }
 
 interface PagoParaLaHoja {

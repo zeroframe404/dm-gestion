@@ -8,6 +8,7 @@ import { ejecutarMigraciones, MIGRACIONES } from '../src/main/db/migraciones'
 import { sembrarDatosIniciales } from '../src/main/db/semilla'
 import { planillaDelMes, registrarPago } from '../src/main/servicios/cartera'
 import {
+  anularPago,
   avisarMora,
   cajaDelDia,
   cambiarResultado,
@@ -79,6 +80,12 @@ function colaDeImputados(db: BaseDeDatos) {
     db,
     `SELECT operacion, fila_id, campos_json FROM cola_sync WHERE pestana = 'IMPUTADOS' ORDER BY id`,
   )
+}
+
+/** La columna PAGO de esa cuota en la planilla: null si sigue (o quedó) sin pagar. */
+function pagoDeLaCuota(db: BaseDeDatos, filaId: string): string | null {
+  const fila = db.prepare('SELECT pago FROM cuotas_mes WHERE fila_id = ?').get(filaId) as { pago: string | null }
+  return fila.pago
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +163,144 @@ test('el alta manual sobre una cuota del mes deja la fila paga y no duplica el p
   assert.equal(caja.pagos.length, 1)
   assert.equal(caja.total, 22_000)
   assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM pagos WHERE hecho_en_la_app = 1`).get() as { n: number }).n, 1)
+  cerrarBaseDeDatos()
+})
+
+// ---------------------------------------------------------------------------
+// Anular un pago
+// ---------------------------------------------------------------------------
+
+test('anular el pago de una cuota la deja sin pagar de nuevo, la saca de la caja y lo anota en el historial de la fila', async () => {
+  const db = await cobranzasDePrueba()
+  const fila = buscar(CLIENTES.lopez.nombre)
+
+  const { pagoId } = registrarPagoManual(
+    {
+      cuotaFilaId: fila.filaId,
+      clienteId: fila.clienteId,
+      polizaId: fila.polizaId,
+      clienteNombre: fila.nombre ?? '',
+      documento: fila.documento ?? '',
+      compania: fila.compania ?? '',
+      numeroPoliza: fila.numeroPoliza ?? '',
+      patente: fila.patente ?? '',
+      fecha: DIA_DE_CAJA,
+      importe: '$ 21.840',
+      medioDePago: 'MERCADO PAGO',
+      sucursal: 'Lanús',
+      observaciones: '',
+    },
+    DANIEL,
+  )
+  assert.equal(pagoDeLaCuota(db, fila.filaId), DIA_DE_CAJA)
+
+  const caja = anularPago(pagoId, 'se cargó en la fila equivocada', DANIEL)
+  assert.equal(caja.pagos.length, 0)
+  assert.equal(pagoDeLaCuota(db, fila.filaId), null)
+  assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM pagos WHERE id = ?`).get(pagoId) as { n: number }).n, 0)
+
+  // Se encoló para borrarse de la hoja y, aparte, para destapar la cuota.
+  const cola = colaDeImputados(db)
+  assert.ok(cola.some((c) => c.operacion === 'borrar'))
+
+  const historial = historialDeFila(fila.filaId)
+  const entrada = historial.find((h) => h.campo === 'PAGO ANULADO')
+  assert.ok(entrada, 'la anulación tiene que quedar en el historial de la fila')
+  assert.match(entrada!.valorNuevo ?? '', /fila equivocada/)
+
+  // Anularlo otra vez ya no encuentra nada que anular: el pago se borró, no quedó «marcado».
+  assert.throws(() => anularPago(pagoId, 'de nuevo', DANIEL), /No se encontró ese pago/)
+  cerrarBaseDeDatos()
+})
+
+test('anular un pago no destapa la cuota si la planilla ya trae otra fecha de pago', async () => {
+  const db = await cobranzasDePrueba()
+  const fila = buscar(CLIENTES.lopez.nombre)
+
+  const { pagoId } = registrarPagoManual(
+    {
+      cuotaFilaId: fila.filaId,
+      clienteId: fila.clienteId,
+      polizaId: fila.polizaId,
+      clienteNombre: fila.nombre ?? '',
+      documento: fila.documento ?? '',
+      compania: fila.compania ?? '',
+      numeroPoliza: fila.numeroPoliza ?? '',
+      patente: fila.patente ?? '',
+      fecha: DIA_DE_CAJA,
+      importe: '$ 21.840',
+      medioDePago: 'MERCADO PAGO',
+      sucursal: 'Lanús',
+      observaciones: '',
+    },
+    DANIEL,
+  )
+  // Otra computadora corrigió la fecha directo en la hoja y esta la reimportó: la cuota quedó con
+  // una fecha que el `pagos` local (todavía con la de acá) no conoce.
+  db.prepare('UPDATE cuotas_mes SET pago = ? WHERE fila_id = ?').run(HOY, fila.filaId)
+
+  anularPago(pagoId, 'llegó tarde el aviso', DANIEL)
+  assert.equal(pagoDeLaCuota(db, fila.filaId), HOY)
+  cerrarBaseDeDatos()
+})
+
+test('un pago suelto de caja se anula igual, sin ninguna cuota que destapar', async () => {
+  await cobranzasDePrueba()
+  const alta = registrarPagoManual(
+    {
+      cuotaFilaId: null,
+      clienteId: null,
+      polizaId: null,
+      clienteNombre: 'QUIROGA MARTA',
+      documento: '18.222.333',
+      compania: 'SANCOR',
+      numeroPoliza: 'CF-9001',
+      patente: '',
+      fecha: DIA_DE_CAJA,
+      importe: '8.900',
+      medioDePago: 'EFECTIVO',
+      sucursal: 'Daniel',
+      observaciones: '',
+    },
+    DANIEL,
+  )
+  const caja = anularPago(alta.pagoId, 'se cargó dos veces', DANIEL)
+  assert.equal(caja.pagos.find((p) => p.clienteNombre === 'QUIROGA MARTA'), undefined)
+  cerrarBaseDeDatos()
+})
+
+test('un pago adelantado o uno que ya tiene resultado de rendición no se pueden anular desde acá', async () => {
+  const db = await cobranzasDePrueba()
+  const fila = buscar(CLIENTES.lopez.nombre)
+
+  registrarPago(
+    fila.filaId,
+    { fecha: DIA_DE_CAJA, importe: '', medioDePago: '', alcance: 'ADELANTADO', adelanto: { modo: 'PENDIENTE', importe: '' } },
+    DANIEL,
+  )
+  const adelanto = db.prepare(`SELECT id FROM pagos WHERE fila_id = ?`).get(`PAGO:ADELANTO:${fila.filaId}`) as { id: number }
+  assert.throws(() => anularPago(adelanto.id, 'motivo', DANIEL), /adelantado/)
+
+  const { pagoId } = registrarPagoManual(
+    {
+      cuotaFilaId: null,
+      clienteId: null,
+      polizaId: null,
+      clienteNombre: 'SOLTERO',
+      documento: '',
+      compania: '',
+      numeroPoliza: '',
+      patente: '',
+      fecha: DIA_DE_CAJA,
+      importe: '1.000',
+      medioDePago: '',
+      sucursal: 'Daniel',
+      observaciones: '',
+    },
+    DANIEL,
+  )
+  cambiarResultado(pagoId, 'IMPUTADO', [], DANIEL)
+  assert.throws(() => anularPago(pagoId, 'motivo', DANIEL), /resultado de rendición/)
   cerrarBaseDeDatos()
 })
 

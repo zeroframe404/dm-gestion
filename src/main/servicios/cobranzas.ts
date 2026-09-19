@@ -49,6 +49,7 @@ import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
 import { encolar } from '../sincronizacion/cola'
 import {
+  anularPago as anularPagoDeLaBase,
   aPagoRegistrado,
   asegurarPagoEnLaHoja,
   guardarNumeroDeTicket,
@@ -485,6 +486,15 @@ export function numeroDeTicketDelPago(pagoId: unknown, numero: unknown, actor: S
   sucursalParaLaCaja(dia.sucursal, actor)
   if (typeof numero !== 'string') throw new ErrorDeNegocio('El número de ticket no es válido.')
   guardarNumeroDeTicket(id, numero, actor)
+  return cajaDelDia(dia.fecha, dia.sucursal ? [dia.sucursal] : [], actor)
+}
+
+/** Anula un pago cargado por error y devuelve la caja de ese día ya rehecha. */
+export function anularPago(pagoId: unknown, motivo: unknown, actor: SesionUsuario): CajaDelDia {
+  const id = enteroPositivo(pagoId, 'El pago')
+  const dia = diaDelPago(id)
+  sucursalParaLaCaja(dia.sucursal, actor)
+  anularPagoDeLaBase(id, motivo, actor)
   return cajaDelDia(dia.fecha, dia.sucursal ? [dia.sucursal] : [], actor)
 }
 

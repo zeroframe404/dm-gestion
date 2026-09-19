@@ -33,6 +33,7 @@ import {
   resolverRechazoDesdeLaCampana,
 } from './servicios/rechazos'
 import {
+  anularPago,
   avisarMora,
   cambiarResultado,
   cargarMovimientoDeCaja,
@@ -790,6 +791,7 @@ export function registrarIpc(): void {
   manejar('cobranzas:borrarMovimientoCaja', (movimientoId) => exito(quitarMovimientoDeCaja(movimientoId, exigirEdicion('cobranzas'))))
   manejar('cobranzas:revisarPago', (pagoId, revisado) => exito(revisarPago(pagoId, revisado, exigirEdicion('cobranzas'))))
   manejar('cobranzas:numeroDeTicket', (pagoId, numero) => exito(numeroDeTicketDelPago(pagoId, numero, exigirEdicion('cobranzas'))))
+  manejar('cobranzas:anularPago', (pagoId, motivo) => exito(anularPago(pagoId, motivo, exigirEdicion('cobranzas'))))
   manejar('cobranzas:mora', (filtros) => {
     exigirVista('cobranzas')
     return exito(mora(filtros))
