@@ -699,6 +699,7 @@ function fichaCompleta(id: number): DatosDeCliente {
     localidad: '',
     sucursal: 'Lanús',
     fechaNacimiento: '12/05/1980',
+    profesion: '',
     direccionDetalle: sanearDireccion({ calle: 'Belgrano', altura: '567', localidad: 'Sarandí', provincia: 'Buenos Aires', codigoPostal: 'B1872' }),
   }
 }

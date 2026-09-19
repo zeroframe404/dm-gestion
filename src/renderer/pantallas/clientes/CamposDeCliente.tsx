@@ -30,6 +30,7 @@ const CAMPOS_DE_TEXTO: CampoDeTexto[] = [
   'localidad',
   'sucursal',
   'fechaNacimiento',
+  'profesion',
 ]
 
 /**

@@ -305,6 +305,7 @@ function datosDeCliente(poliza: PolizaDeGaleno): DatosDeCliente {
     localidad: poliza.localidad,
     sucursal: '',
     fechaNacimiento: '',
+    profesion: '',
     direccionDetalle: {
       calle: '',
       calle2: '',

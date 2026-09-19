@@ -21,6 +21,7 @@ const DATOS_VACIOS: DatosDeCliente = {
   localidad: '',
   sucursal: '',
   fechaNacimiento: '',
+  profesion: '',
   direccionDetalle: DIRECCION_VACIA,
 }
 
@@ -192,6 +193,13 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
             autoComplete="off"
           />
           <CampoDeNacimiento valor={datos.fechaNacimiento} alCambiar={cambiarTexto('fechaNacimiento')} />
+          <Campo
+            etiqueta="Profesión"
+            value={datos.profesion}
+            onChange={(evento) => cambiarTexto('profesion')(evento.target.value)}
+            ayuda="Para saber qué otro seguro ofrecerle más adelante."
+            autoComplete="off"
+          />
         </div>
 
         <datalist id={LISTA_SUCURSALES}>
