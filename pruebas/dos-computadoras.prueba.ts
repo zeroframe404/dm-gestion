@@ -12,8 +12,13 @@ import { crearCliente, editarCliente, fichaDeCliente, listarClientes } from '../
 import { cajaDelDia, cambiarResultado, cargarMovimientoDeCaja, imputados } from '../src/main/servicios/cobranzas'
 import { filaIdDelMovimiento } from '../src/main/servicios/caja'
 import { PESTANA_APP } from '../src/main/servicios/filas'
-import { hojaDeImputados, subirPagosRezagados } from '../src/main/servicios/pagos'
-import { repararBajasDuplicadas, repararColaContraPestanaInexistente, repararCuotasDuplicadas } from '../src/main/servicios/reparaciones'
+import { anularPago, hojaDeImputados, subirPagosRezagados } from '../src/main/servicios/pagos'
+import {
+  repararBajasDuplicadas,
+  repararColaContraPestanaInexistente,
+  repararCuotasBajadasAMedias,
+  repararCuotasDuplicadas,
+} from '../src/main/servicios/reparaciones'
 import { cerrarMesConLaBase } from '../src/main/servicios/sincronizacion'
 import { apurarAgrupadas, cuantasFallidas, cuantasPendientes } from '../src/main/sincronizacion/cola'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
@@ -630,6 +635,99 @@ test('un cobro IMPUTADO viaja por la columna COBRO de APP PAGOS, y en la otra co
   assert.equal(pagada.pagoImputado, false)
   assert.equal(pagada.pagoRegistrado, true)
   assert.equal(cajaDelDia('2026-08-14', ['Lanús']).total, 24420)
+  cerrarTodo()
+})
+
+// Lo que se anota en la planilla del mes. Hasta la 15.4.2 la bajada escribía el texto de
+// CUANDO PAGO pero no la fecha interpretada, que es lo que mira la planilla para dar la fila por paga:
+// el pago cargado en una sucursal llegaba a las otras y la fila seguía «Vencido». OBS PAGO, además, no
+// se bajaba nunca. Acá no aparece ninguna fila nueva, así que no corre ninguna importación que lo tape:
+// lo que se ve en la otra computadora es obra de la bajada sola.
+test('CUANDO PAGO, OBS PAGO y el día de vencimiento que se cargan en una computadora se ven igual en la otra', async () => {
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+  en(lanus1)
+  const rodriguez = exigirFila(CLIENTES.rodriguez.nombre)
+  editarCelda(rodriguez.filaId, 'pago', '12/08/2026', SOFIA)
+  editarCelda(rodriguez.filaId, 'obsPago', 'DEBE AGOSTO Y SEPTIEMBRE', SOFIA)
+  editarCelda(rodriguez.filaId, 'diaVencimiento', '25', SOFIA)
+  await subirTodo(lanus1)
+  assert.equal(celda(hoja, 'AGOSTO', rodriguez.filaId, 'OBS PAGO'), 'DEBE AGOSTO Y SEPTIEMBRE', 'la pestaña ganó la columna y tiene la nota')
+
+  en(lanus2)
+  assert.equal(exigirFila(CLIENTES.rodriguez.nombre).pagoFecha, null, 'antes de bajar, acá todavía debe')
+  await lanus2.motor.ciclarBajada()
+  const alla = exigirFila(CLIENTES.rodriguez.nombre)
+  assert.equal(alla.pago, '12/08/2026')
+  assert.equal(alla.pagoFecha, '2026-08-12', 'la fila figura paga, no «Vencido»')
+  assert.equal(alla.obsPago, 'DEBE AGOSTO Y SEPTIEMBRE')
+  assert.equal(alla.diaVencimientoNumero, 25, 'la alerta se calcula con el día nuevo')
+  cerrarTodo()
+})
+
+test('el pago cobrado en una computadora queda atado a su fila en la otra, y anularlo la deja debiendo en las dos', async () => {
+  const { lanus1, lanus2 } = await dosComputadoras()
+  en(lanus1)
+  const rodriguez = exigirFila(CLIENTES.rodriguez.nombre)
+  registrarPago(rodriguez.filaId, { fecha: '2026-08-12', importe: '$ 24.420', medioDePago: 'EFECTIVO' }, MILAGROS)
+  await subirTodo(lanus1)
+
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  // Sin la fila, la planilla sólo encontraba el pago si la póliza y el mes coincidían: con un número de
+  // póliza escrito distinto en esta base, la fila seguía «Vencido» acá.
+  const atado = lanus2.db.prepare('SELECT cuota_fila_id FROM pagos WHERE fila_id = ?').get(`PAGO:${rodriguez.filaId}`) as
+    | { cuota_fila_id: string | null }
+    | undefined
+  assert.equal(atado?.cuota_fila_id, rodriguez.filaId, 'el pago que llegó sabe qué fila paga')
+  assert.equal(exigirFila(CLIENTES.rodriguez.nombre).pagoRegistrado, true)
+
+  en(lanus1)
+  const pagoId = lanus1.db.prepare('SELECT id FROM pagos WHERE fila_id = ?').get(`PAGO:${rodriguez.filaId}`) as { id: number }
+  anularPago(pagoId.id, 'Se cargó por error', MILAGROS)
+  await subirTodo(lanus1)
+  assert.equal(exigirFila(CLIENTES.rodriguez.nombre).pagoFecha, null)
+
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  const alla = exigirFila(CLIENTES.rodriguez.nombre)
+  assert.equal(alla.pagoRegistrado, false, 'el pago se fue')
+  assert.equal(alla.pagoFecha, null, 'y la fecha se fue con el texto: la fila vuelve a deber')
+  cerrarTodo()
+})
+
+test('la reparación completa lo que la bajada dejaba a medias, sin tocar lo que esta computadora no subió', async () => {
+  const { lanus1, lanus2 } = await dosComputadoras()
+  en(lanus1)
+  const rodriguez = exigirFila(CLIENTES.rodriguez.nombre)
+  const lopez = exigirFila(CLIENTES.lopez.nombre)
+  registrarPago(rodriguez.filaId, { fecha: '2026-08-12', importe: '$ 24.420', medioDePago: 'EFECTIVO' }, MILAGROS)
+  editarCelda(rodriguez.filaId, 'obsPago', 'DEBE SEPTIEMBRE', SOFIA)
+  editarCelda(lopez.filaId, 'obsPago', 'PAGA EL 20', SOFIA)
+  await subirTodo(lanus1)
+
+  en(lanus2)
+  await lanus2.motor.ciclarBajada()
+  // Así quedaba una computadora con la 15.4.2: el texto bajado, lo derivado sin calcular.
+  lanus2.db
+    .prepare(`UPDATE cuotas_mes SET pago_fecha = NULL, obs_pago = NULL, dia_vencimiento_numero = 3 WHERE fila_id IN (?, ?)`)
+    .run(rodriguez.filaId, lopez.filaId)
+  // Y el pago sin su fila ni su póliza: la de esta base no se reconoció (un número escrito distinto).
+  lanus2.db.prepare('UPDATE pagos SET cuota_fila_id = NULL, poliza_id = NULL').run()
+  lanus2.db.prepare(`DELETE FROM estado_sync WHERE clave = 'reparacion:cuotas-bajadas-a-medias'`).run()
+  // López tiene una nota escrita acá que todavía no subió: ésa manda sobre lo que dice la base.
+  editarCelda(lopez.filaId, 'obsPago', 'NOTA DE ACÁ', SOFIA)
+  assert.equal(exigirFila(CLIENTES.rodriguez.nombre).pagoRegistrado, false, 'así se veía: «Vencido»')
+
+  assert.ok(repararCuotasBajadasAMedias() > 0)
+  const reparada = exigirFila(CLIENTES.rodriguez.nombre)
+  assert.equal(reparada.pagoFecha, '2026-08-12')
+  assert.equal(reparada.pagoRegistrado, true, 'el pago volvió a atarse a su fila')
+  assert.equal(reparada.obsPago, 'DEBE SEPTIEMBRE', 'la nota sale de lo que la base tenía')
+  assert.equal(reparada.diaVencimientoNumero, 10)
+  const conCambioPropio = exigirFila(CLIENTES.lopez.nombre)
+  assert.equal(conCambioPropio.obsPago, 'NOTA DE ACÁ', 'lo que no subió no se pisa')
+  assert.equal(conCambioPropio.diaVencimientoNumero, 10, 'lo derivado sí: sale del texto de esta misma computadora')
+  assert.equal(repararCuotasBajadasAMedias(), 0, 'corre una sola vez')
   cerrarTodo()
 })
 

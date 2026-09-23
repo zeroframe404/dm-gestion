@@ -16,9 +16,9 @@
 //    `elegirPlanillaPorPeriodo` en el importador) y acá se sacan las copias que ya habían entrado.
 import { db } from '../db/base'
 import { resolverCampo, type Campo } from '../importacion/encabezados'
-import { ahoraIso, limpiar, normalizarTexto } from '../importacion/normalizar'
+import { ahoraIso, interpretarDiaDeVencimiento, interpretarFechaDePeriodo, limpiar, normalizarTexto } from '../importacion/normalizar'
 import { registrarLoQueNoViajo } from './adjuntos'
-import { anotarEvento, encolar } from '../sincronizacion/cola'
+import { anotarEvento, encolar, guardarMarca, leerMarca } from '../sincronizacion/cola'
 import { filasConCambiosSinSubir, PESTANA_APP, PREFIJO_DE_BAJA } from './filas'
 import { claveDeVinculoDeTarea } from '../sincronizacion/vinculos'
 import { repararClientesDuplicados } from './duplicados'
@@ -264,9 +264,147 @@ export function repararDuplicados(): void {
   repararClientesDuplicados()
 }
 
+// ---------------------------------------------------------------------------
+// Cuotas que la bajada dejó a medias (hasta la 15.4.2)
+// ---------------------------------------------------------------------------
+
+/** La marca que dice que `repararCuotasBajadasAMedias` ya corrió en esta base. */
+const MARCA_CUOTAS_A_MEDIAS = 'reparacion:cuotas-bajadas-a-medias'
+
+/**
+ * Lo que la bajada de la planilla del mes no aplicaba hasta la 15.4.2, y que por eso quedó distinto en
+ * cada computadora aunque la base de la agencia estuviera bien:
+ *
+ *  - `pago_fecha`: el pago cargado en otra sucursal llegaba como texto en CUANDO PAGO pero sin la
+ *    fecha interpretada, que es lo que la planilla mira para dar la fila por paga. La fila seguía
+ *    «Vencido» en todas las computadoras menos en la que cobró. Y al revés: un pago anulado allá
+ *    vaciaba el texto acá pero dejaba la fecha, y la fila seguía paga.
+ *  - `dia_vencimiento_numero`: un cambio de FECHA DE VENC hecho en otra computadora no movía la
+ *    alerta de ésta.
+ *  - `obs_pago`: OBS PAGO nunca se bajaba. El valor de la base sí quedaba en los datos crudos de la
+ *    fila, así que se toma de ahí. Las filas con cambios propios sin subir no se tocan: lo que la
+ *    persona escribió acá todavía no viajó y es lo que tiene que ganar.
+ *  - `pagos.cuota_fila_id`: los pagos que llegaron de otra computadora entraban sin la fila que
+ *    pagan, y la planilla sólo los encontraba si la póliza y el mes coincidían.
+ *
+ * Corre UNA vez por base (la bajada ya los mantiene al día desde esta versión). Devuelve cuántas filas
+ * tocó, entre cuotas y pagos.
+ */
+export function repararCuotasBajadasAMedias(): number {
+  if (leerMarca(MARCA_CUOTAS_A_MEDIAS)) return 0
+  const base = db()
+  const sinSubir = filasConCambiosSinSubir(base)
+  const ahora = ahoraIso()
+  let pagosAtados = 0
+  let fechasDePago = 0
+  let vencimientos = 0
+  let observaciones = 0
+
+  base.transaction(() => {
+    // Los pagos de una cuota llevan «PAGO:<_ID de la fila>» (ver `cuotaDelPago` en pagos.ts); los
+    // adelantos se atan al imputarlos y no se tocan.
+    pagosAtados = base
+      .prepare(
+        `UPDATE pagos SET cuota_fila_id = substr(fila_id, 6), actualizado_en = ?
+         WHERE cuota_fila_id IS NULL AND fila_id LIKE 'PAGO:%' AND fila_id NOT LIKE 'PAGO:ADELANTO:%' AND length(fila_id) > 5`,
+      )
+      .run(ahora).changes
+
+    // De a tandas y no todas juntas: son todas las cuotas de todos los meses, cada una con sus datos
+    // crudos, y esto corre al arrancar.
+    const tanda = base.prepare(
+      `SELECT c.id, c.periodo, c.pago, c.pago_fecha, c.dia_vencimiento, c.dia_vencimiento_numero, c.obs_pago,
+              fc.fila_id AS cruda_id, fc.datos_json
+       FROM cuotas_mes c LEFT JOIN filas_crudas fc ON fc.fila_id = c.fila_id
+       WHERE c.id > ? ORDER BY c.id LIMIT 2000`,
+    )
+    const ponerFechaDePago = base.prepare('UPDATE cuotas_mes SET pago_fecha = ?, actualizado_en = ? WHERE id = ?')
+    const ponerVencimiento = base.prepare('UPDATE cuotas_mes SET dia_vencimiento_numero = ?, actualizado_en = ? WHERE id = ?')
+    const ponerObsPago = base.prepare('UPDATE cuotas_mes SET obs_pago = ?, actualizado_en = ? WHERE id = ?')
+    /** Qué encabezado es OBS PAGO: cada planilla puede escribirlo distinto («OBS. PAGO», «NOTA DE PAGO»…). */
+    const esObsPago = new Map<string, boolean>()
+
+    for (let desde = 0; ; ) {
+      const cuotas = tanda.all(desde) as Array<{
+        id: number
+        periodo: string
+        pago: string | null
+        pago_fecha: string | null
+        dia_vencimiento: string | null
+        dia_vencimiento_numero: number | null
+        obs_pago: string | null
+        cruda_id: string | null
+        datos_json: string | null
+      }>
+      if (cuotas.length === 0) break
+      desde = cuotas[cuotas.length - 1]!.id
+      for (const cuota of cuotas) {
+        // Sólo se completa lo que falta o se vacía lo que sobra: una fecha que ya está no se recalcula,
+        // porque el cobro hecho en esta computadora la guarda con su propia regla de año.
+        const pago = limpiar(cuota.pago)
+        if (pago && !cuota.pago_fecha) {
+          const periodo = /^\d{4}-\d{2}$/.test(cuota.periodo) ? cuota.periodo : null
+          const iso = interpretarFechaDePeriodo(pago, periodo).iso
+          if (iso) {
+            ponerFechaDePago.run(iso, ahora, cuota.id)
+            fechasDePago++
+          }
+        } else if (!pago && cuota.pago_fecha) {
+          ponerFechaDePago.run(null, ahora, cuota.id)
+          fechasDePago++
+        }
+
+        const dia = interpretarDiaDeVencimiento(cuota.dia_vencimiento)
+        if (dia !== cuota.dia_vencimiento_numero) {
+          ponerVencimiento.run(dia, ahora, cuota.id)
+          vencimientos++
+        }
+
+        if (!cuota.cruda_id || !cuota.datos_json || sinSubir.has(cuota.cruda_id)) continue
+        let datos: Record<string, unknown>
+        try {
+          datos = JSON.parse(cuota.datos_json) as Record<string, unknown>
+        } catch {
+          continue
+        }
+        for (const encabezado of Object.keys(datos)) {
+          let es = esObsPago.get(encabezado)
+          if (es === undefined) {
+            es = resolverCampo(encabezado, 'MENSUAL') === 'obs_pago'
+            esObsPago.set(encabezado, es)
+          }
+          if (!es) continue
+          const enLaBase = limpiar(datos[encabezado])
+          if (enLaBase !== limpiar(cuota.obs_pago)) {
+            ponerObsPago.run(enLaBase || null, ahora, cuota.id)
+            observaciones++
+          }
+          break
+        }
+      }
+    }
+    guardarMarca(MARCA_CUOTAS_A_MEDIAS, ahora)
+  })()
+
+  const tocadas = pagosAtados + fechasDePago + vencimientos + observaciones
+  if (tocadas > 0) {
+    anotarEvento(
+      'reparacion',
+      `Se completaron las cuotas que la sincronización había dejado a medias: ${fechasDePago} fechas de pago, ` +
+        `${vencimientos} días de vencimiento, ${observaciones} OBS PAGO y ${pagosAtados} pagos atados a su fila.`,
+    )
+  }
+  return tocadas
+}
+
 /** Lo que se repara cada vez que arranca la sincronización. */
 export function repararAlArrancar(): void {
   repararColaContraPestanaInexistente()
+  try {
+    repararCuotasBajadasAMedias()
+  } catch (error) {
+    console.error('[reparaciones] No se pudieron completar las cuotas bajadas a medias:', error)
+  }
   const pagos = subirPagosRezagados()
   if (pagos > 0) anotarEvento('reparacion', `${pagos} pagos que habían quedado sólo en esta computadora se encolaron hacia la base.`)
   repararDuplicados()
