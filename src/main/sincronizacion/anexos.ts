@@ -20,7 +20,7 @@ import { nombreDePestana } from '../servicios/hojas'
 import { encolar } from './cola'
 import { PESTANA_ADJUNTOS_APP, PESTANA_COMENTARIOS_APP } from './pestanasApp'
 
-export type TipoDeAnexo = 'poliza' | 'siniestro' | 'tarea'
+export type TipoDeAnexo = 'poliza' | 'siniestro' | 'tarea' | 'presupuesto'
 /** De qué fichas puede colgar un comentario: además de las tres, las consultas (leads, 12.7). */
 export type TipoDeComentario = 'siniestro' | 'tarea' | 'lead'
 /** Todo lo que puede ser «la ficha madre» de un anexo. */
@@ -30,7 +30,13 @@ export type TipoDePadre = TipoDeAnexo | 'lead'
 export const PREFIJO_DE_ADJUNTO = 'ADJ:'
 export const PREFIJO_DE_COMENTARIO = 'COM:'
 
-const ETIQUETA: Record<TipoDePadre, string> = { poliza: 'POLIZA', siniestro: 'SINIESTRO', tarea: 'TAREA', lead: 'LEAD' }
+const ETIQUETA: Record<TipoDePadre, string> = {
+  poliza: 'POLIZA',
+  siniestro: 'SINIESTRO',
+  tarea: 'TAREA',
+  presupuesto: 'PRESUPUESTO',
+  lead: 'LEAD',
+}
 const TIPO_POR_ETIQUETA = new Map<string, TipoDePadre>(Object.entries(ETIQUETA).map(([tipo, etiqueta]) => [etiqueta, tipo as TipoDePadre]))
 
 /** El nombre real de la pestaña (por si la agencia la renombró) o el de fábrica. */
@@ -61,7 +67,8 @@ function claveDelPadre(tipo: TipoDePadre, padreId: number, base: BaseDeDatos): s
     const fila = base.prepare('SELECT clave FROM polizas WHERE id = ?').get(padreId) as { clave: string | null } | undefined
     return fila?.clave ?? null
   }
-  const tabla = tipo === 'siniestro' ? 'siniestros' : tipo === 'lead' ? 'leads' : 'tareas'
+  const tabla =
+    tipo === 'siniestro' ? 'siniestros' : tipo === 'lead' ? 'leads' : tipo === 'presupuesto' ? 'presupuestos' : 'tareas'
   const fila = base.prepare(`SELECT fila_id FROM ${tabla} WHERE id = ?`).get(padreId) as { fila_id: string | null } | undefined
   return fila?.fila_id ?? null
 }
@@ -93,6 +100,13 @@ export function descripcionDelPadre(tipo: TipoDePadre, padreId: number, base: Ba
     const l = base.prepare('SELECT nombre FROM leads WHERE id = ?').get(padreId) as { nombre: string } | undefined
     return l ? `Consulta de ${l.nombre}` : `Consulta ${padreId}`
   }
+  if (tipo === 'presupuesto') {
+    const p = base
+      .prepare('SELECT numero, cliente_nombre, patente FROM presupuestos WHERE id = ?')
+      .get(padreId) as { numero: string | null; cliente_nombre: string | null; patente: string | null } | undefined
+    if (!p) return `Presupuesto ${padreId}`
+    return ['Presupuesto', p.numero, p.cliente_nombre, p.patente].filter((x) => limpiar(x ?? '')).join(' · ')
+  }
   const t = base.prepare('SELECT titulo FROM tareas WHERE id = ?').get(padreId) as { titulo: string } | undefined
   return t ? `Tarea: ${t.titulo}` : `Tarea ${padreId}`
 }
@@ -121,7 +135,9 @@ function idDelPadre(tipo: TipoDePadre, clave: string, base: BaseDeDatos): number
         ? 'SELECT id FROM siniestros WHERE fila_id = ? OR fila_id = ? LIMIT 1'
         : tipo === 'lead'
           ? 'SELECT id FROM leads WHERE fila_id = ? OR fila_id = ? LIMIT 1'
-          : 'SELECT id FROM tareas WHERE fila_id = ? OR fila_id = ? LIMIT 1'
+          : tipo === 'presupuesto'
+            ? 'SELECT id FROM presupuestos WHERE fila_id = ? OR fila_id = ? LIMIT 1'
+            : 'SELECT id FROM tareas WHERE fila_id = ? OR fila_id = ? LIMIT 1'
   const fila = base.prepare(sql).get(clave, clave) as { id: number } | undefined
   return fila?.id ?? null
 }
@@ -284,6 +300,7 @@ const TABLA_DE_ADJUNTOS: Record<TipoDeAnexo, { tabla: string; padre: string }> =
   poliza: { tabla: 'poliza_adjuntos', padre: 'poliza_id' },
   siniestro: { tabla: 'siniestro_adjuntos', padre: 'siniestro_id' },
   tarea: { tabla: 'tarea_adjuntos', padre: 'tarea_id' },
+  presupuesto: { tabla: 'presupuesto_adjuntos', padre: 'presupuesto_id' },
 }
 
 /** Dónde viven los comentarios de cada ficha: las observaciones del siniestro, los de la tarea, las notas del lead. */
@@ -402,7 +419,7 @@ export function aplicarRenglonALaFicha(siniestroId: number, texto: string, base:
 export function guardarComentarioDeLaHoja(fila: FilaDeAnexo, base: BaseDeDatos = db()): ResultadoDeAnexo {
   if (!fila.filaId.startsWith(PREFIJO_DE_COMENTARIO)) return 'ignorado'
   const padre = padreDelVinculo(fila.valor('vinculo'), base)
-  if (!padre || padre.tipo === 'poliza') return 'ignorado'
+  if (!padre || padre.tipo === 'poliza' || padre.tipo === 'presupuesto') return 'ignorado'
   if (padre.id === null) return 'sin-padre'
   const texto = limpiar(fila.valor('texto'))
   if (!texto) return 'ignorado'

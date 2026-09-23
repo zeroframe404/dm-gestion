@@ -173,6 +173,13 @@ import {
   borrarAdjuntoDePoliza,
   rutaDelAdjuntoDePoliza,
 } from './servicios/adjuntosDePoliza'
+import {
+  adjuntosDePresupuesto,
+  agregarAdjuntosDePresupuesto,
+  agregarArchivosDePresupuesto,
+  borrarAdjuntoDePresupuesto,
+  rutaDelAdjuntoDePresupuesto,
+} from './servicios/adjuntosDePresupuesto'
 import { borrarRegla, crearRegla, editarRegla, matrizDeCobertura, reglasVigentes } from './servicios/reglas'
 import {
   borrarClausula,
@@ -1364,6 +1371,43 @@ export function registrarIpc(): void {
     exigirVista('presupuestos')
     const papel = presupuestoParaImprimir(enteroPositivo(presupuestoId, 'El presupuesto'))
     return exito(await imprimirHtmlConDialogo(papel.html))
+  })
+  // Las cotizaciones en PDF que manda cada compañía. Verlas es ver el presupuesto; borrar una queda
+  // para ADMIN y SUPER_ADMIN, como en pólizas y siniestros.
+  manejar('presupuestos:adjuntos', (presupuestoId) => {
+    exigirVista('presupuestos')
+    return exito(adjuntosDePresupuesto(presupuestoId))
+  })
+  manejar('presupuestos:adjuntarArchivos', async (presupuestoId, archivos) =>
+    exito(await agregarArchivosDePresupuesto(enteroPositivo(presupuestoId, 'El presupuesto'), archivos, exigirEdicion('presupuestos'))),
+  )
+  manejar('presupuestos:adjuntar', async (presupuestoId, rutas) => {
+    const actor = exigirEdicion('presupuestos')
+    const id = enteroPositivo(presupuestoId, 'El presupuesto')
+    if (rutas !== null && rutas !== undefined) return exito(await agregarAdjuntosDePresupuesto(id, rutas, actor))
+    const ventana = ventanaActual()
+    const opciones = {
+      title: 'Elegí la cotización de la compañía',
+      buttonLabel: 'Adjuntar',
+      properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+      filters: [
+        { name: 'Cotizaciones', extensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'doc', 'docx'] },
+        { name: 'Todos los archivos', extensions: ['*'] },
+      ],
+    }
+    const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
+    if (elegido.canceled || elegido.filePaths.length === 0) return exito(adjuntosDePresupuesto(id))
+    return exito(await agregarAdjuntosDePresupuesto(id, elegido.filePaths, actor))
+  })
+  manejar('presupuestos:abrirAdjunto', async (adjuntoId) => {
+    exigirVista('presupuestos')
+    const error = await shell.openPath(await rutaDelAdjuntoDePresupuesto(adjuntoId))
+    if (error) throw new ErrorDeNegocio(`No se pudo abrir el documento: ${error}`)
+    return exito(null)
+  })
+  manejar('presupuestos:borrarAdjunto', (adjuntoId) => {
+    exigirEdicion('presupuestos')
+    return exito(borrarAdjuntoDePresupuesto(adjuntoId, exigirRol('SUPER_ADMIN', 'ADMIN')))
   })
 
   // Tareas: los pendientes internos.

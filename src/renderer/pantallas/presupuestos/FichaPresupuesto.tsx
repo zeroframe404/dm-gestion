@@ -11,6 +11,8 @@ import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, AreaTexto, Boton, Cargando, Dialogo, Tarjeta, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos } from '../../contexto/Permisos'
+import { useUsuarioActual } from '../../contexto/Sesion'
+import { AdjuntosDePresupuesto } from './AdjuntosDePresupuesto'
 import { FormularioPresupuesto } from './FormularioPresupuesto'
 import { CLASES_ESTADO_PRESUPUESTO } from './Presupuestos'
 
@@ -23,6 +25,7 @@ function fechaYHora(iso: string): string {
 export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: number; alVolver: () => void }) {
   const { ir } = useNavegacion()
   const { puedeEditar } = usePermisos()
+  const usuario = useUsuarioActual()
   const puedeTrabajar = puedeEditar('presupuestos')
   const [ficha, setFicha] = useState<Ficha | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -217,6 +220,8 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
             <Dato etiqueta="Teléfono" valor={p.telefono} />
             <Dato etiqueta="DNI / CUIT" valor={p.documento} />
             <Dato etiqueta="Vehículo" valor={[vehiculo, p.patente].filter(Boolean).join(' · ')} />
+            <Dato etiqueta="Tipo de uso" valor={p.tipoVehiculo} />
+            <Dato etiqueta="Suma asegurada" valor={p.sumaAsegurada} />
             <Dato etiqueta="Observaciones" valor={p.observaciones} />
             <Dato etiqueta="Cargado por" valor={p.usuarioNombre} />
             <Dato etiqueta="Creado el" valor={fechaYHora(p.creadoEn)} />
@@ -253,11 +258,16 @@ export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: n
         </Tarjeta>
       </div>
 
+      <Tarjeta titulo="Cotizaciones de las compañías" descripcion="El PDF (o la captura) que mandó cada compañía, para tenerlo a mano.">
+        <AdjuntosDePresupuesto presupuestoId={p.id} puedeEditar={puedeTrabajar} puedeBorrar={puedeTrabajar && usuario.rol !== 'EMPLEADO'} />
+      </Tarjeta>
+
       {editarAbierto && (
         <FormularioPresupuesto
           ficha={ficha}
           companias={ficha.companias}
           coberturas={ficha.coberturas}
+          clausulas={ficha.clausulas}
           alCerrar={() => setEditarAbierto(false)}
           alGuardar={(nueva) => {
             setEditarAbierto(false)

@@ -15,6 +15,7 @@ import type {
   LogDeMensajes,
   MensajeInterno,
   AdjuntoDePoliza,
+  AdjuntoDePresupuesto,
   ArchivoParaAdjuntar,
   AceptacionDePresupuesto,
   InformeDeDuplicados,
@@ -618,6 +619,13 @@ export interface Canales {
   'presupuestos:guardarPdf': (presupuestoId: number) => Resultado<{ ruta: string | null }>
   /** Manda el presupuesto a la impresora que elija el usuario. false = se canceló el diálogo. */
   'presupuestos:imprimir': (presupuestoId: number) => Resultado<boolean>
+  /** Las cotizaciones en PDF (u otro documento) que mandó cada compañía: viven en el VPS. */
+  'presupuestos:adjuntos': (presupuestoId: number) => Resultado<AdjuntoDePresupuesto[]>
+  'presupuestos:adjuntarArchivos': (presupuestoId: number, archivos: ArchivoParaAdjuntar[]) => Resultado<AdjuntoDePresupuesto[]>
+  /** Con rutas del disco (el explorador de archivos, o la prueba de humo); `null` abre el explorador. */
+  'presupuestos:adjuntar': (presupuestoId: number, rutas: string[] | null) => Resultado<AdjuntoDePresupuesto[]>
+  'presupuestos:abrirAdjunto': (adjuntoId: number) => Resultado<null>
+  'presupuestos:borrarAdjunto': (adjuntoId: number) => Resultado<AdjuntoDePresupuesto[]>
 
   // Mensajería interna (12.8): el chat entre los usuarios de la agencia.
   //

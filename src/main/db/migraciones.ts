@@ -1948,6 +1948,43 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE clientes ADD COLUMN profesion TEXT;
     `,
   },
+  {
+    version: 35,
+    descripcion: 'Presupuestos: suma asegurada y los PDF de cotización que manda cada compañía',
+    sql: `
+      ALTER TABLE presupuestos ADD COLUMN suma_asegurada TEXT;
+
+      -- Mismas columnas que poliza_adjuntos (migración 23) a propósito: así adjuntos.ts y anexos.ts
+      -- suben el archivo al VPS, lo bajan y lo sincronizan entre las computadoras sin escribir de
+      -- nuevo esa lógica. Sin categoría, igual que en las pólizas: el nombre del archivo alcanza.
+      CREATE TABLE presupuesto_adjuntos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        presupuesto_id INTEGER NOT NULL REFERENCES presupuestos(id),
+        fila_id TEXT,
+        nombre TEXT NOT NULL,
+        archivo TEXT NOT NULL DEFAULT '',
+        tipo TEXT,
+        tamano INTEGER NOT NULL DEFAULT 0,
+        sha256 TEXT,
+        ancho INTEGER,
+        alto INTEGER,
+        miniatura TEXT,
+        drive_id TEXT,
+        drive_error TEXT,
+        vps_id TEXT,
+        vps_subido_en TEXT,
+        vps_error TEXT,
+        vps_intentos INTEGER NOT NULL DEFAULT 0,
+        vps_proximo_intento TEXT,
+        usuario_id INTEGER REFERENCES usuarios(id),
+        usuario_nombre TEXT NOT NULL,
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX idx_presupuesto_adjuntos ON presupuesto_adjuntos (presupuesto_id, id DESC);
+      CREATE UNIQUE INDEX idx_presupuesto_adjuntos_fila ON presupuesto_adjuntos (fila_id) WHERE fila_id IS NOT NULL;
+      CREATE INDEX idx_presupuesto_adjuntos_vps ON presupuesto_adjuntos (vps_subido_en, vps_proximo_intento);
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

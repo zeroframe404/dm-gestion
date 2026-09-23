@@ -84,4 +84,7 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // La 34 suma a `clientes` la columna `profesion`: a qué se dedica el asegurado, para saber qué otro
   // seguro ofrecerle sin tener que volver a preguntarle.
   34: 'e915428abd438fbb',
+  // La 35 suma a `presupuestos` la columna `suma_asegurada` y la tabla `presupuesto_adjuntos`: los PDF
+  // de cotización que manda cada compañía, con las mismas columnas que `poliza_adjuntos`.
+  35: '4afbe0501dddf9f5',
 }

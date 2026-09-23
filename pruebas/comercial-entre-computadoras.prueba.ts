@@ -53,6 +53,7 @@ const PRESUPUESTO_VACIO: DatosDePresupuesto = {
   modelo: '',
   anio: '',
   tipoVehiculo: '',
+  sumaAsegurada: '',
   observaciones: '',
   opciones: [],
 }

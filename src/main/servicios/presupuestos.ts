@@ -11,6 +11,7 @@
 import {
   ESTADOS_DE_PRESUPUESTO,
   type AceptacionDePresupuesto,
+  type ClausulaDeCobertura,
   type DatosDeOpcion,
   type DatosDePresupuesto,
   type EnvioDePresupuesto,
@@ -30,11 +31,13 @@ import { ahoraIso, generarId, interpretarNumero, limpiar, normalizarPatente, nor
 import { encolar } from '../sincronizacion/cola'
 import { opcionesAJson } from '../sincronizacion/vinculos'
 import { PESTANAS_DE_LA_APP } from '../sincronizacion/pestanasApp'
+import { adjuntosDePresupuesto } from './adjuntosDePresupuesto'
 import { telefonoParaWhatsapp } from './cartera'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
 import { nombreDePestana } from './hojas'
+import { listarClausulas } from './referencias'
 import { sucursalesParaElegir } from './sucursales'
 import { enteroPositivo, objeto } from './validacion'
 
@@ -54,7 +57,7 @@ export const NOMBRE_DE_LA_ASEGURADORA = 'SEGUROS DANIEL MARTÍNEZ'
 const SELECT_PRESUPUESTO = `
   SELECT p.id, p.fila_id, p.numero, p.version, p.estado, p.lead_id, p.cliente_id, p.cliente_nombre,
          p.telefono, p.documento, p.sucursal_texto AS sucursal, p.patente, p.marca, p.modelo, p.anio,
-         p.tipo_vehiculo, p.observaciones, p.enviado_en, p.aceptado_en, p.poliza_id, p.usuario_nombre,
+         p.tipo_vehiculo, p.suma_asegurada, p.observaciones, p.enviado_en, p.aceptado_en, p.poliza_id, p.usuario_nombre,
          p.creado_en, p.actualizado_en, p.vigente,
          (SELECT COUNT(*) FROM presupuesto_opciones o WHERE o.presupuesto_id = p.id) AS opciones,
          (SELECT o.precio FROM presupuesto_opciones o
@@ -80,6 +83,7 @@ interface FilaCruda {
   modelo: string | null
   anio: string | null
   tipo_vehiculo: string | null
+  suma_asegurada: string | null
   observaciones: string | null
   enviado_en: string | null
   aceptado_en: string | null
@@ -110,6 +114,7 @@ function aFila(f: FilaCruda): FilaPresupuesto {
     modelo: f.modelo,
     anio: f.anio,
     tipoVehiculo: f.tipo_vehiculo,
+    sumaAsegurada: f.suma_asegurada,
     observaciones: f.observaciones,
     opciones: f.opciones,
     desde: f.desde,
@@ -268,6 +273,8 @@ export function fichaDePresupuesto(presupuestoId: number): FichaPresupuesto {
     urlWhatsapp: telefono ? `https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}` : null,
     companias,
     coberturas,
+    adjuntos: adjuntosDePresupuesto(id),
+    clausulas: listarClausulas(),
   }
 }
 
@@ -390,6 +397,7 @@ interface DatosValidados {
   modelo: string
   anio: string
   tipoVehiculo: string
+  sumaAsegurada: string
   observaciones: string
   opciones: OpcionValidada[]
 }
@@ -440,6 +448,7 @@ function validarDatos(datos: unknown, actor: SesionUsuario): DatosValidados {
     modelo: limpiar(d.modelo).slice(0, 120),
     anio: limpiar(d.anio).slice(0, 10),
     tipoVehiculo: limpiar(d.tipoVehiculo).slice(0, 80),
+    sumaAsegurada: limpiar(d.sumaAsegurada).slice(0, 40),
     observaciones: limpiar(d.observaciones).slice(0, 1000),
     opciones: validarOpciones(d.opciones),
   }
@@ -463,6 +472,7 @@ function camposParaLaHoja(f: FilaCruda, opciones: OpcionDePresupuesto[]): Record
     marca: f.marca ?? '',
     modelo: f.modelo ?? '',
     anio: f.anio ?? '',
+    suma_asegurada: f.suma_asegurada ?? '',
     opciones: opcionesParaLaHoja(opciones),
     precio: opciones.find((o) => o.precioMonto !== null)?.precio ?? '',
     estado: f.estado,
@@ -502,10 +512,10 @@ function insertar(
       .prepare(
         `INSERT INTO presupuestos (fila_id, pestana, numero, version, presupuesto_anterior_id, vigente, lead_id,
                                    cliente_id, cliente_nombre, telefono, documento, sucursal_texto, patente, marca,
-                                   modelo, anio, tipo_vehiculo, observaciones, estado, usuario_id, usuario_nombre,
+                                   modelo, anio, tipo_vehiculo, suma_asegurada, observaciones, estado, usuario_id, usuario_nombre,
                                    creado_en, actualizado_en)
          VALUES (@fila_id, @pestana, @numero, @version, @anterior_id, 1, @lead_id, @cliente_id, @cliente_nombre,
-                 @telefono, @documento, @sucursal, @patente, @marca, @modelo, @anio, @tipo_vehiculo,
+                 @telefono, @documento, @sucursal, @patente, @marca, @modelo, @anio, @tipo_vehiculo, @suma_asegurada,
                  @observaciones, 'BORRADOR', @usuario_id, @usuario_nombre, @ahora, @ahora)`,
       )
       .run({
@@ -525,6 +535,7 @@ function insertar(
         modelo: campos.modelo || null,
         anio: campos.anio || null,
         tipo_vehiculo: campos.tipoVehiculo || null,
+        suma_asegurada: campos.sumaAsegurada || null,
         observaciones: campos.observaciones || null,
         usuario_id: actor.id,
         usuario_nombre: actor.nombre,
@@ -613,7 +624,7 @@ export function guardarPresupuesto(presupuestoId: number, datos: DatosDePresupue
         `UPDATE presupuestos SET lead_id = @lead_id, cliente_id = @cliente_id, cliente_nombre = @cliente_nombre,
                 telefono = @telefono, documento = @documento, sucursal_texto = @sucursal, patente = @patente,
                 marca = @marca, modelo = @modelo, anio = @anio, tipo_vehiculo = @tipo_vehiculo,
-                observaciones = @observaciones, actualizado_en = @ahora
+                suma_asegurada = @suma_asegurada, observaciones = @observaciones, actualizado_en = @ahora
          WHERE id = @id`,
       )
       .run({
@@ -628,6 +639,7 @@ export function guardarPresupuesto(presupuestoId: number, datos: DatosDePresupue
         modelo: campos.modelo || null,
         anio: campos.anio || null,
         tipo_vehiculo: campos.tipoVehiculo || null,
+        suma_asegurada: campos.sumaAsegurada || null,
         observaciones: campos.observaciones || null,
         ahora,
         id,
@@ -787,6 +799,45 @@ function fechaLegible(iso: string): string {
   return dia && mes && anio ? `${dia}/${mes}/${anio}` : iso.slice(0, 10)
 }
 
+/** Las cláusulas de una cobertura cotizada: las propias de esa compañía primero, después las generales. */
+function clausulasDeOpcion(clausulas: ClausulaDeCobertura[], compania: string, cobertura: string): ClausulaDeCobertura[] {
+  const cob = normalizarTexto(cobertura)
+  const comp = normalizarTexto(compania)
+  return clausulas
+    .filter((c) => normalizarTexto(c.cobertura) === cob && (c.compania === null || normalizarTexto(c.compania) === comp))
+    .sort((a, b) => Number(a.compania === null) - Number(b.compania === null) || Number(b.ampara) - Number(a.ampara) || a.orden - b.orden)
+}
+
+/**
+ * «Qué cubre cada cobertura», una sección por cada compañía+cobertura distinta entre las opciones
+ * cotizadas. Sale vacío si nadie cargó todavía las cláusulas de esa cobertura en Compañías: no inventa
+ * una respuesta a «¿esto lo cubre?» que nadie escribió.
+ */
+function htmlDeCoberturas(ficha: FichaPresupuesto): string {
+  const vistas = new Map<string, { compania: string; cobertura: string }>()
+  for (const o of ficha.opciones) {
+    const clave = `${normalizarTexto(o.compania)}|${normalizarTexto(o.cobertura)}`
+    if (!vistas.has(clave)) vistas.set(clave, { compania: o.compania, cobertura: o.cobertura })
+  }
+  const secciones = [...vistas.values()]
+    .map(({ compania, cobertura }) => {
+      const clausulas = clausulasDeOpcion(ficha.clausulas, compania, cobertura)
+      if (clausulas.length === 0) return ''
+      const items = clausulas
+        .map(
+          (c) =>
+            `<li class="${c.ampara ? 'ampara' : 'excluye'}"><strong>${c.ampara ? 'Cubre' : 'No cubre'}:</strong> ${escapar(c.clausula)}${
+              limpiar(c.detalle) ? ` — ${escapar(limpiar(c.detalle))}` : ''
+            }</li>`,
+        )
+        .join('')
+      return `<div class="cobertura"><h3>${escapar(cobertura)} · ${escapar(compania)}</h3><ul>${items}</ul></div>`
+    })
+    .filter(Boolean)
+    .join('')
+  return secciones ? `<h2>Qué cubre cada cobertura</h2>${secciones}` : ''
+}
+
 /**
  * El presupuesto en una hoja A4. Formato simple a propósito: encabezado con el nombre de la
  * aseguradora, los datos de quién es y para qué vehículo, la tabla de opciones y el pie. Nada de
@@ -831,6 +882,11 @@ export function htmlDelPresupuesto(ficha: FichaPresupuesto): string {
   table.opciones td.comentario { color: #55627a; font-size: 10pt; }
   table.opciones tr.elegida td { background: #eef5ec; }
   .observaciones { border-left: 3px solid #c9d2e0; padding-left: 4mm; color: #33415c; margin-bottom: 8mm; }
+  .cobertura { margin-bottom: 5mm; }
+  .cobertura h3 { font-size: 10pt; margin: 0 0 1.5mm; color: #12315d; }
+  .cobertura ul { margin: 0; padding-left: 4.5mm; font-size: 9.5pt; }
+  .cobertura li { margin-bottom: .8mm; }
+  .cobertura li.excluye { color: #7a2e2e; }
   footer { border-top: 1px solid #c9d2e0; padding-top: 4mm; font-size: 9pt; color: #55627a; }
 </style></head><body>
   <header>
@@ -846,6 +902,7 @@ export function htmlDelPresupuesto(ficha: FichaPresupuesto): string {
     ${dato('Teléfono', p.telefono)}
     ${dato('Vehículo', vehiculo)}
     ${dato('Uso', p.tipoVehiculo)}
+    ${dato('Suma asegurada', p.sumaAsegurada)}
   </table>
 
   <h2>Opciones cotizadas</h2>
@@ -855,6 +912,8 @@ export function htmlDelPresupuesto(ficha: FichaPresupuesto): string {
   </table>
 
   ${limpiar(p.observaciones) ? `<div class="observaciones">${escapar(limpiar(p.observaciones))}</div>` : ''}
+
+  ${htmlDeCoberturas(ficha)}
 
   <footer>
     Los precios son los vigentes al ${escapar(fechaLegible(p.creadoEn))} y pueden variar según la compañía, la zona y los

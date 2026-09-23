@@ -40,6 +40,12 @@ import {
   rechazarPresupuesto,
   saludo,
 } from '../src/main/servicios/presupuestos'
+import {
+  adjuntosDePresupuesto,
+  agregarAdjuntosDePresupuesto,
+  borrarAdjuntoDePresupuesto,
+} from '../src/main/servicios/adjuntosDePresupuesto'
+import { guardarClausula } from '../src/main/servicios/referencias'
 import { usarFuenteDePrueba } from '../src/main/servicios/sincronizacion'
 import {
   agregarAdjuntosDeTarea,
@@ -115,6 +121,7 @@ const PRESUPUESTO_VACIO: DatosDePresupuesto = {
   modelo: '',
   anio: '',
   tipoVehiculo: '',
+  sumaAsegurada: '',
   observaciones: '',
   opciones: [],
 }
@@ -413,6 +420,79 @@ test('el PDF sale con el nombre de la aseguradora y las opciones', async () => {
   assert.ok(html.includes('IBAÑEZ MARCELA'))
   assert.ok(html.includes('RIVADAVIA') && html.includes('SANCOR') && html.includes('MERCANTIL ANDINA'))
   assert.ok(html.includes('size: A4'))
+})
+
+test('la suma asegurada y el tipo de uso se guardan y salen en la ficha y en el PDF', async () => {
+  await escenario()
+  const ficha = crearPresupuesto(
+    {
+      ...PRESUPUESTO_VACIO,
+      clienteNombre: 'PEREZ JUAN',
+      marca: 'FIAT',
+      modelo: 'MOBI',
+      anio: '2021',
+      patente: 'AF035RP',
+      tipoVehiculo: 'Transporte de pasajeros',
+      sumaAsegurada: '$ 17.000.000',
+      opciones: [{ compania: 'RIVADAVIA', cobertura: 'PLAN B', precio: '$ 119.600', comentario: '' }],
+    },
+    DANIEL,
+  )
+  assert.equal(ficha.presupuesto.tipoVehiculo, 'Transporte de pasajeros')
+  assert.equal(ficha.presupuesto.sumaAsegurada, '$ 17.000.000')
+
+  const html = htmlDelPresupuesto(ficha)
+  assert.ok(html.includes('Transporte de pasajeros'))
+  assert.ok(html.includes('$ 17.000.000'))
+})
+
+test('el PDF describe qué cubre cada cobertura, con las cláusulas cargadas en Compañías', async () => {
+  await escenario()
+  guardarClausula(null, { compania: '', cobertura: 'PLAN B', clausula: 'Robo total', ampara: true, detalle: '' }, DANIEL)
+  guardarClausula(null, { compania: '', cobertura: 'PLAN B', clausula: 'Granizo', ampara: false, detalle: 'Sólo con endoso' }, DANIEL)
+
+  const ficha = crearPresupuesto(
+    {
+      ...PRESUPUESTO_VACIO,
+      clienteNombre: 'PEREZ JUAN',
+      opciones: [{ compania: 'RIVADAVIA', cobertura: 'PLAN B', precio: '$ 119.600', comentario: '' }],
+    },
+    DANIEL,
+  )
+  const html = htmlDelPresupuesto(ficha)
+  assert.ok(html.includes('Qué cubre cada cobertura'))
+  assert.ok(html.includes('Robo total'))
+  assert.ok(html.includes('Granizo'))
+  assert.ok(html.includes('Sólo con endoso'))
+})
+
+test('sin cláusulas cargadas para la cobertura, el PDF no inventa la sección', async () => {
+  await escenario()
+  const ficha = crearPresupuesto(
+    {
+      ...PRESUPUESTO_VACIO,
+      clienteNombre: 'PEREZ JUAN',
+      opciones: [{ compania: 'RIVADAVIA', cobertura: 'UNA COBERTURA RARA', precio: '$ 100', comentario: '' }],
+    },
+    DANIEL,
+  )
+  const html = htmlDelPresupuesto(ficha)
+  assert.ok(!html.includes('Qué cubre cada cobertura'))
+})
+
+test('se puede adjuntar la cotización en PDF de una compañía a un presupuesto, y borrarla', async () => {
+  await escenario()
+  const ficha = presupuestoDeTresOpciones(null)
+  const archivo = path.join(carpetaTemporal(), 'cotizacion-sancor.pdf')
+  writeFileSync(archivo, 'PDF de prueba')
+
+  const conAdjunto = await agregarAdjuntosDePresupuesto(ficha.presupuesto.id, [archivo], DANIEL)
+  assert.equal(conAdjunto.length, 1)
+  assert.equal(conAdjunto[0]!.nombre, 'cotizacion-sancor.pdf')
+  assert.equal(adjuntosDePresupuesto(ficha.presupuesto.id).length, 1)
+
+  const sinAdjunto = borrarAdjuntoDePresupuesto(conAdjunto[0]!.id, DANIEL)
+  assert.equal(sinAdjunto.length, 0)
 })
 
 test('«Enviar por WhatsApp» deja el presupuesto ENVIADO y devuelve la dirección lista', async () => {

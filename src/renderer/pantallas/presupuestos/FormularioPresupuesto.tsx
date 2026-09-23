@@ -4,7 +4,7 @@
 // cargan los tres. La fila vacía del final está siempre lista, así se carga una atrás de otra sin
 // tocar ningún botón de «agregar».
 import { useEffect, useState } from 'react'
-import type { DatosDeOpcion, DatosDePresupuesto, FichaPresupuesto, FilaCliente } from '../../../shared/tipos'
+import type { ClausulaDeCobertura, DatosDeOpcion, DatosDePresupuesto, FichaPresupuesto, FilaCliente } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Dialogo, cx } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -18,13 +18,69 @@ interface Props {
   clienteId?: number | null
   companias: string[]
   coberturas: string[]
+  /** Qué ampara y qué no cada cobertura registrada, para «describir cobertura» en cada fila. */
+  clausulas: ClausulaDeCobertura[]
   alCerrar: () => void
   alGuardar: (ficha: FichaPresupuesto) => void
 }
 
 const OPCION_VACIA: DatosDeOpcion = { compania: '', cobertura: '', precio: '', comentario: '' }
 
-export function FormularioPresupuesto({ ficha, leadId, clienteId, companias, coberturas, alCerrar, alGuardar }: Props) {
+/** Igual que el «normalizar» de Compañías: mayúsculas, sin acentos y sin separadores, para comparar. */
+function normalizar(valor: string | null | undefined): string {
+  return (valor ?? '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Z0-9]+/g, '')
+}
+
+const TIPOS_DE_USO = ['Particular', 'Comercial', 'Transporte de pasajeros', 'Remise / Taxi', 'Escolar', 'Carga']
+
+/** El botón «Describir cobertura»: qué ampara y qué no, según lo cargado en Compañías → Cobertura. */
+function DescribirCobertura({ clausulas, compania, cobertura }: { clausulas: ClausulaDeCobertura[]; compania: string; cobertura: string }) {
+  const [abierto, setAbierto] = useState(false)
+  if (!cobertura.trim()) return null
+  const cob = normalizar(cobertura)
+  const comp = normalizar(compania)
+  const coincidencias = clausulas
+    .filter((c) => normalizar(c.cobertura) === cob && (c.compania === null || normalizar(c.compania) === comp))
+    .sort((a, b) => Number(a.compania === null) - Number(b.compania === null) || Number(b.ampara) - Number(a.ampara) || a.orden - b.orden)
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        title="Describir esta cobertura"
+        aria-label={`Describir la cobertura ${cobertura}`}
+        onClick={() => setAbierto((v) => !v)}
+        className={cx('rounded p-1.5 text-slate-400 hover:bg-marino-50 hover:text-marino-700', abierto && 'bg-marino-50 text-marino-700')}
+      >
+        <Icono nombre="info" tamano={15} />
+      </button>
+      {abierto && (
+        <div className="absolute right-0 z-10 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-media">
+          <p className="mb-1.5 font-semibold text-slate-700">{cobertura}</p>
+          {coincidencias.length === 0 ? (
+            <p className="text-slate-500">Todavía no hay cláusulas cargadas para esta cobertura (Compañías → Cobertura).</p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {coincidencias.map((c) => (
+                <li key={c.id} className={c.ampara ? 'text-slate-700' : 'text-red-700'}>
+                  <strong>{c.ampara ? 'Cubre: ' : 'No cubre: '}</strong>
+                  {c.clausula}
+                  {c.detalle ? ` — ${c.detalle}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function FormularioPresupuesto({ ficha, leadId, clienteId, companias, coberturas, clausulas, alCerrar, alGuardar }: Props) {
   const usuario = useUsuarioActual()
   const p = ficha?.presupuesto ?? null
 
@@ -40,6 +96,7 @@ export function FormularioPresupuesto({ ficha, leadId, clienteId, companias, cob
     modelo: p?.modelo ?? '',
     anio: p?.anio ?? '',
     tipoVehiculo: p?.tipoVehiculo ?? '',
+    sumaAsegurada: p?.sumaAsegurada ?? '',
     observaciones: p?.observaciones ?? '',
     opciones: ficha ? ficha.opciones.map((o) => ({ compania: o.compania, cobertura: o.cobertura, precio: o.precio, comentario: o.comentario ?? '' })) : [],
   })
@@ -220,6 +277,28 @@ export function FormularioPresupuesto({ ficha, leadId, clienteId, companias, cob
             <Campo etiqueta="Modelo" value={datos.modelo} onChange={(e) => cambiar({ modelo: e.target.value })} />
             <Campo etiqueta="Año" value={datos.anio} onChange={(e) => cambiar({ anio: e.target.value })} inputMode="numeric" />
           </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Campo
+                etiqueta="Tipo de uso"
+                list="tipos-de-uso-presupuesto"
+                value={datos.tipoVehiculo}
+                onChange={(e) => cambiar({ tipoVehiculo: e.target.value })}
+                placeholder="Particular, transporte de pasajeros…"
+              />
+              <datalist id="tipos-de-uso-presupuesto">
+                {TIPOS_DE_USO.map((t) => (
+                  <option key={t} value={t} />
+                ))}
+              </datalist>
+            </div>
+            <Campo
+              etiqueta="Suma asegurada"
+              value={datos.sumaAsegurada}
+              onChange={(e) => cambiar({ sumaAsegurada: e.target.value })}
+              placeholder="$ 17.000.000"
+            />
+          </div>
         </section>
 
         {/* --- Las opciones cotizadas --- */}
@@ -268,13 +347,16 @@ export function FormularioPresupuesto({ ficha, leadId, clienteId, companias, cob
                         />
                       </td>
                       <td className="py-1 pr-2">
-                        <input
-                          list="coberturas-presupuesto"
-                          value={opcion.cobertura}
-                          onChange={(e) => escribirEnFila(indice, { cobertura: e.target.value })}
-                          aria-label={`Cobertura de la opción ${indice + 1}`}
-                          className={celda}
-                        />
+                        <div className="flex items-center gap-1">
+                          <input
+                            list="coberturas-presupuesto"
+                            value={opcion.cobertura}
+                            onChange={(e) => escribirEnFila(indice, { cobertura: e.target.value })}
+                            aria-label={`Cobertura de la opción ${indice + 1}`}
+                            className={celda}
+                          />
+                          <DescribirCobertura clausulas={clausulas} compania={opcion.compania} cobertura={opcion.cobertura} />
+                        </div>
                       </td>
                       <td className="py-1 pr-2">
                         <input
