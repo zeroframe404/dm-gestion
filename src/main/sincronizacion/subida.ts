@@ -32,6 +32,11 @@ export interface ResultadoSubida {
   pestanasPisadas: string[]
   llamadas: number
   error: string | null
+  /**
+   * El servidor rechazó el contenido y la próxima tanda sale con la mitad (ver `achicarProximaTanda`).
+   * Esas entradas no esperan ningún reintento con hora: quien sube tiene que volver a intentar enseguida.
+   */
+  partida?: boolean
 }
 
 /** Una celda que perdió: la base tenía otra cosa y ganó ella (14.0). */
@@ -381,13 +386,13 @@ export async function subirTanda(fuente: FuenteHoja, contexto: ContextoHoja, lim
         motivo,
       )
       achicarProximaTanda(entradas.length)
-    } else {
-      marcarFallidas(
-        entradas.map((e) => e.id),
-        motivo,
-      )
-      restablecerTanda()
+      return { subidas: 0, pisadas: 0, pestanasPisadas: [], llamadas, error: motivo, partida: true }
     }
+    marcarFallidas(
+      entradas.map((e) => e.id),
+      motivo,
+    )
+    restablecerTanda()
     return { subidas: 0, pisadas: 0, pestanasPisadas: [], llamadas, error: motivo }
   }
   restablecerTanda()

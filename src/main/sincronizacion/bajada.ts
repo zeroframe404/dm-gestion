@@ -13,7 +13,15 @@
 import type { Statement } from 'better-sqlite3'
 import type { Campo } from '../importacion/encabezados'
 import type { FuenteHoja } from '../importacion/fuente'
-import { ahoraIso, interpretarFecha, interpretarNumero, limpiar } from '../importacion/normalizar'
+import {
+  ahoraIso,
+  interpretarAviso,
+  interpretarDiaDeVencimiento,
+  interpretarFecha,
+  interpretarFechaDePeriodo,
+  interpretarNumero,
+  limpiar,
+} from '../importacion/normalizar'
 import { db, type BaseDeDatos } from '../db/base'
 import { anotarEvento } from './cola'
 import { repiteEncabezados } from '../importacion/encabezados'
@@ -73,23 +81,38 @@ interface DestinoDeBajada {
    * Columnas derivadas que hay que recalcular al escribir. Los importes se guardan como texto tal
    * cual vienen de la hoja y aparte como número: si sólo se actualiza el texto, todas las sumas de
    * Cobranzas siguen mostrando el valor viejo.
+   *
+   * Recibe también el _ID de la fila: la fecha de CUANDO PAGO se interpreta con el año del período de
+   * esa cuota (ver `pagoFechaDeLaCuota`), igual que hacen la importación y la edición en la planilla.
    */
-  derivadas?: (valor: string) => Record<string, unknown>
+  derivadas?: (valor: string, filaId: string) => Record<string, unknown>
   /** Cómo llevar lo que dice la hoja a lo que guarda la columna, cuando no es texto tal cual. */
   normalizar?: (valor: string) => string
 }
 
 /** Dónde vive cada campo del modelo, por tipo de pestaña. */
 const DESTINOS: Record<string, Partial<Record<Campo, DestinoDeBajada>>> = {
+  // Las columnas derivadas de la cuota se recalculan acá igual que en la importación y en la edición
+  // de la planilla. Hasta la 15.4.2 la bajada escribía sólo el texto: el pago que se cargaba en
+  // una sucursal llegaba a las otras como «CUANDO PAGO 22/09» pero sin `pago_fecha`, que es lo que la
+  // planilla mira para dar la fila por paga, y la fila seguía figurando «Vencido» en todas las demás
+  // computadoras. Lo mismo con el día de vencimiento (la alerta) y el aviso enviado.
   MENSUAL: {
     cuota: { tabla: 'cuotas_mes', columna: 'cuota', derivadas: (valor) => ({ cuota_monto: interpretarNumero(valor) }) },
-    dia_vencimiento: { tabla: 'cuotas_mes', columna: 'dia_vencimiento' },
+    dia_vencimiento: {
+      tabla: 'cuotas_mes',
+      columna: 'dia_vencimiento',
+      derivadas: (valor) => ({ dia_vencimiento_numero: interpretarDiaDeVencimiento(valor) }),
+    },
     forma_pago: { tabla: 'cuotas_mes', columna: 'forma_pago' },
-    aviso: { tabla: 'cuotas_mes', columna: 'aviso' },
+    aviso: { tabla: 'cuotas_mes', columna: 'aviso', derivadas: (valor) => ({ aviso_enviado: interpretarAviso(valor) }) },
     fecha_envio: { tabla: 'cuotas_mes', columna: 'fecha_envio' },
     avisar_vto: { tabla: 'cuotas_mes', columna: 'avisar_vto' },
-    pago: { tabla: 'cuotas_mes', columna: 'pago' },
+    pago: { tabla: 'cuotas_mes', columna: 'pago', derivadas: (valor, filaId) => ({ pago_fecha: pagoFechaDeLaCuota(valor, filaId) }) },
     observaciones: { tabla: 'cuotas_mes', columna: 'observaciones' },
+    // OBS PAGO (15.3) se subía pero hasta la 15.4.2 nunca se bajaba: la nota quedaba sólo en la
+    // computadora que la escribió.
+    obs_pago: { tabla: 'cuotas_mes', columna: 'obs_pago' },
     nombre: { tabla: 'cuotas_mes', columna: 'cliente_nombre' },
     documento: { tabla: 'cuotas_mes', columna: 'documento' },
     sucursal: { tabla: 'cuotas_mes', columna: 'sucursal_texto' },
@@ -661,6 +684,19 @@ function aplicarALaPolizaDelMes(filaId: string, campo: Campo, valor: string): vo
   }
 }
 
+/**
+ * La fecha ISO de CUANDO PAGO, con la misma regla que la importación: un «22/09» sin año toma el del
+ * período de la cuota (y el anterior si la fecha cae varios meses después, ver
+ * `interpretarFechaDePeriodo`). Un texto que no es fecha («A/D», «DÉBITO») deja `pago_fecha` vacío,
+ * igual que al importar.
+ */
+function pagoFechaDeLaCuota(valor: string, filaId: string): string | null {
+  const cuota = sentencia('SELECT periodo FROM cuotas_mes WHERE fila_id = ?').get(filaId) as { periodo: string } | undefined
+  // «sin-periodo» es lo que guarda la importación para una planilla sin mes reconocible: ahí no hay año.
+  const periodo = cuota && /^\d{4}-\d{2}$/.test(cuota.periodo) ? cuota.periodo : null
+  return interpretarFechaDePeriodo(valor, periodo).iso
+}
+
 function aplicarCampo(pestana: PestanaSincronizable, filaId: string, campo: Campo, valor: string): string | null {
   // Los datos del cliente viajan en la planilla del mes. En las otras pestañas, «telefono» es el
   // teléfono de ESA fila (el riesgo, el aviso), no el de la ficha del cliente: hasta la 12.6 el atajo
@@ -718,7 +754,7 @@ function aplicarCampo(pestana: PestanaSincronizable, filaId: string, campo: Camp
     | { valor: string | null }
     | undefined
   if (!actual) return null
-  const derivadas = destino.derivadas?.(valor) ?? {}
+  const derivadas = destino.derivadas?.(valor, filaId) ?? {}
   const guardado = destino.normalizar ? destino.normalizar(valor) : valor
   const asignaciones = [`${destino.columna} = @valor`, ...Object.keys(derivadas).map((c) => `${c} = @${c}`), 'actualizado_en = @ahora']
   sentencia(`UPDATE ${destino.tabla} SET ${asignaciones.join(', ')} WHERE fila_id = @fila_id`).run({ valor: destino.normalizar ? guardado : valor || null, ...derivadas, ahora: ahoraIso(), fila_id: filaId })

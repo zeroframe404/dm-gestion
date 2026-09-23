@@ -71,7 +71,7 @@ import {
   origenDeLeadDesdeTexto,
   resolverVinculoDeTarea,
 } from '../sincronizacion/vinculos'
-import { normalizarEstadoDeCobro } from '../servicios/pagos'
+import { cuotaDelPago, normalizarEstadoDeCobro } from '../servicios/pagos'
 import { tipoDeMovimientoDesdeTexto } from '../servicios/caja'
 
 interface PestanaParaDuenios {
@@ -741,11 +741,14 @@ function prepararSentencias(db: BaseDeDatos) {
     pago: db.prepare(`
       INSERT INTO pagos (fila_id, pestana, cliente_id, poliza_id, fecha, fecha_iso, cliente_nombre, documento, compania, numero_poliza,
                          patente, sucursal_texto, importe, importe_monto, medio, periodo_texto, periodo, observaciones, resultado,
-                         usuario_nombre, estado_cobro, creado_en, actualizado_en)
+                         usuario_nombre, estado_cobro, cuota_fila_id, creado_en, actualizado_en)
       VALUES (@fila_id, @pestana, @cliente_id, @poliza_id, @fecha, @fecha_iso, @cliente_nombre, @documento, @compania, @numero_poliza,
               @patente, @sucursal_texto, @importe, @importe_monto, @medio, @periodo_texto, @periodo, @observaciones, @resultado,
-              @usuario_nombre, @estado_cobro, @ahora, @ahora)
+              @usuario_nombre, @estado_cobro, @cuota_fila_id, @ahora, @ahora)
       ON CONFLICT(fila_id) DO UPDATE SET
+        -- La fila que paga sale del _ID del pago (ver cuotaDelPago, en pagos.ts). La que ya se sabía acá (la del
+        -- adelanto imputado, la del cobro hecho en esta computadora) no se pisa.
+        cuota_fila_id = COALESCE(pagos.cuota_fila_id, excluded.cuota_fila_id),
         -- Quién cobró lo sabe la computadora que cobró (y la pestaña APP PAGOS, que lo escribe): la
         -- hoja no puede borrarlo.
         usuario_nombre = COALESCE(pagos.usuario_nombre, excluded.usuario_nombre),
@@ -2728,6 +2731,7 @@ class TrabajoDeImportacion {
       // «COBRO» también: PAGO, o IMPUTADO cuando la agencia le pagó a la compañía y falta cobrarle al cliente.
       estado_cobro: normalizarEstadoDeCobro(fila.valor('cobro')),
       hay_columna_cobro: fila.tieneColumna('cobro') ? 1 : 0,
+      cuota_fila_id: cuotaDelPago(fila.id),
       ahora: this.ahora,
     })
     this.contar(resumen, 'pagos')

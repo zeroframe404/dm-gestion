@@ -2057,6 +2057,16 @@ otras cuatro.** Lo que la 12.6 dejaba distinto en cada mostrador, y cómo se cer
   que es el mismo freno (`sin_subir`) que ya protegía a la fila del mes: sin internet, lo que se acaba
   de cargar espera su turno en vez de perderse.
 
+- **Lo que se anota en la planilla del mes llega entero** (después de la 15.4.2). La bajada escribía el
+  texto de CUANDO PAGO pero no la fecha interpretada (`pago_fecha`), que es lo que la planilla mira
+  para dar la fila por paga: el pago cargado en una sucursal llegaba a las otras y la fila seguía
+  «Vencido». Tampoco recalculaba el día de vencimiento numérico (la alerta) ni bajaba OBS PAGO. Ahora
+  la bajada deriva lo mismo que la importación y la edición (`DESTINOS.MENSUAL` en
+  `sincronizacion/bajada.ts`), el pago que llega de otra computadora se ata a su fila por su `_ID`
+  «PAGO:<_ID de la fila>» (`cuotaDelPago`, antes dependía de reconocer la póliza) y, una sola vez por
+  base, `repararCuotasBajadasAMedias` completa lo que ya había quedado a medias. Además, una tanda que
+  el servidor rechaza y se parte al medio sigue sola (antes esperaba a que alguien volviera a escribir).
+
 Lo que sigue siendo de cada computadora, a propósito: `visto_en` de las tareas (la campana es de cada
 persona), quién marcó visto o resuelto un rechazo, el seguimiento de las renovaciones (que no tiene
 pestaña en la base) y la dirección del cliente **en partes** (calle, altura, provincia, código postal:

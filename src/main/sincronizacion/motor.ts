@@ -169,6 +169,8 @@ export class MotorDeSincronizacion {
   private apuro: NodeJS.Timeout | null = null
   /** Entró algo en la cola mientras la subida estaba corriendo: hay que dar otra vuelta al terminar. */
   private hayMas = false
+  /** La última tanda se partió al medio por un rechazo del servidor: la mitad siguiente sale ya. */
+  private tandaPartida = false
   /** El reloj puntual que despierta a lo que quedó esperando un reintento (ver `programarElReintentoDeLaCola`). */
   private reintento: NodeJS.Timeout | null = null
   /** Pestañas donde la base rechazó una escritura: se bajan apenas la subida suelta el turno (14.0). */
@@ -309,15 +311,22 @@ export class MotorDeSincronizacion {
    *
    * Se corta si la vuelta no bajó la cuenta: si `ciclarSubida` no pudo hacer nada —el motor apagado,
    * sin fuente configurada, sin internet— insistir en el acto sería girar en el vacío.
+   *
+   * Salvo que la tanda se haya PARTIDO (el servidor rechazó el contenido, ver `achicarProximaTanda`):
+   * ahí la cuenta no baja pero la próxima tanda es otra, más chica, y hay que mandarla ya. Hasta la
+   * 15.4.2 la vuelta se cortaba igual y esas entradas —sin hora de reintento, así que sin reloj que
+   * las despierte— se quedaban en «Guardando…» hasta que alguien volviera a escribir algo. No gira
+   * para siempre: la bisección tiene tope (`biseccionAtascada`) y al llegar cuenta el intento.
    */
   private async subirLoQueEspera(): Promise<void> {
     for (let vueltas = 0; vueltas < VUELTAS_SEGUIDAS_MAXIMAS; vueltas++) {
       this.hayMas = false
+      this.tandaPartida = false
       const antes = cuantasListasParaSubir()
       await this.esperarTurno()
       await this.ciclarSubida()
       const quedan = cuantasListasParaSubir()
-      if (!this.hayMas && (quedan === 0 || quedan >= antes)) return
+      if (!this.hayMas && !this.tandaPartida && (quedan === 0 || quedan >= antes)) return
     }
     // Se acabaron las vueltas seguidas y la cola sigue teniendo cosas: se cede el turno (el respiro de
     // `apurarSubida` deja respirar al resto del programa) y se sigue vaciando enseguida.
@@ -456,6 +465,7 @@ export class MotorDeSincronizacion {
       ]
       if (creadas.length > 0) contexto = await this.conContexto(fuente, true)
       const resultado = await subirTanda(fuente, contexto)
+      if (resultado.partida) this.tandaPartida = true
       if (resultado.error) throw new Error(resultado.error)
       this.sinConexion = false
       this.ultimoError = null

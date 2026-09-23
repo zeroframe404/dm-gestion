@@ -94,6 +94,22 @@ export function normalizarModoDeAdelanto(valor: unknown): ModoDeAdelanto | null 
   return (MODOS_DE_ADELANTO as readonly string[]).includes(texto) ? (texto as ModoDeAdelanto) : null
 }
 
+/**
+ * El _ID de la fila de la planilla que paga un pago, sacado de su propio _ID: el cobro de una cuota
+ * viaja como «PAGO:<_ID de la fila>» (ver `idDeLaFilaDelPago` en cartera.ts). Un adelanto
+ * («PAGO:ADELANTO:<_ID>») no paga la fila de la que salió sino la del mes que viene, y ésa se ata al
+ * imputarlo; un pago suelto de Cobranzas lleva un _ID al azar. Los dos devuelven null.
+ *
+ * Lo usa la importación: hasta la 15.4.2 el pago que llegaba de otra computadora entraba sin
+ * `cuota_fila_id`, y la planilla sólo lo reconocía si la póliza y el mes coincidían. Cuando la póliza
+ * no se encontraba (un número escrito distinto, un cliente sin póliza en esta base), la fila seguía
+ * «Vencido» acá aunque en la computadora que cobró figurara paga.
+ */
+export function cuotaDelPago(filaId: string): string | null {
+  if (!filaId.startsWith('PAGO:') || filaId.startsWith('PAGO:ADELANTO:')) return null
+  return filaId.slice('PAGO:'.length) || null
+}
+
 // ---------------------------------------------------------------------------
 // La pestaña IMPUTADOS de la hoja
 // ---------------------------------------------------------------------------

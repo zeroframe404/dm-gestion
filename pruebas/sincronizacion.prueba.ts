@@ -818,6 +818,46 @@ test('una celda que el servidor rechaza no arrastra a «no se pudo» a las demá
   cerrarBaseDeDatos()
 })
 
+// Lo mismo, pero como pasa en el programa: sin nadie que llame a `ciclarSubida` a mano. Una tanda
+// partida no tiene hora de reintento —no le toca esperar—, así que tampoco hay reloj que la despierte:
+// hasta la 15.4.2 la vuelta se cortaba ahí y los pagos de esa tanda quedaban en «Guardando…» hasta que
+// alguien volviera a escribir algo.
+test('una tanda que el servidor rechaza se sigue partiendo sola, sin esperar a que alguien vuelva a escribir', async () => {
+  const { hoja, motor, db } = await escenario()
+  const gonzalez = fila(CLIENTES.gonzalez.nombre)
+  const lopez = fila(CLIENTES.lopez.nombre)
+  const rodriguez = fila(CLIENTES.rodriguez.nombre)
+  editarCelda(gonzalez.filaId, 'observaciones', 'Pasa el lunes', DANIEL)
+  editarCelda(lopez.filaId, 'observaciones', 'ESTO LA BASE NO LO ACEPTA', DANIEL)
+  editarCelda(rodriguez.filaId, 'observaciones', 'Pasa el martes', DANIEL)
+
+  const escribirDeVerdad = hoja.escribirCeldas.bind(hoja)
+  hoja.escribirCeldas = async (celdas, columnaIdPorTitulo) => {
+    if (celdas.some((c) => c.id === lopez.filaId))
+      throw new ErrorDelServidorVps('El servidor del VPS rechazó la operación (escribir celdas): valor inválido.', 400)
+    return escribirDeVerdad(celdas, columnaIdPorTitulo)
+  }
+  try {
+    // Un solo aviso, el que da `encolar`: nadie más vuelve a empujar la cola.
+    motor.apurarSubida()
+    await esperar(900)
+    assert.equal(enLaHoja(hoja, 'AGOSTO', gonzalez.filaId, 'OBS'), 'Pasa el lunes', 'la buena de antes de la mala llegó sola')
+    assert.equal(enLaHoja(hoja, 'AGOSTO', rodriguez.filaId, 'OBS'), 'Pasa el martes', 'y la de después también')
+    const deLopez = db.prepare(`SELECT estado, intentos, proximo_intento FROM cola_sync WHERE fila_id = ?`).get(lopez.filaId) as {
+      estado: string
+      intentos: number
+      proximo_intento: string | null
+    }
+    assert.equal(deLopez.estado, 'pendiente')
+    assert.equal(deLopez.intentos, 1, 'la mala quedó sola y se le contó el intento')
+    assert.ok(deLopez.proximo_intento, 'y espera su reintento con hora, como cualquier falla')
+  } finally {
+    hoja.escribirCeldas = escribirDeVerdad
+    motor.apagar()
+  }
+  cerrarBaseDeDatos()
+})
+
 test('un error de cuota o de credenciales hace esperar a toda la tanda, en vez de reintentar sin parar', async () => {
   const { hoja, motor, db } = await escenario()
   editarCelda(fila(CLIENTES.gonzalez.nombre).filaId, 'observaciones', 'Pasa el lunes', DANIEL)
