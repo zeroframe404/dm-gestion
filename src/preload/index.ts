@@ -280,6 +280,11 @@ const api: ApiDm = {
     rechazar: (presupuestoId, motivo) => invocar('presupuestos:rechazar', presupuestoId, motivo),
     guardarPdf: (presupuestoId) => invocar('presupuestos:guardarPdf', presupuestoId),
     imprimir: (presupuestoId) => invocar('presupuestos:imprimir', presupuestoId),
+    adjuntos: (presupuestoId) => invocar('presupuestos:adjuntos', presupuestoId),
+    adjuntarArchivos: (presupuestoId, archivos) => invocar('presupuestos:adjuntarArchivos', presupuestoId, archivos),
+    adjuntar: (presupuestoId, rutas) => invocar('presupuestos:adjuntar', presupuestoId, rutas),
+    abrirAdjunto: (adjuntoId) => invocar('presupuestos:abrirAdjunto', adjuntoId),
+    borrarAdjunto: (adjuntoId) => invocar('presupuestos:borrarAdjunto', adjuntoId),
   },
   mensajes: {
     conversaciones: () => invocar('mensajes:conversaciones'),

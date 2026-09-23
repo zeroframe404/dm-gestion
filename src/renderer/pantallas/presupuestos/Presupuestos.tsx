@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ESTADOS_DE_PRESUPUESTO,
+  type ClausulaDeCobertura,
   type EstadoPresupuesto,
   type FilaPresupuesto,
   type FiltrosPresupuestos,
@@ -55,7 +56,11 @@ export function Presupuestos() {
   const [error, setError] = useState<string | null>(null)
   const [abierto, setAbierto] = useState<number | null>(null)
   const [alta, setAlta] = useState<{ leadId: number | null; clienteId: number | null } | null>(null)
-  const [catalogos, setCatalogos] = useState<{ companias: string[]; coberturas: string[] }>({ companias: [], coberturas: [] })
+  const [catalogos, setCatalogos] = useState<{ companias: string[]; coberturas: string[]; clausulas: ClausulaDeCobertura[] }>({
+    companias: [],
+    coberturas: [],
+    clausulas: [],
+  })
   const { visibles, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('presupuestos', COLUMNAS)
   const ve = useMemo(() => new Set(visibles.map((columna) => columna.id)), [visibles])
 
@@ -79,7 +84,8 @@ export function Presupuestos() {
     if (!datos || datos.filas.length === 0 || catalogos.companias.length > 0) return
     const traer = async () => {
       const resultado = await window.dm.presupuestos.ficha(datos.filas[0]!.id)
-      if (resultado.ok) setCatalogos({ companias: resultado.datos.companias, coberturas: resultado.datos.coberturas })
+      if (resultado.ok)
+        setCatalogos({ companias: resultado.datos.companias, coberturas: resultado.datos.coberturas, clausulas: resultado.datos.clausulas })
     }
     void traer()
   }, [datos, catalogos.companias.length])
@@ -225,6 +231,7 @@ export function Presupuestos() {
           clienteId={alta.clienteId}
           companias={catalogos.companias}
           coberturas={catalogos.coberturas}
+          clausulas={catalogos.clausulas}
           alCerrar={() => setAlta(null)}
           alGuardar={(ficha) => {
             setAlta(null)

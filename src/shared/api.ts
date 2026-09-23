@@ -285,6 +285,11 @@ export interface ApiDm {
     rechazar: Remota<'presupuestos:rechazar'>
     guardarPdf: Remota<'presupuestos:guardarPdf'>
     imprimir: Remota<'presupuestos:imprimir'>
+    adjuntos: Remota<'presupuestos:adjuntos'>
+    adjuntarArchivos: Remota<'presupuestos:adjuntarArchivos'>
+    adjuntar: Remota<'presupuestos:adjuntar'>
+    abrirAdjunto: Remota<'presupuestos:abrirAdjunto'>
+    borrarAdjunto: Remota<'presupuestos:borrarAdjunto'>
   }
   /** El chat interno de la agencia (12.8). */
   mensajes: {

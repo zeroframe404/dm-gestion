@@ -167,6 +167,7 @@ const TABLAS: Record<TipoDeAdjunto, { tabla: string; padre: string; grupo: (padr
   // Los siniestros usan el número a secas: así quedaron los de la Fase 7 y no se les mueve el piso.
   siniestro: { tabla: 'siniestro_adjuntos', padre: 'siniestro_id', grupo: (id) => String(id), etiqueta: 'siniestro' },
   tarea: { tabla: 'tarea_adjuntos', padre: 'tarea_id', grupo: (id) => `tarea-${id}`, etiqueta: 'tarea' },
+  presupuesto: { tabla: 'presupuesto_adjuntos', padre: 'presupuesto_id', grupo: (id) => `presupuesto-${id}`, etiqueta: 'presupuesto' },
   mensaje: { tabla: 'mensaje_adjuntos', padre: 'mensaje_id', grupo: (id) => `mensaje-${id}`, etiqueta: 'mensaje' },
 }
 

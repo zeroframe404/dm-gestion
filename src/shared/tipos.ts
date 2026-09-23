@@ -2903,6 +2903,7 @@ export interface FilaPresupuesto {
   modelo: string | null
   anio: string | null
   tipoVehiculo: string | null
+  sumaAsegurada: string | null
   observaciones: string | null
   opciones: number
   /** El precio más barato de las opciones, para verlo en el listado. */
@@ -2950,6 +2951,10 @@ export interface FichaPresupuesto {
   urlWhatsapp: string | null
   companias: string[]
   coberturas: string[]
+  /** Las cotizaciones en PDF (u otro documento) que cada compañía mandó para este presupuesto. */
+  adjuntos: AdjuntoDePresupuesto[]
+  /** Qué ampara y qué no cada cobertura registrada, para «describir cobertura» en el formulario y el PDF. */
+  clausulas: ClausulaDeCobertura[]
 }
 
 export interface DatosDePresupuesto {
@@ -2965,6 +2970,7 @@ export interface DatosDePresupuesto {
   modelo: string
   anio: string
   tipoVehiculo: string
+  sumaAsegurada: string
   observaciones: string
   opciones: DatosDeOpcion[]
 }
@@ -3038,6 +3044,25 @@ export interface AdjuntoDePoliza {
   errorDelServidor: string | null
   descargado: boolean
   /** Lo cargó otra computadora y todavía no se sabe si terminó de subirlo (12.7). */
+  enOtraComputadora: boolean
+  miniatura: string | null
+  ancho: number | null
+  alto: number | null
+}
+
+/** Un adjunto de un presupuesto: la cotización en PDF (u otro documento) que mandó cada compañía. */
+export interface AdjuntoDePresupuesto {
+  id: number
+  nombre: string
+  tipo: string
+  tamano: number
+  creadoEn: string
+  usuarioNombre: string
+  enDrive: boolean
+  errorDeDrive: string | null
+  enElServidor: boolean
+  errorDelServidor: string | null
+  descargado: boolean
   enOtraComputadora: boolean
   miniatura: string | null
   ancho: number | null
