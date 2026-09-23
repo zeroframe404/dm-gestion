@@ -3,7 +3,7 @@
 // Los pagos son siempre los mismos: los que nacen de «Registrar pago» en la Cartera y los que se
 // cargan a mano acá. Esta pantalla los mira de tres maneras distintas —por día, por mes y por
 // compañía—, así que todo sale de la misma tabla `pagos` y de `pagos.ts`.
-import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
+import { coincideAlguno, dentroDelRango, listaDeFiltro } from '../../shared/filtros'
 import { esDebitoAutomatico, fechaDeVencimiento, hoyLocal, periodoDeHoy } from '../../shared/semaforo'
 import { veLosNumerosDeLaAgencia } from '../../shared/permisos'
 import { claveDeSucursal, mismaSucursal, mismaSucursalOVacia, SIN_SUCURSAL } from '../../shared/sucursales'
@@ -621,7 +621,8 @@ export function mora(filtros: FiltrosMora, hoy = hoyLocal()): ListadoMora {
       coincideConLaBusqueda(fila, busqueda) &&
       coincideAlguno(sucursales, fila.sucursal, mismaSucursal) &&
       coincideAlguno(companias, fila.compania, mismaCosa) &&
-      coincideAlguno(fechas, fila.vencimiento),
+      coincideAlguno(fechas, fila.vencimiento) &&
+      dentroDelRango(fila.vencimiento, filtros.desde, filtros.hasta),
   )
   const rangos = listaDeFiltro(filtros.rangos).filter((r): r is Exclude<RangoDeMora, ''> =>
     (RANGOS_DE_MORA as readonly string[]).includes(r) && r !== '',

@@ -13,6 +13,7 @@ import type { CatalogoDeExcel, FilasDeReporte, FiltrosDeReporte } from '../../..
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { Icono } from '../../componentes/Icono'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { VistaExcel } from '../../componentes/VistaExcel'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
@@ -201,10 +202,7 @@ export function GeneralExcel() {
             />
           )}
           {usa('fechas') && (
-            <>
-              <input type="date" aria-label="Desde" value={filtros.desde} onChange={cambiar('desde')} className={CONTROL} />
-              <input type="date" aria-label="Hasta" value={filtros.hasta} onChange={cambiar('hasta')} className={CONTROL} />
-            </>
+            <RangoDeFecha etiqueta="Fecha" desde={filtros.desde} hasta={filtros.hasta} alCambiar={(desde, hasta) => setFiltros((f) => ({ ...f, desde, hasta }))} />
           )}
           {usa('busqueda') && (
             <label className="relative flex-1 min-w-48">

@@ -207,6 +207,27 @@ test('los filtros acotan por mes, estado, sucursal y robos, y los contadores aco
   cerrarBaseDeDatos()
 })
 
+test('el rango de fechas acota por la fecha del siniestro, con las dos puntas adentro (#121)', async () => {
+  await baseImportada()
+  const todos = listarSiniestros(SIN_FILTROS).filas
+  const robo = todos.find((f) => f.numeroSiniestro === 'S-2026-0804')!
+  assert.equal(robo.fechaIso, '2026-08-04')
+
+  // El mismo día en las dos puntas trae sólo ése: los límites son inclusivos.
+  const ese = listarSiniestros({ ...SIN_FILTROS, desde: '2026-08-04', hasta: '2026-08-04' }).filas
+  assert.deepEqual(ese.map((f) => f.id), [robo.id])
+
+  // Un límite solo también filtra, y lo que no tiene fecha interpretable queda afuera.
+  const desdeAgosto = listarSiniestros({ ...SIN_FILTROS, desde: '2026-08-01' }).filas
+  assert.ok(desdeAgosto.every((f) => (f.fechaIso ?? f.fechaCargaIso ?? '') >= '2026-08-01'))
+  assert.ok(desdeAgosto.some((f) => f.id === robo.id))
+  assert.ok(desdeAgosto.length < todos.length, 'el de abril queda afuera')
+
+  // Un límite mal formado no filtra, igual que uno vacío.
+  assert.equal(listarSiniestros({ ...SIN_FILTROS, desde: '4/8/2026', hasta: 'ayer' }).filas.length, todos.length)
+  cerrarBaseDeDatos()
+})
+
 // ---------------------------------------------------------------------------
 // El alta rápida
 // ---------------------------------------------------------------------------
@@ -603,6 +624,7 @@ test('los riesgos varios se leen enteros, con su emisión', async () => {
   assert.equal(combinado.numeroPoliza, 'CF-4455')
   assert.equal(combinado.telefono, '11-4444-5555')
   assert.equal(combinado.sucursal, 'Dock Sud')
+  assert.equal(combinado.emisionIso, null, 'la hoja de prueba no trae EMISION')
   assert.ok(listado.companias.includes('MERCANTIL ANDINA'))
   cerrarBaseDeDatos()
 })
@@ -628,6 +650,11 @@ test('editar una celda de un riesgo la guarda, la anota y la manda a la hoja', a
   // Una fecha de emisión imposible no se guarda, y una columna que no existe tampoco.
   assert.throws(() => editarRiesgo(riesgo.id, 'emision', '31/02/2026', DANIEL), /no es una fecha válida/i)
   assert.throws(() => editarRiesgo(riesgo.id, 'inventada' as never, 'X', DANIEL), /no se puede editar/i)
+
+  // Una emisión válida viaja también en 'AAAA-MM-DD': es con la que filtra el rango «Emisión».
+  const conEmision = editarRiesgo(riesgo.id, 'emision', '15/8/2026', DANIEL)
+  assert.equal(conEmision.emisionIso, '2026-08-15')
+  assert.equal(listarRiesgos().filas.find((f) => f.id === riesgo.id)?.emisionIso, '2026-08-15')
   cerrarBaseDeDatos()
 })
 

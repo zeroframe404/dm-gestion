@@ -49,7 +49,7 @@ function hojaDeRiesgos() {
 const SELECT_RIESGOS = `
   SELECT r.id, r.fila_id, r.cliente_id, COALESCE(r.cliente_nombre, cl.nombre) AS cliente_nombre,
          COALESCE(r.documento, cl.documento) AS documento, COALESCE(r.telefono, cl.telefono) AS telefono,
-         r.sucursal_texto AS sucursal, r.emision, r.tipo_riesgo, r.descripcion, r.compania, r.numero_poliza,
+         r.sucursal_texto AS sucursal, r.emision, r.emision_iso, r.tipo_riesgo, r.descripcion, r.compania, r.numero_poliza,
          r.patente, r.prima, r.cuota, r.dia_vencimiento, r.vigencia_desde, r.vigencia_hasta,
          r.forma_pago, r.observaciones, r.creado_en_la_app
   FROM riesgos_varios r
@@ -65,6 +65,7 @@ interface FilaCruda {
   telefono: string | null
   sucursal: string | null
   emision: string | null
+  emision_iso: string | null
   tipo_riesgo: string | null
   descripcion: string | null
   compania: string | null
@@ -90,6 +91,7 @@ function aFila(f: FilaCruda): FilaRiesgoVario {
     telefono: f.telefono,
     sucursal: f.sucursal,
     emision: f.emision,
+    emisionIso: f.emision_iso,
     tipoRiesgo: f.tipo_riesgo,
     descripcion: f.descripcion,
     compania: f.compania,

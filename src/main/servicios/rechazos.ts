@@ -10,7 +10,7 @@
 // tiene que serlo, porque la sucursal avisada trabaja en otra computadora y ése es el único camino que
 // hay entre las dos. Lo que la sucursal cambia después —el estado y la nota— vuelve por la bajada.
 import { hoyLocal, periodoDeHoy } from '../../shared/semaforo'
-import { listaDeFiltro } from '../../shared/filtros'
+import { dentroDelRango, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_RECHAZO,
@@ -156,6 +156,7 @@ export function listarRechazos(filtros: unknown): ListadoRechazos {
   const sinEstado = filas.filter(
     (fila) =>
       (sucursalesElegidas.length === 0 || sucursalesElegidas.some((elegida) => esDeLaSucursal(fila, elegida))) &&
+      dentroDelRango(fila.fecha, f.desde, f.hasta) &&
       coincideConLaBusqueda(fila, busqueda),
   )
   const porEstado: Record<EstadoDeRechazo, number> = { PENDIENTE: 0, VISTO: 0, RESUELTO: 0 }

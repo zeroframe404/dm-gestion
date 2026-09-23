@@ -19,6 +19,7 @@ import { Alerta, Boton, Cargando, cx, fechaCorta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { BotonVerComoExcel } from '../../componentes/BotonVerComoExcel'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { DialogoAltaSiniestro } from './DialogoAltaSiniestro'
@@ -149,6 +150,13 @@ export function Siniestros() {
         <FiltroMultiple etiqueta="Sucursal" valores={filtros.sucursales} opciones={datos.sucursales} alCambiar={(v) => cambiar({ sucursales: v })} />
 
         <FiltroMultiple etiqueta="Compañía" valores={filtros.companias} opciones={datos.companias} alCambiar={(v) => cambiar({ companias: v })} />
+
+        <RangoDeFecha
+          etiqueta="Fecha"
+          desde={filtros.desde ?? ''}
+          hasta={filtros.hasta ?? ''}
+          alCambiar={(desde, hasta) => cambiar({ desde, hasta })}
+        />
 
         <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
           <input type="checkbox" checked={filtros.soloRobos} onChange={(e) => cambiar({ soloRobos: e.target.checked })} className="h-4 w-4" />

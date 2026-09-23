@@ -5,10 +5,11 @@
 // Nada se borra: destildar la devuelve, y «Ver también las resueltas» muestra el histórico completo.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BotonEliminar, usePuedeEliminar } from '../../componentes/BotonEliminar'
-import { coincideAlguno } from '../../../shared/filtros'
+import { coincideAlguno, dentroDelRango } from '../../../shared/filtros'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { ListadoAmp } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -30,6 +31,7 @@ export function Amp() {
   const [busqueda, setBusqueda] = useState('')
   // Una LISTA, no un valor: se pueden mirar Dock Sud y Daniel a la vez. Vacía = todas.
   const [sucursales, setSucursales] = useState<string[]>([])
+  const [rango, setRango] = useState({ desde: '', hasta: '' })
   const [verResueltas, setVerResueltas] = useState(false)
   const [guardando, setGuardando] = useState<number | null>(null)
 
@@ -54,10 +56,11 @@ export function Amp() {
       // además de las tildes y las mayúsculas sabe que «AVELLANEDA» y «DOCKSUD» son Dock Sud. Con el
       // texto pelado, elegir una opción que pliega dos grafías dejaba el listado vacío.
       if (!coincideAlguno(sucursales, f.sucursal, mismaSucursal)) return false
+      if (!dentroDelRango(f.fechaIso, rango.desde, rango.hasta)) return false
       if (!texto) return true
       return [f.clienteNombre, f.patente, f.marca, f.modelo, f.detalle].some((valor) => normalizar(valor).includes(texto))
     })
-  }, [datos, busqueda, sucursales])
+  }, [datos, busqueda, sucursales, rango])
 
   const cambiar = async (id: number, resuelto: boolean) => {
     setGuardando(id)
@@ -86,6 +89,12 @@ export function Amp() {
           />
         </div>
         <FiltroMultiple etiqueta="Sucursal" valores={sucursales} opciones={datos.sucursales} alCambiar={setSucursales} />
+        <RangoDeFecha
+          etiqueta="Fecha"
+          desde={rango.desde}
+          hasta={rango.hasta}
+          alCambiar={(desde, hasta) => setRango({ desde, hasta })}
+        />
         <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
           <input type="checkbox" checked={verResueltas} onChange={(evento) => setVerResueltas(evento.target.checked)} className="h-4 w-4" />
           Ver también las resueltas

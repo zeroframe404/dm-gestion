@@ -17,6 +17,8 @@ import {
   type SemanaDeRenovaciones,
 } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
+import { dentroDelRango } from '../../../shared/filtros'
 import { Icono } from '../../componentes/Icono'
 import { Alerta as Aviso, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
@@ -43,6 +45,9 @@ interface Filtros {
   estados: EstadoRenovacion[]
   /** Vacía = todas las fechas. Los días puntuales (venceEl) que se tildaron en el filtro. */
   fechas: string[]
+  /** Rango del vencimiento ('AAAA-MM-DD'); cada punta vacía no filtra. Se suma a `fechas`. */
+  desde: string
+  hasta: string
   ocultarResueltas: boolean
   /**
    * 'manual' (lo normal) deja sólo las compañías que la agencia renueva a mano —Agrosalta cada 4
@@ -52,7 +57,15 @@ interface Filtros {
   renovacion: 'manual' | 'todas'
 }
 
-const FILTROS_VACIOS: Filtros = { responsables: [], estados: [], fechas: [], ocultarResueltas: false, renovacion: 'manual' }
+const FILTROS_VACIOS: Filtros = {
+  responsables: [],
+  estados: [],
+  fechas: [],
+  desde: '',
+  hasta: '',
+  ocultarResueltas: false,
+  renovacion: 'manual',
+}
 
 /**
  * Las que se pueden apagar con «Columnas». El cliente no —sin él la fila no se sabe de quién es— ni la
@@ -171,6 +184,7 @@ export function Renovaciones() {
         return false
       }
       if (filtros.fechas.length > 0 && !filtros.fechas.includes(fila.venceEl)) return false
+      if (!dentroDelRango(fila.venceEl, filtros.desde, filtros.hasta)) return false
       return true
     }
     return bandeja.semanas
@@ -183,6 +197,7 @@ export function Renovaciones() {
     filtros.responsables.length > 0 ||
     filtros.estados.length > 0 ||
     filtros.fechas.length > 0 ||
+    Boolean(filtros.desde || filtros.hasta) ||
     filtros.ocultarResueltas ||
     filtros.renovacion !== 'manual'
 
@@ -254,6 +269,12 @@ export function Renovaciones() {
           textoDe={fechaCorta}
           plural="todas"
           alCambiar={(v) => setFiltros((f) => ({ ...f, fechas: v }))}
+        />
+        <RangoDeFecha
+          etiqueta="Vence"
+          desde={filtros.desde}
+          hasta={filtros.hasta}
+          alCambiar={(desde, hasta) => setFiltros((f) => ({ ...f, desde, hasta }))}
         />
         <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
           <input

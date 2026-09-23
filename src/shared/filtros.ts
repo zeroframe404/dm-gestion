@@ -91,3 +91,52 @@ export function coincideAlguno(
   if (!elegidos || elegidos.length === 0) return true
   return elegidos.some((elegido) => iguales(elegido, valor))
 }
+
+// ---------------------------------------------------------------------------
+// Rangos de fecha (el filtro «desde – hasta» de cada listado: sugerencia #121)
+// ---------------------------------------------------------------------------
+
+const DIA_ISO = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Un límite de rango tal como llegó (por IPC o del estado de la pantalla) pasado a 'AAAA-MM-DD', o `''`
+ * si no es una fecha: un límite mal formado no filtra, igual que uno vacío.
+ */
+export function limiteDeFecha(valor: unknown): string {
+  if (typeof valor !== 'string') return ''
+  const texto = valor.trim()
+  return DIA_ISO.test(texto) ? texto : ''
+}
+
+/**
+ * El día 'AAAA-MM-DD' de un valor de fecha de una fila. Acepta un día suelto ('2026-09-18') y una marca
+ * de tiempo completa ('2026-09-18T23:30:00.000Z'): ésta se lleva al día **en hora local**, porque un
+ * presupuesto creado a las 22 del 18 en la agencia está guardado como el 19 en UTC y se tiene que ver
+ * como del 18. Cualquier otra cosa (una fecha escrita a mano, «a confirmar») devuelve null.
+ */
+export function diaDeFecha(valor: string | null | undefined): string | null {
+  if (!valor) return null
+  const texto = valor.trim()
+  if (DIA_ISO.test(texto)) return texto
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(texto)) return null
+  const instante = new Date(texto)
+  if (Number.isNaN(instante.getTime())) return DIA_ISO.test(texto.slice(0, 10)) ? texto.slice(0, 10) : null
+  const desplazado = new Date(instante.getTime() - instante.getTimezoneOffset() * 60_000)
+  return desplazado.toISOString().slice(0, 10)
+}
+
+/**
+ * true si la fecha de la fila cae dentro del rango, con las dos puntas incluidas. Cada límite es
+ * opcional y vacío no filtra. Una fila sin esa fecha (o con una que no se entiende) queda afuera en
+ * cuanto se pone algún límite: no hay forma de saber si entra o no.
+ */
+export function dentroDelRango(valor: string | null | undefined, desde: unknown, hasta: unknown): boolean {
+  const inicio = limiteDeFecha(desde)
+  const fin = limiteDeFecha(hasta)
+  if (!inicio && !fin) return true
+  const dia = diaDeFecha(valor)
+  if (!dia) return false
+  if (inicio && dia < inicio) return false
+  if (fin && dia > fin) return false
+  return true
+}
