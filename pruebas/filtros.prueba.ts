@@ -13,7 +13,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { sanearFiltrosDeSegmento } from '../src/main/servicios/marketing'
-import { coincideAlguno, listaDeFiltro, mismoTextoDeFiltro, normalizarParaFiltro, numerosDeFiltro } from '../src/shared/filtros'
+import {
+  coincideAlguno,
+  dentroDelRango,
+  diaDeFecha,
+  limiteDeFecha,
+  listaDeFiltro,
+  mismoTextoDeFiltro,
+  normalizarParaFiltro,
+  numerosDeFiltro,
+} from '../src/shared/filtros'
 import { mismaSucursal } from '../src/shared/sucursales'
 
 // ---------------------------------------------------------------------------
@@ -137,4 +146,45 @@ test('un segmento roto no rompe la pantalla: queda sin filtrar', () => {
   assert.equal(filtros.vence, '', 'una ventana inventada no filtra')
   assert.deepEqual(sanearFiltrosDeSegmento(null).sucursales, [])
   assert.deepEqual(sanearFiltrosDeSegmento('cualquier cosa').companias, [])
+})
+
+// ---------------------------------------------------------------------------
+// Rangos de fecha (#121)
+// ---------------------------------------------------------------------------
+
+test('un rango sin límites no filtra, ni siquiera lo que no tiene fecha', () => {
+  assert.equal(dentroDelRango(null, '', ''), true)
+  assert.equal(dentroDelRango('a confirmar', undefined, null), true)
+  assert.equal(dentroDelRango('2026-09-18', '', ''), true)
+})
+
+test('las dos puntas del rango entran', () => {
+  assert.equal(dentroDelRango('2026-08-15', '2026-08-15', '2026-10-18'), true)
+  assert.equal(dentroDelRango('2026-10-18', '2026-08-15', '2026-10-18'), true)
+  assert.equal(dentroDelRango('2026-08-14', '2026-08-15', '2026-10-18'), false)
+  assert.equal(dentroDelRango('2026-10-19', '2026-08-15', '2026-10-18'), false)
+  // Con una sola punta: «vence hasta el 18/10» y «emitidas desde el 15/8».
+  assert.equal(dentroDelRango('2026-01-01', '', '2026-10-18'), true)
+  assert.equal(dentroDelRango('2027-01-01', '2026-08-15', ''), true)
+})
+
+test('con un límite puesto, lo que no tiene fecha (o no se entiende) queda afuera', () => {
+  assert.equal(dentroDelRango(null, '2026-08-15', ''), false)
+  assert.equal(dentroDelRango('', '', '2026-10-18'), false)
+  assert.equal(dentroDelRango('18/9/2026', '2026-08-15', ''), false, 'el texto de la hoja no se adivina')
+})
+
+test('un límite mal formado es lo mismo que uno vacío', () => {
+  assert.equal(limiteDeFecha('15/8/2026'), '')
+  assert.equal(limiteDeFecha(20260815), '')
+  assert.equal(limiteDeFecha(' 2026-08-15 '), '2026-08-15')
+  assert.equal(dentroDelRango(null, 'ayer', '15/8/2026'), true)
+})
+
+test('una marca de tiempo se compara por su día en hora local', () => {
+  const instante = new Date(2026, 8, 18, 23, 30) // 18/9 a las 23:30, en el huso de la máquina
+  assert.equal(diaDeFecha(instante.toISOString()), '2026-09-18')
+  assert.equal(dentroDelRango(instante.toISOString(), '2026-09-18', '2026-09-18'), true)
+  assert.equal(diaDeFecha('2026-09-18'), '2026-09-18')
+  assert.equal(diaDeFecha('cualquier cosa'), null)
 })

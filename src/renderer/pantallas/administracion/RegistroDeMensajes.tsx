@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { LogDeMensajes } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Alerta, Boton, Campo, Cargando, Etiqueta, Tarjeta, cx } from '../../componentes/ui'
 
 function fechaLegible(iso: string): string {
@@ -87,12 +88,15 @@ export function RegistroDeMensajes() {
           <div className="w-64">
             <Campo etiqueta="Texto" value={texto} onChange={(evento) => setTexto(evento.target.value)} placeholder="Qué decía" />
           </div>
-          <div className="w-40">
-            <Campo etiqueta="Desde" type="date" value={desde} onChange={(evento) => setDesde(evento.target.value)} />
-          </div>
-          <div className="w-40">
-            <Campo etiqueta="Hasta" type="date" value={hasta} onChange={(evento) => setHasta(evento.target.value)} />
-          </div>
+          <RangoDeFecha
+            etiqueta="Fecha"
+            desde={desde}
+            hasta={hasta}
+            alCambiar={(nuevoDesde, nuevoHasta) => {
+              setDesde(nuevoDesde)
+              setHasta(nuevoHasta)
+            }}
+          />
           <Boton variante="primario" icono="lupa" cargando={cargando} onClick={() => void buscar(1)}>
             Buscar
           </Boton>

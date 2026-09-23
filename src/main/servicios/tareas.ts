@@ -10,7 +10,7 @@
 // se ve lo que falta hacer.
 import { aDia, diasEntre } from '../../shared/polizas'
 import { hoyLocal } from '../../shared/semaforo'
-import { coincideAlguno, listaDeFiltro, numerosDeFiltro } from '../../shared/filtros'
+import { coincideAlguno, dentroDelRango, limiteDeFecha, listaDeFiltro, numerosDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_TAREA,
@@ -247,6 +247,8 @@ function normalizarFiltros(filtros: unknown): FiltrosTareas {
     responsableIds: numerosDeFiltro(f.responsableIds).filter((id) => id !== 0),
     sucursales: listaDeFiltro(f.sucursales).map((v) => v.slice(0, 80)),
     soloVencidas: f.soloVencidas === true,
+    desde: limiteDeFecha(f.desde),
+    hasta: limiteDeFecha(f.hasta),
   }
 }
 
@@ -274,6 +276,7 @@ export function listarTareas(filtros: unknown): ListadoTareas {
       (f.responsableIds.length === 0 || f.responsableIds.includes(t.responsableId ?? -1)) &&
       coincideAlguno(f.sucursales, t.sucursal, mismaSucursal) &&
       (!f.soloVencidas || t.vencida || t.venceHoy) &&
+      dentroDelRango(t.venceEl, f.desde, f.hasta) &&
       coincide(t),
   )
 

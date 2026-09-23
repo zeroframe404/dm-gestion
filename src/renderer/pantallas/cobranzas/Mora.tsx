@@ -6,6 +6,7 @@ import { fechaCorta } from '../../../shared/polizas'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { NOMBRE_RANGO_MORA, type FilaMora, type FiltrosMora, type ListadoMora, type RangoDeMora } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Icono } from '../../componentes/Icono'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
 import { claveDeFilaDeCelda } from '../../../shared/presencia'
@@ -15,7 +16,16 @@ import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { numero, pesos } from './formato'
 
-const FILTROS_VACIOS: FiltrosMora = { busqueda: '', sucursales: [], companias: [], fechas: [], rangos: [], incluirDebito: false }
+const FILTROS_VACIOS: FiltrosMora = {
+  busqueda: '',
+  sucursales: [],
+  companias: [],
+  fechas: [],
+  desde: '',
+  hasta: '',
+  rangos: [],
+  incluirDebito: false,
+}
 
 const CLASES_RANGO: Record<Exclude<RangoDeMora, ''>, string> = {
   '1-7': 'bg-amber-100 text-amber-900 border-amber-200',
@@ -178,6 +188,8 @@ export function Mora() {
       filtros.sucursales.length ||
       filtros.companias.length ||
       filtros.fechas.length ||
+      filtros.desde ||
+      filtros.hasta ||
       filtros.rangos.length ||
       filtros.incluirDebito,
   )
@@ -236,6 +248,12 @@ export function Mora() {
           opciones={datos.fechas}
           textoDe={fechaCorta}
           alCambiar={(v) => setFiltros((f) => ({ ...f, fechas: v }))}
+        />
+        <RangoDeFecha
+          etiqueta="Vence"
+          desde={filtros.desde ?? ''}
+          hasta={filtros.hasta ?? ''}
+          alCambiar={(desde, hasta) => setFiltros((f) => ({ ...f, desde, hasta }))}
         />
         <FiltroMultiple
           etiqueta="Días de atraso"

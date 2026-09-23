@@ -11,7 +11,7 @@
 //    mira «ATM y Metropol en Dock Sud» en la planilla quiere mirar exactamente eso mismo acá. Lo que
 //    no viaja son el semáforo y los contadores, que son del mes vivo y una baja ya no tiene.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { coincideAlguno, mismoTextoDeFiltro } from '../../../shared/filtros'
+import { coincideAlguno, dentroDelRango, mismoTextoDeFiltro } from '../../../shared/filtros'
 import { NOMBRE_RAMA, ramaDeVehiculo, type Rama } from '../../../shared/ramas'
 import { nombreDePeriodo } from '../../../shared/semaforo'
 import { mismaSucursal } from '../../../shared/sucursales'
@@ -25,6 +25,7 @@ import {
   type PeriodoCartera,
 } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
@@ -111,9 +112,12 @@ interface Filtros {
   formasDePago: string[]
   companias: string[]
   ramas: string[]
+  /** Rango del día de la baja ('AAAA-MM-DD'). Sirve sobre todo con «Todos los meses». */
+  desde: string
+  hasta: string
 }
 
-const FILTROS_VACIOS: Filtros = { busqueda: '', sucursales: [], formasDePago: [], companias: [], ramas: [] }
+const FILTROS_VACIOS: Filtros = { busqueda: '', sucursales: [], formasDePago: [], companias: [], ramas: [], desde: '', hasta: '' }
 
 /** «Pick up», «Moto eléctrica»… o el texto crudo del vehículo cuando no es ninguna de las siete ramas. */
 function nombreDeRama(baja: FilaBaja): string {
@@ -196,6 +200,7 @@ export function Bajas() {
         if (!coincideAlguno(filtros.formasDePago, baja.formaPago)) return false
         if (!coincideAlguno(filtros.companias, baja.compania)) return false
         if (filtros.ramas.length > 0 && !filtros.ramas.some((elegida) => (rama ? elegida === rama : mismoTextoDeFiltro(elegida, baja.vehiculo)))) return false
+        if (!dentroDelRango(baja.fechaBaja, filtros.desde, filtros.hasta)) return false
         return true
       })
       .map(({ baja }) => baja)
@@ -206,7 +211,8 @@ export function Bajas() {
     filtros.sucursales.length > 0 ||
     filtros.formasDePago.length > 0 ||
     filtros.companias.length > 0 ||
-    filtros.ramas.length > 0
+    filtros.ramas.length > 0 ||
+    Boolean(filtros.desde || filtros.hasta)
 
   const detalle = useMemo(() => filas.find((f) => f.id === seleccionada) ?? null, [filas, seleccionada])
 
@@ -322,6 +328,12 @@ export function Bajas() {
           opciones={catalogos?.ramas ?? []}
           textoDe={(r) => NOMBRE_RAMA[r as Rama] ?? r}
           alCambiar={(v) => setFiltros((f) => ({ ...f, ramas: v }))}
+        />
+        <RangoDeFecha
+          etiqueta="Baja"
+          desde={filtros.desde}
+          hasta={filtros.hasta}
+          alCambiar={(desde, hasta) => setFiltros((f) => ({ ...f, desde, hasta }))}
         />
         {hayFiltros && (
           <>

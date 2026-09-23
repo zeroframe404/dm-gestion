@@ -1068,6 +1068,9 @@ export interface FiltrosRechazos {
   sucursales: string[]
   /** '' = todos los estados. Es una pestaña con su contador, no un desplegable: se elige uno. */
   estado: '' | EstadoDeRechazo
+  /** Rango del día en que se anotó el rechazo ('AAAA-MM-DD'). Vacío = sin límite. */
+  desde?: string
+  hasta?: string
 }
 
 export interface ListadoRechazos {
@@ -1138,6 +1141,8 @@ export interface FilaRiesgoVario {
   sucursal: string | null
   /** Fecha de emisión de la póliza (columna EMISION de la hoja). */
   emision: string | null
+  /** La emisión en 'AAAA-MM-DD', para el filtro de fechas. null si no está o no se entiende. */
+  emisionIso: string | null
   tipoRiesgo: string | null
   descripcion: string | null
   compania: string | null
@@ -2319,6 +2324,12 @@ export interface FiltrosMora {
   rangos: Array<Exclude<RangoDeMora, ''>>
   /** El débito automático se cobra solo: por omisión no se lista. */
   incluirDebito: boolean
+  /**
+   * Rango del vencimiento ('AAAA-MM-DD'), para no tener que tildar los días de a uno. Vacío = sin
+   * límite. Se suma a `fechas`: si están los dos, la fila tiene que cumplir los dos.
+   */
+  desde?: string
+  hasta?: string
 }
 
 export interface ListadoMora {
@@ -2545,6 +2556,12 @@ export interface FiltrosSiniestros {
   estado: '' | EstadoSiniestro
   /** Sólo los que mencionan ROBO. */
   soloRobos: boolean
+  /**
+   * Rango de la fecha del siniestro ('AAAA-MM-DD'; si no la tiene, la de carga), igual que el reporte.
+   * Cada punta es opcional y vacía no filtra.
+   */
+  desde?: string
+  hasta?: string
 }
 
 export interface ListadoSiniestros {
@@ -2785,6 +2802,9 @@ export interface FiltrosLeads {
   sucursales: string[]
   /** false = se esconden los GANADO y PERDIDO, que ya no son trabajo pendiente. */
   incluirCerrados: boolean
+  /** Rango del día en que entró el lead ('AAAA-MM-DD', en hora local). Vacío = sin límite. */
+  desde?: string
+  hasta?: string
 }
 
 export interface ListadoLeads {
@@ -2906,6 +2926,9 @@ export interface FiltrosPresupuestos {
   sucursales: string[]
   /** false = sólo la última versión de cada presupuesto. */
   incluirVersiones: boolean
+  /** Rango del día en que se armó el presupuesto ('AAAA-MM-DD', en hora local). Vacío = sin límite. */
+  desde?: string
+  hasta?: string
 }
 
 export interface ListadoPresupuestos {
@@ -3082,6 +3105,9 @@ export interface FiltrosTareas {
   sucursales: string[]
   /** true = sólo las que vencen hoy o ya vencieron. */
   soloVencidas: boolean
+  /** Rango del vencimiento de la tarea ('AAAA-MM-DD'). Vacío = sin límite; una tarea sin fecha queda afuera. */
+  desde?: string
+  hasta?: string
 }
 
 export interface ListadoTareas {

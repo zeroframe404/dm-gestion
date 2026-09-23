@@ -7,10 +7,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BotonEliminar, usePuedeEliminar } from '../../componentes/BotonEliminar'
 import { esDebitoAutomatico } from '../../../shared/semaforo'
-import { coincideAlguno } from '../../../shared/filtros'
+import { coincideAlguno, dentroDelRango } from '../../../shared/filtros'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { CampoDeRiesgo, FilaRiesgoVario, ListadoRiesgos } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -58,6 +59,7 @@ export function RiesgosVarios() {
   const [busqueda, setBusqueda] = useState('')
   // Una LISTA, no un valor: se pueden mirar Dock Sud y Daniel a la vez. Vacía = todas.
   const [sucursales, setSucursales] = useState<string[]>([])
+  const [rango, setRango] = useState({ desde: '', hasta: '' })
   const [editando, setEditando] = useState<{ id: number; campo: CampoDeRiesgo } | null>(null)
   const [altaAbierta, setAltaAbierta] = useState(false)
 
@@ -82,12 +84,13 @@ export function RiesgosVarios() {
       // además de las tildes y las mayúsculas sabe que «AVELLANEDA» y «DOCKSUD» son Dock Sud. Con el
       // texto pelado, elegir una opción que pliega dos grafías dejaba el listado vacío.
       if (!coincideAlguno(sucursales, f.sucursal, mismaSucursal)) return false
+      if (!dentroDelRango(f.emisionIso, rango.desde, rango.hasta)) return false
       if (!texto) return true
       return [f.clienteNombre, f.documento, f.numeroPoliza, f.tipoRiesgo, f.compania, f.telefono].some((valor) =>
         normalizar(valor).includes(texto),
       )
     })
-  }, [datos, busqueda, sucursales])
+  }, [datos, busqueda, sucursales, rango])
 
   const guardar = async (id: number, campo: CampoDeRiesgo, valor: string) => {
     setEditando(null)
@@ -118,6 +121,12 @@ export function RiesgosVarios() {
           />
         </div>
         <FiltroMultiple etiqueta="Sucursal" valores={sucursales} opciones={datos.sucursales} alCambiar={setSucursales} />
+        <RangoDeFecha
+          etiqueta="Emisión"
+          desde={rango.desde}
+          hasta={rango.hasta}
+          alCambiar={(desde, hasta) => setRango({ desde, hasta })}
+        />
         <span className="text-sm text-slate-500">
           {filtradas.length.toLocaleString('es-AR')} de {datos.total.toLocaleString('es-AR')} riesgos
         </span>

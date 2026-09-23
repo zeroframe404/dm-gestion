@@ -10,7 +10,7 @@
 // está, la crea el motor en cuanto haya conexión y la fila sube sola.
 import { DIRECCION_VACIA } from '../../shared/direccion'
 import { hoyLocal } from '../../shared/semaforo'
-import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
+import { coincideAlguno, dentroDelRango, limiteDeFecha, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   ESTADOS_DE_LEAD,
@@ -155,6 +155,8 @@ function normalizarFiltros(filtros: unknown): FiltrosLeads {
       .filter((o): o is OrigenDeLead => (ORIGENES_DE_LEAD as readonly string[]).includes(o)),
     sucursales: listaDeFiltro(f.sucursales).map((v) => v.slice(0, 80)),
     incluirCerrados: f.incluirCerrados === true,
+    desde: limiteDeFecha(f.desde),
+    hasta: limiteDeFecha(f.hasta),
   }
 }
 
@@ -185,6 +187,7 @@ export function listarLeads(filtros: unknown): ListadoLeads {
       (f.origenes.length === 0 || f.origenes.includes(lead.origen)) &&
       coincideAlguno(f.sucursales, lead.sucursal, mismaSucursal) &&
       (f.incluirCerrados || !CERRADOS.includes(lead.estado) || lead.estado === f.estado) &&
+      dentroDelRango(lead.creadoEn, f.desde, f.hasta) &&
       coincide(lead),
   )
 
@@ -192,6 +195,7 @@ export function listarLeads(filtros: unknown): ListadoLeads {
   for (const lead of todos) {
     if (f.origenes.length > 0 && !f.origenes.includes(lead.origen)) continue
     if (!coincideAlguno(f.sucursales, lead.sucursal, mismaSucursal)) continue
+    if (!dentroDelRango(lead.creadoEn, f.desde, f.hasta)) continue
     if (!coincide(lead)) continue
     porEstado[lead.estado]++
   }

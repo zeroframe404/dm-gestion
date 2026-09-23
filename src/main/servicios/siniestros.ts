@@ -10,7 +10,7 @@
 // tiempo: es la única forma que tienen de llegar a las otras computadoras.
 import { hoyLocal } from '../../shared/semaforo'
 import { estadoTextoDiferente, mencionaRobo, normalizarEstadoSiniestro } from '../../shared/siniestros'
-import { coincideAlguno, listaDeFiltro } from '../../shared/filtros'
+import { coincideAlguno, dentroDelRango, limiteDeFecha, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import {
   CATEGORIAS_DE_ADJUNTO,
@@ -232,6 +232,8 @@ function normalizarFiltros(filtros: unknown): FiltrosSiniestros {
     companias: listaDeFiltro(f.companias).map((v) => v.slice(0, 80)),
     estado: (ESTADOS_DE_SINIESTRO as readonly string[]).includes(estado) ? (estado as EstadoSiniestro) : '',
     soloRobos: f.soloRobos === true,
+    desde: limiteDeFecha(f.desde),
+    hasta: limiteDeFecha(f.hasta),
   }
 }
 
@@ -266,6 +268,7 @@ export function listarSiniestros(filtros: unknown): ListadoSiniestros {
       coincideAlguno(f.sucursales, fila.sucursal, mismaSucursal) &&
       coincideAlguno(f.companias, fila.compania, mismoTexto) &&
       (!f.soloRobos || fila.esRobo) &&
+      dentroDelRango(fila.fechaIso ?? fila.fechaCargaIso, f.desde, f.hasta) &&
       coincide(fila),
   )
 

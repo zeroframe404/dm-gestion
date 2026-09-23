@@ -15,6 +15,7 @@ import {
   type MotivoDeRechazo,
 } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
 import { Alerta, Boton, Cargando, cx, Etiqueta } from '../../componentes/ui'
@@ -100,14 +101,20 @@ export function Rechazos() {
           opciones={sucursales}
           alCambiar={(v) => setFiltros((f) => ({ ...f, sucursales: v }))}
         />
-        {(filtros.busqueda || filtros.sucursales.length > 0 || filtros.estado) && (
+        <RangoDeFecha
+          etiqueta="Fecha"
+          desde={filtros.desde ?? ''}
+          hasta={filtros.hasta ?? ''}
+          alCambiar={(desde, hasta) => setFiltros((f) => ({ ...f, desde, hasta }))}
+        />
+        {(filtros.busqueda || filtros.sucursales.length > 0 || filtros.estado || filtros.desde || filtros.hasta) && (
           <Boton
             tamano="sm"
             variante="fantasma"
             icono="cerrar"
             onClick={() => {
               setTexto('')
-              setFiltros({ busqueda: '', sucursales: [], estado: '' })
+              setFiltros({ busqueda: '', sucursales: [], estado: '', desde: '', hasta: '' })
             }}
           >
             Limpiar

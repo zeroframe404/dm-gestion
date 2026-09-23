@@ -12,6 +12,8 @@ import {
   type ListadoPresupuestos,
 } from '../../../shared/tipos'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
+import { diaDeFecha } from '../../../shared/filtros'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
@@ -134,7 +136,14 @@ export function Presupuestos() {
           />
         </div>
 
-<FiltroMultiple etiqueta="Sucursal" valores={filtros.sucursales} opciones={datos.sucursales} alCambiar={(v) => cambiar({ sucursales: v })} />
+        <FiltroMultiple etiqueta="Sucursal" valores={filtros.sucursales} opciones={datos.sucursales} alCambiar={(v) => cambiar({ sucursales: v })} />
+
+        <RangoDeFecha
+          etiqueta="Armado"
+          desde={filtros.desde ?? ''}
+          hasta={filtros.hasta ?? ''}
+          alCambiar={(desde, hasta) => cambiar({ desde, hasta })}
+        />
 
         <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
           <input
@@ -264,7 +273,7 @@ function FilaDePresupuesto({ fila, ve, alAbrir }: { fila: FilaPresupuesto; ve: S
           </span>
         </td>
       )}
-      {ve.has('fecha') && <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{fila.creadoEn.slice(0, 10)}</td>}
+      {ve.has('fecha') && <td className={cx(celda, 'whitespace-nowrap tabular-nums')}>{diaDeFecha(fila.creadoEn) ?? fila.creadoEn.slice(0, 10)}</td>}
     </tr>
   )
 }

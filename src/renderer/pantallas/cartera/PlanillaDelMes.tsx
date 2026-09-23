@@ -5,19 +5,21 @@ import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
 import { diasEntre } from '../../../shared/polizas'
 import {
   calcularAlerta,
+  fechaDeVencimiento,
   nombreDePeriodo,
   NOMBRE_COLOR,
   ORDEN_COLORES,
   type Alerta,
   type ColorAlerta,
 } from '../../../shared/semaforo'
-import { coincideAlguno, mismoTextoDeFiltro } from '../../../shared/filtros'
+import { coincideAlguno, dentroDelRango, mismoTextoDeFiltro } from '../../../shared/filtros'
 import { claveDeCelda, claveDeFilaDeCelda } from '../../../shared/presencia'
 import { NOMBRE_RAMA, ramaDeVehiculo, type Rama } from '../../../shared/ramas'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { CampoEditable, FilaCartera, PlanillaDelMes as DatosPlanilla } from '../../../shared/tipos'
 import { DialogoRechazo } from '../../componentes/DialogoRechazo'
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
+import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Icono } from '../../componentes/Icono'
 import { MarcaDePresencia, motivoDelBloqueo } from '../../componentes/Presencia'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
@@ -189,6 +191,9 @@ interface Filtros {
   ramas: string[]
   colores: string[]
   soloAvisarVto: boolean
+  /** Rango del día en que vence la cuota ('AAAA-MM-DD'): «los que vencen del 10 al 15». */
+  desde: string
+  hasta: string
   contador: Contador
 }
 
@@ -200,6 +205,8 @@ const FILTROS_VACIOS: Filtros = {
   ramas: [],
   colores: [],
   soloAvisarVto: false,
+  desde: '',
+  hasta: '',
   contador: '',
 }
 
@@ -335,6 +342,7 @@ export function PlanillaDelMes() {
       if (filtros.ramas.length > 0 && !filtros.ramas.some((elegida) => (rama ? elegida === rama : mismoTextoDeFiltro(elegida, fila.vehiculo)))) return false
       if (filtros.colores.length > 0 && !filtros.colores.includes(alerta.color)) return false
       if (filtros.soloAvisarVto && normalizar(fila.avisarVto) !== 'AVISAR') return false
+      if (!dentroDelRango(fechaDeVencimiento(fila.periodo, fila.diaVencimientoNumero), filtros.desde, filtros.hasta)) return false
       return true
     })
   }, [conAlerta, datos, filtros])
@@ -750,6 +758,12 @@ export function PlanillaDelMes() {
           />
           Sólo con AVISAR VTO
         </label>
+        <RangoDeFecha
+          etiqueta="Vence"
+          desde={filtros.desde}
+          hasta={filtros.hasta}
+          alCambiar={(desde, hasta) => setFiltros((f) => ({ ...f, desde, hasta }))}
+        />
         {(filtros.busqueda ||
           filtros.sucursales.length > 0 ||
           filtros.formasDePago.length > 0 ||
@@ -757,6 +771,8 @@ export function PlanillaDelMes() {
           filtros.ramas.length > 0 ||
           filtros.colores.length > 0 ||
           filtros.soloAvisarVto ||
+          filtros.desde ||
+          filtros.hasta ||
           filtros.contador) && (
           <Boton tamano="sm" variante="fantasma" icono="cerrar" onClick={() => setFiltros(FILTROS_VACIOS)}>
             Limpiar
