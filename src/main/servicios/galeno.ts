@@ -55,7 +55,7 @@ let usuarioDelCliente = ''
 function cliente(): ClienteGaleno {
   const credenciales = credencialesGaleno()
   if (!credenciales) {
-    throw new ErrorDeNegocio('Todavía no están cargadas las credenciales de Galeno. Se cargan en Administración → Galeno.')
+    throw new ErrorDeNegocio('Todavía no están cargadas las credenciales de Galeno. Se cargan en API Aseguradoras → Galeno.')
   }
   if (!clienteEnMemoria || usuarioDelCliente !== credenciales.usuario) {
     clienteEnMemoria = crearClienteGaleno(credenciales)

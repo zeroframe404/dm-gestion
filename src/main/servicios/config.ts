@@ -116,6 +116,23 @@ interface Config {
  */
 export const URL_DE_REDIRECCION_DE_META = 'https://dmartinezseguros.com/meta/vuelta'
 
+/**
+ * La cuenta de PRODUCCIÓN que Galeno le dio a la agencia para su API REST (WS-Seguros), con la IP del
+ * VPS ya autorizada del lado de Galeno. Va embebida —mismo criterio que `VPS_TOKEN` más abajo: el
+ * repositorio es público, pero así queda andando de entrada en cualquier computadora sin que alguien
+ * tenga que ir a cargarla a mano en API Aseguradoras → Galeno.
+ *
+ * Sólo se usa mientras nadie cargó nada en esa pantalla: cualquier cosa que se guarde ahí (otro
+ * usuario, otro ambiente, o estas mismas credenciales el día que Galeno las rote) pisa esto sin tocar
+ * el código. Ver `credencialesGaleno` y `estadoGaleno`.
+ */
+const GALENO_PRODUCCION_POR_DEFECTO = {
+  usuario: 'USWS62695559455',
+  clave: 'wS876731547578',
+  urlBase: 'https://www.gsbeneficios.com.ar/WS-Seguros',
+  authorizationBasic: 'Basic Z2FsZW5vX2NKdHh3ejd0Wmh5UXRqNGU6VVliZEVCM1IzcUpKR3hyVEtYdlVCc2NGcWc5SDlUQnZ2UFpKeWU0Rg==',
+} as const
+
 /** La dirección de vuelta vigente: la cargada, o la de fábrica mientras nadie haya cargado otra. */
 export function urlDeVueltaDeMeta(): string {
   const escrita = leerConfig().meta?.urlDeRedireccion
@@ -604,7 +621,17 @@ export function guardarGoogle(datos: unknown): EstadoConexionGoogle {
 export function estadoGaleno(): EstadoDeGaleno {
   const galeno = leerConfig().galeno
   if (!galeno?.usuario || !galeno.clave) {
-    return { configurado: false, usuario: '', ambiente: 'desa', productorCodigo: null, rutaDeConfig: rutaSegura(), actualizadoEn: null }
+    // Nadie cargó nada todavía en esta computadora: se muestra la cuenta de producción de fábrica, que
+    // ya es la que usa `credencialesGaleno` para conectarse. Así la pantalla no dice «no configurado»
+    // mientras la conexión, de hecho, ya funciona.
+    return {
+      configurado: true,
+      usuario: GALENO_PRODUCCION_POR_DEFECTO.usuario,
+      ambiente: 'produccion',
+      productorCodigo: null,
+      rutaDeConfig: rutaSegura(),
+      actualizadoEn: null,
+    }
   }
   return {
     configurado: true,
@@ -625,14 +652,17 @@ export function credencialesGaleno(): {
   authorizationBasic?: string
 } | null {
   const galeno = leerConfig().galeno
-  if (!galeno?.usuario || !galeno.clave) return null
-  return {
-    usuario: galeno.usuario,
-    clave: galeno.clave,
-    ambiente: galeno.ambiente,
-    urlBase: galeno.urlBase,
-    authorizationBasic: galeno.authorizationBasic,
+  if (galeno?.usuario && galeno.clave) {
+    return {
+      usuario: galeno.usuario,
+      clave: galeno.clave,
+      ambiente: galeno.ambiente,
+      urlBase: galeno.urlBase,
+      authorizationBasic: galeno.authorizationBasic,
+    }
   }
+  // Sin nada guardado en config.json: la cuenta de producción de fábrica (ver la constante de arriba).
+  return { ...GALENO_PRODUCCION_POR_DEFECTO, ambiente: 'produccion' }
 }
 
 export function guardarCredencialesGaleno(datos: unknown): EstadoDeGaleno {

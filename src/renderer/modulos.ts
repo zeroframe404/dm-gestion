@@ -19,6 +19,7 @@ export type IdModulo =
   | 'mensajes'
   | 'companias'
   | 'excel'
+  | 'apiAseguradoras'
   | 'administracion'
 
 export interface Modulo {
@@ -144,6 +145,21 @@ export const MODULO_ADMINISTRACION: Modulo = {
 }
 
 /**
+ * También va separado, al pie de la barra lateral, junto a Administración: las credenciales con las
+ * que DM Gestión habla con la API de cada aseguradora (por ahora, sólo Galeno). No es un área de
+ * permisos configurable —igual que el catálogo de vehículos o la propia conexión con Galeno antes de
+ * mudarse acá—: son credenciales de un tercero, no algo que necesite el mostrador, así que sólo la ven
+ * ADMIN y SUPER_ADMIN (ver `BarraLateral`).
+ */
+export const MODULO_API_ASEGURADORAS: Modulo = {
+  id: 'apiAseguradoras',
+  nombre: 'API Aseguradoras',
+  icono: 'llave',
+  descripcion: 'Las credenciales con las que el programa habla con la API de cada aseguradora.',
+  disponible: true,
+}
+
+/**
  * Todos los módulos son un área de permisos menos Inicio —la pantalla que queda cuando no se tiene
  * ninguna otra, y por eso no se puede sacar— y «General Excel», que no tiene permiso propio a
  * propósito: no muestra datos nuevos, sino los de los módulos que cada uno ya puede ver, y con el
@@ -156,6 +172,7 @@ export function esAreaDePermisos(id: IdModulo): id is IdModulo & Area {
 
 export function buscarModulo(id: IdModulo): Modulo {
   if (id === MODULO_ADMINISTRACION.id) return MODULO_ADMINISTRACION
+  if (id === MODULO_API_ASEGURADORAS.id) return MODULO_API_ASEGURADORAS
   const modulo = MODULOS.find((candidato) => candidato.id === id)
   if (!modulo) throw new Error(`Módulo desconocido: ${id}`)
   return modulo

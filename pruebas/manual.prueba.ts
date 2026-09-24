@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CONTENIDO_AYUDA } from '../src/renderer/ayuda/contenido'
 import { clavesDeAyudaDe, htmlDelManual, nombreDelManual } from '../src/renderer/ayuda/manual'
-import { MODULOS, MODULO_ADMINISTRACION } from '../src/renderer/modulos'
+import { MODULOS, MODULO_ADMINISTRACION, MODULO_API_ASEGURADORAS } from '../src/renderer/modulos'
 
 const MANUAL = htmlDelManual({ version: '12.0.3', fecha: '29 de agosto de 2026', logo: '' })
 
@@ -27,7 +27,7 @@ test('el manual es corto: entre ocho y doce páginas', () => {
 
 test('ningún módulo queda afuera del manual', () => {
   // Es la prueba que caza el módulo nuevo que alguien agrega sin acordarse del manual.
-  for (const modulo of [...MODULOS, MODULO_ADMINISTRACION]) {
+  for (const modulo of [...MODULOS, MODULO_API_ASEGURADORAS, MODULO_ADMINISTRACION]) {
     if (modulo.id === 'inicio') continue
     assert.ok(MANUAL.includes(`<h3>${modulo.nombre}</h3>`), `falta el módulo ${modulo.nombre} en el manual`)
   }
@@ -37,7 +37,7 @@ test('cada clave de ayuda pertenece a algún módulo', () => {
   // Una clave que no engancha con ningún módulo queda afuera del manual sin que nadie se entere. Hoy
   // la única fuera de convención es «imputados», que está contemplada a mano.
   const asignadas = new Set<string>()
-  for (const modulo of [...MODULOS, MODULO_ADMINISTRACION]) {
+  for (const modulo of [...MODULOS, MODULO_API_ASEGURADORAS, MODULO_ADMINISTRACION]) {
     for (const clave of clavesDeAyudaDe(modulo.id)) asignadas.add(clave)
   }
   const huerfanas = Object.keys(CONTENIDO_AYUDA).filter((clave) => !asignadas.has(clave))

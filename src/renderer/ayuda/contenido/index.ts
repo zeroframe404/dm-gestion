@@ -1,5 +1,6 @@
 import type { ContenidoDeAyuda } from '../tipos'
 import { AYUDA_ADMINISTRACION } from './administracion'
+import { AYUDA_API_ASEGURADORAS } from './apiAseguradoras'
 import { AYUDA_CARTERA } from './cartera'
 import { AYUDA_CLIENTES } from './clientes'
 import { AYUDA_COBRANZAS } from './cobranzas'
@@ -36,4 +37,5 @@ export const CONTENIDO_AYUDA: Record<string, ContenidoDeAyuda> = {
   ...AYUDA_REPORTES,
   ...AYUDA_EXCEL,
   ...AYUDA_ADMINISTRACION,
+  ...AYUDA_API_ASEGURADORAS,
 }

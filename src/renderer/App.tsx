@@ -33,6 +33,7 @@ import { Login } from './pantallas/Login'
 // Marketing y Reportes para mostrar el Login. Inicio y Login siguen viniendo de entrada, que es lo
 // que se ve primero.
 const Administracion = lazy(() => import('./pantallas/administracion/Administracion').then((m) => ({ default: m.Administracion })))
+const ApiAseguradoras = lazy(() => import('./pantallas/apiAseguradoras/ApiAseguradoras').then((m) => ({ default: m.ApiAseguradoras })))
 const Cartera = lazy(() => import('./pantallas/cartera/Cartera').then((m) => ({ default: m.Cartera })))
 const Companias = lazy(() => import('./pantallas/companias/Companias').then((m) => ({ default: m.Companias })))
 const Clientes = lazy(() => import('./pantallas/clientes/Clientes').then((m) => ({ default: m.Clientes })))
@@ -124,7 +125,9 @@ function Escritorio() {
   //
   // Administración es la excepción: se abre siempre porque «Acerca de» la ve todo el mundo (ahí está
   // la versión y el estado del acceso, que es lo primero que se pregunta cuando algo falla). Adentro,
-  // la pantalla muestra sólo las secciones que correspondan.
+  // la pantalla muestra sólo las secciones que correspondan. API Aseguradoras tampoco es un área de
+  // permisos —no está en `AREAS`—, así que también pasa de largo acá; el gate lo hace la pantalla
+  // misma, por rol (ver `ApiAseguradoras`), y `BarraLateral` la esconde del todo a quien no le toca.
   const area = esAreaDePermisos(modulo.id) && modulo.id !== 'administracion' ? modulo.id : null
   if (area && !puedeVer(area)) {
     return (
@@ -169,6 +172,8 @@ function Escritorio() {
     contenido = <GeneralExcel />
   } else if (modulo.id === 'administracion') {
     contenido = <Administracion />
+  } else if (modulo.id === 'apiAseguradoras') {
+    contenido = <ApiAseguradoras />
   } else {
     contenido = <Proximamente modulo={modulo} />
   }

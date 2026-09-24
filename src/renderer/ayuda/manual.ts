@@ -15,7 +15,7 @@
 import { AREAS, DESCRIPCION_AREA, NOMBRE_NIVEL, permisosPorDefecto } from '../../shared/permisos'
 import { SUCURSALES } from '../../shared/sucursales'
 import { NOMBRE_ROL } from '../../shared/tipos'
-import { MODULOS, MODULO_ADMINISTRACION, type Modulo } from '../modulos'
+import { MODULOS, MODULO_ADMINISTRACION, MODULO_API_ASEGURADORAS, type Modulo } from '../modulos'
 import { CONTENIDO_AYUDA } from './contenido'
 import type { ContenidoDeAyuda } from './tipos'
 
@@ -250,7 +250,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
   // Cinco fichas por página: es lo que entra sin apretarlas y sin dejar media hoja en blanco.
   const porPagina = 5
   const paginasDeModulos: Modulo[][] = []
-  const todos = [...modulos, MODULO_ADMINISTRACION]
+  const todos = [...modulos, MODULO_API_ASEGURADORAS, MODULO_ADMINISTRACION]
   for (let i = 0; i < todos.length; i += porPagina) paginasDeModulos.push(todos.slice(i, i + porPagina))
 
   // Las fijas son siete: portada, qué es, primeros pasos, roles, atajos, glosario y contratapa.

@@ -69,7 +69,7 @@ export async function sincronizarGaleno(): Promise<ResumenDePasadaDeGaleno> {
   return vps().forzarPasadaDeGaleno()
 }
 
-// «GalenoNovedades» y no «Galeno» a secas: la API REST de Galeno (Administración → Galeno) ya tiene su
+// «GalenoNovedades» y no «Galeno» a secas: la API REST de Galeno (API Aseguradoras → Galeno) ya tiene su
 // propia `probarGaleno()`, que prueba OTRA credencial (la de esta computadora contra la API de Galeno,
 // no el usuario del portal que consulta el VPS). Los dos módulos se importan juntos en ipc.ts.
 export async function probarGalenoNovedades(): Promise<PruebaDeGalenoNovedades> {
