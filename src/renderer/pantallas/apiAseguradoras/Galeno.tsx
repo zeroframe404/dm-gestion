@@ -1,4 +1,4 @@
-// Administración → Galeno: la cuenta de Galeno Seguros y los reportes de sólo lectura que trae su API
+// API Aseguradoras → Galeno: la cuenta de Galeno Seguros y los reportes de sólo lectura que trae su API
 // (Consultas, Cuenta Corriente y Contratos ART). Cotizar y Emitir viven en Presupuestos —son parte de
 // armar y cerrar un presupuesto, no de "mirar la cuenta"—; acá está la conexión y todo lo que es
 // consultar en vez de cargar.

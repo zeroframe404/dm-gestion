@@ -7,7 +7,8 @@
 import { useMemo, useState } from 'react'
 import { usePermisos } from '../contexto/Permisos'
 import { useAvisosDeTareas } from '../contexto/Tareas'
-import { esAreaDePermisos, MODULO_ADMINISTRACION, MODULOS, type IdModulo, type Modulo } from '../modulos'
+import { useUsuarioActual } from '../contexto/Sesion'
+import { esAreaDePermisos, MODULO_ADMINISTRACION, MODULO_API_ASEGURADORAS, MODULOS, type IdModulo, type Modulo } from '../modulos'
 import { barraLateralColapsada, guardarBarraLateralColapsada } from '../preferencias'
 import { Icono } from './Icono'
 import { cx } from './ui'
@@ -18,11 +19,16 @@ interface PropsBarraLateral {
 }
 
 export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
+  const usuario = useUsuarioActual()
   const { puedeVer } = usePermisos()
   // Lo pendiente de esta persona, para el círculo rojo del módulo Tareas. Es el mismo número que
   // muestra la campana de la barra superior: los dos salen del mismo contexto.
   const { pendientes } = useAvisosDeTareas()
   const [colapsada, setColapsada] = useState(barraLateralColapsada)
+  // API Aseguradoras no es un área de permisos (no está en `puedeVer`/`AREAS`): son credenciales de un
+  // tercero, no algo que necesite el mostrador, así que se esconde directamente por rol, igual que las
+  // secciones de Galeno y del catálogo de vehículos dentro de Administración.
+  const veApiAseguradoras = usuario.rol !== 'EMPLEADO' && puedeVer('administracion')
   // Inicio siempre está; el resto, según los permisos del rol. Administración también, porque «Acerca
   // de» la ve todo el mundo: adentro se muestran sólo las secciones que correspondan.
   const visibles = useMemo(
@@ -90,6 +96,17 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
           ))}
         </ul>
       </nav>
+
+      {veApiAseguradoras && (
+        <div className={cx('border-t border-white/10 py-3', colapsada ? 'px-2' : 'px-3')}>
+          <ItemMenu
+            modulo={MODULO_API_ASEGURADORAS}
+            activo={MODULO_API_ASEGURADORAS.id === moduloActivo}
+            colapsada={colapsada}
+            alElegir={alElegir}
+          />
+        </div>
+      )}
 
       <div className={cx('border-t border-white/10 py-3', colapsada ? 'px-2' : 'px-3')}>
         <ItemMenu

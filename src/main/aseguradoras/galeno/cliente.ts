@@ -122,7 +122,7 @@ export function crearClienteGaleno(credenciales: CredencialesGaleno): ClienteGal
       // persona que revise la clave cuando el problema es el Authorization de la aplicación.
       if (!json && /bad credentials/i.test(texto)) {
         throw new ErrorDeGaleno(
-          'Galeno rechazó el "Authorization" de la aplicación (no el usuario ni la clave). Si estas credenciales son de producción, cargá en Administración → Galeno la URL y el "Authorization" que Galeno dio para producción.',
+          'Galeno rechazó el "Authorization" de la aplicación (no el usuario ni la clave). Si estas credenciales son de producción, cargá en API Aseguradoras → Galeno la URL y el "Authorization" que Galeno dio para producción.',
           false,
         )
       }

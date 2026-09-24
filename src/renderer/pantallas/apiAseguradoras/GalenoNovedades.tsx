@@ -1,4 +1,5 @@
-// Administración → Galeno: el usuario y la clave con los que el servidor consulta el portal de Galeno.
+// API Aseguradoras → Galeno (novedades): el usuario y la clave con los que el servidor consulta el
+// portal de Galeno.
 //
 // Dos cosas que la hacen distinta del resto de los ajustes compartidos (el catálogo de vehículos,
 // Google, Meta):

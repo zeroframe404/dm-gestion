@@ -1798,7 +1798,7 @@ arrancar.
 | App de Meta y **la dirección de vuelta** | Administración → Redes sociales | Superadministrador |
 | Catálogo de compañías y la plantilla del aviso | Administración → Compañías | Administrador o superadministrador |
 | Encabezado del ticket (dirección y teléfono) | Administración → Impresora | Cualquier rol, **el de su sucursal** |
-| Usuario y clave del portal de Galeno | Administración → Galeno | Superadministrador |
+| Usuario y clave del portal de Galeno | API Aseguradoras → Galeno (novedades) | Superadministrador |
 
 La de Galeno es la única de la lista que **no se guarda en esta computadora**: va derecho al servidor
 y ninguna PC la adopta. La razón es simple: quien la usa es el servidor, que es el que consulta el
@@ -1852,7 +1852,7 @@ para siempre. Por lo mismo, las listas (compañías, direcciones) viajan ordenad
 Una póliza de Galeno se cargaba dos veces —en el portal de Galeno y a mano acá— y, peor, cuando en
 Galeno la anulaban o le cambiaban la vigencia, en la cartera de la agencia seguía figurando como
 estaba. Es distinto de la integración de la API REST de Galeno (cotizar/emitir desde Presupuestos,
-más abajo): ésta consulta el PORTAL de Galeno, no su API, y entra por Cartera y Administración →
+más abajo): ésta consulta el PORTAL de Galeno, no su API, y entra por Cartera y API Aseguradoras →
 Galeno (novedades), no por Presupuestos.
 
 **Quién hace qué.** El servidor del VPS consulta el portal de productores de Galeno cada quince
