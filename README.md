@@ -1799,11 +1799,13 @@ arrancar.
 | Catálogo de compañías y la plantilla del aviso | Administración → Compañías | Administrador o superadministrador |
 | Encabezado del ticket (dirección y teléfono) | Administración → Impresora | Cualquier rol, **el de su sucursal** |
 | Usuario y clave del portal de Galeno | API Aseguradoras → Galeno (novedades) | Superadministrador |
+| Cuenta de la API REST de Galeno (WS-Seguros: cotizar, emitir, consultas) | API Aseguradoras → Galeno | ADMIN o superadministrador |
 
-La de Galeno es la única de la lista que **no se guarda en esta computadora**: va derecho al servidor
-y ninguna PC la adopta. La razón es simple: quien la usa es el servidor, que es el que consulta el
-portal de Galeno. Repartir en las cinco máquinas una credencial que ninguna necesita sería regalar
-superficie de ataque a cambio de nada.
+Las dos de Galeno son las únicas de la lista que **no se guardan en esta computadora**: van derecho al
+servidor y ninguna PC las adopta. La razón es la misma en las dos, aunque distinta al resto: Galeno
+sólo acepta pedidos desde la IP que la agencia le dio de alta —la del VPS, no la de ninguna
+sucursal—, así que el que le habla a Galeno es siempre el servidor, y repartir esas credenciales en
+las cinco máquinas sería regalar superficie de ataque a cambio de nada.
 | Las cuatro listas del módulo Compañías | Compañías → «Publicar para todas» | Superadministrador |
 
 **La conexión con Google es OBLIGATORIA (12.5).** Es la única de la tabla que lo es, y la razón es que

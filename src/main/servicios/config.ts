@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { PROVEEDORES_DE_CATALOGO, type EstadoConexionGoogle, type EstadoDeGaleno, type EstadoDeMeta, type ProveedorDeCatalogo } from '../../shared/tipos'
+import { PROVEEDORES_DE_CATALOGO, type EstadoConexionGoogle, type EstadoDeMeta, type ProveedorDeCatalogo } from '../../shared/tipos'
 import { rutaConfig } from '../rutas'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
@@ -77,23 +77,19 @@ interface ConfigMesh {
 }
 
 /**
- * La cuenta de Galeno Seguros para su API REST. El manual sólo documenta el ambiente de pruebas
- * (`desa`): la URL y el `Authorization: Basic` de producción los tiene que dar Galeno aparte, así
- * que `urlBase`/`authorizationBasic` quedan vacíos mientras se trabaje contra pruebas y son
- * obligatorios recién al pasar `ambiente` a `'produccion'`.
+ * El legajo del productor conectado a la cuenta de Galeno, cacheado en ESTA computadora. La cuenta en
+ * sí (usuario, clave, ambiente, URL y Authorization de producción) ya no vive acá: Galeno sólo acepta
+ * pedidos desde la IP del VPS, así que la usa el servidor (`galenoRest.service.ts` allá) y esta
+ * computadora sólo le pasa la ruta y el pedido a través del puente (`credencialesVps`). Ver
+ * `main/aseguradoras/galeno/cliente.ts` y API Aseguradoras → Galeno, que ahora edita el ajuste
+ * compartido `galenoApi` en vez de esto.
  *
- * `productorCodigo` no lo carga una persona: lo completa el propio servicio la primera vez que
- * prueba la conexión o cotiza, tomado del web Service de Planes Comerciales (es el legajo del
- * productor conectado, y lo piden casi todos los servicios de Consultas y Cuenta Corriente).
+ * El legajo sí queda por computadora: es sólo una cache de una consulta barata (el propio servicio lo
+ * completa solo, la primera vez que prueba la conexión o cotiza), no un secreto que haga falta
+ * compartir.
  */
 interface ConfigGaleno {
-  usuario: string
-  clave: string
-  ambiente: 'desa' | 'produccion'
-  urlBase?: string
-  authorizationBasic?: string
   productorCodigo?: string
-  actualizadoEn: string
 }
 
 interface Config {
@@ -115,23 +111,6 @@ interface Config {
  * cargar y viaja al resto de las computadoras junto con la app.
  */
 export const URL_DE_REDIRECCION_DE_META = 'https://dmartinezseguros.com/meta/vuelta'
-
-/**
- * La cuenta de PRODUCCIÓN que Galeno le dio a la agencia para su API REST (WS-Seguros), con la IP del
- * VPS ya autorizada del lado de Galeno. Va embebida —mismo criterio que `VPS_TOKEN` más abajo: el
- * repositorio es público, pero así queda andando de entrada en cualquier computadora sin que alguien
- * tenga que ir a cargarla a mano en API Aseguradoras → Galeno.
- *
- * Sólo se usa mientras nadie cargó nada en esa pantalla: cualquier cosa que se guarde ahí (otro
- * usuario, otro ambiente, o estas mismas credenciales el día que Galeno las rote) pisa esto sin tocar
- * el código. Ver `credencialesGaleno` y `estadoGaleno`.
- */
-const GALENO_PRODUCCION_POR_DEFECTO = {
-  usuario: 'USWS62695559455',
-  clave: 'wS876731547578',
-  urlBase: 'https://www.gsbeneficios.com.ar/WS-Seguros',
-  authorizationBasic: 'Basic Z2FsZW5vX2NKdHh3ejd0Wmh5UXRqNGU6VVliZEVCM1IzcUpKR3hyVEtYdlVCc2NGcWc5SDlUQnZ2UFpKeWU0Rg==',
-} as const
 
 /** La dirección de vuelta vigente: la cargada, o la de fábrica mientras nadie haya cargado otra. */
 export function urlDeVueltaDeMeta(): string {
@@ -615,101 +594,12 @@ export function guardarGoogle(datos: unknown): EstadoConexionGoogle {
 }
 
 // ---------------------------------------------------------------------------
-// Galeno Seguros
+// Galeno Seguros: sólo el legajo cacheado. La cuenta vive en el VPS (ver la nota de `ConfigGaleno`).
 // ---------------------------------------------------------------------------
 
-export function estadoGaleno(): EstadoDeGaleno {
-  const galeno = leerConfig().galeno
-  if (!galeno?.usuario || !galeno.clave) {
-    // Nadie cargó nada todavía en esta computadora: se muestra la cuenta de producción de fábrica, que
-    // ya es la que usa `credencialesGaleno` para conectarse. Así la pantalla no dice «no configurado»
-    // mientras la conexión, de hecho, ya funciona.
-    return {
-      configurado: true,
-      usuario: GALENO_PRODUCCION_POR_DEFECTO.usuario,
-      ambiente: 'produccion',
-      productorCodigo: null,
-      rutaDeConfig: rutaSegura(),
-      actualizadoEn: null,
-    }
-  }
-  return {
-    configurado: true,
-    usuario: galeno.usuario,
-    ambiente: galeno.ambiente,
-    productorCodigo: galeno.productorCodigo ?? null,
-    rutaDeConfig: rutaSegura(),
-    actualizadoEn: galeno.actualizadoEn,
-  }
-}
-
-/** Las credenciales completas, sólo para el proceso principal (el cliente de Galeno). */
-export function credencialesGaleno(): {
-  usuario: string
-  clave: string
-  ambiente: 'desa' | 'produccion'
-  urlBase?: string
-  authorizationBasic?: string
-} | null {
-  const galeno = leerConfig().galeno
-  if (galeno?.usuario && galeno.clave) {
-    return {
-      usuario: galeno.usuario,
-      clave: galeno.clave,
-      ambiente: galeno.ambiente,
-      urlBase: galeno.urlBase,
-      authorizationBasic: galeno.authorizationBasic,
-    }
-  }
-  // Sin nada guardado en config.json: la cuenta de producción de fábrica (ver la constante de arriba).
-  return { ...GALENO_PRODUCCION_POR_DEFECTO, ambiente: 'produccion' }
-}
-
-export function guardarCredencialesGaleno(datos: unknown): EstadoDeGaleno {
-  const d = objeto(datos, 'Los datos de Galeno')
-  const usuario = texto(d.usuario, 'El usuario de Galeno', 1, 120)
-
-  const config = leerConfig()
-  const anterior = config.galeno
-  // Con la clave vacía se conserva la que ya estaba: así se puede corregir el usuario o el ambiente
-  // sin tener que volver a pegar una clave que ya se cargó una vez.
-  const escrita = typeof d.clave === 'string' ? d.clave.trim() : ''
-  const clave = escrita || anterior?.clave || ''
-  if (!clave) throw new ErrorDeNegocio('Falta la clave de Galeno.')
-
-  const ambiente: 'desa' | 'produccion' = d.ambiente === 'produccion' ? 'produccion' : 'desa'
-  const urlBase = typeof d.urlBase === 'string' ? d.urlBase.trim() : ''
-  const authorizationBasic = typeof d.authorizationBasic === 'string' ? d.authorizationBasic.trim() : ''
-  // El manual de Galeno sólo documenta el ambiente de pruebas: la URL y el Authorization de
-  // producción hay que pedírselos a Galeno aparte, así que sin ellos no tiene sentido guardar
-  // "producción" — se probaría contra pruebas creyendo que se está en producción.
-  if (ambiente === 'produccion' && (!urlBase || !authorizationBasic)) {
-    throw new ErrorDeNegocio(
-      'Para el ambiente de producción hacen falta la URL base y el "Authorization" que da Galeno: no están en el manual de pruebas, hay que pedírselos aparte.',
-    )
-  }
-  if (urlBase && !/^https:\/\//i.test(urlBase)) throw new ErrorDeNegocio('La URL base de Galeno tiene que empezar con https://.')
-
-  // Cambiar el usuario o el ambiente puede ser otro productor: el legajo guardado no se arrastra.
-  const mismaCuenta = anterior?.usuario === usuario && anterior?.ambiente === ambiente
-  config.galeno = {
-    usuario,
-    clave,
-    ambiente,
-    ...(urlBase ? { urlBase } : {}),
-    ...(authorizationBasic ? { authorizationBasic } : {}),
-    ...(mismaCuenta && anterior?.productorCodigo ? { productorCodigo: anterior.productorCodigo } : {}),
-    actualizadoEn: new Date().toISOString(),
-  }
-  escribirConfig(config)
-  return estadoGaleno()
-}
-
-export function borrarCredencialesGaleno(): EstadoDeGaleno {
-  const config = leerConfig()
-  delete config.galeno
-  escribirConfig(config)
-  return estadoGaleno()
+/** El legajo del productor ya identificado en esta computadora, o `null` si todavía no se resolvió. */
+export function legajoGaleno(): string | null {
+  return leerConfig().galeno?.productorCodigo ?? null
 }
 
 /**
@@ -717,9 +607,8 @@ export function borrarCredencialesGaleno(): EstadoDeGaleno {
  * productor conectado (web Service de Planes Comerciales), para no tener que volver a pedirlo en
  * cada consulta de Cuenta Corriente o de Pólizas por Legajo.
  */
-export function guardarProductorCodigoGaleno(productorCodigo: string): void {
+export function guardarLegajoGaleno(productorCodigo: string): void {
   const config = leerConfig()
-  if (!config.galeno) return
-  escribirConfig({ ...config, galeno: { ...config.galeno, productorCodigo } })
+  escribirConfig({ ...config, galeno: { productorCodigo } })
 }
 

@@ -1834,19 +1834,19 @@ export function registrarIpc(): void {
   // lo que reemplaza cargar la cobertura a mano—; emitir, en cambio, pide EDITAR Presupuestos: crea
   // una póliza real contra un tercero. Las Consultas, la Cuenta Corriente, los Contratos de ART y la
   // Impresión son reportes de sólo lectura y van con el mismo permiso que el resto de Administración.
-  manejar('galeno:estado', () => {
+  manejar('galeno:estado', async () => {
     exigirVista('administracion')
-    return exito(estadoGaleno())
+    return exito(await estadoGaleno())
   })
-  manejar('galeno:guardarCredenciales', (datos) => {
+  manejar('galeno:guardarCredenciales', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await guardarGaleno(datos, actor))
+  })
+  manejar('galeno:borrarCredenciales', async () => {
     exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirEdicion('administracion')
-    return exito(guardarGaleno(datos))
-  })
-  manejar('galeno:borrarCredenciales', () => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
-    exigirEdicion('administracion')
-    return exito(borrarGaleno())
+    return exito(await borrarGaleno())
   })
   manejar('galeno:probar', async () => {
     exigirVista('administracion')

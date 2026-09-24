@@ -9,15 +9,28 @@ export const AYUDA_API_ASEGURADORAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Qué se puede hacer con esto',
         parrafos: [
-          'Con las credenciales cargadas, Presupuestos puede cotizar con Galeno en el momento —en vez de anotar la cobertura y el precio a mano— y, si el cliente acepta esa opción, emitir la póliza sin salir de la app.',
+          'Con la cuenta cargada, Presupuestos puede cotizar con Galeno en el momento —en vez de anotar la cobertura y el precio a mano— y, si el cliente acepta esa opción, emitir la póliza sin salir de la app.',
           'Acá abajo, en «Consultas, Cuenta Corriente y ART», se puede mirar lo que Galeno ya tiene cargado: pólizas por legajo, los riesgos y el detalle de una póliza, la producción de automotores, las cuotas impagas y cobradas, las pólizas vigentes, los endosos, la cuenta corriente (de Seguros y de ART) y los contratos de ART.',
+        ],
+      },
+      {
+        titulo: 'Por qué habla el servidor y no esta computadora',
+        parrafos: [
+          'Galeno sólo acepta pedidos que salgan de la IP que la agencia le dio de alta, y esa es la del VPS —no la de ninguna de las cinco sucursales, que además suelen ser dinámicas—. Por eso la cuenta que se carga acá no la usa esta computadora: viaja al servidor y es el servidor el que le habla a Galeno directo, exactamente el mismo circuito que ya usaba la credencial de Galeno (novedades).',
+          'Por eso tampoco se muestra el usuario ya cargado, ni «probar la conexión» necesita nada escrito en los campos: prueba lo que YA está usando el servidor.',
+        ],
+      },
+      {
+        titulo: 'De fábrica ya funciona',
+        parrafos: [
+          'DM Gestión trae cargada de fábrica la cuenta de producción de Galeno, con la IP del VPS ya autorizada, así que cotizar, emitir y consultar andan sin que nadie tenga que cargar nada acá. Esta pantalla sirve para cambiarla el día que haga falta —otro usuario, otro ambiente, o Galeno rotando la clave— y para volver a la de fábrica con «Sacarlas».',
         ],
       },
       {
         titulo: 'Pruebas y producción',
         parrafos: [
           'El manual de Galeno sólo documenta un ambiente de pruebas: mientras se trabaje ahí, alcanza con el usuario y la clave. Para producción, Galeno da aparte una URL y un «Authorization» distintos —no están en el manual—, y hay que cargarlos acá antes de pasar el ambiente a «Producción».',
-          'Si al probar la conexión Galeno dice algo como «Usuario no registrado», casi siempre es que esas credenciales son de producción y todavía está elegido el ambiente de pruebas (o al revés).',
+          'Si al probar la conexión Galeno dice algo como «Usuario no habilitado» o que la IP no fue informada, revisá con Galeno que la IP dada de alta sea la del VPS de la agencia, no la de una computadora.',
         ],
       },
       {

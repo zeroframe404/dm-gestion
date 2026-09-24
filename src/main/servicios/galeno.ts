@@ -1,5 +1,6 @@
-// Servicio de Galeno Seguros: valida lo que llega por IPC, arma (o reusa) el cliente autenticado con
-// las credenciales guardadas en config.json, llama a `main/aseguradoras/galeno/*` y traduce cualquier
+// Servicio de Galeno Seguros: valida lo que llega por IPC, arma (o reusa) el cliente que habla con
+// Galeno A TRAVÉS DEL VPS (ver `main/aseguradoras/galeno/cliente.ts`: Galeno sólo acepta pedidos desde
+// la IP del VPS, no desde esta computadora), llama a `main/aseguradoras/galeno/*` y traduce cualquier
 // `ErrorDeGaleno` a `ErrorDeNegocio`. Es el único punto por el que un error de Galeno le llega al
 // renderer con su mensaje real: `ipc.ts` sólo intercepta `ErrorDeNegocio`, así que sin esta traducción
 // cualquier falla de Galeno se vería en pantalla como el mensaje genérico de error inesperado.
@@ -21,6 +22,7 @@ import {
   type PruebaDeGaleno,
   type ReporteDeGaleno,
   type ReporteGaleno,
+  type SesionUsuario,
   type SubModeloGaleno,
   type TipoDeVehiculo,
 } from '../../shared/tipos'
@@ -32,35 +34,23 @@ import { cotizar as cotizarEnGaleno } from '../aseguradoras/galeno/cotizacion'
 import * as cuentaCorriente from '../aseguradoras/galeno/cuentaCorriente'
 import { emitir as emitirEnGaleno, emitirConInspeccion as emitirConInspeccionEnGaleno } from '../aseguradoras/galeno/emision'
 import * as impresion from '../aseguradoras/galeno/impresion'
-import {
-  borrarCredencialesGaleno,
-  credencialesGaleno,
-  estadoGaleno as estadoGuardado,
-  guardarCredencialesGaleno,
-  guardarProductorCodigoGaleno,
-} from './config'
+import { credencialesVps, guardarLegajoGaleno, legajoGaleno } from './config'
 import { ErrorDeNegocio } from './errores'
+import { crearFuenteVps } from './sincronizacion'
 import { objeto, texto } from './validacion'
 
 // --- El cliente en memoria -----------------------------------------------
 
 /**
- * El cliente autenticado vive sólo en memoria mientras el programa está abierto: es una sesión (el
- * token dura una hora), no un dato que haga falta persistir. Se descarta al guardar o borrar
- * credenciales, para no seguir usando una sesión de un usuario que ya no es el cargado.
+ * El cliente en sí no tiene sesión que cachear (eso lo maneja el VPS del lado de Galeno): sólo envuelve
+ * la URL y el token del puente, que no cambian mientras el programa está abierto. Por eso se arma una
+ * sola vez y no hay que descartarlo nunca —a diferencia de antes, cuando acá vivían las credenciales de
+ * Galeno y cambiarlas invalidaba el cliente.
  */
 let clienteEnMemoria: ClienteGaleno | null = null
-let usuarioDelCliente = ''
 
 function cliente(): ClienteGaleno {
-  const credenciales = credencialesGaleno()
-  if (!credenciales) {
-    throw new ErrorDeNegocio('Todavía no están cargadas las credenciales de Galeno. Se cargan en API Aseguradoras → Galeno.')
-  }
-  if (!clienteEnMemoria || usuarioDelCliente !== credenciales.usuario) {
-    clienteEnMemoria = crearClienteGaleno(credenciales)
-    usuarioDelCliente = credenciales.usuario
-  }
+  if (!clienteEnMemoria) clienteEnMemoria = crearClienteGaleno(credencialesVps())
   return clienteEnMemoria
 }
 
@@ -77,39 +67,85 @@ async function conCliente<T>(accion: (cli: ClienteGaleno) => Promise<T>): Promis
  * El legajo del productor conectado. Casi todos los servicios de Consultas y de Cuenta Corriente lo
  * piden como parámetro obligatorio; se resuelve una sola vez —desde el web Service de Planes
  * Comerciales, que ya lo trae— y se guarda en config.json para no volver a pedirlo en cada consulta.
+ * Es el mismo legajo para las cinco computadoras (la cuenta de Galeno es una sola, en el VPS), así que
+ * esto es sólo una cache local: pedirlo dos veces no rompe nada, sólo cuesta un pedido de más.
  */
 async function legajoDelProductor(cli: ClienteGaleno): Promise<string> {
-  const guardado = estadoGuardado().productorCodigo
+  const guardado = legajoGaleno()
   if (guardado) return guardado
   const planes = await catalogos.planesComerciales(cli, 4)
   const productorCodigo = planes[0]?.productorCodigo
   if (!productorCodigo) {
     throw new ErrorDeGaleno('Galeno no devolvió ningún plan comercial para este usuario: no se pudo identificar el legajo del productor.', false)
   }
-  guardarProductorCodigoGaleno(productorCodigo)
+  guardarLegajoGaleno(productorCodigo)
   return productorCodigo
 }
 
 // --- Conexión y credenciales -----------------------------------------------
+//
+// La cuenta de Galeno (usuario, clave, ambiente, URL y Authorization de producción) ya no se guarda en
+// esta computadora: es el ajuste compartido `galenoApi` del VPS, que es quien le habla a Galeno. Mismo
+// circuito que la credencial del portal de novedades (`galenoNovedades.ts`): se edita desde la
+// pantalla, viaja derecho al servidor y ninguna PC adopta una copia.
 
-export function estadoGaleno(): EstadoDeGaleno {
-  return estadoGuardado()
+function fuenteVps() {
+  const fuente = crearFuenteVps()
+  if (!fuente) {
+    throw new ErrorDeNegocio('Esta computadora no tiene configurada la base del VPS, que es donde vive la cuenta de Galeno.')
+  }
+  return fuente
 }
 
-export function guardarGaleno(datos: unknown): EstadoDeGaleno {
-  // Credenciales nuevas: se descarta la sesión en memoria, que era de las viejas.
-  clienteEnMemoria = null
-  return guardarCredencialesGaleno(datos)
+export async function estadoGaleno(): Promise<EstadoDeGaleno> {
+  const productorCodigo = legajoGaleno()
+  try {
+    const ficha = await fuenteVps().estadoAjuste('galenoApi')
+    if (!ficha) return { enElServidor: false, actualizadoEn: null, actualizadoPor: null, alDia: false, error: null, productorCodigo }
+    return { enElServidor: true, actualizadoEn: ficha.actualizadoEn, actualizadoPor: ficha.actualizadoPor, alDia: true, error: null, productorCodigo }
+  } catch (error) {
+    return {
+      enElServidor: false,
+      actualizadoEn: null,
+      actualizadoPor: null,
+      alDia: false,
+      error: error instanceof Error ? error.message : String(error),
+      productorCodigo,
+    }
+  }
 }
 
-export function borrarGaleno(): EstadoDeGaleno {
-  clienteEnMemoria = null
-  return borrarCredencialesGaleno()
+export async function guardarGaleno(datos: unknown, actor: SesionUsuario): Promise<EstadoDeGaleno> {
+  const d = objeto(datos, 'Los datos de Galeno')
+  const usuario = texto(d.usuario, 'El usuario de Galeno', 1, 120)
+  const clave = texto(d.clave, 'La clave de Galeno', 1, 200)
+  const ambiente: 'desa' | 'produccion' = d.ambiente === 'produccion' ? 'produccion' : 'desa'
+  const urlBase = typeof d.urlBase === 'string' ? d.urlBase.trim() : ''
+  const authorizationBasic = typeof d.authorizationBasic === 'string' ? d.authorizationBasic.trim() : ''
+  // El manual de Galeno sólo documenta el ambiente de pruebas: la URL y el Authorization de
+  // producción hay que pedírselos a Galeno aparte, así que sin ellos no tiene sentido guardar
+  // "producción" — se probaría contra pruebas creyendo que se está en producción.
+  if (ambiente === 'produccion' && (!urlBase || !authorizationBasic)) {
+    throw new ErrorDeNegocio(
+      'Para el ambiente de producción hacen falta la URL base y el "Authorization" que da Galeno: no están en el manual de pruebas, hay que pedírselos aparte.',
+    )
+  }
+  if (urlBase && !/^https:\/\//i.test(urlBase)) throw new ErrorDeNegocio('La URL base de Galeno tiene que empezar con https://.')
+
+  await fuenteVps().guardarAjuste(
+    'galenoApi',
+    { usuario, clave, ambiente, ...(urlBase ? { urlBase } : {}), ...(authorizationBasic ? { authorizationBasic } : {}) },
+    actor.nombre ?? null,
+  )
+  return estadoGaleno()
+}
+
+export async function borrarGaleno(): Promise<EstadoDeGaleno> {
+  await fuenteVps().borrarAjuste('galenoApi')
+  return estadoGaleno()
 }
 
 export async function probarGaleno(): Promise<PruebaDeGaleno> {
-  const credenciales = credencialesGaleno()
-  if (!credenciales) return { ok: false, detalle: 'Faltan el usuario y la clave de Galeno en esta computadora.', ramasEncontradas: 0 }
   try {
     const cli = cliente()
     const lista = await catalogos.ramas(cli)
@@ -120,12 +156,12 @@ export async function probarGaleno(): Promise<PruebaDeGaleno> {
     } catch {
       // No es bloqueante para la prueba de conexión: el legajo se puede resolver más adelante.
     }
-    return { ok: true, detalle: `Conectado con Galeno Seguros como «${credenciales.usuario}».`, ramasEncontradas: lista.length }
+    return { ok: true, detalle: 'Conectado con Galeno Seguros a través del servidor de la agencia.', ramasEncontradas: lista.length }
   } catch (error) {
     const esDeRed = error instanceof ErrorDeGaleno && error.esDeRed
     return {
       ok: false,
-      detalle: esDeRed ? 'No hay conexión con Galeno Seguros.' : error instanceof Error ? error.message : String(error),
+      detalle: esDeRed ? 'No hay conexión con el servidor de la agencia.' : error instanceof Error ? error.message : String(error),
       ramasEncontradas: 0,
     }
   }
