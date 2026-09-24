@@ -217,6 +217,20 @@ export function resolverVehiculoDelCatalogo(tipo: unknown, marcaId: unknown, mod
   }
 }
 
+/**
+ * El código de InfoAuto (CODIA) de un vehículo elegido del catálogo, o null si el catálogo que está
+ * bajado para ese tipo no es el de InfoAuto. Es el código que entienden casi todas las compañías
+ * argentinas —Galeno lo acepta en lugar de su propio catálogo—, y por eso el multicotizador lo prefiere
+ * a buscar el vehículo por nombre en cada compañía. Con Mercado Libre o DNRPA los ids son de otro
+ * sistema y no sirven para esto.
+ */
+export function codigoInfoAutoDe(codigoCatalogo: string): string | null {
+  const [tipo, id] = codigoCatalogo.split(':')
+  if (!esTipo(tipo) || !id) return null
+  const fila = db().prepare('SELECT proveedor FROM catalogo_estado WHERE tipo = ?').get(tipo) as { proveedor: string | null } | undefined
+  return fila?.proveedor === 'InfoAuto' ? id : null
+}
+
 /** El nombre legible de una categoría, para las pantallas que sólo tienen el código guardado. */
 export function nombreDeCategoria(categoria: string | null): string {
   if (!categoria) return ''

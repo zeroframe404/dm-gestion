@@ -11,6 +11,7 @@ import { AYUDA_LEADS } from './leads'
 import { AYUDA_MARKETING } from './marketing'
 import { AYUDA_MENSAJES } from './mensajes'
 import { AYUDA_METRICAS } from './metricas'
+import { AYUDA_MULTICOTIZADOR } from './multicotizador'
 import { AYUDA_POLIZAS } from './polizas'
 import { AYUDA_PRESUPUESTOS } from './presupuestos'
 import { AYUDA_RENOVACIONES } from './renovaciones'
@@ -26,6 +27,7 @@ export const CONTENIDO_AYUDA: Record<string, ContenidoDeAyuda> = {
   ...AYUDA_CLIENTES,
   ...AYUDA_LEADS,
   ...AYUDA_PRESUPUESTOS,
+  ...AYUDA_MULTICOTIZADOR,
   ...AYUDA_TAREAS,
   ...AYUDA_MENSAJES,
   ...AYUDA_POLIZAS,

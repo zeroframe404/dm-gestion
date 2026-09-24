@@ -408,6 +408,11 @@ const api: ApiDm = {
     detalleDeLiquidaciones: (filtros) => invocar('galeno:detalleDeLiquidaciones', filtros),
     imprimir: (pedido) => invocar('galeno:imprimir', pedido),
   },
+  multicotizador: {
+    aseguradoras: () => invocar('multicotizador:aseguradoras'),
+    localidades: (tipoVehiculo, codigoPostal) => invocar('multicotizador:localidades', tipoVehiculo, codigoPostal),
+    cotizar: (pedido) => invocar('multicotizador:cotizar', pedido),
+  },
   galenoNovedades: {
     estado: () => invocar('galenoNovedades:estado'),
     bandeja: () => invocar('galenoNovedades:bandeja'),
