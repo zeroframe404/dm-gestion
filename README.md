@@ -1351,8 +1351,8 @@ lo que cubre cada cobertura. Tiene su propio permiso (área `multicotizador`).
 - **Un adaptador por compañía** (`src/main/multicotizador/`): traduce la solicitud a los códigos de su
   API. Lo propio de cada compañía —plan comercial, modo de facturación, su código de localidad, la
   versión en su catálogo— lo elige sola y lo devuelve como **ajustes** que se pueden cambiar desde su
-  tarjeta. Con catálogo de InfoAuto el vehículo viaja por su código; si no, se busca por nombre y,
-  si hay dos versiones parecidas, se pregunta en vez de adivinar.
+  tarjeta. El vehículo se busca por nombre en el catálogo de cada compañía y, si hay dos versiones
+  parecidas, se pregunta en vez de adivinar.
 - **Una llamada por compañía, en paralelo**: cada tarjeta se llena apenas contesta la suya, y una
   compañía caída vuelve como error en su tarjeta sin frenar a las demás.
 - **El comparativo** agrupa todas las coberturas en categorías comunes (RC, terceros con pérdida total,
@@ -1815,7 +1815,6 @@ arrancar.
 
 | Qué | Dónde se carga | Quién lo carga |
 | --- | --- | --- |
-| Catálogo de vehículos (InfoAuto, Mercado Libre, DNRPA) | Administración → Catálogo de vehículos | Superadministrador |
 | Conexión con Google (Drive: respaldos y adjuntos) — **obligatoria** | Administración → Google Drive | Superadministrador |
 | App de Meta y **la dirección de vuelta** | Administración → Redes sociales | Superadministrador |
 | Catálogo de compañías y la plantilla del aviso | Administración → Compañías | Administrador o superadministrador |
@@ -2555,8 +2554,8 @@ consulta, y la pantalla lo dice en lugar de aparentar que está rota.
 
 Estas cuatro listas **no tienen pestaña en la planilla** donde escribirse (la que se le parece,
 COBERTURA, es un cuadro de resumen con celdas combinadas), así que no viajan con la sincronización de
-todos los días. Viajan por el **puente de ajustes del VPS**, el mismo por el que ya viajan las
-credenciales del catálogo de vehículos: el superadministrador toca «Publicar para todas» y el resto de
+todos los días. Viajan por el **puente de ajustes del VPS**, el mismo por el que ya viajan la
+conexión con Google y la app de Meta: el superadministrador toca «Publicar para todas» y el resto de
 las computadoras las adopta sola al arrancar. La barra de arriba del módulo dice en qué estado está.
 
 La adopción del arranque **no pisa lo que se cargó acá y todavía no se publicó**. Sin esa regla, los
@@ -2709,3 +2708,18 @@ que ya no está en la hoja no se cuente; que un «crear» pendiente —o uno ya 
 cola; que un borrado no cree pestañas; que los adjuntos se borren del disco; que el historial sobreviva;
 y que la advertencia de la póliza vigente describa lo que de verdad pasa, cerrando el mes para
 comprobarlo.
+
+## Catálogo de vehículos (DNRPA)
+
+El catálogo de autos y motos es la **Tabla de Valuación de Automotores y Motovehículos de la DNRPA**
+(gratis, oficial, un código MTM/FMM por versión). No se baja el PDF en cada computadora:
+
+- **El VPS** (`Seguros_Daniel_Martinez`, `server/src/modules/vehiculos`) detecta cada edición nueva,
+  la lee y la guarda en `vehiculos_maestro`, con un log por corrida en `vehiculos_importaciones`.
+- **Cada PC** baja sólo lo que cambió (`GET /api/dmg/vehiculos/maestro?desde=<revisión>`) a la tabla
+  `maestro_vehiculos` de su SQLite: al arrancar, cada 6 horas y con «Actualizar ahora» en
+  Administración → Catálogo de vehículos (`src/main/servicios/catalogoVehiculos.ts`).
+- Los desplegables (Marca → Modelo → Versión → Año) leen siempre de la copia local. La categoría sale
+  de la carrocería de la tabla (`src/main/vehiculos/mapeo.ts`). La clave guardada en
+  `vehiculos.catalogo_codigo` es el código MTM/FMM.
+

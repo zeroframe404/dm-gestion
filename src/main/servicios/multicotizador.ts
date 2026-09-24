@@ -21,7 +21,6 @@ import { TIPOS_DE_VEHICULO, type TipoDeVehiculo } from '../../shared/tipos'
 import type { SolicitudResuelta } from '../multicotizador/aseguradora'
 import { codigoPostalDeCuatro } from '../multicotizador/equivalencias'
 import { aseguradorasRegistradas } from '../multicotizador/registro'
-import { codigoInfoAutoDe } from './catalogoVehiculos'
 import { ErrorDeNegocio } from './errores'
 import { booleano, objeto, texto } from './validacion'
 
@@ -170,7 +169,9 @@ export async function cotizarEnAseguradora(pedido: unknown, veNumerosDeLaAgencia
 
   const resuelta: SolicitudResuelta = {
     ...solicitud,
-    codigoInfoAuto: solicitud.vehiculo.codigoCatalogo ? codigoInfoAutoDe(solicitud.vehiculo.codigoCatalogo) : null,
+    // El catálogo ya no es el de InfoAuto (es el maestro de la DNRPA): no hay CODIA que mandar. La
+    // traducción del código MTM al de cada compañía la hace la tabla de equivalencias.
+    codigoInfoAuto: null,
   }
 
   try {

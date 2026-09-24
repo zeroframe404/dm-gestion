@@ -84,11 +84,28 @@ function sinCambios(reparacion: ReturnType<typeof reconciliarEsquema>): boolean 
 }
 
 /** Todas las sentencias que agregan algo al esquema después de haber creado las tablas. */
+/** Las tablas que siguen existiendo al final de todas las migraciones (sin las temporales de SQLite). */
+function tablasDelEsquemaFinal(): Set<string> {
+  const db = new Database(':memory:')
+  try {
+    ejecutarMigraciones(db)
+    return new Set(db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).pluck().all() as string[])
+  } finally {
+    db.close()
+  }
+}
+
+/**
+ * Los ALTER y los índices de todas las migraciones, menos los de tablas que una migración posterior
+ * borró (la 36 borra la caché vieja del catálogo de vehículos): ahí ya no hay nada que reparar.
+ */
 function sentenciasIncrementales(): string[] {
+  const finales = tablasDelEsquemaFinal()
+  const tablaDe = (sentencia: string) => /^ALTER TABLE (\w+)/.exec(sentencia)?.[1] ?? / ON (\w+)/.exec(sentencia)?.[1] ?? ''
   return MIGRACIONES.flatMap((m) => [
     ...(m.sql.match(/ALTER TABLE [^;]+;/g) ?? []),
     ...(m.sql.match(/CREATE (?:UNIQUE )?INDEX [^;]+;/g) ?? []),
-  ])
+  ]).filter((sentencia) => finales.has(tablaDe(sentencia)))
 }
 
 test('el error de Daniel: falta huella y el importador no puede ni preparar el INSERT', () => {

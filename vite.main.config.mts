@@ -7,10 +7,6 @@ const externos = [
   'better-sqlite3',
   'bcryptjs',
   '@googleapis/sheets',
-  'pdfjs-dist',
-  // El adaptador de DNRPA hace `import()` de esta subruta puntual: el nombre del paquete solo no
-  // alcanza para que rolldown la deje afuera del bundle, hace falta la ruta exacta.
-  'pdfjs-dist/legacy/build/pdf.mjs',
   ...builtinModules,
   ...builtinModules.map((modulo) => 'node:' + modulo),
 ]

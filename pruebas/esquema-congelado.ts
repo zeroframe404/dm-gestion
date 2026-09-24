@@ -87,4 +87,8 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // La 35 suma a `presupuestos` la columna `suma_asegurada` y la tabla `presupuesto_adjuntos`: los PDF
   // de cotización que manda cada compañía, con las mismas columnas que `poliza_adjuntos`.
   35: '4afbe0501dddf9f5',
+  // La 36 cambia el catálogo de vehículos: `maestro_vehiculos` y `maestro_estado` (el maestro de la
+  // DNRPA que baja del VPS) reemplazan a la caché del proveedor (`catalogo_marcas`/`modelos`/`lineas`/
+  // `estado`), que se borra.
+  36: '84b3e8187f7ec3cf',
 }

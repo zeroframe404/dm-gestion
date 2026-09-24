@@ -370,13 +370,9 @@ export interface ApiDm {
   }
   vehiculos: {
     estado: Remota<'vehiculos:estado'>
-    guardarCredenciales: Remota<'vehiculos:guardarCredenciales'>
-    publicar: Remota<'vehiculos:publicar'>
-    estadoCompartido: Remota<'vehiculos:estadoCompartido'>
-    adoptar: Remota<'vehiculos:adoptar'>
-    borrarCredenciales: Remota<'vehiculos:borrarCredenciales'>
-    probar: Remota<'vehiculos:probar'>
-    refrescar: Remota<'vehiculos:refrescar'>
+    actualizar: Remota<'vehiculos:actualizar'>
+    importaciones: Remota<'vehiculos:importaciones'>
+    importarAhora: Remota<'vehiculos:importarAhora'>
     marcas: Remota<'vehiculos:marcas'>
     modelos: Remota<'vehiculos:modelos'>
     lineas: Remota<'vehiculos:lineas'>

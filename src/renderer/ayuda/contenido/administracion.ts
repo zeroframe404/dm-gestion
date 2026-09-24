@@ -475,37 +475,29 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.vehiculos': {
     clave: 'administracion.vehiculos',
     titulo: 'Administración → Catálogo de vehículos',
-    resumen: 'La conexión con el catálogo de autos y motos, y la copia local que usa el alta de pólizas.',
+    resumen: 'El catálogo de autos y motos de la DNRPA, que el servidor actualiza solo, y la copia local que usa el alta de pólizas.',
     secciones: [
       {
         titulo: 'Qué cambia con esto',
         parrafos: [
-          'Sin catálogo, al cargar una póliza hay que escribir la marca, el modelo y el año a mano, y así en la base terminan conviviendo «FORD», «Ford» y «FRD», y «FIESTA» sin saber cuál de las catorce versiones es. Con el catálogo cargado, el formulario los ofrece en listas encadenadas: se elige la marca y aparecen sus modelos, se elige el modelo y aparecen sus versiones (líneas), y después el año.',
+          'Sin catálogo, al cargar una póliza hay que escribir la marca, el modelo y el año a mano, y así en la base terminan conviviendo «FORD», «Ford» y «FRD», y «FIESTA» sin saber cuál de las catorce versiones es. Con el catálogo cargado, el formulario los ofrece en listas encadenadas: se elige la marca y aparecen sus modelos, se elige el modelo y aparecen sus versiones, y después el año.',
           'Y algo más importante: la CATEGORÍA —pick-up, SUV, furgón, camión, sedán— la decide el catálogo con lo ya elegido y no se puede tocar. De la categoría dependen la prima y qué coberturas se pueden emitir, y quien está cargando no tiene por qué saber si una Amarok es camioneta o pick-up.',
         ],
       },
       {
-        titulo: 'El proveedor y sus credenciales',
+        titulo: 'De dónde sale',
         parrafos: [
-          'Se elige uno de dos. InfoAuto es el catálogo clásico de las aseguradoras argentinas y pide usuario y clave. Mercado Libre es la API que se contrata desde el panel de desarrolladores de Mercado Pago y pide el App ID y la Clave secreta de la aplicación que se creó ahí; también acepta un Access Token pegado a mano, que es más rápido para probar pero vence —con App ID y Clave secreta el permiso se renueva solo.',
-          'Los códigos de marca y de modelo de un proveedor no tienen nada que ver con los del otro, así que cambiar de proveedor obliga a volver a bajar el catálogo. Y Mercado Libre publica por esta API los autos y camionetas únicamente: para motos hace falta InfoAuto.',
-          'El botón «Probar la conexión» dice enseguida si las credenciales son correctas, sin bajar nada.',
-        ],
-      },
-      {
-        titulo: 'Se cargan una vez, no una por computadora',
-        parrafos: [
-          'El superadministrador las carga y en el mismo movimiento viajan al servidor de la agencia; el resto de las computadoras las toma sola al abrir el programa. Antes había que ir máquina por máquina, y con que una quedara sin cargar esa persona atendía el mostrador sin los desplegables.',
-          'En el servidor se guardan cifradas. En cada computadora quedan en su archivo de configuración local, que no se sincroniza ni sale en los respaldos. La tarjeta «Las mismas credenciales en todas las computadoras» dice si esta máquina está al día, y tiene los botones para mandarlas o para traerlas a mano sin esperar al próximo arranque.',
-          'Si el servidor no contesta cuando se guardan, no se pierde nada: quedan bien guardadas en esta computadora y la pantalla ofrece el reintento.',
+          'De la Tabla de Valuación de Automotores y Motovehículos que publica la DNRPA (el registro del automotor). Es gratis, es oficial, trae autos y motos, y cada versión tiene un código propio (MTM o FMM) que no cambia de un mes a otro. No hay usuario ni clave que cargar.',
+          'El servidor de la agencia revisa dos veces por día si la DNRPA publicó una tabla nueva y, si la publicó, la lee solo. Las computadoras bajan lo que cambió al abrir el programa y cada algunas horas. Nadie tiene que hacer nada.',
+          'La tarjeta «Lo que leyó el servidor» muestra cada lectura: cuántos vehículos encontró, cuántos renglones descartó y por qué. Si una tabla nueva viniera con muchos menos vehículos que la anterior (un PDF mal armado, por ejemplo), el servidor no la publica y queda anotado ahí.',
         ],
       },
       {
         titulo: 'La copia local',
         parrafos: [
           'Los desplegables del formulario salen SIEMPRE de una copia guardada en esta computadora, y nunca de internet. Es a propósito: elegir un vehículo en el mostrador tiene que ser instantáneo, y tiene que funcionar aunque se corte la conexión, que es justo cuando más se cobra.',
-          '«Refrescar todo» baja el catálogo entero. Son decenas de miles de versiones y puede tardar varios minutos; mientras tanto se puede seguir usando el programa. Conviene hacerlo una vez por mes: los modelos nuevos salen todo el año. La pantalla marca «Conviene refrescarlo» cuando pasó un mes.',
-          'La agencia puede tener contratada una sola mitad del catálogo (los autos y no las motos, por ejemplo). Si una falla, la otra se baja igual y el motivo queda escrito en su tarjeta.',
+          '«Actualizar ahora» baja en el momento lo que haya cambiado, sin esperar. «Buscar edición nueva» le pide al servidor que mire ya si la DNRPA publicó una tabla nueva; puede tardar un minuto.',
+          'La tabla trae los años desde 2002. Un vehículo más viejo, o uno que todavía no figura, se carga a mano con el botón de siempre.',
         ],
       },
       {
@@ -519,8 +511,12 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
     ],
     conceptos: [
       {
-        termino: 'Línea',
-        explicacion: 'La versión exacta dentro de un modelo: «Corolla 2.0 XEI CVT» es una línea del modelo Corolla. Es la que define la categoría.',
+        termino: 'Versión',
+        explicacion: 'La versión exacta dentro de un modelo: «Corolla 2.0 XEI CVT» es una versión del modelo Corolla. Es la que define la categoría.',
+      },
+      {
+        termino: 'Código MTM',
+        explicacion: 'El código que la DNRPA le da a cada versión (MTM para importados, FMM para nacionales). Es lo que identifica al vehículo aunque dos versiones se llamen igual.',
       },
       {
         termino: 'Categoría',

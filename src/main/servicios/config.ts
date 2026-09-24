@@ -1,9 +1,8 @@
 // Configuración local en %APPDATA%/dm-gestion/config.json.
 // Acá viven las credenciales de Google: nunca se guardan en la base ni en el repositorio.
-import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { PROVEEDORES_DE_CATALOGO, type EstadoConexionGoogle, type EstadoDeMeta, type ProveedorDeCatalogo } from '../../shared/tipos'
+import type { EstadoConexionGoogle, EstadoDeMeta } from '../../shared/tipos'
 import { rutaConfig } from '../rutas'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
@@ -47,30 +46,6 @@ interface ConfigMeta {
   actualizadoEn: string
 }
 
-/**
- * El catálogo de vehículos. `usuario` y `clave` son el par de credenciales del proveedor elegido: el
- * usuario y la clave de InfoAuto, o el App ID y la Clave secreta de Mercado Libre. Con DNRPA quedan
- * los dos vacíos: la tabla es pública y no hace falta ninguna credencial.
- *
- * Los dos tokens los escribe el programa, no una persona. El `refreshToken` es de InfoAuto: lo guarda
- * el adaptador después de entrar para no tener que volver a mandar la clave en cada arranque, dura un
- * día y vencido se entra de nuevo con usuario y clave. El `accessToken` sí lo puede pegar una persona:
- * es el `APP_USR-…` que muestra Mercado Pago en «Credenciales de producción», y es opcional porque con
- * App ID y Clave secreta el token se pide solo.
- *
- * `urlFuente` es sólo de DNRPA: pisa la detección automática de la tabla vigente, para cuando la
- * DNRPA cambia la página y hay que apuntar el programa a la URL nueva sin esperar una versión nueva.
- */
-interface ConfigVehiculos {
-  proveedor?: ProveedorDeCatalogo
-  usuario: string
-  clave: string
-  accessToken?: string | null
-  refreshToken?: string | null
-  urlFuente?: string | null
-  actualizadoEn: string
-}
-
 /** La consola del control remoto (MeshCentral). Sólo la URL; adentro se entra con usuario y clave. */
 interface ConfigMesh {
   url?: string
@@ -96,7 +71,6 @@ interface Config {
   google?: ConfigGoogle
   vps?: ConfigVps
   meta?: ConfigMeta
-  vehiculos?: ConfigVehiculos
   mesh?: ConfigMesh
   galeno?: ConfigGaleno
 }
@@ -214,195 +188,6 @@ export function estadoMeta(): EstadoDeMeta {
     rutaDeConfig: rutaSegura(),
     actualizadoEn: meta?.actualizadoEn ?? null,
   }
-}
-
-// ---------------------------------------------------------------------------
-// El catálogo de vehículos
-// ---------------------------------------------------------------------------
-
-/** Dónde está el config.json de esta computadora, para poder decirlo en las pantallas. */
-export function rutaDeLaConfig(): string {
-  return rutaSegura()
-}
-
-/** El proveedor elegido. Sin nada guardado vale InfoAuto, que es con el que arrancó el programa. */
-function proveedorDe(vehiculos: ConfigVehiculos | undefined): ProveedorDeCatalogo {
-  const guardado = vehiculos?.proveedor
-  return guardado && (PROVEEDORES_DE_CATALOGO as readonly string[]).includes(guardado) ? guardado : 'INFOAUTO'
-}
-
-export interface CredencialesDeVehiculos {
-  proveedor: ProveedorDeCatalogo
-  usuario: string
-  clave: string
-  accessToken: string | null
-  refreshToken: string | null
-  urlFuente: string | null
-}
-
-export function credencialesDeVehiculos(): CredencialesDeVehiculos | null {
-  const vehiculos = leerConfig().vehiculos
-  if (!vehiculos) return null
-  const proveedor = proveedorDe(vehiculos)
-  // Mercado Libre admite dos caminos: App ID + Clave secreta (que renueva el token solo) o un Access
-  // Token pegado a mano. Con cualquiera de los dos alcanza para empezar a hablar. DNRPA no pide nada:
-  // elegirlo ya alcanza para que el catálogo se pueda bajar.
-  const hayPar = Boolean(vehiculos.usuario && vehiculos.clave)
-  const hayToken = Boolean(vehiculos.accessToken)
-  if (!hayPar && !(proveedor === 'MERCADO_LIBRE' && hayToken) && proveedor !== 'DNRPA') return null
-  return {
-    proveedor,
-    usuario: vehiculos.usuario ?? '',
-    clave: vehiculos.clave ?? '',
-    accessToken: vehiculos.accessToken ?? null,
-    refreshToken: vehiculos.refreshToken ?? null,
-    urlFuente: vehiculos.urlFuente ?? null,
-  }
-}
-
-export function proveedorDeVehiculosElegido(): ProveedorDeCatalogo {
-  return proveedorDe(leerConfig().vehiculos)
-}
-
-function exigirProveedor(valor: unknown, actual: ProveedorDeCatalogo): ProveedorDeCatalogo {
-  if (valor === undefined || valor === null || valor === '') return actual
-  if (typeof valor === 'string' && (PROVEEDORES_DE_CATALOGO as readonly string[]).includes(valor)) {
-    return valor as ProveedorDeCatalogo
-  }
-  throw new ErrorDeNegocio('El proveedor del catálogo tiene que ser InfoAuto, Mercado Libre o DNRPA.')
-}
-
-export function guardarCredencialesDeVehiculos(datos: unknown): { usuario: string; configurado: boolean } {
-  const d = objeto(datos, 'Los datos del catálogo de vehículos')
-  const config = leerConfig()
-  const anterior = config.vehiculos
-  const proveedor = exigirProveedor(d.proveedor, proveedorDe(anterior))
-  // Cambiar de proveedor no arrastra las credenciales del otro: los ids de marca y de modelo no
-  // tienen nada que ver entre sí y un secreto de InfoAuto no sirve de nada en Mercado Libre.
-  const mismoProveedor = proveedorDe(anterior) === proveedor
-  const etiquetaUsuario = proveedor === 'MERCADO_LIBRE' ? 'El App ID' : 'El usuario del catálogo'
-  const esDnrpa = proveedor === 'DNRPA'
-
-  // Con el secreto vacío se conserva el que ya estaba: así se puede corregir el identificador sin
-  // tener que ir a buscar de nuevo una clave que el panel muestra una sola vez.
-  const escrita = typeof d.clave === 'string' ? d.clave.trim() : ''
-  const clave = escrita || (mismoProveedor ? anterior?.clave : '') || ''
-  const tokenEscrito = typeof d.accessToken === 'string' ? d.accessToken.trim() : ''
-  const accessToken =
-    proveedor === 'MERCADO_LIBRE' ? tokenEscrito || (mismoProveedor ? (anterior?.accessToken ?? null) : null) : null
-
-  // Mercado Libre puede andar sólo con el Access Token: ahí el App ID es opcional y no se exige.
-  // DNRPA no pide ninguno de los dos: la tabla es pública y no hace falta iniciar sesión en ningún lado.
-  const usuarioEscrito = typeof d.usuario === 'string' ? d.usuario.trim() : ''
-  const alcanzaConElToken = proveedor === 'MERCADO_LIBRE' && Boolean(accessToken)
-  const usuario = esDnrpa ? '' : alcanzaConElToken && !usuarioEscrito ? '' : texto(d.usuario, etiquetaUsuario, 1, 120)
-  if (!clave && !alcanzaConElToken && !esDnrpa) {
-    throw new ErrorDeNegocio(
-      proveedor === 'MERCADO_LIBRE'
-        ? 'Falta la Clave secreta de la aplicación de Mercado Libre (o, en su lugar, un Access Token).'
-        : 'Falta la clave del catálogo de vehículos.',
-    )
-  }
-
-  // Sólo DNRPA usa esto: pisa la detección automática de la tabla vigente. Vacío = detectar sola, y
-  // no «conservar la anterior» como la clave: no es un secreto, la pantalla siempre muestra la que
-  // hay cargada.
-  const urlEscrita = typeof d.urlFuente === 'string' ? d.urlFuente.trim() : ''
-  if (urlEscrita && !/^https?:\/\//i.test(urlEscrita)) {
-    throw new ErrorDeNegocio('La URL de origen de la DNRPA tiene que empezar con http:// o https://.')
-  }
-  const urlFuente = esDnrpa && urlEscrita ? urlEscrita : null
-
-  escribirConfig({
-    ...config,
-    // Al cambiar las credenciales el token de refresco viejo ya no sirve.
-    vehiculos: {
-      proveedor,
-      usuario,
-      clave: esDnrpa ? '' : clave,
-      accessToken,
-      refreshToken: null,
-      urlFuente,
-      actualizadoEn: new Date().toISOString(),
-    },
-  })
-  return { usuario, configurado: true }
-}
-
-/**
- * Escribe las credenciales tal cual vinieron del VPS, sin las validaciones de la pantalla.
- *
- * Va aparte de `guardarCredencialesDeVehiculos` a propósito: lo que baja del servidor ya lo validó
- * quien lo cargó, y hacerlo pasar de nuevo por «la clave vacía conserva la anterior» tendría el
- * efecto contrario al que se busca —una PC que ya tenía otras credenciales se quedaría con las suyas
- * en vez de adoptar las del servidor.
- */
-export function adoptarCredencialesDeVehiculos(valor: unknown): boolean {
-  if (!valor || typeof valor !== 'object') return false
-  const v = valor as { proveedor?: unknown; usuario?: unknown; clave?: unknown; accessToken?: unknown; urlFuente?: unknown }
-  const proveedor = exigirProveedor(v.proveedor, 'INFOAUTO')
-  const usuario = typeof v.usuario === 'string' ? v.usuario.trim() : ''
-  const clave = typeof v.clave === 'string' ? v.clave.trim() : ''
-  const accessToken = typeof v.accessToken === 'string' && v.accessToken.trim() ? v.accessToken.trim() : null
-  const urlFuente = typeof v.urlFuente === 'string' && v.urlFuente.trim() ? v.urlFuente.trim() : null
-  // DNRPA no manda ni clave ni token: si no se exceptúa acá, la elección del superadministrador nunca
-  // llegaría a las demás computadoras de la agencia.
-  if (!clave && !accessToken && proveedor !== 'DNRPA') return false
-
-  const config = leerConfig()
-  config.vehiculos = { proveedor, usuario, clave, accessToken, refreshToken: null, urlFuente, actualizadoEn: new Date().toISOString() }
-  escribirConfig(config)
-  return true
-}
-
-/**
- * Lo que viaja al VPS para que el resto de las computadoras lo adopte.
- *
- * El orden de las claves importa y por eso está escrito a mano: la huella con la que el servidor y
- * cada PC se comparan es el hash del JSON, así que dos objetos con los mismos datos en distinto orden
- * darían huellas distintas y la pantalla diría «desactualizada» para siempre.
- *
- * El `refreshToken` NO va: es de esta computadora, dura un día y es de un solo uso.
- *
- * `urlFuente` sólo se agrega cuando está puesta (es de DNRPA): así la huella de las configuraciones
- * de InfoAuto y Mercado Libre que ya existen no cambia por este campo nuevo.
- */
-export function valorCompartidoDeVehiculos(): {
-  proveedor: ProveedorDeCatalogo
-  usuario: string
-  clave: string
-  accessToken: string | null
-  urlFuente?: string
-} | null {
-  const credenciales = credencialesDeVehiculos()
-  if (!credenciales) return null
-  const base = {
-    proveedor: credenciales.proveedor,
-    usuario: credenciales.usuario,
-    clave: credenciales.clave,
-    accessToken: credenciales.accessToken,
-  }
-  return credenciales.urlFuente ? { ...base, urlFuente: credenciales.urlFuente } : base
-}
-
-/** La huella de lo que hay en esta computadora, con la misma cuenta que hace el servidor. */
-export function huellaDeVehiculos(): string | null {
-  const valor = valorCompartidoDeVehiculos()
-  if (!valor) return null
-  return createHash('sha256').update(JSON.stringify(valor)).digest('hex')
-}
-
-export function borrarCredencialesDeVehiculos(): void {
-  const config = leerConfig()
-  delete config.vehiculos
-  escribirConfig(config)
-}
-
-/** Lo guarda el adaptador solo, cada vez que entra. `null` lo borra (venció). */
-export function guardarRefrescoDeVehiculos(token: string | null): void {
-  const config = leerConfig()
-  if (!config.vehiculos) return
-  escribirConfig({ ...config, vehiculos: { ...config.vehiculos, refreshToken: token } })
 }
 
 /** Las credenciales completas, sólo para el proceso principal. */
