@@ -1341,6 +1341,28 @@ Un vehículo y las compañías que se cotizaron para él.
   anteriores» trae la historia.
 - Cargarle un presupuesto a una consulta la deja **COTIZADA** sola.
 
+### Multicotizador
+
+Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno), comparados por
+lo que cubre cada cobertura. Tiene su propio permiso (área `multicotizador`).
+
+- **Una solicitud común**: vehículo del catálogo de la agencia, uso, 0 km, GNC, rastreo, suma
+  asegurada opcional, código postal y localidad, vigencia, medio de pago y, opcional, el tomador.
+- **Un adaptador por compañía** (`src/main/multicotizador/`): traduce la solicitud a los códigos de su
+  API. Lo propio de cada compañía —plan comercial, modo de facturación, su código de localidad, la
+  versión en su catálogo— lo elige sola y lo devuelve como **ajustes** que se pueden cambiar desde su
+  tarjeta. Con catálogo de InfoAuto el vehículo viaja por su código; si no, se busca por nombre y,
+  si hay dos versiones parecidas, se pregunta en vez de adivinar.
+- **Una llamada por compañía, en paralelo**: cada tarjeta se llena apenas contesta la suya, y una
+  compañía caída vuelve como error en su tarjeta sin frenar a las demás.
+- **El comparativo** agrupa todas las coberturas en categorías comunes (RC, terceros con pérdida total,
+  terceros completo, premium, todo riesgo) y marca la más barata de cada una.
+- Las coberturas tildadas (hasta 12) arman un **presupuesto** normal; las de Galeno se pueden **emitir**
+  desde ahí mismo. La comisión sólo viaja a quien ve los números de la agencia.
+- **Sumar una compañía** es escribir un archivo que cumpla `CotizadorDeAseguradora`
+  (`src/main/multicotizador/aseguradora.ts`, ver `galeno.ts`) y agregarlo a `registro.ts`: la
+  pantalla y el servicio no cambian.
+
 ### Tareas
 
 Los pendientes del equipo. La tabla existía desde la Fase 5 (se crean desde la ficha del cliente y del

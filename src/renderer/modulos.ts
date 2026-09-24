@@ -8,6 +8,7 @@ export type IdModulo =
   | 'clientes'
   | 'leads'
   | 'presupuestos'
+  | 'multicotizador'
   | 'polizas'
   | 'renovaciones'
   | 'siniestros'
@@ -54,6 +55,13 @@ export const MODULOS: Modulo[] = [
     nombre: 'Presupuestos',
     icono: 'presupuestos',
     descripcion: 'Las compañías cotizadas para cada vehículo, el mensaje de WhatsApp y el PDF.',
+    disponible: true,
+  },
+  {
+    id: 'multicotizador',
+    nombre: 'Multicotizador',
+    icono: 'billete',
+    descripcion: 'Un auto o una moto cotizados en todas las compañías con API a la vez, comparados por cobertura.',
     disponible: true,
   },
   {

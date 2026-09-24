@@ -19,6 +19,7 @@ export const AREAS = [
   'clientes',
   'leads',
   'presupuestos',
+  'multicotizador',
   'polizas',
   'renovaciones',
   'siniestros',
@@ -56,6 +57,11 @@ export const DESCRIPCION_AREA: Record<Area, { nombre: string; detalle: string }>
   clientes: { nombre: 'Clientes', detalle: 'El listado, la ficha de cada cliente y el buscador de deudores.' },
   leads: { nombre: 'Leads', detalle: 'Las consultas que todavía no son clientes.' },
   presupuestos: { nombre: 'Presupuestos', detalle: 'Las cotizaciones, el mensaje de WhatsApp y el PDF.' },
+  multicotizador: {
+    nombre: 'Multicotizador',
+    detalle:
+      'Cotizar un auto o una moto en todas las compañías con API a la vez y comparar. Armar el presupuesto y emitir desde ahí piden además editar Presupuestos.',
+  },
   polizas: { nombre: 'Pólizas', detalle: 'El listado por póliza y el alta.' },
   renovaciones: { nombre: 'Renovaciones', detalle: 'La bandeja de lo que vence y el seguimiento.' },
   siniestros: { nombre: 'Siniestros', detalle: 'El listado, la ficha, los documentos y las tareas del siniestro.' },

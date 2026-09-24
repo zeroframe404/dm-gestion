@@ -420,6 +420,11 @@ export interface ApiDm {
     detalleDeLiquidaciones: Remota<'galeno:detalleDeLiquidaciones'>
     imprimir: Remota<'galeno:imprimir'>
   },
+  multicotizador: {
+    aseguradoras: Remota<'multicotizador:aseguradoras'>
+    localidades: Remota<'multicotizador:localidades'>
+    cotizar: Remota<'multicotizador:cotizar'>
+  },
   /** Cartera → Galeno: las novedades del portal (distinto de `galeno`, la API REST). Ver canales.ts. */
   galenoNovedades: {
     estado: Remota<'galenoNovedades:estado'>

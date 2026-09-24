@@ -120,6 +120,7 @@ const NOMBRE_MODULO: Record<Area, string> = {
   clientes: 'Clientes',
   leads: 'Leads',
   presupuestos: 'Presupuestos',
+  multicotizador: 'Multicotizador',
   polizas: 'Pólizas',
   renovaciones: 'Renovaciones',
   siniestros: 'Siniestros',

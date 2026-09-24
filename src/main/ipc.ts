@@ -277,6 +277,7 @@ import {
   tiposDePersonaGaleno,
   tiposDeUsoGaleno,
 } from './servicios/galeno'
+import { aseguradorasDelMulticotizador, cotizarEnAseguradora, localidadesDelMulticotizador } from './servicios/multicotizador'
 import {
   adoptarVehiculosDelVps,
   borrarMetaDelVps,
@@ -1974,6 +1975,24 @@ export function registrarIpc(): void {
     const error = await shell.openPath(documento.ruta)
     if (error) console.error('[galeno] No se pudo abrir el PDF impreso:', error)
     return exito(documento)
+  })
+
+  // --- Multicotizador ---------------------------------------------------------
+  //
+  // Cotizar en todas las compañías es mirar precios: alcanza con ver el Multicotizador. Lo que de verdad
+  // escribe algo —armar el presupuesto, emitir— va por sus propios canales (presupuestos:crear,
+  // galeno:emitir), que ya piden editar Presupuestos.
+  manejar('multicotizador:aseguradoras', () => {
+    exigirVista('multicotizador')
+    return exito(aseguradorasDelMulticotizador())
+  })
+  manejar('multicotizador:localidades', async (tipoVehiculo, codigoPostal) => {
+    exigirVista('multicotizador')
+    return exito(await localidadesDelMulticotizador(tipoVehiculo, codigoPostal))
+  })
+  manejar('multicotizador:cotizar', async (pedido) => {
+    const actor = exigirVista('multicotizador')
+    return exito(await cotizarEnAseguradora(pedido, veLosNumerosDeLaAgencia(actor.rol)))
   })
 
   // --- Marketing → Redes -----------------------------------------------------
