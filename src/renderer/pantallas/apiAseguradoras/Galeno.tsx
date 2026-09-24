@@ -32,7 +32,7 @@ export function Galeno() {
   const [estado, setEstado] = useState<EstadoDeGaleno | null>(null)
   const [usuarioGaleno, setUsuarioGaleno] = useState('')
   const [clave, setClave] = useState('')
-  const [ambiente, setAmbiente] = useState<'desa' | 'produccion'>('desa')
+  const [ambiente, setAmbiente] = useState<'desa' | 'produccion'>('produccion')
   const [urlBase, setUrlBase] = useState('')
   const [authorizationBasic, setAuthorizationBasic] = useState('')
   const [guardando, setGuardando] = useState(false)
@@ -44,8 +44,6 @@ export function Galeno() {
     const resultado = await window.dm.galeno.estado()
     if (resultado.ok) {
       setEstado(resultado.datos)
-      setUsuarioGaleno(resultado.datos.usuario)
-      setAmbiente(resultado.datos.ambiente)
     } else {
       setError(resultado.error)
     }
@@ -70,8 +68,10 @@ export function Galeno() {
     setGuardando(false)
     if (resultado.ok) {
       setEstado(resultado.datos)
+      // La clave no se deja en memoria más de lo necesario: no se guarda en esta computadora, va
+      // derecho al servidor, igual que la credencial del portal de novedades.
       setClave('')
-      setAviso('Credenciales guardadas. Probá la conexión antes de cotizar o emitir.')
+      setAviso('Credenciales guardadas en el servidor. Probá la conexión antes de cotizar o emitir.')
     } else {
       setError(resultado.error)
     }
@@ -86,7 +86,7 @@ export function Galeno() {
       setEstado(resultado.datos)
       setUsuarioGaleno('')
       setClave('')
-      setAviso('Se sacaron las credenciales de Galeno de esta computadora.')
+      setAviso('Se sacó la cuenta de Galeno del servidor: queda la de producción de fábrica.')
     } else {
       setError(resultado.error)
     }
@@ -113,16 +113,22 @@ export function Galeno() {
 
       <Tarjeta
         titulo="Conexión con Galeno Seguros"
-        descripcion="Con esto, Presupuestos puede cotizar y emitir pólizas de Galeno sin salir de la app, y acá abajo se pueden consultar sus pólizas, cuotas y cuenta corriente."
+        descripcion="Con esto, Presupuestos puede cotizar y emitir pólizas de Galeno sin salir de la app, y acá abajo se pueden consultar sus pólizas, cuotas y cuenta corriente. Galeno sólo acepta pedidos desde la IP del VPS de la agencia: es el servidor el que le habla, no esta computadora."
         acciones={
           puedeEditar && (
             <>
-              {estado.configurado && (
+              {estado.enElServidor && (
                 <Boton icono="basura" onClick={() => void borrar()} disabled={guardando}>
                   Sacarlas
                 </Boton>
               )}
-              <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando} disabled={!usuarioGaleno.trim()}>
+              <Boton
+                variante="primario"
+                icono="ok"
+                onClick={() => void guardar()}
+                cargando={guardando}
+                disabled={!usuarioGaleno.trim() || !clave}
+              >
                 Guardar
               </Boton>
             </>
@@ -130,16 +136,24 @@ export function Galeno() {
         }
       >
         <div className="flex flex-col gap-4">
-          {!estado.configurado && (
-            <Alerta tono="aviso">Todavía no están cargadas las credenciales que dio Galeno Seguros para su API REST.</Alerta>
+          {estado.enElServidor ? (
+            <Alerta tono="exito">
+              Cargadas en el servidor el {cuando(estado.actualizadoEn)}
+              {estado.actualizadoPor ? ` por ${estado.actualizadoPor}` : ''}.
+            </Alerta>
+          ) : (
+            <Alerta tono="info">
+              Todavía no se cargó una cuenta propia: se está usando la cuenta de producción de fábrica.
+            </Alerta>
           )}
+          {estado.error && <Alerta tono="error">{estado.error}</Alerta>}
           <Campo etiqueta="Usuario" value={usuarioGaleno} onChange={(evento) => setUsuarioGaleno(evento.target.value)} disabled={!puedeEditar} autoComplete="off" />
           <CampoClave
             etiqueta="Clave"
             value={clave}
             onChange={(evento) => setClave(evento.target.value)}
             disabled={!puedeEditar}
-            placeholder={estado.configurado ? '•••••••• (dejala vacía para no cambiarla)' : ''}
+            placeholder="Se guarda en el servidor, no en esta computadora"
             autoComplete="off"
           />
           <Selector
@@ -176,7 +190,7 @@ export function Galeno() {
           )}
           {puedeEditar && (
             <div className="flex flex-wrap items-center gap-3">
-              <Boton icono="enlace" onClick={() => void probar()} disabled={!estado.configurado}>
+              <Boton icono="enlace" onClick={() => void probar()}>
                 Probar la conexión
               </Boton>
               {prueba && (
@@ -188,18 +202,11 @@ export function Galeno() {
             </div>
           )}
           {estado.productorCodigo && <p className="text-xs text-slate-500">Legajo del productor identificado: {estado.productorCodigo}</p>}
-          <p className="text-xs leading-relaxed text-slate-500">
-            En esta computadora quedan en <code className="font-mono text-[11px]">{estado.rutaDeConfig}</code>. Cargadas: {cuando(estado.actualizadoEn)}.
-          </p>
         </div>
       </Tarjeta>
 
-      {estado.configurado && (
-        <>
-          <ImpresionGaleno legajoSugerido={estado.productorCodigo ?? ''} />
-          <ReportesGaleno />
-        </>
-      )}
+      <ImpresionGaleno legajoSugerido={estado.productorCodigo ?? ''} />
+      <ReportesGaleno />
     </div>
   )
 }

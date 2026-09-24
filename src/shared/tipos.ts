@@ -4770,15 +4770,14 @@ export interface CodigoPostalGaleno {
   localidad: string
 }
 
-/** Lo que hay cargado de la cuenta de Galeno en esta computadora. La clave nunca viaja al renderer. */
-export interface EstadoDeGaleno {
-  configurado: boolean
-  usuario: string
-  ambiente: 'desa' | 'produccion'
-  /** El legajo del productor, tal como lo devolvió el web Service de Planes Comerciales. */
+/**
+ * El estado de la cuenta de Galeno para su API REST: vive en el ajuste compartido `galenoApi` del VPS
+ * (Galeno sólo acepta pedidos desde su IP), no en esta computadora, así que es el mismo
+ * `EstadoDeAjusteCompartido` que usan el catálogo de vehículos, Google o Meta.
+ */
+export interface EstadoDeGaleno extends EstadoDeAjusteCompartido {
+  /** El legajo del productor, cacheado en ESTA computadora (no viaja al VPS). */
   productorCodigo: string | null
-  rutaDeConfig: string
-  actualizadoEn: string | null
 }
 
 export interface DatosDeGaleno {
