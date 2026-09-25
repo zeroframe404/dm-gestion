@@ -1,7 +1,8 @@
 // El único lugar donde se decide qué es la categoría de un vehículo.
 //
-// La fuente es el catálogo maestro (la Tabla de Valuación de la DNRPA), que trae la carrocería en
-// «Desc. Tipo»: SEDAN 5 PUERTAS, PICK-UP CABINA DOBLE, TODO TERRENO, MOTOCICLETA…
+// La fuente es el catálogo maestro. Las filas viejas de la DNRPA traen la carrocería (SEDAN 5 PUERTAS,
+// PICK-UP CABINA DOBLE, TODO TERRENO, MOTOCICLETA…); las de las APIs de las aseguradoras, no, y ahí
+// la categoría sale de la descripción de la versión.
 //
 // La categoría es el dato que la agencia pidió que NO se pueda elegir, y con razón: de ella dependen
 // la prima y qué coberturas se pueden emitir, y quien carga no tiene por qué saber si una Amarok es

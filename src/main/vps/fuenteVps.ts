@@ -716,8 +716,9 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
 
   // --- Catálogo maestro de vehículos -----------------------------------------
   //
-  // El VPS arma el catálogo con la Tabla de Valuación de la DNRPA; acá sólo se baja. `desde` es la
-  // revisión que ya tiene esta computadora: el servidor devuelve lo que cambió después (o todo, con 0).
+  // El VPS arma el catálogo con las APIs de todas las aseguradoras cargadas (hoy Galeno); acá sólo se
+  // baja. `desde` es la revisión que ya tiene esta computadora: el servidor devuelve lo que cambió
+  // después (o todo, con 0).
 
   async leerMaestroDeVehiculos(desde: number): Promise<BajadaDelMaestroVps> {
     const datos = (await this.pedir(
@@ -731,19 +732,27 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
     return datos
   }
 
-  async importacionesDeVehiculos(): Promise<{ enCurso: boolean; importaciones: unknown[] }> {
+  async importacionesDeVehiculos(): Promise<{ enCurso: boolean; progreso: unknown; importaciones: unknown[] }> {
     const datos = (await this.pedir('leer el log del catálogo de vehículos', 'GET', '/api/dmg/vehiculos/importaciones', undefined, {
       reintentarSinRespuesta: false,
-    })) as { enCurso?: unknown; importaciones?: unknown } | null
-    return { enCurso: datos?.enCurso === true, importaciones: Array.isArray(datos?.importaciones) ? datos.importaciones : [] }
+    })) as { enCurso?: unknown; progreso?: unknown; importaciones?: unknown } | null
+    return {
+      enCurso: datos?.enCurso === true,
+      progreso: datos?.progreso ?? null,
+      importaciones: Array.isArray(datos?.importaciones) ? datos.importaciones : [],
+    }
   }
 
-  /** Le pide al VPS que busque ya la tabla vigente de la DNRPA. Puede tardar hasta un minuto. */
-  async importarVehiculos(forzar: boolean): Promise<{ sinNovedades: boolean; importacion: unknown }> {
-    const datos = (await this.pedir('importar la tabla de la DNRPA', 'POST', '/api/dmg/vehiculos/importar', { forzar }, {
+  /**
+   * Le pide al VPS que lea ya las APIs de las aseguradoras. No espera a que termine (son miles de
+   * pedidos): el servidor contesta en el acto y el avance se sigue con `importacionesDeVehiculos`.
+   * `iniciada: false` = ya había una lectura en curso, y es ésa la que hay que esperar.
+   */
+  async importarVehiculos(forzar: boolean): Promise<{ iniciada: boolean }> {
+    const datos = (await this.pedir('pedir la lectura de las APIs de las aseguradoras', 'POST', '/api/dmg/vehiculos/importar', { forzar }, {
       reintentarSinRespuesta: false,
-    })) as { sinNovedades?: unknown; importacion?: unknown } | null
-    return { sinNovedades: datos?.sinNovedades === true, importacion: datos?.importacion ?? null }
+    })) as { iniciada?: unknown } | null
+    return { iniciada: datos?.iniciada === true }
   }
 
   // --- Galeno Seguros --------------------------------------------------------

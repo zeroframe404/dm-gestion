@@ -760,14 +760,17 @@ export interface Canales {
     plantillaClave: string,
   ) => Resultado<AvisoDeSegmento>
 
-  // Catálogo de vehículos: el maestro de la DNRPA que arma el VPS. Los desplegables salen SIEMPRE de
+  // Catálogo de vehículos: el maestro que arma el VPS con las APIs de las aseguradoras. Los desplegables salen SIEMPRE de
   // la copia local: dibujar un desplegable no sale a internet.
   'vehiculos:estado': () => Resultado<EstadoDelCatalogo>
   /** Baja del VPS lo que cambió desde la última vez. El avance llega por 'vehiculos:progreso'. */
   'vehiculos:actualizar': () => Resultado<EstadoDelCatalogo>
-  /** El log de las importaciones de la tabla de la DNRPA en el VPS. */
+  /** El log de las lecturas de las APIs de las aseguradoras en el VPS. */
   'vehiculos:importaciones': () => Resultado<RegistroDeImportaciones>
-  /** Pide al VPS que lea ya la edición vigente de la DNRPA y baja lo nuevo. `forzar` la relee aunque ya esté. */
+  /**
+   * Pide al VPS que lea ya las APIs de todas las aseguradoras, espera a que termine y baja lo nuevo.
+   * Sin `forzar`, el VPS no vuelve a leer si tiene una lectura buena reciente.
+   */
   'vehiculos:importarAhora': (forzar: boolean) => Resultado<ResultadoDeImportarAhora>
   'vehiculos:marcas': (tipo: TipoDeVehiculo) => Resultado<OpcionDeCatalogo[]>
   'vehiculos:modelos': (tipo: TipoDeVehiculo, marcaId: string) => Resultado<OpcionDeCatalogo[]>

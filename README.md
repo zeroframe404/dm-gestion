@@ -2709,17 +2709,23 @@ cola; que un borrado no cree pestañas; que los adjuntos se borren del disco; qu
 y que la advertencia de la póliza vigente describa lo que de verdad pasa, cerrando el mes para
 comprobarlo.
 
-## Catálogo de vehículos (DNRPA)
+## Catálogo de vehículos (APIs de las aseguradoras)
 
-El catálogo de autos y motos es la **Tabla de Valuación de Automotores y Motovehículos de la DNRPA**
-(gratis, oficial, un código MTM/FMM por versión). No se baja el PDF en cada computadora:
+El catálogo de autos y motos sale de las **APIs de todas las aseguradoras cargadas** (hoy Galeno, autos
+—rama 4— y motos —rama 28—). Es la regla general: bajar el catálogo siempre trae la unión de todas las
+APIs que haya. Ninguna computadora recorre las APIs por su cuenta:
 
-- **El VPS** (`Seguros_Daniel_Martinez`, `server/src/modules/vehiculos`) detecta cada edición nueva,
-  la lee y la guarda en `vehiculos_maestro`, con un log por corrida en `vehiculos_importaciones`.
+- **El VPS** (`Seguros_Daniel_Martinez`, `server/src/modules/vehiculos`) recorre una vez por día cada
+  API registrada en `fuentes/index.ts` (marcas → modelos → años → versiones), las une —una versión que
+  dos compañías llaman igual queda una sola vez— y guarda el resultado en `vehiculos_maestro`, con un
+  log por corrida en `vehiculos_importaciones`. Sumar una aseguradora es escribir su fuente (ver
+  `fuentes/galeno.ts`) y agregarla a esa lista.
 - **Cada PC** baja sólo lo que cambió (`GET /api/dmg/vehiculos/maestro?desde=<revisión>`) a la tabla
   `maestro_vehiculos` de su SQLite: al arrancar, cada 6 horas y con «Actualizar ahora» en
-  Administración → Catálogo de vehículos (`src/main/servicios/catalogoVehiculos.ts`).
+  Administración → Catálogo de vehículos (`src/main/servicios/catalogoVehiculos.ts`). «Leer las APIs
+  ahora» le pide al VPS una lectura nueva y sigue su avance hasta bajarla.
 - Los desplegables (Marca → Modelo → Versión → Año) leen siempre de la copia local. La categoría sale
-  de la carrocería de la tabla (`src/main/vehiculos/mapeo.ts`). La clave guardada en
-  `vehiculos.catalogo_codigo` es el código MTM/FMM.
+  de la carrocería, si la fuente la trae, o de la descripción (`src/main/vehiculos/mapeo.ts`). La clave
+  guardada en `vehiculos.catalogo_codigo` es el código de la aseguradora (`GALENO:<rama>:<marca>:<modelo>:<versión>`);
+  con él el multicotizador cotiza en Galeno la versión exacta.
 

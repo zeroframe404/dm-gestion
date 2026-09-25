@@ -376,7 +376,7 @@ function arrancar(): void {
   // Las credenciales que cargó el superadministrador. No se espera: si el VPS no contesta, el
   // programa abre igual con lo que ya tenía guardado.
   paso('la adopción de los ajustes compartidos', adoptarAjustesAlArrancar)
-  // El catálogo de vehículos (la tabla de la DNRPA que arma el VPS): sólo lo que cambió. Tampoco se
+  // El catálogo de vehículos (el que arma el VPS con las APIs de las aseguradoras): sólo lo que cambió. Tampoco se
   // espera: sin red, los desplegables siguen con lo que ya estaba bajado.
   paso('la bajada del catálogo de vehículos', bajarCatalogoAlArrancar)
 

@@ -166,6 +166,10 @@ export class VpsSimulado {
     }>,
     edicion?: string,
   ): void
+  /** Lo que hace el simulador cuando termina una lectura de las APIs; devuelve la fila del log. */
+  alLeerLasApis?: () => unknown
+  /** El `forzar` de cada POST /vehiculos/importar que recibió. */
+  lecturasPedidas?: boolean[]
   mapaDeVersionesDeMetricas(): Record<string, number>
   /** La hoja se reemplazó entera (restaurar un respaldo, la migración inicial). */
   subirGeneracion(): void

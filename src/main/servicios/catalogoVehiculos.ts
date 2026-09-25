@@ -1,8 +1,9 @@
-// El catálogo de vehículos: el maestro de la DNRPA bajado del VPS y el selector encadenado que lo lee.
+// El catálogo de vehículos: el maestro bajado del VPS y el selector encadenado que lo lee.
 //
-// De dónde sale: el VPS lee una vez por edición la Tabla de Valuación de Automotores y Motovehículos
-// de la DNRPA (gratis y oficial, autos y motos, un código MTM/FMM por versión) y la publica. Cada PC
-// baja sólo lo que cambió desde la última vez. El PDF no se descarga en ninguna PC.
+// De dónde sale: de las APIs de TODAS las aseguradoras cargadas en el VPS (hoy Galeno, autos y motos;
+// ver server/src/modules/vehiculos/fuentes en el repositorio del servidor). El VPS las recorre una vez
+// por día, las une —una versión que dos compañías llaman igual queda una sola vez— y publica el
+// resultado. Cada PC baja sólo lo que cambió desde la última vez; ninguna recorre las APIs por su cuenta.
 //
 // La regla que ordena todo el archivo: DIBUJAR UN DESPLEGABLE NUNCA SALE A INTERNET. El selector lee
 // siempre de la base. A internet se sale al arrancar, cada algunas horas y cuando alguien toca
@@ -20,7 +21,9 @@ import {
   type ImportacionDelCatalogo,
   type LineaDeCatalogo,
   type OpcionDeCatalogo,
+  type LecturaDeUnaAseguradora,
   type ProgresoDeCatalogo,
+  type ProgresoDelServidor,
   type RegistroDeImportaciones,
   type ResultadoDeImportarAhora,
   type TipoDeVehiculo,
@@ -58,7 +61,7 @@ function exigirTipo(valor: unknown): TipoDeVehiculo {
 // ---------------------------------------------------------------------------
 // Cómo se ve una marca
 // ---------------------------------------------------------------------------
-// La tabla trae todo en mayúsculas. En pantalla va «Volkswagen» en vez de «VOLKSWAGEN», salvo las
+// Las APIs traen todo en mayúsculas. En pantalla va «Volkswagen» en vez de «VOLKSWAGEN», salvo las
 // siglas, que no son una palabra. Es la misma lista que usa el VPS para el formulario web.
 const SIGLAS_DE_MARCA = new Map<string, string>([
   ['BMW', 'BMW'],
@@ -218,7 +221,7 @@ export function lineasDelCatalogo(tipo: unknown, marcaId: unknown, modeloId: unk
   }))
 }
 
-/** Sólo los vigentes: uno que la DNRPA dejó de publicar ya no se ofrece para elegir. */
+/** Sólo los vigentes: uno que las aseguradoras dejaron de ofrecer ya no se ofrece para elegir. */
 function filaDelCodigo(tipo: TipoDeVehiculo, mtm: string): FilaDelMaestro | undefined {
   return db()
     .prepare(
@@ -238,9 +241,9 @@ function aniosDe(fila: FilaDelMaestro): number[] {
 }
 
 /**
- * Los años que se pueden elegir para una versión: los que tienen valuación en la tabla de la DNRPA.
+ * Los años que se pueden elegir para una versión: los que ofrece la aseguradora para esa versión.
  * Un Corolla 2015 no puede ser de una versión que salió en 2020, y ofrecerlo es dejar que el error
- * entre. La tabla llega hasta 2002; un vehículo más viejo se carga a mano.
+ * entre. Un vehículo que ninguna aseguradora ofrece para ese año se carga a mano.
  */
 export function aniosDeLaLinea(tipo: unknown, marcaId: unknown, modeloId: unknown, lineaId: unknown): number[] {
   const cual = exigirTipo(tipo)
@@ -263,7 +266,7 @@ export function resolverVehiculoDelCatalogo(tipo: unknown, marcaId: unknown, mod
   if (!/^\d{4}$/.test(anioTexto)) throw new ErrorDeNegocio('Elegí el año del vehículo.')
   const anios = aniosDe(fila)
   if (anios.length > 0 && !anios.includes(Number(anioTexto))) {
-    throw new ErrorDeNegocio(`La DNRPA no tiene valuación de esa versión para ${anioTexto}. Elegí otro año o cargalo a mano.`)
+    throw new ErrorDeNegocio(`Las aseguradoras no ofrecen esa versión para ${anioTexto}. Elegí otro año o cargalo a mano.`)
   }
 
   return {
@@ -359,10 +362,13 @@ function aplicarBajada(bajada: BajadaDelMaestroVps): { guardados: number; descar
 /**
  * Baja del VPS lo que cambió desde la última vez (o todo, la primera). Devuelve cómo quedó.
  *
- * Una respuesta completa pero vacía NO borra nada: es un servidor que todavía no importó la tabla, no
- * una tabla sin vehículos.
+ * Una respuesta completa pero vacía NO borra nada: es un servidor que todavía no leyó las APIs, no un
+ * catálogo sin vehículos. En ese caso se le pide que las lea (si ya está leyendo, no arranca otra).
  */
-export async function bajarCatalogo(avisar: (progreso: ProgresoDeCatalogo) => void = () => undefined): Promise<EstadoDelCatalogo> {
+export async function bajarCatalogo(
+  avisar: (progreso: ProgresoDeCatalogo) => void = () => undefined,
+  { pedirLecturaSiFalta = true }: { pedirLecturaSiFalta?: boolean } = {},
+): Promise<EstadoDelCatalogo> {
   const vps = fuente()
   if (!vps) {
     throw new ErrorDeNegocio('Esta computadora no está conectada al VPS, y el catálogo de vehículos se baja de ahí.')
@@ -377,7 +383,11 @@ export async function bajarCatalogo(avisar: (progreso: ProgresoDeCatalogo) => vo
     if (!bajada.completo && bajada.revision < local) bajada = await vps.leerMaestroDeVehiculos(0)
 
     if (bajada.completo && bajada.vehiculos.length === 0) {
-      throw new ErrorDeNegocio('El VPS todavía no tiene el catálogo de vehículos. Se arma solo con la tabla de la DNRPA; probá en un rato.')
+      if (!pedirLecturaSiFalta) throw new ErrorDeNegocio('El servidor no tiene el catálogo de vehículos: no pudo leer las APIs de las aseguradoras.')
+      await vps.importarVehiculos(false).catch(() => undefined)
+      throw new ErrorDeNegocio(
+        'El servidor todavía está armando el catálogo con las APIs de las aseguradoras (Galeno). Tarda un rato la primera vez; probá más tarde.',
+      )
     }
     avisar({ etapa: 'guardando', detalle: `Guardando ${bajada.vehiculos.length} vehículos…` })
     const { guardados, descartados } = aplicarBajada(bajada)
@@ -411,7 +421,7 @@ export function bajarCatalogoAlArrancar(): void {
 }
 
 // ---------------------------------------------------------------------------
-// La importación en el VPS: el log y el botón «Buscar edición nueva»
+// La lectura en el VPS: el log y el botón «Leer las APIs ahora»
 // ---------------------------------------------------------------------------
 
 function comoNumero(valor: unknown): number {
@@ -420,6 +430,24 @@ function comoNumero(valor: unknown): number {
 
 function comoTexto(valor: unknown): string | null {
   return typeof valor === 'string' && valor ? valor : null
+}
+
+function comoLectura(cruda: unknown): LecturaDeUnaAseguradora | null {
+  if (!cruda || typeof cruda !== 'object') return null
+  const c = cruda as Record<string, unknown>
+  const id = comoTexto(c.id)
+  if (!id) return null
+  return {
+    id,
+    nombre: comoTexto(c.nombre) ?? id,
+    estado: comoTexto(c.estado) ?? 'ERROR',
+    versiones: comoNumero(c.versiones),
+    autos: comoNumero(c.autos),
+    motos: comoNumero(c.motos),
+    pedidos: comoNumero(c.pedidos),
+    fallidos: comoNumero(c.fallidos),
+    mensaje: comoTexto(c.mensaje),
+  }
 }
 
 export function comoImportacion(cruda: unknown): ImportacionDelCatalogo | null {
@@ -449,33 +477,90 @@ export function comoImportacion(cruda: unknown): ImportacionDelCatalogo | null {
     descartesPorMotivo: porMotivo,
     autos: typeof detalle.autos === 'number' ? detalle.autos : null,
     motos: typeof detalle.motos === 'number' ? detalle.motos : null,
+    fuentes: Array.isArray(detalle.fuentes)
+      ? detalle.fuentes.map(comoLectura).filter((lectura): lectura is LecturaDeUnaAseguradora => lectura !== null)
+      : [],
   }
+}
+
+function comoProgreso(crudo: unknown): ProgresoDelServidor | null {
+  if (!crudo || typeof crudo !== 'object') return null
+  const c = crudo as Record<string, unknown>
+  const detalle = comoTexto(c.detalle)
+  return detalle ? { detalle, hechos: comoNumero(c.hechos), total: comoNumero(c.total) } : null
 }
 
 export async function importacionesDelVps(): Promise<RegistroDeImportaciones> {
   const vps = fuente()
-  if (!vps) return { enCurso: false, importaciones: [], error: 'Esta computadora no está conectada al VPS.' }
+  if (!vps) return { enCurso: false, progreso: null, importaciones: [], error: 'Esta computadora no está conectada al VPS.' }
   try {
-    const { enCurso, importaciones } = await vps.importacionesDeVehiculos()
+    const { enCurso, progreso, importaciones } = await vps.importacionesDeVehiculos()
     return {
       enCurso,
+      progreso: comoProgreso(progreso),
       importaciones: importaciones.map(comoImportacion).filter((importacion): importacion is ImportacionDelCatalogo => importacion !== null),
       error: null,
     }
   } catch (error) {
-    return { enCurso: false, importaciones: [], error: error instanceof Error ? error.message : String(error) }
+    return { enCurso: false, progreso: null, importaciones: [], error: error instanceof Error ? error.message : String(error) }
   }
 }
 
+/** Cada cuánto se pregunta al VPS por la lectura en curso, y cuánto se la espera como mucho. */
+let esperaEntreConsultasMs = 3_000
+const ESPERA_MAXIMA_MS = 3 * 60 * 60 * 1000
+const CORTES_TOLERADOS = 5
+
+/** Las pruebas no esperan tres segundos entre consulta y consulta. */
+export function usarEsperaDePrueba(ms: number): void {
+  esperaEntreConsultasMs = ms
+}
+
 /**
- * Le pide al VPS que busque ya la edición vigente de la DNRPA (sin esperar a su reloj) y después baja
- * lo nuevo a esta computadora.
+ * Le pide al VPS que lea ya las APIs de todas las aseguradoras cargadas (sin esperar a su reloj),
+ * sigue el avance hasta que termina y después baja lo nuevo a esta computadora.
  */
 export async function importarAhora(forzar: boolean, avisar: (progreso: ProgresoDeCatalogo) => void): Promise<ResultadoDeImportarAhora> {
   const vps = fuente()
   if (!vps) throw new ErrorDeNegocio('Esta computadora no está conectada al VPS.')
-  avisar({ etapa: 'pidiendo', detalle: 'El servidor está leyendo la tabla de la DNRPA (puede tardar un minuto)…' })
-  const { sinNovedades, importacion } = await vps.importarVehiculos(forzar)
-  const estado = await bajarCatalogo(avisar)
-  return { sinNovedades, importacion: comoImportacion(importacion), estado }
+  avisar({ etapa: 'pidiendo', detalle: 'Pidiéndole al servidor que lea las APIs de las aseguradoras…' })
+  await vps.importarVehiculos(forzar)
+
+  const hasta = Date.now() + ESPERA_MAXIMA_MS
+  let registro: Awaited<ReturnType<FuenteDelMaestro['importacionesDeVehiculos']>>
+  let fallasSeguidas = 0
+  for (;;) {
+    try {
+      registro = await vps.importacionesDeVehiculos()
+      fallasSeguidas = 0
+    } catch (error) {
+      // La lectura sigue en el servidor aunque se corte una consulta: se aguantan unos cortes seguidos.
+      if (++fallasSeguidas >= CORTES_TOLERADOS) throw error
+      await new Promise((resolve) => setTimeout(resolve, esperaEntreConsultasMs))
+      continue
+    }
+    if (!registro.enCurso) break
+    if (Date.now() > hasta) {
+      throw new ErrorDeNegocio('El servidor sigue leyendo las APIs de las aseguradoras. Cuando termine, el catálogo se baja solo.')
+    }
+    const progreso = comoProgreso(registro.progreso)
+    avisar({
+      etapa: 'pidiendo',
+      detalle: progreso
+        ? `${progreso.detalle}${progreso.total > 0 ? ` (${progreso.hechos.toLocaleString('es-AR')} de ${progreso.total.toLocaleString('es-AR')} pedidos)` : ''}`
+        : 'El servidor está leyendo las APIs de las aseguradoras…',
+    })
+    await new Promise((resolve) => setTimeout(resolve, esperaEntreConsultasMs))
+  }
+
+  const importacion = registro.importaciones.length > 0 ? comoImportacion(registro.importaciones[0]) : null
+  const leyoBien = importacion?.estado === 'PUBLICADA' || importacion?.estado === 'SIN_CAMBIOS'
+  try {
+    // Recién terminó una lectura: si el servidor sigue vacío, pedir otra no arregla nada.
+    return { importacion, estado: await bajarCatalogo(avisar, { pedirLecturaSiFalta: false }) }
+  } catch (error) {
+    // Si la lectura falló, lo que importa es por qué (va en `importacion`), no que no haya nada que bajar.
+    if (!leyoBien && importacion) return { importacion, estado: estadoDelCatalogo() }
+    throw error
+  }
 }
