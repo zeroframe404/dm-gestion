@@ -127,7 +127,7 @@ function mensajeDeVacio(sucursales: readonly string[], sinSucursal: number, tota
  * exactamente la misma condición con la que se contó, así el número del cartel y las filas que
  * quedan en la tabla no pueden discrepar.
  */
-type Contador = '' | 'vencenHoy' | 'vencidos' | 'avisadosHoy' | 'coberturaPorTerminar' | 'pagadosHoy' | 'imputados' | 'adelantos'
+type Contador = '' | 'vencenHoy' | 'vencidos' | 'vencidosAvisados' | 'avisadosHoy' | 'coberturaPorTerminar' | 'pagadosHoy' | 'imputados' | 'adelantos'
 
 function estaPagada(fila: FilaCartera): boolean {
   return Boolean(fila.pagoFecha) || fila.pagoRegistrado
@@ -154,8 +154,12 @@ function entraEnElContador(entrada: FilaConAlerta, contador: Contador, hoy: stri
   switch (contador) {
     case 'vencenHoy':
       return !estaPagada(fila) && alerta.diasParaVencer === 0
+    // Vencidos sin avisar todavía: en cuanto se les manda el WhatsApp (o se marcan a mano) pasan a
+    // «Vencidos avisados», así se distingue a quién ya se le avisó de a quién todavía no.
     case 'vencidos':
-      return !estaPagada(fila) && alerta.diasParaVencer !== null && alerta.diasParaVencer < 0
+      return !estaPagada(fila) && alerta.diasParaVencer !== null && alerta.diasParaVencer < 0 && !fila.fechaEnvio
+    case 'vencidosAvisados':
+      return !estaPagada(fila) && alerta.diasParaVencer !== null && alerta.diasParaVencer < 0 && Boolean(fila.fechaEnvio)
     case 'avisadosHoy':
       return (fila.fechaEnvio ?? '').startsWith(hoy)
     // Ya venció y la compañía todavía lo cubre, pero por poco: son los que hay que llamar hoy, porque
@@ -361,6 +365,7 @@ export function PlanillaDelMes() {
     const hoy = datos?.hoy ?? ''
     let vencenHoy = 0
     let vencidos = 0
+    let vencidosAvisados = 0
     let avisadosHoy = 0
     let coberturaPorTerminar = 0
     let pagadosHoy = 0
@@ -371,11 +376,12 @@ export function PlanillaDelMes() {
       if (entraEnElContador(entrada, 'adelantos', hoy)) adelantos++
       if (entraEnElContador(entrada, 'vencenHoy', hoy)) vencenHoy++
       if (entraEnElContador(entrada, 'vencidos', hoy)) vencidos++
+      if (entraEnElContador(entrada, 'vencidosAvisados', hoy)) vencidosAvisados++
       if (entraEnElContador(entrada, 'avisadosHoy', hoy)) avisadosHoy++
       if (entraEnElContador(entrada, 'coberturaPorTerminar', hoy)) coberturaPorTerminar++
       if (entraEnElContador(entrada, 'pagadosHoy', hoy)) pagadosHoy++
     }
-    return { total: conAlerta.length, vencenHoy, vencidos, avisadosHoy, coberturaPorTerminar, pagadosHoy, imputados, adelantos }
+    return { total: conAlerta.length, vencenHoy, vencidos, vencidosAvisados, avisadosHoy, coberturaPorTerminar, pagadosHoy, imputados, adelantos }
   }, [conAlerta, datos])
 
   const filaSeleccionada = useMemo(
@@ -657,8 +663,16 @@ export function PlanillaDelMes() {
           valor={contadores.vencidos}
           tono="rojo"
           activo={filtros.contador === 'vencidos'}
-          titulo="Ya pasó el día de vencimiento y no figuran pagos. Los que todavía están dentro de la cobertura financiera de su compañía se ven en amarillo o naranja."
+          titulo="Ya pasó el día de vencimiento, no figuran pagos y todavía no se les avisó. Los que todavía están dentro de la cobertura financiera de su compañía se ven en amarillo o naranja. En cuanto se les manda el aviso pasan a «Vencidos avisados»."
           alTocar={() => alternarContador('vencidos')}
+        />
+        <Contador
+          etiqueta="Vencidos avisados"
+          valor={contadores.vencidosAvisados}
+          tono="naranja"
+          activo={filtros.contador === 'vencidosAvisados'}
+          titulo="Ya pasó el día de vencimiento y no figuran pagos, pero ya se les avisó (por WhatsApp o marcado a mano)."
+          alTocar={() => alternarContador('vencidosAvisados')}
         />
         <Contador
           etiqueta="Avisados hoy"
