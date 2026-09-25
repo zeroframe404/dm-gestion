@@ -118,8 +118,10 @@ export async function tiposDePersona(cliente: ClienteGaleno): Promise<OpcionGale
 function comoCodigoPostal(cruda: unknown): CodigoPostalGaleno | null {
   if (!cruda || typeof cruda !== 'object') return null
   const c = cruda as Record<string, unknown>
-  if (typeof c.codigoPostal !== 'string' || typeof c.subCodigoPostal !== 'string' || typeof c.localidad !== 'string') return null
-  return { codigoRama: String(c.codigoRama ?? ''), codigoPostal: c.codigoPostal, subCodigoPostal: c.subCodigoPostal, localidad: c.localidad }
+  // Los códigos pueden venir como texto o como número (el mismo desajuste que marca/modelo): los dos sirven.
+  const esCodigo = (valor: unknown): valor is string | number => typeof valor === 'string' || typeof valor === 'number'
+  if (!esCodigo(c.codigoPostal) || !esCodigo(c.subCodigoPostal) || typeof c.localidad !== 'string') return null
+  return { codigoRama: String(c.codigoRama ?? ''), codigoPostal: String(c.codigoPostal), subCodigoPostal: String(c.subCodigoPostal), localidad: c.localidad }
 }
 
 /** Puede haber más de una localidad para el mismo código postal (distintos `subCodigoPostal`). */

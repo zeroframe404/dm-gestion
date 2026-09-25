@@ -117,7 +117,8 @@ function validarElegidos(valor: unknown): Record<string, string> {
 
 /**
  * Las localidades de un código postal, juntando lo que sepa cada compañía. Es sólo una ayuda para
- * escribir el nombre bien: si ninguna contesta, la pantalla deja escribirlo a mano.
+ * escribir el nombre bien: si ninguna contesta, la pantalla deja escribirlo a mano. Si TODAS fallan, el
+ * motivo vuelve como error (antes se tragaba y la lista quedaba vacía sin explicación).
  */
 export async function localidadesDelMulticotizador(tipo: unknown, codigoPostal: unknown): Promise<string[]> {
   const cual = unoDe<TipoDeVehiculo>(tipo, TIPOS_DE_VEHICULO, 'El tipo de vehículo')
@@ -125,6 +126,14 @@ export async function localidadesDelMulticotizador(tipo: unknown, codigoPostal: 
   if (!/^\d{4}$/.test(cp)) return []
   const conLocalidades = aseguradorasRegistradas().filter((aseguradora) => aseguradora.localidades && aseguradora.noDisponible() === null)
   const respuestas = await Promise.allSettled(conLocalidades.map((aseguradora) => aseguradora.localidades!(cual, cp)))
+  const fallas = respuestas.flatMap((respuesta, i) =>
+    respuesta.status === 'rejected'
+      ? [`${conLocalidades[i]!.nombre}: ${respuesta.reason instanceof Error ? respuesta.reason.message : String(respuesta.reason)}`]
+      : [],
+  )
+  if (fallas.length > 0 && fallas.length === respuestas.length) {
+    throw new ErrorDeNegocio(`No se pudieron traer las localidades del ${cp}. ${fallas.join(' · ')}`)
+  }
   const vistas = new Map<string, string>()
   for (const respuesta of respuestas) {
     if (respuesta.status !== 'fulfilled') continue
