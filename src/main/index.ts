@@ -15,6 +15,7 @@ import { registrarIpc } from './ipc'
 import { arrancarCartero, apurarAlCartero, pararCartero } from './mensajeria/cartero'
 import { carpetaDatos, configurarCarpetaDatos, rutaBaseDeDatos } from './rutas'
 import { adoptarAjustesAlArrancar } from './servicios/ajustesCompartidos'
+import { bajarCatalogoAlArrancar } from './servicios/catalogoVehiculos'
 import { configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
 import { credencialesVps } from './servicios/config'
 import { hayImportacionEnCurso, marcarImportacionesInterrumpidas } from './servicios/importacion'
@@ -375,6 +376,9 @@ function arrancar(): void {
   // Las credenciales que cargó el superadministrador. No se espera: si el VPS no contesta, el
   // programa abre igual con lo que ya tenía guardado.
   paso('la adopción de los ajustes compartidos', adoptarAjustesAlArrancar)
+  // El catálogo de vehículos (la tabla de la DNRPA que arma el VPS): sólo lo que cambió. Tampoco se
+  // espera: sin red, los desplegables siguen con lo que ya estaba bajado.
+  paso('la bajada del catálogo de vehículos', bajarCatalogoAlArrancar)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) crearVentana()

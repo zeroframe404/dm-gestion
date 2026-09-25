@@ -102,8 +102,6 @@ import type {
   FiltrosMora,
   ListadoMora,
   ArchivoParaPublicar,
-  AdopcionDeCredencialesDeVehiculos,
-  DatosDelProveedorDeVehiculos,
   EstadoDeAjusteCompartido,
   // Cartera → Galeno: las novedades del portal que el VPS consulta cada quince minutos (15.4).
   CredencialesDeGaleno,
@@ -112,17 +110,16 @@ import type {
   PruebaDeGalenoNovedades,
   ResumenDeAplicacionDeGaleno,
   ResumenDePasadaDeGaleno,
-  EstadoDeCredencialesDeVehiculos,
   EstadoDelCatalogo,
   EstadoDelMesh,
   ImagenDeReporte,
   ReporteCreado,
   ReporteDeError,
-  GuardadoDeCredencialesDeVehiculos,
   LineaDeCatalogo,
   OpcionDeCatalogo,
   ProgresoDeCatalogo,
-  PruebaDelProveedor,
+  RegistroDeImportaciones,
+  ResultadoDeImportarAhora,
   TipoDeVehiculo,
   VehiculoDelCatalogo,
   DatosDeMeta,
@@ -763,25 +760,15 @@ export interface Canales {
     plantillaClave: string,
   ) => Resultado<AvisoDeSegmento>
 
-  // Catálogo de vehículos (autos y motos por API). Los desplegables salen SIEMPRE de la caché local:
-  // dibujar un desplegable no sale a internet. A internet se sale con 'vehiculos:refrescar'.
+  // Catálogo de vehículos: el maestro de la DNRPA que arma el VPS. Los desplegables salen SIEMPRE de
+  // la copia local: dibujar un desplegable no sale a internet.
   'vehiculos:estado': () => Resultado<EstadoDelCatalogo>
-  /**
-   * Guarda las credenciales acá y —si lo hace el superadministrador— las manda al VPS en el mismo
-   * movimiento, para que el resto de las computadoras las adopte al abrir el programa.
-   */
-  'vehiculos:guardarCredenciales': (datos: DatosDelProveedorDeVehiculos) => Resultado<GuardadoDeCredencialesDeVehiculos>
-  /** Reintento manual de la publicación, para cuando el guardado la encontró sin conexión. */
-  'vehiculos:publicar': () => Resultado<EstadoDeAjusteCompartido>
-  /** Cómo está el ajuste en el VPS. Va aparte de 'vehiculos:estado' porque sale a la red. */
-  'vehiculos:estadoCompartido': () => Resultado<EstadoDeAjusteCompartido>
-  /** Trae a mano lo que cargó el superadministrador, sin esperar al próximo arranque. */
-  'vehiculos:adoptar': () => Resultado<AdopcionDeCredencialesDeVehiculos>
-  /** `tambienDelServidor` sólo lo puede pedir el superadministrador: deja sin catálogo a todas. */
-  'vehiculos:borrarCredenciales': (tambienDelServidor?: boolean) => Resultado<EstadoDeCredencialesDeVehiculos>
-  'vehiculos:probar': () => Resultado<PruebaDelProveedor>
-  /** `tipo` en null refresca autos y motos. Puede tardar: el avance llega por 'vehiculos:progreso'. */
-  'vehiculos:refrescar': (tipo: TipoDeVehiculo | null) => Resultado<EstadoDelCatalogo>
+  /** Baja del VPS lo que cambió desde la última vez. El avance llega por 'vehiculos:progreso'. */
+  'vehiculos:actualizar': () => Resultado<EstadoDelCatalogo>
+  /** El log de las importaciones de la tabla de la DNRPA en el VPS. */
+  'vehiculos:importaciones': () => Resultado<RegistroDeImportaciones>
+  /** Pide al VPS que lea ya la edición vigente de la DNRPA y baja lo nuevo. `forzar` la relee aunque ya esté. */
+  'vehiculos:importarAhora': (forzar: boolean) => Resultado<ResultadoDeImportarAhora>
   'vehiculos:marcas': (tipo: TipoDeVehiculo) => Resultado<OpcionDeCatalogo[]>
   'vehiculos:modelos': (tipo: TipoDeVehiculo, marcaId: string) => Resultado<OpcionDeCatalogo[]>
   'vehiculos:lineas': (tipo: TipoDeVehiculo, marcaId: string, modeloId: string) => Resultado<LineaDeCatalogo[]>

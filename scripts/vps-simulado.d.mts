@@ -151,6 +151,21 @@ export class VpsSimulado {
   metricas: Map<string, { version: number; calculadoEn: string; payload: unknown }>
   /** «El servidor terminó de recalcular esta métrica»: sube su versión y guarda el resultado nuevo. */
   cargarMetricaDirecto(clave: string, payload: unknown): number
+  /** Publica vehículos en el catálogo maestro simulado, con una revisión nueva. */
+  cargarVehiculos(
+    vehiculos: Array<{
+      mtm: string
+      tipo: string
+      origen: string
+      marca: string
+      modelo: string
+      version: string
+      carroceria: string | null
+      anios: number[]
+      activo?: boolean
+    }>,
+    edicion?: string,
+  ): void
   mapaDeVersionesDeMetricas(): Record<string, number>
   /** La hoja se reemplazó entera (restaurar un respaldo, la migración inicial). */
   subirGeneracion(): void

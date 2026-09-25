@@ -14,7 +14,6 @@
 //
 //   clave          qué es                                                   quién lo carga
 //   ─────────────  ──────────────────────────────────────────────────────   ──────────────────────────
-//   vehiculos      credenciales del catálogo (InfoAuto, Mercado Libre, DNRPA)  superadministrador
 //   google         cuenta de servicio y URL de la hoja (Drive)                 superadministrador
 //   meta           app de Facebook e Instagram y su dirección de vuelta        superadministrador
 //   companias      días de cobertura, comisión, renovación y plantilla         administrador o superadmin
@@ -37,14 +36,7 @@ import type { EstadoDeAjusteCompartido, EstadoDeGoogleEnLaAgencia } from '../../
 import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import { adoptarCompanias, valorCompartidoDeCompanias } from './companias'
-import {
-  adoptarCredencialesDeVehiculos,
-  adoptarGoogle,
-  adoptarMeta,
-  valorCompartidoDeGoogle,
-  valorCompartidoDeMeta,
-  valorCompartidoDeVehiculos,
-} from './config'
+import { adoptarGoogle, adoptarMeta, valorCompartidoDeGoogle, valorCompartidoDeMeta } from './config'
 import { ErrorDeNegocio } from './errores'
 import { adoptarReferenciasDelVps } from './referenciasCompartidas'
 import { crearFuenteVps } from './sincronizacion'
@@ -67,13 +59,6 @@ interface AjusteCompartido {
   valorLocal: () => object | null
   /** Escribe en esta computadora lo que vino del servidor. false = no tenía la forma esperada. */
   adoptar: (valor: unknown) => boolean
-}
-
-const VEHICULOS: AjusteCompartido = {
-  clave: 'vehiculos',
-  nombre: 'las credenciales del catálogo',
-  valorLocal: valorCompartidoDeVehiculos,
-  adoptar: adoptarCredencialesDeVehiculos,
 }
 
 const GOOGLE: AjusteCompartido = {
@@ -105,7 +90,7 @@ const TICKET: AjusteCompartido = {
 }
 
 /** Los que se adoptan solos al arrancar, en el orden en que se piden. */
-const TODOS = [VEHICULOS, GOOGLE, META, COMPANIAS, TICKET]
+const TODOS = [GOOGLE, META, COMPANIAS, TICKET]
 
 /** Lo que se devuelve cuando ni siquiera hay puente: en desarrollo, o sin VPS configurado. */
 const SIN_SERVIDOR: EstadoDeAjusteCompartido = {
@@ -236,8 +221,7 @@ export type ResultadoDeAdopcion = {
 /**
  * Trae del servidor lo publicado y lo escribe en esta computadora.
  *
- * Si ya coinciden no toca nada: reescribir el config.json pisaría el `refreshToken` de InfoAuto, que
- * es de esta máquina, y obligaría a volver a entrar con la clave en cada arranque.
+ * Si ya coinciden no toca nada: no tiene sentido reescribir el config.json en cada arranque.
  */
 async function adoptarDelVps(ajuste: AjusteCompartido, opciones: { pisarLoLocal?: boolean } = {}): Promise<ResultadoDeAdopcion> {
   const vps = crearFuenteVps()
@@ -276,12 +260,6 @@ async function borrarDelVps(ajuste: AjusteCompartido): Promise<void> {
 // ---------------------------------------------------------------------------
 // Uno por uno, para que ipc.ts nombre lo que hace
 // ---------------------------------------------------------------------------
-
-export const estadoCompartidoDeVehiculos = (): Promise<EstadoDeAjusteCompartido> => estadoDe(VEHICULOS)
-export const publicarVehiculosEnElVps = (quien: string | null): Promise<EstadoDeAjusteCompartido> => publicar(VEHICULOS, quien)
-export const borrarVehiculosDelVps = (): Promise<void> => borrarDelVps(VEHICULOS)
-/** El botón «Traer las del servidor»: lo apretó alguien, así que sí pisa lo local sin publicar. */
-export const adoptarVehiculosDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(VEHICULOS, { pisarLoLocal: true })
 
 export const estadoCompartidoDeGoogle = (): Promise<EstadoDeAjusteCompartido> => estadoDe(GOOGLE)
 export const publicarGoogleEnElVps = (quien: string | null): Promise<EstadoDeAjusteCompartido> => publicar(GOOGLE, quien)
@@ -402,10 +380,10 @@ function identidadDeSucursal(nombre: string): string {
  * motivo vuelve igual, para la pantalla que quiera mostrarlo.
  */
 export async function publicarSinRomper(
-  cual: 'companias' | 'google' | 'meta' | 'vehiculos',
+  cual: 'companias' | 'google' | 'meta',
   quien: string | null,
 ): Promise<EstadoDeAjusteCompartido> {
-  const ajuste = { companias: COMPANIAS, google: GOOGLE, meta: META, vehiculos: VEHICULOS }[cual]
+  const ajuste = { companias: COMPANIAS, google: GOOGLE, meta: META }[cual]
   try {
     return await publicar(ajuste, quien)
   } catch (error) {
@@ -427,7 +405,7 @@ export async function publicarTicketSinRomper(quien: string | null, sucursalProp
  * igual con lo que ya tenía.
  *
  * Cada ajuste va por su cuenta a propósito: que el servidor no tenga las listas de las compañías no
- * puede dejar a esta computadora sin las credenciales del catálogo, ni al revés.
+ * puede dejar a esta computadora sin la conexión con Google, ni al revés.
  */
 export function adoptarAjustesAlArrancar(): void {
   for (const ajuste of TODOS) {

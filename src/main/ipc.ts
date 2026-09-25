@@ -223,11 +223,9 @@ import {
 } from './servicios/renovaciones'
 import { editarCompania, listarCompanias } from './servicios/companias'
 import {
-  borrarCredencialesDeVehiculos,
   borrarMeta,
   estadoGoogle,
   estadoMeta,
-  guardarCredencialesDeVehiculos,
   guardarGoogle,
   guardarMeta,
 } from './servicios/config'
@@ -237,8 +235,9 @@ import {
   lineasDelCatalogo,
   marcasDelCatalogo,
   modelosDelCatalogo,
-  probarProveedorDeVehiculos,
-  refrescarCatalogo,
+  bajarCatalogo,
+  importacionesDelVps,
+  importarAhora,
   resolverVehiculoDelCatalogo,
 } from './servicios/catalogoVehiculos'
 import {
@@ -279,16 +278,12 @@ import {
 } from './servicios/galeno'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora, localidadesDelMulticotizador } from './servicios/multicotizador'
 import {
-  adoptarVehiculosDelVps,
   borrarMetaDelVps,
-  borrarVehiculosDelVps,
   estadoCompartidoDeGoogle,
   estadoCompartidoDeMeta,
-  estadoCompartidoDeVehiculos,
   estadoDeGoogleEnLaAgencia,
   publicarSinRomper,
   publicarTicketSinRomper,
-  publicarVehiculosEnElVps,
   traerGoogleDelVps,
 } from './servicios/ajustesCompartidos'
 import { crearRespaldoEnElVps, listarRespaldosDelVps, restaurarRespaldoDelVps } from './servicios/respaldosVps'
@@ -1694,67 +1689,26 @@ export function registrarIpc(): void {
   // --- Catálogo de vehículos -------------------------------------------------
   //
   // Los desplegables los consulta cualquiera que pueda cargar una póliza o un presupuesto: son datos
-  // públicos de un catálogo de autos, no de la agencia. Configurar el proveedor y bajar el catálogo,
-  // en cambio, es de administradores: son credenciales y una descarga de decenas de miles de filas.
+  // públicos de la DNRPA, no de la agencia. Actualizar a mano y pedirle al VPS que lea una edición
+  // nueva es de administradores.
   manejar('vehiculos:estado', () => {
     exigirVista('polizas', 'presupuestos', 'administracion')
     return exito(estadoDelCatalogo())
   })
-  // Guardar las credenciales es, para el superadministrador, guardarlas PARA TODAS LAS COMPUTADORAS:
-  // se escriben acá y salen para el VPS en el mismo movimiento. Que el servidor no conteste no puede
-  // deshacer el guardado local —quedó bien escrito— así que el motivo viaja en la respuesta y la
-  // pantalla lo muestra con el botón para reintentar.
-  //
-  // Las carga SÓLO el superadministrador. Antes un ADMIN podía cargarlas en su computadora sin
-  // publicarlas, y eso era exactamente el problema que se quería sacar: una máquina con credenciales
-  // distintas a las de las otras cuatro, sin que nadie se entere.
-  manejar('vehiculos:guardarCredenciales', async (datos) => {
-    const actor = exigirRol('SUPER_ADMIN')
-    exigirEdicion('administracion')
-    guardarCredencialesDeVehiculos(datos)
-    const estado = estadoDelCatalogo()
-    const compartido = await publicarSinRomper('vehiculos', actor.nombre)
-    return exito({
-      estado,
-      compartido,
-      detalle: compartido.error
-        ? 'Quedaron guardadas en esta computadora, pero no se pudieron mandar al servidor.'
-        : 'Guardadas y mandadas al servidor: el resto de las computadoras las va a tomar al abrir el programa.',
-    })
-  })
-  // Reintento manual de la publicación, para cuando el guardado la encontró sin conexión.
-  manejar('vehiculos:publicar', async () => {
-    const actor = exigirRol('SUPER_ADMIN')
-    exigirEdicion('administracion')
-    return exito(await publicarVehiculosEnElVps(actor.nombre))
-  })
-  manejar('vehiculos:estadoCompartido', async () => {
-    exigirVista('administracion')
-    return exito(await estadoCompartidoDeVehiculos())
-  })
-  // Traer a mano lo que cargó el superadministrador, sin esperar al próximo arranque.
-  manejar('vehiculos:adoptar', async () => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
-    exigirEdicion('administracion')
-    const resultado = await adoptarVehiculosDelVps()
-    return exito({ ...resultado, estado: estadoDelCatalogo(), compartido: await estadoCompartidoDeVehiculos() })
-  })
-  manejar('vehiculos:borrarCredenciales', async (tambienDelServidor) => {
-    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
-    exigirEdicion('administracion')
-    borrarCredencialesDeVehiculos()
-    // Sacarlas del servidor es aparte y sólo del superadministrador: borrarlas de una computadora
-    // tiene que poder hacerse sin dejar sin catálogo a las otras cuatro.
-    if (tambienDelServidor === true) {
-      if (actor.rol !== 'SUPER_ADMIN') throw new ErrorDeNegocio('Sacarlas del servidor lo hace el superadministrador.')
-      await borrarVehiculosDelVps()
-    }
-    return exito({ estado: estadoDelCatalogo(), compartido: await estadoCompartidoDeVehiculos() })
-  })
-  manejar('vehiculos:probar', async () => {
+  manejar('vehiculos:actualizar', async () => {
     exigirRol('SUPER_ADMIN', 'ADMIN')
     exigirVista('administracion')
-    return exito(await probarProveedorDeVehiculos())
+    return exito(await bajarCatalogo((progreso) => emitirATodas('vehiculos:progreso', progreso)))
+  })
+  manejar('vehiculos:importaciones', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('administracion')
+    return exito(await importacionesDelVps())
+  })
+  manejar('vehiculos:importarAhora', async (forzar) => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await importarAhora(forzar === true, (progreso) => emitirATodas('vehiculos:progreso', progreso)))
   })
 
   // Cartera → Galeno NOVEDADES (15.4). Distinto canal que la API REST de Galeno de más abajo: esto es
@@ -1801,11 +1755,6 @@ export function registrarIpc(): void {
     const actor = exigirRol('SUPER_ADMIN')
     exigirEdicion('administracion')
     return exito(await guardarCredencialesDeGaleno(datos, actor))
-  })
-  manejar('vehiculos:refrescar', async (tipo) => {
-    exigirRol('SUPER_ADMIN', 'ADMIN')
-    exigirEdicion('administracion')
-    return exito(await refrescarCatalogo(tipo, (progreso) => emitirATodas('vehiculos:progreso', progreso)))
   })
   manejar('vehiculos:marcas', (tipo) => {
     exigirVista('polizas', 'presupuestos', 'cartera')

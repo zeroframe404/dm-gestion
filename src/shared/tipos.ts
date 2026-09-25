@@ -3836,11 +3836,16 @@ export interface OpcionDeCatalogo {
   nombre: string
 }
 
-/** Una línea (la versión concreta): es el único nivel que trae categoría y años. */
+/**
+ * Una línea (la versión concreta): es el único nivel que trae categoría y años. El `id` es el código
+ * MTM/FMM de la DNRPA, que es la clave del catálogo maestro.
+ */
 export interface LineaDeCatalogo extends OpcionDeCatalogo {
   anioDesde: number | null
   anioHasta: number | null
   categoria: CategoriaDeVehiculo | null
+  /** La carrocería de la tabla (SEDAN 5 PUERTAS…): distingue dos versiones con el mismo nombre. */
+  carroceria: string | null
 }
 
 /** Lo que queda cuando el vehículo se terminó de elegir del catálogo. */
@@ -3852,69 +3857,18 @@ export interface VehiculoDelCatalogo {
   anio: string
   /** null cuando el catálogo no la sabe. No se inventa un «OTRO» que después nadie puede corregir. */
   categoria: CategoriaDeVehiculo | null
-  /** El código del proveedor: es lo que distingue un vehículo identificado de uno tipeado. */
+  /** El código MTM/FMM del catálogo maestro: es lo que distingue un vehículo identificado de uno tipeado. */
   codigo: string
 }
 
-/** Cómo está la caché de un tipo de vehículo. */
+/** Cuántos vehículos de un tipo hay bajados en esta computadora. */
 export interface EstadoDeUnTipo {
   tipo: TipoDeVehiculo
-  refrescadoEn: string | null
   marcas: number
   modelos: number
-  lineas: number
-  ultimoError: string | null
+  versiones: number
 }
 
-/**
- * Con qué proveedor habla el catálogo. InfoAuto es el catálogo clásico de las aseguradoras
- * argentinas; Mercado Libre es la API que la agencia contrató desde el panel de desarrolladores de
- * Mercado Pago; DNRPA es la Tabla de Valuación de Automotores y Motovehículos que publica gratis el
- * organismo, y es el único de los tres que cubre motos sin costo. Se elige uno: los ids de marca y
- * modelo de cada uno no tienen nada que ver entre sí, así que mezclarlos rompería las pólizas ya
- * cargadas con el código del otro.
- */
-export const PROVEEDORES_DE_CATALOGO = ['INFOAUTO', 'MERCADO_LIBRE', 'DNRPA'] as const
-export type ProveedorDeCatalogo = (typeof PROVEEDORES_DE_CATALOGO)[number]
-
-export const NOMBRE_PROVEEDOR_CATALOGO: Record<ProveedorDeCatalogo, string> = {
-  INFOAUTO: 'InfoAuto',
-  MERCADO_LIBRE: 'Mercado Libre',
-  DNRPA: 'DNRPA',
-}
-
-/**
- * Cómo se llama cada credencial según el proveedor. Es lo mismo por dentro —un identificador y un
- * secreto— pero en el panel de cada uno se llama distinto, y la pantalla tiene que decir el nombre
- * que la persona está viendo del otro lado. DNRPA no tiene ninguno de los dos: la tabla es pública y
- * no hace falta iniciar sesión en ningún lado.
- */
-export const ETIQUETAS_DE_CREDENCIAL: Record<ProveedorDeCatalogo, { usuario: string; clave: string; ayuda: string }> = {
-  INFOAUTO: {
-    usuario: 'Usuario',
-    clave: 'Clave',
-    ayuda: 'El usuario y la clave de la cuenta que la agencia tiene con InfoAuto.',
-  },
-  MERCADO_LIBRE: {
-    usuario: 'App ID',
-    clave: 'Clave secreta',
-    ayuda: 'Se copian del panel de desarrolladores de Mercado Pago, en la aplicación que creaste (App ID y Clave secreta).',
-  },
-  DNRPA: {
-    usuario: '',
-    clave: '',
-    ayuda:
-      'La DNRPA publica gratis la Tabla de Valuación de Automotores y Motovehículos. No hace falta usuario ni clave: el programa detecta sola la tabla vigente.',
-  },
-}
-
-/**
- * Cómo quedó la sincronización de las credenciales con el VPS.
- *
- * El superadministrador las carga una sola vez y viajan al servidor; el resto de las computadoras las
- * adopta al arrancar. `alDia` compara huellas: sirve para decir «esta PC tiene lo mismo que el
- * servidor» sin volver a bajar el secreto.
- */
 // ---------------------------------------------------------------------------
 // Reportar un error (Inicio → «Reportar error»)
 // ---------------------------------------------------------------------------
@@ -3960,51 +3914,60 @@ export interface EstadoDeAjusteCompartido {
   error: string | null
 }
 
+/**
+ * El catálogo maestro de vehículos en esta computadora. Lo arma el VPS con la Tabla de Valuación de la
+ * DNRPA y cada PC baja sólo lo que cambió desde su última revisión.
+ */
 export interface EstadoDelCatalogo {
-  /** false = faltan las credenciales del proveedor en esta computadora. */
-  configurado: boolean
-  proveedor: string
-  proveedorId: ProveedorDeCatalogo
-  usuario: string
-  /** true si además del identificador y el secreto hay un Access Token pegado a mano. */
-  tokenCargado: boolean
-  /** Sólo DNRPA: la URL puesta a mano, si se pisó la detección automática. No es un secreto. */
-  urlFuente: string | null
-  /** Los tipos de vehículo que este proveedor puede servir: Mercado Libre no publica motos. */
-  tiposQueSirve: TipoDeVehiculo[]
-  /** Dónde se guardan las credenciales, para poder decirlo en la pantalla. */
-  rutaDeConfig: string
-  porTipo: EstadoDeUnTipo[]
   /** true si hay algo bajado: sin esto el selector cae solo a los campos de texto de siempre. */
   hayCatalogo: boolean
+  /** Hasta qué revisión del VPS está bajado. 0 = nunca se bajó. */
+  revision: number
+  /** La edición de la DNRPA (AAAA-MM-DD) que está bajada. */
+  edicion: string | null
+  bajadoEn: string | null
+  intentadoEn: string | null
+  /** Por qué falló el último intento, si falló. Lo bajado antes sigue sirviendo. */
+  ultimoError: string | null
+  bajandoAhora: boolean
+  porTipo: EstadoDeUnTipo[]
 }
 
-export interface DatosDelProveedorDeVehiculos {
-  proveedor?: ProveedorDeCatalogo
-  usuario: string
-  clave: string
-  /** Sólo Mercado Libre: un Access Token `APP_USR-…` pegado a mano, si se prefiere ese camino. */
-  accessToken?: string
-  /** Sólo DNRPA, y opcional: pisa la URL del PDF que el programa detecta solo. Es el escape manual
-   * para cuando la DNRPA cambia la página y la detección deja de encontrar la tabla vigente. */
-  urlFuente?: string
+/** Una corrida de la importación de la tabla de la DNRPA en el VPS (el log). */
+export interface ImportacionDelCatalogo {
+  id: string
+  fuente: string
+  edicion: string | null
+  /** PUBLICADA, SIN_CAMBIOS, RECHAZADA o ERROR. */
+  estado: string
+  leidas: number
+  aceptadas: number
+  descartadas: number
+  altas: number
+  cambios: number
+  bajas: number
+  mensaje: string | null
+  iniciadaEn: string
+  terminadaEn: string | null
+  /** Filas descartadas por motivo («mtm-repetido»: 2…). */
+  descartesPorMotivo: Record<string, number>
+  autos: number | null
+  motos: number | null
 }
 
-/** El estado de las credenciales acá y en el servidor: lo que devuelve todo lo que las toca. */
-export interface EstadoDeCredencialesDeVehiculos {
+export interface RegistroDeImportaciones {
+  enCurso: boolean
+  importaciones: ImportacionDelCatalogo[]
+  /** Por qué no se pudo pedir el log al VPS, si no se pudo. */
+  error: string | null
+}
+
+export interface ResultadoDeImportarAhora {
+  /** true si la edición vigente ya estaba importada y no se pidió repetirla. */
+  sinNovedades: boolean
+  importacion: ImportacionDelCatalogo | null
+  /** Cómo quedó esta computadora después de bajar lo nuevo. */
   estado: EstadoDelCatalogo
-  compartido: EstadoDeAjusteCompartido
-}
-
-export interface GuardadoDeCredencialesDeVehiculos extends EstadoDeCredencialesDeVehiculos {
-  /** Qué pasó, en una frase, para mostrar arriba de la pantalla. */
-  detalle: string
-}
-
-export interface AdopcionDeCredencialesDeVehiculos extends EstadoDeCredencialesDeVehiculos {
-  /** true si esta computadora se quedó con las credenciales que había en el servidor. */
-  adoptadas: boolean
-  detalle: string
 }
 
 /**
@@ -4020,18 +3983,9 @@ export interface EstadoDelMesh {
   tardanzaMs: number
 }
 
-export interface PruebaDelProveedor {
-  ok: boolean
-  detalle: string
-  marcasEncontradas: number
-}
-
 /** El avance del refresco, que baja decenas de miles de filas y no puede parecer colgado. */
 export interface ProgresoDeCatalogo {
-  tipo: TipoDeVehiculo
-  etapa: 'marcas' | 'modelos' | 'lineas' | 'listo'
-  hechas: number
-  totales: number
+  etapa: 'pidiendo' | 'guardando' | 'listo'
   detalle: string
 }
 

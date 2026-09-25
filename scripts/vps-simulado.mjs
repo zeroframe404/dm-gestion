@@ -800,6 +800,7 @@ export class VpsSimulado {
           if (ruta.startsWith('/api/dmg/adjuntos')) return this.atenderAdjuntos(pedido, respuesta, ruta, crudo, responder)
           if (ruta.startsWith('/api/dmg/mensajes'))
             return this.atenderMensajes(pedido.method ?? 'GET', ruta, json, responder, new URLSearchParams(consulta ?? ''))
+          if (ruta.startsWith('/api/dmg/vehiculos')) return this.atenderVehiculos(pedido.method ?? 'GET', ruta, json, responder, new URLSearchParams(consulta ?? ''))
           if (ruta.startsWith('/api/dmg/perfiles'))
             return this.atenderPerfiles(pedido.method ?? 'GET', ruta, json, responder, new URLSearchParams(consulta ?? ''))
           return this.atender(pedido.method ?? 'GET', ruta ?? '', json, responder, new URLSearchParams(consulta ?? ''))
@@ -1301,6 +1302,39 @@ export class VpsSimulado {
     // nadie pregunte, y el que la cambió no depende de su propia respuesta para verla.
     this.difundirPorElCanal({ t: 'perfil', perfil: { ...perfil } })
     return responder(200, { perfil: { ...perfil } })
+  }
+
+  /**
+   * El catálogo maestro de vehículos. `this.vehiculos` es la lista con su revisión: se carga desde la
+   * prueba (o con `cargarVehiculos`) y se sirve igual que el VPS real: todo con `desde=0` (sólo los
+   * activos) y lo que cambió después de la revisión pedida con `desde>0`.
+   */
+  cargarVehiculos(vehiculos, edicion = '2026-09-04') {
+    this.revisionDeVehiculos = (this.revisionDeVehiculos ?? 0) + 1
+    for (const vehiculo of vehiculos) (this.vehiculos ??= new Map()).set(vehiculo.mtm, { ...vehiculo, revision: this.revisionDeVehiculos })
+    this.edicionDeVehiculos = edicion
+  }
+
+  atenderVehiculos(metodo, ruta, json, responder, busqueda) {
+    const vehiculos = Array.from((this.vehiculos ?? new Map()).values())
+    if (metodo === 'GET' && ruta === '/api/dmg/vehiculos/maestro') {
+      const desde = Number(busqueda.get('desde') ?? 0) || 0
+      const completo = desde <= 0
+      const elegidos = completo ? vehiculos.filter((v) => v.activo !== false) : vehiculos.filter((v) => v.revision > desde)
+      return responder(200, {
+        revision: this.revisionDeVehiculos ?? 0,
+        edicion: this.edicionDeVehiculos ?? null,
+        completo,
+        vehiculos: elegidos.map(({ revision: _revision, ...vehiculo }) => ({ activo: true, ...vehiculo })),
+      })
+    }
+    if (metodo === 'GET' && ruta === '/api/dmg/vehiculos/importaciones') {
+      return responder(200, { enCurso: false, importaciones: this.importacionesDeVehiculos ?? [] })
+    }
+    if (metodo === 'POST' && ruta === '/api/dmg/vehiculos/importar') {
+      return responder(200, { sinNovedades: true, importacion: null })
+    }
+    return responder(404, { error: `Ruta desconocida: ${metodo} ${ruta}` })
   }
 
   atender(metodo, ruta, json, responder, busqueda = new URLSearchParams()) {

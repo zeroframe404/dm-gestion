@@ -870,7 +870,9 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
       anio_numero: interpretarEntero(anio, 1950, Number(hoyLocal().slice(0, 4)) + 1),
       categoria: categoria || null,
       // Sin código, el vehículo se cargó a mano: es lo que distingue uno identificado de uno tipeado.
-      catalogo_proveedor: catalogoCodigo ? 'InfoAuto' : null,
+      // El código es el MTM/FMM del catálogo maestro (la tabla de la DNRPA). Las pólizas viejas pueden
+      // tener 'InfoAuto' acá, de cuando el catálogo venía de otro proveedor.
+      catalogo_proveedor: catalogoCodigo ? 'DNRPA' : null,
       catalogo_codigo: catalogoCodigo || null,
       motor: motor || null,
       chasis: chasis || null,

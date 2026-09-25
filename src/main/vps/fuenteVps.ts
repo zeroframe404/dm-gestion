@@ -262,6 +262,27 @@ function adoptarVersionesPropias(versiones: Record<string, unknown> | undefined)
   }
 }
 
+/** Un vehículo del catálogo maestro, tal como lo manda el VPS. */
+export interface VehiculoDelMaestroVps {
+  mtm: string
+  tipo: string
+  origen: string
+  marca: string
+  modelo: string
+  version: string
+  carroceria: string | null
+  anios: number[]
+  activo: boolean
+}
+
+export interface BajadaDelMaestroVps {
+  revision: number
+  edicion: string | null
+  /** true = es el catálogo entero y reemplaza lo que haya; false = sólo lo que cambió. */
+  completo: boolean
+  vehiculos: VehiculoDelMaestroVps[]
+}
+
 export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
   private readonly urlBase: string
   private readonly token: string
@@ -691,6 +712,38 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
 
   async borrarAjuste(clave: string): Promise<void> {
     await this.pedir(`borrar el ajuste «${clave}»`, 'POST', `/api/dmg/ajustes/${encodeURIComponent(clave)}/borrar`, {})
+  }
+
+  // --- Catálogo maestro de vehículos -----------------------------------------
+  //
+  // El VPS arma el catálogo con la Tabla de Valuación de la DNRPA; acá sólo se baja. `desde` es la
+  // revisión que ya tiene esta computadora: el servidor devuelve lo que cambió después (o todo, con 0).
+
+  async leerMaestroDeVehiculos(desde: number): Promise<BajadaDelMaestroVps> {
+    const datos = (await this.pedir(
+      'bajar el catálogo de vehículos',
+      'GET',
+      `/api/dmg/vehiculos/maestro?desde=${Math.max(0, Math.trunc(desde))}`,
+    )) as BajadaDelMaestroVps | null
+    if (!datos || typeof datos.revision !== 'number' || !Array.isArray(datos.vehiculos)) {
+      throw new ErrorDeNegocio('El VPS devolvió el catálogo de vehículos con una forma inesperada. ¿Está actualizado el servidor?')
+    }
+    return datos
+  }
+
+  async importacionesDeVehiculos(): Promise<{ enCurso: boolean; importaciones: unknown[] }> {
+    const datos = (await this.pedir('leer el log del catálogo de vehículos', 'GET', '/api/dmg/vehiculos/importaciones', undefined, {
+      reintentarSinRespuesta: false,
+    })) as { enCurso?: unknown; importaciones?: unknown } | null
+    return { enCurso: datos?.enCurso === true, importaciones: Array.isArray(datos?.importaciones) ? datos.importaciones : [] }
+  }
+
+  /** Le pide al VPS que busque ya la tabla vigente de la DNRPA. Puede tardar hasta un minuto. */
+  async importarVehiculos(forzar: boolean): Promise<{ sinNovedades: boolean; importacion: unknown }> {
+    const datos = (await this.pedir('importar la tabla de la DNRPA', 'POST', '/api/dmg/vehiculos/importar', { forzar }, {
+      reintentarSinRespuesta: false,
+    })) as { sinNovedades?: unknown; importacion?: unknown } | null
+    return { sinNovedades: datos?.sinNovedades === true, importacion: datos?.importacion ?? null }
   }
 
   // --- Galeno Seguros --------------------------------------------------------

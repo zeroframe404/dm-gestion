@@ -1985,6 +1985,51 @@ export const MIGRACIONES: Migracion[] = [
       CREATE INDEX idx_presupuesto_adjuntos_vps ON presupuesto_adjuntos (vps_subido_en, vps_proximo_intento);
     `,
   },
+  {
+    version: 36,
+    descripcion: 'Catálogo de vehículos: el maestro de la DNRPA que baja del VPS reemplaza al de cada proveedor',
+    sql: `
+      -- Una fila por código MTM/FMM de la Tabla de Valuación de la DNRPA. La arma el VPS una vez por
+      -- edición y cada PC la baja de a pedazos (sólo lo que cambió desde su última revisión). Un código
+      -- que la DNRPA deja de publicar queda activo = 0 y no se borra: una póliza ya cargada lo nombra.
+      -- La categoría se calcula acá, con la carrocería de la tabla (ver vehiculos/mapeo.ts).
+      CREATE TABLE maestro_vehiculos (
+        mtm TEXT PRIMARY KEY,
+        tipo TEXT NOT NULL,
+        origen TEXT NOT NULL,
+        marca TEXT NOT NULL,
+        modelo TEXT NOT NULL,
+        version TEXT NOT NULL,
+        version_normalizada TEXT NOT NULL,
+        carroceria TEXT,
+        categoria TEXT,
+        anio_desde INTEGER,
+        anio_hasta INTEGER,
+        anios TEXT NOT NULL DEFAULT '[]',
+        activo INTEGER NOT NULL DEFAULT 1,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE INDEX idx_maestro_vehiculos_elegir ON maestro_vehiculos (tipo, marca, modelo) WHERE activo = 1;
+
+      -- Una sola fila: hasta qué revisión del VPS tiene esta PC y cómo salió el último intento.
+      CREATE TABLE maestro_estado (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        revision INTEGER NOT NULL DEFAULT 0,
+        edicion TEXT,
+        bajado_en TEXT,
+        intentado_en TEXT,
+        ultimo_error TEXT
+      );
+
+      -- La caché del proveedor anterior (InfoAuto, Mercado Libre o la DNRPA leída en cada PC). Era sólo
+      -- una copia de algo externo: las pólizas guardan marca, modelo y línea como texto, así que no se
+      -- pierde nada de la agencia.
+      DROP TABLE IF EXISTS catalogo_lineas;
+      DROP TABLE IF EXISTS catalogo_modelos;
+      DROP TABLE IF EXISTS catalogo_marcas;
+      DROP TABLE IF EXISTS catalogo_estado;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {
