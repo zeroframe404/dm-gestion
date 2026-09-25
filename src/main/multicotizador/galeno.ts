@@ -8,15 +8,16 @@
 // mensual, la localidad con ese nombre) y se devuelven como ajustes, para que la persona pueda cambiar
 // cualquiera desde la tarjeta de Galeno sin volver a cargar nada.
 //
-// EL VEHÍCULO: si el catálogo de la agencia es el de InfoAuto, alcanza con su código (Galeno lo acepta
-// en lugar del propio y es exacto). Si no, se busca en el catálogo de Galeno por nombre —marca, modelo y
-// versión—, y cuando hay dudas se pregunta en vez de adivinar: cotizar otra versión es cotizar otro auto.
+// EL VEHÍCULO: si salió del catálogo de la agencia con un código de Galeno («GALENO:rama:marca:modelo:
+// versión», ver catalogoVehiculos.ts), ése es el vehículo exacto en Galeno. Si no, se busca en el
+// catálogo de Galeno por nombre —marca, modelo y versión—, y cuando hay dudas se pregunta en vez de
+// adivinar: cotizar otra versión es cotizar otro auto.
 import {
   categoriaDeCobertura,
   type AjusteDeAseguradora,
   type CoberturaCotizada,
 } from '../../shared/multicotizador'
-import type { OpcionGaleno, SubModeloGaleno, TipoDeVehiculo } from '../../shared/tipos'
+import { RAMA_GALENO_DE_TIPO, type OpcionGaleno, type SubModeloGaleno, type TipoDeVehiculo } from '../../shared/tipos'
 import {
   categoriasIvaGaleno,
   codigoPostalGaleno,
@@ -84,6 +85,13 @@ function valido(elegido: string | undefined, lista: Array<{ codigo: string }>): 
   return elegido && lista.some((opcion) => opcion.codigo === elegido) ? elegido : null
 }
 
+/** Los códigos de Galeno de un vehículo elegido del catálogo, si salió de la API de Galeno para ese tipo. */
+export function codigosDeGaleno(codigoCatalogo: string, tipo: TipoDeVehiculo): { marca: string; modelo: string; subModelo: string } | null {
+  const partes = /^GALENO:(\d+):([^:]+):([^:]+):([^:]+)$/.exec(codigoCatalogo.trim())
+  if (!partes || Number(partes[1]) !== RAMA_GALENO_DE_TIPO[tipo]) return null
+  return { marca: partes[2]!, modelo: partes[3]!, subModelo: partes[4]! }
+}
+
 interface VehiculoParaGaleno {
   idInfoAuto: string | null
   version: SubModeloGaleno | null
@@ -117,7 +125,9 @@ async function vehiculoEnGaleno(
 
   const dependeDeOrigen = solicitud.codigoInfoAuto ? 'origenVehiculo' : undefined
   const marcas = await enMemoria(`marcas:${tipo}`, () => marcasGaleno(tipo))
-  const marca = valido(elegidos.marca, marcas) ?? buscarMarca(v.marca, marcas)?.codigo ?? ''
+  const exacto = codigosDeGaleno(v.codigoCatalogo, tipo)
+  const marca =
+    valido(elegidos.marca, marcas) ?? (exacto ? valido(exacto.marca, marcas) : null) ?? buscarMarca(v.marca, marcas)?.codigo ?? ''
   ajustes.push({
     campo: 'marca',
     titulo: 'Marca en Galeno',
@@ -134,9 +144,12 @@ async function vehiculoEnGaleno(
   // Sin modelo elegido a mano, se miran los tres que más se parecen: el catálogo de Galeno suele
   // partir un modelo en varios («COROLLA», «COROLLA CROSS», «COROLLA 4P») y la versión buscada puede
   // estar en cualquiera.
+  const modeloExacto = exacto && exacto.marca === marca ? valido(exacto.modelo, modelos) : null
   const candidatos = modeloElegido
     ? modelos.filter((modelo) => modelo.codigo === modeloElegido)
-    : rankear(`${v.modelo} ${v.version}`, modelos, (modelo) => modelo.descripcion)
+    : modeloExacto
+      ? modelos.filter((modelo) => modelo.codigo === modeloExacto)
+      : rankear(`${v.modelo} ${v.version}`, modelos, (modelo) => modelo.descripcion)
         .filter((candidato) => candidato.puntaje >= 0.3)
         .slice(0, 3)
         .map((candidato) => candidato.opcion)
@@ -165,6 +178,9 @@ async function vehiculoEnGaleno(
   const ranking = rankear(`${v.modelo} ${v.version}`, versiones, (version) => `${version.modelo.descripcion} ${version.sub.version}`)
   const elegida =
     versiones.find((version) => version.clave === elegidos.version) ??
+    (modeloExacto
+      ? versiones.find((version) => version.modelo.codigo === modeloExacto && String(version.sub.codigoSubModelo) === exacto?.subModelo)
+      : undefined) ??
     sinDudas(ranking, 0.5, 0.1) ??
     (versiones.length === 1 ? versiones[0]! : null)
 

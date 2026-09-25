@@ -475,7 +475,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.vehiculos': {
     clave: 'administracion.vehiculos',
     titulo: 'Administración → Catálogo de vehículos',
-    resumen: 'El catálogo de autos y motos de la DNRPA, que el servidor actualiza solo, y la copia local que usa el alta de pólizas.',
+    resumen: 'El catálogo de autos y motos que el servidor arma solo con las APIs de las aseguradoras, y la copia local que usa el alta de pólizas.',
     secciones: [
       {
         titulo: 'Qué cambia con esto',
@@ -487,17 +487,17 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'De dónde sale',
         parrafos: [
-          'De la Tabla de Valuación de Automotores y Motovehículos que publica la DNRPA (el registro del automotor). Es gratis, es oficial, trae autos y motos, y cada versión tiene un código propio (MTM o FMM) que no cambia de un mes a otro. No hay usuario ni clave que cargar.',
-          'El servidor de la agencia revisa dos veces por día si la DNRPA publicó una tabla nueva y, si la publicó, la lee solo. Las computadoras bajan lo que cambió al abrir el programa y cada algunas horas. Nadie tiene que hacer nada.',
-          'La tarjeta «Lo que leyó el servidor» muestra cada lectura: cuántos vehículos encontró, cuántos renglones descartó y por qué. Si una tabla nueva viniera con muchos menos vehículos que la anterior (un PDF mal armado, por ejemplo), el servidor no la publica y queda anotado ahí.',
+          'De las APIs de TODAS las aseguradoras cargadas en el servidor (hoy Galeno, autos y motos). Es la regla: cada vez que se baja el catálogo, sale de todas las APIs que haya; si mañana se suma otra compañía, sus vehículos se suman solos. Una versión que dos compañías llaman igual aparece una sola vez. No hay usuario ni clave que cargar acá: se usan los de cada aseguradora en API Aseguradoras.',
+          'El servidor de la agencia recorre las APIs una vez por día —son miles de pedidos, por eso lo hace él y no cada computadora— y publica lo que cambió. Las computadoras bajan lo nuevo al abrir el programa y cada algunas horas. Nadie tiene que hacer nada.',
+          'La tarjeta «Lo que leyó el servidor» muestra cada lectura: cuántas versiones trajo cada aseguradora y si alguna falló. Si una API responde a medias (se cortaron pedidos) o trae muchos menos vehículos que la vez anterior, lo que ya estaba publicado no se borra y queda anotado ahí.',
         ],
       },
       {
         titulo: 'La copia local',
         parrafos: [
           'Los desplegables del formulario salen SIEMPRE de una copia guardada en esta computadora, y nunca de internet. Es a propósito: elegir un vehículo en el mostrador tiene que ser instantáneo, y tiene que funcionar aunque se corte la conexión, que es justo cuando más se cobra.',
-          '«Actualizar ahora» baja en el momento lo que haya cambiado, sin esperar. «Buscar edición nueva» le pide al servidor que mire ya si la DNRPA publicó una tabla nueva; puede tardar un minuto.',
-          'La tabla trae los años desde 2002. Un vehículo más viejo, o uno que todavía no figura, se carga a mano con el botón de siempre.',
+          '«Actualizar ahora» baja en el momento lo que haya cambiado, sin esperar. «Leer las APIs ahora» le pide al servidor que vuelva a recorrer ya las APIs de todas las aseguradoras; puede tardar un buen rato, y la pantalla muestra por dónde va.',
+          'Los años de cada versión son los que la aseguradora ofrece para cotizarla. Un vehículo más viejo, o uno que todavía no figura, se carga a mano con el botón de siempre.',
         ],
       },
       {
@@ -515,8 +515,8 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         explicacion: 'La versión exacta dentro de un modelo: «Corolla 2.0 XEI CVT» es una versión del modelo Corolla. Es la que define la categoría.',
       },
       {
-        termino: 'Código MTM',
-        explicacion: 'El código que la DNRPA le da a cada versión (MTM para importados, FMM para nacionales). Es lo que identifica al vehículo aunque dos versiones se llamen igual.',
+        termino: 'Código del catálogo',
+        explicacion: 'El código que la aseguradora le da a cada versión (por ejemplo, el de Galeno). Es lo que identifica al vehículo aunque dos versiones se llamen igual, y con él el multicotizador cotiza en esa compañía la versión exacta.',
       },
       {
         termino: 'Categoría',

@@ -18,6 +18,7 @@ import {
   similitud,
   sinDudas,
 } from '../src/main/multicotizador/equivalencias'
+import { codigosDeGaleno } from '../src/main/multicotizador/galeno'
 import { usarAseguradorasDePrueba } from '../src/main/multicotizador/registro'
 import {
   aseguradorasDelMulticotizador,
@@ -152,6 +153,16 @@ test('multicotizador: las versiones se comparan por palabras, sin importar el or
   assert.equal(sinDudas(rankear('1.8 XEI CVT', versiones, (v) => v)), 'COROLLA 1.8 XEI CVT')
   // Dos versiones igual de parecidas: ante la duda, pregunta.
   assert.equal(sinDudas(rankear('COROLLA 1.8 XEI', versiones, (v) => v)), null)
+})
+
+test('multicotizador: un vehículo del catálogo con código de Galeno se cotiza en Galeno con esos códigos', () => {
+  assert.deepEqual(codigosDeGaleno('GALENO:4:39:1203:77', 'AUTO'), { marca: '39', modelo: '1203', subModelo: '77' })
+  assert.deepEqual(codigosDeGaleno('GALENO:28:900:1:7', 'MOTO'), { marca: '900', modelo: '1', subModelo: '7' })
+  // La rama tiene que ser la del tipo: un código de auto no identifica una moto.
+  assert.equal(codigosDeGaleno('GALENO:4:39:1203:77', 'MOTO'), null)
+  // Un código de otra fuente (o uno cargado a mano) se busca por nombre, como siempre.
+  assert.equal(codigosDeGaleno('13605413', 'AUTO'), null)
+  assert.equal(codigosDeGaleno('', 'AUTO'), null)
 })
 
 test('multicotizador: las marcas se encuentran con los alias de siempre', () => {

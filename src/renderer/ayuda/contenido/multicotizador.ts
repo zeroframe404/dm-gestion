@@ -17,7 +17,7 @@ export const AYUDA_MULTICOTIZADOR: Record<string, ContenidoDeAyuda> = {
         titulo: 'Los datos que se piden',
         parrafos: ['Son los que cualquier compañía necesita para cotizar un auto o una moto:'],
         lista: [
-          'El vehículo, elegido del catálogo de la agencia (Administración → Catálogo de vehículos, la tabla de la DNRPA). Cada compañía lo busca en su propio catálogo. Si se carga a mano, conviene escribir también la versión (por ejemplo «1.6 XEI CVT»).',
+          'El vehículo, elegido del catálogo de la agencia (Administración → Catálogo de vehículos, que sale de las APIs de las aseguradoras). Si el vehículo salió del catálogo de una compañía, esa compañía cotiza la versión exacta; las demás lo buscan en su propio catálogo. Si se carga a mano, conviene escribir también la versión (por ejemplo «1.6 XEI CVT»).',
           'Uso, 0 km, GNC y rastreo satelital: cambian la prima.',
           'La suma asegurada, sólo si se quiere una distinta de la que dice cada compañía para ese vehículo.',
           'El código postal y la localidad donde se guarda el vehículo: definen la zona de riesgo. Al escribir el código postal aparecen las localidades que conocen las compañías.',

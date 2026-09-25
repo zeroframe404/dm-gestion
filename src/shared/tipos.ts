@@ -3838,13 +3838,14 @@ export interface OpcionDeCatalogo {
 
 /**
  * Una línea (la versión concreta): es el único nivel que trae categoría y años. El `id` es el código
- * MTM/FMM de la DNRPA, que es la clave del catálogo maestro.
+ * de la aseguradora de la que salió (`GALENO:4:marca:modelo:versión`), que es la clave del catálogo
+ * maestro.
  */
 export interface LineaDeCatalogo extends OpcionDeCatalogo {
   anioDesde: number | null
   anioHasta: number | null
   categoria: CategoriaDeVehiculo | null
-  /** La carrocería de la tabla (SEDAN 5 PUERTAS…): distingue dos versiones con el mismo nombre. */
+  /** La carrocería, si la fuente la trae (SEDAN 5 PUERTAS…): distingue dos versiones con el mismo nombre. */
   carroceria: string | null
 }
 
@@ -3857,7 +3858,7 @@ export interface VehiculoDelCatalogo {
   anio: string
   /** null cuando el catálogo no la sabe. No se inventa un «OTRO» que después nadie puede corregir. */
   categoria: CategoriaDeVehiculo | null
-  /** El código MTM/FMM del catálogo maestro: es lo que distingue un vehículo identificado de uno tipeado. */
+  /** El código del catálogo maestro: es lo que distingue un vehículo identificado de uno tipeado. */
   codigo: string
 }
 
@@ -3915,15 +3916,15 @@ export interface EstadoDeAjusteCompartido {
 }
 
 /**
- * El catálogo maestro de vehículos en esta computadora. Lo arma el VPS con la Tabla de Valuación de la
- * DNRPA y cada PC baja sólo lo que cambió desde su última revisión.
+ * El catálogo maestro de vehículos en esta computadora. Lo arma el VPS con las APIs de todas las
+ * aseguradoras cargadas (hoy Galeno) y cada PC baja sólo lo que cambió desde su última revisión.
  */
 export interface EstadoDelCatalogo {
   /** true si hay algo bajado: sin esto el selector cae solo a los campos de texto de siempre. */
   hayCatalogo: boolean
   /** Hasta qué revisión del VPS está bajado. 0 = nunca se bajó. */
   revision: number
-  /** La edición de la DNRPA (AAAA-MM-DD) que está bajada. */
+  /** El día (AAAA-MM-DD) de la última lectura buena de las APIs que está bajada. */
   edicion: string | null
   bajadoEn: string | null
   intentadoEn: string | null
@@ -3933,7 +3934,20 @@ export interface EstadoDelCatalogo {
   porTipo: EstadoDeUnTipo[]
 }
 
-/** Una corrida de la importación de la tabla de la DNRPA en el VPS (el log). */
+/** Cómo le fue a una API de aseguradora en una corrida: LEIDA, INCOMPLETA, RECHAZADA o ERROR. */
+export interface LecturaDeUnaAseguradora {
+  id: string
+  nombre: string
+  estado: string
+  versiones: number
+  autos: number
+  motos: number
+  pedidos: number
+  fallidos: number
+  mensaje: string | null
+}
+
+/** Una corrida de la lectura de las APIs de las aseguradoras en el VPS (el log). */
 export interface ImportacionDelCatalogo {
   id: string
   fuente: string
@@ -3953,18 +3967,27 @@ export interface ImportacionDelCatalogo {
   descartesPorMotivo: Record<string, number>
   autos: number | null
   motos: number | null
+  /** Una por aseguradora leída. Vacío en las corridas viejas de la DNRPA. */
+  fuentes: LecturaDeUnaAseguradora[]
+}
+
+/** Por dónde va la lectura que corre en el VPS. */
+export interface ProgresoDelServidor {
+  detalle: string
+  hechos: number
+  total: number
 }
 
 export interface RegistroDeImportaciones {
   enCurso: boolean
+  progreso: ProgresoDelServidor | null
   importaciones: ImportacionDelCatalogo[]
   /** Por qué no se pudo pedir el log al VPS, si no se pudo. */
   error: string | null
 }
 
 export interface ResultadoDeImportarAhora {
-  /** true si la edición vigente ya estaba importada y no se pidió repetirla. */
-  sinNovedades: boolean
+  /** La corrida que terminó (la última del log). Null si el VPS no dejó ninguna. */
   importacion: ImportacionDelCatalogo | null
   /** Cómo quedó esta computadora después de bajar lo nuevo. */
   estado: EstadoDelCatalogo

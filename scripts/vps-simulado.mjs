@@ -1328,11 +1328,29 @@ export class VpsSimulado {
         vehiculos: elegidos.map(({ revision: _revision, ...vehiculo }) => ({ activo: true, ...vehiculo })),
       })
     }
+    // La lectura de las APIs de las aseguradoras: el POST la arranca y contesta en el acto, y el log la
+    // muestra «en curso» una consulta antes de terminarla (ahí corre `alLeerLasApis`, si la prueba puso uno).
     if (metodo === 'GET' && ruta === '/api/dmg/vehiculos/importaciones') {
-      return responder(200, { enCurso: false, importaciones: this.importacionesDeVehiculos ?? [] })
+      if (this.lecturaDeVehiculos && this.lecturaDeVehiculos.consultasEnCurso > 0) {
+        this.lecturaDeVehiculos.consultasEnCurso--
+        return responder(200, {
+          enCurso: true,
+          progreso: { fuente: 'GALENO', detalle: 'Galeno · autos: 120 versiones leídas', hechos: 50, total: 200 },
+          importaciones: this.importacionesDeVehiculos ?? [],
+        })
+      }
+      if (this.lecturaDeVehiculos) {
+        this.lecturaDeVehiculos = null
+        const importacion = this.alLeerLasApis?.() ?? null
+        if (importacion) (this.importacionesDeVehiculos ??= []).unshift(importacion)
+      }
+      return responder(200, { enCurso: false, progreso: null, importaciones: this.importacionesDeVehiculos ?? [] })
     }
     if (metodo === 'POST' && ruta === '/api/dmg/vehiculos/importar') {
-      return responder(200, { sinNovedades: true, importacion: null })
+      ;(this.lecturasPedidas ??= []).push(json?.forzar === true)
+      if (this.lecturaDeVehiculos) return responder(200, { iniciada: false, enCurso: true })
+      this.lecturaDeVehiculos = { consultasEnCurso: 1 }
+      return responder(202, { iniciada: true, enCurso: true })
     }
     return responder(404, { error: `Ruta desconocida: ${metodo} ${ruta}` })
   }

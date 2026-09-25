@@ -613,6 +613,12 @@ function validarDatos(datos: DatosDePoliza): DatosValidados {
 // ---------------------------------------------------------------------------
 
 /** Igual que el importador: por patente si la hay, y si no por cliente + marca + modelo + motor/chasis. */
+/** De qué catálogo salió un código: «GALENO:4:…» → GALENO; los MTM/FMM viejos, de la DNRPA. */
+function proveedorDelCodigo(codigo: string): string {
+  const prefijo = /^([A-Z_]+):/.exec(codigo)
+  return prefijo ? prefijo[1]! : 'DNRPA'
+}
+
 function claveDeVehiculo(clienteId: number, patente: string, marca: string, modelo: string, motor: string, chasis: string): string {
   const patenteNormalizada = normalizarPatente(patente)
   if (patenteNormalizada) return `PAT:${patenteNormalizada}`
@@ -870,9 +876,10 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
       anio_numero: interpretarEntero(anio, 1950, Number(hoyLocal().slice(0, 4)) + 1),
       categoria: categoria || null,
       // Sin código, el vehículo se cargó a mano: es lo que distingue uno identificado de uno tipeado.
-      // El código es el MTM/FMM del catálogo maestro (la tabla de la DNRPA). Las pólizas viejas pueden
-      // tener 'InfoAuto' acá, de cuando el catálogo venía de otro proveedor.
-      catalogo_proveedor: catalogoCodigo ? 'DNRPA' : null,
+      // El código es el del catálogo maestro: el de la aseguradora de la que salió la versión
+      // («GALENO:…»). Las pólizas viejas pueden tener 'InfoAuto' o 'DNRPA' acá, de cuando el catálogo
+      // venía de otro lado.
+      catalogo_proveedor: catalogoCodigo ? proveedorDelCodigo(catalogoCodigo) : null,
       catalogo_codigo: catalogoCodigo || null,
       motor: motor || null,
       chasis: chasis || null,

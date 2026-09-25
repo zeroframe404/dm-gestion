@@ -1689,8 +1689,8 @@ export function registrarIpc(): void {
   // --- Catálogo de vehículos -------------------------------------------------
   //
   // Los desplegables los consulta cualquiera que pueda cargar una póliza o un presupuesto: son datos
-  // públicos de la DNRPA, no de la agencia. Actualizar a mano y pedirle al VPS que lea una edición
-  // nueva es de administradores.
+  // de las APIs de las aseguradoras, no de la agencia. Actualizar a mano y pedirle al VPS que vuelva a
+  // leer las APIs es de administradores.
   manejar('vehiculos:estado', () => {
     exigirVista('polizas', 'presupuestos', 'administracion')
     return exito(estadoDelCatalogo())
