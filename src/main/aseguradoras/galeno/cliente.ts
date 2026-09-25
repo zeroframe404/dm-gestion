@@ -72,6 +72,26 @@ function mensajeDeError(json: unknown): string | null {
   return null
 }
 
+/**
+ * Cuando Galeno falla sin un mensaje reconocible (la página de error de Tomcat, un JSON con otros
+ * campos), un pedazo de lo que contestó, sin etiquetas HTML: «Galeno respondió 500» a secas no dice
+ * qué pedido falló ni por qué, y un 400 y un 500 del mismo intento quedan imposibles de diagnosticar.
+ */
+function resumenDelCuerpo(texto: string): string {
+  const limpio = texto
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return limpio.length > 300 ? `${limpio.slice(0, 300)}…` : limpio
+}
+
+/** La ruta sin la query, para nombrar el pedido que falló (p. ej. `/api/cotizadores/comun/codigoPostal/4/1629`). */
+function rutaSinQuery(ruta: string): string {
+  return ruta.split('?')[0] ?? ruta
+}
+
 export interface CredencialesVps {
   urlBase: string
   token: string
@@ -106,7 +126,10 @@ export function crearClienteGaleno(vps: CredencialesVps): ClienteGaleno {
     const texto = await respuesta.text()
     const json = parseJsonSeguro<unknown>(texto)
     if (!respuesta.ok) {
-      throw new ErrorDeGaleno(mensajeDeError(json) ?? `Galeno respondió ${respuesta.status}.`, false)
+      const mensaje = mensajeDeError(json)
+      if (mensaje) throw new ErrorDeGaleno(mensaje, false)
+      const cuerpo = resumenDelCuerpo(texto)
+      throw new ErrorDeGaleno(`Galeno respondió ${respuesta.status} a ${rutaSinQuery(ruta)}${cuerpo ? `: ${cuerpo}` : '.'}`, false)
     }
     return json as T
   }

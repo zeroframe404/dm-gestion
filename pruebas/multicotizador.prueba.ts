@@ -18,6 +18,7 @@ import {
   similitud,
   sinDudas,
 } from '../src/main/multicotizador/equivalencias'
+import { crearClienteGaleno } from '../src/main/aseguradoras/galeno/cliente'
 import { codigosDeGaleno } from '../src/main/multicotizador/galeno'
 import { usarAseguradorasDePrueba } from '../src/main/multicotizador/registro'
 import {
@@ -353,4 +354,36 @@ test('multicotizador: las localidades de todas las compañías se juntan sin rep
   ])
   assert.deepEqual(await localidadesDelMulticotizador('AUTO', '1870'), ['Avellaneda', 'Sarandí', 'Villa Domínico'])
   assert.deepEqual(await localidadesDelMulticotizador('AUTO', '18'), [])
+})
+
+test('multicotizador: si ninguna compañía puede traer las localidades, se dice por qué', async (t) => {
+  t.after(() => usarAseguradorasDePrueba(null))
+  usarAseguradorasDePrueba([
+    aseguradoraDePrueba({
+      id: 'CAIDA',
+      nombre: 'Caída',
+      localidades: async () => {
+        throw new Error('Galeno respondió 500 a /api/cotizadores/comun/codigoPostal/4/1629: Internal Server Error')
+      },
+    }),
+  ])
+  await assert.rejects(localidadesDelMulticotizador('AUTO', '1629'), /1629.*Caída: Galeno respondió 500/)
+})
+
+test('Galeno: un error sin mensaje dice a qué pedido y qué contestó', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = fetchOriginal
+  })
+  globalThis.fetch = (async () =>
+    new Response('<html><body><h1>HTTP Status 500 – Internal Server Error</h1><p>NullPointerException</p></body></html>', {
+      status: 500,
+      headers: { 'content-type': 'text/html' },
+    })) as typeof fetch
+  const cliente = crearClienteGaleno({ urlBase: 'https://vps.ejemplo', token: 'x' })
+  await assert.rejects(
+    cliente.pedirJson('/api/cotizadores/comun/codigoPostal/4/1629?x=1'),
+    (error: Error) =>
+      error.message === 'Galeno respondió 500 a /api/cotizadores/comun/codigoPostal/4/1629: HTTP Status 500 – Internal Server Error NullPointerException',
+  )
 })

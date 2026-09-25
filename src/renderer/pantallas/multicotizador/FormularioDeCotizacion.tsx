@@ -159,6 +159,7 @@ export function FormularioDeCotizacion({ valor: f, alCambiar, aseguradoras, coti
   const [candidatos, setCandidatos] = useState<FilaCliente[]>([])
   const [localidades, setLocalidades] = useState<string[]>([])
   const [buscandoLocalidades, setBuscandoLocalidades] = useState(false)
+  const [errorDeLocalidades, setErrorDeLocalidades] = useState('')
 
   const tipo: TipoDeVehiculo | null = f.vehiculo.tipo === 'MOTO' ? 'MOTO' : f.vehiculo.tipo === 'AUTO' ? 'AUTO' : null
 
@@ -184,6 +185,7 @@ export function FormularioDeCotizacion({ valor: f, alCambiar, aseguradoras, coti
   const cp = soloNumeros(f.codigoPostal)
   useEffect(() => {
     setLocalidades([])
+    setErrorDeLocalidades('')
     if (cp.length < 4 || !tipo) return
     let vigente = true
     setBuscandoLocalidades(true)
@@ -194,6 +196,9 @@ export function FormularioDeCotizacion({ valor: f, alCambiar, aseguradoras, coti
       if (resultado.ok) {
         setLocalidades(resultado.datos)
         if (resultado.datos.length === 1 && !f.localidad.trim()) alCambiar({ localidad: resultado.datos[0] })
+      } else {
+        // Se puede escribir a mano igual, pero que se sepa por qué no apareció la lista.
+        setErrorDeLocalidades(resultado.error)
       }
     }, 400)
     return () => {
@@ -298,6 +303,7 @@ export function FormularioDeCotizacion({ valor: f, alCambiar, aseguradoras, coti
                 onChange={(e) => alCambiar({ localidad: e.target.value })}
                 placeholder={buscandoLocalidades ? 'Buscando…' : localidades.length ? 'Elegí de la lista…' : ''}
                 ayuda={localidades.length > 1 ? `Ese código postal abarca ${localidades.length} localidades.` : undefined}
+                error={errorDeLocalidades || undefined}
               />
               <datalist id="localidades-multicotizador">
                 {localidades.map((localidad) => (
