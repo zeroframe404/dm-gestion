@@ -554,7 +554,19 @@ function filaMinima(f: FilaMinima): string[] {
   return [f.nombre, f.dni, f.cia, f.numero, f.patente, f.marca ?? 'FORD', f.modelo ?? 'FIESTA', f.desde ?? '', f.hasta ?? '', '$ 20.000', 'DEBITO', 'TERCEROS COMPLETO']
 }
 
+/**
+ * Espera a que el reloj pase al milisegundo siguiente. El importador marca con su `ahora` lo que toca y
+ * el barrido de `inactivarPolizas` deja inactivo todo lo que tenga otra marca (`actualizado_en <> @ahora`):
+ * si la acción manual de la prueba —`renovar`, que también escribe `ahoraIso()`— cae en el mismo
+ * milisegundo en que arranca la importación, su póliza pasa por tocada y el barrido no la ve.
+ */
+async function pasarDeMilisegundo(): Promise<void> {
+  const antes = ahoraIso()
+  while (ahoraIso() === antes) await new Promise((listo) => setTimeout(listo, 1))
+}
+
 async function importarUnica(db: BaseDeDatos, hoja: HojaSimulada): Promise<void> {
+  await pasarDeMilisegundo()
   const { id } = db.prepare(`INSERT INTO importaciones (iniciada_en, estado) VALUES (?, 'EN_CURSO') RETURNING id`).get(ahoraIso()) as { id: number }
   await ejecutarImportacion({ db, fuente: hoja, importacionId: id, anioActual: 2026 })
 }
