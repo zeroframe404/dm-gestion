@@ -18,6 +18,7 @@ import {
   similitud,
   sinDudas,
 } from '../src/main/multicotizador/equivalencias'
+import { formasDePago, olvidarCuerpoDeFormasDePago } from '../src/main/aseguradoras/galeno/catalogos'
 import { crearClienteGaleno } from '../src/main/aseguradoras/galeno/cliente'
 import { codigosDeGaleno } from '../src/main/multicotizador/galeno'
 import { usarAseguradorasDePrueba } from '../src/main/multicotizador/registro'
@@ -386,4 +387,54 @@ test('Galeno: un error sin mensaje dice a qué pedido y qué contestó', async (
     (error: Error) =>
       error.message === 'Galeno respondió 500 a /api/cotizadores/comun/codigoPostal/4/1629: HTTP Status 500 – Internal Server Error NullPointerException',
   )
+})
+
+/** Un Galeno falso que sólo acepta Formas de Pago con el cuerpo que diga `acepta`; anota cada cuerpo que le llega. */
+function galenoDeFormas(t: { after: (fn: () => void) => void }, acepta: (body: Record<string, unknown>) => boolean, status = 400) {
+  const fetchOriginal = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = fetchOriginal
+    olvidarCuerpoDeFormasDePago()
+  })
+  olvidarCuerpoDeFormasDePago()
+  const cuerpos: Array<Record<string, unknown>> = []
+  globalThis.fetch = (async (_url: string, opciones: RequestInit) => {
+    const body = JSON.parse(String(opciones.body)) as Record<string, unknown>
+    cuerpos.push(body)
+    if (acepta(body)) return new Response(JSON.stringify([{ codigo: 3, descripcion: 'DEBITO CBU' }]), { status: 200 })
+    return new Response('<h1>Estado HTTP 400 – Bad Request</h1><p>El requerimiento enviado por el cliente era sintácticamente incorrecto.</p>', {
+      status,
+      headers: { 'content-type': 'text/html' },
+    })
+  }) as typeof fetch
+  return cuerpos
+}
+
+test('Galeno: si rechaza el cuerpo de Formas de Pago con un 400, prueba otro y se acuerda del que anduvo', async (t) => {
+  const cuerpos = galenoDeFormas(t, (body) => 'planComercialCodigo' in body && typeof body.planComercialCodigo === 'number')
+  const cliente = crearClienteGaleno({ urlBase: 'https://vps.ejemplo', token: 'x' })
+  assert.deepEqual(await formasDePago(cliente, 4, 'M', '120'), [{ codigo: '3', descripcion: 'DEBITO CBU' }])
+  assert.deepEqual(cuerpos, [
+    { codigoRama: 4, modoFacturacion: 'M', planComercial: '120' },
+    { codigoRama: 4, modoFacturacion: 'M', planComercialCodigo: '120' },
+    { codigoRama: 4, modoFacturacion: 'M', planComercialCodigo: 120 },
+  ])
+  cuerpos.length = 0
+  await formasDePago(cliente, 4, 'M', '120')
+  assert.deepEqual(cuerpos, [{ codigoRama: 4, modoFacturacion: 'M', planComercialCodigo: 120 }], 'la segunda vez va directo al que anduvo')
+})
+
+test('Galeno: si rechaza todos los cuerpos de Formas de Pago, lo dice', async (t) => {
+  const cuerpos = galenoDeFormas(t, () => false)
+  const cliente = crearClienteGaleno({ urlBase: 'https://vps.ejemplo', token: 'x' })
+  // Un plan con letras no se puede mandar como número: esa variante se saltea.
+  await assert.rejects(formasDePago(cliente, 4, 'M', 'A1'), /formasDePago: Estado HTTP 400.*se probaron 3 formas de armar el pedido/)
+  assert.equal(cuerpos.length, 3)
+})
+
+test('Galeno: un error de Formas de Pago que no es 400 no se reintenta', async (t) => {
+  const cuerpos = galenoDeFormas(t, () => false, 500)
+  const cliente = crearClienteGaleno({ urlBase: 'https://vps.ejemplo', token: 'x' })
+  await assert.rejects(formasDePago(cliente, 4, 'M', '120'), /Galeno respondió 500/)
+  assert.equal(cuerpos.length, 1)
 })

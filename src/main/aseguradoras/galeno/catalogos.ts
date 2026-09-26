@@ -4,7 +4,7 @@
 // rato (p. ej. las ramas, que casi no cambian) o pedirlo de nuevo cada vez (p. ej. modelos, que
 // dependen de la marca elegida).
 import type { CodigoPostalGaleno, OpcionGaleno, SubModeloGaleno } from '../../../shared/tipos'
-import type { ClienteGaleno } from './cliente'
+import { ErrorDeGaleno, type ClienteGaleno } from './cliente'
 
 /**
  * Las respuestas de estas listas no son todas iguales: la mayoría es un arreglo `[...]` liso, pero
@@ -142,13 +142,45 @@ export async function condicionesDePago(cliente: ClienteGaleno, rama: number, mo
   )
 }
 
+/**
+ * Los cuerpos posibles de Formas de Pago, en el orden en que se prueban. El del manual
+ * (`planComercialCodigo`) Galeno lo rechazó con un 400 de Tomcat («sintácticamente incorrecto»: el JSON
+ * no encaja en lo que espera), mientras que Modos de Facturación —que pide el mismo plan— lo acepta como
+ * `planComercial`. Como no hay forma de saber de antemano cuál acepta, ante un 400 se pasa al siguiente
+ * y se recuerda el primero que anduvo. `null` = esa variante no aplica a este plan.
+ */
+const CUERPOS_DE_FORMAS_DE_PAGO: Array<(codigoRama: number, modoFacturacion: string, plan: string) => Record<string, unknown> | null> = [
+  (codigoRama, modoFacturacion, plan) => ({ codigoRama, modoFacturacion, planComercial: plan }),
+  (codigoRama, modoFacturacion, plan) => ({ codigoRama, modoFacturacion, planComercialCodigo: plan }),
+  // El mismo desajuste texto/número que en cotizar (ver cotizacion.ts).
+  (codigoRama, modoFacturacion, plan) => (/^\d+$/.test(plan) ? { codigoRama, modoFacturacion, planComercialCodigo: Number(plan) } : null),
+  (codigoRama, modoFacturacion) => ({ codigoRama, modoFacturacion }),
+]
+let cuerpoDeFormasQueAnda = 0
+
+/** Para las pruebas: que cada una arranque probando desde el primer cuerpo. */
+export function olvidarCuerpoDeFormasDePago(): void {
+  cuerpoDeFormasQueAnda = 0
+}
+
 export async function formasDePago(cliente: ClienteGaleno, rama: number, modoFacturacion: string, planComercialCodigo: string): Promise<OpcionGaleno[]> {
-  return aOpciones(
-    await cliente.pedirJson('/api/cotizadores/comun/formasDePago', {
-      metodo: 'POST',
-      body: { codigoRama: rama, modoFacturacion, planComercialCodigo },
-    }),
-  )
+  const orden = [cuerpoDeFormasQueAnda, ...CUERPOS_DE_FORMAS_DE_PAGO.keys()].filter((i, pos, todos) => todos.indexOf(i) === pos)
+  let primerRechazo: ErrorDeGaleno | null = null
+  let probados = 0
+  for (const i of orden) {
+    const body = CUERPOS_DE_FORMAS_DE_PAGO[i]!(rama, modoFacturacion, planComercialCodigo)
+    if (!body) continue
+    probados++
+    try {
+      const lista = aOpciones(await cliente.pedirJson('/api/cotizadores/comun/formasDePago', { metodo: 'POST', body }))
+      cuerpoDeFormasQueAnda = i
+      return lista
+    } catch (error) {
+      if (!(error instanceof ErrorDeGaleno) || error.status !== 400) throw error
+      primerRechazo ??= error
+    }
+  }
+  throw new ErrorDeGaleno(`${primerRechazo!.message} (se probaron ${probados} formas de armar el pedido y Galeno rechazó todas)`, false, 400)
 }
 
 // --- Datos del vehículo -------------------------------------------------------
