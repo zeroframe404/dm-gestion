@@ -26,6 +26,8 @@ export class ErrorDeGaleno extends Error {
     mensaje: string,
     /** true si fue «no hay internet» y no «Galeno dijo que no». */
     readonly esDeRed: boolean,
+    /** El status HTTP con que contestó Galeno, si llegó a contestar. */
+    readonly status?: number,
   ) {
     super(mensaje)
     this.name = 'ErrorDeGaleno'
@@ -127,9 +129,9 @@ export function crearClienteGaleno(vps: CredencialesVps): ClienteGaleno {
     const json = parseJsonSeguro<unknown>(texto)
     if (!respuesta.ok) {
       const mensaje = mensajeDeError(json)
-      if (mensaje) throw new ErrorDeGaleno(mensaje, false)
+      if (mensaje) throw new ErrorDeGaleno(mensaje, false, respuesta.status)
       const cuerpo = resumenDelCuerpo(texto)
-      throw new ErrorDeGaleno(`Galeno respondió ${respuesta.status} a ${rutaSinQuery(ruta)}${cuerpo ? `: ${cuerpo}` : '.'}`, false)
+      throw new ErrorDeGaleno(`Galeno respondió ${respuesta.status} a ${rutaSinQuery(ruta)}${cuerpo ? `: ${cuerpo}` : '.'}`, false, respuesta.status)
     }
     return json as T
   }
