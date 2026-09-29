@@ -4501,6 +4501,8 @@ export interface ListasDeCompanias {
   coberturas: string[]
   /** Sólo el SUPER_ADMIN carga estas listas, igual que la matriz de coberturas. */
   puedeEditar: boolean
+  /** Las cláusulas de Cobertura también las cargan los administradores (con permiso de edición en Compañías). */
+  puedeEditarClausulas: boolean
   anioActual: number
 }
 

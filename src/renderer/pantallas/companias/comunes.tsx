@@ -66,10 +66,10 @@ export function Contador({ rotulo, valor }: { rotulo: string; valor: number }) {
  * El aviso de sólo lectura. Se muestra a todo el que no sea el superadministrador, que es casi todo
  * el equipo: sin él, la pantalla parece rota («no hay ningún botón para agregar»).
  */
-export function SoloConsulta({ que, pedirle }: { que: string; pedirle: string }) {
+export function SoloConsulta({ que, pedirle, quien = 'el superadministrador' }: { que: string; pedirle: string; quien?: string }) {
   return (
     <Alerta tono="info">
-      {que} lo carga y lo edita el superadministrador. Acá lo podés consultar mientras atendés: si falta {pedirle}, pedísela para que la
+      {que} lo carga y lo edita {quien}. Acá lo podés consultar mientras atendés: si falta {pedirle}, pedísela para que la
       cargue.
     </Alerta>
   )

@@ -596,6 +596,7 @@ export function listasDeCompanias(actor: SesionUsuario): ListasDeCompanias {
     // Mismo criterio que la matriz de coberturas: la consulta todo el equipo, la carga una sola
     // persona. Una lista de precios que cualquiera puede tocar deja de ser una referencia.
     puedeEditar: actor.rol === 'SUPER_ADMIN' && puedeEditar(actor, 'companias'),
+    puedeEditarClausulas: puedeEditarClausulas(actor),
     anioActual: anioDeHoy(),
   }
 }
@@ -610,6 +611,17 @@ export function listasDeCompanias(actor: SesionUsuario): ListasDeCompanias {
 function exigirSuperAdmin(actor: SesionUsuario): void {
   if (actor.rol !== 'SUPER_ADMIN') {
     throw new ErrorDeNegocio('Las listas de las compañías las carga sólo el superadministrador.')
+  }
+}
+
+/** Lo que ampara cada cobertura también lo mantienen los administradores: es el resumen que arman por compañía. */
+function puedeEditarClausulas(actor: SesionUsuario): boolean {
+  return (actor.rol === 'SUPER_ADMIN' || actor.rol === 'ADMIN') && puedeEditar(actor, 'companias')
+}
+
+function exigirEditorDeClausulas(actor: SesionUsuario): void {
+  if (!puedeEditarClausulas(actor)) {
+    throw new ErrorDeNegocio('Las cláusulas de cobertura las cargan sólo los administradores.')
   }
 }
 
@@ -849,7 +861,7 @@ function resumenDeClausula(clausula: { compania: string | null; cobertura: strin
 }
 
 export function guardarClausula(id: number | null, datos: DatosDeClausula, actor: SesionUsuario): ListasDeCompanias {
-  exigirSuperAdmin(actor)
+  exigirEditorDeClausulas(actor)
   const validado = validarClausula(datos)
   const clave = claveDeClausula(validado.compania, validado.cobertura, validado.clausula)
   exigirClaveLibre(
@@ -901,7 +913,7 @@ export function guardarClausula(id: number | null, datos: DatosDeClausula, actor
 }
 
 export function borrarClausula(id: number, actor: SesionUsuario): ListasDeCompanias {
-  exigirSuperAdmin(actor)
+  exigirEditorDeClausulas(actor)
   exigirFila('clausulas_coberturas', id, 'esa cláusula')
   const antes = aClausula(db().prepare(`${SELECT_CLAUSULAS} WHERE id = ?`).get(id) as FilaClausula)
   db().prepare('DELETE FROM clausulas_coberturas WHERE id = ?').run(id)
