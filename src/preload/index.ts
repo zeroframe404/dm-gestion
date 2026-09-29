@@ -89,6 +89,7 @@ const api: ApiDm = {
     registrarPago: (filaId, datos) => invocar('cartera:registrarPago', filaId, datos),
     imputarAdelanto: (filaId) => invocar('cartera:imputarAdelanto', filaId),
     darDeBaja: (filaId, datos) => invocar('cartera:darDeBaja', filaId, datos),
+    editarBaja: (bajaId, datos) => invocar('cartera:editarBaja', bajaId, datos),
     deshacerBaja: (bajaId) => invocar('cartera:deshacerBaja', bajaId),
     reactivarBaja: (bajaId, cambios) => invocar('cartera:reactivarBaja', bajaId, cambios),
     bajas: (periodo) => invocar('cartera:bajas', periodo),

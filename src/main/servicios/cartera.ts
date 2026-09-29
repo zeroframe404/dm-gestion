@@ -1268,6 +1268,37 @@ export function darDeBaja(filaId: string, datos: DatosDeBaja, actor: SesionUsuar
   return null
 }
 
+/** Cambia el motivo y la nota de una baja ya hecha (ej.: se anotó «vendió» y en realidad fue falta de pago). */
+export function editarBaja(bajaId: number, datos: DatosDeBaja, actor: SesionUsuario): null {
+  const baja = db().prepare('SELECT id, fila_id, periodo, motivo, nota, observaciones, cuota_fila_id FROM bajas WHERE id = ?').get(bajaId) as
+    | { id: number; fila_id: string; periodo: string | null; motivo: string | null; nota: string | null; observaciones: string | null; cuota_fila_id: string | null }
+    | undefined
+  if (!baja) throw new ErrorDeNegocio('No se encontró esa baja.')
+  if (!MOTIVOS_DE_BAJA.includes(datos.motivo as MotivoDeBaja)) throw new ErrorDeNegocio('Elegí un motivo de baja de la lista.')
+  const nota = limpiar(datos.nota)
+  db().prepare('UPDATE bajas SET motivo = ?, nota = ?, actualizado_en = ? WHERE id = ?').run(datos.motivo, nota || null, ahoraIso(), baja.id)
+
+  encolar(
+    {
+      operacion: 'actualizar',
+      pestana: bajaEnLaHoja(baja.id, baja.fila_id),
+      filaId: baja.fila_id,
+      campos: { motivo: datos.motivo, observaciones: nota || baja.observaciones || '' },
+    },
+    actor,
+  )
+  registrarCambio(actor, {
+    accion: 'edicion',
+    tabla: 'bajas',
+    registroId: baja.id,
+    filaId: baja.cuota_fila_id,
+    campo: 'BAJA',
+    valorAnterior: `${baja.motivo ?? ''}${baja.nota ? ` · ${baja.nota}` : ''}`,
+    valorNuevo: `${datos.motivo}${nota ? ` · ${nota}` : ''}`,
+  })
+  return null
+}
+
 export function deshacerBaja(bajaId: number, actor: SesionUsuario): FilaBaja[] {
   const baja = db().prepare('SELECT * FROM bajas WHERE id = ?').get(bajaId) as
     | { id: number; fila_id: string; pestana: string; cuota_fila_id: string | null; hecha_en_la_app: number; periodo: string | null; poliza_id: number | null; motivo: string | null }

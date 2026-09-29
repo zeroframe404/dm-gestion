@@ -17,9 +17,11 @@ import { nombreDePeriodo } from '../../../shared/semaforo'
 import { mismaSucursal } from '../../../shared/sucursales'
 import type { ResultadoDeEliminacion } from '../../../shared/eliminacion'
 import {
+  MOTIVOS_DE_BAJA,
   NOMBRE_MOTIVO_BAJA,
   type CambiosDeReactivacion,
   type CatalogosCartera,
+  type DatosDeBaja,
   type FilaBaja,
   type MotivoDeBaja,
   type PeriodoCartera,
@@ -28,7 +30,7 @@ import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Icono } from '../../componentes/Icono'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
-import { Alerta, Boton, Campo, Cargando, cx, Dialogo, Etiqueta } from '../../componentes/ui'
+import { Alerta, AreaTexto, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Selector } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useNavegacion } from '../../contexto/Navegacion'
 
@@ -143,6 +145,7 @@ export function Bajas() {
   const [seleccionada, setSeleccionada] = useState<number | null>(null)
   const [aReactivar, setAReactivar] = useState<FilaBaja | null>(null)
   const [reactivando, setReactivando] = useState(false)
+  const [aEditar, setAEditar] = useState<FilaBaja | null>(null)
 
   const cargar = useCallback(async (elegido: string | null) => {
     setCargando(true)
@@ -218,6 +221,19 @@ export function Bajas() {
 
   // Para los mensajes: «todos los meses» cuando no hay uno elegido, o el nombre del que sí.
   const etiquetaPeriodo = periodo === '' ? 'todos los meses' : periodo ? nombreDePeriodo(periodo) : 'este mes'
+
+  const editar = async (baja: FilaBaja, datos: DatosDeBaja) => {
+    setError(null)
+    setAviso(null)
+    const resultado = await window.dm.cartera.editarBaja(baja.id, datos)
+    if (resultado.ok) {
+      setAEditar(null)
+      setAviso(`Se actualizó el motivo de la baja de ${baja.clienteNombre ?? 'la póliza'}.`)
+      await cargar(periodo)
+    } else {
+      setError(resultado.error)
+    }
+  }
 
   const deshacer = async (baja: FilaBaja) => {
     setError(null)
@@ -437,6 +453,8 @@ export function Bajas() {
               puedeDeshacer={esAdministrador && detalle.hechaEnLaApp}
               puedeReactivar={esAdministrador && detalle.puedeReactivarse}
               alCerrar={() => setSeleccionada(null)}
+              puedeEditar={puedeEditarCartera}
+              alEditar={() => setAEditar(detalle)}
               alDeshacer={() => void deshacer(detalle)}
               alReactivar={() => setAReactivar(detalle)}
               alBorrar={borrada}
@@ -445,6 +463,8 @@ export function Bajas() {
           )}
         </div>
       )}
+
+      <DialogoEditarBaja baja={aEditar} alCerrar={() => setAEditar(null)} alGuardar={(datos) => aEditar && void editar(aEditar, datos)} />
 
       <DialogoPonerVigente
         baja={aReactivar}
@@ -466,7 +486,9 @@ function PanelDeBaja({
   baja,
   puedeDeshacer,
   puedeReactivar,
+  puedeEditar,
   alCerrar,
+  alEditar,
   alDeshacer,
   alReactivar,
   alBorrar,
@@ -475,7 +497,9 @@ function PanelDeBaja({
   baja: FilaBaja
   puedeDeshacer: boolean
   puedeReactivar: boolean
+  puedeEditar: boolean
   alCerrar: () => void
+  alEditar: () => void
   alDeshacer: () => void
   alReactivar: () => void
   alBorrar: (resultado: ResultadoDeEliminacion) => void
@@ -530,6 +554,11 @@ function PanelDeBaja({
             Ver el cliente
           </Boton>
         )}
+        {puedeEditar && (
+          <Boton tamano="sm" variante="fantasma" onClick={alEditar}>
+            Editar motivo / nota
+          </Boton>
+        )}
         {puedeDeshacer && (
           <Boton tamano="sm" variante="fantasma" onClick={alDeshacer}>
             Deshacer
@@ -543,6 +572,61 @@ function PanelDeBaja({
         <BotonEliminar tipo="baja" id={baja.id} alBorrar={alBorrar} className="ml-auto" />
       </footer>
     </aside>
+  )
+}
+
+/** Corrige el motivo o agrega una nota (ej.: último aviso al cliente) a una baja ya hecha. */
+function DialogoEditarBaja({
+  baja,
+  alCerrar,
+  alGuardar,
+}: {
+  baja: FilaBaja | null
+  alCerrar: () => void
+  alGuardar: (datos: DatosDeBaja) => void
+}) {
+  const [motivo, setMotivo] = useState<MotivoDeBaja>('VENDIO')
+  const [nota, setNota] = useState('')
+
+  useEffect(() => {
+    if (!baja) return
+    setMotivo(MOTIVOS_DE_BAJA.includes(baja.motivo as MotivoDeBaja) ? (baja.motivo as MotivoDeBaja) : 'VENDIO')
+    setNota(baja.nota ?? '')
+  }, [baja])
+
+  if (!baja) return null
+  return (
+    <Dialogo
+      abierto
+      titulo="Editar la baja"
+      descripcion={`${baja.clienteNombre ?? 'Sin nombre'} · ${baja.compania ?? ''} ${baja.numeroPoliza ?? ''}`}
+      alCerrar={alCerrar}
+      ancho="sm"
+      pie={
+        <>
+          <Boton onClick={alCerrar}>Cancelar</Boton>
+          <Boton variante="primario" icono="ok" onClick={() => alGuardar({ motivo, nota })}>
+            Guardar
+          </Boton>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <Selector
+          etiqueta="Motivo"
+          value={motivo}
+          onChange={(evento) => setMotivo(evento.target.value as MotivoDeBaja)}
+          opciones={MOTIVOS_DE_BAJA.map((m) => ({ valor: m, texto: NOMBRE_MOTIVO_BAJA[m] }))}
+        />
+        <AreaTexto
+          etiqueta="Nota"
+          rows={3}
+          value={nota}
+          onChange={(evento) => setNota(evento.target.value)}
+          ayuda="Por ejemplo, cuándo le mandaste el último mensaje. Queda en el historial."
+        />
+      </div>
+    </Dialogo>
   )
 }
 

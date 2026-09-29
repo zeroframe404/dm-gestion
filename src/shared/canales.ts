@@ -313,6 +313,7 @@ export interface Canales {
   'cartera:imputarAdelanto': (filaId: string) => Resultado<FilaCartera>
   'cartera:darDeBaja': (filaId: string, datos: DatosDeBaja) => Resultado<null>
   /** Deshace una baja recién hecha en la aplicación: la fila vuelve al mes del que salió. */
+  'cartera:editarBaja': (bajaId: number, datos: DatosDeBaja) => Resultado<null>
   'cartera:deshacerBaja': (bajaId: number) => Resultado<FilaBaja[]>
   /**
    * «Poner vigente»: la póliza vuelve a la cartera en el mes abierto, sin cargarla de nuevo. Sirve
