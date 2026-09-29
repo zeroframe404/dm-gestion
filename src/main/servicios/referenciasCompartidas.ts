@@ -82,7 +82,7 @@ const COLUMNAS = {
   organizadores: ['nombre', 'companias', 'telefono', 'email', 'horario', 'observaciones', 'orden', 'activo'],
   precios: ['compania', 'cobertura', 'rama', 'precio', 'vigente_desde', 'observaciones'],
   gruas: ['compania', 'cobertura', 'kilometros', 'auxilio', 'observaciones'],
-  clausulas: ['compania', 'cobertura', 'clausula', 'ampara', 'detalle', 'orden'],
+  clausulas: ['compania', 'cobertura', 'clausula', 'ampara', 'detalle', 'opciones', 'orden'],
 } as const
 
 const TABLAS = {

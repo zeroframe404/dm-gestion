@@ -2030,6 +2030,15 @@ export const MIGRACIONES: Migracion[] = [
       DROP TABLE IF EXISTS catalogo_estado;
     `,
   },
+  {
+    version: 37,
+    descripcion: 'Cláusulas de cobertura: ítems con casillas tildables (parcial, franquicia, eventos…) y su valor',
+    sql: `
+      -- JSON con las casillas tildadas del ítem: [{"nombre":"Franquicia","valor":"3%"}]. Nulo = ítem viejo,
+      -- que sigue leyéndose por su detalle.
+      ALTER TABLE clausulas_coberturas ADD COLUMN opciones TEXT;
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

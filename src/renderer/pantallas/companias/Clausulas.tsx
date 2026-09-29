@@ -1,4 +1,4 @@
-// Compañías → Cobertura: qué ampara cada cobertura, cláusula por cláusula.
+// Compañías → Cobertura: qué ampara cada cobertura, ítem por ítem (Robo, Ruedas…), con casillas para tildar.
 //
 // Es la lista que contesta la pregunta más común del mostrador: «¿esto lo cubre?». Y por eso incluye
 // lo que NO cubre, que es la mitad de la respuesta útil: decir «terceros completo no cubre el granizo»
@@ -9,12 +9,14 @@
 // la volvería imposible de mantener al día, que es la manera más segura de que quede mintiendo.
 // Cargar la compañía queda para la excepción, y esas cláusulas se muestran marcadas.
 import { useEffect, useMemo, useState } from 'react'
-import type { ClausulaDeCobertura, DatosDeClausula, ListasDeCompanias } from '../../../shared/tipos'
-import { Icono } from '../../componentes/Icono'
+import { textoDeOpciones, type ClausulaDeCobertura, type DatosDeClausula, type ListasDeCompanias, type OpcionDeClausula } from '../../../shared/tipos'
 import { Alerta, AreaTexto, Boton, Campo, Dialogo, Etiqueta } from '../../componentes/ui'
 import { AccionesDeFila, Buscador, comparar, Contador, DialogoDeBorrado, normalizar, SoloConsulta, Sugerencias } from './comunes'
 
-const VACIO: DatosDeClausula = { compania: '', cobertura: '', clausula: '', ampara: true, detalle: '' }
+const VACIO: DatosDeClausula = { compania: '', cobertura: '', clausula: '', ampara: true, detalle: '', opciones: [] }
+
+/** Las casillas de siempre; cualquier otra se agrega a mano en el diálogo. */
+const OPCIONES_SUGERIDAS = ['Parcial', 'Total', 'Porcentaje', 'Franquicia', 'Eventos', 'Desgaste', 'Depreciación', 'Robo', 'Hurto']
 
 interface Edicion {
   id: number | null
@@ -66,8 +68,17 @@ export function Clausulas({ listas, alCambiar }: Props) {
     })
   }, [clausulas, cobertura, busqueda])
 
-  const ampara = filtradas.filter((clausula) => clausula.ampara)
-  const excluye = filtradas.filter((clausula) => !clausula.ampara)
+  // «CLÁSICA – ATM»: un bloque por cobertura y compañía, con sus ítems desplegables adentro.
+  const bloques = useMemo(() => {
+    const mapa = new Map<string, { cobertura: string; compania: string | null; clausulas: ClausulaDeCobertura[] }>()
+    for (const clausula of filtradas) {
+      const clave = `${normalizar(clausula.cobertura)}|${normalizar(clausula.compania ?? '')}`
+      const bloque = mapa.get(clave) ?? { cobertura: clausula.cobertura, compania: clausula.compania, clausulas: [] }
+      bloque.clausulas.push(clausula)
+      mapa.set(clave, bloque)
+    }
+    return [...mapa.values()].sort((a, b) => comparar(a.cobertura, b.cobertura) || comparar(a.compania ?? '', b.compania ?? ''))
+  }, [filtradas])
 
   const responder = (resultado: { ok: true; datos: ListasDeCompanias } | { ok: false; error: string }, mensaje: string) => {
     if (resultado.ok) {
@@ -105,19 +116,20 @@ export function Clausulas({ listas, alCambiar }: Props) {
         clausula: clausula.clausula,
         ampara: clausula.ampara,
         detalle: clausula.detalle ?? '',
+        opciones: clausula.opciones,
       },
     })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
       <div className="flex flex-wrap items-center gap-3">
-        <Buscador valor={busqueda} alCambiar={setBusqueda} etiqueta="Buscar una cláusula en todas las coberturas" />
+        <Buscador valor={busqueda} alCambiar={setBusqueda} etiqueta="Buscar un ítem en todas las coberturas" />
         {busqueda && (
           <Boton tamano="sm" variante="fantasma" icono="cerrar" onClick={() => setBusqueda('')}>
             Limpiar
           </Boton>
         )}
-        <Contador rotulo="Cláusulas" valor={clausulas.length} />
+        <Contador rotulo="Ítems" valor={clausulas.length} />
         {puedeEditar && (
           <div className="ml-auto">
             <Boton
@@ -125,7 +137,7 @@ export function Clausulas({ listas, alCambiar }: Props) {
               icono="mas"
               onClick={() => setEdicion({ id: null, datos: { ...VACIO, cobertura: cobertura ?? '' } })}
             >
-              Nueva cláusula
+              Nuevo ítem
             </Boton>
           </div>
         )}
@@ -133,7 +145,7 @@ export function Clausulas({ listas, alCambiar }: Props) {
 
       {error && <Alerta tono="error">{error}</Alerta>}
       {aviso && <Alerta tono="exito">{aviso}</Alerta>}
-      {!puedeEditar && <SoloConsulta que="Lo que ampara cada cobertura" pedirle="una cláusula" quien="un administrador" />}
+      {!puedeEditar && <SoloConsulta que="Lo que ampara cada cobertura" pedirle="un ítem" quien="un administrador" />}
 
       {coberturas.length > 1 && !busqueda && (
         <div className="flex flex-wrap items-center gap-2">
@@ -162,11 +174,11 @@ export function Clausulas({ listas, alCambiar }: Props) {
       {clausulas.length === 0 ? (
         <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white p-8">
           <div className="max-w-lg text-center">
-            <p className="font-semibold text-slate-700">Todavía no hay cláusulas cargadas.</p>
+            <p className="font-semibold text-slate-700">Todavía no hay ítems cargados.</p>
             <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
               Acá va lo que ampara cada cobertura y lo que deja afuera: es lo que se contesta cuando preguntan «¿esto lo cubre?».{' '}
               {puedeEditar
-                ? 'Se carga de a una: elegí la cobertura, escribí la cláusula y marcá si la ampara o si es una exclusión.'
+                ? 'Se carga de a uno: elegí la cobertura y la compañía, escribí el ítem (Robo, Ruedas…) y tildá lo que corresponde.'
                 : 'Las carga un administrador.'}
             </p>
           </div>
@@ -175,30 +187,20 @@ export function Clausulas({ listas, alCambiar }: Props) {
         <div className="min-h-0 flex-1 overflow-auto">
           {filtradas.length === 0 ? (
             <p className="rounded-lg border border-slate-200 bg-white px-3 py-10 text-center text-slate-500">
-              Ninguna cláusula coincide con «{busqueda}».
+              Ningún ítem coincide con «{busqueda}».
             </p>
           ) : (
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-              <Grupo
-                titulo="Ampara"
-                tono="exito"
-                icono="ok"
-                clausulas={ampara}
-                puedeEditar={puedeEditar}
-                mostrarCobertura={busqueda !== ''}
-                alEditar={editar}
-                alBorrar={setBorrando}
-              />
-              <Grupo
-                titulo="No ampara"
-                tono="peligro"
-                icono="cerrar"
-                clausulas={excluye}
-                puedeEditar={puedeEditar}
-                mostrarCobertura={busqueda !== ''}
-                alEditar={editar}
-                alBorrar={setBorrando}
-              />
+            <div className="flex flex-col gap-3">
+              {bloques.map((bloque) => (
+                <Bloque
+                  key={`${bloque.cobertura}|${bloque.compania ?? ''}`}
+                  bloque={bloque}
+                  puedeEditar={puedeEditar}
+                  mostrarCobertura={busqueda !== ''}
+                  alEditar={editar}
+                  alBorrar={setBorrando}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -216,68 +218,74 @@ export function Clausulas({ listas, alCambiar }: Props) {
 
       <DialogoDeBorrado
         abierto={borrando !== null}
-        titulo="Borrar la cláusula"
+        titulo="Borrar el ítem"
         descripcion={borrando ? `${borrando.cobertura} · ${borrando.clausula}` : undefined}
         alCerrar={() => setBorrando(null)}
         alConfirmar={() => void confirmarBorrado()}
       >
-        Deja de estar en la lista de esa cobertura. Si lo que pasó es que la compañía dejó de cubrir eso, conviene editarla y marcarla
-        como «No ampara» en vez de borrarla: así queda escrito que la pregunta ya se hizo.
+        Deja de estar en la lista de esa cobertura. Si la compañía dejó de cubrir eso, conviene editarlo y destildar las casillas en vez de borrarlo.
       </DialogoDeBorrado>
     </div>
   )
 }
 
-function Grupo({
-  titulo,
-  tono,
-  icono,
-  clausulas,
+function Bloque({
+  bloque,
   puedeEditar,
   mostrarCobertura,
   alEditar,
   alBorrar,
 }: {
-  titulo: string
-  tono: 'exito' | 'peligro'
-  icono: 'ok' | 'cerrar'
-  clausulas: ClausulaDeCobertura[]
+  bloque: { cobertura: string; compania: string | null; clausulas: ClausulaDeCobertura[] }
   puedeEditar: boolean
-  /** Con la búsqueda puesta las cláusulas vienen de varias coberturas: hay que decir de cuál es cada una. */
   mostrarCobertura: boolean
   alEditar: (clausula: ClausulaDeCobertura) => void
   alBorrar: (clausula: ClausulaDeCobertura) => void
 }) {
-  const colores = tono === 'exito' ? 'border-green-200 text-green-700' : 'border-red-200 text-red-700'
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-suave">
-      <header className={`flex items-center gap-2 border-b px-4 py-2.5 ${colores}`}>
-        <Icono nombre={icono} tamano={16} />
-        <h3 className="font-display text-base font-extrabold tracking-tight">{titulo}</h3>
-        <span className="ml-auto text-xs font-semibold tabular-nums">{clausulas.length}</span>
+      <header className="flex items-center gap-2 border-b border-slate-200 px-4 py-2.5">
+        <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-slate-900">
+          {bloque.cobertura} – {bloque.compania ?? 'Todas las compañías'}
+        </h3>
+        <span className="ml-auto text-xs font-semibold tabular-nums text-slate-500">{bloque.clausulas.length}</span>
       </header>
-      {clausulas.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-slate-400">
-          {tono === 'exito' ? 'Nada cargado como amparado todavía.' : 'Ninguna exclusión cargada.'}
-        </p>
-      ) : (
-        <ul className="flex flex-col">
-          {clausulas.map((clausula) => (
-            <li key={clausula.id} className="flex items-start gap-2 border-b border-slate-50 px-4 py-2.5 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-900">{clausula.clausula}</span>
-                  {mostrarCobertura && <Etiqueta tono="marca">{clausula.cobertura}</Etiqueta>}
-                  {/* Sin compañía la cláusula vale para todas: sólo se marca la excepción. */}
-                  {clausula.compania && <Etiqueta tono="aviso">sólo {clausula.compania}</Etiqueta>}
-                </div>
-                {clausula.detalle && <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{clausula.detalle}</p>}
+      <ul className="flex flex-col">
+        {bloque.clausulas.map((clausula) => (
+          <li key={clausula.id} className="border-b border-slate-50 last:border-b-0">
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 hover:bg-slate-50">
+                <span className="text-slate-400 transition-transform group-open:rotate-90">▸</span>
+                <span className="text-sm font-semibold text-slate-900">{clausula.clausula}</span>
+                {mostrarCobertura && <Etiqueta tono="marca">{clausula.cobertura}</Etiqueta>}
+                {!clausula.ampara && <Etiqueta tono="peligro">No ampara</Etiqueta>}
+                <span className="min-w-0 flex-1 truncate text-xs text-slate-500">{textoDeOpciones(clausula.opciones)}</span>
+                {puedeEditar && (
+                  <span onClick={(evento) => evento.stopPropagation()}>
+                    <AccionesDeFila alEditar={() => alEditar(clausula)} alBorrar={() => alBorrar(clausula)} />
+                  </span>
+                )}
+              </summary>
+              <div className="px-11 pb-3">
+                {clausula.opciones.length === 0 ? (
+                  <p className="text-xs text-slate-400">Sin casillas tildadas.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                    {clausula.opciones.map((opcion) => (
+                      <label key={opcion.nombre} className="flex items-center gap-1.5 text-sm text-slate-700">
+                        <input type="checkbox" checked readOnly disabled className="h-4 w-4" />
+                        {opcion.nombre}
+                        {opcion.valor && <strong className="text-slate-900">{opcion.valor}</strong>}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {clausula.detalle && <p className="mt-2 text-xs leading-relaxed text-slate-500">{clausula.detalle}</p>}
               </div>
-              {puedeEditar && <AccionesDeFila alEditar={() => alEditar(clausula)} alBorrar={() => alBorrar(clausula)} />}
-            </li>
-          ))}
-        </ul>
-      )}
+            </details>
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }
@@ -295,11 +303,30 @@ function DialogoClausula({ edicion, companias, coberturas, alCerrar, alGuardar }
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const cambiar = (campo: keyof DatosDeClausula, valor: string | boolean) => setDatos((previo) => ({ ...previo, [campo]: valor }))
+  const [otra, setOtra] = useState('')
+
+  const cambiar = (campo: 'compania' | 'cobertura' | 'clausula' | 'detalle', valor: string) => setDatos((previo) => ({ ...previo, [campo]: valor }))
+
+  const opciones = datos.opciones ?? []
+  const alternar = (nombre: string) =>
+    setDatos((previo) => ({
+      ...previo,
+      opciones: (previo.opciones ?? []).some((o) => o.nombre === nombre)
+        ? (previo.opciones ?? []).filter((o) => o.nombre !== nombre)
+        : [...(previo.opciones ?? []), { nombre, valor: '' }],
+    }))
+  const poner = (nombre: string, valor: string) =>
+    setDatos((previo) => ({ ...previo, opciones: (previo.opciones ?? []).map((o): OpcionDeClausula => (o.nombre === nombre ? { ...o, valor } : o)) }))
+  const agregarOtra = () => {
+    const nombre = otra.trim()
+    if (nombre && !opciones.some((o) => o.nombre.toLowerCase() === nombre.toLowerCase())) alternar(nombre)
+    setOtra('')
+  }
+  const todas = [...OPCIONES_SUGERIDAS, ...opciones.map((o) => o.nombre).filter((n) => !OPCIONES_SUGERIDAS.includes(n))]
 
   const guardar = async () => {
     if (!datos.cobertura.trim() || !datos.clausula.trim()) {
-      setError('Poné la cobertura y la cláusula.')
+      setError('Poné la cobertura y el ítem.')
       return
     }
     setGuardando(true)
@@ -312,8 +339,8 @@ function DialogoClausula({ edicion, companias, coberturas, alCerrar, alGuardar }
   return (
     <Dialogo
       abierto
-      titulo={edicion.id === null ? 'Nueva cláusula' : 'Editar la cláusula'}
-      descripcion="Qué ampara —o qué deja afuera— esta cobertura."
+      titulo={edicion.id === null ? 'Nuevo ítem' : 'Editar el ítem'}
+      descripcion="Un ítem de la cobertura, con las casillas que corresponden."
       alCerrar={alCerrar}
       ancho="lg"
       pie={
@@ -322,7 +349,7 @@ function DialogoClausula({ edicion, companias, coberturas, alCerrar, alGuardar }
             Cancelar
           </Boton>
           <Boton variante="primario" icono="ok" onClick={() => void guardar()} cargando={guardando}>
-            Guardar cláusula
+            Guardar ítem
           </Boton>
         </>
       }
@@ -351,34 +378,54 @@ function DialogoClausula({ edicion, companias, coberturas, alCerrar, alGuardar }
         <Sugerencias id="clausulas-companias" valores={companias} />
 
         <Campo
-          etiqueta="Cláusula"
+          etiqueta="Ítem"
           value={datos.clausula}
           onChange={(evento) => cambiar('clausula', evento.target.value)}
-          placeholder="Robo total"
-          ayuda="Cómo se la nombra en el mostrador, no cómo figura en la póliza."
+          placeholder="Robo"
+          ayuda="Por ejemplo: Robo, Ruedas, Granizo."
         />
 
         <fieldset className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-3">
-          <legend className="px-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Esta cobertura…</legend>
-          <div className="mt-1 flex gap-4">
-            {[
-              { valor: true, texto: 'La ampara', detalle: 'Entra en la cobertura.' },
-              { valor: false, texto: 'No la ampara', detalle: 'Es una exclusión: queda afuera.' },
-            ].map((opcion) => (
-              <label key={String(opcion.valor)} className="flex flex-1 items-start gap-2">
-                <input
-                  type="radio"
-                  name="clausula-ampara"
-                  checked={datos.ampara === opcion.valor}
-                  onChange={() => cambiar('ampara', opcion.valor)}
-                  className="mt-0.5 h-4 w-4 border-slate-300"
-                />
-                <span className="text-sm text-slate-700">
-                  <span className="font-semibold text-slate-900">{opcion.texto}</span>
-                  <span className="block text-xs text-slate-500">{opcion.detalle}</span>
-                </span>
-              </label>
-            ))}
+          <legend className="px-1 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Tildá lo que corresponde</legend>
+          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-2">
+            {todas.map((nombre) => {
+              const tildada = opciones.find((o) => o.nombre === nombre)
+              return (
+                <div key={nombre} className="flex items-center gap-2">
+                  <label className="flex min-w-[7rem] items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" checked={!!tildada} onChange={() => alternar(nombre)} className="h-4 w-4 border-slate-300" />
+                    {nombre}
+                  </label>
+                  {tildada && (
+                    <input
+                      value={tildada.valor}
+                      onChange={(evento) => poner(nombre, evento.target.value)}
+                      placeholder="3%, 1 por año…"
+                      aria-label={`Valor de ${nombre}`}
+                      className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm"
+                    />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <input
+              value={otra}
+              onChange={(evento) => setOtra(evento.target.value)}
+              onKeyDown={(evento) => {
+                if (evento.key === 'Enter') {
+                  evento.preventDefault()
+                  agregarOtra()
+                }
+              }}
+              placeholder="Otra casilla…"
+              aria-label="Agregar otra casilla"
+              className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm"
+            />
+            <Boton tamano="sm" onClick={agregarOtra}>
+              Agregar
+            </Boton>
           </div>
         </fieldset>
 
@@ -387,7 +434,7 @@ function DialogoClausula({ edicion, companias, coberturas, alCerrar, alGuardar }
           rows={3}
           value={datos.detalle}
           onChange={(evento) => cambiar('detalle', evento.target.value)}
-          ayuda="El límite, la franquicia o la condición: lo que hay que aclarar al contestar."
+          ayuda="Cualquier otra aclaración (opcional)."
         />
       </div>
     </Dialogo>

@@ -19,8 +19,10 @@
 // dos respuestas para la misma pregunta.
 import { anioMinimoDe } from '../../shared/polizas'
 import { hoyLocal } from '../../shared/semaforo'
+import { textoDeOpciones } from '../../shared/tipos'
 import type {
   ClausulaDeCobertura,
+  OpcionDeClausula,
   CompaniaSegunAntiguedad,
   ConsultaDeAntiguedad,
   CoberturaSegunAntiguedad,
@@ -328,11 +330,12 @@ interface FilaClausula {
   clausula: string
   ampara: number
   detalle: string | null
+  opciones: string | null
   orden: number
 }
 
 const SELECT_CLAUSULAS = `
-  SELECT id, compania, cobertura, clausula, ampara, detalle, orden
+  SELECT id, compania, cobertura, clausula, ampara, detalle, opciones, orden
   FROM clausulas_coberturas
 `
 
@@ -344,7 +347,21 @@ function aClausula(fila: FilaClausula): ClausulaDeCobertura {
     clausula: fila.clausula,
     ampara: fila.ampara === 1,
     detalle: fila.detalle,
+    opciones: leerOpciones(fila.opciones),
     orden: fila.orden,
+  }
+}
+
+function leerOpciones(crudo: string | null): OpcionDeClausula[] {
+  if (!crudo) return []
+  try {
+    const lista: unknown = JSON.parse(crudo)
+    if (!Array.isArray(lista)) return []
+    return lista
+      .filter((o): o is { nombre: string; valor?: unknown } => typeof o === 'object' && o !== null && typeof o.nombre === 'string')
+      .map((o) => ({ nombre: o.nombre, valor: typeof o.valor === 'string' ? o.valor : '' }))
+  } catch {
+    return []
   }
 }
 
@@ -371,6 +388,22 @@ interface ClausulaValidada {
   clausula: string
   ampara: boolean
   detalle: string | null
+  opciones: OpcionDeClausula[]
+}
+
+function validarOpciones(crudas: unknown): OpcionDeClausula[] {
+  if (!Array.isArray(crudas)) return []
+  const vistas = new Set<string>()
+  const salida: OpcionDeClausula[] = []
+  for (const cruda of crudas.slice(0, 40)) {
+    const o = objeto(cruda, 'Una casilla')
+    const nombre = texto(o.nombre, 'El nombre de la casilla', 1, 60)
+    const clave = normalizarTexto(nombre)
+    if (vistas.has(clave)) continue
+    vistas.add(clave)
+    salida.push({ nombre, valor: opcional(o.valor, 'El valor de la casilla', 60) ?? '' })
+  }
+  return salida
 }
 
 function validarClausula(datos: DatosDeClausula): ClausulaValidada {
@@ -383,6 +416,7 @@ function validarClausula(datos: DatosDeClausula): ClausulaValidada {
     clausula: texto(crudos.clausula, 'La cláusula', 1, 200),
     ampara: crudos.ampara !== false,
     detalle: opcional(crudos.detalle, 'El detalle', 800),
+    opciones: validarOpciones(crudos.opciones),
   }
 }
 
@@ -855,9 +889,16 @@ export function borrarGrua(id: number, actor: SesionUsuario): ListasDeCompanias 
   return listasDeCompanias(actor)
 }
 
-function resumenDeClausula(clausula: { compania: string | null; cobertura: string; clausula: string; ampara: boolean }): string {
+function resumenDeClausula(clausula: {
+  compania: string | null
+  cobertura: string
+  clausula: string
+  ampara: boolean
+  opciones: OpcionDeClausula[]
+}): string {
   const alcance = clausula.compania ?? 'todas las compañías'
-  return `${clausula.cobertura} · ${alcance} · ${clausula.ampara ? 'ampara' : 'NO ampara'} ${clausula.clausula}`
+  const tildes = clausula.opciones.length ? ` [${textoDeOpciones(clausula.opciones)}]` : ''
+  return `${clausula.cobertura} · ${alcance} · ${clausula.ampara ? 'ampara' : 'NO ampara'} ${clausula.clausula}${tildes}`
 }
 
 export function guardarClausula(id: number | null, datos: DatosDeClausula, actor: SesionUsuario): ListasDeCompanias {
@@ -880,6 +921,7 @@ export function guardarClausula(id: number | null, datos: DatosDeClausula, actor
     clausula: validado.clausula,
     ampara: validado.ampara ? 1 : 0,
     detalle: validado.detalle,
+    opciones: validado.opciones.length ? JSON.stringify(validado.opciones) : null,
     ahora,
   }
 
@@ -890,8 +932,8 @@ export function guardarClausula(id: number | null, datos: DatosDeClausula, actor
       .get(validado.cobertura) as { siguiente: number }
     const resultado = base
       .prepare(
-        `INSERT INTO clausulas_coberturas (clave, compania, cobertura, clausula, ampara, detalle, orden, creado_en, actualizado_en)
-         VALUES (@clave, @compania, @cobertura, @clausula, @ampara, @detalle, @orden, @ahora, @ahora)`,
+        `INSERT INTO clausulas_coberturas (clave, compania, cobertura, clausula, ampara, detalle, opciones, orden, creado_en, actualizado_en)
+         VALUES (@clave, @compania, @cobertura, @clausula, @ampara, @detalle, @opciones, @orden, @ahora, @ahora)`,
       )
       .run({ ...valores, orden: siguiente })
     anotar(actor, 'clausulas_coberturas', Number(resultado.lastInsertRowid), `${validado.cobertura} · ${validado.clausula}`, null, resumenDeClausula(validado))
@@ -904,7 +946,7 @@ export function guardarClausula(id: number | null, datos: DatosDeClausula, actor
     .prepare(
       `UPDATE clausulas_coberturas
        SET clave = @clave, compania = @compania, cobertura = @cobertura, clausula = @clausula,
-           ampara = @ampara, detalle = @detalle, actualizado_en = @ahora
+           ampara = @ampara, detalle = @detalle, opciones = @opciones, actualizado_en = @ahora
        WHERE id = @id`,
     )
     .run({ ...valores, id })
