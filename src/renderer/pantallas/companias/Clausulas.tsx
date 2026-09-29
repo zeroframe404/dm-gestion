@@ -34,7 +34,7 @@ export function Clausulas({ listas, alCambiar }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
 
-  const puedeEditar = listas.puedeEditar
+  const puedeEditar = listas.puedeEditarClausulas
   const clausulas = listas.clausulas
 
   const coberturas = useMemo(() => {
@@ -133,7 +133,7 @@ export function Clausulas({ listas, alCambiar }: Props) {
 
       {error && <Alerta tono="error">{error}</Alerta>}
       {aviso && <Alerta tono="exito">{aviso}</Alerta>}
-      {!puedeEditar && <SoloConsulta que="Lo que ampara cada cobertura" pedirle="una cláusula" />}
+      {!puedeEditar && <SoloConsulta que="Lo que ampara cada cobertura" pedirle="una cláusula" quien="un administrador" />}
 
       {coberturas.length > 1 && !busqueda && (
         <div className="flex flex-wrap items-center gap-2">
@@ -167,7 +167,7 @@ export function Clausulas({ listas, alCambiar }: Props) {
               Acá va lo que ampara cada cobertura y lo que deja afuera: es lo que se contesta cuando preguntan «¿esto lo cubre?».{' '}
               {puedeEditar
                 ? 'Se carga de a una: elegí la cobertura, escribí la cláusula y marcá si la ampara o si es una exclusión.'
-                : 'Las carga el superadministrador.'}
+                : 'Las carga un administrador.'}
             </p>
           </div>
         </div>
