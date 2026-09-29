@@ -4417,7 +4417,13 @@ export interface DatosDeGrua {
   observaciones: string
 }
 
-/** Una cláusula de una cobertura: lo que ampara, o lo que deja afuera. */
+/** Una casilla tildada de un ítem de cobertura («Franquicia») con su valor opcional («3%»). */
+export interface OpcionDeClausula {
+  nombre: string
+  valor: string
+}
+
+/** Una cláusula de una cobertura: un ítem (Robo, Ruedas…) con las casillas que se tildan. */
 export interface ClausulaDeCobertura {
   id: number
   /** null = la cláusula vale para todas las compañías. */
@@ -4427,6 +4433,8 @@ export interface ClausulaDeCobertura {
   /** false es una EXCLUSIÓN: en el mostrador la pregunta que llega incluye lo que no cubre. */
   ampara: boolean
   detalle: string | null
+  /** Casillas tildadas del ítem, cada una con su valor (3%, 1 por año…). */
+  opciones: OpcionDeClausula[]
   orden: number
 }
 
@@ -4436,6 +4444,12 @@ export interface DatosDeClausula {
   clausula: string
   ampara: boolean
   detalle: string
+  opciones?: OpcionDeClausula[]
+}
+
+/** «Franquicia 3%, Eventos 1» — las casillas tildadas en una línea. */
+export function textoDeOpciones(opciones: OpcionDeClausula[]): string {
+  return opciones.map((o) => (o.valor ? `${o.nombre} ${o.valor}` : o.nombre)).join(', ')
 }
 
 /** Lo que una compañía le ofrece a un vehículo de un año concreto, según la matriz de reglas. */

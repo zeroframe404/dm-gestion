@@ -10,6 +10,7 @@
 // «me habías pasado 45.000» no hay con qué comparar.
 import {
   ESTADOS_DE_PRESUPUESTO,
+  textoDeOpciones,
   type AceptacionDePresupuesto,
   type ClausulaDeCobertura,
   type DatosDeOpcion,
@@ -827,6 +828,8 @@ function htmlDeCoberturas(ficha: FichaPresupuesto): string {
         .map(
           (c) =>
             `<li class="${c.ampara ? 'ampara' : 'excluye'}"><strong>${c.ampara ? 'Cubre' : 'No cubre'}:</strong> ${escapar(c.clausula)}${
+              c.opciones.length ? ` (${escapar(textoDeOpciones(c.opciones))})` : ''
+            }${
               limpiar(c.detalle) ? ` — ${escapar(limpiar(c.detalle))}` : ''
             }</li>`,
         )

@@ -4,6 +4,7 @@
 // cargan los tres. La fila vacía del final está siempre lista, así se carga una atrás de otra sin
 // tocar ningún botón de «agregar».
 import { useEffect, useState } from 'react'
+import { textoDeOpciones } from '../../../shared/tipos'
 import type { ClausulaDeCobertura, DatosDeOpcion, DatosDePresupuesto, FichaPresupuesto, FilaCliente } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, AreaTexto, Boton, Campo, Dialogo, cx } from '../../componentes/ui'
@@ -69,6 +70,7 @@ function DescribirCobertura({ clausulas, compania, cobertura }: { clausulas: Cla
                 <li key={c.id} className={c.ampara ? 'text-slate-700' : 'text-red-700'}>
                   <strong>{c.ampara ? 'Cubre: ' : 'No cubre: '}</strong>
                   {c.clausula}
+                  {c.opciones.length > 0 && ` (${textoDeOpciones(c.opciones)})`}
                   {c.detalle ? ` — ${c.detalle}` : ''}
                 </li>
               ))}
