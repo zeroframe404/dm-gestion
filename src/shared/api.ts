@@ -69,6 +69,7 @@ export interface ApiDm {
     registrarPago: Remota<'cartera:registrarPago'>
     imputarAdelanto: Remota<'cartera:imputarAdelanto'>
     darDeBaja: Remota<'cartera:darDeBaja'>
+    editarBaja: Remota<'cartera:editarBaja'>
     deshacerBaja: Remota<'cartera:deshacerBaja'>
     reactivarBaja: Remota<'cartera:reactivarBaja'>
     bajas: Remota<'cartera:bajas'>

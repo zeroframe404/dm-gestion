@@ -13,6 +13,7 @@ import {
   bajasDelMes,
   cuotasDelClienteEnElMes,
   darDeBaja,
+  editarBaja,
   deshacerBaja,
   editarCelda,
   idDelAdelantoDeLaCuota,
@@ -691,6 +692,9 @@ export function registrarIpc(): void {
   })
   manejar('cartera:imputarAdelanto', (filaId) => exito(imputarAdelanto(filaId, exigirEdicion('cartera', 'clientes', 'cobranzas'))))
   manejar('cartera:darDeBaja', (filaId, datos) => exito(darDeBaja(filaId, datos, exigirEdicion('cartera'))))
+  manejar('cartera:editarBaja', (bajaId, datos) =>
+    exito(editarBaja(enteroPositivo(bajaId, 'La baja'), datos, exigirEdicion('cartera'))),
+  )
   manejar('cartera:deshacerBaja', (bajaId) => {
     exigirEdicion('cartera')
     return exito(deshacerBaja(enteroPositivo(bajaId, 'La baja'), exigirSesion()))
