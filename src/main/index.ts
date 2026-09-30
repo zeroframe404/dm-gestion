@@ -11,6 +11,7 @@ import {
   vigilarErroresSueltos,
 } from './arranque'
 import { abrirBaseDeDatos, cerrarBaseDeDatos } from './db/base'
+import { cerrarPantallaDeCarga, enfocarPantallaDeCarga, mostrarPantallaDeCarga } from './pantallaDeCarga'
 import { registrarIpc } from './ipc'
 import { arrancarCartero, apurarAlCartero, pararCartero } from './mensajeria/cartero'
 import { carpetaDatos, configurarCarpetaDatos, rutaBaseDeDatos } from './rutas'
@@ -96,6 +97,9 @@ function crearVentana(): void {
     if (ventana.isDestroyed()) return
     if (motivo !== 'ready-to-show') anotar(`[ventana] Se muestra igual: ${motivo}.`)
     ventana.show()
+    // Recién con la ventana principal a la vista se saca la de carga: sin ese orden quedaría un
+    // instante sin nada en pantalla, que es justo lo que la pantalla de carga vino a evitar.
+    cerrarPantallaDeCarga()
     marcarArranqueTerminado()
   }
 
@@ -344,10 +348,29 @@ function blindarLosPermisos(): void {
   })
 }
 
+/**
+ * Lo primero que pasa cuando Electron está listo: la pantalla de carga. El resto del arranque —que
+ * abre la base y traba el proceso principal un rato— corre recién cuando la pantalla de carga ya se ve.
+ */
 function arrancar(): void {
   // En producción no hay menú. En desarrollo se conserva el de Electron por las herramientas de desarrollo.
   if (app.isPackaged) Menu.setApplicationMenu(null)
+  anotar(`[arranque] Electron listo a los ${milisegundosDesdeElInicio()} ms.`)
+  mostrarPantallaDeCarga(() => {
+    try {
+      arrancarElPrograma()
+    } catch (error) {
+      fallaDeArranque('el arranque', error)
+    }
+  })
+}
 
+/** Cuánto pasó desde que Windows lanzó el proceso: para la bitácora de lo que tarda cada arranque. */
+function milisegundosDesdeElInicio(): number {
+  return Math.round(process.uptime() * 1000)
+}
+
+function arrancarElPrograma(): void {
   try {
     abrirBaseDeDatos(rutaBaseDeDatos())
   } catch (error) {
@@ -369,6 +392,7 @@ function arrancar(): void {
   if (!paso('el candado de los permisos de la pantalla', blindarLosPermisos)) return
   if (!paso('la creación de la ventana', crearVentana)) return
   listoParaVentana = true
+  anotar(`[arranque] Base y servicios listos a los ${milisegundosDesdeElInicio()} ms; se carga la pantalla.`)
 
   // De acá para abajo, nada es imprescindible para que el programa abra: si algo falla, se anota y
   // la ventana —que ya está creada— sigue su camino.
@@ -396,6 +420,7 @@ if (!app.requestSingleInstanceLock()) {
     // esto, el proceso se queda con el cerrojo y ningún doble click vuelve a abrir el programa.
     if (!ventanaPrincipal || ventanaPrincipal.isDestroyed()) {
       if (!listoParaVentana) {
+        enfocarPantallaDeCarga()
         anotar('[app] Otro doble click mientras esta instancia todavía está abriendo: se lo ignora.')
         return
       }
