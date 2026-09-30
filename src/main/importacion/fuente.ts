@@ -1,6 +1,7 @@
 // Acceso a la hoja de cálculo. `FuenteHoja` es la interfaz que usa el importador; `FuenteGoogleSheets`
 // la implementa con la API oficial de Google Sheets (cuenta de servicio). Sólo corre en el proceso principal.
-import { auth as autenticacion, sheets, type sheets_v4 } from '@googleapis/sheets'
+import type * as GoogleSheets from '@googleapis/sheets'
+import type { sheets_v4 } from '@googleapis/sheets'
 import { ErrorDeNegocio } from '../servicios/errores'
 import { letraColumna } from './normalizar'
 
@@ -230,7 +231,18 @@ function esperaRetryAfter(error: unknown): number {
 /** Tiempo máximo por pedido a Google; sin esto una conexión colgada bloquea la importación. */
 const TIEMPO_MAXIMO_MS = 90_000
 
-type OpcionesGoogleAuth = NonNullable<ConstructorParameters<typeof autenticacion.GoogleAuth>[0]>
+type OpcionesGoogleAuth = NonNullable<ConstructorParameters<typeof GoogleSheets.auth.GoogleAuth>[0]>
+
+/**
+ * La librería de Google se carga recién cuando hace falta (la primera importación o respaldo), no al
+ * abrir el programa: son cientos de archivos que en Windows —con el antivirus mirando cada uno— le
+ * sumaban casi un segundo al arranque de TODAS las computadoras, y la mayoría nunca importa nada.
+ */
+let libreriaDeGoogle: typeof GoogleSheets | null = null
+function googleSheets(): typeof GoogleSheets {
+  libreriaDeGoogle ??= require('@googleapis/sheets') as typeof GoogleSheets
+  return libreriaDeGoogle
+}
 
 export interface OpcionesFuenteGoogle {
   hojaId: string
@@ -244,11 +256,12 @@ export class FuenteGoogleSheets implements FuenteHoja {
   private readonly hojaId: string
   private readonly clientEmail: string
   private columnasPorSheetId = new Map<number, number>()
-  private readonly autenticacion: InstanceType<typeof autenticacion.GoogleAuth> | null
+  private readonly autenticacion: InstanceType<typeof GoogleSheets.auth.GoogleAuth> | null
 
   constructor(opciones: OpcionesFuenteGoogle) {
     this.hojaId = opciones.hojaId
     this.clientEmail = typeof opciones.cuentaServicio.client_email === 'string' ? opciones.cuentaServicio.client_email : '(sin client_email)'
+    const { auth: autenticacion, sheets } = googleSheets()
     if (opciones.urlBase) {
       this.api = sheets({ version: 'v4', auth: 'simulada', rootUrl: opciones.urlBase, timeout: TIEMPO_MAXIMO_MS })
       this.autenticacion = null

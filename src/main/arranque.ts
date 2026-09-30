@@ -62,7 +62,7 @@ export function iniciarBitacora(carpetaDeDatos: string): void {
 
   engancharConsola()
   anotar(`===== DM Gestión ${app.getVersion()} — arranque ${marca()} (pid ${process.pid}) =====`)
-  anotar(`[arranque] Carpeta de datos: ${carpetaDeDatos}`)
+  anotar(`[arranque] Carpeta de datos: ${carpetaDeDatos} (código cargado a los ${Math.round(process.uptime() * 1000)} ms)`)
 }
 
 function rotarSiEstaGrande(): void {
@@ -123,7 +123,7 @@ export function anotar(mensaje: string): void {
 export function marcarArranqueTerminado(): void {
   if (arranqueTerminado) return
   arranqueTerminado = true
-  anotar('[arranque] Ventana a la vista: el programa abrió bien.')
+  anotar(`[arranque] Ventana a la vista a los ${Math.round(process.uptime() * 1000)} ms: el programa abrió bien.`)
 }
 
 export function detalleDelError(error: unknown): string {
