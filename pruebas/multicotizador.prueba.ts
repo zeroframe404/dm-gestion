@@ -20,7 +20,7 @@ import {
 } from '../src/main/multicotizador/equivalencias'
 import { formasDePago, olvidarCuerpoDeFormasDePago } from '../src/main/aseguradoras/galeno/catalogos'
 import { crearClienteGaleno } from '../src/main/aseguradoras/galeno/cliente'
-import { codigosDeGaleno } from '../src/main/multicotizador/galeno'
+import { codigosDeGaleno, esLaVersionDelCodigo, modeloDeLaLista } from '../src/main/multicotizador/galeno'
 import { usarAseguradorasDePrueba } from '../src/main/multicotizador/registro'
 import {
   aseguradorasDelMulticotizador,
@@ -165,6 +165,30 @@ test('multicotizador: un vehículo del catálogo con código de Galeno se cotiza
   // Un código de otra fuente (o uno cargado a mano) se busca por nombre, como siempre.
   assert.equal(codigosDeGaleno('13605413', 'AUTO'), null)
   assert.equal(codigosDeGaleno('', 'AUTO'), null)
+})
+
+test('multicotizador: el código de Galeno lleva el modelo de la versión, no el de la familia de la lista', () => {
+  // La lista de modelos de Galeno son familias; cada versión trae su propio codigoModelo y el
+  // codigoSubModelo se repite entre ellas.
+  const modelos = [
+    { codigo: '499', descripcion: 'COROLLA' },
+    { codigo: '500', descripcion: 'Corolla Cross' },
+  ]
+  const exacto = codigosDeGaleno('GALENO:4:20:503:1', 'AUTO')!
+  // La versión se busca en la familia que se llama como el modelo del catálogo, aunque el 503 no esté en la lista.
+  assert.equal(modeloDeLaLista(modelos, 'COROLLA CROSS', exacto), '500')
+  // Un código viejo, con el modelo de la lista, sigue encontrando su modelo.
+  assert.equal(modeloDeLaLista(modelos, 'OTRO NOMBRE', { modelo: '499' }), '499')
+  assert.equal(modeloDeLaLista(modelos, 'OTRO NOMBRE', exacto), null)
+
+  const filas = [
+    { version: 'COROLLA CROSS 2.0 XEI CVT L/21', codigoMarca: 20, codigoModelo: 502, codigoSubModelo: 1 },
+    { version: 'COROLLA CROSS 1.8 SEG HEV E-CVT L/24', codigoMarca: 20, codigoModelo: 503, codigoSubModelo: 1 },
+  ]
+  assert.deepEqual(
+    filas.filter((fila) => esLaVersionDelCodigo(fila, exacto)).map((fila) => fila.version),
+    ['COROLLA CROSS 1.8 SEG HEV E-CVT L/24'],
+  )
 })
 
 test('multicotizador: las marcas se encuentran con los alias de siempre', () => {

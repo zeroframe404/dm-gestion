@@ -9,11 +9,12 @@
 // cualquiera desde la tarjeta de Galeno sin volver a cargar nada.
 //
 // EL VEHÍCULO: si salió del catálogo de la agencia con un código de Galeno («GALENO:rama:marca:modelo:
-// versión», ver catalogoVehiculos.ts), ése es el vehículo exacto en Galeno. Si no, se busca en el
+// versión», con el modelo de la versión; ver catalogoVehiculos.ts), ése es el vehículo exacto en Galeno. Si no, se busca en el
 // catálogo de Galeno por nombre —marca, modelo y versión—, y cuando hay dudas se pregunta en vez de
 // adivinar: cotizar otra versión es cotizar otro auto.
 import {
   categoriaDeCobertura,
+  normalizarTexto,
   type AjusteDeAseguradora,
   type CoberturaCotizada,
 } from '../../shared/multicotizador'
@@ -92,6 +93,22 @@ export function codigosDeGaleno(codigoCatalogo: string, tipo: TipoDeVehiculo): {
   return { marca: partes[2]!, modelo: partes[3]!, subModelo: partes[4]! }
 }
 
+/**
+ * En qué modelo de la lista de Galeno buscar la versión de un código del catálogo: en el que se llama
+ * como el modelo del catálogo, que es de donde salió. El modelo del código es el de la VERSIÓN y casi
+ * nunca está en la lista: los de la lista son familias («COROLLA CROSS») y cada versión trae el suyo
+ * (ver fuentes/galeno.ts en el servidor). Si ninguno se llama así, el del código, si está.
+ */
+export function modeloDeLaLista(modelos: OpcionGaleno[], nombreDelModelo: string, exacto: { modelo: string }): string | null {
+  const buscado = normalizarTexto(nombreDelModelo)
+  return modelos.find((modelo) => normalizarTexto(modelo.descripcion) === buscado)?.codigo ?? valido(exacto.modelo, modelos)
+}
+
+/** Si una fila de Sub-modelos es la versión que nombra el código: por el modelo y el sub-modelo de la fila. */
+export function esLaVersionDelCodigo(sub: SubModeloGaleno, exacto: { modelo: string; subModelo: string }): boolean {
+  return String(sub.codigoModelo) === exacto.modelo && String(sub.codigoSubModelo) === exacto.subModelo
+}
+
 interface VehiculoParaGaleno {
   idInfoAuto: string | null
   version: SubModeloGaleno | null
@@ -144,7 +161,8 @@ async function vehiculoEnGaleno(
   // Sin modelo elegido a mano, se miran los tres que más se parecen: el catálogo de Galeno suele
   // partir un modelo en varios («COROLLA», «COROLLA CROSS», «COROLLA 4P») y la versión buscada puede
   // estar en cualquiera.
-  const modeloExacto = exacto && exacto.marca === marca ? valido(exacto.modelo, modelos) : null
+  const exactoDeLaMarca = exacto && exacto.marca === marca ? exacto : null
+  const modeloExacto = exactoDeLaMarca ? modeloDeLaLista(modelos, v.modelo, exactoDeLaMarca) : null
   const candidatos = modeloElegido
     ? modelos.filter((modelo) => modelo.codigo === modeloElegido)
     : modeloExacto
@@ -178,8 +196,8 @@ async function vehiculoEnGaleno(
   const ranking = rankear(`${v.modelo} ${v.version}`, versiones, (version) => `${version.modelo.descripcion} ${version.sub.version}`)
   const elegida =
     versiones.find((version) => version.clave === elegidos.version) ??
-    (modeloExacto
-      ? versiones.find((version) => version.modelo.codigo === modeloExacto && String(version.sub.codigoSubModelo) === exacto?.subModelo)
+    (modeloExacto && exactoDeLaMarca
+      ? versiones.find((version) => version.modelo.codigo === modeloExacto && esLaVersionDelCodigo(version.sub, exactoDeLaMarca))
       : undefined) ??
     sinDudas(ranking, 0.5, 0.1) ??
     (versiones.length === 1 ? versiones[0]! : null)
