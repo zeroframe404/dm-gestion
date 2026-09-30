@@ -161,6 +161,7 @@ export interface ApiDm {
     vehiculosDeCliente: Remota<'polizas:vehiculosDeCliente'>
     catalogos: Remota<'polizas:catalogos'>
     validarCobertura: Remota<'polizas:validarCobertura'>
+    patenteDadaDeBaja: Remota<'polizas:patenteDadaDeBaja'>
     crear: Remota<'polizas:crear'>
     editar: Remota<'polizas:editar'>
     darDeBaja: Remota<'polizas:darDeBaja'>

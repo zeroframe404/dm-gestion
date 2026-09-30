@@ -183,6 +183,7 @@ const api: ApiDm = {
     vehiculosDeCliente: (clienteId) => invocar('polizas:vehiculosDeCliente', clienteId),
     catalogos: () => invocar('polizas:catalogos'),
     validarCobertura: (compania, cobertura, anioVehiculo) => invocar('polizas:validarCobertura', compania, cobertura, anioVehiculo),
+    patenteDadaDeBaja: (clienteId, patente) => invocar('polizas:patenteDadaDeBaja', clienteId, patente),
     crear: (datos) => invocar('polizas:crear', datos),
     editar: (polizaId, datos) => invocar('polizas:editar', polizaId, datos),
     darDeBaja: (polizaId, datos) => invocar('polizas:darDeBaja', polizaId, datos),

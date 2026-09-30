@@ -50,6 +50,7 @@ import type {
   ListadoTareas,
   ResultadoConversion,
   AvisoDeCobertura,
+  PatenteDadaDeBaja,
   AvisoPreparado,
   BandejaRenovaciones,
   CatalogosDePoliza,
@@ -542,6 +543,8 @@ export interface Canales {
   'polizas:catalogos': () => Resultado<CatalogosDePoliza>
   /** Compañía + cobertura + año del vehículo contra la matriz de reglas. */
   'polizas:validarCobertura': (compania: string, cobertura: string, anioVehiculo: string) => Resultado<AvisoDeCobertura>
+  /** Si la patente la dio de baja otro cliente: para avisar antes de reusarla. */
+  'polizas:patenteDadaDeBaja': (clienteId: number, patente: string) => Resultado<PatenteDadaDeBaja | null>
   'polizas:crear': (datos: DatosDePoliza) => Resultado<PolizaDeCliente>
   'polizas:editar': (polizaId: number, datos: DatosDePoliza) => Resultado<PolizaDeCliente>
   'polizas:darDeBaja': (polizaId: number, datos: DatosDeBaja) => Resultado<null>

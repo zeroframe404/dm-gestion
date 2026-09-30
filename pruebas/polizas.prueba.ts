@@ -11,6 +11,7 @@ import {
   darDeBajaPoliza,
   editarPoliza,
   listarPolizas,
+  patenteDadaDeBaja,
   polizasDeCliente,
   validarCobertura,
   vehiculosDeCliente,
@@ -380,6 +381,41 @@ test('el alta se frena con la advertencia y sólo sigue con confirmación de un 
 // ---------------------------------------------------------------------------
 // Alta, edición y baja
 // ---------------------------------------------------------------------------
+
+test('una patente que otro cliente dio de baja se puede volver a asegurar, avisando de quién era', async () => {
+  await carteraDePrueba()
+  const vendedor = idDeCliente(CLIENTES.rodriguez.nombre)
+  const comprador = idDeCliente(CLIENTES.lopez.nombre)
+
+  const vieja = { ...datosBase(vendedor) }
+  vieja.vehiculoNuevo = { ...vieja.vehiculoNuevo!, anio: '2022', patente: 'AF777ZZ' }
+  const deAntes = crearPoliza(vieja, DANIEL)
+
+  const nueva = { ...datosBase(comprador), numero: '9007777' }
+  nueva.vehiculoNuevo = { ...nueva.vehiculoNuevo!, anio: '2022', patente: 'af 777 zz' }
+  // Mientras el vendedor la tiene asegurada, no hay aviso que valga: está tomada.
+  assert.equal(patenteDadaDeBaja(comprador, 'AF777ZZ'), null)
+  assert.throws(() => crearPoliza({ ...nueva, confirmadoPatenteDeBaja: true }, DANIEL), /a nombre de otro cliente/)
+
+  darDeBajaPoliza(deAntes.id, { motivo: 'VENDIO', nota: '' }, DANIEL)
+  const hoy = hoyLocal()
+  const aviso = patenteDadaDeBaja(comprador, 'af777zz')
+  assert.deepEqual(aviso, {
+    patente: 'AF777ZZ',
+    fechaBaja: `${hoy.slice(8, 10)}/${hoy.slice(5, 7)}/${hoy.slice(0, 4)}`,
+    clienteAnterior: CLIENTES.rodriguez.nombre,
+  })
+  // Al propio dueño no se le avisa nada.
+  assert.equal(patenteDadaDeBaja(vendedor, 'AF777ZZ'), null)
+
+  // Sin confirmar, el alta frena con el mismo texto del aviso.
+  assert.throws(() => crearPoliza(nueva, DANIEL), /Esta patente fue dada de baja el .* por RODRIGUEZ ANA\. ¿Desea continuar\?/)
+  const creada = crearPoliza({ ...nueva, confirmadoPatenteDeBaja: true }, DANIEL)
+  assert.equal(creada.clienteId, comprador)
+  assert.equal(creada.vehiculoId, deAntes.vehiculoId, 'es el mismo auto: la misma fila')
+  assert.ok(vehiculosDeCliente(comprador).some((v) => v.id === creada.vehiculoId), 'el auto pasó al comprador')
+  assert.equal(verPoliza(deAntes.id).vehiculoId, deAntes.vehiculoId, 'la póliza vieja conserva su historia')
+})
 
 test('un alta sin advertencias crea la póliza, su vehículo y la deja para subir a la hoja', async () => {
   await carteraDePrueba()

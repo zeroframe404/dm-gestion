@@ -20,6 +20,7 @@ import {
   type FilaCliente,
   type IntegranteDePoliza,
   type MotivoDeBaja,
+  type PatenteDadaDeBaja,
   type PolizaDeCliente,
   type TipoDeRiesgo,
   type VehiculoDeCliente,
@@ -151,6 +152,8 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [bajaAbierta, setBajaAbierta] = useState(false)
+  // La patente que otro cliente dio de baja: se pregunta antes de reusarla.
+  const [patenteDeBaja, setPatenteDeBaja] = useState<PatenteDadaDeBaja | null>(null)
   const [rechazoAbierto, setRechazoAbierto] = useState(false)
 
   const idCompanias = useId()
@@ -363,13 +366,24 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
   const hayProblema = avisoCobertura?.hayProblema === true
   const bloqueadoPorAviso = hayProblema && !confirmado
 
-  const guardar = async () => {
+  const guardar = async (confirmadoPatenteDeBaja = false) => {
     if (!cliente) {
       setError('Elegí primero el cliente al que le vas a cargar la póliza.')
       return
     }
     setGuardando(true)
     setError(null)
+    // Una patente de otro cliente que la dio de baja se puede volver a asegurar, pero avisando de quién
+    // era. El proceso principal igual lo vuelve a revisar al guardar.
+    const patente = modoVehiculo === 'nuevo' && esVehiculo(vehiculoNuevo.tipo) ? vehiculoNuevo.patente.trim() : ''
+    if (patente && !confirmadoPatenteDeBaja) {
+      const consulta = await window.dm.polizas.patenteDadaDeBaja(cliente.id, patente)
+      if (consulta.ok && consulta.datos) {
+        setGuardando(false)
+        setPatenteDeBaja(consulta.datos)
+        return
+      }
+    }
     const datos: DatosDePoliza = {
       clienteId: cliente.id,
       vehiculoId: modoVehiculo === 'existente' ? vehiculoId : null,
@@ -378,6 +392,7 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
       // Sólo se manda confirmado si hay algo que confirmar: si el aviso desapareció al corregir el
       // año, el permiso del administrador no tiene que viajar igual.
       confirmadoPeseAlAviso: hayProblema && confirmado,
+      confirmadoPatenteDeBaja,
     }
     const resultado = polizaId === null ? await window.dm.polizas.crear(datos) : await window.dm.polizas.editar(polizaId, datos)
     setGuardando(false)
@@ -871,6 +886,44 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
           }}
         />
       )}
+
+      <Dialogo
+        abierto={patenteDeBaja !== null}
+        titulo="Patente dada de baja"
+        alCerrar={() => setPatenteDeBaja(null)}
+        ancho="sm"
+        pie={
+          <>
+            <Boton onClick={() => setPatenteDeBaja(null)}>No</Boton>
+            <Boton
+              variante="primario"
+              onClick={() => {
+                setPatenteDeBaja(null)
+                void guardar(true)
+              }}
+            >
+              Sí
+            </Boton>
+          </>
+        }
+      >
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+            <Icono nombre="alerta" tamano={30} />
+          </span>
+          {patenteDeBaja && (
+            <p className="text-sm text-slate-700">
+              Esta patente fue dada de baja
+              {patenteDeBaja.fechaBaja && (
+                <>
+                  {' '}el <strong className="font-semibold">{patenteDeBaja.fechaBaja}</strong>
+                </>
+              )}{' '}
+              por <strong className="font-semibold">{patenteDeBaja.clienteAnterior}</strong>, ¿Desea continuar?
+            </p>
+          )}
+        </div>
+      </Dialogo>
 
       <DialogoRechazo
         poliza={

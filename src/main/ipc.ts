@@ -164,6 +164,7 @@ import {
   listarPolizas,
   polizasDeCliente,
   validarCobertura,
+  patenteDadaDeBaja,
   vehiculosDeCliente,
   verPoliza,
 } from './servicios/polizas'
@@ -1180,6 +1181,10 @@ export function registrarIpc(): void {
   manejar('polizas:validarCobertura', (compania, cobertura, anioVehiculo) => {
     exigirVista('polizas', 'presupuestos', 'renovaciones')
     return exito(validarCobertura(compania, cobertura, anioVehiculo))
+  })
+  manejar('polizas:patenteDadaDeBaja', (clienteId, patente) => {
+    exigirVista('polizas', 'clientes')
+    return exito(patenteDadaDeBaja(clienteId, patente))
   })
   // El servicio es el que decide si hace falta un administrador para saltear la advertencia de
   // cobertura: es una regla de negocio, no un permiso de pantalla.
