@@ -1692,6 +1692,16 @@ export interface DatosDePoliza {
   observaciones: string
   /** true si un administrador confirmó continuar pese a la advertencia de cobertura. */
   confirmadoPeseAlAviso: boolean
+  /** true si se confirmó reusar una patente que otro cliente dio de baja. */
+  confirmadoPatenteDeBaja?: boolean
+}
+
+/** Una patente de otro cliente cuya póliza se dio de baja: se puede volver a asegurar, con aviso. */
+export interface PatenteDadaDeBaja {
+  patente: string
+  /** dd/mm/aaaa, o null si no quedó registrada. */
+  fechaBaja: string | null
+  clienteAnterior: string
 }
 
 export const ESTADOS_DE_RENOVACION = ['pendiente', 'en gestion', 'renovada', 'no renueva'] as const

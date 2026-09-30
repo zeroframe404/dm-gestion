@@ -31,6 +31,7 @@ import {
   type IntegranteDePoliza,
   type ListadoPolizas,
   type MotivoDeBaja,
+  type PatenteDadaDeBaja,
   type PolizaDeCliente,
   type SesionUsuario,
   type VehiculoDeCliente,
@@ -656,6 +657,8 @@ interface VehiculoResuelto {
   descripcion: string
   /** Lo que hay que insertar si el riesgo todavía no existe. Null si ya existía. */
   aCrear: Record<string, unknown> | null
+  /** El vehículo existe a nombre de otro cliente que lo dio de baja, y pasa a este. */
+  traspasar?: boolean
 }
 
 interface ClienteCargado {
@@ -705,6 +708,51 @@ const SELECT_VEHICULO = `SELECT id, cliente_id, patente, marca, modelo, anio, ti
 
 function leerVehiculo(id: number): VehiculoGuardado | undefined {
   return db().prepare(`${SELECT_VEHICULO} WHERE id = ?`).get(id) as VehiculoGuardado | undefined
+}
+
+/**
+ * Si el vehículo de otro cliente quedó libre: ninguna póliza activa lo cubre y alguna se dio de baja.
+ * Devuelve cuándo y de quién era, para el aviso; null si todavía está asegurado (o nunca lo estuvo).
+ */
+function bajaDelVehiculo(veh: VehiculoGuardado): PatenteDadaDeBaja | null {
+  const activas = db().prepare('SELECT COUNT(*) AS n FROM polizas WHERE vehiculo_id = ? AND activa = 1').get(veh.id) as { n: number }
+  if (activas.n > 0) return null
+  // Las bajas hechas en la app guardan el vehículo; las que vienen de la hoja, sólo la póliza.
+  const baja = db()
+    .prepare(
+      `SELECT b.fecha_baja_iso, b.fecha_baja, b.cliente_nombre FROM bajas b
+       WHERE b.vehiculo_id = @id OR b.poliza_id IN (SELECT id FROM polizas WHERE vehiculo_id = @id)
+       ORDER BY COALESCE(b.fecha_baja_iso, '') DESC, b.id DESC LIMIT 1`,
+    )
+    .get({ id: veh.id }) as { fecha_baja_iso: string | null; fecha_baja: string | null; cliente_nombre: string | null } | undefined
+  if (!baja) {
+    const inactivas = db().prepare('SELECT COUNT(*) AS n FROM polizas WHERE vehiculo_id = ?').get(veh.id) as { n: number }
+    if (inactivas.n === 0) return null
+  }
+  const duenio = veh.cliente_id === null ? undefined : (db().prepare('SELECT nombre FROM clientes WHERE id = ?').get(veh.cliente_id) as { nombre: string } | undefined)
+  const iso = baja?.fecha_baja_iso ?? null
+  return {
+    patente: limpiar(veh.patente),
+    fechaBaja: iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : limpiar(baja?.fecha_baja) || null,
+    clienteAnterior: limpiar(duenio?.nombre) || limpiar(baja?.cliente_nombre) || 'otro cliente',
+  }
+}
+
+function mensajeDePatenteDadaDeBaja(baja: PatenteDadaDeBaja): string {
+  return `Esta patente fue dada de baja${baja.fechaBaja ? ` el ${baja.fechaBaja}` : ''} por ${baja.clienteAnterior}.`
+}
+
+/**
+ * Para el aviso del formulario antes de guardar: si la patente es de otro cliente que la dio de baja.
+ * Null si la patente está libre, es de este cliente, o sigue asegurada por otro (eso lo frena el alta).
+ */
+export function patenteDadaDeBaja(clienteId: number, patente: string): PatenteDadaDeBaja | null {
+  const id = enteroPositivo(clienteId, 'El cliente')
+  const normalizada = normalizarPatente(texto(patente, 'La patente', 0, 20))
+  if (!normalizada) return null
+  const veh = db().prepare(`${SELECT_VEHICULO} WHERE clave = ?`).get(`PAT:${normalizada}`) as VehiculoGuardado | undefined
+  if (!veh || veh.cliente_id === null || veh.cliente_id === id) return null
+  return bajaDelVehiculo(veh)
 }
 
 function comoResuelto(veh: VehiculoGuardado): VehiculoResuelto {
@@ -835,15 +883,26 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
 
   const existente = db().prepare(`${SELECT_VEHICULO} WHERE clave = ?`).get(clave) as VehiculoGuardado | undefined
   if (existente) {
+    let traspasar = false
     if (existente.cliente_id !== null && existente.cliente_id !== cliente.id) {
-      throw new ErrorDeNegocio(
-        `La patente ${patente || existente.patente} ya está cargada a nombre de otro cliente. Revisá la cartera antes de volver a usarla.`,
-      )
+      // El auto de otro cliente. Si ese cliente todavía lo tiene asegurado, no se puede; si le dieron
+      // de baja la póliza (lo vendió, se fue), el comprador lo puede asegurar acá con la misma patente:
+      // se avisa de quién era y, confirmado, el vehículo pasa a este cliente. Las pólizas viejas siguen
+      // apuntando a la misma fila, que es el mismo auto.
+      const baja = bajaDelVehiculo(existente)
+      if (!baja) {
+        throw new ErrorDeNegocio(
+          `La patente ${patente || existente.patente} ya está cargada a nombre de otro cliente. Revisá la cartera antes de volver a usarla.`,
+        )
+      }
+      if (datos.confirmadoPatenteDeBaja !== true) throw new ErrorDeNegocio(`${mensajeDePatenteDadaDeBaja(baja)} ¿Desea continuar?`)
+      traspasar = true
     }
-    // Es un riesgo que este cliente ya tenía cargado: se reusa en vez de duplicarlo.
+    // Es un riesgo que este cliente ya tenía cargado (o que se le traspasa): se reusa en vez de duplicarlo.
     const resuelto = comoResuelto(existente)
     return {
       ...resuelto,
+      traspasar,
       patente: resuelto.patente || patente,
       marca: resuelto.marca || marca,
       modelo: resuelto.modelo || modelo,
@@ -893,6 +952,12 @@ function resolverVehiculo(datos: DatosDePoliza, cliente: ClienteCargado, actual:
       cliente_id: cliente.id,
     },
   }
+}
+
+/** El vehículo que otro cliente dio de baja pasa a nombre del que lo asegura ahora. */
+function traspasarVehiculo(vehiculo: VehiculoResuelto, clienteId: number, ahora: string): void {
+  if (!vehiculo.traspasar || vehiculo.id === null) return
+  db().prepare('UPDATE vehiculos SET cliente_id = ?, actualizado_en = ? WHERE id = ?').run(clienteId, ahora, vehiculo.id)
 }
 
 function crearVehiculo(aCrear: Record<string, unknown>, ahora: string): number {
@@ -986,6 +1051,7 @@ export function crearPoliza(datos: DatosDePoliza, actor: SesionUsuario): PolizaD
   let polizaId = 0
   db().transaction(() => {
     const vehiculoId = vehiculo.aCrear ? crearVehiculo(vehiculo.aCrear, ahora) : vehiculo.id
+    traspasarVehiculo(vehiculo, cliente.id, ahora)
     const insertada = db()
       .prepare(
         `INSERT INTO polizas (clave, fila_id, cliente_id, vehiculo_id, compania, numero, numero_normalizado, cobertura,
@@ -1268,6 +1334,7 @@ export function editarPoliza(polizaId: number, datos: DatosDePoliza, actor: Sesi
   const ahora = ahoraIso()
   db().transaction(() => {
     if (cambioDeVehiculo) enPoliza.vehiculo_id = vehiculo.aCrear ? crearVehiculo(vehiculo.aCrear, ahora) : vehiculo.id
+    traspasarVehiculo(vehiculo, cliente.id, ahora)
     if (Object.keys(enPoliza).length > 0) {
       const asignaciones = Object.keys(enPoliza).map((columna) => `${columna} = @${columna}`)
       db()
