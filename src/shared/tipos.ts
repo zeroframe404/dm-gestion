@@ -3472,6 +3472,12 @@ export interface PodioMensual {
   frescura: FrescuraDeMetrica
 }
 
+/** El podio de un mes cualquiera, con la lista de meses entre los que se puede elegir (el más nuevo primero). */
+export interface PodioHistorico {
+  periodos: string[]
+  podio: PodioMensual
+}
+
 // ---------------------------------------------------------------------------
 // 12.6 · Duplicados: lo que la sincronización dejó repetido, a la vista y con botón
 // ---------------------------------------------------------------------------

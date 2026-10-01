@@ -49,7 +49,7 @@ import { cajaConCache, comisionesConCache, imputadosConCache } from './servicios
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
 import { leerSnapshotDeMetrica } from './servicios/metricasCache'
-import { altasConCache, estadisticasConCache, tableroConCache } from './servicios/metricasDesdeCache'
+import { altasConCache, estadisticasConCache, podioHistorico, tableroConCache } from './servicios/metricasDesdeCache'
 import {
   areasDelReporte,
   catalogoDeExcel,
@@ -1593,6 +1593,11 @@ export function registrarIpc(): void {
       recibidoEnEstaComputadora: snap.recibidoEn,
       frescura,
     })
+  })
+  // Los podios de meses anteriores: mismo criterio que el podio (sin permiso de área, sin plata).
+  manejar('metricas:podioHistorico', (periodo) => {
+    exigirSesion()
+    return exito(podioHistorico(periodo))
   })
   // El detalle del podio —qué pólizas son esas altas— pide Cartera, que es de donde sale el dato. El
   // podio se ve sin permiso porque es un número de una carrera; una lista con el nombre de cada cliente

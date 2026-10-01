@@ -199,6 +199,7 @@ import type {
   OpcionesPlanillaClasica,
   PedidoDeReporte,
   PlantillaDeMensaje,
+  PodioHistorico,
   PodioMensual,
   ResultadoDeSegmento,
   TableroMetricas,
@@ -713,6 +714,8 @@ export interface Canales {
   // calcula el servidor (13.2): `null` es «esta computadora todavía no recibió ningún podio», que hoy
   // es lo mismo que mostraba la pantalla mientras no había mes anterior cargado.
   'metricas:podio': () => Resultado<PodioMensual | null>
+  /** El podio de cualquier mes cargado (null = el último) y los meses disponibles. Sin permiso de área, como el podio. */
+  'metricas:podioHistorico': (periodo: string | null) => Resultado<PodioHistorico>
   /**
    * Qué pólizas son esas altas, una por una. A diferencia del podio, esto SÍ pide el permiso de
    * Cartera: el cartel muestra un número y esto muestra los nombres de los clientes, que es el dato de

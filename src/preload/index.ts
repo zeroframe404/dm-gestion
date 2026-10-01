@@ -333,6 +333,7 @@ const api: ApiDm = {
     tablero: (filtros) => invocar('metricas:tablero', filtros),
     estadisticas: (periodo, sucursales) => invocar('metricas:estadisticas', periodo, sucursales),
     podio: () => invocar('metricas:podio'),
+    podioHistorico: (periodo) => invocar('metricas:podioHistorico', periodo),
     altas: (periodo, sucursal) => invocar('metricas:altas', periodo, sucursal),
     alActualizar: (escuchar) => suscribir('metricas:actualizaron', escuchar),
   },

@@ -263,7 +263,72 @@ function PodioDeSucursales() {
     setRefrescos((vuelta) => vuelta + 1)
   }, [mirando])
 
+  // Los meses anteriores: se piden al elegirlos. El mes actual sigue saliendo del podio en vivo.
+  const [periodos, setPeriodos] = useState<string[]>([])
+  const [elegido, setElegido] = useState<string | null>(null)
+  const [pasado, setPasado] = useState<PodioMensual | null>(null)
+  useEffect(() => {
+    let vigente = true
+    void window.dm.metricas.podioHistorico(null).then((resultado) => {
+      if (vigente && resultado.ok) setPeriodos(resultado.datos.periodos)
+    })
+    return () => {
+      vigente = false
+    }
+  }, [refrescos])
+  const mirandoElActual = elegido === null || elegido === podio?.periodo
+  useEffect(() => {
+    if (mirandoElActual || elegido === null) return
+    let vigente = true
+    setPasado(null)
+    void window.dm.metricas.podioHistorico(elegido).then((resultado) => {
+      if (vigente && resultado.ok) setPasado(resultado.datos.podio)
+    })
+    return () => {
+      vigente = false
+    }
+  }, [elegido, mirandoElActual, refrescos])
+
   if (!podio || !podio.hayMesAnterior || podio.ranking.length === 0) return null
+  const mostrado = mirandoElActual ? podio : pasado
+
+  // Para ver el podio de un mes anterior. Va arriba a la derecha del título, para cualquier rol.
+  const selectorDeMes = periodos.length > 1 && (
+    <label className="mb-1 ml-auto flex items-center gap-2 text-xs font-semibold text-slate-600">
+      Mes
+      <select
+        value={elegido ?? podio.periodo}
+        onChange={(evento) => {
+          setMirando(null)
+          setElegido(evento.target.value)
+        }}
+        className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal text-slate-900"
+      >
+        {periodos.map((periodo) => (
+          <option key={periodo} value={periodo}>
+            {nombreDePeriodo(periodo)}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+
+  if (!mostrado || !mostrado.hayMesAnterior || mostrado.ranking.length === 0) {
+    return (
+      <section className="mt-8">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Competencia entre sucursales</p>
+            <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-slate-900">Podio de altas</h3>
+          </div>
+          {selectorDeMes}
+        </div>
+        <p className="mt-3 text-sm text-slate-500">
+          {mostrado ? 'Ese mes no tiene un mes anterior cargado para calcular las altas.' : 'Cargando el podio…'}
+        </p>
+      </section>
+    )
+  }
 
   return (
     <section className="mt-8">
@@ -271,32 +336,37 @@ function PodioDeSucursales() {
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Competencia entre sucursales</p>
           <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-slate-900">
-            Podio de altas · {mesCorto(podio.periodo)}
+            Podio de altas · {mesCorto(mostrado.periodo)}
           </h3>
           {/* Qué se está contando, dicho en la tarjeta: el número se mira todos los días y sin esta línea
               «altas» se lee como «pólizas nuevas escritas», que no es lo mismo. */}
           <p className="mt-1 text-xs text-slate-500">
-            Pólizas que están en {nombreDePeriodo(podio.periodo).toLowerCase()} y no estaban en {nombreDePeriodo(podio.periodoAnterior).toLowerCase()}.
+            Pólizas que están en {nombreDePeriodo(mostrado.periodo).toLowerCase()} y no estaban en {nombreDePeriodo(mostrado.periodoAnterior).toLowerCase()}.
             Las renovaciones no cuentan.
-            {podio.ranking.some((fila) => fila.porRama) && ' Los riesgos varios de la pestaña RIESGOS VARIOS cuentan en el mes de su emisión.'}
+            {mostrado.ranking.some((fila) => fila.porRama) && ' Los riesgos varios de la pestaña RIESGOS VARIOS cuentan en el mes de su emisión.'}
           </p>
           {/* De cuándo son los números (issue #79). Antes de la 13.2 cada computadora calculaba el podio
               con su propia base y esta línea decía de qué bajada salían; ahora lo calcula el servidor una
               sola vez y esto dice cuándo lo calculó él y cuándo le llegó a ESTA computadora, que es lo que
               hay que mirar si dos sucursales todavía llegaran a ver números distintos. */}
-          <p className="mt-0.5 text-xs text-slate-500">
-            Calculado por el servidor el {momento(podio.calculadoEn)}, recibido en esta computadora el {momento(podio.recibidoEnEstaComputadora)}.
-          </p>
-          {podio.frescura !== 'AL_DIA' && (
+          {mirandoElActual ? (
+            <p className="mt-0.5 text-xs text-slate-500">
+              Calculado por el servidor el {momento(mostrado.calculadoEn)}, recibido en esta computadora el {momento(mostrado.recibidoEnEstaComputadora)}.
+            </p>
+          ) : (
+            <p className="mt-0.5 text-xs text-slate-500">Mes anterior: es el cierre con los datos que tiene esta computadora.</p>
+          )}
+          {mirandoElActual && mostrado.frescura !== 'AL_DIA' && (
             <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
               Sin conexión con el servidor: mostrando el último podio recibido.
             </p>
           )}
         </div>
+        {selectorDeMes}
       </div>
 
       <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
-        {podio.ranking.map((fila, indice) => {
+        {mostrado.ranking.map((fila, indice) => {
           const cuerpo = (
             <>
               <div className="flex items-center gap-2">
@@ -356,7 +426,7 @@ function PodioDeSucursales() {
         })}
       </div>
 
-      <DetalleDelPodio periodo={podio.periodo} fila={mirando} alCerrar={() => setMirando(null)} />
+      <DetalleDelPodio periodo={mostrado.periodo} fila={mirando} alCerrar={() => setMirando(null)} />
     </section>
   )
 }
