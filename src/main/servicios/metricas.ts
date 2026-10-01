@@ -311,7 +311,7 @@ function resolverPeriodo(pedido: string | null | undefined, disponibles: string[
 }
 
 /** El mes anterior a uno dado ('2026-01' → '2025-12'). */
-function periodoAnterior(periodo: string): string {
+export function periodoAnterior(periodo: string): string {
   const anio = Number(periodo.slice(0, 4))
   const mes = Number(periodo.slice(5, 7))
   return mes === 1 ? `${anio - 1}-12` : `${anio}-${String(mes - 1).padStart(2, '0')}`

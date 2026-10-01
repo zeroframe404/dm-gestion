@@ -34,6 +34,7 @@ import {
   type FiltrosMetricas,
   type MesDeEvolucion,
   type MetricasPorRama,
+  type PodioHistorico,
   type PorcionMetrica,
   type RamaDeMetrica,
   type ResumenDeCartera,
@@ -50,6 +51,7 @@ import {
   claveDeLaFilaDeSucursal,
   conteoPorRamaEnCero,
   estadisticasDeCarteraLocal,
+  periodoAnterior,
   resumenDeCartera,
   sumarConteos,
   tableroDeMetricasLocal,
@@ -480,6 +482,35 @@ export function estadisticasConCache(periodoPedido: string | null, sucursalesPed
   }
 
   return { ...desdeCache, calculadoEn: snap.servidorCalculadoEn, recibidoEnEstaComputadora: snap.recibidoEn, frescura: frescuraActual() }
+}
+
+/**
+ * `metricas:podioHistorico`: el podio de cualquier mes cargado, no sólo el último. Sale de las mismas
+ * estadísticas por sucursal que el podio (servidor si lo tiene, cálculo local si no), siempre sin
+ * plata, así que lo puede pedir cualquier rol. `periodos` son los meses entre los que se puede elegir.
+ */
+export function podioHistorico(periodoPedido: string | null): PodioHistorico {
+  const estadisticas = estadisticasConCache(periodoPedido, [], false)
+  const ranking = estadisticas.porSucursal
+    .filter((fila) => fila.etiqueta !== '(sin sucursal)')
+    .sort((a, b) => {
+      if (a.altas === null || b.altas === null) return b.activos - a.activos || a.etiqueta.localeCompare(b.etiqueta, 'es')
+      return b.altas - a.altas || b.activos - a.activos || a.etiqueta.localeCompare(b.etiqueta, 'es')
+    })
+  const ahora = new Date().toISOString()
+  return {
+    periodos: estadisticas.periodos,
+    podio: {
+      periodo: estadisticas.periodo,
+      periodoAnterior: periodoAnterior(estadisticas.periodo),
+      hayMesAnterior: estadisticas.hayMesAnterior,
+      ranking,
+      hoy: estadisticas.hoy,
+      calculadoEn: estadisticas.calculadoEn ?? ahora,
+      recibidoEnEstaComputadora: estadisticas.recibidoEnEstaComputadora ?? ahora,
+      frescura: estadisticas.frescura ?? 'AL_DIA',
+    },
+  }
 }
 
 // ---------------------------------------------------------------------------
