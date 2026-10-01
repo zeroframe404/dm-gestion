@@ -36,6 +36,7 @@ import { esAlmacenDeAdjuntos, hayAdjuntosPendientes, subirAdjuntosPendientes, us
 import { credencialesGoogle, credencialesParaDrive, credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
 import { reservarImportacionAutomatica, tipoDeImportacionEnCurso } from './importacion'
+import { completarPolizasSinCoberturaNiVigencias } from './completarPolizas'
 import { repararAlArrancar, repararDuplicados, repararSiniestrosSinCliente } from './reparaciones'
 import { construirXlsx, type HojaXlsx } from './xlsx'
 import { emitirATodas as emitir } from './avisos'
@@ -145,6 +146,17 @@ async function importarTodo(pestanas?: string[]): Promise<void> {
     // mismo con las cuotas —un renglón repetido dentro de la planilla del mes deja la póliza dos veces—
     // y con los clientes que quedaron dos veces con el mismo DNI.
     if (tipos === null || tipos.has('MENSUAL') || tipos.has('BAJAS')) repararDuplicados()
+    // 15.10.4: lo que la planilla del mes trajo en blanco se completa con lo que esta computadora ya
+    // sabía (historial, cola, meses anteriores) y se le manda a la planilla, así no queda en blanco
+    // en ningún lado. La importación completa ya rellena desde las planillas viejas; acá se cubre la
+    // acotada, que no las lee, y lo que sólo esta computadora anotó.
+    if (tipos === null || tipos.has('MENSUAL')) {
+      try {
+        completarPolizasSinCoberturaNiVigencias()
+      } catch (error) {
+        console.error('[sincronizacion] No se pudieron completar las coberturas y vigencias:', error)
+      }
+    }
     // Un siniestro que entró con la póliza pero sin cliente toma el titular de la póliza (12.7).
     if (tipos === null || tipos.has('SINIESTROS')) {
       try {
