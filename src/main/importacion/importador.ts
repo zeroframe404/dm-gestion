@@ -250,6 +250,19 @@ class Fila {
   }
 }
 
+/** Lo que una planilla vieja aporta a una póliza que la más nueva trae en blanco (15.10.3). */
+interface RellenoDePoliza {
+  cobertura?: string
+  vigencia_desde?: string
+  vigencia_hasta?: string
+  vigencia_desde_iso?: string | null
+  vigencia_hasta_iso?: string | null
+  prima?: string
+  prima_monto?: number | null
+  productor?: string
+  avisar_vto?: string
+}
+
 interface Identidad {
   nombre: string
   nombreNormalizado: string
@@ -448,14 +461,49 @@ function prepararSentencias(db: BaseDeDatos) {
       ON CONFLICT(clave) DO UPDATE SET
         fila_id = excluded.fila_id, cliente_id = excluded.cliente_id, vehiculo_id = excluded.vehiculo_id,
         compania = excluded.compania, numero = excluded.numero, numero_normalizado = excluded.numero_normalizado,
-        cobertura = excluded.cobertura, prima = excluded.prima, prima_monto = excluded.prima_monto,
-        forma_pago = excluded.forma_pago, productor = excluded.productor, estado_texto = excluded.estado_texto,
-        vigencia_desde = excluded.vigencia_desde, vigencia_hasta = excluded.vigencia_hasta,
-        vigencia_desde_iso = excluded.vigencia_desde_iso, vigencia_hasta_iso = excluded.vigencia_hasta_iso,
-        alta = excluded.alta, avisar_vto = excluded.avisar_vto, observaciones = excluded.observaciones,
+        -- Lo que describe a la póliza (cobertura, vigencias, prima, productor…) se conserva cuando la
+        -- planilla lo trae VACÍO (15.10.3). Una celda en blanco no es «no tiene cobertura»: es la fila
+        -- del mes nuevo que nació sin esas columnas, una planilla a la que le faltan, o una edición de
+        -- la aplicación que todavía no viajó. Hasta la 15.10.2 cada una de esas tres cosas dejaba la
+        -- cartera entera sin cobertura ni vigencias en el primer ciclo. Lo que sí viene con valor pisa,
+        -- como siempre: la hoja manda. Las derivadas van atadas a su texto (vigencia_desde_iso sigue
+        -- a vigencia_desde) para no quedar de un mes y el texto de otro.
+        cobertura = COALESCE(excluded.cobertura, polizas.cobertura),
+        prima = COALESCE(excluded.prima, polizas.prima),
+        prima_monto = CASE WHEN excluded.prima IS NULL THEN polizas.prima_monto ELSE excluded.prima_monto END,
+        forma_pago = COALESCE(excluded.forma_pago, polizas.forma_pago),
+        productor = COALESCE(excluded.productor, polizas.productor),
+        estado_texto = excluded.estado_texto,
+        vigencia_desde = COALESCE(excluded.vigencia_desde, polizas.vigencia_desde),
+        vigencia_hasta = COALESCE(excluded.vigencia_hasta, polizas.vigencia_hasta),
+        vigencia_desde_iso = CASE WHEN excluded.vigencia_desde IS NULL THEN polizas.vigencia_desde_iso ELSE excluded.vigencia_desde_iso END,
+        vigencia_hasta_iso = CASE WHEN excluded.vigencia_hasta IS NULL THEN polizas.vigencia_hasta_iso ELSE excluded.vigencia_hasta_iso END,
+        alta = COALESCE(excluded.alta, polizas.alta),
+        avisar_vto = COALESCE(excluded.avisar_vto, polizas.avisar_vto),
+        observaciones = COALESCE(excluded.observaciones, polizas.observaciones),
         periodo_origen = excluded.periodo_origen, pestana_origen = excluded.pestana_origen,
         activa = 1, actualizado_en = excluded.actualizado_en
       RETURNING id`),
+
+    // Lo que una planilla VIEJA sabe de una póliza que la más nueva trae en blanco (15.10.3): el
+    // relleno de lo que el cierre de mes dejó sin copiar antes de esta versión. Sólo completa huecos,
+    // nunca pisa: si la más nueva lo trae, ya quedó guardado arriba. Las derivadas siguen a su texto.
+    completarPolizaDesdeMesViejo: db.prepare(`
+      UPDATE polizas SET
+        cobertura = COALESCE(cobertura, @cobertura),
+        vigencia_desde_iso = CASE WHEN vigencia_desde IS NULL THEN @vigencia_desde_iso ELSE vigencia_desde_iso END,
+        vigencia_hasta_iso = CASE WHEN vigencia_hasta IS NULL THEN @vigencia_hasta_iso ELSE vigencia_hasta_iso END,
+        vigencia_desde = COALESCE(vigencia_desde, @vigencia_desde),
+        vigencia_hasta = COALESCE(vigencia_hasta, @vigencia_hasta),
+        prima_monto = CASE WHEN prima IS NULL THEN @prima_monto ELSE prima_monto END,
+        prima = COALESCE(prima, @prima),
+        productor = COALESCE(productor, @productor),
+        avisar_vto = COALESCE(avisar_vto, @avisar_vto),
+        actualizado_en = @ahora
+      WHERE id = @id AND (
+        (cobertura IS NULL AND @cobertura IS NOT NULL) OR (vigencia_desde IS NULL AND @vigencia_desde IS NOT NULL)
+        OR (vigencia_hasta IS NULL AND @vigencia_hasta IS NOT NULL) OR (prima IS NULL AND @prima IS NOT NULL)
+        OR (productor IS NULL AND @productor IS NOT NULL) OR (avisar_vto IS NULL AND @avisar_vto IS NOT NULL))`),
 
     polizasParaIndice: db.prepare(`
       SELECT p.id, p.clave, p.numero_normalizado, v.patente_normalizada, c.documento_normalizado
@@ -816,6 +864,14 @@ class TrabajoDeImportacion {
   private descartadasPorPeriodo = new Map<string, string[]>()
   private periodoPorMes = new Map<number, string>()
   private layouts = new Map<string, Layout>()
+  /**
+   * Lo que las planillas VIEJAS saben de cada póliza de la más nueva (15.10.3), para rellenar lo que
+   * ésta trae en blanco. Se junta durante la corrida y se aplica al final: las mensuales viejas se
+   * procesan de la más vieja a la más nueva, y cada una pisa a la anterior en este mapa, así el
+   * relleno sale de la más reciente que lo tenga (la vigencia de la última renovación, no la de hace
+   * un año). Ver `completarPolizaDesdeMesViejo`.
+   */
+  private rellenosDesdeMesesViejos = new Map<number, RellenoDePoliza>()
 
   private resumenes: ResumenPestana[] = []
   private progresoPestanas: ProgresoPestana[] = []
@@ -916,6 +972,7 @@ class TrabajoDeImportacion {
           const sacadas = this.sacarCuotasDeLasPlanillasDescartadas(periodo, titulos)
           if (sacadas > 0) this.avisos.push(`Se sacaron ${sacadas} cuotas de ${periodo} que habían entrado por una planilla repetida.`)
         }
+        this.aplicarRellenosDesdeMesesViejos()
         this.consolidar()
         const huboError = this.resumenes.some((r) => r.estado === 'error') || this.hojaSoloLectura
         this.estado = huboError ? 'CON_ERRORES' : 'COMPLETA'
@@ -2083,6 +2140,9 @@ class TrabajoDeImportacion {
       if (clienteId !== null && sucursalTexto) {
         this.sentencias.completarSucursalDelCliente.run({ id: clienteId, sucursal_id: sucursalId, sucursal_texto: sucursalTexto })
       }
+      // Y lo mismo con la cobertura, las vigencias y demás datos de la póliza (15.10.3): si la más
+      // nueva los trae en blanco, la última planilla vieja que los tenga es la que los sabe.
+      if (polizaId !== null) this.anotarRellenoDesdeMesViejo(p, fila, polizaId)
     }
 
     const cuota = fila.valor('cuota')
@@ -2356,11 +2416,7 @@ class TrabajoDeImportacion {
     // porque una vigencia que termina el año que viene es lo normal, no una fecha fuera de rango. Se
     // calculan ANTES de `anclarPolizaSinNumero` porque esa fusión necesita comparar esta vigencia contra
     // la de la candidata (ver el comentario de esa función).
-    const anioBase = this.anioDelPeriodo(p.periodo) ?? p.anio ?? this.anioDelPeriodo(this.masNueva?.periodo ?? null)
-    const desdeTexto = fila.valor('vigencia_desde')
-    const hastaTexto = fila.valor('vigencia_hasta')
-    const desdeIso = interpretarFecha(desdeTexto, anioBase, this.anioActual).iso
-    const hastaIso = interpretarFecha(hastaTexto, anioBase, this.anioActual + 1).iso
+    const { desdeTexto, hastaTexto, desdeIso, hastaIso } = this.vigenciasDeLaFila(p, fila)
 
     if (this.anclarPorFila(this.sentencias.anclaPolizas, fila.id, clave)) this.contar(resumen, 'polizas_con_clave_corregida')
     // La fila trae un número recién asignado: si nadie más tiene todavía esa clave, puede ser la
@@ -2400,6 +2456,81 @@ class TrabajoDeImportacion {
     this.indexarPoliza(id, ident.numeroNormalizado, ident.patenteNormalizada, ident.documentoValido ? ident.documentoNormalizado : '')
     this.contar(resumen, 'polizas')
     return id
+  }
+
+  /**
+   * Las vigencias de la fila, como texto y como fecha. El año base es el del período de la planilla;
+   * para la de HASTA se corre un año la ventana de años aceptados, porque una vigencia que termina el
+   * año que viene es lo normal, no una fecha fuera de rango.
+   */
+  private vigenciasDeLaFila(p: PestanaTrabajo, fila: Fila): { desdeTexto: string; hastaTexto: string; desdeIso: string | null; hastaIso: string | null } {
+    const anioBase = this.anioDelPeriodo(p.periodo) ?? p.anio ?? this.anioDelPeriodo(this.masNueva?.periodo ?? null)
+    const desdeTexto = fila.valor('vigencia_desde')
+    const hastaTexto = fila.valor('vigencia_hasta')
+    return {
+      desdeTexto,
+      hastaTexto,
+      desdeIso: interpretarFecha(desdeTexto, anioBase, this.anioActual).iso,
+      hastaIso: interpretarFecha(hastaTexto, anioBase, this.anioActual + 1).iso,
+    }
+  }
+
+  /**
+   * Anota lo que una planilla vieja dice de una póliza de la cartera (ver `rellenosDesdeMesesViejos`).
+   * Sólo lo que viene con valor: un campo en blanco acá no borra lo que anotó un mes anterior.
+   */
+  private anotarRellenoDesdeMesViejo(p: PestanaTrabajo, fila: Fila, polizaId: number): void {
+    const { desdeTexto, hastaTexto, desdeIso, hastaIso } = this.vigenciasDeLaFila(p, fila)
+    const prima = fila.valor('prima')
+    const nuevo: RellenoDePoliza = {}
+    const cobertura = fila.valor('cobertura')
+    if (cobertura) nuevo.cobertura = cobertura
+    if (desdeTexto) {
+      nuevo.vigencia_desde = desdeTexto
+      nuevo.vigencia_desde_iso = desdeIso
+    }
+    if (hastaTexto) {
+      nuevo.vigencia_hasta = hastaTexto
+      nuevo.vigencia_hasta_iso = hastaIso
+    }
+    if (prima) {
+      nuevo.prima = prima
+      nuevo.prima_monto = interpretarNumero(prima)
+    }
+    const productor = fila.valor('productor')
+    if (productor) nuevo.productor = productor
+    const avisarVto = fila.valor('avisar_vto')
+    if (avisarVto) nuevo.avisar_vto = avisarVto
+    if (Object.keys(nuevo).length === 0) return
+    this.rellenosDesdeMesesViejos.set(polizaId, { ...this.rellenosDesdeMesesViejos.get(polizaId), ...nuevo })
+  }
+
+  /** Completa con lo anotado por las planillas viejas lo que la más nueva dejó en blanco. */
+  private aplicarRellenosDesdeMesesViejos(): void {
+    if (this.rellenosDesdeMesesViejos.size === 0) return
+    let completadas = 0
+    const corrida = this.db.transaction(() => {
+      for (const [id, relleno] of this.rellenosDesdeMesesViejos) {
+        const resultado = this.sentencias.completarPolizaDesdeMesViejo.run({
+          id,
+          cobertura: relleno.cobertura ?? null,
+          vigencia_desde: relleno.vigencia_desde ?? null,
+          vigencia_hasta: relleno.vigencia_hasta ?? null,
+          vigencia_desde_iso: relleno.vigencia_desde_iso ?? null,
+          vigencia_hasta_iso: relleno.vigencia_hasta_iso ?? null,
+          prima: relleno.prima ?? null,
+          prima_monto: relleno.prima_monto ?? null,
+          productor: relleno.productor ?? null,
+          avisar_vto: relleno.avisar_vto ?? null,
+          ahora: this.ahora,
+        })
+        completadas += resultado.changes
+      }
+    })
+    corrida()
+    if (completadas > 0) {
+      this.avisos.push(`${completadas} pólizas tenían la cobertura o las vigencias en blanco en «${this.masNueva?.titulo ?? 'la planilla más nueva'}» y se completaron con lo que decían las planillas anteriores.`)
+    }
   }
 
   // ---------------------------------------------------------------------------

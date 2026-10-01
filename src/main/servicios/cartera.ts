@@ -1694,12 +1694,23 @@ export function cerrarMes(actor: SesionUsuario, opciones: OpcionesDeCierre = {})
   // muestra la planilla. Si se copiara la columna cruda, un mes que quedó sin sucursal se la pasaría al
   // siguiente y al siguiente: el mes nuevo se publica en la hoja compartida, así que ese hueco no se
   // queda en una computadora, viaja a todas.
+  //
+  // 15.10.3: la fila nueva lleva también lo que describe a la póliza y al riesgo (cobertura, vigencias,
+  // vehículo, teléfono). Hasta la 15.10.2 sólo viajaban los datos de la cuota, y como la importación
+  // toma la planilla MÁS NUEVA como la que define cada póliza, al primer ciclo después del cierre
+  // todas las coberturas y vigencias cargadas en la aplicación volvían a vacío en todas las
+  // computadoras, y la bandeja de renovaciones se quedaba sin nada que mostrar.
   const origen = db()
     .prepare(
       `SELECT c.*, COALESCE(NULLIF(TRIM(c.sucursal_texto), ''), cl.sucursal_texto) AS sucursal_resuelta,
-              p.id AS poliza_activa_id
+              p.id AS poliza_activa_id,
+              p.cobertura AS poliza_cobertura, p.vigencia_desde AS poliza_vigencia_desde, p.vigencia_hasta AS poliza_vigencia_hasta,
+              p.prima AS poliza_prima, p.productor AS poliza_productor,
+              v.marca AS vehiculo_marca, v.modelo AS vehiculo_modelo, v.anio AS vehiculo_anio, v.tipo AS vehiculo_tipo,
+              cl.telefono AS cliente_telefono
          FROM cuotas_mes c
          JOIN polizas p ON p.id = c.poliza_id AND p.activa = 1
+         LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
          LEFT JOIN clientes cl ON cl.id = c.cliente_id
         WHERE c.periodo = ? AND c.dada_de_baja = 0`,
     )
@@ -1807,6 +1818,19 @@ export function cerrarMes(actor: SesionUsuario, opciones: OpcionesDeCierre = {})
             forma_pago: String(fila.forma_pago ?? ''),
             aviso: String(fila.aviso ?? ''),
             observaciones: String(fila.observaciones ?? ''),
+            avisar_vto: String(fila.avisar_vto ?? ''),
+            // Lo que define a la póliza y al riesgo. La subida escribe sólo lo que tiene valor y agrega
+            // la columna si a la pestaña le falta, así que un campo vacío acá no cuesta nada.
+            cobertura: String(fila.poliza_cobertura ?? ''),
+            vigencia_desde: String(fila.poliza_vigencia_desde ?? ''),
+            vigencia_hasta: String(fila.poliza_vigencia_hasta ?? ''),
+            prima: String(fila.poliza_prima ?? ''),
+            productor: String(fila.poliza_productor ?? ''),
+            telefono: String(fila.cliente_telefono ?? ''),
+            marca: String(fila.vehiculo_marca ?? ''),
+            modelo: String(fila.vehiculo_modelo ?? ''),
+            anio: String(fila.vehiculo_anio ?? ''),
+            tipo_vehiculo: String(fila.vehiculo_tipo ?? ''),
             // La fila que nace paga por un adelanto lleva la fecha del cobro en CUANDO PAGO.
             ...(acreditado ? { pago: acreditado.fecha } : {}),
           },

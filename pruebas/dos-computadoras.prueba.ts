@@ -13,6 +13,8 @@ import { cajaDelDia, cambiarResultado, cargarMovimientoDeCaja, imputados } from 
 import { filaIdDelMovimiento } from '../src/main/servicios/caja'
 import { PESTANA_APP } from '../src/main/servicios/filas'
 import { anularPago, hojaDeImputados, subirPagosRezagados } from '../src/main/servicios/pagos'
+import { editarPoliza, listarPolizas, verPoliza } from '../src/main/servicios/polizas'
+import { bandejaDeRenovaciones } from '../src/main/servicios/renovaciones'
 import {
   repararBajasDuplicadas,
   repararColaContraPestanaInexistente,
@@ -24,6 +26,7 @@ import { apurarAgrupadas, cuantasFallidas, cuantasPendientes } from '../src/main
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
 import { PESTANA_CAJA_APP, PESTANA_PAGOS_APP } from '../src/main/sincronizacion/pestanasApp'
 import { sanearDireccion } from '../src/shared/direccion'
+import { hoyLocal } from '../src/shared/semaforo'
 import type { DatosDeCliente, FilaCartera, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
 import { HojaSimulada } from './hoja-simulada'
@@ -998,5 +1001,140 @@ test('la dirección y el DNI que se le cargan a un cliente sin póliza del mes a
   assert.equal(alLado.direccionDetalle.codigoPostal, '1821', 'y el código postal')
   assert.equal(alLado.polizas.length, 1, 'y es la ficha que tiene la póliza, no una copia vacía')
   assert.equal(alLado.telefono, '11-2222-3333', 'lo que ya tenía la ficha sigue estando')
+  cerrarTodo()
+})
+
+// ---------------------------------------------------------------------------
+// 15.10.3: el cierre de mes no borra la cobertura ni las vigencias
+// ---------------------------------------------------------------------------
+
+/** Una fecha dd/mm/aaaa a tantos días de hoy. */
+function dentroDe(dias: number): string {
+  const fecha = new Date()
+  fecha.setDate(fecha.getDate() + dias)
+  const iso = hoyLocal(fecha)
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
+}
+
+function polizaDe(numero: string) {
+  const encontrada = listarPolizas({ busqueda: numero, estados: [], companias: [], sucursales: [], coberturas: [], ramas: [] }).filas.find((f) => f.numero === numero)
+  assert.ok(encontrada, `la póliza ${numero} tiene que estar en el listado`)
+  return encontrada
+}
+
+test('cerrar el mes arrastra cobertura y vigencias a la planilla nueva, y la reimportación no las borra (15.10.3)', async () => {
+  const { hoja, lanus1, lanus2 } = await dosComputadoras()
+  en(lanus1)
+  const antes = polizaDe(CLIENTES.suarez.poliza)
+  const desde = dentroDe(-325)
+  const hasta = dentroDe(40)
+  editarPoliza(
+    antes.id,
+    {
+      clienteId: antes.clienteId,
+      vehiculoId: antes.vehiculoId,
+      vehiculoNuevo: null,
+      compania: antes.compania ?? '',
+      cobertura: 'TODO RIESGO',
+      formaPago: antes.formaPago ?? '',
+      cuota: antes.cuota ?? '',
+      diaVencimiento: antes.diaVencimiento ?? '',
+      numero: antes.numero ?? '',
+      propuesta: '',
+      vigenciaDesde: desde,
+      vigenciaHasta: hasta,
+      avisarVto: '',
+      observaciones: antes.observaciones ?? '',
+      confirmadoPeseAlAviso: true,
+    },
+    DANIEL,
+  )
+  await subirTodo(lanus1)
+  assert.equal(celda(hoja, 'AGOSTO', antes.filaId!, 'COBERTURA'), 'TODO RIESGO', 'la edición viajó a la planilla del mes abierto')
+
+  const resumen = await cerrarMesConLaBase(DANIEL, { fuente: hoja, sincronizar: () => lanus1.motor.sincronizarAhora(true) })
+  assert.equal(resumen.periodo, '2026-09')
+  await subirTodo(lanus1)
+  const filaNueva = planillaDelMes('2026-09').filas.find((f) => f.nombre === CLIENTES.suarez.nombre)
+  assert.ok(filaNueva, 'Suárez está en el mes nuevo')
+  assert.equal(celda(hoja, 'SEPTIEMBRE', filaNueva.filaId, 'COBERTURA'), 'TODO RIESGO', 'la fila nueva nace con la cobertura')
+  assert.equal(celda(hoja, 'SEPTIEMBRE', filaNueva.filaId, 'VIGENCIA DESDE'), desde, 'y con la vigencia desde')
+  assert.equal(celda(hoja, 'SEPTIEMBRE', filaNueva.filaId, 'VIGENCIA HASTA'), hasta, 'y con la vigencia hasta')
+  assert.equal(celda(hoja, 'SEPTIEMBRE', filaNueva.filaId, 'MARCA'), CLIENTES.suarez.marca, 'y con el vehículo')
+
+  // Las dos computadoras reimportan la hoja entera (es lo que corre después de un cierre): la póliza
+  // sigue con todo, y la bandeja de renovaciones la ve porque vence en 40 días.
+  for (const pc of [lanus1, lanus2]) {
+    en(pc)
+    await pc.importar()
+    const poliza = verPoliza(polizaDe(CLIENTES.suarez.poliza).id)
+    assert.equal(poliza.cobertura, 'TODO RIESGO', `${pc.nombre}: la cobertura sigue después de reimportar`)
+    assert.equal(poliza.vigenciaDesde, desde, `${pc.nombre}: la vigencia desde sigue`)
+    assert.equal(poliza.vigenciaHasta, hasta, `${pc.nombre}: la vigencia hasta sigue`)
+    const enBandeja = bandejaDeRenovaciones().semanas.flatMap((s) => s.filas).some((f) => f.numero === CLIENTES.suarez.poliza)
+    assert.ok(enBandeja, `${pc.nombre}: la póliza está en la bandeja de renovaciones`)
+  }
+  cerrarTodo()
+})
+
+test('una planilla nueva con la cobertura y las vigencias en blanco no pisa lo cargado, y se completa desde la anterior (15.10.3)', async () => {
+  const { hoja, lanus1 } = await dosComputadoras()
+  en(lanus1)
+  const antes = polizaDe(CLIENTES.suarez.poliza)
+  const desde = dentroDe(-325)
+  const hasta = dentroDe(40)
+  editarPoliza(
+    antes.id,
+    {
+      clienteId: antes.clienteId,
+      vehiculoId: antes.vehiculoId,
+      vehiculoNuevo: null,
+      compania: antes.compania ?? '',
+      cobertura: 'TODO RIESGO',
+      formaPago: antes.formaPago ?? '',
+      cuota: antes.cuota ?? '',
+      diaVencimiento: antes.diaVencimiento ?? '',
+      numero: antes.numero ?? '',
+      propuesta: '',
+      vigenciaDesde: desde,
+      vigenciaHasta: hasta,
+      avisarVto: '',
+      observaciones: antes.observaciones ?? '',
+      confirmadoPeseAlAviso: true,
+    },
+    DANIEL,
+  )
+  await subirTodo(lanus1)
+  await cerrarMesConLaBase(DANIEL, { fuente: hoja, sincronizar: () => lanus1.motor.sincronizarAhora(true) })
+  await subirTodo(lanus1)
+
+  // Es lo que dejaba el cierre de mes hasta la 15.10.2: la fila del mes nuevo sin cobertura ni
+  // vigencias. Se simula vaciando esas celdas en la base.
+  const filaNueva = planillaDelMes('2026-09').filas.find((f) => f.nombre === CLIENTES.suarez.nombre)!
+  const columnaId = hoja.columnaIdDe('SEPTIEMBRE')
+  const numeroDeFila = hoja.filasDe('SEPTIEMBRE').findIndex((f) => (f[columnaId] ?? '').trim() === filaNueva.filaId) + 1
+  assert.ok(numeroDeFila > 0)
+  const encabezados = hoja.encabezadosDe('SEPTIEMBRE')
+  for (const encabezado of ['COBERTURA', 'VIGENCIA DESDE', 'VIGENCIA HASTA']) {
+    hoja.editarCelda('SEPTIEMBRE', numeroDeFila, encabezados.findIndex((e) => e.trim() === encabezado), '')
+  }
+
+  // La computadora que ya tenía los datos los conserva: una celda en blanco no es «sin cobertura».
+  await lanus1.importar()
+  const conservada = verPoliza(polizaDe(CLIENTES.suarez.poliza).id)
+  assert.equal(conservada.cobertura, 'TODO RIESGO', 'la cobertura no se pisó con vacío')
+  assert.equal(conservada.vigenciaHasta, hasta, 'la vigencia no se pisó con vacío')
+
+  // Y una computadora recién instalada los recupera de AGOSTO, que es la última planilla que los tiene.
+  const nueva = await computadora(hoja, 'Lanús 3')
+  en(nueva)
+  const recuperada = verPoliza(polizaDe(CLIENTES.suarez.poliza).id)
+  assert.equal(recuperada.cobertura, 'TODO RIESGO', 'la cobertura se completó desde la planilla anterior')
+  assert.equal(recuperada.vigenciaDesde, desde, 'la vigencia desde también')
+  assert.equal(recuperada.vigenciaHasta, hasta, 'y la vigencia hasta')
+  assert.ok(
+    bandejaDeRenovaciones().semanas.flatMap((s) => s.filas).some((f) => f.numero === CLIENTES.suarez.poliza),
+    'con eso la bandeja de renovaciones la vuelve a ver',
+  )
   cerrarTodo()
 })
