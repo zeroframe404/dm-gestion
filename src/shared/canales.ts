@@ -591,7 +591,7 @@ export interface Canales {
   'referencias:adoptar': () => Resultado<{ adoptadas: boolean; detalle: string; listas: ListasDeCompanias }>
 
   // Renovaciones
-  'renovaciones:bandeja': () => Resultado<BandejaRenovaciones>
+  'renovaciones:bandeja': (periodo?: string | null) => Resultado<BandejaRenovaciones>
   /** Lo que el diálogo de «Renovar» propone: +1 año y la cuota anterior, editables. */
   'renovaciones:sugerencia': (polizaId: number) => Resultado<DatosDeRenovacion>
   'renovaciones:actualizar': (polizaId: number, venceEl: string, datos: DatosDeSeguimiento) => Resultado<BandejaRenovaciones>

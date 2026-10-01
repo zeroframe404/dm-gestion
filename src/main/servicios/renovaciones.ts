@@ -33,6 +33,8 @@ import {
   type EstadoRenovacion,
   type FilaRenovacion,
   type MotivoDeBaja,
+  type PeriodoDeRenovaciones,
+  type ResumenDeVencidas,
   type SemanaDeRenovaciones,
   type SesionUsuario,
 } from '../../shared/tipos'
@@ -229,20 +231,84 @@ function usuariosActivos(): Array<{ id: number; nombre: string }> {
   }>
 }
 
-export function bandejaDeRenovaciones(): BandejaRenovaciones {
+/** El último día de un mes 'AAAA-MM'. */
+function ultimoDiaDelMes(periodo: string): string {
+  const anio = Number(periodo.slice(0, 4))
+  const mes = Number(periodo.slice(5, 7))
+  return desdeDia((aDia(`${mes === 12 ? anio + 1 : anio}-${String(mes === 12 ? 1 : mes + 1).padStart(2, '0')}-01`) ?? 0) - 1)
+}
+
+/** Lo que se pidió ver: nada (la ventana de siempre), las vencidas de todos los meses, o un mes puntual. */
+export const PERIODO_VENCIDAS = 'vencidas'
+
+function periodoValido(periodo: unknown): string | null {
+  if (typeof periodo !== 'string') return null
+  return periodo === PERIODO_VENCIDAS || /^\d{4}-(0[1-9]|1[0-2])$/.test(periodo) ? periodo : null
+}
+
+/**
+ * Los meses en los que vencen pólizas activas, con cuántas son (todas y las de renovación manual). Sale
+ * de la base y no de lo que está a la vista, así el selector de período puede llevar a un mes que la
+ * ventana de 60 días no alcanza: las vencidas de meses anteriores que nadie cerró, o lo que viene más
+ * adelante. Se acota a tres años para atrás y uno para adelante, que es donde hay trabajo de verdad.
+ */
+function periodosConVencimientos(hoy: string, porCompania: Record<string, number>): { periodos: PeriodoDeRenovaciones[]; vencidas: ResumenDeVencidas } {
+  const filas = db()
+    .prepare(
+      `SELECT substr(vigencia_hasta_iso, 1, 7) AS mes, compania, COUNT(*) AS n
+         FROM polizas
+        WHERE activa = 1 AND vigencia_hasta_iso IS NOT NULL
+          AND vigencia_hasta_iso >= @desde AND vigencia_hasta_iso <= @hasta
+        GROUP BY mes, compania`,
+    )
+    .all({ desde: mesesDespues(hoy, -36), hasta: mesesDespues(hoy, 12) }) as Array<{ mes: string; compania: string | null; n: number }>
+  const porMes = new Map<string, PeriodoDeRenovaciones>()
+  const vencidas: ResumenDeVencidas = { total: 0, manuales: 0 }
+  const mesDeHoy = hoy.slice(0, 7)
+  for (const fila of filas) {
+    const manual = porCompania[normalizarTexto(fila.compania)] !== undefined
+    const periodo = porMes.get(fila.mes) ?? { periodo: fila.mes, total: 0, manuales: 0 }
+    periodo.total += fila.n
+    if (manual) periodo.manuales += fila.n
+    porMes.set(fila.mes, periodo)
+  }
+  // «Vencidas» cuenta lo que ya pasó de hoy, sea del mes que sea: es la lista de lo que quedó sin cerrar.
+  const vencidasPorCompania = db()
+    .prepare(
+      `SELECT compania, COUNT(*) AS n FROM polizas
+        WHERE activa = 1 AND vigencia_hasta_iso IS NOT NULL AND vigencia_hasta_iso < @hoy GROUP BY compania`,
+    )
+    .all({ hoy }) as Array<{ compania: string | null; n: number }>
+  for (const fila of vencidasPorCompania) {
+    vencidas.total += fila.n
+    if (porCompania[normalizarTexto(fila.compania)] !== undefined) vencidas.manuales += fila.n
+  }
+  if (!porMes.has(mesDeHoy)) porMes.set(mesDeHoy, { periodo: mesDeHoy, total: 0, manuales: 0 })
+  return { periodos: [...porMes.values()].sort((a, b) => b.periodo.localeCompare(a.periodo)), vencidas }
+}
+
+/**
+ * La bandeja. Sin `periodo` es la ventana de siempre (un mes para atrás, dos para adelante). Con un mes
+ * ('2026-09') trae lo que vence ese mes, y con 'vencidas' todo lo vencido que sigue activo, de cualquier
+ * mes: es lo que permite ir a buscar lo que quedó de los meses anteriores, que la ventana ya no alcanza.
+ */
+export function bandejaDeRenovaciones(periodoPedido: string | null = null): BandejaRenovaciones {
   const hoy = hoyLocal()
   const enDias = aDia(hoy) ?? 0
+  const periodo = periodoValido(periodoPedido)
   // Una compañía que apareció recién en la cartera todavía puede no estar en el catálogo, y de ahí sale
   // cada cuánto se renueva: se la da de alta antes de mirar, como hace la planilla del mes.
   sincronizarCompanias()
   const porCompania = mesesDeRenovacionPorCompania()
+  const rango =
+    periodo === null
+      ? { desde: desdeDia(enDias - DIAS_VENCIDAS_A_LA_VISTA), hasta: desdeDia(enDias + DIAS_DE_RENOVACION) }
+      : periodo === PERIODO_VENCIDAS
+        ? { desde: '0001-01-01', hasta: desdeDia(enDias - 1) }
+        : { desde: `${periodo}-01`, hasta: ultimoDiaDelMes(periodo) }
   const crudas = db()
     .prepare(SELECT_BANDEJA)
-    .all({
-      periodo: periodoAbierto() ?? '',
-      desde: desdeDia(enDias - DIAS_VENCIDAS_A_LA_VISTA),
-      hasta: desdeDia(enDias + DIAS_DE_RENOVACION),
-    }) as FilaCrudaBandeja[]
+    .all({ periodo: periodoAbierto() ?? '', ...rango }) as FilaCrudaBandeja[]
 
   // Las semanas se arman con un Map porque la consulta ya viene ordenada por fecha: así cada semana
   // queda en su orden natural y no hay que ordenar dos veces.
@@ -265,7 +331,8 @@ export function bandejaDeRenovaciones(): BandejaRenovaciones {
 
   // Las sucursales salen de Tareas y no de las renovaciones que hay a la vista: el botón «Anotar
   // tarea» de cada fila abre el diálogo del módulo Tareas, y tiene que ofrecer lo mismo que ahí.
-  return { semanas, total: crudas.length, hoy, responsables: usuariosActivos(), sucursales: sucursalesDeLasTareas() }
+  const { periodos, vencidas } = periodosConVencimientos(hoy, porCompania)
+  return { semanas, total: crudas.length, hoy, responsables: usuariosActivos(), sucursales: sucursalesDeLasTareas(), periodo, periodos, vencidas }
 }
 
 // ---------------------------------------------------------------------------

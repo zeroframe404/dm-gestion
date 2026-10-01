@@ -1316,9 +1316,9 @@ export function registrarIpc(): void {
   })
 
   // Renovaciones: la bandeja la trabaja quien tenga el módulo, incluidos los empleados.
-  manejar('renovaciones:bandeja', () => {
+  manejar('renovaciones:bandeja', (periodo) => {
     exigirVista('renovaciones')
-    return exito(bandejaDeRenovaciones())
+    return exito(bandejaDeRenovaciones(periodo ?? null))
   })
   manejar('renovaciones:sugerencia', (polizaId) => {
     exigirVista('renovaciones')

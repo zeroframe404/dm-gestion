@@ -85,6 +85,26 @@ const COLUMNAS: Array<{ id: string; titulo: string; siempre?: boolean }> = [
   { id: 'acciones', titulo: 'Acciones', siempre: true },
 ]
 
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+/** '2026-09' → 'septiembre 2026'. */
+function nombreDelPeriodo(periodo: string): string {
+  return `${MESES[Number(periodo.slice(5, 7)) - 1] ?? periodo} ${periodo.slice(0, 4)}`
+}
+
+/** Cómo se dice el período en una frase: «en septiembre 2026», «entre las vencidas». */
+function textoDelPeriodo(periodo: string | null): string {
+  if (periodo === null) return 'en los próximos 60 días'
+  if (periodo === 'vencidas') return 'entre las vencidas'
+  return `en ${nombreDelPeriodo(periodo)}`
+}
+
+/** Las pólizas de un período según el alcance elegido: sólo las de renovación manual, o todas. */
+function cuantas(resumen: { total: number; manuales: number } | undefined, alcance: Filtros['renovacion']): number {
+  if (!resumen) return 0
+  return alcance === 'manual' ? resumen.manuales : resumen.total
+}
+
 /** Una póliza puede entrar más de una vez si tiene vigencias distintas: la clave es la póliza y su vencimiento. */
 function claveDeFila(fila: FilaRenovacion): string {
   return `${fila.polizaId}|${fila.venceEl}`
@@ -98,6 +118,9 @@ export function Renovaciones() {
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VACIOS)
+  // Qué período se mira: null es la ventana de siempre (un mes para atrás, dos para adelante), 'vencidas'
+  // es todo lo vencido que sigue sin cerrar y 'AAAA-MM' es un mes puntual.
+  const [periodo, setPeriodo] = useState<string | null>(null)
   // Qué semanas están abiertas. Sin decisión tomada manda el valor por defecto: sólo la primera.
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>({})
   const { visibles: columnasALaVista, ocultas, alternar: alternarColumna, mostrarTodas } = useColumnasElegidas('renovaciones', COLUMNAS)
@@ -110,15 +133,27 @@ export function Renovaciones() {
   const cargar = useCallback(async () => {
     setCargando(true)
     setError(null)
-    const resultado = await window.dm.renovaciones.bandeja()
+    const resultado = await window.dm.renovaciones.bandeja(periodo)
     if (resultado.ok) setBandeja(resultado.datos)
     else setError(resultado.error)
     setCargando(false)
-  }, [])
+  }, [periodo])
 
   useEffect(() => {
     void cargar()
   }, [cargar])
+
+  /**
+   * Las acciones (seguimiento, renovar, no renueva) devuelven la bandeja de la ventana de siempre. Si se
+   * está mirando otro período esa respuesta no es la que corresponde: se vuelve a pedir el período.
+   */
+  const recibir = useCallback(
+    (nueva: BandejaRenovaciones) => {
+      if (periodo === null) setBandeja(nueva)
+      else void cargar()
+    },
+    [periodo, cargar],
+  )
 
   /**
    * Guarda el seguimiento de una fila. Los tres campos viajan siempre juntos porque el canal recibe un
@@ -135,10 +170,10 @@ export function Renovaciones() {
         nota: cambio.nota ?? fila.nota ?? '',
       })
       setGuardando(null)
-      if (resultado.ok) setBandeja(resultado.datos)
+      if (resultado.ok) recibir(resultado.datos)
       else setError(resultado.error)
     },
-    [],
+    [recibir],
   )
 
   const todas = useMemo(() => bandeja?.semanas.flatMap((semana) => semana.filas) ?? [], [bandeja])
@@ -201,18 +236,21 @@ export function Renovaciones() {
     filtros.ocultarResueltas ||
     filtros.renovacion !== 'manual'
 
+  const etiquetaDelContador =
+    periodo === null ? 'Vencen en 60 días' : periodo === 'vencidas' ? 'Vencidas sin cerrar' : `Vencen en ${nombreDelPeriodo(periodo)}`
+
   if (cargando && !bandeja) return <Cargando texto="Buscando lo que vence…" />
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
       <div className="flex flex-wrap items-center gap-2">
         <Contador
-          etiqueta="Vencen en 60 días"
+          etiqueta={etiquetaDelContador}
           valor={delAlcance.length}
           titulo={
             filtros.renovacion === 'manual'
               ? 'Sólo las compañías que se renuevan a mano. Las que renuevan solas no se cuentan.'
-              : 'Todas las pólizas que vencen en los próximos 60 días.'
+              : 'Todas las pólizas del período elegido.'
           }
         />
         <Contador
@@ -233,6 +271,29 @@ export function Renovaciones() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={periodo ?? ''}
+          onChange={(evento) => {
+            setPeriodo(evento.target.value || null)
+            // Las fechas tildadas y el rango son del período anterior: dejarlas escondería todo lo nuevo.
+            setFiltros((f) => ({ ...f, fechas: [], desde: '', hasta: '' }))
+          }}
+          aria-label="Período de vencimiento"
+          className={cx(
+            'h-9 rounded-lg border bg-white px-2 text-sm',
+            periodo === null ? 'border-slate-300 text-slate-700' : 'border-marino-400 font-semibold text-marino-800',
+          )}
+        >
+          <option value="">Próximos 60 días</option>
+          <option value="vencidas">
+            Todas las vencidas sin cerrar ({cuantas(bandeja?.vencidas, filtros.renovacion).toLocaleString('es-AR')})
+          </option>
+          {(bandeja?.periodos ?? []).map((p) => (
+            <option key={p.periodo} value={p.periodo}>
+              {nombreDelPeriodo(p.periodo)} ({cuantas(p, filtros.renovacion).toLocaleString('es-AR')})
+            </option>
+          ))}
+        </select>
         <select
           value={filtros.renovacion}
           onChange={(evento) => setFiltros((f) => ({ ...f, renovacion: evento.target.value as Filtros['renovacion'] }))}
@@ -312,17 +373,21 @@ export function Renovaciones() {
           <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
             <p className="font-display text-base font-bold text-slate-800">
               {delAlcance.length === 0 && automaticas > 0 && filtros.renovacion === 'manual'
-                ? 'Nada que renovar a mano en los próximos 60 días.'
+                ? `Nada que renovar a mano ${textoDelPeriodo(periodo)}.`
                 : hayFiltros && delAlcance.length > 0
                   ? 'Ninguna renovación coincide con los filtros.'
-                  : `No hay pólizas que venzan en los próximos ${DIAS_DE_RENOVACION} días.`}
+                  : periodo === null
+                    ? `No hay pólizas que venzan en los próximos ${DIAS_DE_RENOVACION} días.`
+                    : `No hay pólizas activas que venzan ${textoDelPeriodo(periodo)}.`}
             </p>
             <p className="mt-1 text-sm text-slate-500">
               {delAlcance.length === 0 && automaticas > 0 && filtros.renovacion === 'manual'
                 ? `Las ${automaticas.toLocaleString('es-AR')} pólizas que vencen renuevan solas. Elegí «Todas las compañías» si igual querés verlas.`
                 : hayFiltros && delAlcance.length > 0
                   ? 'Probá con otro responsable o estado, o limpiá los filtros.'
-                  : 'Cuando una póliza entre en los últimos dos meses de vigencia va a aparecer acá, agrupada por semana.'}
+                  : periodo === null
+                    ? 'Cuando una póliza entre en los últimos dos meses de vigencia va a aparecer acá, agrupada por semana.'
+                    : 'Elegí otro período en el selector de arriba.'}
             </p>
           </div>
         ) : (
@@ -352,7 +417,7 @@ export function Renovaciones() {
         fila={renovarA}
         alCerrar={() => setRenovarA(null)}
         alRenovar={(nueva, nombre, destino) => {
-          setBandeja(nueva)
+          recibir(nueva)
           setRenovarA(null)
           setError(null)
           // El aviso dice qué pasó con la anterior porque ahora se elige: decir siempre «pasó a
@@ -365,7 +430,7 @@ export function Renovaciones() {
         fila={noRenuevaA}
         alCerrar={() => setNoRenuevaA(null)}
         alConfirmar={(nueva, nombre) => {
-          setBandeja(nueva)
+          recibir(nueva)
           setNoRenuevaA(null)
           setError(null)
           setAviso(`${nombre} salió de la bandeja: la póliza quedó dada de baja.`)

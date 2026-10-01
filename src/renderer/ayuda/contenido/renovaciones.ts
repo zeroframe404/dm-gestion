@@ -17,6 +17,12 @@ export const AYUDA_RENOVACIONES: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'Ver otros períodos',
+        parrafos: [
+          'Por defecto la bandeja muestra el último mes vencido y los próximos 60 días. El primer desplegable cambia el período: «Todas las vencidas sin cerrar» junta lo que venció en cualquier mes anterior y todavía no se renovó ni se dio de baja, y cada mes de la lista (por ejemplo «septiembre 2026») muestra lo que vence ese mes. Entre paréntesis dice cuántas pólizas hay, según las compañías que estés mirando.',
+        ],
+      },
+      {
         titulo: 'Filtrar y encontrar lo tuyo',
         parrafos: [
           'El primer desplegable elige qué compañías se miran: «Sólo las que se renuevan a mano» (lo normal) o «Todas las compañías». Después se puede filtrar por Responsable (incluyendo «Sin responsable», para encontrar las que nadie tomó todavía) y por Estado del trámite. La casilla «Ocultar las ya resueltas» esconde las que ya están Renovadas o marcadas No renueva, para que la bandeja muestre sólo lo que sigue pendiente de gestionar.',

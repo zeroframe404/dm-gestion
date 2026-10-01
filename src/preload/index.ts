@@ -217,7 +217,7 @@ const api: ApiDm = {
     adoptar: () => invocar('referencias:adoptar'),
   },
   renovaciones: {
-    bandeja: () => invocar('renovaciones:bandeja'),
+    bandeja: (periodo) => invocar('renovaciones:bandeja', periodo),
     sugerencia: (polizaId) => invocar('renovaciones:sugerencia', polizaId),
     actualizar: (polizaId, venceEl, datos) => invocar('renovaciones:actualizar', polizaId, venceEl, datos),
     renovar: (polizaId, datos) => invocar('renovaciones:renovar', polizaId, datos),
