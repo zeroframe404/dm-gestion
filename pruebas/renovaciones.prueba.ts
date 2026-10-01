@@ -796,3 +796,43 @@ test('renovar sin número: una póliza que YA tiene número no es candidata, aun
     'la póliza original conserva su propio número',
   )
 })
+
+
+// ---------------------------------------------------------------------------
+// Ver por período
+// ---------------------------------------------------------------------------
+
+test('la bandeja se puede pedir por mes y por «vencidas», y trae lo que la ventana de 60 días no alcanza', async () => {
+  await escenario()
+  const hoy = hoyLocal()
+  // Una póliza que venció hace cuatro meses y nunca se cerró: la ventana de siempre la deja afuera.
+  const vieja = enDias(-120)
+  const poliza = polizaDe(CLIENTES.suarez.poliza)
+  cambiar(poliza, { vigenciaDesde: comoTextoDeFecha(mesesDespues(vieja.iso, -12)), vigenciaHasta: vieja.texto })
+
+  assert.equal(filasDeLaBandeja().some((f) => f.numero === CLIENTES.suarez.poliza), false, 'la ventana de siempre no la ve')
+
+  const vencidas = bandejaDeRenovaciones('vencidas')
+  assert.equal(vencidas.periodo, 'vencidas')
+  assert.ok(
+    vencidas.semanas.flatMap((s) => s.filas).some((f) => f.numero === CLIENTES.suarez.poliza),
+    'pedida como vencidas, aparece',
+  )
+
+  const delMes = bandejaDeRenovaciones(vieja.iso.slice(0, 7))
+  assert.equal(delMes.periodo, vieja.iso.slice(0, 7))
+  const filas = delMes.semanas.flatMap((s) => s.filas)
+  assert.ok(filas.some((f) => f.numero === CLIENTES.suarez.poliza), 'y también en el mes en que venció')
+  assert.ok(filas.every((f) => f.venceEl.startsWith(vieja.iso.slice(0, 7))), 'el mes trae sólo lo que vence ese mes')
+
+  // El selector sabe de ese mes y de las vencidas, aunque la ventana no lo muestre.
+  const normal = bandejaDeRenovaciones()
+  assert.equal(normal.periodo, null)
+  assert.ok(normal.periodos.some((p) => p.periodo === vieja.iso.slice(0, 7) && p.total >= 1), 'el mes de la vencida figura en el selector')
+  assert.ok(normal.vencidas.total >= 1, 'y cuenta como vencida sin cerrar')
+  assert.ok(normal.periodos.some((p) => p.periodo === hoy.slice(0, 7)), 'el mes actual figura siempre')
+
+  // Un período inválido se ignora y vuelve a la ventana de siempre.
+  assert.equal(bandejaDeRenovaciones('cualquiera').periodo, null)
+  cerrarBaseDeDatos()
+})

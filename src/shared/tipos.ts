@@ -1757,8 +1757,27 @@ export interface SemanaDeRenovaciones {
   filas: FilaRenovacion[]
 }
 
+/** Un mes en el que vencen pólizas activas: cuántas son y cuántas de renovación manual. */
+export interface PeriodoDeRenovaciones {
+  /** 'AAAA-MM'. */
+  periodo: string
+  total: number
+  manuales: number
+}
+
+/** Las que ya vencieron y siguen activas, de cualquier mes. */
+export interface ResumenDeVencidas {
+  total: number
+  manuales: number
+}
+
 export interface BandejaRenovaciones {
   semanas: SemanaDeRenovaciones[]
+  /** Qué se pidió ver: null es la ventana de siempre, 'vencidas' todo lo vencido, o un mes 'AAAA-MM'. */
+  periodo: string | null
+  /** Los meses con vencimientos, del más nuevo al más viejo, para el selector de período. */
+  periodos: PeriodoDeRenovaciones[]
+  vencidas: ResumenDeVencidas
   total: number
   hoy: string
   responsables: Array<{ id: number; nombre: string }>
