@@ -18,6 +18,7 @@ import { db } from '../db/base'
 import { resolverCampo, type Campo } from '../importacion/encabezados'
 import { ahoraIso, interpretarDiaDeVencimiento, interpretarFechaDePeriodo, limpiar, normalizarTexto } from '../importacion/normalizar'
 import { registrarLoQueNoViajo } from './adjuntos'
+import { completarPolizasSinCoberturaNiVigencias } from './completarPolizas'
 import { anotarEvento, encolar, guardarMarca, leerMarca } from '../sincronizacion/cola'
 import { filasConCambiosSinSubir, PESTANA_APP, PREFIJO_DE_BAJA } from './filas'
 import { claveDeVinculoDeTarea } from '../sincronizacion/vinculos'
@@ -408,6 +409,13 @@ export function repararAlArrancar(): void {
   const pagos = subirPagosRezagados()
   if (pagos > 0) anotarEvento('reparacion', `${pagos} pagos que habían quedado sólo en esta computadora se encolaron hacia la base.`)
   repararDuplicados()
+  // 15.10.4: las pólizas que quedaron sin cobertura ni vigencias por el cierre de mes de la 15.10.2 se
+  // completan con lo que esta computadora ya sabe de ellas, y la planilla del mes recibe lo que le falta.
+  try {
+    completarPolizasSinCoberturaNiVigencias()
+  } catch (error) {
+    console.error('[reparaciones] No se pudieron completar las coberturas y vigencias:', error)
+  }
   // 12.7: los siniestros que llegaron sin asegurado toman el de su póliza, y los cargados acá cuyos
   // datos no habían viajado (la pestaña no tenía la columna) se vuelven a mandar.
   repararSiniestros()
