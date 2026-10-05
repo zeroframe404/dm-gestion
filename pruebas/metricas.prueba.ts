@@ -304,7 +304,7 @@ test('dos altas nuevas sin número de póliza, patente ni documento no se confun
 
 test('cambiar de vehículo SÍ es un alta; cambiar de compañía con el mismo auto, no', async () => {
   // Otro auto en la misma compañía: es otro riesgo, la póliza del auto viejo se fue y entró una nueva.
-  const otroAuto = await baseConGonzalezCambiadaEnAgosto({ DOMINIO: 'AG333NN', 'NRO DE POLIZA': '3030303' })
+  const otroAuto = await baseConGonzalezCambiadaEnAgosto({ 'VIGENCIA DESDE': '10/08/2026', DOMINIO: 'AG333NN', 'NRO DE POLIZA': '3030303' })
   assert.equal(altasEnElPodio('Dock Sud'), 2, 'Suárez y el auto nuevo de González')
   otroAuto.close()
 
@@ -314,6 +314,13 @@ test('cambiar de vehículo SÍ es un alta; cambiar de compañía con el mismo au
   const otraCompania = await baseConGonzalezCambiadaEnAgosto({ COMPAÑIA: 'ZURICH', 'NRO DE POLIZA': '2020202' })
   assert.equal(altasEnElPodio('Dock Sud'), 1, 'sólo Suárez: González cambió de compañía, no entró')
   otraCompania.close()
+})
+
+test('un alta cargada tarde cuenta en el mes de su vigencia, no en el mes en que se carga (#161)', async () => {
+  // El auto nuevo de González aparece en la planilla de agosto, pero su vigencia arrancó en julio.
+  const tarde = await baseConGonzalezCambiadaEnAgosto({ 'VIGENCIA DESDE': '10/07/2026', DOMINIO: 'AG333NN', 'NRO DE POLIZA': '3030303' })
+  assert.equal(altasEnElPodio('Dock Sud'), 1, 'sólo Suárez: la póliza de González es de julio')
+  tarde.close()
 })
 
 test('el podio dice de cuándo son sus números', async () => {

@@ -299,7 +299,7 @@ function filaAgosto(c: Cliente): Record<string, string> {
     'FORMA DE PAGO': formaDePagoDe(c),
     PRODUCTOR: 'DANIEL',
     ESTADO: 'VIGENTE',
-    'VIGENCIA DESDE': '01/07/2026',
+    'VIGENCIA DESDE': c === CLIENTES.suarez ? '05/08/2026' : '01/07/2026',
     'VIGENCIA HASTA': '01/01/2027',
     ALTA: c === CLIENTES.suarez ? '05/08/2026' : '01/01/2020',
     MARCA: c.marca,
