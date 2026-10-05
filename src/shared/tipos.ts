@@ -4782,6 +4782,16 @@ export interface OpcionGaleno {
   descripcion: string
 }
 
+/**
+ * Un plan comercial tal como lo lista Galeno: cada plan pertenece a UN legajo de productor, y la
+ * bonificación del productor va atada a esa combinación. Un mismo usuario puede tener planes de
+ * varios legajos (y hasta el mismo código de plan en dos legajos), así que se cotiza siempre con el
+ * legajo del plan elegido.
+ */
+export interface PlanComercialDeGaleno extends OpcionGaleno {
+  productorCodigo: string
+}
+
 /** Un sub-modelo (versión) del catálogo propio de Galeno — no tiene relación con los códigos de InfoAuto. */
 export interface SubModeloGaleno {
   version: string
@@ -4830,6 +4840,12 @@ export interface PruebaDeGaleno {
 export interface DatosDeCotizacionGaleno {
   tipoVehiculo: TipoDeVehiculo
   planComercialCodigo: string
+  /**
+   * El legajo al que pertenece el plan comercial elegido (`PlanComercialDeGaleno.productorCodigo`).
+   * Si falta, se usa el legajo cacheado en esta computadora — que es el del PRIMER plan que listó
+   * Galeno y puede no ser el del plan elegido.
+   */
+  productorCodigo?: string
   ceroKm: boolean
   /** Si el vehículo tiene CODIA de InfoAuto alcanza con esto: no hace falta marca/modelo/submodelo. */
   idInfoAuto?: string | null
@@ -4891,6 +4907,15 @@ export interface CotizacionGaleno {
   coberturas: CoberturaCotizadaGaleno[]
   excepciones: ExcepcionGaleno[]
   errores: string[] | null
+  /** El legajo con el que se cotizó. */
+  productorCodigo: string
+  /**
+   * El body exacto que se le mandó a la API y lo que contestó, sin tocar: es lo que hay que pasarle a
+   * Galeno cuando un precio no coincide con el de su web. No lleva credenciales (ésas van en los
+   * encabezados del pedido, no en el body).
+   */
+  pedidoEnviado: Record<string, unknown>
+  respuestaDeGaleno: unknown
 }
 
 // --- Emisión -------------------------------------------------------------

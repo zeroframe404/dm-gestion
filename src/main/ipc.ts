@@ -252,6 +252,7 @@ import {
   codigoPostalGaleno,
   codigosIIBBGaleno,
   condicionesDePagoGaleno,
+  cotizacionGalenoSinComision,
   cotizarGaleno,
   detalleDeLiquidacionesGaleno,
   detalleDePolizaGaleno,
@@ -1909,8 +1910,9 @@ export function registrarIpc(): void {
     return exito(await tarjetasDeCreditoGaleno())
   })
   manejar('galeno:cotizar', async (datos) => {
-    exigirEdicion('presupuestos')
-    return exito(await cotizarGaleno(datos))
+    const actor = exigirEdicion('presupuestos')
+    const cotizacion = await cotizarGaleno(datos)
+    return exito(veLosNumerosDeLaAgencia(actor.rol) ? cotizacion : cotizacionGalenoSinComision(cotizacion))
   })
   manejar('galeno:emitir', async (datos) => {
     exigirEdicion('presupuestos')

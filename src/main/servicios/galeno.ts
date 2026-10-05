@@ -19,6 +19,7 @@ import {
   type ImpresionGaleno,
   type OpcionGaleno,
   type PedidoDeImpresionGaleno,
+  type PlanComercialDeGaleno,
   type PruebaDeGaleno,
   type ReporteDeGaleno,
   type ReporteGaleno,
@@ -169,10 +170,20 @@ export async function probarGaleno(): Promise<PruebaDeGaleno> {
 
 // --- Listas de valores (cotización y emisión) --------------------------------
 
-export async function planesComercialesGaleno(tipoVehiculo: TipoDeVehiculo): Promise<OpcionGaleno[]> {
+export async function planesComercialesGaleno(tipoVehiculo: TipoDeVehiculo): Promise<PlanComercialDeGaleno[]> {
   return conCliente(async (cli) => {
     const planes = await catalogos.planesComerciales(cli, RAMA_GALENO_DE_TIPO[tipoVehiculo])
-    return planes.map((p) => ({ codigo: p.codPlanComercial, descripcion: p.descripcionPlanComercial || p.codPlanComercial }))
+    // Cada plan va con su legajo: es la combinación legajo + plan la que define la bonificación del
+    // productor. Se descartan las repeticiones exactas, que Galeno a veces lista dos veces.
+    const vistos = new Set<string>()
+    const unicos: PlanComercialDeGaleno[] = []
+    for (const p of planes) {
+      const clave = `${p.productorCodigo}|${p.codPlanComercial}`
+      if (vistos.has(clave)) continue
+      vistos.add(clave)
+      unicos.push({ codigo: p.codPlanComercial, descripcion: p.descripcionPlanComercial || p.codPlanComercial, productorCodigo: p.productorCodigo })
+    }
+    return unicos
   })
 }
 
@@ -275,12 +286,20 @@ export async function tarjetasDeCreditoGaleno(): Promise<OpcionGaleno[]> {
 
 // --- Cotización -----------------------------------------------------------
 
+/** Galeno manda el legajo como número (lo convierte `cotizar`): sólo se aceptan dígitos. */
+function legajoValido(valor: unknown): string {
+  const legajo = texto(valor, 'El legajo del productor', 1, 12)
+  if (!/^\d+$/.test(legajo)) throw new ErrorDeNegocio('El legajo del productor tiene que ser un número.')
+  return legajo
+}
+
 function validarDatosDeCotizacion(datos: unknown): DatosDeCotizacionGaleno {
   const d = objeto(datos, 'Los datos de la cotización')
   const tipoVehiculo = d.tipoVehiculo === 'MOTO' ? 'MOTO' : 'AUTO'
   return {
     tipoVehiculo,
     planComercialCodigo: texto(d.planComercialCodigo, 'El plan comercial', 1, 20),
+    productorCodigo: d.productorCodigo === undefined || d.productorCodigo === '' ? undefined : legajoValido(d.productorCodigo),
     ceroKm: d.ceroKm === true,
     idInfoAuto: typeof d.idInfoAuto === 'string' && d.idInfoAuto.trim() ? d.idInfoAuto.trim() : null,
     marcaCodigo: typeof d.marcaCodigo === 'string' ? d.marcaCodigo : undefined,
@@ -307,10 +326,31 @@ function validarDatosDeCotizacion(datos: unknown): DatosDeCotizacionGaleno {
   }
 }
 
+/**
+ * Lo mismo sin ningún campo de comisión, a cualquier profundidad: la comisión es un número de la
+ * agencia (ver `veLosNumerosDeLaAgencia`) y la respuesta cruda de Galeno la trae en cada cobertura.
+ */
+export function sinComisiones(valor: unknown): unknown {
+  if (Array.isArray(valor)) return valor.map(sinComisiones)
+  if (!valor || typeof valor !== 'object') return valor
+  return Object.fromEntries(Object.entries(valor).filter(([clave]) => !/comisi/i.test(clave)).map(([clave, dato]) => [clave, sinComisiones(dato)]))
+}
+
+/** La cotización para quien no ve los números de la agencia: sin la comisión, tampoco en la respuesta cruda. */
+export function cotizacionGalenoSinComision(cotizacion: CotizacionGaleno): CotizacionGaleno {
+  return {
+    ...cotizacion,
+    coberturas: cotizacion.coberturas.map((cobertura) => ({ ...cobertura, comision: 0 })),
+    respuestaDeGaleno: sinComisiones(cotizacion.respuestaDeGaleno),
+  }
+}
+
 export async function cotizarGaleno(datos: unknown): Promise<CotizacionGaleno> {
   const validados = validarDatosDeCotizacion(datos)
   return conCliente(async (cli) => {
-    const productorCodigo = await legajoDelProductor(cli)
+    // El legajo del plan elegido; el cacheado (el del primer plan que listó Galeno) queda sólo como
+    // respaldo, porque con otro legajo Galeno aplica otra bonificación y el precio no coincide con su web.
+    const productorCodigo = validados.productorCodigo ?? (await legajoDelProductor(cli))
     return cotizarEnGaleno(cli, productorCodigo, validados)
   })
 }

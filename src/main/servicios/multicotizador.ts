@@ -22,6 +22,7 @@ import type { SolicitudResuelta } from '../multicotizador/aseguradora'
 import { codigoPostalDeCuatro } from '../multicotizador/equivalencias'
 import { aseguradorasRegistradas } from '../multicotizador/registro'
 import { ErrorDeNegocio } from './errores'
+import { sinComisiones } from './galeno'
 import { booleano, objeto, texto } from './validacion'
 
 /** Más que esto y la compañía se da por caída: la tarjeta lo dice y la persona puede reintentar. */
@@ -194,7 +195,8 @@ export async function cotizarEnAseguradora(pedido: unknown, veNumerosDeLaAgencia
           comision: null,
           emision: cobertura.emision ? { ...cobertura.emision, cobertura: { ...cobertura.emision.cobertura, comision: 0 } } : null,
         }))
-    return { aseguradora: aseguradora.id, nombre: aseguradora.nombre, ...cotizacion, coberturas, duracionMs: Date.now() - inicio }
+    const detalleTecnico = cotizacion.detalleTecnico === undefined || veNumerosDeLaAgencia ? cotizacion.detalleTecnico : sinComisiones(cotizacion.detalleTecnico)
+    return { aseguradora: aseguradora.id, nombre: aseguradora.nombre, ...cotizacion, coberturas, detalleTecnico, duracionMs: Date.now() - inicio }
   } catch (error) {
     return {
       ...base,

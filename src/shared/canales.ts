@@ -214,6 +214,7 @@ import type {
   // Galeno Seguros: cotización, emisión, consultas, cuenta corriente y ART.
   CodigoPostalGaleno,
   CotizacionGaleno,
+  PlanComercialDeGaleno,
   DatosDeCotizacionGaleno,
   DatosDeEmisionGaleno,
   DatosDeGaleno,
@@ -800,7 +801,7 @@ export interface Canales {
   'galeno:borrarCredenciales': () => Resultado<EstadoDeGaleno>
   'galeno:probar': () => Resultado<PruebaDeGaleno>
   // Listas de valores para los diálogos de Cotizar y Emitir.
-  'galeno:planesComerciales': (tipoVehiculo: TipoDeVehiculo) => Resultado<OpcionGaleno[]>
+  'galeno:planesComerciales': (tipoVehiculo: TipoDeVehiculo) => Resultado<PlanComercialDeGaleno[]>
   'galeno:marcas': (tipoVehiculo: TipoDeVehiculo) => Resultado<OpcionGaleno[]>
   'galeno:modelos': (marcaCodigo: string) => Resultado<OpcionGaleno[]>
   'galeno:anios': (marcaCodigo: string, modeloCodigo: string) => Resultado<OpcionGaleno[]>

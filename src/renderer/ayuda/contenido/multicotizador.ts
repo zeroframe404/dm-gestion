@@ -31,6 +31,8 @@ export const AYUDA_MULTICOTIZADOR: Record<string, ContenidoDeAyuda> = {
           'Cada compañía pide cosas que sólo existen en su sistema: su plan comercial, su modo de facturación, su código de localidad, la versión del vehículo en su catálogo. No se preguntan en el formulario: cada una las elige sola con un criterio razonable (la forma de pago que coincide con el medio elegido, el modo mensual, la localidad con ese nombre).',
           'Con «Ajustes de …» se ve qué eligió y se puede cambiar cualquiera: al cambiarlo se vuelve a cotizar sólo en esa compañía. Si una compañía no puede decidir algo sola —por ejemplo, hay dos versiones parecidas y no sabe cuál es—, la tarjeta se pone amarilla y pide elegirlo; no adivina, porque cotizar otra versión es cotizar otro vehículo.',
           'Lo que se elige a mano se conserva para la próxima cotización, salvo lo que depende del vehículo o de la zona (la versión, la localidad), que se olvida al cotizar otro vehículo.',
+          'En Galeno, cada plan comercial es de un legajo, y la bonificación del productor va atada a esa combinación: se cotiza siempre con el legajo del plan elegido, que se ve debajo del plan. Si la cuenta tiene planes de más de un legajo, la lista los muestra con su legajo al lado.',
+          'Si un precio no coincide con el de la web de la compañía, «Copiar datos para …» copia el pedido exacto que recibió su sistema y lo que contestó. Eso es lo que hay que pegarle a la compañía para que lo revise: ahí ven el legajo, el plan y cada dato con que se cotizó.',
         ],
       },
       {

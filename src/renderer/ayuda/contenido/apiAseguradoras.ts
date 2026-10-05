@@ -37,6 +37,7 @@ export const AYUDA_API_ASEGURADORAS: Record<string, ContenidoDeAyuda> = {
         titulo: 'El legajo del productor',
         parrafos: [
           'Casi todos los reportes de acá abajo piden el legajo del productor conectado. No hay que cargarlo a mano: se completa solo la primera vez que se prueba la conexión o se cotiza, tomado de la lista de planes comerciales que devuelve Galeno.',
+          'Para cotizar no se usa este legajo sino el del plan comercial elegido: cada plan es de un legajo, y con otro legajo Galeno aplica otra bonificación y el precio no coincide con su web.',
         ],
       },
     ],
