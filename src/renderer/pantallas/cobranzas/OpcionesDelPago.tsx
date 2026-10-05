@@ -8,7 +8,7 @@
 //  - QUÉ CUOTA se paga: la de este mes, la del mes que viene por adelantado, o las dos (el cliente que
 //    viene a pagar dos cuotas juntas). Del adelanto se elige además si se acredita solo al armar el
 //    mes siguiente o si queda pendiente para imputarlo a mano cuando se controle el general.
-import { nombreDePeriodo, periodoSiguiente } from '../../../shared/semaforo'
+import { nombreDePeriodo, periodoAnteriorA, periodoSiguiente } from '../../../shared/semaforo'
 import type { AlcanceDelPago, DatosDePago, EstadoDeCobro, FilaCartera, ModoDeAdelanto } from '../../../shared/tipos'
 import { Alerta, Campo, cx } from '../../componentes/ui'
 
@@ -29,6 +29,7 @@ export function opcionesParaFila(fila: FilaCartera | null): OpcionesElegidas {
 /** Lo que se manda al registrar el pago. Sin fila no hay cuota que adelantar: sólo viaja el estado. */
 export function datosDeLasOpciones(opciones: OpcionesElegidas, fila: FilaCartera | null): Pick<DatosDePago, 'estadoCobro' | 'alcance' | 'adelanto'> {
   if (!fila || opciones.alcance === 'MES') return { estadoCobro: opciones.estadoCobro, alcance: 'MES' }
+  if (opciones.alcance === 'ANTERIOR') return { estadoCobro: opciones.estadoCobro, alcance: 'ANTERIOR' }
   return {
     estadoCobro: opciones.estadoCobro,
     alcance: opciones.alcance,
@@ -39,6 +40,7 @@ export function datosDeLasOpciones(opciones: OpcionesElegidas, fila: FilaCartera
 /** El texto del botón de guardar, que dice lo que va a pasar. */
 export function textoDeGuardar(opciones: OpcionesElegidas, fila: FilaCartera | null): string {
   if (opciones.estadoCobro === 'IMPUTADO') return 'Guardar como imputado'
+  if (fila && opciones.alcance === 'ANTERIOR') return 'Guardar cuota vencida'
   if (fila && opciones.alcance === 'AMBAS') return 'Guardar las dos cuotas'
   if (fila && opciones.alcance === 'ADELANTADO') return 'Guardar pago adelantado'
   return 'Guardar pago'
@@ -50,12 +52,15 @@ interface Props {
   opciones: OpcionesElegidas
   alCambiar: (opciones: OpcionesElegidas) => void
   disabled?: boolean
+  /** Ofrece cobrar la cuota vencida del mes anterior. La caja no lo usa: ahí las atrasadas se eligen de la lista. */
+  conAnterior?: boolean
 }
 
-export function OpcionesDelPago({ fila, opciones, alCambiar, disabled }: Props) {
+export function OpcionesDelPago({ fila, opciones, alCambiar, disabled, conAnterior = true }: Props) {
   const cambiar = (parte: Partial<OpcionesElegidas>) => alCambiar({ ...opciones, ...parte })
   const mes = fila ? nombreDePeriodo(fila.periodo) : ''
   const mesQueViene = fila ? nombreDePeriodo(periodoSiguiente(fila.periodo)) : ''
+  const mesAnterior = fila ? nombreDePeriodo(periodoAnteriorA(fila.periodo)) : ''
   const conAdelanto = fila !== null && opciones.alcance !== 'MES'
 
   return (
@@ -106,6 +111,16 @@ export function OpcionesDelPago({ fila, opciones, alCambiar, disabled }: Props) 
               texto={`La de ${mes}`}
               deshabilitado={disabled}
             />
+            {conAnterior && (
+              <Opcion
+                nombre="alcance"
+                elegido={opciones.alcance === 'ANTERIOR'}
+                alElegir={() => cambiar({ alcance: 'ANTERIOR' })}
+                texto={`Sólo la de ${mesAnterior}`}
+                detalle="cuota vencida"
+                deshabilitado={disabled}
+              />
+            )}
             <Opcion
               nombre="alcance"
               elegido={opciones.alcance === 'AMBAS'}

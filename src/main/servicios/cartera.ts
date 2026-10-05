@@ -1,7 +1,7 @@
 // Cartera: la planilla del mes, sus acciones (avisar, registrar pago, dar de baja) y el cierre de mes.
 // Todo lo que se cambia acá queda anotado en el historial.
 import { ramasParaElegir } from '../../shared/ramas'
-import { hoyLocal, nombreDePeriodo, periodoDeHoy, periodoSiguiente } from '../../shared/semaforo'
+import { hoyLocal, nombreDePeriodo, periodoAnteriorA, periodoDeHoy, periodoSiguiente } from '../../shared/semaforo'
 import {
   ALCANCES_DEL_PAGO,
   ESTADOS_DE_COBRO,
@@ -910,7 +910,7 @@ function exigirEstadoDeCobro(valor: unknown): EstadoDeCobro {
 function exigirAlcance(valor: unknown): AlcanceDelPago {
   const alcance = limpiar(valor) || 'MES'
   if (!(ALCANCES_DEL_PAGO as readonly string[]).includes(alcance)) {
-    throw new ErrorDeNegocio('Elegí qué cuota se paga: la de este mes, la del mes que viene o las dos.')
+    throw new ErrorDeNegocio('Elegí qué cuota se paga: la de este mes, la del mes anterior, la del mes que viene o las dos.')
   }
   return alcance as AlcanceDelPago
 }
@@ -959,10 +959,22 @@ export function registrarPago(filaId: string, datos: DatosDePago, actor: SesionU
 
   // Lo del adelanto se valida ANTES de tocar nada: si falta el modo, no queda cobrada media operación.
   const adelanto =
-    alcance === 'MES'
+    alcance === 'MES' || alcance === 'ANTERIOR'
       ? null
       : { importe: limpiar(datos.adelanto?.importe) || limpiar(fila.cuota), modo: exigirModoDeAdelanto(datos.adelanto?.modo) }
 
+  if (alcance === 'ANTERIOR') {
+    // La cuota vencida del mes anterior de la misma póliza: se cobra ella, no la de esta fila.
+    const anterior = db()
+      .prepare(`SELECT fila_id FROM cuotas_mes WHERE poliza_id = ? AND periodo = ? AND dada_de_baja = 0 ORDER BY id LIMIT 1`)
+      .get(fila.poliza_id, periodoAnteriorA(fila.periodo)) as { fila_id: string } | undefined
+    if (!anterior) {
+      throw new ErrorDeNegocio(`Esta póliza no tiene cuota de ${nombreDePeriodo(periodoAnteriorA(fila.periodo))} en la planilla.`)
+    }
+    const filaAnterior = buscarFila(anterior.fila_id)
+    cobrarLaCuotaDelMes({ ...cobro, fila: filaAnterior }, limpiar(datos.importe) || limpiar(filaAnterior.cuota), actor)
+    return devolverFila(fila.fila_id)
+  }
   if (alcance !== 'ADELANTADO') cobrarLaCuotaDelMes(cobro, limpiar(datos.importe) || limpiar(fila.cuota), actor)
   if (adelanto) cobrarLaCuotaAdelantada(cobro, adelanto.importe, adelanto.modo, actor)
   return devolverFila(fila.fila_id)
