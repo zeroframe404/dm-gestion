@@ -362,7 +362,7 @@ const REPORTES: Reporte[] = [
       col('responsable', 'Responsable', 18),
       col('nota', 'Nota', 34),
     ],
-    estados: ['pendiente', 'en gestion', 'renovada', 'no renueva'],
+    estados: ['pendiente', 'en gestion', 'no respondio', 'renovada', 'no renueva'],
     etiquetaDeEstado: 'Gestión',
     campoSucursal: 'sucursal',
     campoCompania: 'compania',

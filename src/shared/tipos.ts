@@ -1704,12 +1704,13 @@ export interface PatenteDadaDeBaja {
   clienteAnterior: string
 }
 
-export const ESTADOS_DE_RENOVACION = ['pendiente', 'en gestion', 'renovada', 'no renueva'] as const
+export const ESTADOS_DE_RENOVACION = ['pendiente', 'en gestion', 'no respondio', 'renovada', 'no renueva'] as const
 export type EstadoRenovacion = (typeof ESTADOS_DE_RENOVACION)[number]
 
 export const NOMBRE_ESTADO_RENOVACION: Record<EstadoRenovacion, string> = {
   pendiente: 'Pendiente',
   'en gestion': 'En gestión',
+  'no respondio': 'No respondió',
   renovada: 'Renovada',
   'no renueva': 'No renueva',
 }
