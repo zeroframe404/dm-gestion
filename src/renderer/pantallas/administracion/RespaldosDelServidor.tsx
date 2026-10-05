@@ -26,7 +26,7 @@ import { useSesion } from '../../contexto/Sesion'
 
 function fecha(iso: string): string {
   const f = new Date(iso)
-  return Number.isNaN(f.getTime()) ? iso : f.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+  return Number.isNaN(f.getTime()) ? iso : f.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 function tamano(bytes: number): string {

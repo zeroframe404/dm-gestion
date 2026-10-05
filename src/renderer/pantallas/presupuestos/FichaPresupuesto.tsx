@@ -19,7 +19,7 @@ import { CLASES_ESTADO_PRESUPUESTO } from './Presupuestos'
 function fechaYHora(iso: string): string {
   const fecha = new Date(iso)
   if (Number.isNaN(fecha.getTime())) return iso
-  return fecha.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+  return fecha.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 export function FichaPresupuesto({ presupuestoId, alVolver }: { presupuestoId: number; alVolver: () => void }) {

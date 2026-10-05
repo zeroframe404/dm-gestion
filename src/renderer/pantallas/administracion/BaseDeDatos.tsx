@@ -72,7 +72,7 @@ export function BaseDeDatos() {
             ) : base?.inicializada ? (
               <Alerta tono="exito">
                 La base está migrada y en uso: {base.pestanas} pestañas y {base.filas} filas.
-                {base.inicializada_en && <> Migrada el {new Date(base.inicializada_en).toLocaleString('es-AR')}.</>}
+                {base.inicializada_en && <> Migrada el {new Date(base.inicializada_en).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}.</>}
               </Alerta>
             ) : (
               <Alerta tono="aviso">

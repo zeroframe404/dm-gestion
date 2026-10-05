@@ -70,7 +70,7 @@ const NOMBRE_REGISTRO: Record<string, string> = {
 function formatearFecha(iso: string | null): string {
   if (!iso) return '-'
   const fecha = new Date(iso)
-  return Number.isNaN(fecha.getTime()) ? iso : fecha.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+  return Number.isNaN(fecha.getTime()) ? iso : fecha.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 export function ImportarGoogle() {
