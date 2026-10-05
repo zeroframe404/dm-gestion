@@ -2039,6 +2039,33 @@ export const MIGRACIONES: Migracion[] = [
       ALTER TABLE clausulas_coberturas ADD COLUMN opciones TEXT;
     `,
   },
+  {
+    version: 38,
+    descripcion: 'Renovaciones: nuevo estado de gestión «no respondio»',
+    sql: `
+      CREATE TABLE renovaciones_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        poliza_id INTEGER NOT NULL REFERENCES polizas(id),
+        vence_el TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'en gestion', 'no respondio', 'renovada', 'no renueva')),
+        responsable_id INTEGER REFERENCES usuarios(id),
+        responsable_nombre TEXT,
+        nota TEXT,
+        poliza_nueva_id INTEGER REFERENCES polizas(id),
+        actualizado_por TEXT,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL
+      );
+      INSERT INTO renovaciones_nueva (id, poliza_id, vence_el, estado, responsable_id, responsable_nombre, nota,
+                                      poliza_nueva_id, actualizado_por, creado_en, actualizado_en)
+        SELECT id, poliza_id, vence_el, estado, responsable_id, responsable_nombre, nota,
+               poliza_nueva_id, actualizado_por, creado_en, actualizado_en
+          FROM renovaciones;
+      DROP TABLE renovaciones;
+      ALTER TABLE renovaciones_nueva RENAME TO renovaciones;
+      CREATE UNIQUE INDEX idx_renovaciones_poliza ON renovaciones (poliza_id, vence_el);
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

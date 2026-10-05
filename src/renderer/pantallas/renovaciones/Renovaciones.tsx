@@ -566,6 +566,7 @@ function BloqueSemana({
 const CLASES_ESTADO: Record<EstadoRenovacion, string> = {
   pendiente: 'border-slate-300 text-slate-700',
   'en gestion': 'border-marino-400 bg-marino-50 font-semibold text-marino-800',
+  'no respondio': 'border-amber-300 bg-amber-50 font-semibold text-amber-800',
   renovada: 'border-green-300 bg-green-50 font-semibold text-green-800',
   'no renueva': 'border-red-200 bg-red-50 font-semibold text-red-700',
 }
