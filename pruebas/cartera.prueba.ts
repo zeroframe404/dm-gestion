@@ -390,6 +390,7 @@ test('cerrar el mes abre el siguiente con las pólizas activas y sin los pagos d
   assert.equal(nueva.pago, null, 'el pago del mes anterior no se arrastra')
   assert.equal(nueva.pagoFecha, null)
   assert.equal(nueva.fechaEnvio, null, 'ni la fecha del aviso')
+  assert.equal(nueva.aviso, null, 'ni «OB. avisos» del mes anterior')
   assert.notEqual(nueva.filaId, fila.filaId, 'es otra fila')
 
   // Agosto queda como mes cerrado.
