@@ -16,7 +16,7 @@ interface Props {
 
 function fechaCorta(iso: string): string {
   const fecha = new Date(iso)
-  return Number.isNaN(fecha.getTime()) ? iso : fecha.toLocaleDateString('es-AR', { dateStyle: 'short' })
+  return Number.isNaN(fecha.getTime()) ? iso : fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 export function AdjuntosDePresupuesto({ presupuestoId, puedeEditar, puedeBorrar }: Props) {

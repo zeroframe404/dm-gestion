@@ -340,7 +340,7 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
               compania: 'GALENO',
               cobertura: aEmitir.descripcionCobertura,
               precio: `$ ${emision.premio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`,
-              comentario: `Póliza Nº ${emision.poliza} emitida el ${new Date().toLocaleDateString('es-AR')}`,
+              comentario: `Póliza Nº ${emision.poliza} emitida el ${new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`,
             },
           ])
           setAEmitir(null)

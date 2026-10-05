@@ -57,7 +57,7 @@ export function avisoDeVencimiento(acceso: EstadoDeAcceso | null): string | null
   const vence = new Date(`${acceso.tokenVence}T00:00:00`)
   const dias = Math.ceil((vence.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
   if (dias > 30) return null
-  const fecha = vence.toLocaleDateString('es-AR')
+  const fecha = vence.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
   if (dias < 0) return `El acceso a la base de usuarios compartida venció el ${fecha}. Hay que generar un token nuevo y publicar una versión del programa.`
   return `El acceso a la base de usuarios compartida vence el ${fecha}${dias <= 1 ? '' : ` (en ${dias} días)`}. Hay que generar un token nuevo y publicar una versión del programa antes de esa fecha.`
 }

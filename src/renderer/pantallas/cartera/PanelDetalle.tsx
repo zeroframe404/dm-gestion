@@ -200,10 +200,10 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar,
                       <strong className="font-semibold">{entrada.valorNuevo ?? '(vacío)'}</strong>
                     </p>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
-                      <p className="text-[11px] text-slate-400">{new Date(entrada.fecha).toLocaleString('es-AR')}</p>
+                      <p className="text-[11px] text-slate-400">{new Date(entrada.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                       {entrada.deshechoEn ? (
                         <p className="text-[11px] font-semibold text-slate-400">
-                          Deshecho por {entrada.deshechoPor} · {new Date(entrada.deshechoEn).toLocaleString('es-AR')}
+                          Deshecho por {entrada.deshechoPor} · {new Date(entrada.deshechoEn).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </p>
                       ) : (
                         entrada.puedeDeshacerse && (

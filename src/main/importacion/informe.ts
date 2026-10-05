@@ -39,7 +39,7 @@ const NOMBRES_DE_REGISTROS: Record<string, string> = {
 function fecha(iso: string | null): string {
   if (!iso) return '-'
   const f = new Date(iso)
-  return Number.isNaN(f.getTime()) ? iso : f.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'medium' })
+  return Number.isNaN(f.getTime()) ? iso : f.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function linea(caracter = '='): string {

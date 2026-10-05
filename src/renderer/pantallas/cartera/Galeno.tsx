@@ -42,7 +42,7 @@ function fecha(iso: string | null): string {
   if (!iso) return 'nunca'
   const valor = new Date(iso)
   if (Number.isNaN(valor.getTime())) return iso
-  return valor.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+  return valor.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 export function Galeno() {

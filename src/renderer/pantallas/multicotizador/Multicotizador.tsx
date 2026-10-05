@@ -34,7 +34,7 @@ function riesgoDe(solicitud: SolicitudDeCotizacion): string {
 }
 
 function hoyLegible(): string {
-  return new Date().toLocaleDateString('es-AR')
+  return new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 export function Multicotizador() {

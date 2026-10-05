@@ -138,7 +138,7 @@ export function RedesSociales() {
           {estado.configurada ? (
             <Alerta tono="exito">
               La app está cargada. Ya se puede vincular la cuenta desde Marketing → Redes.
-              {estado.actualizadoEn ? ` Se cargó el ${new Date(estado.actualizadoEn).toLocaleDateString('es-AR')}.` : ''}
+              {estado.actualizadoEn ? ` Se cargó el ${new Date(estado.actualizadoEn).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}.` : ''}
             </Alerta>
           ) : (
             <Alerta tono="aviso">Todavía no está cargada: sin esto, la pestaña Redes de Marketing no puede vincular nada.</Alerta>
