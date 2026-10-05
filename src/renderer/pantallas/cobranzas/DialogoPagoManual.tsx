@@ -304,7 +304,7 @@ export function DialogoPagoManual({ fecha, sucursales, sucursalPorDefecto, medio
           />
         </div>
 
-        {cliente && <OpcionesDelPago fila={cuotaElegida} opciones={opciones} alCambiar={setOpciones} disabled={guardando} />}
+        {cliente && <OpcionesDelPago fila={cuotaElegida} opciones={opciones} alCambiar={setOpciones} disabled={guardando} conAnterior={false} />}
 
         {cuotaElegida === null && (
           <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">

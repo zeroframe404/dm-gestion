@@ -20,6 +20,7 @@ interface Props {
 export function resumenDelPago(fila: FilaCartera, opciones: OpcionesElegidas): string {
   const nombre = fila.nombre ?? 'el cliente'
   if (opciones.estadoCobro === 'IMPUTADO') return `Cuota de ${nombre} imputada: queda pendiente de cobrar.`
+  if (opciones.alcance === 'ANTERIOR') return `Cuota vencida del mes anterior registrada para ${nombre}.`
   if (opciones.alcance === 'AMBAS') return `Pago registrado para ${nombre}: esta cuota y la del mes que viene por adelantado.`
   if (opciones.alcance === 'ADELANTADO') return `Pago adelantado registrado para ${nombre}: la cuota del mes que viene.`
   return `Pago registrado para ${nombre}.`

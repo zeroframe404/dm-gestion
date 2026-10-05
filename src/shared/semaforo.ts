@@ -204,6 +204,13 @@ export function periodoSiguiente(periodo: string): string {
   return mes === 12 ? `${anio + 1}-01` : `${anio}-${String(mes + 1).padStart(2, '0')}`
 }
 
+/** Período anterior a uno dado ('2026-10' → '2026-09'). */
+export function periodoAnteriorA(periodo: string): string {
+  const anio = Number(periodo.slice(0, 4))
+  const mes = Number(periodo.slice(5, 7))
+  return mes === 1 ? `${anio - 1}-12` : `${anio}-${String(mes - 1).padStart(2, '0')}`
+}
+
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
 
 /** '2026-08' → 'Agosto 2026'. */

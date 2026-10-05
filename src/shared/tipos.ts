@@ -833,7 +833,7 @@ export interface DatosDePago {
   estadoCobro?: EstadoDeCobro
   /**
    * Qué cuota se está cobrando: la de este mes (MES, lo normal), la del mes que viene por adelantado
-   * (ADELANTADO) o las dos juntas (AMBAS). Vacío = MES.
+   * (ADELANTADO), las dos juntas (AMBAS) o la vencida del mes anterior (ANTERIOR). Vacío = MES.
    */
   alcance?: AlcanceDelPago
   /** El pago adelantado, cuando `alcance` lo incluye. */
@@ -849,7 +849,7 @@ export const NOMBRE_ESTADO_DE_COBRO: Record<EstadoDeCobro, string> = {
   IMPUTADO: 'Imputado (falta cobrar)',
 }
 
-export const ALCANCES_DEL_PAGO = ['MES', 'ADELANTADO', 'AMBAS'] as const
+export const ALCANCES_DEL_PAGO = ['MES', 'ADELANTADO', 'AMBAS', 'ANTERIOR'] as const
 export type AlcanceDelPago = (typeof ALCANCES_DEL_PAGO)[number]
 
 /**
