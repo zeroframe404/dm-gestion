@@ -267,6 +267,29 @@ function contadorDeAltas(anteriores: CuotaDelMes[], actuales: CuotaDelMes[]): (c
   }
 }
 
+/**
+ * Las altas de un mes, contadas por cuándo TOMA VIGENCIA la póliza y no por cuándo se carga (issue #161).
+ * Una póliza que aparece en la planilla de un mes pero cuya vigencia empezó el mes anterior es un alta
+ * cargada tarde: se cuenta en el mes de su vigencia. Por eso `esAlta` descarta esas filas y `tardias`
+ * trae las del mes siguiente que le tocan a éste. Una vigencia más vieja (o sin fecha) sigue contando
+ * en el mes en que aparece, como siempre. Igual que `contadorDeAltas`, `esAlta` se llama siempre y en orden.
+ */
+function altasPorVigencia(
+  periodo: string,
+  sucursales: string[],
+  lineas: Map<number, string>,
+  anteriores: CuotaDelMes[],
+  cuotas: CuotaDelMes[],
+): { esAlta: (cuota: CuotaDelMes) => boolean; tardias: CuotaDelMes[] } {
+  const base = contadorDeAltas(anteriores, cuotas)
+  const delMesAnterior = (cuota: CuotaDelMes, mes: string) => cuota.desde !== null && cuota.desde.slice(0, 7) === periodoAnterior(mes)
+  const esAlta = (cuota: CuotaDelMes) => base(cuota) && !delMesAnterior(cuota, periodo)
+  const mesSiguiente = periodoSiguiente(periodo)
+  const siguientes = cuotasDelMes(mesSiguiente, sucursales, lineas)
+  const enElSiguiente = contadorDeAltas(cuotas, siguientes)
+  const tardias = siguientes.filter((cuota) => enElSiguiente(cuota) && delMesAnterior(cuota, mesSiguiente))
+  return { esAlta, tardias }
+}
 /** Una vez por identidad, conservando el orden en que vinieron. */
 function unaPorIdentidad<T extends { identidad: string }>(filas: T[]): T[] {
   const vistas = new Set<string>()
@@ -317,6 +340,13 @@ export function periodoAnterior(periodo: string): string {
   return mes === 1 ? `${anio - 1}-12` : `${anio}-${String(mes - 1).padStart(2, '0')}`
 }
 
+/** El mes siguiente a uno dado ('2025-12' → '2026-01'). */
+function periodoSiguiente(periodo: string): string {
+  const anio = Number(periodo.slice(0, 4))
+  const mes = Number(periodo.slice(5, 7))
+  return mes === 12 ? `${anio + 1}-01` : `${anio}-${String(mes + 1).padStart(2, '0')}`
+}
+
 // ---------------------------------------------------------------------------
 // Lectura de la cartera de un mes
 // ---------------------------------------------------------------------------
@@ -340,6 +370,8 @@ interface CuotaDelMes {
   cuota: string | null
   formaPago: string | null
   pagada: boolean
+  /** Inicio de vigencia de la póliza ('AAAA-MM-DD'), si se pudo interpretar: de ahí sale el mes del alta. */
+  desde: string | null
   /** El TIPO del vehículo de la póliza, tal como está escrito. */
   tipo: string | null
   /** Autos y motos o riesgos varios, según `tipo` (ver `ramaDeMetrica`). Sin vehículo, autos y motos. */
@@ -364,7 +396,7 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
                 (c.pago IS NOT NULL AND TRIM(c.pago) <> '')
                 OR ${PAGO_QUE_CUBRE_LA_CUOTA}
               ) AS pagada,
-              v.tipo
+              v.tipo, p.vigencia_desde_iso AS desde
          FROM cuotas_mes c
          LEFT JOIN clientes cl ON cl.id = c.cliente_id
          LEFT JOIN polizas p ON p.id = c.poliza_id
@@ -388,6 +420,7 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
     forma_pago: string | null
     pagada: number
     tipo: string | null
+    desde: string | null
   }>
 
   // La identidad y la línea se calculan ANTES de recortar por sucursal, igual que se deduplicaba antes:
@@ -413,6 +446,7 @@ function cuotasDelMes(periodo: string, sucursales: string[], lineas: Map<number,
       cuotaMonto: fila.cuota_monto,
       formaPago: fila.forma_pago,
       pagada: fila.pagada === 1,
+      desde: fila.desde,
       tipo: fila.tipo,
       rama: ramaDeMetrica(fila.tipo),
     }))
@@ -718,7 +752,7 @@ function evolucion(
     const anteriores = cuotasDelMes(periodoAnterior(mes), sucursales, lineas)
     const riesgos = riesgosVariosDelMes(mes, sucursales, guardados)
     const hayMesAnterior = anteriores.length > 0
-    const esAlta = contadorDeAltas(anteriores, cuotas)
+    const { esAlta, tardias } = altasPorVigencia(mes, sucursales, lineas, anteriores, cuotas)
     // La misma cuenta por rama que las tarjetas del tablero, mes por mes.
     const conteo = conteoPorRamaEnCero()
     for (const cuota of cuotas) {
@@ -727,6 +761,7 @@ function evolucion(
       // `esAlta` se llama siempre y en orden: es el que tacha (ver `contadorDeAltas`).
       if (esAlta(cuota) && hayMesAnterior) deLaRama.altas++
     }
+    for (const cuota of tardias) conteo[campoDeRama(cuota.rama)].altas++
     conteo.riesgosVarios.activos += riesgos.activos.length
     conteo.riesgosVarios.altas += riesgos.altas.length
     const bajas = bajasDelMes(mes, sucursales)
@@ -802,7 +837,7 @@ export function tableroDeMetricasLocal(filtros: FiltrosMetricas, conNumeros: boo
   const anteriores = cuotasDelMes(periodoAnterior(periodo), sucursales, lineas)
   const riesgos = riesgosVariosDelMes(periodo, sucursales, guardados)
   const hayMesAnterior = anteriores.length > 0
-  const esAlta = contadorDeAltas(anteriores, cuotas)
+  const { esAlta, tardias } = altasPorVigencia(periodo, sucursales, lineas, anteriores, cuotas)
   const conteo = conteoPorRamaEnCero()
 
   const porCompania = new Map<string, { etiqueta: string; cantidad: number }>()
@@ -815,6 +850,7 @@ export function tableroDeMetricasLocal(filtros: FiltrosMetricas, conNumeros: boo
     sumarUno(porCompania, cuota.compania, '(sin compañía)')
     sumarUno(porSucursal, cuota.sucursal, '(sin sucursal)')
   }
+  for (const cuota of tardias) conteo[campoDeRama(cuota.rama)].altas++
   for (const riesgo of riesgos.activos) {
     conteo.riesgosVarios.activos++
     sumarUno(porCompania, riesgo.compania, '(sin compañía)')
@@ -964,7 +1000,7 @@ export function estadisticasDeCarteraLocal(
   const anteriores = cuotasDelMes(periodoAnterior(periodo), sucursales, lineas)
   const riesgos = riesgosVariosDelMes(periodo, sucursales, guardados)
   const hayMesAnterior = anteriores.length > 0
-  const contar = contadorDeAltas(anteriores, cuotas)
+  const { esAlta: contar, tardias } = altasPorVigencia(periodo, sucursales, lineas, anteriores, cuotas)
 
   const companias = new Map<string, Acumulador>()
   const sucursalesMapa = new Map<string, Acumulador>()
@@ -985,6 +1021,12 @@ export function estadisticasDeCarteraLocal(
         fila.altas++
         fila.porRama[campo].altas++
       }
+    }
+  }
+  for (const cuota of tardias) {
+    for (const fila of filasDe(cuota.compania, cuota.sucursal)) {
+      fila.altas++
+      fila.porRama[campoDeRama(cuota.rama)].altas++
     }
   }
   for (const riesgo of riesgos.activos) {
@@ -1079,10 +1121,10 @@ export function altasDelMes(periodoPedido: string | null, sucursalPedida: string
   const anteriores = cuotasDelMes(periodoAnterior(periodo), [], lineas)
   const riesgos = riesgosVariosDelMes(periodo, [], riesgosVariosGuardados())
   const hayMesAnterior = anteriores.length > 0
-  const esAlta = contadorDeAltas(anteriores, cuotas)
+  const { esAlta, tardias } = altasPorVigencia(periodo, [], lineas, anteriores, cuotas)
   // El contador se recorre entero aunque no haya mes anterior: es el mismo paseo que hace el podio, y
   // dos recorridos distintos sobre las mismas filas son dos números distintos esperando a aparecer.
-  const altas = cuotas.filter(esAlta)
+  const altas = [...cuotas.filter(esAlta), ...tardias]
 
   const sucursal = limpiar(sucursalPedida) || null
   const buscada = sucursal === null ? null : claveDeLaFilaDeSucursal(sucursal)
