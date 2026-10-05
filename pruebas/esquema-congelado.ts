@@ -92,4 +92,5 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   // `estado`), que se borra.
   36: '84b3e8187f7ec3cf',
   37: '840b90de47a23d8d',
+  38: '840b90de47a23d8d',
 }
