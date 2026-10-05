@@ -17,6 +17,8 @@ export interface CotizacionDeAseguradora {
   coberturas: CoberturaCotizada[]
   avisos: string[]
   ajustes: AjusteDeAseguradora[]
+  /** Ver `ResultadoDeAseguradora.detalleTecnico`. */
+  detalleTecnico?: unknown
 }
 
 /** La solicitud con lo que el proceso principal ya resolvió por su cuenta. */

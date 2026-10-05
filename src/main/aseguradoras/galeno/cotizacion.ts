@@ -147,5 +147,8 @@ export async function cotizar(cliente: ClienteGaleno, productorCodigo: string, d
     coberturas,
     excepciones: comoExcepciones(cruda.excepciones),
     errores: comoErrores(cruda.errores),
+    productorCodigo,
+    pedidoEnviado: body,
+    respuestaDeGaleno: cruda,
   }
 }

@@ -107,6 +107,20 @@ function TarjetaDeCompania({
   const [abierta, setAbierta] = useState(false)
   const verAjustes = (abierta || faltan) && (resultado?.ajustes.length ?? 0) > 0
   const elegidosAMano = Object.keys(tarjeta.elegidos).length
+  const [copiado, setCopiado] = useState(false)
+
+  // El pedido exacto que recibió la API de la compañía y su respuesta: lo que hay que pasarle cuando
+  // un precio no coincide con el de su web.
+  const copiarDetalle = async () => {
+    if (resultado?.detalleTecnico === undefined) return
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(resultado.detalleTecnico, null, 2))
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2_000)
+    } catch {
+      /* sin portapapeles no hay nada más que hacer: el botón queda igual */
+    }
+  }
 
   return (
     <div className={cx('rounded-xl border bg-white px-4 py-3', faltan ? 'border-amber-300' : resultado?.estado === 'ERROR' ? 'border-red-200' : 'border-slate-200')}>
@@ -118,6 +132,16 @@ function TarjetaDeCompania({
             <Boton tamano="sm" variante="fantasma" icono={abierta ? 'flechaIzquierda' : 'desplegar'} onClick={() => setAbierta((previa) => !previa)}>
               Ajustes de {aseguradora.nombre}
               {elegidosAMano > 0 ? ` (${elegidosAMano} a mano)` : ''}
+            </Boton>
+          )}
+          {resultado?.estado === 'OK' && resultado.detalleTecnico !== undefined && (
+            <Boton
+              tamano="sm"
+              variante="fantasma"
+              onClick={() => void copiarDetalle()}
+              title={`Copia el pedido exacto que recibió la API de ${aseguradora.nombre} y su respuesta, para mandárselo a la compañía`}
+            >
+              {copiado ? 'Copiado' : `Copiar datos para ${aseguradora.nombre}`}
             </Boton>
           )}
           {resultado && (

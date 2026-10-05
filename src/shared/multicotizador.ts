@@ -249,6 +249,12 @@ export interface ResultadoDeAseguradora {
   avisos: string[]
   /** Todas las decisiones propias de la compañía que se usaron, con sus opciones, para poder cambiarlas. */
   ajustes: AjusteDeAseguradora[]
+  /**
+   * Lo que se le mandó a la API de la compañía y lo que contestó, sin tocar: es lo que hay que pasarle
+   * cuando un precio no coincide con el de su web. Sólo cuando cotizó; sin comisiones para quien no
+   * ve los números de la agencia.
+   */
+  detalleTecnico?: unknown
   duracionMs: number
 }
 

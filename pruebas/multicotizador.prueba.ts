@@ -20,7 +20,9 @@ import {
 } from '../src/main/multicotizador/equivalencias'
 import { formasDePago, olvidarCuerpoDeFormasDePago } from '../src/main/aseguradoras/galeno/catalogos'
 import { crearClienteGaleno } from '../src/main/aseguradoras/galeno/cliente'
-import { codigosDeGaleno, esLaVersionDelCodigo, modeloDeLaLista } from '../src/main/multicotizador/galeno'
+import { cotizar as cotizarEnGaleno } from '../src/main/aseguradoras/galeno/cotizacion'
+import { claveDePlan, codigosDeGaleno, esLaVersionDelCodigo, modeloDeLaLista, planDeLaLista } from '../src/main/multicotizador/galeno'
+import { cotizacionGalenoSinComision, sinComisiones } from '../src/main/servicios/galeno'
 import { usarAseguradorasDePrueba } from '../src/main/multicotizador/registro'
 import {
   aseguradorasDelMulticotizador,
@@ -348,6 +350,7 @@ test('multicotizador: la comisión no viaja a quien no ve los números de la age
           ],
           avisos: [],
           ajustes: [],
+          detalleTecnico: { legajo: '79066', respuesta: { coberturas: [{ premio: 150, comision: 7_500 }] } },
         }
       },
     }),
@@ -357,12 +360,14 @@ test('multicotizador: la comisión no viaja a quien no ve los números de la age
   const sinNumeros = await cotizarEnAseguradora(pedido, false)
   assert.equal(sinNumeros.coberturas[0]?.comision, null)
   assert.equal((sinNumeros.coberturas[0]?.emision?.cobertura as { comision: number }).comision, 0)
+  assert.deepEqual(sinNumeros.detalleTecnico, { legajo: '79066', respuesta: { coberturas: [{ premio: 150 }] } }, 'ni en el detalle para la compañía')
   // Lo elegido a mano llega limpio: sin espacios, sin vacíos y sin lo que no es texto.
   assert.deepEqual(recibidos, { planComercial: '12' })
 
   const conNumeros = await cotizarEnAseguradora(pedido, true)
   assert.equal(conNumeros.coberturas[0]?.comision, 10_000)
   assert.equal((conNumeros.coberturas[0]?.emision?.cobertura as { comision: number }).comision, 7_500)
+  assert.deepEqual(conNumeros.detalleTecnico, { legajo: '79066', respuesta: { coberturas: [{ premio: 150, comision: 7_500 }] } })
 })
 
 test('multicotizador: las localidades de todas las compañías se juntan sin repetir', async (t) => {
@@ -461,4 +466,81 @@ test('Galeno: un error de Formas de Pago que no es 400 no se reintenta', async (
   const cliente = crearClienteGaleno({ urlBase: 'https://vps.ejemplo', token: 'x' })
   await assert.rejects(formasDePago(cliente, 4, 'M', '120'), /Galeno respondió 500/)
   assert.equal(cuerpos.length, 1)
+})
+
+test('Galeno: se cotiza con el legajo del plan elegido, no con el del primer plan de la lista', () => {
+  const planes = [
+    { codigo: '120', descripcion: 'PLAN A', productorCodigo: '11111' },
+    { codigo: '120', descripcion: 'PLAN A', productorCodigo: '79066' },
+    { codigo: '130', descripcion: 'PLAN B', productorCodigo: '79066' },
+  ]
+  assert.equal(claveDePlan(planes[1]!), '79066|120')
+  assert.equal(planDeLaLista(planes, '79066|120'), planes[1], 'el mismo código de plan en otro legajo es otra opción')
+  assert.equal(planDeLaLista(planes, '79066|130'), planes[2])
+  assert.equal(planDeLaLista(planes, '130'), planes[2], 'un plan elegido antes, sólo por código, se sigue encontrando')
+  assert.equal(planDeLaLista(planes, undefined), planes[0])
+  assert.equal(planDeLaLista(planes, '99999|1'), planes[0], 'uno que ya no está vuelve al primero')
+  assert.equal(planDeLaLista([], undefined), undefined)
+})
+
+test('Galeno: la cotización manda el legajo pedido y devuelve el pedido y la respuesta tal cual', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = fetchOriginal
+  })
+  const respuesta = {
+    rama: 4,
+    solicitud: 55,
+    instalacion: 1,
+    descripcionVehiculo: 'FIAT CRONOS',
+    coberturas: [{ item: 1, cobertura: 'C1', descripcionCobertura: 'TERCEROS COMPLETO', prima: 100, bonificacion: 15, premio: 150, comision: 20 }],
+    excepciones: [],
+  }
+  const cuerpos: Array<Record<string, unknown>> = []
+  globalThis.fetch = (async (_url: string, opciones: RequestInit) => {
+    cuerpos.push(JSON.parse(String(opciones.body)) as Record<string, unknown>)
+    return new Response(JSON.stringify(respuesta), { status: 200 })
+  }) as typeof fetch
+  const cliente = crearClienteGaleno({ urlBase: 'https://vps.ejemplo', token: 'x' })
+  const cotizacion = await cotizarEnGaleno(cliente, '79066', {
+    tipoVehiculo: 'AUTO',
+    planComercialCodigo: '120',
+    ceroKm: false,
+    marcaCodigo: '20',
+    modeloCodigo: '503',
+    subModeloCodigo: '1',
+    anioFabricacion: '2022',
+    tomadorTipoPersona: '1',
+    tomadorNombre: 'PRUEBA',
+    codigoPostal: '1629',
+    subCodigoPostal: '0',
+    condicionPagoCodigo: '1',
+    vigenciaDesde: '2026-10-05',
+    modoFacturacionCodigo: 'M',
+    formaPagoCodigo: '3',
+    tomadorCategoriaIVACodigo: 'CF',
+  })
+  assert.equal(cuerpos.length, 1)
+  assert.equal(cuerpos[0]!.productorCodigo, 79066)
+  assert.equal(cuerpos[0]!.planComercialCodigo, '120')
+  assert.equal(cuerpos[0]!.vigenciaDesde, '05/10/2026')
+  assert.equal(cotizacion.productorCodigo, '79066')
+  assert.deepEqual(cotizacion.pedidoEnviado, cuerpos[0])
+  assert.deepEqual(cotizacion.respuestaDeGaleno, respuesta)
+  assert.equal(cotizacion.coberturas[0]!.bonificacion, 15)
+
+  // Quien no ve los números de la agencia no recibe la comisión, tampoco en la respuesta cruda.
+  const sinComision = cotizacionGalenoSinComision(cotizacion)
+  assert.equal(sinComision.coberturas[0]!.comision, 0)
+  assert.ok(!JSON.stringify(sinComision.respuestaDeGaleno).includes('comision'))
+  assert.equal((sinComision.respuestaDeGaleno as typeof respuesta).coberturas[0]!.premio, 150)
+})
+
+test('sinComisiones: saca todo campo de comisión, a cualquier profundidad', () => {
+  assert.deepEqual(sinComisiones({ a: 1, comision: 2, lista: [{ porcentajeComision: 3, b: [{ comisionAgencia: 4, c: 'x' }] }] }), {
+    a: 1,
+    lista: [{ b: [{ c: 'x' }] }],
+  })
+  assert.equal(sinComisiones(null), null)
+  assert.equal(sinComisiones('comision'), 'comision')
 })

@@ -15,6 +15,7 @@ import type {
   DatosDeOpcion,
   EmisionGaleno,
   OpcionGaleno,
+  PlanComercialDeGaleno,
   SubModeloGaleno,
   TipoDeVehiculo,
 } from '../../../shared/tipos'
@@ -32,15 +33,31 @@ interface Props {
   alAgregarOpciones: (opciones: DatosDeOpcion[]) => void
 }
 
+/** Hoy en la hora local: `toISOString()` es UTC y después de las 21 h de Argentina ya da mañana. */
 function hoyIso(): string {
-  return new Date().toISOString().slice(0, 10)
+  const hoy = new Date()
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+}
+
+/** Un mismo código de plan puede estar en dos legajos: el `<select>` los distingue por los dos datos. */
+function claveDePlan(plan: PlanComercialDeGaleno): string {
+  return `${plan.productorCodigo}|${plan.codigo}`
+}
+
+function importe(valor: number): string {
+  return valor.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, patenteSugerida, documentoSugerido, telefonoSugerido, alCerrar, alAgregarOpciones }: Props) {
   const [tipoVehiculo, setTipoVehiculo] = useState<TipoDeVehiculo>(tipoVehiculoSugerido)
 
-  const [planes, setPlanes] = useState<OpcionGaleno[]>([])
-  const [planComercialCodigo, setPlanComercialCodigo] = useState('')
+  const [planes, setPlanes] = useState<PlanComercialDeGaleno[]>([])
+  const [planClave, setPlanClave] = useState('')
+  const planElegido = planes.find((p) => claveDePlan(p) === planClave) ?? null
+  const planComercialCodigo = planElegido?.codigo ?? ''
+  // Si Galeno lista planes de más de un legajo, el legajo se muestra al lado de cada plan para que se
+  // elija el que corresponde (con otro legajo la bonificación es otra y el precio no coincide con la web).
+  const variosLegajos = new Set(planes.map((p) => p.productorCodigo)).size > 1
   const [tiposPersona, setTiposPersona] = useState<OpcionGaleno[]>([])
   const [tomadorTipoPersona, setTomadorTipoPersona] = useState('1')
   const [tomadorNombre, setTomadorNombre] = useState(nombreSugerido)
@@ -74,21 +91,34 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
   const [sumaAsegurada, setSumaAsegurada] = useState('')
   const [ceroKm, setCeroKm] = useState(false)
 
+  // Opcionales: si quedan vacíos no se mandan y Galeno usa lo suyo por defecto. Están para poder
+  // replicar exactamente una cotización de la web de Galeno, donde sí se eligen.
+  const [categoriasIva, setCategoriasIva] = useState<OpcionGaleno[]>([])
+  const [categoriaIvaCodigo, setCategoriaIvaCodigo] = useState('')
+  const [tiposDeUso, setTiposDeUso] = useState<OpcionGaleno[]>([])
+  const [tipoUso, setTipoUso] = useState('')
+  const [clausulas, setClausulas] = useState<OpcionGaleno[]>([])
+  const [clausulaAjusteCodigo, setClausulaAjusteCodigo] = useState('')
+  const [poseeEquipoGnc, setPoseeEquipoGnc] = useState(false)
+  const [equipoGncValor, setEquipoGncValor] = useState('')
+
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [resultado, setResultado] = useState<CotizacionGaleno | null>(null)
   const [elegidas, setElegidas] = useState<Set<string>>(new Set())
   const [aEmitir, setAEmitir] = useState<CoberturaCotizadaGaleno | null>(null)
+  const [copiado, setCopiado] = useState(false)
 
   // Listas que sólo dependen del tipo de vehículo.
   useEffect(() => {
-    setPlanComercialCodigo('')
+    setPlanClave('')
+    setPlanes([])
     setMarcaCodigo('')
     void (async () => {
       const [p, m] = await Promise.all([window.dm.galeno.planesComerciales(tipoVehiculo), window.dm.galeno.marcas(tipoVehiculo)])
       if (p.ok) {
         setPlanes(p.datos)
-        if (p.datos.length === 1) setPlanComercialCodigo(p.datos[0].codigo)
+        if (p.datos.length === 1) setPlanClave(claveDePlan(p.datos[0]))
       }
       if (m.ok) setMarcas(m.datos)
     })()
@@ -96,8 +126,16 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
 
   useEffect(() => {
     void (async () => {
-      const r = await window.dm.galeno.tiposDePersona()
+      const [r, iva, usos, ajustes] = await Promise.all([
+        window.dm.galeno.tiposDePersona(),
+        window.dm.galeno.categoriasIva(),
+        window.dm.galeno.tiposDeUso(),
+        window.dm.galeno.clausulasDeAjuste(),
+      ])
       if (r.ok) setTiposPersona(r.datos)
+      if (iva.ok) setCategoriasIva(iva.datos)
+      if (usos.ok) setTiposDeUso(usos.datos)
+      if (ajustes.ok) setClausulas(ajustes.datos)
     })()
   }, [])
 
@@ -192,18 +230,21 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
       marcaCodigo &&
       anioFabricacion &&
       versionElegida &&
-      vigenciaDesde,
+      vigenciaDesde &&
+      (!poseeEquipoGnc || equipoGncValor),
   )
 
   const cotizar = async () => {
-    if (!versionElegida) return
+    if (!versionElegida || !planElegido) return
     setCargando(true)
     setError(null)
     setResultado(null)
     setElegidas(new Set())
+    setCopiado(false)
     const datos: DatosDeCotizacionGaleno = {
       tipoVehiculo,
-      planComercialCodigo,
+      planComercialCodigo: planElegido.codigo,
+      productorCodigo: planElegido.productorCodigo,
       ceroKm,
       marcaCodigo,
       // El modelo y el sub-modelo que se cotizan son los de la VERSIÓN elegida (cada fila de
@@ -220,11 +261,40 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
       modoFacturacionCodigo,
       formaPagoCodigo,
       sumaAsegurada: sumaAsegurada ? Number(sumaAsegurada) : undefined,
+      tomadorCategoriaIVACodigo: categoriaIvaCodigo || undefined,
+      tipoUso: tipoUso || undefined,
+      clausulaAjusteCodigo: clausulaAjusteCodigo || undefined,
+      poseeEquipoGnc,
+      equipoGncValor: poseeEquipoGnc && equipoGncValor ? Number(equipoGncValor) : undefined,
     }
     const resultadoCotizacion = await window.dm.galeno.cotizar(datos)
     setCargando(false)
     if (resultadoCotizacion.ok) setResultado(resultadoCotizacion.datos)
     else setError(resultadoCotizacion.error)
+  }
+
+  // Lo que se le pasa a Galeno cuando un precio no coincide con su web: el body exacto que recibió su
+  // API y su respuesta completa, con el legajo y el plan a la vista.
+  const copiarParaGaleno = async () => {
+    if (!resultado) return
+    const texto = JSON.stringify(
+      {
+        legajo: resultado.productorCodigo,
+        planComercial: planElegido ? `${planElegido.codigo} — ${planElegido.descripcion}` : resultado.pedidoEnviado.planComercialCodigo,
+        endpoint: 'POST /api/cotizadores/auto/cotizar',
+        pedido: resultado.pedidoEnviado,
+        respuesta: resultado.respuestaDeGaleno,
+      },
+      null,
+      2,
+    )
+    try {
+      await navigator.clipboard.writeText(texto)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2_000)
+    } catch {
+      setError('No se pudo copiar al portapapeles.')
+    }
   }
 
   const alternar = (cobertura: string) => {
@@ -243,7 +313,7 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
       .map((c) => ({
         compania: 'GALENO',
         cobertura: c.descripcionCobertura,
-        precio: `$ ${c.premio.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        precio: `$ ${importe(c.premio)}`,
         comentario: c.franquicia || c.listaAdicionales.find((a) => a) || '',
       }))
     if (opciones.length > 0) alAgregarOpciones(opciones)
@@ -319,9 +389,13 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
               />
               <Selector
                 etiqueta="Plan comercial"
-                value={planComercialCodigo}
-                onChange={(e) => setPlanComercialCodigo(e.target.value)}
-                opciones={[{ valor: '', texto: planes.length ? 'Elegir…' : 'Cargando…' }, ...planes.map((p) => ({ valor: p.codigo, texto: p.descripcion }))]}
+                value={planClave}
+                onChange={(e) => setPlanClave(e.target.value)}
+                ayuda={planElegido ? `Legajo ${planElegido.productorCodigo}` : undefined}
+                opciones={[
+                  { valor: '', texto: planes.length ? 'Elegir…' : 'Cargando…' },
+                  ...planes.map((p) => ({ valor: claveDePlan(p), texto: variosLegajos ? `${p.descripcion} (legajo ${p.productorCodigo})` : p.descripcion })),
+                ]}
               />
               <Selector
                 etiqueta="Tipo de persona"
@@ -419,12 +493,59 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
                 0Km
               </label>
             </div>
+
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Selector
+                etiqueta="Condición de IVA"
+                value={categoriaIvaCodigo}
+                onChange={(e) => setCategoriaIvaCodigo(e.target.value)}
+                opciones={[{ valor: '', texto: 'La de Galeno por defecto' }, ...categoriasIva.map((c) => ({ valor: c.codigo, texto: c.descripcion }))]}
+              />
+              <Selector
+                etiqueta="Tipo de uso"
+                value={tipoUso}
+                onChange={(e) => setTipoUso(e.target.value)}
+                opciones={[{ valor: '', texto: 'El de Galeno por defecto' }, ...tiposDeUso.map((t) => ({ valor: t.codigo, texto: t.descripcion }))]}
+              />
+              <Selector
+                etiqueta="Cláusula de ajuste"
+                value={clausulaAjusteCodigo}
+                onChange={(e) => setClausulaAjusteCodigo(e.target.value)}
+                opciones={[{ valor: '', texto: 'La de Galeno por defecto' }, ...clausulas.map((c) => ({ valor: c.codigo, texto: c.descripcion }))]}
+              />
+              <div className="flex items-end gap-2">
+                <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+                  <input type="checkbox" checked={poseeEquipoGnc} onChange={(e) => setPoseeEquipoGnc(e.target.checked)} />
+                  GNC
+                </label>
+                {poseeEquipoGnc && (
+                  <Campo
+                    etiqueta="Valor del equipo"
+                    value={equipoGncValor}
+                    onChange={(e) => setEquipoGncValor(e.target.value.replace(/[^\d]/g, ''))}
+                    inputMode="numeric"
+                    className="flex-1"
+                  />
+                )}
+              </div>
+            </div>
           </>
         )}
 
         {resultado && (
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-slate-600">{resultado.descripcionVehiculo}</p>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="text-sm text-slate-600">
+                <p>{resultado.descripcionVehiculo}</p>
+                <p className="text-xs text-slate-500">
+                  Cotizado con el legajo {resultado.productorCodigo}
+                  {planElegido ? `, plan ${planElegido.descripcion}` : ''}.
+                </p>
+              </div>
+              <Boton tamano="sm" onClick={() => void copiarParaGaleno()} title="Copia el pedido exacto que recibió la API de Galeno y su respuesta, para mandárselo a la compañía">
+                {copiado ? 'Copiado' : 'Copiar datos para Galeno'}
+              </Boton>
+            </div>
             {resultado.coberturas.length === 0 && <Alerta tono="aviso">Galeno no devolvió coberturas disponibles para estos datos.</Alerta>}
             <div className="flex flex-col gap-2">
               {resultado.coberturas.map((c) => (
@@ -433,9 +554,20 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="font-semibold text-slate-900">{c.descripcionCobertura}</span>
-                      <span className="tabular-nums font-semibold text-slate-900">$ {c.premio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                      <span className="tabular-nums font-semibold text-slate-900">$ {importe(c.premio)}</span>
                     </div>
                     {c.franquicia && <p className="text-xs text-slate-500">Franquicia: {c.franquicia}</p>}
+                    {/* El desglose tal cual lo devuelve Galeno, para comparar renglón por renglón con su web. */}
+                    <dl className="mt-1 grid grid-cols-2 gap-x-4 text-xs text-slate-500 tabular-nums sm:grid-cols-4">
+                      <DatoDelDesglose etiqueta="Prima" valor={c.prima} />
+                      <DatoDelDesglose etiqueta="Bonificación" valor={c.bonificacion} />
+                      <DatoDelDesglose etiqueta="Rec. administrativo" valor={c.recargoAdministrativo} />
+                      <DatoDelDesglose etiqueta="Rec. financiero" valor={c.recargoFinanciero} />
+                      <DatoDelDesglose etiqueta="Derecho de emisión" valor={c.derechoEmision} />
+                      <DatoDelDesglose etiqueta="Impuestos" valor={c.impuestos} />
+                      <DatoDelDesglose etiqueta="Cuota 1" valor={c.importeCuota1} />
+                      <DatoDelDesglose etiqueta="Resto de cuotas" valor={c.importeRestoCuotas} />
+                    </dl>
                   </div>
                   <Boton onClick={() => setAEmitir(c)}>Emitir…</Boton>
                 </div>
@@ -453,5 +585,14 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
         )}
       </div>
     </Dialogo>
+  )
+}
+
+function DatoDelDesglose({ etiqueta, valor }: { etiqueta: string; valor: number }) {
+  return (
+    <div className="flex justify-between gap-2">
+      <dt>{etiqueta}</dt>
+      <dd>{importe(valor)}</dd>
+    </div>
   )
 }

@@ -18,7 +18,7 @@ import {
   type AjusteDeAseguradora,
   type CoberturaCotizada,
 } from '../../shared/multicotizador'
-import { RAMA_GALENO_DE_TIPO, type OpcionGaleno, type SubModeloGaleno, type TipoDeVehiculo } from '../../shared/tipos'
+import { RAMA_GALENO_DE_TIPO, type OpcionGaleno, type PlanComercialDeGaleno, type SubModeloGaleno, type TipoDeVehiculo } from '../../shared/tipos'
 import {
   categoriasIvaGaleno,
   codigoPostalGaleno,
@@ -84,6 +84,19 @@ function opciones(lista: OpcionDeLista[]): AjusteDeAseguradora['opciones'] {
 /** El elegido a mano, si todavía es una de las opciones (un cambio más arriba lo puede haber dejado afuera). */
 function valido(elegido: string | undefined, lista: Array<{ codigo: string }>): string | null {
   return elegido && lista.some((opcion) => opcion.codigo === elegido) ? elegido : null
+}
+
+/** La opción de un plan comercial: «legajo|plan», porque el mismo código de plan puede estar en dos legajos. */
+export function claveDePlan(plan: PlanComercialDeGaleno): string {
+  return `${plan.productorCodigo}|${plan.codigo}`
+}
+
+/**
+ * El plan con el que se cotiza: el elegido a mano (por su clave «legajo|plan», o por el código solo si
+ * se eligió antes de que la opción llevara el legajo) o, si no, el primero de la lista.
+ */
+export function planDeLaLista(planes: PlanComercialDeGaleno[], elegido: string | undefined): PlanComercialDeGaleno | undefined {
+  return (elegido ? (planes.find((p) => claveDePlan(p) === elegido) ?? planes.find((p) => p.codigo === elegido)) : undefined) ?? planes[0]
 }
 
 /** Los códigos de Galeno de un vehículo elegido del catálogo, si salió de la API de Galeno para ese tipo. */
@@ -231,9 +244,24 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   const ajustes: AjusteDeAseguradora[] = []
 
   // Plan comercial → modo de facturación → condición y forma de pago: cada lista depende de la anterior.
+  // Cada plan es de UN legajo y la bonificación del productor va atada a esa combinación: la opción
+  // lleva los dos («legajo|plan») y se cotiza con el legajo del plan elegido, no con uno fijo.
   const planes = await enMemoria(`planes:${tipo}`, () => planesComercialesGaleno(tipo))
-  const plan = valido(elegidos.planComercial, planes) ?? planes[0]?.codigo ?? ''
-  ajustes.push({ campo: 'planComercial', titulo: 'Plan comercial', opciones: opciones(planes), valor: plan, obligatorio: true })
+  const variosLegajos = new Set(planes.map((p) => p.productorCodigo)).size > 1
+  const opcionesDePlan = planes.map((p) => ({
+    codigo: claveDePlan(p),
+    descripcion: variosLegajos ? `${p.descripcion} (legajo ${p.productorCodigo})` : p.descripcion,
+  }))
+  const planElegido = planDeLaLista(planes, elegidos.planComercial)
+  const plan = planElegido?.codigo ?? ''
+  ajustes.push({
+    campo: 'planComercial',
+    titulo: 'Plan comercial',
+    ayuda: planElegido ? `Legajo ${planElegido.productorCodigo}` : undefined,
+    opciones: opciones(opcionesDePlan),
+    valor: planElegido ? claveDePlan(planElegido) : '',
+    obligatorio: true,
+  })
 
   const modos = plan ? await enMemoria(`modos:${tipo}:${plan}`, () => modosDeFacturacionGaleno(tipo, plan)) : []
   // Mensual es lo que se vende en el mostrador casi siempre; si Galeno no lo ofrece, el primero.
@@ -312,6 +340,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   const cotizacion = await cotizarGaleno({
     tipoVehiculo: tipo,
     planComercialCodigo: plan,
+    productorCodigo: planElegido?.productorCodigo,
     ceroKm: v.ceroKm,
     idInfoAuto: vehiculo.idInfoAuto,
     marcaCodigo: vehiculo.version ? String(vehiculo.version.codigoMarca) : undefined,
@@ -378,6 +407,13 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     coberturas,
     avisos,
     ajustes,
+    detalleTecnico: {
+      legajo: cotizacion.productorCodigo,
+      planComercial: planElegido ? `${planElegido.codigo} — ${planElegido.descripcion}` : plan,
+      endpoint: 'POST /api/cotizadores/auto/cotizar',
+      pedido: cotizacion.pedidoEnviado,
+      respuesta: cotizacion.respuestaDeGaleno,
+    },
   }
 }
 
