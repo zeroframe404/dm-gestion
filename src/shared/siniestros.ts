@@ -14,10 +14,22 @@ function normalizar(valor: string | null | undefined): string {
 
 /**
  * Cómo se traducen al estado del trámite los textos que ya están en la columna ESTADO de la hoja.
- * La agencia escribió durante años lo que le pareció; la ficha tiene cuatro estados y cada texto viejo
+ * La agencia escribió durante años lo que le pareció; la ficha tiene cinco estados y cada texto viejo
  * tiene que caer en el que corresponde en vez de aparecer en blanco.
  */
 const SINONIMOS_DE_ESTADO: Record<string, EstadoSiniestro> = {
+  // Tuvo el siniestro pero no contestó el cuestionario, así que la denuncia todavía no se pudo cargar.
+  'SIN RESPONDER': 'SIN RESPONDER',
+  'SIN RESPUESTA': 'SIN RESPONDER',
+  'NO RESPONDE': 'SIN RESPONDER',
+  'NO RESPONDIO': 'SIN RESPONDER',
+  'NO CONTESTA': 'SIN RESPONDER',
+  'NO CONTESTO': 'SIN RESPONDER',
+  'NO RESPONDIO EL CUESTIONARIO': 'SIN RESPONDER',
+  'NO CONTESTO EL CUESTIONARIO': 'SIN RESPONDER',
+  'FALTA CUESTIONARIO': 'SIN RESPONDER',
+  'FALTA EL CUESTIONARIO': 'SIN RESPONDER',
+
   CARGADO: 'CARGADO',
   CARGADA: 'CARGADO',
   DENUNCIADO: 'CARGADO',
@@ -93,7 +105,7 @@ const SINONIMOS_DE_ESTADO: Record<string, EstadoSiniestro> = {
 const FRASES_DE_ESTADO = Object.keys(SINONIMOS_DE_ESTADO).sort((a, b) => b.length - a.length)
 
 /**
- * Lleva lo que haya guardado a uno de los cuatro estados. Un texto que no se reconoce se toma como
+ * Lleva lo que haya guardado a uno de los cinco estados. Un texto que no se reconoce se toma como
  * CARGADO —está denunciado y todavía no se sabe más— y el original se sigue mostrando al lado, igual
  * que hace la rendición de Imputados con su RESULTADO.
  *
@@ -129,7 +141,7 @@ export function normalizarEstadoSiniestro(valor: string | null | undefined): Est
   return elegida ? SINONIMOS_DE_ESTADO[elegida]! : 'CARGADO'
 }
 
-/** true si el estado guardado dice algo que no es exactamente uno de los cuatro (para mostrarlo aparte). */
+/** true si el estado guardado dice algo que no es exactamente uno de los cinco (para mostrarlo aparte). */
 export function estadoTextoDiferente(guardado: string | null | undefined): boolean {
   const texto = (guardado ?? '').trim()
   if (!texto) return false

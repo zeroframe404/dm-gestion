@@ -50,6 +50,7 @@ const COLUMNAS: Array<{ id: string; titulo: string; siempre?: boolean }> = [
 
 /** Cada estado con su color: el trámite se lee de un vistazo, sin leer la palabra. */
 export const CLASES_ESTADO: Record<EstadoSiniestro, string> = {
+  'SIN RESPONDER': 'bg-red-100 text-red-800 border-red-200',
   CARGADO: 'bg-slate-100 text-slate-700 border-slate-200',
   'EN TRÁMITE': 'bg-marino-50 text-marino-800 border-marino-200',
   'ESPERANDO DOCUMENTACIÓN': 'bg-amber-100 text-amber-900 border-amber-200',
