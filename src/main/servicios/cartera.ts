@@ -1801,7 +1801,8 @@ export function cerrarMes(actor: SesionUsuario, opciones: OpcionesDeCierre = {})
         cuota_monto: fila.cuota_monto,
         dia_vencimiento: fila.dia_vencimiento,
         dia_vencimiento_numero: fila.dia_vencimiento_numero,
-        aviso: fila.aviso,
+        // «OB. avisos» describe el aviso de ESE mes: arrastrarlo dejaba lo del mes pasado en el nuevo.
+        aviso: null,
         observaciones: fila.observaciones,
         obs_pago: fila.obs_pago,
         forma_pago: fila.forma_pago,
@@ -1828,7 +1829,7 @@ export function cerrarMes(actor: SesionUsuario, opciones: OpcionesDeCierre = {})
             cuota: String(fila.cuota ?? ''),
             dia_vencimiento: String(fila.dia_vencimiento ?? ''),
             forma_pago: String(fila.forma_pago ?? ''),
-            aviso: String(fila.aviso ?? ''),
+            aviso: '',
             observaciones: String(fila.observaciones ?? ''),
             avisar_vto: String(fila.avisar_vto ?? ''),
             // Lo que define a la póliza y al riesgo. La subida escribe sólo lo que tiene valor y agrega
