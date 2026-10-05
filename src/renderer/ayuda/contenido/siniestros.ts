@@ -17,7 +17,7 @@ export const AYUDA_SINIESTROS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Filtrar y contar',
         parrafos: [
-          'Arriba se elige el mes, se busca por asegurado, patente, número de siniestro o de póliza, y se puede acotar por sucursal, compañía o «Sólo robos». Debajo, una fila de contadores por estado del trámite (Cargado, En trámite, Esperando documentación, Cerrado) funciona también como filtro: tocar uno de ellos muestra sólo los siniestros en ese estado, y tocarlo de nuevo lo vuelve a mostrar todos.',
+          'Arriba se elige el mes, se busca por asegurado, patente, número de siniestro o de póliza, y se puede acotar por sucursal, compañía o «Sólo robos». Debajo, una fila de contadores por estado del trámite (Sin responder, Cargado, En trámite, Esperando documentación, Cerrado) funciona también como filtro: tocar uno de ellos muestra sólo los siniestros en ese estado, y tocarlo de nuevo lo vuelve a mostrar todos.',
         ],
       },
       {
@@ -29,7 +29,7 @@ export const AYUDA_SINIESTROS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'La ficha: estado, línea de tiempo, documentos y tareas',
         parrafos: [
-          'El estado del trámite tiene cuatro valores fijos: Cargado, En trámite, Esperando documentación y Cerrado. Cambiarlo desde el desplegable de arriba actualiza también la planilla de siempre. Si el siniestro venía con un texto de estado distinto en la planilla original, un aviso lo muestra tal cual estaba, junto a en cuál de los cuatro estados quedó traducido.',
+          'El estado del trámite tiene cinco valores fijos: Sin responder (tuvo el siniestro pero todavía no contestó el cuestionario para cargar la denuncia), Cargado, En trámite, Esperando documentación y Cerrado. Cambiarlo desde el desplegable de arriba actualiza también la planilla de siempre. Si el siniestro venía con un texto de estado distinto en la planilla original, un aviso lo muestra tal cual estaba, junto a en cuál de los cinco estados quedó traducido.',
           'La línea de tiempo, en el medio de la ficha, es el relato del trámite: cada observación que se agrega queda fechada y firmada con quién la escribió, y no se puede editar ni borrar después, sólo sumar una nueva. Es lo que hay que mirar para contestar «¿cómo viene lo de tal cliente?» sin tener que llamar a nadie.',
           'Documentos guarda los archivos del siniestro (fotos, denuncia, presupuestos) con «Adjuntar»: se pueden arrastrar a la ventana, pegar con Ctrl+V o elegir con el explorador. Suben al servidor de la agencia y se ven desde cualquier computadora (la etiqueta al costado dice si ya está «en el servidor» o «subiendo…»); la primera vez que se abre uno cargado en otra PC, se baja solo. Las fotos se achican antes de subir sin que se note la diferencia. Si hay conexión con Google configurada, se guarda además una copia en Drive; si no la hay, la ficha lo dice en vez de quedarse callada. Tareas junta los pendientes de ese trámite (por ejemplo, «pedir el presupuesto del taller»), con su responsable y su estado, y «Nueva tarea» agrega uno sin salir de la ficha.',
         ],

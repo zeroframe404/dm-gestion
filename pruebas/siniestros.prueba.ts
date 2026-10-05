@@ -101,7 +101,7 @@ function colaDeSiniestros(db: BaseDeDatos) {
 // Las reglas de siempre: el estado del trámite y la palabra ROBO
 // ---------------------------------------------------------------------------
 
-test('lo que la hoja escribió durante años cae en uno de los cuatro estados', () => {
+test('lo que la hoja escribió durante años cae en uno de los cinco estados', () => {
   assert.equal(normalizarEstadoSiniestro('CERRADO'), 'CERRADO')
   assert.equal(normalizarEstadoSiniestro('EN TRAMITE'), 'EN TRÁMITE', 'sin tilde es como lo escriben')
   assert.equal(normalizarEstadoSiniestro('en trámite'), 'EN TRÁMITE')
@@ -111,6 +111,9 @@ test('lo que la hoja escribió durante años cae en uno de los cuatro estados', 
   assert.equal(normalizarEstadoSiniestro('FALTA DOCUMENTACION'), 'ESPERANDO DOCUMENTACIÓN')
   assert.equal(normalizarEstadoSiniestro('PAGADO'), 'CERRADO')
   assert.equal(normalizarEstadoSiniestro('RECHAZADO'), 'CERRADO')
+  assert.equal(normalizarEstadoSiniestro('SIN RESPONDER'), 'SIN RESPONDER')
+  assert.equal(normalizarEstadoSiniestro('no respondió el cuestionario'), 'SIN RESPONDER')
+  assert.equal(normalizarEstadoSiniestro('NO CONTESTA 12/09'), 'SIN RESPONDER')
   // Lo que no se reconoce no desaparece: se muestra como CARGADO y el texto original queda a la vista.
   assert.equal(normalizarEstadoSiniestro('LO VE EL ABOGADO'), 'CARGADO')
   assert.equal(normalizarEstadoSiniestro(''), 'CARGADO')

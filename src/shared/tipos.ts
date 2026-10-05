@@ -2041,7 +2041,7 @@ export interface CuotasDelCliente {
 }
 
 /** El estado del trámite. Son cuatro y en este orden: es el camino que recorre un siniestro. */
-export const ESTADOS_DE_SINIESTRO = ['CARGADO', 'EN TRÁMITE', 'ESPERANDO DOCUMENTACIÓN', 'CERRADO'] as const
+export const ESTADOS_DE_SINIESTRO = ['SIN RESPONDER', 'CARGADO', 'EN TRÁMITE', 'ESPERANDO DOCUMENTACIÓN', 'CERRADO'] as const
 export type EstadoSiniestro = (typeof ESTADOS_DE_SINIESTRO)[number]
 
 /**

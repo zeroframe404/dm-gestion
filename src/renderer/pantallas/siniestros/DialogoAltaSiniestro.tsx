@@ -24,7 +24,7 @@ export function DialogoAltaSiniestro({ alCerrar, alCargar }: Props) {
   const [fechaCarga, setFechaCarga] = useState(hoyLocal())
   const [numero, setNumero] = useState('')
   const [descripcion, setDescripcion] = useState('')
-  const [estado, setEstado] = useState<string>(ESTADOS_DE_SINIESTRO[0])
+  const [estado, setEstado] = useState<string>('CARGADO')
   const [importe, setImporte] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)

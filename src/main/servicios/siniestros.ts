@@ -206,7 +206,7 @@ export function siniestrosDeCliente(clienteId: number): SiniestroDeCliente[] {
        ORDER BY COALESCE(s.fecha_iso, s.fecha) DESC, s.fila_id DESC, s.id DESC`,
     )
     .all({ cliente: clienteId }) as FilaCruda[]
-  // Mismo criterio que `siniestrosDe` en clientes.ts: la ficha del cliente muestra uno de los cuatro
+  // Mismo criterio que `siniestrosDe` en clientes.ts: la ficha del cliente muestra uno de los cinco
   // estados, no el texto crudo de la hoja. Los dos caminos llenan la misma tabla y tienen que coincidir.
   return filas.map((f) => ({
     id: f.id,
@@ -272,7 +272,7 @@ export function listarSiniestros(filtros: unknown): ListadoSiniestros {
       coincide(fila),
   )
 
-  const porEstado = { CARGADO: 0, 'EN TRÁMITE': 0, 'ESPERANDO DOCUMENTACIÓN': 0, CERRADO: 0 } as Record<EstadoSiniestro, number>
+  const porEstado = { 'SIN RESPONDER': 0, CARGADO: 0, 'EN TRÁMITE': 0, 'ESPERANDO DOCUMENTACIÓN': 0, CERRADO: 0 } as Record<EstadoSiniestro, number>
   for (const { fila } of sinEstado) porEstado[fila.estado]++
 
   return {
