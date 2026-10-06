@@ -42,6 +42,7 @@ import {
 import {
   categoriaDeCobertura,
   coberturasOrdenadas,
+  elegidosAplicados,
   elegirAjuste,
   enPorcentaje,
   mejoresPorCategoria,
@@ -258,6 +259,35 @@ test('multicotizador: lo elegido a mano se guarda sin lo que dependía del vehí
   assert.deepEqual(sanearElegidos('{"bonificacion":"40"}'), {})
   assert.deepEqual(sanearElegidos([{ bonificacion: '40' }]), {})
   assert.equal(sanearElegidos({ plan: 'x'.repeat(100) }).plan?.length, 80)
+})
+
+test('multicotizador: queda como «a mano» sólo lo que la compañía aplicó de verdad', () => {
+  const ajustes: AjusteDeAseguradora[] = [
+    { campo: 'planComercial', titulo: 'Plan', opciones: [], valor: '79066|120', obligatorio: true },
+    { campo: 'modoFacturacion', titulo: 'Modo', opciones: [], valor: 'M', obligatorio: true, destacado: true },
+    { campo: 'bonificacion', titulo: 'Bonificación', opciones: [], valor: '40', obligatorio: false, destacado: true },
+    { campo: 'version', titulo: 'Versión', opciones: [], valor: '', obligatorio: true, porSolicitud: true },
+  ]
+  assert.deepEqual(
+    elegidosAplicados(
+      {
+        planComercial: '99999|1', // un plan que Galeno ya no lista: volvió al primero, no es «a mano»
+        modoFacturacion: 'M',
+        bonificacion: '40',
+        version: '1|2|3', // de otro vehículo: Galeno la descartó y pide elegir
+        equipoRastreo: '7', // sin ajuste en esta respuesta: se conserva
+      },
+      ajustes,
+    ),
+    { modoFacturacion: 'M', bonificacion: '40', equipoRastreo: '7' },
+  )
+  // Un plan elegido antes sólo por su código se normaliza a la clave «legajo|plan» que aplicó Galeno.
+  assert.deepEqual(elegidosAplicados({ planComercial: '120' }, ajustes), { planComercial: '79066|120' })
+  // Sin ajustes en la respuesta (la compañía falló antes de armarlos) no hay con qué comparar: queda igual.
+  assert.deepEqual(elegidosAplicados({ version: '1|2|3', bonificacion: '40' }, []), { version: '1|2|3', bonificacion: '40' })
+  // Y por eso lo que se guarda sale de los ajustes de la respuesta: con una respuesta sin ajustes, la
+  // pantalla no guarda nada (ver Multicotizador.tsx); con ajustes, sin lo que era de este vehículo.
+  assert.deepEqual(sinLosPorSolicitud(elegidosAplicados({ version: '1|2|3', bonificacion: '40' }, ajustes), ajustes), { bonificacion: '40' })
 })
 
 test('multicotizador: los porcentajes aplicados se resumen como en la grilla de Galeno', () => {

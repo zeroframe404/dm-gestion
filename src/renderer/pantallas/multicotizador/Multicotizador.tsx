@@ -10,6 +10,7 @@ import {
   NOMBRE_MEDIO_DE_PAGO,
   NOMBRE_USO_DEL_VEHICULO,
   claveDeCobertura,
+  elegidosAplicados,
   elegirAjuste,
   enPesos,
   sinLosPorSolicitud,
@@ -99,10 +100,14 @@ export function Multicotizador() {
           ajustes: [],
           duracionMs: 0,
         }
-    // Lo elegido a mano que vale para cualquier vehículo se recuerda en esta computadora: la próxima
-    // vez que se entre, la compañía arranca con eso en vez de volver a decidir sola.
-    if (respuesta.ok) guardarAjustes(aseguradora, sinLosPorSolicitud(elegidos, resultado.ajustes))
-    setTarjetas((previas) => ({ ...previas, [aseguradora]: { elegidos, cotizando: false, resultado } }))
+    // Queda como «a mano» sólo lo que la compañía aplicó de verdad: lo que descartó (un plan que ya no
+    // lista) no se cuenta ni se guarda. Y lo que vale para cualquier vehículo se recuerda en esta
+    // computadora, para que la próxima vez la compañía arranque con eso en vez de decidir sola. Sin
+    // ajustes en la respuesta (la compañía falló antes de armarlos) no se sabe cuáles eran de ESTE
+    // vehículo y no se guarda nada: guardar la versión o la localidad haría cotizar mañana otro auto.
+    const aplicados = elegidosAplicados(elegidos, resultado.ajustes)
+    if (respuesta.ok && resultado.ajustes.length > 0) guardarAjustes(aseguradora, sinLosPorSolicitud(aplicados, resultado.ajustes))
+    setTarjetas((previas) => ({ ...previas, [aseguradora]: { elegidos: aplicados, cotizando: false, resultado } }))
   }
 
   const cotizar = () => {

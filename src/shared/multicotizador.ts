@@ -161,6 +161,26 @@ export function sinLosPorSolicitud(elegidos: Record<string, string>, ajustes: Aj
 }
 
 /**
+ * Lo elegido a mano que la compañía efectivamente aplicó, campo por campo según lo que devolvió como
+ * valor de cada ajuste. Lo que descartó —un plan que ya no lista, una versión de otro vehículo— se
+ * suelta, así no se guarda ni se cuenta como «a mano» algo que no se usó. Una opción compuesta
+ * («legajo|plan») elegida antes sólo por su última parte se normaliza a la compuesta. Lo que no tiene
+ * ajuste en esta respuesta (el equipo de rastreo cuando el vehículo ya no lo lleva) se conserva tal
+ * cual: no hay con qué saber si se aplicó, y valía antes. Con una respuesta sin ajustes (la compañía
+ * no llegó a armarlos: un error de red) no hay nada que comparar y se devuelve lo mismo que entró.
+ */
+export function elegidosAplicados(elegidos: Record<string, string>, ajustes: AjusteDeAseguradora[]): Record<string, string> {
+  if (ajustes.length === 0) return { ...elegidos }
+  const aplicados: Record<string, string> = {}
+  for (const [campo, elegido] of Object.entries(elegidos)) {
+    const ajuste = ajustes.find((a) => a.campo === campo)
+    if (!ajuste) aplicados[campo] = elegido
+    else if (ajuste.valor && (ajuste.valor === elegido || ajuste.valor.endsWith(`|${elegido}`))) aplicados[campo] = ajuste.valor
+  }
+  return aplicados
+}
+
+/**
  * Lo elegido a mano tal como se guardó en esta computadora, saneado: sólo pares texto → texto no
  * vacío, con los mismos largos que acepta el proceso principal (ver `validarElegidos` en
  * servicios/multicotizador.ts). Lo que no sea eso —otro formato, un localStorage editado a mano— se
