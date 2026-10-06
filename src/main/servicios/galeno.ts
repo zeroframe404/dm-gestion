@@ -323,7 +323,17 @@ function validarDatosDeCotizacion(datos: unknown): DatosDeCotizacionGaleno {
     clausulaAjusteCodigo: typeof d.clausulaAjusteCodigo === 'string' ? d.clausulaAjusteCodigo : undefined,
     tomadorCategoriaIVACodigo: typeof d.tomadorCategoriaIVACodigo === 'string' ? d.tomadorCategoriaIVACodigo : undefined,
     tomadorIIBBCodigo: typeof d.tomadorIIBBCodigo === 'string' ? d.tomadorIIBBCodigo : undefined,
+    bonificacionPorcentaje: porcentajeOpcional(d.bonificacionPorcentaje, 'La bonificación'),
+    recargoAdministrativoPorcentaje: porcentajeOpcional(d.recargoAdministrativoPorcentaje, 'El recargo administrativo'),
   }
+}
+
+/** Un porcentaje de 0 a 100, o nada: `undefined`, `null` y '' son «que decida Galeno». */
+function porcentajeOpcional(valor: unknown, campo: string): number | undefined {
+  if (valor === undefined || valor === null || valor === '') return undefined
+  const n = typeof valor === 'number' ? valor : typeof valor === 'string' ? Number(valor.replace(',', '.')) : NaN
+  if (!Number.isFinite(n) || n < 0 || n > 100) throw new ErrorDeNegocio(`${campo} tiene que ser un porcentaje entre 0 y 100.`)
+  return n
 }
 
 /**

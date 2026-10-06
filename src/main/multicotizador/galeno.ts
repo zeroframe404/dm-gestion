@@ -99,6 +99,35 @@ export function planDeLaLista(planes: PlanComercialDeGaleno[], elegido: string |
   return (elegido ? (planes.find((p) => claveDePlan(p) === elegido) ?? planes.find((p) => p.codigo === elegido)) : undefined) ?? planes[0]
 }
 
+/** Las opciones de un porcentaje que en la web de Galeno se escribe a mano: de 0 a `hasta`, de `paso` en `paso`. */
+export function opcionesDePorcentaje(hasta: number, paso: number): AjusteDeAseguradora['opciones'] {
+  const lista: AjusteDeAseguradora['opciones'] = []
+  for (let n = 0; n <= hasta; n += paso) lista.push({ valor: String(n), texto: `${n} %` })
+  return lista
+}
+
+/**
+ * Qué porcentajes aplicó Galeno de verdad, leídos de los importes de una cobertura: la bonificación
+ * sobre la prima, y el recargo administrativo sobre la prima ya bonificada (así los calcula su web).
+ * `null` cuando la cobertura no trae con qué calcularlo.
+ */
+export function porcentajesAplicados(cobertura: { prima: number; bonificacion: number; recargoAdministrativo: number }): {
+  bonificacion: number | null
+  recargoAdministrativo: number | null
+} {
+  const redondeado = (n: number) => Math.round(n * 100) / 100
+  if (!(cobertura.prima > 0)) return { bonificacion: null, recargoAdministrativo: null }
+  const bonificacion = redondeado((cobertura.bonificacion / cobertura.prima) * 100)
+  const base = cobertura.prima - cobertura.bonificacion
+  const recargoAdministrativo = base > 0 ? redondeado((cobertura.recargoAdministrativo / base) * 100) : null
+  return { bonificacion, recargoAdministrativo }
+}
+
+/** Un porcentaje como lo muestra la web de Galeno: «40 %», «12,5 %». */
+function porcentajeLegible(n: number): string {
+  return `${n.toLocaleString('es-AR', { maximumFractionDigits: 2 })} %`
+}
+
 /** Los códigos de Galeno de un vehículo elegido del catálogo, si salió de la API de Galeno para ese tipo. */
 export function codigosDeGaleno(codigoCatalogo: string, tipo: TipoDeVehiculo): { marca: string; modelo: string; subModelo: string } | null {
   const partes = /^GALENO:(\d+):([^:]+):([^:]+):([^:]+)$/.exec(codigoCatalogo.trim())
@@ -266,7 +295,15 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   const modos = plan ? await enMemoria(`modos:${tipo}:${plan}`, () => modosDeFacturacionGaleno(tipo, plan)) : []
   // Mensual es lo que se vende en el mostrador casi siempre; si Galeno no lo ofrece, el primero.
   const modo = valido(elegidos.modoFacturacion, modos) ?? porPalabrasClave(modos, ['MENSUAL'])?.codigo ?? modos[0]?.codigo ?? ''
-  ajustes.push({ campo: 'modoFacturacion', titulo: 'Modo de facturación', opciones: opciones(modos), valor: modo, obligatorio: true, dependeDe: 'planComercial' })
+  ajustes.push({
+    campo: 'modoFacturacion',
+    titulo: 'Modo de facturación',
+    ayuda: 'El premio y las cuotas son del período que factura este modo (mensual, trimestral, anual…). Para comparar con la web de Galeno hay que usar el mismo «Modo de Facturación» que ahí.',
+    opciones: opciones(modos),
+    valor: modo,
+    obligatorio: true,
+    dependeDe: 'planComercial',
+  })
 
   const [condiciones, formas] = modo
     ? await Promise.all([
@@ -279,6 +316,34 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   const forma =
     valido(elegidos.formaPago, formas) ?? porPalabrasClave(formas, CLAVES_MEDIO_DE_PAGO[solicitud.medioDePago])?.codigo ?? formas[0]?.codigo ?? ''
   ajustes.push({ campo: 'formaPago', titulo: 'Forma de pago', opciones: opciones(formas), valor: forma, obligatorio: true, dependeDe: 'modoFacturacion' })
+
+  // La bonificación y el recargo administrativo: los dos números que en la web de Galeno se escriben a
+  // mano arriba de la grilla («% Bonificación Prima» y «% RA»). Sin elegirlos, Galeno aplica los suyos
+  // por defecto para el legajo y el plan, que no tienen por qué ser los que el productor pone en su
+  // web: ésa es la diferencia de precio más común entre esta pantalla y la web. Lo elegido se conserva
+  // entre cotizaciones (no es por solicitud), así se carga una vez el porcentaje que la agencia usa.
+  const opcionesDeBonificacion = opcionesDePorcentaje(60, 5)
+  const bonificacion = valido(elegidos.bonificacion, opcionesDeBonificacion.map((o) => ({ codigo: o.valor }))) ?? ''
+  const ajusteBonificacion: AjusteDeAseguradora = {
+    campo: 'bonificacion',
+    titulo: '% Bonificación prima',
+    ayuda: 'El «% Bonificación Prima» de la web de Galeno. Si no se elige, Galeno aplica el que tiene por defecto para este legajo y plan.',
+    opciones: opcionesDeBonificacion,
+    valor: bonificacion,
+    obligatorio: false,
+  }
+  ajustes.push(ajusteBonificacion)
+  const opcionesDeRecargo = opcionesDePorcentaje(40, 5)
+  const recargoAdministrativo = valido(elegidos.recargoAdministrativo, opcionesDeRecargo.map((o) => ({ codigo: o.valor }))) ?? ''
+  const ajusteRecargo: AjusteDeAseguradora = {
+    campo: 'recargoAdministrativo',
+    titulo: '% Recargo administrativo (RA)',
+    ayuda: 'El «% RA» de la web de Galeno. Si no se elige, Galeno aplica el suyo por defecto.',
+    opciones: opcionesDeRecargo,
+    valor: recargoAdministrativo,
+    obligatorio: false,
+  }
+  ajustes.push(ajusteRecargo)
 
   // Las listas cortas: tipo de persona, IVA y uso. El IVA y el uso son opcionales en la API de Galeno —si
   // no se reconocen se mandan sin ellos y Galeno usa los suyos por defecto.
@@ -364,7 +429,29 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     poseeEquipoRastreo: v.rastreo,
     equipoRastreoCodigo: rastreo || undefined,
     tomadorCategoriaIVACodigo: iva || undefined,
+    bonificacionPorcentaje: bonificacion ? Number(bonificacion) : undefined,
+    recargoAdministrativoPorcentaje: recargoAdministrativo ? Number(recargoAdministrativo) : undefined,
   })
+
+  // Lo que Galeno aplicó de verdad, leído de la primera cobertura: es lo que hay que mirar al lado de
+  // la web cuando el precio no coincide. Si se pidió un porcentaje y Galeno aplicó otro, es que no lo
+  // permite para este legajo y plan (su web lo topea igual).
+  const aplicados = cotizacion.coberturas[0] ? porcentajesAplicados(cotizacion.coberturas[0]) : { bonificacion: null, recargoAdministrativo: null }
+  if (aplicados.bonificacion !== null) ajusteBonificacion.ayuda = `${ajusteBonificacion.ayuda} En esta cotización Galeno aplicó ${porcentajeLegible(aplicados.bonificacion)}.`
+  if (aplicados.recargoAdministrativo !== null) {
+    ajusteRecargo.ayuda = `${ajusteRecargo.ayuda} En esta cotización Galeno aplicó ${porcentajeLegible(aplicados.recargoAdministrativo)}.`
+  }
+  const textoDe = (lista: OpcionDeLista[], codigo: string) => lista.find((opcion) => opcion.codigo === codigo)?.descripcion ?? codigo
+  const resumen = [
+    `Cotizado con el plan ${planElegido?.descripcion ?? plan} (legajo ${cotizacion.productorCodigo})`,
+    `modo de facturación «${textoDe(modos, modo)}»`,
+    aplicados.bonificacion !== null
+      ? `bonificación ${porcentajeLegible(aplicados.bonificacion)}${bonificacion ? '' : ' (la que Galeno aplica por defecto)'}`
+      : '',
+    aplicados.recargoAdministrativo !== null ? `RA ${porcentajeLegible(aplicados.recargoAdministrativo)}` : '',
+  ]
+    .filter(Boolean)
+    .join(', ')
 
   const coberturas: CoberturaCotizada[] = cotizacion.coberturas.map((c) => ({
     aseguradora: ID,
@@ -402,7 +489,8 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
 
   return {
     estado: 'OK',
-    mensaje: coberturas.length === 0 ? 'Galeno no devolvió coberturas para estos datos.' : null,
+    // Con qué se cotizó, a la vista sin abrir los ajustes: es lo primero que se compara contra la web.
+    mensaje: coberturas.length === 0 ? 'Galeno no devolvió coberturas para estos datos.' : `${resumen}. Los ajustes permiten cambiarlo.`,
     descripcionVehiculo: cotizacion.descripcionVehiculo,
     coberturas,
     avisos,
