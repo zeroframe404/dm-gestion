@@ -21,7 +21,7 @@ import {
 import { formasDePago, olvidarCuerpoDeFormasDePago } from '../src/main/aseguradoras/galeno/catalogos'
 import { crearClienteGaleno } from '../src/main/aseguradoras/galeno/cliente'
 import { cotizar as cotizarEnGaleno } from '../src/main/aseguradoras/galeno/cotizacion'
-import { claveDePlan, codigosDeGaleno, esLaVersionDelCodigo, modeloDeLaLista, planDeLaLista } from '../src/main/multicotizador/galeno'
+import { claveDePlan, codigosDeGaleno, esLaVersionDelCodigo, modeloDeLaLista, opcionesDePorcentaje, planDeLaLista, porcentajesAplicados } from '../src/main/multicotizador/galeno'
 import { cotizacionGalenoSinComision, sinComisiones } from '../src/main/servicios/galeno'
 import { usarAseguradorasDePrueba } from '../src/main/multicotizador/registro'
 import {
@@ -524,6 +524,10 @@ test('Galeno: la cotización manda el legajo pedido y devuelve el pedido y la re
   assert.equal(cuerpos[0]!.productorCodigo, 79066)
   assert.equal(cuerpos[0]!.planComercialCodigo, '120')
   assert.equal(cuerpos[0]!.vigenciaDesde, '05/10/2026')
+  // Sin porcentaje elegido, no se modifica nada: Galeno aplica su bonificación y su RA por defecto.
+  assert.equal(cuerpos[0]!.modificarBonificacion, 'N')
+  assert.equal(cuerpos[0]!.modificarRecargoAdministrativo, 'N')
+  assert.ok(!('bonificacion' in cuerpos[0]!) && !('recargoAdministrativo' in cuerpos[0]!))
   assert.equal(cotizacion.productorCodigo, '79066')
   assert.deepEqual(cotizacion.pedidoEnviado, cuerpos[0])
   assert.deepEqual(cotizacion.respuestaDeGaleno, respuesta)
@@ -534,6 +538,59 @@ test('Galeno: la cotización manda el legajo pedido y devuelve el pedido y la re
   assert.equal(sinComision.coberturas[0]!.comision, 0)
   assert.ok(!JSON.stringify(sinComision.respuestaDeGaleno).includes('comision'))
   assert.equal((sinComision.respuestaDeGaleno as typeof respuesta).coberturas[0]!.premio, 150)
+})
+
+test('Galeno: la bonificación y el RA elegidos viajan como «modificar» más el porcentaje, como en su web', async (t) => {
+  const fetchOriginal = globalThis.fetch
+  t.after(() => {
+    globalThis.fetch = fetchOriginal
+  })
+  const cuerpos: Array<Record<string, unknown>> = []
+  globalThis.fetch = (async (_url: string, opciones: RequestInit) => {
+    cuerpos.push(JSON.parse(String(opciones.body)) as Record<string, unknown>)
+    return new Response(JSON.stringify({ rama: 4, solicitud: 1, instalacion: 1, coberturas: [], excepciones: [] }), { status: 200 })
+  }) as typeof fetch
+  const cliente = crearClienteGaleno({ urlBase: 'https://vps.ejemplo', token: 'x' })
+  const datos = {
+    tipoVehiculo: 'AUTO' as const,
+    planComercialCodigo: '120',
+    ceroKm: false,
+    idInfoAuto: '130123',
+    anioFabricacion: '2018',
+    tomadorTipoPersona: '1',
+    tomadorNombre: 'COTIZACION',
+    codigoPostal: '1870',
+    subCodigoPostal: '0',
+    condicionPagoCodigo: '1',
+    vigenciaDesde: '2026-10-05',
+    modoFacturacionCodigo: '031',
+    formaPagoCodigo: '0',
+  }
+  await cotizarEnGaleno(cliente, '79066', { ...datos, bonificacionPorcentaje: 40 })
+  assert.equal(cuerpos[0]!.modificarBonificacion, 'S')
+  assert.equal(cuerpos[0]!.bonificacion, 40)
+  assert.equal(cuerpos[0]!.modificarRecargoAdministrativo, 'N', 'el RA no se pidió: queda el de Galeno')
+  assert.ok(!('recargoAdministrativo' in cuerpos[0]!))
+
+  await cotizarEnGaleno(cliente, '79066', { ...datos, bonificacionPorcentaje: 0, recargoAdministrativoPorcentaje: 25 })
+  assert.equal(cuerpos[1]!.modificarBonificacion, 'S', 'cero por ciento también es una elección')
+  assert.equal(cuerpos[1]!.bonificacion, 0)
+  assert.equal(cuerpos[1]!.modificarRecargoAdministrativo, 'S')
+  assert.equal(cuerpos[1]!.recargoAdministrativo, 25)
+})
+
+test('multicotizador: los porcentajes que Galeno aplicó se leen de los importes de la cobertura', () => {
+  // A2 Responsabilidad Civil Básica con 40 % de bonificación y 25 % de RA, como en la web de Galeno.
+  assert.deepEqual(porcentajesAplicados({ prima: 100_000, bonificacion: 40_000, recargoAdministrativo: 15_000 }), { bonificacion: 40, recargoAdministrativo: 25 })
+  assert.deepEqual(porcentajesAplicados({ prima: 100_000, bonificacion: 12_500, recargoAdministrativo: 0 }), { bonificacion: 12.5, recargoAdministrativo: 0 })
+  assert.deepEqual(porcentajesAplicados({ prima: 0, bonificacion: 0, recargoAdministrativo: 0 }), { bonificacion: null, recargoAdministrativo: null })
+  assert.deepEqual(porcentajesAplicados({ prima: 100, bonificacion: 100, recargoAdministrativo: 5 }), { bonificacion: 100, recargoAdministrativo: null })
+
+  const bonificaciones = opcionesDePorcentaje(60, 5)
+  assert.equal(bonificaciones.length, 13)
+  assert.deepEqual(bonificaciones[0], { valor: '0', texto: '0 %' })
+  assert.deepEqual(bonificaciones[8], { valor: '40', texto: '40 %' })
+  assert.deepEqual(bonificaciones.at(-1), { valor: '60', texto: '60 %' })
 })
 
 test('sinComisiones: saca todo campo de comisión, a cualquier profundidad', () => {

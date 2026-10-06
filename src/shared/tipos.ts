@@ -4871,6 +4871,14 @@ export interface DatosDeCotizacionGaleno {
   clausulaAjusteCodigo?: string
   tomadorCategoriaIVACodigo?: string
   tomadorIIBBCodigo?: string
+  /**
+   * El «% Bonificación Prima» de la web de Galeno (0 a 100). Sin esto Galeno aplica la bonificación
+   * que tiene por defecto para el legajo y el plan, que no siempre es la que el productor usa en su
+   * web: ahí la cambia a mano (hasta el máximo que le permiten) y el precio cambia con ella.
+   */
+  bonificacionPorcentaje?: number
+  /** El «% RA» (recargo administrativo) de la web de Galeno (0 a 100). Sin esto, el de Galeno por defecto. */
+  recargoAdministrativoPorcentaje?: number
 }
 
 export interface CoberturaCotizadaGaleno {

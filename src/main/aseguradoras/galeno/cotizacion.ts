@@ -58,11 +58,16 @@ export async function cotizar(cliente: ClienteGaleno, productorCodigo: string, d
     modoFacturacionCodigo: datos.modoFacturacionCodigo,
     formaPagoCodigo: Number(datos.formaPagoCodigo),
     tomadorNombre: datos.tomadorNombre,
-    // Sin bonificación ni recargo administrativo manual: son ajustes que hoy no ofrece la pantalla de
-    // cotización de dm-gestion (podría agregarse más adelante sin tocar este archivo).
-    modificarBonificacion: 'N',
-    modificarRecargoAdministrativo: 'N',
+    // La bonificación y el recargo administrativo son los dos números que la web de Galeno deja
+    // cambiar a mano arriba de la grilla («% Bonificación Prima» y «% RA»). Si no se piden, Galeno
+    // aplica los suyos por defecto para el legajo y el plan —y la cotización no coincide con la web
+    // cuando el productor ahí puso otra cosa—. Con el porcentaje se avisa que se lo modifica ('S') y
+    // se manda el número: los mismos nombres con que la respuesta devuelve cada importe.
+    modificarBonificacion: datos.bonificacionPorcentaje === undefined ? 'N' : 'S',
+    modificarRecargoAdministrativo: datos.recargoAdministrativoPorcentaje === undefined ? 'N' : 'S',
   }
+  if (datos.bonificacionPorcentaje !== undefined) body.bonificacion = datos.bonificacionPorcentaje
+  if (datos.recargoAdministrativoPorcentaje !== undefined) body.recargoAdministrativo = datos.recargoAdministrativoPorcentaje
 
   // El manual permite reemplazar marca/modelo/submodelo por el código único de InfoAuto: si el
   // vehículo ya lo tiene (porque se resolvió del catálogo de InfoAuto que usa dm-gestion), se manda
