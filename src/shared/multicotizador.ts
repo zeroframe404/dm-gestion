@@ -140,6 +140,59 @@ export interface AjusteDeAseguradora {
    * Lo demás —el plan comercial, la forma de pago— se conserva entre cotizaciones.
    */
   porSolicitud?: boolean
+  /**
+   * true si es una decisión comercial que define el precio y se mira siempre —el modo de facturación,
+   * las cuotas, la bonificación, la cláusula de ajuste—: la tarjeta la muestra a la vista, sin abrir
+   * los ajustes. Son los mismos datos que la web de la compañía pide arriba de su grilla de precios,
+   * y lo primero que se compara cuando un precio no coincide. Sin el flag es un ajuste técnico (la
+   * versión en el catálogo, el código de localidad…) y queda detrás de «Más ajustes».
+   */
+  destacado?: boolean
+}
+
+/**
+ * Lo elegido a mano que vale para cualquier vehículo y cualquier zona: sin los ajustes `porSolicitud`
+ * (la versión en el catálogo de la compañía, su código de localidad), que sólo valían para el anterior.
+ * Es lo que se conserva al cotizar otro vehículo y lo que se guarda para la próxima vez.
+ */
+export function sinLosPorSolicitud(elegidos: Record<string, string>, ajustes: AjusteDeAseguradora[]): Record<string, string> {
+  const porSolicitud = new Set(ajustes.filter((ajuste) => ajuste.porSolicitud).map((ajuste) => ajuste.campo))
+  return Object.fromEntries(Object.entries(elegidos).filter(([campo]) => !porSolicitud.has(campo)))
+}
+
+/**
+ * Lo elegido a mano que la compañía efectivamente aplicó, campo por campo según lo que devolvió como
+ * valor de cada ajuste. Lo que descartó —un plan que ya no lista, una versión de otro vehículo— se
+ * suelta, así no se guarda ni se cuenta como «a mano» algo que no se usó. Una opción compuesta
+ * («legajo|plan») elegida antes sólo por su última parte se normaliza a la compuesta. Lo que no tiene
+ * ajuste en esta respuesta (el equipo de rastreo cuando el vehículo ya no lo lleva) se conserva tal
+ * cual: no hay con qué saber si se aplicó, y valía antes. Con una respuesta sin ajustes (la compañía
+ * no llegó a armarlos: un error de red) no hay nada que comparar y se devuelve lo mismo que entró.
+ */
+export function elegidosAplicados(elegidos: Record<string, string>, ajustes: AjusteDeAseguradora[]): Record<string, string> {
+  if (ajustes.length === 0) return { ...elegidos }
+  const aplicados: Record<string, string> = {}
+  for (const [campo, elegido] of Object.entries(elegidos)) {
+    const ajuste = ajustes.find((a) => a.campo === campo)
+    if (!ajuste) aplicados[campo] = elegido
+    else if (ajuste.valor && (ajuste.valor === elegido || ajuste.valor.endsWith(`|${elegido}`))) aplicados[campo] = ajuste.valor
+  }
+  return aplicados
+}
+
+/**
+ * Lo elegido a mano tal como se guardó en esta computadora, saneado: sólo pares texto → texto no
+ * vacío, con los mismos largos que acepta el proceso principal (ver `validarElegidos` en
+ * servicios/multicotizador.ts). Lo que no sea eso —otro formato, un localStorage editado a mano— se
+ * ignora: la compañía vuelve a decidir sola y listo.
+ */
+export function sanearElegidos(valor: unknown): Record<string, string> {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return {}
+  const elegidos: Record<string, string> = {}
+  for (const [campo, elegido] of Object.entries(valor as Record<string, unknown>)) {
+    if (typeof elegido === 'string' && elegido.trim() && campo.length > 0 && campo.length <= 40) elegidos[campo] = elegido.trim().slice(0, 80)
+  }
+  return elegidos
 }
 
 /**
@@ -230,6 +283,14 @@ export interface CoberturaCotizada {
   adicionales: string[]
   /** Null para quien no ve los números de la agencia. */
   comision: number | null
+  /**
+   * Los porcentajes que la compañía aplicó de verdad en ESTA cobertura, leídos de sus importes: la
+   * bonificación sobre la prima y el recargo administrativo sobre la prima bonificada. Son las dos
+   * columnas que la web de Galeno muestra al lado de cada precio («% Bonificación Prima», «% RA»), y
+   * pueden ser distintos por cobertura. Null si la compañía no da con qué calcularlos.
+   */
+  bonificacionPorcentaje?: number | null
+  recargoAdministrativoPorcentaje?: number | null
   emision: EmisionPosible | null
 }
 
@@ -345,6 +406,23 @@ export function mejoresPorCategoria(resultados: ResultadoDeAseguradora[]): Map<C
 /** «$ 123.456,78», como en el resto de la aplicación. */
 export function enPesos(monto: number): string {
   return `$ ${monto.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** Un porcentaje como lo muestra la web de Galeno: «40 %», «12,5 %». */
+export function enPorcentaje(n: number): string {
+  return `${n.toLocaleString('es-AR', { maximumFractionDigits: 2 })} %`
+}
+
+/**
+ * Un porcentaje aplicado en varias coberturas, en una frase: «30 %» si es el mismo en todas, «26 % a
+ * 32 % según la cobertura» si no. Null si ninguna lo trae.
+ */
+export function rangoDePorcentajes(valores: Array<number | null | undefined>): string | null {
+  const presentes = valores.filter((valor): valor is number => typeof valor === 'number' && Number.isFinite(valor))
+  if (presentes.length === 0) return null
+  const minimo = Math.min(...presentes)
+  const maximo = Math.max(...presentes)
+  return minimo === maximo ? enPorcentaje(minimo) : `${enPorcentaje(minimo)} a ${enPorcentaje(maximo)} según la cobertura`
 }
 
 /** El máximo de opciones que acepta un presupuesto (ver `validarOpciones` en servicios/presupuestos.ts). */

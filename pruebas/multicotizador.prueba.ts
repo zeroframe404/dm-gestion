@@ -21,7 +21,16 @@ import {
 import { formasDePago, olvidarCuerpoDeFormasDePago } from '../src/main/aseguradoras/galeno/catalogos'
 import { crearClienteGaleno } from '../src/main/aseguradoras/galeno/cliente'
 import { cotizar as cotizarEnGaleno } from '../src/main/aseguradoras/galeno/cotizacion'
-import { claveDePlan, codigosDeGaleno, esLaVersionDelCodigo, modeloDeLaLista, opcionesDePorcentaje, planDeLaLista, porcentajesAplicados } from '../src/main/multicotizador/galeno'
+import {
+  claveDePlan,
+  codigosDeGaleno,
+  esLaVersionDelCodigo,
+  modeloDeLaLista,
+  opcionesDePorcentaje,
+  planDeLaLista,
+  porcentajesAplicados,
+  sumaAseguradaDeLaRespuesta,
+} from '../src/main/multicotizador/galeno'
 import { cotizacionGalenoSinComision, sinComisiones } from '../src/main/servicios/galeno'
 import { usarAseguradorasDePrueba } from '../src/main/multicotizador/registro'
 import {
@@ -33,8 +42,13 @@ import {
 import {
   categoriaDeCobertura,
   coberturasOrdenadas,
+  elegidosAplicados,
   elegirAjuste,
+  enPorcentaje,
   mejoresPorCategoria,
+  rangoDePorcentajes,
+  sanearElegidos,
+  sinLosPorSolicitud,
   type AjusteDeAseguradora,
   type CoberturaCotizada,
   type ResultadoDeAseguradora,
@@ -217,6 +231,81 @@ test('multicotizador: las listas cortas de cada compañía se eligen por palabra
   assert.equal(porPalabrasClave(formas, CLAVES_MEDIO_DE_PAGO.DEBITO)?.codigo, '3')
   assert.equal(porPalabrasClave(formas, CLAVES_MEDIO_DE_PAGO.EFECTIVO)?.codigo, '1')
   assert.equal(porPalabrasClave(formas, ['TRANSFERENCIA']), null)
+  // «0 - PAGO MANUAL» es la forma con la que cotiza la web de Galeno: con efectivo se elige ésa.
+  const deGaleno = [
+    { codigo: '0', descripcion: '0 - PAGO MANUAL' },
+    { codigo: '2', descripcion: 'TARJETA DE CREDITO' },
+  ]
+  assert.equal(porPalabrasClave(deGaleno, CLAVES_MEDIO_DE_PAGO.EFECTIVO)?.codigo, '0')
+  assert.equal(porPalabrasClave(deGaleno, CLAVES_MEDIO_DE_PAGO.TARJETA)?.codigo, '2')
+})
+
+test('multicotizador: lo elegido a mano se guarda sin lo que dependía del vehículo, y se lee saneado', () => {
+  const ajustes: AjusteDeAseguradora[] = [
+    { campo: 'modoFacturacion', titulo: 'Modo', opciones: [], valor: '031', obligatorio: true, destacado: true },
+    { campo: 'bonificacion', titulo: 'Bonificación', opciones: [], valor: '40', obligatorio: false, destacado: true },
+    { campo: 'version', titulo: 'Versión', opciones: [], valor: '1|2|3', obligatorio: true, porSolicitud: true },
+    { campo: 'localidad', titulo: 'Localidad', opciones: [], valor: '0', obligatorio: true, porSolicitud: true },
+  ]
+  assert.deepEqual(sinLosPorSolicitud({ modoFacturacion: '031', bonificacion: '40', version: '1|2|3', localidad: '0' }, ajustes), {
+    modoFacturacion: '031',
+    bonificacion: '40',
+  })
+  assert.deepEqual(sinLosPorSolicitud({}, ajustes), {})
+
+  // Lo que vuelve del localStorage puede ser cualquier cosa: sólo pasan pares texto → texto no vacío.
+  assert.deepEqual(sanearElegidos({ bonificacion: ' 40 ', vacio: '  ', numero: 5, lista: ['x'], ['a'.repeat(41)]: '1' }), { bonificacion: '40' })
+  assert.deepEqual(sanearElegidos(null), {})
+  assert.deepEqual(sanearElegidos('{"bonificacion":"40"}'), {})
+  assert.deepEqual(sanearElegidos([{ bonificacion: '40' }]), {})
+  assert.equal(sanearElegidos({ plan: 'x'.repeat(100) }).plan?.length, 80)
+})
+
+test('multicotizador: queda como «a mano» sólo lo que la compañía aplicó de verdad', () => {
+  const ajustes: AjusteDeAseguradora[] = [
+    { campo: 'planComercial', titulo: 'Plan', opciones: [], valor: '79066|120', obligatorio: true },
+    { campo: 'modoFacturacion', titulo: 'Modo', opciones: [], valor: 'M', obligatorio: true, destacado: true },
+    { campo: 'bonificacion', titulo: 'Bonificación', opciones: [], valor: '40', obligatorio: false, destacado: true },
+    { campo: 'version', titulo: 'Versión', opciones: [], valor: '', obligatorio: true, porSolicitud: true },
+  ]
+  assert.deepEqual(
+    elegidosAplicados(
+      {
+        planComercial: '99999|1', // un plan que Galeno ya no lista: volvió al primero, no es «a mano»
+        modoFacturacion: 'M',
+        bonificacion: '40',
+        version: '1|2|3', // de otro vehículo: Galeno la descartó y pide elegir
+        equipoRastreo: '7', // sin ajuste en esta respuesta: se conserva
+      },
+      ajustes,
+    ),
+    { modoFacturacion: 'M', bonificacion: '40', equipoRastreo: '7' },
+  )
+  // Un plan elegido antes sólo por su código se normaliza a la clave «legajo|plan» que aplicó Galeno.
+  assert.deepEqual(elegidosAplicados({ planComercial: '120' }, ajustes), { planComercial: '79066|120' })
+  // Sin ajustes en la respuesta (la compañía falló antes de armarlos) no hay con qué comparar: queda igual.
+  assert.deepEqual(elegidosAplicados({ version: '1|2|3', bonificacion: '40' }, []), { version: '1|2|3', bonificacion: '40' })
+  // Y por eso lo que se guarda sale de los ajustes de la respuesta: con una respuesta sin ajustes, la
+  // pantalla no guarda nada (ver Multicotizador.tsx); con ajustes, sin lo que era de este vehículo.
+  assert.deepEqual(sinLosPorSolicitud(elegidosAplicados({ version: '1|2|3', bonificacion: '40' }, ajustes), ajustes), { bonificacion: '40' })
+})
+
+test('multicotizador: los porcentajes aplicados se resumen como en la grilla de Galeno', () => {
+  assert.equal(enPorcentaje(40), '40 %')
+  assert.equal(enPorcentaje(12.5), '12,5 %')
+  assert.equal(rangoDePorcentajes([30, 30, 30]), '30 %')
+  assert.equal(rangoDePorcentajes([26.4, 31.9, null, 30]), '26,4 % a 31,9 % según la cobertura')
+  assert.equal(rangoDePorcentajes([null, undefined]), null)
+  assert.equal(rangoDePorcentajes([]), null)
+})
+
+test('Galeno: la suma asegurada que aplicó se lee de la respuesta si viene, con el nombre que sea', () => {
+  assert.equal(sumaAseguradaDeLaRespuesta({ sumaAsegurada: 20_790_000, coberturas: [] }), 20_790_000)
+  assert.equal(sumaAseguradaDeLaRespuesta({ valorAseguradoVehiculo: '20.790.000,00' }), 20_790_000)
+  assert.equal(sumaAseguradaDeLaRespuesta({ coberturas: [{ cobertura: 'A2', sumaAseguradaCobertura: 18_900_000 }] }), 18_900_000)
+  assert.equal(sumaAseguradaDeLaRespuesta({ coberturas: [{ premio: 150 }], rama: 4 }), null)
+  assert.equal(sumaAseguradaDeLaRespuesta({ sumaAsegurada: 0 }), null)
+  assert.equal(sumaAseguradaDeLaRespuesta(null), null)
 })
 
 test('multicotizador: la localidad se elige sola sólo cuando no hay dudas', () => {
@@ -577,6 +666,12 @@ test('Galeno: la bonificación y el RA elegidos viajan como «modificar» más e
   assert.equal(cuerpos[1]!.bonificacion, 0)
   assert.equal(cuerpos[1]!.modificarRecargoAdministrativo, 'S')
   assert.equal(cuerpos[1]!.recargoAdministrativo, 25)
+
+  // La cláusula de ajuste y los ingresos brutos: lo que la web de Galeno pide en su formulario.
+  await cotizarEnGaleno(cliente, '79066', { ...datos, clausulaAjusteCodigo: '10', tomadorIIBBCodigo: 'CF' })
+  assert.equal(cuerpos[2]!.clausulaAjusteCodigo, '10')
+  assert.equal(cuerpos[2]!.tomadorIIBBCodigo, 'CF')
+  assert.ok(!('clausulaAjusteCodigo' in cuerpos[1]!) && !('tomadorIIBBCodigo' in cuerpos[1]!), 'sin elegirlos no viajan: Galeno usa los suyos')
 })
 
 test('multicotizador: los porcentajes que Galeno aplicó se leen de los importes de la cobertura', () => {

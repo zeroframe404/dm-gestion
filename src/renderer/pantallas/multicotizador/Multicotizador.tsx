@@ -10,8 +10,10 @@ import {
   NOMBRE_MEDIO_DE_PAGO,
   NOMBRE_USO_DEL_VEHICULO,
   claveDeCobertura,
+  elegidosAplicados,
   elegirAjuste,
   enPesos,
+  sinLosPorSolicitud,
   type AseguradoraDelMulticotizador,
   type CoberturaCotizada,
   type IdAseguradora,
@@ -23,6 +25,7 @@ import { BotonAyuda } from '../../componentes/Ayuda'
 import { Alerta, Boton, Cargando } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos } from '../../contexto/Permisos'
+import { ajustesGuardados, guardarAjustes } from '../../preferencias'
 import { DialogoEmitirGaleno } from '../presupuestos/DialogoEmitirGaleno'
 import { FormularioDeCotizacion, formularioVacio, solicitudDe, type FormularioMulticotizador } from './FormularioDeCotizacion'
 import { ResultadosDeCotizacion, type EstadoDeTarjeta } from './ResultadosDeCotizacion'
@@ -97,7 +100,14 @@ export function Multicotizador() {
           ajustes: [],
           duracionMs: 0,
         }
-    setTarjetas((previas) => ({ ...previas, [aseguradora]: { elegidos, cotizando: false, resultado } }))
+    // Queda como «a mano» sólo lo que la compañía aplicó de verdad: lo que descartó (un plan que ya no
+    // lista) no se cuenta ni se guarda. Y lo que vale para cualquier vehículo se recuerda en esta
+    // computadora, para que la próxima vez la compañía arranque con eso en vez de decidir sola. Sin
+    // ajustes en la respuesta (la compañía falló antes de armarlos) no se sabe cuáles eran de ESTE
+    // vehículo y no se guarda nada: guardar la versión o la localidad haría cotizar mañana otro auto.
+    const aplicados = elegidosAplicados(elegidos, resultado.ajustes)
+    if (respuesta.ok && resultado.ajustes.length > 0) guardarAjustes(aseguradora, sinLosPorSolicitud(aplicados, resultado.ajustes))
+    setTarjetas((previas) => ({ ...previas, [aseguradora]: { elegidos: aplicados, cotizando: false, resultado } }))
   }
 
   const cotizar = () => {
@@ -123,13 +133,13 @@ export function Multicotizador() {
 
     for (const aseguradora of aCotizar) {
       const previa = tarjetas[aseguradora.id]
-      let elegidos = previa?.elegidos ?? {}
+      // Sin tarjeta previa (recién se entró, o se empezó de nuevo) se arranca con lo que esta
+      // computadora eligió la última vez: el modo de facturación, la bonificación con la que trabaja
+      // la agencia… Es lo que hace que el precio dé igual que ayer sin volver a cargar nada.
+      let elegidos = previa?.elegidos ?? ajustesGuardados(aseguradora.id)
       // Otro vehículo u otra zona: se olvida lo elegido a mano que sólo valía para el anterior (la
       // versión en el catálogo de la compañía, su código de localidad) y se conserva lo demás.
-      if (cambioElRiesgo && previa?.resultado) {
-        const porSolicitud = new Set(previa.resultado.ajustes.filter((ajuste) => ajuste.porSolicitud).map((ajuste) => ajuste.campo))
-        elegidos = Object.fromEntries(Object.entries(elegidos).filter(([campo]) => !porSolicitud.has(campo)))
-      }
+      if (cambioElRiesgo && previa?.resultado) elegidos = sinLosPorSolicitud(elegidos, previa.resultado.ajustes)
       void cotizarUna(aseguradora.id, solicitud, elegidos)
     }
   }
