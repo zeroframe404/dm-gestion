@@ -13,6 +13,7 @@ import {
   claveDeCobertura,
   coberturasOrdenadas,
   enPesos,
+  enPorcentaje,
   mejoresPorCategoria,
   type AjusteDeAseguradora,
   type AseguradoraDelMulticotizador,
@@ -105,8 +106,15 @@ function TarjetaDeCompania({
   const resultado = tarjeta.resultado
   const faltan = resultado?.estado === 'FALTAN_DATOS'
   const [abierta, setAbierta] = useState(false)
-  const verAjustes = (abierta || faltan) && (resultado?.ajustes.length ?? 0) > 0
-  const elegidosAMano = Object.keys(tarjeta.elegidos).length
+  // Los ajustes comerciales —modo de facturación, cuotas, bonificación, cláusula de ajuste— van
+  // siempre a la vista: son lo que define el precio y lo que se compara contra la web de la
+  // compañía. Los técnicos (la versión en su catálogo, su código de localidad…) quedan detrás de
+  // «Más ajustes», salvo que falte elegir uno.
+  const comerciales = resultado?.ajustes.filter((ajuste) => ajuste.destacado) ?? []
+  const tecnicos = resultado?.ajustes.filter((ajuste) => !ajuste.destacado) ?? []
+  const faltaUnTecnico = tecnicos.some((ajuste) => ajuste.obligatorio && !ajuste.valor)
+  const verTecnicos = (abierta || faltaUnTecnico) && tecnicos.length > 0
+  const tecnicosAMano = Object.keys(tarjeta.elegidos).filter((campo) => tecnicos.some((ajuste) => ajuste.campo === campo)).length
   const [copiado, setCopiado] = useState(false)
 
   // El pedido exacto que recibió la API de la compañía y su respuesta: lo que hay que pasarle cuando
@@ -128,10 +136,10 @@ function TarjetaDeCompania({
         <span className="font-display text-base font-bold text-slate-900">{aseguradora.nombre}</span>
         <EstadoDeLaCompania tarjeta={tarjeta} />
         <div className="ml-auto flex items-center gap-2">
-          {(resultado?.ajustes.length ?? 0) > 0 && !faltan && (
+          {tecnicos.length > 0 && !faltaUnTecnico && (
             <Boton tamano="sm" variante="fantasma" icono={abierta ? 'flechaIzquierda' : 'desplegar'} onClick={() => setAbierta((previa) => !previa)}>
-              Ajustes de {aseguradora.nombre}
-              {elegidosAMano > 0 ? ` (${elegidosAMano} a mano)` : ''}
+              {comerciales.length > 0 ? 'Más ajustes' : 'Ajustes'} de {aseguradora.nombre}
+              {tecnicosAMano > 0 ? ` (${tecnicosAMano} a mano)` : ''}
             </Boton>
           )}
           {resultado?.estado === 'OK' && resultado.detalleTecnico !== undefined && (
@@ -171,14 +179,23 @@ function TarjetaDeCompania({
         </ul>
       )}
 
-      {verAjustes && resultado && (
+      {resultado && comerciales.length > 0 && (
         <div className="mt-3 border-t border-slate-100 pt-3">
           <p className="mb-3 text-xs text-slate-500">
-            {faltan
+            Cómo se factura y qué descuentos se aplican. Para que el precio dé igual que en la web de {aseguradora.nombre}, usá lo mismo que ahí;
+            cambiar cualquiera vuelve a cotizar sólo en {aseguradora.nombre} y se recuerda en esta computadora.
+          </p>
+          <Ajustes ajustes={comerciales} alCambiar={alCambiarAjuste} deshabilitado={tarjeta.cotizando} />
+        </div>
+      )}
+      {verTecnicos && resultado && (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <p className="mb-3 text-xs text-slate-500">
+            {faltaUnTecnico
               ? `${aseguradora.nombre} no pudo decidir sola lo marcado en rojo. Al elegirlo se vuelve a cotizar.`
               : `Lo que ${aseguradora.nombre} eligió sola para cotizar. Cambiar cualquiera vuelve a cotizar sólo en ${aseguradora.nombre}.`}
           </p>
-          <Ajustes ajustes={resultado.ajustes} alCambiar={alCambiarAjuste} deshabilitado={tarjeta.cotizando} />
+          <Ajustes ajustes={tecnicos} alCambiar={alCambiarAjuste} deshabilitado={tarjeta.cotizando} />
         </div>
       )}
     </div>
@@ -312,7 +329,12 @@ function Comparativo({
                           <span className="font-medium text-slate-900">{cobertura.nombre}</span>
                           {esLaMejor && <Etiqueta tono="exito">Más barata</Etiqueta>}
                         </div>
-                        <span className="text-xs text-slate-400">{cobertura.codigo}</span>
+                        <span className="text-xs text-slate-400">
+                          {cobertura.codigo}
+                          {/* Las dos columnas que la web de Galeno muestra al lado de cada precio: con eso se compara fila por fila. */}
+                          {typeof cobertura.bonificacionPorcentaje === 'number' && ` · Bonif. ${enPorcentaje(cobertura.bonificacionPorcentaje)}`}
+                          {typeof cobertura.recargoAdministrativoPorcentaje === 'number' && ` · RA ${enPorcentaje(cobertura.recargoAdministrativoPorcentaje)}`}
+                        </span>
                       </td>
                       <td className="px-3 py-2.5 text-xs text-slate-600">
                         {cobertura.franquicia && <div>Franquicia: {cobertura.franquicia}</div>}

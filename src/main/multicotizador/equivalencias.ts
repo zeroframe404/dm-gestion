@@ -130,7 +130,8 @@ export function porPalabrasClave(opciones: OpcionDeLista[], claves: string[]): O
 export const CLAVES_MEDIO_DE_PAGO: Record<MedioDePago, string[]> = {
   TARJETA: ['TARJETA', 'CREDITO', 'VISA', 'MASTER', 'AMEX', 'AMERICAN', 'CABAL', 'NARANJA', 'DINERS'],
   DEBITO: ['DEBITO', 'CBU', 'CUENTA', 'BANCARI', 'AHORRO', 'AUTOMATICO'],
-  EFECTIVO: ['EFECTIVO', 'CUPON', 'PAGOFACIL', 'FACIL', 'RAPIPAGO', 'CONTADO', 'CHEQUE', 'VENTANILLA', 'LIBRE', 'COBRADOR'],
+  // «MANUAL» es «0 - PAGO MANUAL», la forma con la que cotiza por defecto la web de Galeno.
+  EFECTIVO: ['EFECTIVO', 'CUPON', 'PAGOFACIL', 'FACIL', 'RAPIPAGO', 'CONTADO', 'CHEQUE', 'VENTANILLA', 'LIBRE', 'COBRADOR', 'MANUAL'],
 }
 
 export const CLAVES_CONDICION_IVA: Record<CondicionIva, string[]> = {

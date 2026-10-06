@@ -12,6 +12,7 @@ import {
   claveDeCobertura,
   elegirAjuste,
   enPesos,
+  sinLosPorSolicitud,
   type AseguradoraDelMulticotizador,
   type CoberturaCotizada,
   type IdAseguradora,
@@ -23,6 +24,7 @@ import { BotonAyuda } from '../../componentes/Ayuda'
 import { Alerta, Boton, Cargando } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos } from '../../contexto/Permisos'
+import { ajustesGuardados, guardarAjustes } from '../../preferencias'
 import { DialogoEmitirGaleno } from '../presupuestos/DialogoEmitirGaleno'
 import { FormularioDeCotizacion, formularioVacio, solicitudDe, type FormularioMulticotizador } from './FormularioDeCotizacion'
 import { ResultadosDeCotizacion, type EstadoDeTarjeta } from './ResultadosDeCotizacion'
@@ -97,6 +99,9 @@ export function Multicotizador() {
           ajustes: [],
           duracionMs: 0,
         }
+    // Lo elegido a mano que vale para cualquier vehículo se recuerda en esta computadora: la próxima
+    // vez que se entre, la compañía arranca con eso en vez de volver a decidir sola.
+    if (respuesta.ok) guardarAjustes(aseguradora, sinLosPorSolicitud(elegidos, resultado.ajustes))
     setTarjetas((previas) => ({ ...previas, [aseguradora]: { elegidos, cotizando: false, resultado } }))
   }
 
@@ -123,13 +128,13 @@ export function Multicotizador() {
 
     for (const aseguradora of aCotizar) {
       const previa = tarjetas[aseguradora.id]
-      let elegidos = previa?.elegidos ?? {}
+      // Sin tarjeta previa (recién se entró, o se empezó de nuevo) se arranca con lo que esta
+      // computadora eligió la última vez: el modo de facturación, la bonificación con la que trabaja
+      // la agencia… Es lo que hace que el precio dé igual que ayer sin volver a cargar nada.
+      let elegidos = previa?.elegidos ?? ajustesGuardados(aseguradora.id)
       // Otro vehículo u otra zona: se olvida lo elegido a mano que sólo valía para el anterior (la
       // versión en el catálogo de la compañía, su código de localidad) y se conserva lo demás.
-      if (cambioElRiesgo && previa?.resultado) {
-        const porSolicitud = new Set(previa.resultado.ajustes.filter((ajuste) => ajuste.porSolicitud).map((ajuste) => ajuste.campo))
-        elegidos = Object.fromEntries(Object.entries(elegidos).filter(([campo]) => !porSolicitud.has(campo)))
-      }
+      if (cambioElRiesgo && previa?.resultado) elegidos = sinLosPorSolicitud(elegidos, previa.resultado.ajustes)
       void cotizarUna(aseguradora.id, solicitud, elegidos)
     }
   }

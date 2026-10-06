@@ -8,6 +8,7 @@
 //
 // Ninguna de estas funciones puede romper una pantalla: si `localStorage` está bloqueado se trabaja
 // con los valores por defecto y listo. Es una preferencia, no un dato.
+import { sanearElegidos } from '../shared/multicotizador'
 import type { Tema } from './tema-valores'
 import { escalaGuardada, sanearOcultas, type ColumnaElegible } from './vista'
 
@@ -15,6 +16,7 @@ const CLAVE_ZOOM = 'dm.vista.zoom'
 const CLAVE_BARRA_LATERAL = 'dm.vista.barraLateral'
 const CLAVE_TEMA = 'dm.vista.tema'
 const PREFIJO_COLUMNAS = 'dm.vista.columnas.'
+const PREFIJO_AJUSTES_MULTICOTIZADOR = 'dm.multicotizador.ajustes.'
 
 function leer(clave: string): string | null {
   try {
@@ -113,4 +115,30 @@ export function columnasOcultas(tabla: string, columnas: ColumnaElegible[]): str
 
 export function guardarColumnasOcultas(tabla: string, ocultas: readonly string[]): void {
   escribir(PREFIJO_COLUMNAS + tabla, JSON.stringify([...ocultas]))
+}
+
+// ---------------------------------------------------------------------------
+// Los ajustes de cada compañía en el Multicotizador
+// ---------------------------------------------------------------------------
+
+/**
+ * Lo que se eligió a mano la última vez en la tarjeta de esa compañía: el modo de facturación, las
+ * cuotas, la bonificación con la que trabaja la agencia… Sin esto, cada vez que se entra al
+ * Multicotizador la compañía vuelve a decidir sola y hay que volver a cargar todo para que el precio
+ * dé igual que en su web. Es de esta computadora porque el mostrador y la oficina pueden trabajar
+ * con modos de pago distintos; lo que dependía del vehículo o la zona no se guarda (ver
+ * `sinLosPorSolicitud`).
+ */
+export function ajustesGuardados(aseguradora: string): Record<string, string> {
+  const guardado = leer(PREFIJO_AJUSTES_MULTICOTIZADOR + aseguradora)
+  if (!guardado) return {}
+  try {
+    return sanearElegidos(JSON.parse(guardado))
+  } catch {
+    return {}
+  }
+}
+
+export function guardarAjustes(aseguradora: string, elegidos: Record<string, string>): void {
+  escribir(PREFIJO_AJUSTES_MULTICOTIZADOR + aseguradora, JSON.stringify(sanearElegidos(elegidos)))
 }
