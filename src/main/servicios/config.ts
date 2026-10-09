@@ -2,7 +2,7 @@
 // Acá viven las credenciales de Google: nunca se guardan en la base ni en el repositorio.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { EstadoConexionGoogle, EstadoDeMeta } from '../../shared/tipos'
+import { AMBIENTES_ATM, type AmbienteAtm, type EstadoConexionGoogle, type EstadoDeMeta } from '../../shared/tipos'
 import { rutaConfig } from '../rutas'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
@@ -67,12 +67,28 @@ interface ConfigGaleno {
   productorCodigo?: string
 }
 
+/**
+ * La cuenta del web service de ATM Seguros. A diferencia de la de Galeno, ésta SÍ vive en cada
+ * computadora: ATM no pide que los pedidos salgan de una IP dada de alta, así que cada PC cotiza
+ * directo. Se carga una vez en API Aseguradoras → ATM y viaja a las demás como el ajuste compartido
+ * `atmApi` (ver ajustesCompartidos.ts), igual que la app de Meta.
+ */
+interface ConfigAtm {
+  ambiente: AmbienteAtm
+  usuario: string
+  clave: string
+  /** El código de vendedor de 10 dígitos con que se cotiza; vacío = el primero de la cuenta. */
+  vendedor: string
+  actualizadoEn: string
+}
+
 interface Config {
   google?: ConfigGoogle
   vps?: ConfigVps
   meta?: ConfigMeta
   mesh?: ConfigMesh
   galeno?: ConfigGaleno
+  atm?: ConfigAtm
 }
 
 /**
@@ -397,3 +413,87 @@ export function guardarLegajoGaleno(productorCodigo: string): void {
   escribirConfig({ ...config, galeno: { productorCodigo } })
 }
 
+
+// ---------------------------------------------------------------------------
+// ATM Seguros: la cuenta del web service (ver la nota de `ConfigAtm`).
+// ---------------------------------------------------------------------------
+
+/** Lo que se puede mostrar de la cuenta de ATM: todo menos la clave. */
+export function cuentaAtmVisible(): { configurada: boolean; ambiente: AmbienteAtm; usuario: string; vendedor: string; actualizadoEn: string | null } {
+  const atm = leerConfig().atm
+  return {
+    configurada: Boolean(atm?.usuario && atm.clave),
+    ambiente: atm?.ambiente === 'desarrollo' ? 'desarrollo' : 'produccion',
+    usuario: atm?.usuario ?? '',
+    vendedor: atm?.vendedor ?? '',
+    actualizadoEn: atm?.actualizadoEn ?? null,
+  }
+}
+
+/** La cuenta completa, sólo para el proceso principal. Null si no está cargada. */
+export function credencialesAtm(): { ambiente: AmbienteAtm; usuario: string; clave: string; vendedor: string } | null {
+  const atm = leerConfig().atm
+  if (!atm?.usuario || !atm.clave) return null
+  return { ambiente: atm.ambiente === 'desarrollo' ? 'desarrollo' : 'produccion', usuario: atm.usuario, clave: atm.clave, vendedor: atm.vendedor ?? '' }
+}
+
+/** Lo mismo que hacen `guardarAtm` y `adoptarAtm`: si no, la huella del ajuste compartido no cerraría nunca. */
+function normalizarAtm(ambiente: unknown, usuario: string, clave: string, vendedor: string): Omit<ConfigAtm, 'actualizadoEn'> {
+  return {
+    ambiente: typeof ambiente === 'string' && (AMBIENTES_ATM as readonly string[]).includes(ambiente) ? (ambiente as AmbienteAtm) : 'produccion',
+    usuario: usuario.trim(),
+    clave: clave.trim(),
+    vendedor: vendedor.replace(/\s/g, ''),
+  }
+}
+
+export function guardarAtm(datos: unknown): void {
+  const d = objeto(datos, 'Los datos de la cuenta de ATM')
+  const usuario = texto(d.usuario, 'El usuario de ATM', 1, 60)
+  const config = leerConfig()
+  // Con la clave vacía se conserva la que ya estaba: así se cambia el vendedor sin volver a escribirla.
+  const escrita = typeof d.clave === 'string' ? d.clave.trim() : ''
+  const clave = escrita || config.atm?.clave || ''
+  if (!clave) throw new ErrorDeNegocio('Falta la clave de la cuenta de ATM.')
+  const vendedor = typeof d.vendedor === 'string' ? d.vendedor.replace(/\s/g, '') : ''
+  if (vendedor && !/^\d{10}$/.test(vendedor)) {
+    throw new ErrorDeNegocio('El código de vendedor de ATM tiene 10 números (por ejemplo, 0956112663). Dejalo vacío para usar el de la cuenta.')
+  }
+  if (typeof d.ambiente !== 'string' || !(AMBIENTES_ATM as readonly string[]).includes(d.ambiente)) {
+    throw new ErrorDeNegocio('Elegí el ambiente de ATM: producción o desarrollo.')
+  }
+  escribirConfig({ ...config, atm: { ...normalizarAtm(d.ambiente, usuario, clave, vendedor), actualizadoEn: new Date().toISOString() } })
+}
+
+/** Saca la cuenta de ATM de esta computadora. */
+export function borrarAtm(): void {
+  const config = leerConfig()
+  delete config.atm
+  escribirConfig(config)
+}
+
+/**
+ * Lo que viaja de la cuenta de ATM: siempre las cuatro claves, en este orden y como texto (el vendedor
+ * vacío va vacío, no se omite), por la huella. Sin usuario o clave no hay nada que compartir.
+ */
+export function valorCompartidoDeAtm(): { ambiente: AmbienteAtm; usuario: string; clave: string; vendedor: string } | null {
+  const atm = credencialesAtm()
+  if (!atm) return null
+  return { ambiente: atm.ambiente, usuario: atm.usuario, clave: atm.clave, vendedor: atm.vendedor }
+}
+
+export function adoptarAtm(valor: unknown): boolean {
+  if (!valor || typeof valor !== 'object') return false
+  const v = valor as { ambiente?: unknown; usuario?: unknown; clave?: unknown; vendedor?: unknown }
+  const atm = normalizarAtm(
+    v.ambiente,
+    typeof v.usuario === 'string' ? v.usuario : '',
+    typeof v.clave === 'string' ? v.clave : '',
+    typeof v.vendedor === 'string' ? v.vendedor : '',
+  )
+  if (!atm.usuario || !atm.clave) return false
+  const config = leerConfig()
+  config.atm = { ...atm, actualizadoEn: new Date().toISOString() }
+  escribirConfig(config)
+  return true
+}

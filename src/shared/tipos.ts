@@ -5201,3 +5201,84 @@ export interface ImpresionGaleno {
   ruta: string
   nombre: string
 }
+
+// ---------------------------------------------------------------------------
+// ATM Seguros — cotización por su web service (SOAP) y sus listas (REST + tablas por FTP)
+//
+// A diferencia de Galeno, ATM no exige que los pedidos salgan de la IP del VPS: cada computadora le
+// habla directo con la cuenta que se carga una vez en API Aseguradoras → ATM y viaja a las demás
+// como el ajuste compartido `atmApi`. Por ahora sólo cotiza (multicotizador): no emite.
+// ---------------------------------------------------------------------------
+
+export const AMBIENTES_ATM = ['produccion', 'desarrollo'] as const
+export type AmbienteAtm = (typeof AMBIENTES_ATM)[number]
+
+export const NOMBRE_AMBIENTE_ATM: Record<AmbienteAtm, string> = {
+  produccion: 'Producción',
+  desarrollo: 'Desarrollo (pruebas; ATM lo prende de lunes a viernes de 8 a 18)',
+}
+
+/** Lo que se carga en API Aseguradoras → ATM. La clave vacía conserva la que ya estaba. */
+export interface DatosDeAtm {
+  ambiente: AmbienteAtm
+  usuario: string
+  clave: string
+  /** El código de vendedor de 10 dígitos («prodlargo») con que se cotiza. */
+  vendedor: string
+}
+
+/** Una tabla de parámetros de ATM tal como quedó en esta computadora. */
+export interface TablaDeAtmEnDisco {
+  /** El nombre de la tabla en el manual: `ws_au_marca_modelo`, `ws_au_infoauto`… */
+  tabla: string
+  descripcion: string
+  /** Cómo se llamaba el archivo del que salió, o null si no se tiene. */
+  archivo: string | null
+  /** Cuántas filas se leyeron; null si no hay archivo o no se pudo leer. */
+  filas: number | null
+  /** Por qué no se pudo leer, si no se pudo. */
+  error: string | null
+  /** true si hace falta para cotizar (las de vehículos). */
+  necesaria: boolean
+}
+
+export interface EstadoDeTablasAtm {
+  ambiente: AmbienteAtm
+  /** Cuándo se bajaron o importaron (ISO), o null si nunca. */
+  bajadasEn: string | null
+  origen: 'ftp' | 'archivos' | null
+  tablas: TablaDeAtmEnDisco[]
+  /** Cuántos vehículos (versiones con código de InfoAuto) quedaron para cotizar. */
+  vehiculos: number
+  /** true si con lo que hay se puede cotizar. */
+  listasParaCotizar: boolean
+  /** La última falla al bajarlas por FTP, si la hubo desde que se abrió el programa. */
+  ultimoError: string | null
+}
+
+/** Cómo está la cuenta de ATM en esta computadora. Nunca trae la clave. */
+export interface EstadoDeAtm {
+  configurada: boolean
+  ambiente: AmbienteAtm
+  usuario: string
+  vendedor: string
+  actualizadoEn: string | null
+  /** Cómo está la cuenta en el servidor (el ajuste compartido `atmApi`), o null si no se pudo saber. */
+  compartido: EstadoDeAjusteCompartido | null
+  tablas: EstadoDeTablasAtm
+}
+
+export interface VendedorDeAtm {
+  codigo: string
+  nombre: string
+}
+
+/** El resultado de «Probar conexión»: la cuenta, los vendedores que tiene y los planes del vendedor. */
+export interface PruebaDeAtm {
+  ok: boolean
+  detalle: string
+  vendedores: VendedorDeAtm[]
+  /** Cuántos planes tiene el vendedor configurado para autos y para motos (0 si no se pudo saber). */
+  planesAuto: number
+  planesMoto: number
+}

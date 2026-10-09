@@ -279,6 +279,15 @@ import {
   tiposDePersonaGaleno,
   tiposDeUsoGaleno,
 } from './servicios/galeno'
+import {
+  actualizarTablasDeAtm,
+  borrarCuentaAtm,
+  estadoAtm,
+  guardarCuentaAtm,
+  importarTablasDeAtm,
+  probarAtm,
+  traerAtmDelServidor,
+} from './servicios/atm'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora, localidadesDelMulticotizador } from './servicios/multicotizador'
 import {
   borrarMetaDelVps,
@@ -1940,6 +1949,62 @@ export function registrarIpc(): void {
     const error = await shell.openPath(documento.ruta)
     if (error) console.error('[galeno] No se pudo abrir el PDF impreso:', error)
     return exito(documento)
+  })
+
+  // --- ATM Seguros -------------------------------------------------------------
+  //
+  // La cuenta, igual que la de Galeno: la ve quien ve Administración y la cargan, borran o traen del
+  // servidor sólo un administrador o el superadministrador, porque viaja a todas las computadoras
+  // (ajuste compartido `atmApi`). Cotizar va por el multicotizador.
+  //
+  // Las tablas de parámetros NO viajan: cada computadora tiene las suyas. «Actualizar tablas» las baja
+  // de la fuente oficial (el FTP de ATM) y no puede romper nada, así que alcanza con ver
+  // Administración. Importarlas de archivos, en cambio, reemplaza las tablas con las que esta
+  // computadora cotiza por lo que alguien elija del disco: un archivo equivocado deja a ATM sin
+  // vehículos acá, y por eso pide el mismo rol que la cuenta (sin pedir editar: no es un dato compartido).
+  manejar('atm:estado', async () => {
+    exigirVista('administracion')
+    return exito(await estadoAtm())
+  })
+  manejar('atm:guardarCredenciales', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await guardarCuentaAtm(datos, actor.nombre))
+  })
+  manejar('atm:borrarCredenciales', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await borrarCuentaAtm())
+  })
+  manejar('atm:traerDelServidor', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await traerAtmDelServidor())
+  })
+  manejar('atm:probar', async () => {
+    exigirVista('administracion')
+    return exito(await probarAtm())
+  })
+  manejar('atm:actualizarTablas', async () => {
+    exigirVista('administracion')
+    return exito(await actualizarTablasDeAtm())
+  })
+  manejar('atm:importarTablas', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('administracion')
+    const ventana = ventanaActual()
+    const opciones = {
+      title: 'Elegí los archivos de las tablas de ATM',
+      buttonLabel: 'Importar',
+      properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+      filters: [
+        { name: 'Tablas de ATM', extensions: ['txt', 'csv', 'zip', 'gz', 'json', 'xml'] },
+        { name: 'Todos los archivos', extensions: ['*'] },
+      ],
+    }
+    const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
+    if (elegido.canceled || elegido.filePaths.length === 0) return exito(null)
+    return exito(importarTablasDeAtm(elegido.filePaths))
   })
 
   // --- Multicotizador ---------------------------------------------------------

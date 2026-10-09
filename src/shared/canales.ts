@@ -211,6 +211,11 @@ import type {
   PerfilDeUsuario,
   SenalDeLlamada,
   SenalParaMandar,
+  // ATM Seguros.
+  DatosDeAtm,
+  EstadoDeAtm,
+  EstadoDeTablasAtm,
+  PruebaDeAtm,
   // Galeno Seguros: cotización, emisión, consultas, cuenta corriente y ART.
   CodigoPostalGaleno,
   CotizacionGaleno,
@@ -835,6 +840,19 @@ export interface Canales {
   'galeno:detalleDeLiquidaciones': (filtros: FiltrosDeReporteGaleno) => Resultado<ReporteGaleno>
   /** Guarda el PDF en una carpeta temporal y devuelve la ruta; el renderer pide abrirlo aparte. */
   'galeno:imprimir': (pedido: PedidoDeImpresionGaleno) => Resultado<ImpresionGaleno>
+
+  // ATM Seguros: la cuenta de su web service (compartida como `atmApi`) y sus tablas de parámetros, que
+  // ATM publica por FTP. Cotizar se cotiza desde el multicotizador; el detalle vive en main/aseguradoras/atm/*.
+  'atm:estado': () => Resultado<EstadoDeAtm>
+  'atm:guardarCredenciales': (datos: DatosDeAtm) => Resultado<EstadoDeAtm>
+  'atm:borrarCredenciales': () => Resultado<EstadoDeAtm>
+  /** Adopta ya la cuenta guardada en el servidor, aunque esta computadora tenga otra. */
+  'atm:traerDelServidor': () => Resultado<EstadoDeAtm>
+  'atm:probar': () => Resultado<PruebaDeAtm>
+  /** Baja las tablas del FTP de ATM y las deja en esta computadora. */
+  'atm:actualizarTablas': () => Resultado<EstadoDeTablasAtm>
+  /** Abre el diálogo para elegir los archivos de las tablas; null si se cancela. */
+  'atm:importarTablas': () => Resultado<EstadoDeTablasAtm | null>
 
   // Multicotizador: la misma solicitud, en todas las compañías con API. La pantalla pide UNA compañía
   // por llamado —todas a la vez— para ir llenando cada tarjeta apenas contesta su compañía.

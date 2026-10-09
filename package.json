@@ -33,10 +33,12 @@
     "humo:deudores": "node scripts/humo-deudores.mjs",
     "humo:usuarios": "node scripts/humo-usuarios.mjs",
     "humo:permisos": "node scripts/humo-permisos.mjs",
+    "humo:atm": "node scripts/humo-atm.mjs",
     "clave-hash": "node scripts/clave-hash.mjs"
   },
   "dependencies": {
     "@googleapis/sheets": "^14.0.0",
+    "basic-ftp": "^6.2.1",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "electron-updater": "^6.8.9"

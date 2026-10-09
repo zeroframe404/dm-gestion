@@ -17,6 +17,7 @@ npm run prueba:sola -- pruebas/duplicados.prueba.ts   # un solo archivo del banc
 npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
 npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador
 npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
+npm run humo:atm                 # ATM Seguros en vivo (cuenta, planes y cotización; ver «ATM Seguros», más abajo)
 ```
 
 ## Primer ingreso
@@ -1343,7 +1344,7 @@ Un vehículo y las compañías que se cotizaron para él.
 
 ### Multicotizador
 
-Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno), comparados por
+Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno y ATM), comparados por
 lo que cubre cada cobertura. Tiene su propio permiso (área `multicotizador`).
 
 - **Una solicitud común**: vehículo del catálogo de la agencia, uso, 0 km, GNC, rastreo, suma
@@ -1362,6 +1363,29 @@ lo que cubre cada cobertura. Tiene su propio permiso (área `multicotizador`).
 - **Sumar una compañía** es escribir un archivo que cumpla `CotizadorDeAseguradora`
   (`src/main/multicotizador/aseguradora.ts`, ver `galeno.ts`) y agregarlo a `registro.ts`: la
   pantalla y el servicio no cambian.
+
+#### ATM Seguros
+
+Segunda compañía del multicotizador (`src/main/multicotizador/atm.ts`; el cliente en
+`src/main/aseguradoras/atm/`). **Sólo cotiza** (`emite: false`): la póliza se emite por fuera.
+
+- **Sin restricción de IP**: a diferencia de Galeno, que va por el VPS, cada PC le habla directo a ATM
+  (SOAP `AUTOS_Cotizar_PHP` para cotizar; REST para vendedores y planes). Ambientes: producción
+  (`wsatm.atmseguros.com.ar`) y desarrollo (`wsatm-dev…`, sólo lunes a viernes de 8 a 18).
+- **La cuenta** (ambiente, usuario, clave, vendedor de 10 dígitos opcional) se carga en **API
+  Aseguradoras → ATM**, queda en el `config.json` de cada PC y viaja a las demás como el ajuste
+  compartido `atmApi` (se adopta al arrancar, como `meta`). La clave vacía conserva la guardada.
+- **Las tablas de parámetros** (marcas/modelos con código InfoAuto y de uso, sumas, usos, localidades…)
+  no vienen por la API: ATM las publica cada noche en un FTP (producción `wsatm.atmseguros.com.ar:2113`,
+  desarrollo `wsatm-dev.atmseguros.com.ar:2111`, mismo usuario y clave). Cada PC las baja sola al cotizar
+  si tienen más de un día y las guarda en `%APPDATA%/dm-gestion/atm/<ambiente>/`. Si el FTP está
+  bloqueado en esa red, se bajan a mano y se cargan con «Importar desde archivos…» en la misma pestaña,
+  que muestra el estado de cada tabla y el último error del FTP. El formato de los archivos no se pudo
+  ver al programarlo (el FTP no se alcanzaba): el lector acepta texto separado, JSON o XML, sueltos o
+  en .zip/.gz, y lo que no entiende lo dice por tabla.
+- **Humo en vivo**: `npm run humo:atm` (producción, con `ATM_PROD_USUARIO` / `ATM_PROD_PASSWORD` /
+  `ATM_PROD_VENDEDOR`), `-- --desarrollo` (con `ATM_DEV_*`) y `-- --ftp` para exigir además el FTP. Cada
+  cotización queda registrada en ATM como una más del vendedor; no es parte de `npm run prueba`.
 
 ### Tareas
 

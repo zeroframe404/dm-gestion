@@ -16,9 +16,15 @@
 //   ─────────────  ──────────────────────────────────────────────────────   ──────────────────────────
 //   google         cuenta de servicio y URL de la hoja (Drive)                 superadministrador
 //   meta           app de Facebook e Instagram y su dirección de vuelta        superadministrador
+//   atmApi         cuenta del web service de ATM Seguros (usuario, clave,      administrador o superadmin
+//                  vendedor y ambiente)
 //   companias      días de cobertura, comisión, renovación y plantilla         administrador o superadmin
 //   ticket         dirección y teléfono del encabezado de cada sucursal        cualquiera, la de SU sucursal
 //   referencias    las listas del módulo Compañías (ver referenciasCompartidas.ts)
+//
+// La cuenta de Galeno (`galenoApi`) también vive en el servidor, pero NO está en esta lista: Galeno sólo
+// acepta pedidos desde la IP del VPS, así que ninguna computadora se la guarda (ver servicios/galeno.ts).
+// La de ATM sí se adopta en cada una, porque ATM no tiene esa restricción y cada PC le habla directo.
 //
 // El recorte por rol NO se hace acá: se hace en ipc.ts, que es donde se sabe quién llamó. Este archivo
 // sólo sabe llevar y traer.
@@ -36,7 +42,7 @@ import type { EstadoDeAjusteCompartido, EstadoDeGoogleEnLaAgencia } from '../../
 import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import { adoptarCompanias, valorCompartidoDeCompanias } from './companias'
-import { adoptarGoogle, adoptarMeta, valorCompartidoDeGoogle, valorCompartidoDeMeta } from './config'
+import { adoptarAtm, adoptarGoogle, adoptarMeta, valorCompartidoDeAtm, valorCompartidoDeGoogle, valorCompartidoDeMeta } from './config'
 import { ErrorDeNegocio } from './errores'
 import { adoptarReferenciasDelVps } from './referenciasCompartidas'
 import { crearFuenteVps } from './sincronizacion'
@@ -75,6 +81,13 @@ const META: AjusteCompartido = {
   adoptar: adoptarMeta,
 }
 
+const ATM: AjusteCompartido = {
+  clave: 'atmApi',
+  nombre: 'la cuenta de ATM Seguros',
+  valorLocal: valorCompartidoDeAtm,
+  adoptar: adoptarAtm,
+}
+
 const COMPANIAS: AjusteCompartido = {
   clave: 'companias',
   nombre: 'el catálogo de compañías',
@@ -90,7 +103,7 @@ const TICKET: AjusteCompartido = {
 }
 
 /** Los que se adoptan solos al arrancar, en el orden en que se piden. */
-const TODOS = [GOOGLE, META, COMPANIAS, TICKET]
+const TODOS = [GOOGLE, META, ATM, COMPANIAS, TICKET]
 
 /** Lo que se devuelve cuando ni siquiera hay puente: en desarrollo, o sin VPS configurado. */
 const SIN_SERVIDOR: EstadoDeAjusteCompartido = {
@@ -295,6 +308,11 @@ export const publicarMetaEnElVps = (quien: string | null): Promise<EstadoDeAjust
 export const borrarMetaDelVps = (): Promise<void> => borrarDelVps(META)
 export const adoptarMetaDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(META)
 
+export const estadoCompartidoDeAtm = (): Promise<EstadoDeAjusteCompartido> => estadoDe(ATM)
+export const borrarAtmDelVps = (): Promise<void> => borrarDelVps(ATM)
+/** El botón «Traer del servidor» de API Aseguradoras → ATM: lo apretó alguien, así que sí pisa lo local. */
+export const traerAtmDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(ATM, { pisarLoLocal: true })
+
 export const estadoCompartidoDeCompanias = (): Promise<EstadoDeAjusteCompartido> => estadoDe(COMPANIAS)
 export const publicarCompaniasEnElVps = (quien: string | null): Promise<EstadoDeAjusteCompartido> => publicar(COMPANIAS, quien)
 export const adoptarCompaniasDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(COMPANIAS)
@@ -380,10 +398,10 @@ function identidadDeSucursal(nombre: string): string {
  * motivo vuelve igual, para la pantalla que quiera mostrarlo.
  */
 export async function publicarSinRomper(
-  cual: 'companias' | 'google' | 'meta',
+  cual: 'companias' | 'google' | 'meta' | 'atmApi',
   quien: string | null,
 ): Promise<EstadoDeAjusteCompartido> {
-  const ajuste = { companias: COMPANIAS, google: GOOGLE, meta: META }[cual]
+  const ajuste = { companias: COMPANIAS, google: GOOGLE, meta: META, atmApi: ATM }[cual]
   try {
     return await publicar(ajuste, quien)
   } catch (error) {

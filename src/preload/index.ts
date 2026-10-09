@@ -407,6 +407,15 @@ const api: ApiDm = {
     detalleDeLiquidaciones: (filtros) => invocar('galeno:detalleDeLiquidaciones', filtros),
     imprimir: (pedido) => invocar('galeno:imprimir', pedido),
   },
+  atm: {
+    estado: () => invocar('atm:estado'),
+    guardarCredenciales: (datos) => invocar('atm:guardarCredenciales', datos),
+    borrarCredenciales: () => invocar('atm:borrarCredenciales'),
+    traerDelServidor: () => invocar('atm:traerDelServidor'),
+    probar: () => invocar('atm:probar'),
+    actualizarTablas: () => invocar('atm:actualizarTablas'),
+    importarTablas: () => invocar('atm:importarTablas'),
+  },
   multicotizador: {
     aseguradoras: () => invocar('multicotizador:aseguradoras'),
     localidades: (tipoVehiculo, codigoPostal) => invocar('multicotizador:localidades', tipoVehiculo, codigoPostal),
