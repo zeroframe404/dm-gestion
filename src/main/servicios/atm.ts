@@ -20,7 +20,7 @@ import type {
 } from '../../shared/tipos'
 import { planesAtm, vendedoresAtm, type PlanAtm } from '../aseguradoras/atm/catalogos'
 import { crearClienteAtm, ErrorDeAtm, type CuentaAtm } from '../aseguradoras/atm/cliente'
-import { actualizarTablasAtm, estadoDeTablasAtm, importarTablasAtm } from '../aseguradoras/atm/repositorio'
+import { actualizarTablasAtm, estadoDeTablasAtm, importarTablasAtm, olvidarFallosDeTablasAtm } from '../aseguradoras/atm/repositorio'
 import { olvidarListasDeAtm } from '../multicotizador/atm'
 import { borrarAtmDelVps, estadoCompartidoDeAtm, publicarSinRomper, traerAtmDelVps } from './ajustesCompartidos'
 import { borrarAtm, credencialesAtm, cuentaAtmVisible, guardarAtm } from './config'
@@ -75,14 +75,17 @@ export async function estadoAtm(): Promise<EstadoDeAtm> {
  */
 export async function guardarCuentaAtm(datos: unknown, quien: string | null): Promise<EstadoDeAtm> {
   guardarAtm(datos)
-  // Los vendedores y los planes en memoria eran de la cuenta anterior.
+  // Los vendedores y los planes en memoria eran de la cuenta anterior, y la última falla del FTP
+  // también (con la clave corregida, las tablas se vuelven a bajar solas sin esperar media hora).
   olvidarListasDeAtm()
+  olvidarFallosDeTablasAtm()
   return armarEstado(await publicarSinRomper('atmApi', quien))
 }
 
 export async function borrarCuentaAtm(): Promise<EstadoDeAtm> {
   borrarAtm()
   olvidarListasDeAtm()
+  olvidarFallosDeTablasAtm()
   // Las tablas bajadas NO se borran: no son de la cuenta sino de ATM, y si el FTP está bloqueado en
   // esta red volver a conseguirlas cuesta. Se usan de nuevo apenas se carga otra cuenta.
   await borrarAtmDelVps().catch((error) => console.error('[ajustes] No se pudo borrar la cuenta de ATM del VPS:', motivo(error)))
@@ -98,7 +101,10 @@ export async function traerAtmDelServidor(): Promise<EstadoDeAtm> {
     if (error instanceof ErrorDeNegocio) throw error
     throw new ErrorDeNegocio(`No se pudo traer la cuenta de ATM del servidor: ${motivo(error)}`)
   }
-  if (resultado.adoptadas) olvidarListasDeAtm()
+  if (resultado.adoptadas) {
+    olvidarListasDeAtm()
+    olvidarFallosDeTablasAtm()
+  }
   const estado = await estadoAtm()
   // «Ya tenía lo mismo» no se adopta y no es una falla; todo lo demás (servidor sin cuenta, sin VPS,
   // un valor con otra forma) sí lo es, y se dice por qué.

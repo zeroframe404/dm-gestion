@@ -77,7 +77,22 @@ interface EstadoGuardado {
   archivos: ArchivoGuardado[]
 }
 
+/**
+ * Si un cambio de carpeta quedó a mitad de camino (se cortó la luz entre los dos renombres), las
+ * tablas están en `.vieja` y no en su lugar: se las devuelve antes de leer nada.
+ */
+function recuperarCambioCortado(destino: string): void {
+  const vieja = `${destino}.vieja`
+  if (existsSync(destino) || !existsSync(vieja)) return
+  try {
+    renameSync(vieja, destino)
+  } catch (error) {
+    console.error('[atm] No se pudo recuperar la carpeta de las tablas:', error)
+  }
+}
+
 function leerEstadoGuardado(ambiente: AmbienteAtm): EstadoGuardado | null {
+  recuperarCambioCortado(carpeta(ambiente))
   const ruta = path.join(carpeta(ambiente), 'estado.json')
   if (!existsSync(ruta)) return null
   try {
@@ -198,10 +213,19 @@ export function guardarTablas(ambiente: AmbienteAtm, entrada: ArchivoSuelto[], o
   const nueva = `${destino}.nueva`
   rmSync(nueva, { recursive: true, force: true })
   mkdirSync(nueva, { recursive: true })
-  const previo = reemplazarTodo ? null : leerEstadoGuardado(ambiente)
+  const guardado = leerEstadoGuardado(ambiente)
+  const previo = reemplazarTodo ? null : guardado
   const archivos: ArchivoGuardado[] = []
   for (const tabla of TABLAS_ATM) {
     const nuevo = porTabla.get(tabla)
+    // Un archivo nuevo que no se puede leer (o que viene vacío) no pisa uno que andaba: mejor las
+    // tablas de ayer que ninguna. Pasa con una bajada cortada o un formato que cambió de un día al otro.
+    const anteriorLegible = guardado?.archivos.find((a) => a.tabla === tabla)
+    if (nuevo && anteriorLegible && !tieneFilas(nuevo, tabla) && archivoTieneFilas(path.join(destino, anteriorLegible.nombre), tabla)) {
+      writeFileSync(path.join(nueva, anteriorLegible.nombre), readFileSync(path.join(destino, anteriorLegible.nombre)))
+      archivos.push(anteriorLegible)
+      continue
+    }
     if (nuevo) {
       const nombre = `${tabla}__${nombreSeguro(nuevo.nombre)}`
       writeFileSync(path.join(nueva, nombre), nuevo.bytes)
@@ -216,16 +240,44 @@ export function guardarTablas(ambiente: AmbienteAtm, entrada: ArchivoSuelto[], o
   }
   const estado: EstadoGuardado = { bajadasEn: new Date().toISOString(), origen, archivos }
   writeFileSync(path.join(nueva, 'estado.json'), JSON.stringify(estado, null, 2), 'utf8')
-  // El cambio de carpeta es lo último: si algo falló antes, quedan las tablas de antes, enteras.
+  // El cambio de carpeta es lo último: si algo falló antes, quedan las tablas de antes, enteras. Y si
+  // falla el cambio en sí (un antivirus que tiene tomado un archivo, en Windows), se vuelve atrás.
   const vieja = `${destino}.vieja`
   rmSync(vieja, { recursive: true, force: true })
-  if (existsSync(destino)) renameSync(destino, vieja)
-  renameSync(nueva, destino)
-  rmSync(vieja, { recursive: true, force: true })
+  const habia = existsSync(destino)
+  if (habia) renameSync(destino, vieja)
+  try {
+    renameSync(nueva, destino)
+  } catch (error) {
+    if (habia && !existsSync(destino)) renameSync(vieja, destino)
+    throw error
+  }
+  try {
+    rmSync(vieja, { recursive: true, force: true })
+  } catch (error) {
+    // Las tablas nuevas ya quedaron; lo viejo se borra la próxima vez.
+    console.error('[atm] No se pudo borrar la carpeta anterior de las tablas:', error)
+  }
 
   memoria.delete(ambiente)
   ultimoFallo.delete(ambiente)
   return estadoDeTablasAtm(ambiente)
+}
+
+function tieneFilas(archivo: ArchivoSuelto, tabla: TablaAtm): boolean {
+  try {
+    return leerFilas(decodificar(archivo.bytes), tabla).length > 0
+  } catch {
+    return false
+  }
+}
+
+function archivoTieneFilas(ruta: string, tabla: TablaAtm): boolean {
+  try {
+    return tieneFilas({ nombre: ruta, bytes: readFileSync(ruta) }, tabla)
+  } catch {
+    return false
+  }
 }
 
 /** Importa tablas desde archivos de esta computadora (bajados del FTP a mano). */
@@ -240,6 +292,11 @@ export function importarTablasAtm(ambiente: AmbienteAtm, rutas: string[]): Estad
   return guardarTablas(ambiente, archivos, 'archivos', false)
 }
 
+/** Al cambiar la cuenta: la falla anterior del FTP era de otro usuario o de otra clave. */
+export function olvidarFallosDeTablasAtm(): void {
+  ultimoFallo.clear()
+}
+
 /** Borra las tablas de un ambiente (al borrar la cuenta). */
 export function borrarTablasAtm(ambiente: AmbienteAtm): void {
   rmSync(carpeta(ambiente), { recursive: true, force: true })
@@ -251,8 +308,9 @@ export function borrarTablasAtm(ambiente: AmbienteAtm): void {
 // El FTP
 // ---------------------------------------------------------------------------
 
-function pideCifrado(error: unknown): boolean {
-  return /tls|ssl|secure|encrypt|cifr/i.test(error instanceof Error ? error.message : String(error))
+function esRechazoDeCuenta(error: unknown): boolean {
+  const codigo = (error as { code?: unknown } | null)?.code
+  return codigo === 530 || /^530\b/.test(error instanceof Error ? error.message : String(error))
 }
 
 function motivoDeFtp(error: unknown, cuenta: CuentaAtm): string {
@@ -278,12 +336,16 @@ async function conectar(cuenta: CuentaAtm): Promise<Client> {
       throw error
     }
   }
+  // Primero con TLS, así el usuario y la clave (los mismos del web service) no viajan en claro. Si el
+  // servidor no lo ofrece, sin cifrar: es el FTP que publica ATM y no hay otro. Un usuario o una clave
+  // mal (530) no se reintenta: daría lo mismo.
+  // Si ni siquiera hubo conexión (FTP bloqueado), probar otra vez sin cifrar sólo duplicaría la espera.
   try {
-    return await intentar(false)
+    return await intentar(true)
   } catch (error) {
-    // Algunos FTP exigen TLS («530 Non-anonymous sessions must use encryption»): se reintenta así.
-    if (pideCifrado(error)) return await intentar(true)
-    throw error
+    const mensaje = error instanceof Error ? error.message : String(error)
+    if (esRechazoDeCuenta(error) || esFallaDeRed(error) || /timeout|timed out/i.test(mensaje)) throw error
+    return await intentar(false)
   }
 }
 
