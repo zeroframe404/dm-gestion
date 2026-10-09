@@ -1743,6 +1743,13 @@ test('ATM: las localidades del código postal salen de sus tablas, salvo en Capi
   assert.deepEqual(await atm.localidades?.('AUTO', '9999'), [])
 })
 
+test('ATM: sin tablas, las localidades fallan en vez de decir que no hay ninguna', async (t) => {
+  carpetaDeTablas(t)
+  t.after(() => usarCuentaDeAtmDePrueba(null))
+  usarCuentaDeAtmDePrueba(CUENTA)
+  await assert.rejects(Promise.resolve(atm.localidades?.('AUTO', '1870')), /Faltan las tablas de ATM/)
+})
+
 test('ATM: quien no ve los números de la agencia no recibe la comisión ni en el detalle técnico', async (t) => {
   atmFalso(t)
   const pedido = { aseguradora: 'ATM', solicitud: solicitud(), elegidos: {} }

@@ -136,7 +136,16 @@ export function Atm() {
     if (resultado.ok) {
       mostrar(resultado.datos)
       setClave('')
-      setAviso('Se sacó la cuenta de ATM de esta computadora y del servidor.')
+      // Si el servidor no la pudo borrar, esta computadora la volvería a tomar al abrir el programa:
+      // hay que decirlo en vez de dar por hecho que se sacó de los dos lados.
+      if (resultado.datos.compartido?.enElServidor || resultado.datos.compartido?.error) {
+        setError(
+          `Se sacó la cuenta de ATM de esta computadora, pero el servidor todavía la tiene${resultado.datos.compartido.error ? ` (${resultado.datos.compartido.error})` : ''}. ` +
+            'Volvé a tocar «Sacarla»: si no, al abrir el programa esta computadora la vuelve a tomar del servidor.',
+        )
+      } else {
+        setAviso('Se sacó la cuenta de ATM de esta computadora y del servidor.')
+      }
     } else {
       setError(resultado.error)
     }
@@ -190,7 +199,9 @@ export function Atm() {
         acciones={
           puedeEditar && (
             <>
-              {estado.configurada && (
+              {/* También con la cuenta ya sacada de acá si el servidor la sigue teniendo: es la forma de
+                  reintentar borrarla allá. */}
+              {(estado.configurada || estado.compartido?.enElServidor) && (
                 <Boton icono="basura" onClick={() => void borrar()} disabled={guardando}>
                   Sacarla
                 </Boton>

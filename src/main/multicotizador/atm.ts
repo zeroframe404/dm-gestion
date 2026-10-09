@@ -553,7 +553,9 @@ export const atm: CotizadorDeAseguradora = {
     const credenciales = cuentaActual()
     if (!credenciales) return []
     const tablas = tablasEnDisco(credenciales.ambiente)
-    if (!tablas) return []
+    // Sin tablas no es «no hay localidades», es que no se sabe: así, si las otras compañías también
+    // fallan, la pantalla dice por qué en vez de mostrar una lista vacía.
+    if (!tablas) throw new ErrorDeAtm('Faltan las tablas de ATM (API Aseguradoras → ATM).', false)
     // En Capital ATM no lista localidades sino calles con alturas: no sirven para elegir la localidad.
     return localidadesDeAtm(tablas, codigoPostal)
       .filter((l) => !/CAPITAL|C\s*A\s*B\s*A|CIUDAD AUT/i.test(normalizarTexto(l.provincia)))
