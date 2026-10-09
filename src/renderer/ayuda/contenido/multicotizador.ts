@@ -10,7 +10,7 @@ export const AYUDA_MULTICOTIZADOR: Record<string, ContenidoDeAyuda> = {
         titulo: 'Qué hace',
         parrafos: [
           'Se cargan los datos del vehículo, la zona y el pago una sola vez, y el programa le pide precio a cada compañía que tenga API cargada en API Aseguradoras, todas a la vez. Cada compañía tiene su tarjeta: se llena apenas contesta, sin esperar a la más lenta, y si una está caída las demás cotizan igual.',
-          'Hoy la única compañía con API es Galeno. Cada compañía que se sume aparece sola en la lista de «Compañías» y en los resultados, sin cambiar nada de cómo se usa esta pantalla.',
+          'Hoy cotizan Galeno y ATM, cada una con la cuenta cargada en API Aseguradoras. Cada compañía que se sume aparece sola en la lista de «Compañías» y en los resultados, sin cambiar nada de cómo se usa esta pantalla.',
         ],
       },
       {
@@ -35,6 +35,9 @@ export const AYUDA_MULTICOTIZADOR: Record<string, ContenidoDeAyuda> = {
           'En Galeno, cada plan comercial es de un legajo, y la bonificación del productor va atada a esa combinación: se cotiza siempre con el legajo del plan elegido, que se ve debajo del plan. Si la cuenta tiene planes de más de un legajo, la lista los muestra con su legajo al lado.',
           'Para que Galeno dé igual que en su web hay que usar lo mismo que ahí: el «Modo de facturación» (la web arranca en «Anual c/ refacturación trimestral»; el Multicotizador, en mensual), las cuotas, la forma de pago («Pago manual» en la web), la cláusula de ajuste, y los dos números de arriba de la grilla, «% Bonificación Prima» y «% RA». Si no se eligen la bonificación y el RA, Galeno aplica los suyos por defecto para ese legajo y plan, que pueden ser distintos por cobertura: la tarjeta dice cuáles aplicó y cada fila del comparativo muestra los suyos.',
           'El premio y las cuotas de Galeno son del período que factura el modo elegido: con mensual es lo que se paga por mes; con «Anual c/ refacturación trimestral» es el trimestre en tres cuotas. Con modos distintos los premios no se pueden comparar aunque todo lo demás coincida.',
+          'En ATM, el «Plan» junta tres cosas: la vigencia, cada cuánto se factura y la forma de pago (por ejemplo, «ANUAL/MENSUAL · tarjeta de crédito»). Si no se elige, toma el de la forma de pago que coincide con el medio elegido que factura más seguido. Igual que en Galeno, el premio y la cuota son los del período que factura el plan: con «ANUAL/MENSUAL», lo de cada mes. Para que dé igual que en la web de ATM hay que usar el mismo plan.',
+          'Los otros ajustes de ATM: la bonificación (hasta 50 %; si no se elige, ATM aplica la que tiene por defecto para el vendedor), la cláusula de ajuste de los autos (sin cláusula, 10 % o 20 %; arranca en 10 %, la de ATM por defecto), la condición de IVA y, para inscriptos, monotributistas y exentos, los ingresos brutos. En «Más ajustes de ATM» están la versión en ATM (su código del vehículo), el uso en ATM, la localidad y el rastreo.',
+          'ATM busca el vehículo en sus propias tablas, que publica todas las noches por FTP y que cada computadora baja sola una vez por día. Si faltan o no se pudieron bajar, la tarjeta de ATM lo dice: se resuelven en API Aseguradoras → ATM, con «Actualizar tablas (FTP)» o importándolas de archivos.',
           'Si un precio no coincide con el de la web de la compañía, «Copiar datos para …» copia el pedido exacto que recibió su sistema y lo que contestó. Eso es lo que hay que pegarle a la compañía para que lo revise: ahí ven el legajo, el plan y cada dato con que se cotizó.',
         ],
       },
@@ -49,7 +52,7 @@ export const AYUDA_MULTICOTIZADOR: Record<string, ContenidoDeAyuda> = {
         titulo: 'Armar el presupuesto o emitir',
         parrafos: [
           'Tildando las coberturas que se le quieren ofrecer al cliente (hasta doce) aparece abajo «Armar presupuesto»: crea el presupuesto de siempre, con esas opciones y los datos del vehículo, y lo abre en Presupuestos, donde salen el mensaje de WhatsApp y el PDF como con cualquier otro.',
-          'En las compañías que lo permiten (hoy, Galeno) cada cobertura tiene «Emitir…»: emite la póliza en la compañía sin salir de la pantalla, con el mismo formulario que se usa desde Presupuestos. Armar el presupuesto y emitir piden permiso para editar Presupuestos; cotizar, sólo para ver el Multicotizador.',
+          'En las compañías que lo permiten (hoy, Galeno) cada cobertura tiene «Emitir…»: emite la póliza en la compañía sin salir de la pantalla, con el mismo formulario que se usa desde Presupuestos. ATM por ahora sólo cotiza: sus coberturas entran al presupuesto, pero la póliza se emite por fuera del programa. Armar el presupuesto y emitir piden permiso para editar Presupuestos; cotizar, sólo para ver el Multicotizador.',
         ],
       },
     ],

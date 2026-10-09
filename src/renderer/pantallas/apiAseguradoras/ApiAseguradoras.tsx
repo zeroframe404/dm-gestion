@@ -1,6 +1,7 @@
 // Módulo API Aseguradoras: las credenciales con las que DM Gestión habla con la API de cada
-// aseguradora. Por ahora sólo Galeno —la cuenta de su API REST (cotizar, emitir, consultas) y la del
-// portal de productores (novedades)—, pero es donde va a ir cualquier otra que se sume más adelante.
+// aseguradora. Hoy, Galeno —la cuenta de su API REST (cotizar, emitir, consultas) y la del portal de
+// productores (novedades)— y ATM —la cuenta de su web service y las tablas que publica por FTP, para
+// cotizar en el multicotizador—. Es donde va a ir cualquier otra que se sume más adelante.
 //
 // No es un área de permisos configurable desde Administración → Permisos, mismo criterio que el
 // catálogo de vehículos o la conexión con Google: son credenciales de un tercero y una integración, no
@@ -11,10 +12,11 @@ import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePe
 import { Alerta } from '../../componentes/ui'
 import { usePermisos } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
+import { Atm } from './Atm'
 import { Galeno } from './Galeno'
 import { GalenoNovedades } from './GalenoNovedades'
 
-type IdSeccion = 'galeno' | 'galenonovedades'
+type IdSeccion = 'galeno' | 'galenonovedades' | 'atm'
 
 const SECCIONES: ItemDePestana<IdSeccion>[] = [
   { id: 'galeno', nombre: 'Galeno', icono: 'escudo', ayuda: 'apiAseguradoras.galeno' },
@@ -22,6 +24,9 @@ const SECCIONES: ItemDePestana<IdSeccion>[] = [
   // quince minutos y las deja en la bandeja de Cartera. No tiene nada que ver con la de arriba —esa es
   // la API REST que usa Presupuestos para cotizar y emitir— por eso es una pestaña aparte.
   { id: 'galenonovedades', nombre: 'Galeno (novedades)', icono: 'nube', ayuda: 'apiAseguradoras.galenonovedades' },
+  // ATM no pide una IP dada de alta: cada computadora le habla directo con la cuenta que se carga acá
+  // (y viaja a las demás como ajuste compartido). La pestaña también muestra sus tablas por FTP.
+  { id: 'atm', nombre: 'ATM', icono: 'auto', ayuda: 'apiAseguradoras.atm' },
 ]
 
 export function ApiAseguradoras() {
@@ -57,6 +62,7 @@ export function ApiAseguradoras() {
       >
         {seccion === 'galeno' && <Galeno />}
         {seccion === 'galenonovedades' && <GalenoNovedades />}
+        {seccion === 'atm' && <Atm />}
       </div>
     </div>
   )

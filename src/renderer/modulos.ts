@@ -154,7 +154,7 @@ export const MODULO_ADMINISTRACION: Modulo = {
 
 /**
  * También va separado, al pie de la barra lateral, junto a Administración: las credenciales con las
- * que DM Gestión habla con la API de cada aseguradora (por ahora, sólo Galeno). No es un área de
+ * que DM Gestión habla con la API de cada aseguradora (hoy, Galeno y ATM). No es un área de
  * permisos configurable —igual que el catálogo de vehículos o la propia conexión con Galeno antes de
  * mudarse acá—: son credenciales de un tercero, no algo que necesite el mostrador, así que sólo la ven
  * ADMIN y SUPER_ADMIN (ver `BarraLateral`).

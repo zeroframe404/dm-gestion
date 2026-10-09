@@ -419,6 +419,15 @@ export interface ApiDm {
     detalleDeLiquidaciones: Remota<'galeno:detalleDeLiquidaciones'>
     imprimir: Remota<'galeno:imprimir'>
   },
+  atm: {
+    estado: Remota<'atm:estado'>
+    guardarCredenciales: Remota<'atm:guardarCredenciales'>
+    borrarCredenciales: Remota<'atm:borrarCredenciales'>
+    traerDelServidor: Remota<'atm:traerDelServidor'>
+    probar: Remota<'atm:probar'>
+    actualizarTablas: Remota<'atm:actualizarTablas'>
+    importarTablas: Remota<'atm:importarTablas'>
+  }
   multicotizador: {
     aseguradoras: Remota<'multicotizador:aseguradoras'>
     localidades: Remota<'multicotizador:localidades'>

@@ -81,4 +81,75 @@ export const AYUDA_API_ASEGURADORAS: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+
+  'apiAseguradoras.atm': {
+    clave: 'apiAseguradoras.atm',
+    titulo: 'API Aseguradoras → ATM',
+    resumen: 'La cuenta del web service de ATM Seguros y las tablas que ATM publica por FTP: con las dos, el Multicotizador cotiza en ATM.',
+    secciones: [
+      {
+        titulo: 'Qué se puede hacer con esto',
+        parrafos: [
+          'Con la cuenta cargada y las tablas bajadas, el Multicotizador cotiza autos y motos en ATM al mismo tiempo que en las demás compañías, y sus coberturas entran al comparativo y al presupuesto como las de cualquiera.',
+          'Por ahora ATM sólo cotiza: la póliza no se emite desde la app. Si el cliente elige ATM, se emite como siempre, por fuera del programa.',
+        ],
+      },
+      {
+        titulo: 'La cuenta vive en cada computadora',
+        parrafos: [
+          'A diferencia de Galeno, ATM no pide que los pedidos salgan de una IP dada de alta, así que cada computadora le habla directo, sin pasar por el servidor. Por eso la cuenta sí se guarda en esta computadora.',
+          'Se carga una sola vez: al guardar viaja cifrada al servidor y el resto de las computadoras la adopta al abrir el programa, igual que la app de Meta. El renglón de abajo de la cuenta dice si esta computadora tiene lo mismo que el servidor; si no, «Traer del servidor» la toma ya, sin esperar a volver a abrir el programa.',
+          'La carga un administrador. «Sacarla» la borra de esta computadora y del servidor: sin cuenta, ATM deja de cotizar. Las tablas ya bajadas no se borran.',
+        ],
+      },
+      {
+        titulo: 'Los cuatro campos',
+        parrafos: ['Son los datos que ATM le dio a la agencia para su web service.'],
+        lista: [
+          'Ambiente: Producción es el de todos los días. Desarrollo es el ambiente de pruebas de ATM: anda sólo de lunes a viernes de 8 a 18 y lo que cotiza no vale para el cliente. El usuario y la clave son los mismos en los dos.',
+          'Usuario y clave: los del web service de ATM, que también sirven para su FTP. La clave nunca vuelve a la pantalla: con la cuenta ya cargada, dejar el campo vacío conserva la que está (sirve para cambiar sólo el vendedor).',
+          'Vendedor: el código de 10 números con que se cotiza. Es opcional: vacío, se usa el primero que ATM tenga para la cuenta. Conviene cargar el que ATM le dio a la agencia, porque de él dependen los planes con que se cotiza.',
+        ],
+      },
+      {
+        titulo: 'Probar conexión',
+        parrafos: [
+          'Prueba la cuenta YA guardada en esta computadora, no lo que está escrito en los campos: primero se guarda y después se prueba. Dice si ATM aceptó el usuario y la clave, con qué vendedor se va a cotizar y cuántos planes tiene para autos y para motos.',
+          'También muestra los vendedores que ATM lista para la cuenta, con «Usar este» para pasarlo al campo (después hay que guardar). La lista es una ayuda: ATM puede cotizar con un vendedor que no figura ahí. Si al cotizar contesta «Vendedor inválido», usá uno de la lista.',
+          'Si falla en desarrollo fuera de horario, no es la cuenta: ese ambiente sólo anda de lunes a viernes de 8 a 18.',
+        ],
+      },
+      {
+        titulo: 'Las tablas por FTP',
+        parrafos: [
+          'ATM no da su catálogo de vehículos por la API: lo publica todas las noches en un FTP, en tablas (marcas y modelos con su código de InfoAuto, sumas aseguradas, usos, localidades…). Sin ellas el Multicotizador no tiene cómo pedirle el vehículo a ATM, así que son obligatorias.',
+          'No hay que hacer nada para tenerlas: cada computadora las baja sola la primera vez que cotiza en ATM y después una vez por día. Si el FTP no anda, sigue con las que tenga y lo avisa en la tarjeta de ATM. «Actualizar tablas (FTP)» las baja en el momento.',
+          'La lista de abajo dice, tabla por tabla, de qué archivo salió y cuántas filas se leyeron, o por qué no se pudo leer. Las marcadas «Para cotizar» son las de vehículos: con una de las dos alcanza. Si ATM no cotiza diciendo que faltan las tablas, es lo primero que hay que mirar, junto con el último error del FTP.',
+        ],
+      },
+      {
+        titulo: 'Si el FTP está bloqueado en esta red',
+        parrafos: [
+          'Algunas redes no dejan salir al FTP, y entonces el error dice que no se pudo conectar. Se pueden bajar las tablas desde otra conexión con un programa de FTP (FileZilla, por ejemplo) y traerlas con «Importar desde archivos…», eligiendo todos los archivos juntos (sueltos o en un .zip).',
+        ],
+        lista: [
+          'Producción: servidor wsatm.atmseguros.com.ar, puerto 2113.',
+          'Desarrollo: servidor wsatm-dev.atmseguros.com.ar, puerto 2111.',
+          'Usuario y clave: los mismos de la cuenta de ATM.',
+          'Cada ambiente tiene sus tablas: lo que se importa va al ambiente de la cuenta cargada, y las tablas que no vengan en los archivos conservan las que ya había.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Tablas de ATM',
+        explicacion:
+          'Los archivos que ATM publica todas las noches en su FTP con su catálogo de vehículos y otras listas. El Multicotizador los necesita para cotizar en ATM; cada computadora los baja sola una vez por día.',
+      },
+      {
+        termino: 'Vendedor de ATM',
+        explicacion: 'El código de 10 números con que la agencia cotiza en ATM. Define qué planes se pueden usar.',
+      },
+    ],
+  },
 }
