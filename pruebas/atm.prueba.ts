@@ -8,7 +8,7 @@
 // motivo y qué tocar, que unas tablas viejas o un FTP caído no frenen la cotización sin avisar, y que
 // ni la comisión ni la clave se filtren. El humo en vivo contra ATM es aparte: `npm run humo:atm`.
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -1460,7 +1460,7 @@ test('ATM: cotiza un auto de punta a punta y devuelve sus coberturas en la forma
       ['plan', '02'],
       ['bonificacion', ''],
       ['clausulaAjuste', '10'],
-      ['iva', 'CF'],
+      ['iva', 'CONSUMIDOR_FINAL|CF'],
       ['marca', 'VOLKSWAGEN'],
       ['version', '460711'],
       ['uso', '4262'],
@@ -1478,8 +1478,8 @@ test('ATM: cotiza un auto de punta a punta y devuelve sus coberturas en la forma
   ])
   assert.deepEqual(
     r.ajustes.filter((a) => a.porSolicitud).map((a) => a.campo),
-    ['marca', 'version', 'uso', 'localidad'],
-    'lo que depende del vehículo o del lugar se olvida al cambiar la solicitud',
+    ['iva', 'marca', 'version', 'uso', 'localidad', 'alarma'],
+    'lo que depende del cliente, del vehículo o del lugar se olvida al cambiar la solicitud',
   )
 
   // El detalle técnico: lo que se mandó (sin la clave) y lo que contestó.
@@ -1542,9 +1542,17 @@ test('ATM: la condición de IVA va con el código de ATM y los ingresos brutos q
   // Régimen simplificado no es para un inscripto: vuelve al de por defecto.
   await atm.cotizar(conIva('RESPONSABLE_INSCRIPTO'), { iibb: 'I4' })
   assert.equal(campo(falso, 'asegurado', 'codigo_iibb'), 'I0')
-  // Cambiar el IVA desde la tarjeta cambia también los ingresos brutos.
-  await atm.cotizar(conIva('CONSUMIDOR_FINAL'), { iva: 'MT' })
+  // Cambiar el IVA desde la tarjeta cambia también los ingresos brutos. La opción lleva adelante la
+  // condición del formulario: mientras el formulario diga lo mismo, vale lo elegido en la tarjeta.
+  const aMano = await atm.cotizar(conIva('CONSUMIDOR_FINAL'), { iva: 'CONSUMIDOR_FINAL|MT' })
   assert.deepEqual([campo(falso, 'asegurado', 'iva'), campo(falso, 'asegurado', 'codigo_iibb')], ['MT', 'I4'])
+  assert.equal(aMano.ajustes.find((a) => a.campo === 'iva')?.valor, 'CONSUMIDOR_FINAL|MT', 'devuelve lo aplicado, así se recuerda')
+  // Si el formulario cambia de condición, lo elegido para la anterior deja de valer.
+  await atm.cotizar(conIva('EXENTO'), { iva: 'CONSUMIDOR_FINAL|MT' })
+  assert.deepEqual([campo(falso, 'asegurado', 'iva'), campo(falso, 'asegurado', 'codigo_iibb')], ['EX', 'I2'])
+  // Lo guardado antes de que la opción llevara la condición del formulario («MT» solo) no se aplica.
+  await atm.cotizar(conIva('CONSUMIDOR_FINAL'), { iva: 'MT' })
+  assert.equal(campo(falso, 'asegurado', 'iva'), 'CF')
   // Persona jurídica.
   await atm.cotizar(resuelta({ tomador: { ...solicitud().tomador, tipoPersona: 'JURIDICA', condicionIva: 'RESPONSABLE_INSCRIPTO' } }), {})
   assert.equal(campo(falso, 'asegurado', 'persona'), 'J')
@@ -1650,6 +1658,51 @@ test('ATM: avisa cuando la suma cargada lo deja sólo en responsabilidad civil y
   assert.deepEqual(black.avisos, ['ATM marca este vehículo como «vehículo black» (de su lista de vehículos con restricciones).'])
 })
 
+test('ATM: una bajada del FTP con un archivo ilegible no pisa la tabla que andaba', async (t) => {
+  carpetaDeTablas(t)
+  guardarTablas('produccion', TABLAS_DE_PRUEBA, 'ftp', true)
+  const antes = estadoDeTablasAtm('produccion')
+  assert.ok(antes.listasParaCotizar)
+  // Al otro día: la de marcas y modelos vino cortada (sin separador) y la de usos, vacía.
+  guardarTablas('produccion', [archivo('ws_au_marca_modelo.txt', 'basura sin columnas'), archivo('ws_au_usos.txt', '')], 'ftp', true)
+  const despues = estadoDeTablasAtm('produccion')
+  assert.ok(despues.listasParaCotizar, 'se sigue pudiendo cotizar')
+  assert.equal(despues.tablas.find((x) => x.tabla === 'ws_au_marca_modelo')?.filas, antes.tablas.find((x) => x.tabla === 'ws_au_marca_modelo')?.filas)
+  assert.equal(despues.tablas.find((x) => x.tabla === 'ws_au_usos')?.filas, 2)
+  // Las que no vinieron en una bajada completa sí se van (la bajada las reemplaza todas).
+  assert.equal(despues.tablas.find((x) => x.tabla === 'ws_au_infoauto')?.archivo, null)
+  // Sin una anterior que ande, el archivo nuevo queda igual, con su error a la vista.
+  guardarTablas('produccion', [archivo('ws_au_marcas.txt', 'basura sin columnas')], 'archivos', false)
+  assert.match(estadoDeTablasAtm('produccion').tablas.find((x) => x.tabla === 'ws_au_marcas')?.error ?? '', /separador/)
+})
+
+test('ATM: si el cambio de carpeta de las tablas quedó cortado, se recuperan las anteriores', (t) => {
+  const carpeta = carpetaDeTablas(t)
+  guardarTablas('produccion', TABLAS_DE_PRUEBA, 'ftp', true)
+  const vehiculos = estadoDeTablasAtm('produccion').vehiculos
+  // Como si se hubiera cortado la luz entre los dos renombres: las tablas quedaron en «.vieja».
+  renameSync(path.join(carpeta, 'produccion'), path.join(carpeta, 'produccion.vieja'))
+  usarCarpetaDeTablasAtmDePrueba(carpeta) // olvida lo que tenía en memoria
+  assert.equal(estadoDeTablasAtm('produccion').vehiculos, vehiculos)
+  assert.ok(existsSync(path.join(carpeta, 'produccion', 'estado.json')))
+})
+
+test('ATM: si sólo tiene el vehículo con el otro uso, cotiza con ése y lo avisa', async (t) => {
+  const falso = atmFalso(t)
+  const r = await atm.cotizar(conVehiculo({ uso: 'COMERCIAL' }), {})
+  assert.equal(r.estado, 'OK', r.mensaje ?? '')
+  assert.equal(campo(falso, 'bien', 'uso'), '4263', 'el comercial que tiene')
+  assert.ok(!r.avisos.some((a) => /sólo con uso/.test(a)))
+  // Un vehículo que ATM tiene sólo como particular, pedido como comercial.
+  const gol = await atm.cotizar(conVehiculo({ modelo: 'Gol Trend', version: '1.6 Pack I', anio: '2020', uso: 'COMERCIAL' }), {})
+  assert.equal(gol.estado, 'OK', gol.mensaje ?? '')
+  assert.equal(campo(falso, 'bien', 'uso'), '4262')
+  assert.ok(gol.avisos.includes('ATM tiene este vehículo sólo con uso particular: se cotizó con ése.'), gol.avisos.join(' | '))
+  // Elegido a mano, no se avisa: la persona ya lo sabe.
+  const aMano = await atm.cotizar(conVehiculo({ modelo: 'Gol Trend', version: '1.6 Pack I', anio: '2020', uso: 'COMERCIAL' }), { uso: '4262' })
+  assert.ok(!aMano.avisos.some((a) => /sólo con uso/.test(a)))
+})
+
 test('ATM: con rastreo satelital se elige el equipo; si no, se cotiza sin rastreo y se avisa', async (t) => {
   const falso = atmFalso(t)
   const conRastreo = conVehiculo({ rastreo: true })
@@ -1688,6 +1741,13 @@ test('ATM: las localidades del código postal salen de sus tablas, salvo en Capi
   assert.deepEqual(await atm.localidades?.('AUTO', '1870'), ['AVELLANEDA', 'PIÑEYRO'])
   assert.deepEqual(await atm.localidades?.('AUTO', '1000'), [], 'en Capital ATM lista calles, no localidades')
   assert.deepEqual(await atm.localidades?.('AUTO', '9999'), [])
+})
+
+test('ATM: sin tablas, las localidades fallan en vez de decir que no hay ninguna', async (t) => {
+  carpetaDeTablas(t)
+  t.after(() => usarCuentaDeAtmDePrueba(null))
+  usarCuentaDeAtmDePrueba(CUENTA)
+  await assert.rejects(Promise.resolve(atm.localidades?.('AUTO', '1870')), /Faltan las tablas de ATM/)
 })
 
 test('ATM: quien no ve los números de la agencia no recibe la comisión ni en el detalle técnico', async (t) => {

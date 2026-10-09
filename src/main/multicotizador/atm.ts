@@ -321,8 +321,20 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     descripcion: tablas.ivas.find((o) => o.codigo === codigo)?.descripcion || descripcion,
   }))
   for (const otra of tablas.ivas) if (!ivas.some((o) => o.codigo === otra.codigo)) ivas.push(otra)
-  const iva = valido(elegidos.iva, ivas) ?? IVA_ATM[solicitud.tomador.condicionIva]
-  ajustes.push({ campo: 'iva', titulo: 'Condición de IVA', opciones: opcionesDe(ivas), valor: iva, obligatorio: true })
+  // Es del cliente, no de la agencia: lo cambiado a mano vale mientras el formulario diga la misma
+  // condición de IVA. Por eso cada opción lleva adelante la del formulario («CONSUMIDOR_FINAL|EX»): si
+  // ahí se elige otra, lo de antes deja de ser una opción y vuelve a mandar el formulario.
+  const delFormulario = solicitud.tomador.condicionIva
+  const elegidoIva = elegidos.iva?.startsWith(`${delFormulario}|`) ? elegidos.iva.slice(delFormulario.length + 1) : undefined
+  const iva = valido(elegidoIva, ivas) ?? IVA_ATM[delFormulario]
+  ajustes.push({
+    campo: 'iva',
+    titulo: 'Condición de IVA',
+    opciones: ivas.map((o) => ({ valor: `${delFormulario}|${o.codigo}`, texto: o.descripcion })),
+    valor: `${delFormulario}|${iva}`,
+    obligatorio: true,
+    porSolicitud: true,
+  })
   const iibbs = opcionesDeIibb(iva)
   const iibb = iibbs.length > 0 ? (valido(elegidos.iibb, iibbs) ?? iibbPorDefecto(iva)) : ''
   if (iibbs.length > 0) {
@@ -334,6 +346,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
       valor: iibb,
       obligatorio: iva === 'IN' || iva === 'MT',
       dependeDe: 'iva',
+      porSolicitud: true,
     })
   }
 
@@ -350,6 +363,12 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
           })
         : tablas.usos
     uso = valido(elegidos.uso, delVehiculo) ?? usoPorDefecto(vehiculo, tablas.usos, v.uso)
+    // ATM puede tener el vehículo sólo con el otro uso (un utilitario, sólo comercial): se cotiza con
+    // ése, que es el único que acepta, pero a la vista.
+    const tipoDelUso = vehiculo.usos.find((u) => u.codigo === uso)?.tipoUso
+    if (!elegidos.uso && tipoDelUso && tipoDelUso !== TIPO_USO_ATM[v.uso]) {
+      avisos.push(`ATM tiene este vehículo sólo con uso ${tipoDelUso === '2' ? 'comercial' : 'particular'}: se cotizó con ése.`)
+    }
     ajustes.push({
       campo: 'uso',
       titulo: 'Uso en ATM',
@@ -396,6 +415,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
         opciones: opcionesDe(tablas.rastreos),
         valor: rastreo,
         obligatorio: false,
+        porSolicitud: true,
       })
       if (!rastreo) avisos.push('Tiene rastreo satelital: elegí el equipo en los ajustes de ATM para que lo tenga en cuenta. Mientras tanto se cotizó sin rastreo.')
     } else {
@@ -408,7 +428,8 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     { codigo: '1', descripcion: 'Tiene alarma' },
   ]
   const alarma = valido(elegidos.alarma, alarmas) ?? '0'
-  ajustes.push({ campo: 'alarma', titulo: 'Alarma', opciones: opcionesDe(alarmas), valor: alarma, obligatorio: false })
+  // Es del vehículo: no se arrastra a la próxima cotización.
+  ajustes.push({ campo: 'alarma', titulo: 'Alarma', opciones: opcionesDe(alarmas), valor: alarma, obligatorio: false, porSolicitud: true })
 
   const faltan = ajustes.filter((ajuste) => ajuste.obligatorio && !ajuste.valor)
   if (faltan.length > 0 || !plan || !vehiculo) {
@@ -532,7 +553,9 @@ export const atm: CotizadorDeAseguradora = {
     const credenciales = cuentaActual()
     if (!credenciales) return []
     const tablas = tablasEnDisco(credenciales.ambiente)
-    if (!tablas) return []
+    // Sin tablas no es «no hay localidades», es que no se sabe: así, si las otras compañías también
+    // fallan, la pantalla dice por qué en vez de mostrar una lista vacía.
+    if (!tablas) throw new ErrorDeAtm('Faltan las tablas de ATM (API Aseguradoras → ATM).', false)
     // En Capital ATM no lista localidades sino calles con alturas: no sirven para elegir la localidad.
     return localidadesDeAtm(tablas, codigoPostal)
       .filter((l) => !/CAPITAL|C\s*A\s*B\s*A|CIUDAD AUT/i.test(normalizarTexto(l.provincia)))

@@ -453,6 +453,10 @@ export function guardarAtm(datos: unknown): void {
   const config = leerConfig()
   // Con la clave vacía se conserva la que ya estaba: así se cambia el vendedor sin volver a escribirla.
   const escrita = typeof d.clave === 'string' ? d.clave.trim() : ''
+  // La clave guardada es la del usuario guardado: con otro usuario hay que escribir la suya.
+  if (!escrita && config.atm?.usuario && config.atm.usuario !== usuario.trim()) {
+    throw new ErrorDeNegocio('Cambiaste el usuario de ATM: escribí también su clave.')
+  }
   const clave = escrita || config.atm?.clave || ''
   if (!clave) throw new ErrorDeNegocio('Falta la clave de la cuenta de ATM.')
   const vendedor = typeof d.vendedor === 'string' ? d.vendedor.replace(/\s/g, '') : ''
