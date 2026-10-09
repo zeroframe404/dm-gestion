@@ -4887,7 +4887,11 @@ export interface CoberturaCotizadaGaleno {
   descripcionCobertura: string
   prima: number
   bonificacion: number
+  /** El «% Bonificación Prima» que Galeno aplicó, tal cual lo devuelve (`porcBonificacion`). */
+  porcBonificacion?: number
   recargoAdministrativo: number
+  /** El «% RA» que Galeno aplicó, tal cual lo devuelve (`porcRecargoAdministrativo`). */
+  porcRecargoAdministrativo?: number
   recargoFinanciero: number
   derechoEmision: number
   impuestos: number

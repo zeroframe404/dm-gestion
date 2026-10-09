@@ -62,12 +62,14 @@ export async function cotizar(cliente: ClienteGaleno, productorCodigo: string, d
     // cambiar a mano arriba de la grilla («% Bonificación Prima» y «% RA»). Si no se piden, Galeno
     // aplica los suyos por defecto para el legajo y el plan —y la cotización no coincide con la web
     // cuando el productor ahí puso otra cosa—. Con el porcentaje se avisa que se lo modifica ('S') y
-    // se manda el número: los mismos nombres con que la respuesta devuelve cada importe.
+    // se manda el número en `bonificacionPorc` / `recargoAdministrativoPorc` (manual v9.5, puntos 45 a
+    // 48). Ojo: `bonificacion` y `recargoAdministrativo` son los IMPORTES de la respuesta; mandados en el
+    // pedido Galeno los ignora y cotiza con sus porcentajes por defecto.
     modificarBonificacion: datos.bonificacionPorcentaje === undefined ? 'N' : 'S',
     modificarRecargoAdministrativo: datos.recargoAdministrativoPorcentaje === undefined ? 'N' : 'S',
+    bonificacionPorc: datos.bonificacionPorcentaje ?? 0,
+    recargoAdministrativoPorc: datos.recargoAdministrativoPorcentaje ?? 0,
   }
-  if (datos.bonificacionPorcentaje !== undefined) body.bonificacion = datos.bonificacionPorcentaje
-  if (datos.recargoAdministrativoPorcentaje !== undefined) body.recargoAdministrativo = datos.recargoAdministrativoPorcentaje
 
   // El manual permite reemplazar marca/modelo/submodelo por el código único de InfoAuto: si el
   // vehículo ya lo tiene (porque se resolvió del catálogo de InfoAuto que usa dm-gestion), se manda
@@ -129,7 +131,9 @@ export async function cotizar(cliente: ClienteGaleno, productorCodigo: string, d
             descripcionCobertura: typeof x.descripcionCobertura === 'string' ? x.descripcionCobertura : x.cobertura,
             prima: typeof x.prima === 'number' ? x.prima : 0,
             bonificacion: typeof x.bonificacion === 'number' ? x.bonificacion : 0,
+            porcBonificacion: typeof x.porcBonificacion === 'number' ? x.porcBonificacion : undefined,
             recargoAdministrativo: typeof x.recargoAdministrativo === 'number' ? x.recargoAdministrativo : 0,
+            porcRecargoAdministrativo: typeof x.porcRecargoAdministrativo === 'number' ? x.porcRecargoAdministrativo : undefined,
             recargoFinanciero: typeof x.recargoFinanciero === 'number' ? x.recargoFinanciero : 0,
             derechoEmision: typeof x.derechoEmision === 'number' ? x.derechoEmision : 0,
             impuestos: typeof x.impuestos === 'number' ? x.impuestos : 0,

@@ -616,7 +616,10 @@ test('Galeno: la cotización manda el legajo pedido y devuelve el pedido y la re
   // Sin porcentaje elegido, no se modifica nada: Galeno aplica su bonificación y su RA por defecto.
   assert.equal(cuerpos[0]!.modificarBonificacion, 'N')
   assert.equal(cuerpos[0]!.modificarRecargoAdministrativo, 'N')
+  // Los importes de la respuesta no viajan en el pedido; los porcentajes van en 0, como el ejemplo del manual.
   assert.ok(!('bonificacion' in cuerpos[0]!) && !('recargoAdministrativo' in cuerpos[0]!))
+  assert.equal(cuerpos[0]!.bonificacionPorc, 0)
+  assert.equal(cuerpos[0]!.recargoAdministrativoPorc, 0)
   assert.equal(cotizacion.productorCodigo, '79066')
   assert.deepEqual(cotizacion.pedidoEnviado, cuerpos[0])
   assert.deepEqual(cotizacion.respuestaDeGaleno, respuesta)
@@ -657,15 +660,17 @@ test('Galeno: la bonificación y el RA elegidos viajan como «modificar» más e
   }
   await cotizarEnGaleno(cliente, '79066', { ...datos, bonificacionPorcentaje: 40 })
   assert.equal(cuerpos[0]!.modificarBonificacion, 'S')
-  assert.equal(cuerpos[0]!.bonificacion, 40)
+  // Los nombres del manual v9.5 (puntos 47 y 48): `bonificacion` / `recargoAdministrativo` son importes.
+  assert.equal(cuerpos[0]!.bonificacionPorc, 40)
+  assert.ok(!('bonificacion' in cuerpos[0]!))
   assert.equal(cuerpos[0]!.modificarRecargoAdministrativo, 'N', 'el RA no se pidió: queda el de Galeno')
   assert.ok(!('recargoAdministrativo' in cuerpos[0]!))
 
   await cotizarEnGaleno(cliente, '79066', { ...datos, bonificacionPorcentaje: 0, recargoAdministrativoPorcentaje: 25 })
   assert.equal(cuerpos[1]!.modificarBonificacion, 'S', 'cero por ciento también es una elección')
-  assert.equal(cuerpos[1]!.bonificacion, 0)
+  assert.equal(cuerpos[1]!.bonificacionPorc, 0)
   assert.equal(cuerpos[1]!.modificarRecargoAdministrativo, 'S')
-  assert.equal(cuerpos[1]!.recargoAdministrativo, 25)
+  assert.equal(cuerpos[1]!.recargoAdministrativoPorc, 25)
 
   // La cláusula de ajuste y los ingresos brutos: lo que la web de Galeno pide en su formulario.
   await cotizarEnGaleno(cliente, '79066', { ...datos, clausulaAjusteCodigo: '10', tomadorIIBBCodigo: 'CF' })
@@ -680,6 +685,11 @@ test('multicotizador: los porcentajes que Galeno aplicó se leen de los importes
   assert.deepEqual(porcentajesAplicados({ prima: 100_000, bonificacion: 12_500, recargoAdministrativo: 0 }), { bonificacion: 12.5, recargoAdministrativo: 0 })
   assert.deepEqual(porcentajesAplicados({ prima: 0, bonificacion: 0, recargoAdministrativo: 0 }), { bonificacion: null, recargoAdministrativo: null })
   assert.deepEqual(porcentajesAplicados({ prima: 100, bonificacion: 100, recargoAdministrativo: 5 }), { bonificacion: 100, recargoAdministrativo: null })
+  // Si Galeno devuelve los porcentajes (`porcBonificacion`, `porcRecargoAdministrativo`), ésos mandan.
+  assert.deepEqual(
+    porcentajesAplicados({ prima: 3448.27, bonificacion: 0, recargoAdministrativo: 862.07, porcBonificacion: 0, porcRecargoAdministrativo: 25 }),
+    { bonificacion: 0, recargoAdministrativo: 25 },
+  )
 
   const bonificaciones = opcionesDePorcentaje(60, 5)
   assert.equal(bonificaciones.length, 13)

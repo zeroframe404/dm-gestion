@@ -115,15 +115,28 @@ export function opcionesDePorcentaje(hasta: number, paso: number): AjusteDeAsegu
  * sobre la prima, y el recargo administrativo sobre la prima ya bonificada (así los calcula su web).
  * `null` cuando la cobertura no trae con qué calcularlo.
  */
-export function porcentajesAplicados(cobertura: { prima: number; bonificacion: number; recargoAdministrativo: number }): {
+export function porcentajesAplicados(cobertura: {
+  prima: number
+  bonificacion: number
+  recargoAdministrativo: number
+  porcBonificacion?: number
+  porcRecargoAdministrativo?: number
+}): {
   bonificacion: number | null
   recargoAdministrativo: number | null
 } {
   const redondeado = (n: number) => Math.round(n * 100) / 100
-  if (!(cobertura.prima > 0)) return { bonificacion: null, recargoAdministrativo: null }
-  const bonificacion = redondeado((cobertura.bonificacion / cobertura.prima) * 100)
+  // Si Galeno devuelve los porcentajes (`porcBonificacion`, `porcRecargoAdministrativo`), ésos mandan.
+  const calculables = cobertura.prima > 0
   const base = cobertura.prima - cobertura.bonificacion
-  const recargoAdministrativo = base > 0 ? redondeado((cobertura.recargoAdministrativo / base) * 100) : null
+  const bonificacion =
+    cobertura.porcBonificacion !== undefined ? cobertura.porcBonificacion : calculables ? redondeado((cobertura.bonificacion / cobertura.prima) * 100) : null
+  const recargoAdministrativo =
+    cobertura.porcRecargoAdministrativo !== undefined
+      ? cobertura.porcRecargoAdministrativo
+      : calculables && base > 0
+        ? redondeado((cobertura.recargoAdministrativo / base) * 100)
+        : null
   return { bonificacion, recargoAdministrativo }
 }
 
