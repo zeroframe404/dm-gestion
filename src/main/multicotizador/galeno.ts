@@ -541,6 +541,11 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     .filter(Boolean)
     .join(', ')
 
+  // Cuántas cuotas tiene la condición de pago elegida («3 CUOTAS» → 3). Sirve para mostrar el valor de
+  // cada cuota cuando Galeno no lo devuelve, en vez de tener que dividir el premio a mano.
+  const cantidadDeCuotas = Number(/\d+/.exec(textoDe(condiciones, condicion))?.[0] ?? 0)
+  const enCuotas = (premio: number) => (cantidadDeCuotas > 0 && premio > 0 ? Math.round((premio / cantidadDeCuotas) * 100) / 100 : null)
+
   const coberturas: CoberturaCotizada[] = cotizacion.coberturas.map((c, indice) => ({
     aseguradora: ID,
     nombreAseguradora: NOMBRE,
@@ -549,8 +554,8 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     categoria: categoriaDeCobertura(c.descripcionCobertura, c.cobertura),
     premio: c.premio,
     prima: c.prima,
-    primeraCuota: c.importeCuota1 > 0 ? c.importeCuota1 : null,
-    cuota: c.importeRestoCuotas > 0 ? c.importeRestoCuotas : null,
+    primeraCuota: c.importeCuota1 > 0 ? c.importeCuota1 : enCuotas(c.premio),
+    cuota: c.importeRestoCuotas > 0 ? c.importeRestoCuotas : c.importeCuota1 > 0 ? c.importeCuota1 : enCuotas(c.premio),
     franquicia: c.franquicia,
     adicionales: c.listaAdicionales.filter((adicional) => adicional.trim()),
     comision: c.comision,
@@ -572,10 +577,15 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
         : null,
   }))
 
-  const avisos = [
-    ...cotizacion.excepciones.map((excepcion) => excepcion.detalle || excepcion.observaciones || '').filter((aviso) => aviso.trim()),
-    ...(cotizacion.errores ?? []),
-  ]
+  // Las excepciones de Galeno son, casi siempre, las coberturas del plan que no ofrece para este
+  // vehículo (una línea por cobertura y repetidas): ruido al lado de las que sí cotizó. Sólo se
+  // muestran cuando no devolvió ninguna cobertura, porque ahí explican el porqué. Siguen en la
+  // respuesta cruda del detalle técnico.
+  const excepciones =
+    coberturas.length === 0
+      ? cotizacion.excepciones.map((excepcion) => (excepcion.detalle || excepcion.observaciones || '').trim()).filter(Boolean)
+      : []
+  const avisos = [...new Set([...excepciones, ...(cotizacion.errores ?? [])])]
 
   return {
     estado: 'OK',
