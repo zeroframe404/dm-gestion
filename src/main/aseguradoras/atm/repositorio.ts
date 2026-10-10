@@ -327,7 +327,10 @@ function motivoDeFtp(error: unknown, cuenta: CuentaAtm): string {
 async function conectar(cuenta: CuentaAtm): Promise<Client> {
   const { host, puerto } = FTP_ATM[cuenta.ambiente]
   const intentar = async (secure: boolean): Promise<Client> => {
-    const cliente = new Client(ESPERA_FTP_MS)
+    // El FTP de ATM está detrás de un NAT: en modo pasivo anuncia su IP interna (172.17.x.x) y no la
+    // pública. Con esta opción basic-ftp, al ver una IP privada, abre los datos contra la misma IP de la
+    // conexión de control; sin ella corta con «PASV returned another host».
+    const cliente = new Client(ESPERA_FTP_MS, { allowSeparateTransferHost: true })
     try {
       await cliente.access({ host, port: puerto, user: cuenta.usuario, password: cuenta.clave, secure, secureOptions: { servername: host } })
       return cliente
