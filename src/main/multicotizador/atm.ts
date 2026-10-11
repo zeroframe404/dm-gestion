@@ -20,7 +20,7 @@ import {
 import type { TipoDeVehiculo } from '../../shared/tipos'
 import { SECCION_ATM, planesAtm, vendedoresAtm, type PlanAtm } from '../aseguradoras/atm/catalogos'
 import { crearClienteAtm, ErrorDeAtm, type ClienteAtm, type CuentaAtm } from '../aseguradoras/atm/cliente'
-import { cotizarAtm, type CoberturaAtm } from '../aseguradoras/atm/cotizacion'
+import { cotizarAtm, type CoberturaAtm, type DatosDeCotizacionAtm } from '../aseguradoras/atm/cotizacion'
 import { tablasParaCotizar, tablasEnDisco } from '../aseguradoras/atm/repositorio'
 import { localidadesDeAtm, marcasDeAtm, versionesDeAtm, type OpcionAtm, type TablasAtm, type VehiculoAtm } from '../aseguradoras/atm/tablas'
 import { credencialesAtm } from '../servicios/config'
@@ -173,13 +173,42 @@ export function franquiciaDe(descripcion: string): string {
 export function consejoParaElRechazo(mensaje: string, anio: string): string | null {
   const texto = normalizarTexto(mensaje)
   if (/RELACION VEHICULO ANO/.test(texto)) return `ATM no tiene esa versión para el año ${anio}: probá con otra versión en los ajustes de ATM.`
-  if (/NO TIENE REGISTRADO EL VEHICULO/.test(texto)) return 'Probá con otra versión o con otro uso en los ajustes de ATM.'
+  if (/NO TIENE REGISTRADO EL VEHICULO/.test(texto)) return 'ATM no tiene dada de alta esa versión: elegí otra en «Versión en ATM» (en «Más ajustes de ATM»).'
   if (/USUARIO INEXISTENTE|USUARIO NO ES VALIDO/.test(texto)) return 'Revisá el usuario y la clave en API Aseguradoras → ATM.'
   if (/VENDEDOR/.test(texto)) return 'Revisá el código de vendedor en API Aseguradoras → ATM.'
   if (/CONDICION IMPOSITIVA/.test(texto)) return 'Revisá «Ingresos brutos» en los ajustes de ATM.'
   if (/CONDICION DE IVA Y TIPO DE PERSONA/.test(texto)) return 'Una persona jurídica no puede ser consumidor final: cambiá la condición de IVA.'
   if (/NO EXISTEN COBERTURAS/.test(texto)) return 'ATM no tiene productos para ese código postal o ese vehículo.'
   return null
+}
+
+function esVehiculoNoRegistrado(mensaje: string): boolean {
+  return /NO TIENE REGISTRADO EL VEHICULO/.test(normalizarTexto(mensaje))
+}
+
+export interface IntentoAtm {
+  codigo: string
+  uso: string
+}
+
+/** Hasta cuántas veces se le pregunta a ATM por el mismo vehículo (cada cotización tarda segundos). */
+const MAXIMO_DE_INTENTOS = 3
+
+/**
+ * Con qué código y uso se cotiza, en orden: primero lo elegido; si ATM dice que no tiene el vehículo,
+ * el código como vino en sus tablas y, si el uso no se eligió a mano, los otros usos del mismo tipo.
+ */
+export function intentosDeCotizacion(vehiculo: VehiculoAtm, uso: string, probarOtrosUsos: boolean): IntentoAtm[] {
+  const intentos: IntentoAtm[] = [{ codigo: vehiculo.codigoInfoAuto, uso }]
+  const agregar = (intento: IntentoAtm) => {
+    if (!intentos.some((i) => i.codigo === intento.codigo && i.uso === intento.uso)) intentos.push(intento)
+  }
+  for (const codigo of vehiculo.codigosEnTablas) agregar({ codigo, uso })
+  if (probarOtrosUsos) {
+    const tipo = vehiculo.usos.find((u) => u.codigo === uso)?.tipoUso
+    for (const otro of vehiculo.usos) if (otro.tipoUso === tipo) agregar({ codigo: vehiculo.codigoInfoAuto, uso: otro.codigo })
+  }
+  return intentos.slice(0, MAXIMO_DE_INTENTOS)
 }
 
 // --- Los ajustes --------------------------------------------------------------------------------------
@@ -445,7 +474,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
 
   const anio = Number(v.anio)
   const sumaDeAtm = vehiculo.sumas?.get(anio) ?? null
-  const cotizacion = await cotizarAtm(cliente, {
+  const datosDelPedido = (intento: IntentoAtm): DatosDeCotizacionAtm => ({
     vendedor,
     plan: plan.codigo,
     persona: solicitud.tomador.tipoPersona === 'JURIDICA' ? 'J' : 'F',
@@ -453,11 +482,11 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     codigoIIBB: iibb,
     bonificacion: bonificacion ? Number(bonificacion) : undefined,
     seccion: SECCION_ATM[tipo],
-    codigoInfoAuto: vehiculo.codigoInfoAuto,
+    codigoInfoAuto: intento.codigo,
     anio: v.anio,
     ceroKm: v.ceroKm,
     sumaAsegurada: v.sumaAsegurada ?? undefined,
-    uso: esAuto ? uso : undefined,
+    uso: esAuto ? intento.uso : undefined,
     tipoUso: esAuto ? undefined : TIPO_USO_ATM[v.uso],
     codigoPostal: solicitud.codigoPostal,
     subCodigoPostal: subCodigoPostal || undefined,
@@ -466,8 +495,30 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     alarma: alarma === '1',
     gnc: v.gnc,
   })
+  // «No tiene registrado el vehículo»: ATM no encuentra ese código de InfoAuto con ese uso. Antes de
+  // rendirse se prueba con el código como vino en sus tablas (con los ceros de adelante) y, si el uso no
+  // se eligió a mano, con los otros usos del mismo tipo que las tablas le dan al vehículo.
+  const intentos = intentosDeCotizacion(vehiculo, uso, esAuto && !elegidos.uso)
+  let intento = intentos[0]!
+  let cotizacion = await cotizarAtm(cliente, datosDelPedido(intento))
+  for (const otro of intentos.slice(1)) {
+    if (cotizacion.ok || !cotizacion.mensajes.some(esVehiculoNoRegistrado)) break
+    const otra = await cotizarAtm(cliente, datosDelPedido(otro))
+    // Si el otro intento falla por otra cosa, se muestra ése: dice más que «no registrado».
+    if (otra.ok || !otra.mensajes.some(esVehiculoNoRegistrado)) {
+      intento = otro
+      cotizacion = otra
+    }
+  }
+  if (cotizacion.ok && intento.uso !== uso) {
+    const nombreDelUso = (codigo: string) => tablas.usos.find((o) => o.codigo === codigo)?.descripcion ?? codigo
+    avisos.push(`ATM no tiene este vehículo con el uso «${nombreDelUso(uso)}»: se cotizó con «${nombreDelUso(intento.uso)}».`)
+    uso = intento.uso
+    const ajusteDeUso = ajustes.find((a) => a.campo === 'uso')
+    if (ajusteDeUso) ajusteDeUso.valor = uso
+  }
 
-  const descripcionVehiculo = `${vehiculo.marca} ${vehiculo.modelo} ${v.anio} (InfoAuto ${vehiculo.codigoInfoAuto})`
+  const descripcionVehiculo = `${vehiculo.marca} ${vehiculo.modelo} ${v.anio} (InfoAuto ${intento.codigo})`
   const detalleTecnico = {
     ambiente: cuenta.ambiente,
     vendedor,

@@ -71,6 +71,7 @@ import {
   textoDePlan,
   usarCuentaDeAtmDePrueba,
   usoPorDefecto,
+  intentosDeCotizacion,
 } from '../src/main/multicotizador/atm'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora } from '../src/main/servicios/multicotizador'
 import { enPesos, type CondicionIva, type SolicitudDeCotizacion } from '../src/shared/multicotizador'
@@ -273,7 +274,7 @@ const MARCA_MODELO = [
   'cod_marca;marca;cod_modelo;modelo;tau_codia;cod_uso;tipo_uso',
   '1;VOLKSWAGEN;10;TIGUAN 2.0 TSI 4MOTION;460711;4262;1',
   '1;VOLKSWAGEN;10;TIGUAN 2.0 TSI 4MOTION;460711;4263;2',
-  '1;VOLKSWAGEN;11;TIGUAN 2.0 TSI EXCLUSIVE;460712;4262;1',
+  '1;VOLKSWAGEN;11;TIGUAN 2.0 TSI EXCLUSIVE;0460712;4262;1',
   '1;VOLKSWAGEN;12;GOL TREND 1.6 PACK I;460100;4262;1',
   '2;HONDA;20;CG 150 TITAN;9900131;;1',
 ].join('\r\n')
@@ -1010,6 +1011,16 @@ test('ATM: el catálogo junta marcas y modelos con InfoAuto y las marcas por có
   assert.equal(honda.sumas, null, 'sin fila de InfoAuto no se sabe la suma')
   const ford = tablas.vehiculos[2]!
   assert.deepEqual([ford.marca, ford.modelo, ford.seccion, ford.usos], ['FORD', 'KA 1.5 S', null, []])
+  assert.deepEqual(
+    tablas.vehiculos.map((v) => [v.codigoInfoAuto, v.registrado, v.codigosEnTablas]),
+    [
+      ['460711', true, ['0460711']],
+      ['9900131', true, []],
+      ['170001', false, ['0170001']],
+      ['460999', false, []],
+    ],
+    'registradas las de marcas y modelos; el código como vino, para reintentar',
+  )
 
   assert.deepEqual(tablas.localidades, [
     { codigoPostal: '1870', subCodigoPostal: '1', localidad: 'AVELLANEDA', provincia: 'BUENOS AIRES' },
@@ -1029,7 +1040,8 @@ test('ATM: el catálogo junta marcas y modelos con InfoAuto y las marcas por có
   // Versiones: de esa marca y sección y, si se saben las sumas, sólo las que ATM tiene para ese año.
   const versiones = (seccion: '3' | '4', marca: string, anio: number) => versionesDeAtm(tablas, seccion, marca, anio).map((v) => v.modelo)
   assert.deepEqual(versiones('3', 'volkswagen', 2012), ['TIGUAN 2.0 TSI'])
-  assert.deepEqual(versiones('3', 'VOLKSWAGEN', 2020), ['AMAROK 2.0'])
+  assert.deepEqual(versiones('3', 'VOLKSWAGEN', 2020), [], 'la Amarok sólo está en InfoAuto: ATM no la tiene dada de alta')
+  assert.deepEqual(versiones('3', 'FORD', 2020), ['KA 1.5 S'], 'una marca que sólo está en InfoAuto, con lo que hay')
   assert.deepEqual(versiones('3', 'VOLKSWAGEN', 2005), [])
   assert.deepEqual(versiones('3', 'HONDA', 2020), [], 'una marca de motos no tiene versiones de autos')
   assert.deepEqual(versiones('4', 'Honda', 1990), ['CG 150 TITAN'], 'sin sumas, cualquier año')
@@ -1291,7 +1303,7 @@ test('ATM: IVA e ingresos brutos con los códigos que ATM acepta', () => {
 })
 
 test('ATM: el uso por defecto sale del vehículo y, si no lo dice, del nombre del uso', () => {
-  const vehiculo = (usos: VehiculoAtm['usos']): VehiculoAtm => ({ codigoInfoAuto: '460711', marca: 'VW', modelo: 'TIGUAN', seccion: '3', usos, sumas: null })
+  const vehiculo = (usos: VehiculoAtm['usos']): VehiculoAtm => ({ codigoInfoAuto: '460711', marca: 'VW', modelo: 'TIGUAN', seccion: '3', usos, sumas: null, registrado: true, codigosEnTablas: [] })
   const usos = [
     { codigo: '4262', descripcion: 'PARTICULAR' },
     { codigo: '4263', descripcion: 'COMERCIAL / TRABAJO' },
@@ -1336,7 +1348,7 @@ test('ATM: las cuotas y los consejos para los rechazos', () => {
 
   const consejo = (mensaje: string) => consejoParaElRechazo(mensaje, '2012')
   assert.equal(consejo('La relación vehículo - año de fabricación no es válida'), 'ATM no tiene esa versión para el año 2012: probá con otra versión en los ajustes de ATM.')
-  assert.match(consejo('ATM no tiene registrado el vehiculo que intenta cotizar') ?? '', /otra versión o con otro uso/)
+  assert.match(consejo('ATM no tiene registrado el vehiculo que intenta cotizar') ?? '', /elegí otra en «Versión en ATM»/)
   assert.match(consejo('Usuario Inexistente') ?? '', /usuario y la clave en API Aseguradoras/)
   assert.match(consejo('Vendedor inválido') ?? '', /código de vendedor/)
   assert.match(consejo('La condición impositiva ingresada no es válida') ?? '', /Ingresos brutos/)
@@ -1629,6 +1641,61 @@ test('ATM: un rechazo vuelve como error con el motivo y qué tocar, sin perder l
   assert.ok(r.ajustes.some((a) => a.campo === 'version' && a.valor === '460711'), 'para cambiar la versión desde la tarjeta')
   assert.equal(r.descripcionVehiculo, 'VOLKSWAGEN TIGUAN 2.0 TSI 4MOTION 2012 (InfoAuto 460711)')
   assert.ok((r.detalleTecnico as { pedido: string }).pedido.includes('<cod_infoauto>460711</cod_infoauto>'))
+})
+
+test('ATM: si ATM no tiene registrado el vehículo, reintenta con el código como vino en sus tablas', async (t) => {
+  const noRegistrado = respuestaSoap(autoRechazado('ATM no tiene registrado el vehiculo que intenta cotizar'))
+  const falso = atmFalso(t, { contestar: (docIn) => (hijo(hijo(docIn, 'bien'), 'cod_infoauto')?.texto === '460712' ? noRegistrado : RESPUESTA_REAL) })
+  const r = await atm.cotizar(resuelta(), { version: '460712' })
+  assert.equal(r.estado, 'OK', r.mensaje ?? '')
+  assert.deepEqual(
+    falso.cotizados.map((docIn) => hijo(hijo(docIn, 'bien'), 'cod_infoauto')?.texto),
+    ['460712', '0460712'],
+  )
+  assert.ok(r.descripcionVehiculo.endsWith('(InfoAuto 0460712)'))
+
+  // Si tampoco así, el rechazo con qué tocar, sin preguntarle más veces.
+  const siempre = atmFalso(t, { contestar: () => noRegistrado })
+  const error = await atm.cotizar(resuelta(), { version: '460712' })
+  assert.equal(error.estado, 'ERROR')
+  assert.equal(siempre.cotizados.length, 2)
+  assert.equal(
+    error.mensaje,
+    'ATM no cotizó: ATM no tiene registrado el vehiculo que intenta cotizar. ATM no tiene dada de alta esa versión: elegí otra en «Versión en ATM» (en «Más ajustes de ATM»).',
+  )
+
+  // Otro rechazo no se reintenta.
+  const otro = atmFalso(t, { contestar: () => respuestaSoap(autoRechazado('Debe informar el uso')) })
+  assert.equal((await atm.cotizar(resuelta(), { version: '460712' })).estado, 'ERROR')
+  assert.equal(otro.cotizados.length, 1)
+})
+
+test('ATM: los intentos de cotización prueban el código como vino y los otros usos del mismo tipo', () => {
+  const vehiculo: VehiculoAtm = {
+    codigoInfoAuto: '59915',
+    marca: 'FIAT',
+    modelo: 'CRONOS 1.3 ATTRACTIVE',
+    seccion: '3',
+    usos: [
+      { codigo: '1', tipoUso: '1' },
+      { codigo: '2', tipoUso: '2' },
+      { codigo: '3', tipoUso: '1' },
+      { codigo: '4', tipoUso: '1' },
+    ],
+    sumas: null,
+    registrado: true,
+    codigosEnTablas: ['0059915'],
+  }
+  assert.deepEqual(intentosDeCotizacion(vehiculo, '1', true), [
+    { codigo: '59915', uso: '1' },
+    { codigo: '0059915', uso: '1' },
+    { codigo: '59915', uso: '3' },
+  ])
+  assert.deepEqual(intentosDeCotizacion(vehiculo, '1', false), [
+    { codigo: '59915', uso: '1' },
+    { codigo: '0059915', uso: '1' },
+  ], 'un uso elegido a mano no se cambia')
+  assert.deepEqual(intentosDeCotizacion({ ...vehiculo, codigosEnTablas: [] }, '2', true), [{ codigo: '59915', uso: '2' }])
 })
 
 test('ATM: una cuenta que ATM no acepta vuelve como error en su tarjeta', async (t) => {
