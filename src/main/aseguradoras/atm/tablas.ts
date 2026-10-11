@@ -293,6 +293,14 @@ export interface VehiculoAtm {
   usos: Array<{ codigo: string; tipoUso: string }>
   /** Año → suma asegurada que usa ATM. Null si no se tiene la tabla de InfoAuto. */
   sumas: Map<number, number> | null
+  /**
+   * true si está en `ws_au_marca_modelo`: los vehículos que ATM tiene dados de alta. Los que sólo
+   * figuran en la de InfoAuto (la tabla de precios entera) ATM los rechaza con «no tiene registrado el
+   * vehículo que intenta cotizar».
+   */
+  registrado: boolean
+  /** El código como vino en las tablas («0059915») cuando no es igual a `codigoInfoAuto`: para reintentar. */
+  codigosEnTablas: string[]
 }
 
 export interface LocalidadAtm {
@@ -385,9 +393,13 @@ export function armarTablas(filas: Partial<Record<TablaAtm, FilaDeTabla[]>>): Ta
         seccion: seccionPorMarca.get(codigoSinCeros(fila.cod_marca)) ?? null,
         usos: [],
         sumas: deInfoAuto ? sumasDeInfoAuto(deInfoAuto) : null,
+        registrado: true,
+        codigosEnTablas: [],
       }
       vehiculos.set(codia, vehiculo)
     }
+    const comoVino = (fila.tau_codia ?? '').trim()
+    if (comoVino !== codia && !vehiculo.codigosEnTablas.includes(comoVino)) vehiculo.codigosEnTablas.push(comoVino)
     const uso = { codigo: (fila.cod_uso ?? '').trim(), tipoUso: codigoSinCeros(fila.tipo_uso) }
     if (uso.codigo && !vehiculo.usos.some((u) => u.codigo === uso.codigo)) vehiculo.usos.push(uso)
   }
@@ -395,6 +407,7 @@ export function armarTablas(filas: Partial<Record<TablaAtm, FilaDeTabla[]>>): Ta
   // las motos (que no llevan código de uso) y, con la lista de usos, para los autos.
   for (const [codia, fila] of infoauto) {
     if (vehiculos.has(codia)) continue
+    const comoVino = (fila.tau_codia ?? '').trim()
     vehiculos.set(codia, {
       codigoInfoAuto: codia,
       marca: (fila.tau_marca ?? '').trim(),
@@ -402,6 +415,8 @@ export function armarTablas(filas: Partial<Record<TablaAtm, FilaDeTabla[]>>): Ta
       seccion: null,
       usos: [],
       sumas: sumasDeInfoAuto(fila),
+      registrado: false,
+      codigosEnTablas: comoVino !== codia ? [comoVino] : [],
     })
   }
 
@@ -439,12 +454,19 @@ export function marcasDeAtm(tablas: TablasAtm, seccion: '3' | '4'): string[] {
  * Las versiones de una marca para esa sección y ese año. Si se tienen las sumas de InfoAuto, sólo las
  * que ATM tiene para ese año: cotizar un año que no tiene da «La relación vehículo - año de fabricación
  * no es válida». Con `anio` null, todas las de la marca.
+ *
+ * Si la marca está en la tabla de marcas y modelos, sólo las versiones dadas de alta ahí: las que nada
+ * más figuran en la de InfoAuto ATM no las cotiza («no tiene registrado el vehículo»). Si no está (sin
+ * esa tabla, o una marca que sólo trae la de InfoAuto), las de InfoAuto, que es lo que hay.
  */
 export function versionesDeAtm(tablas: TablasAtm, seccion: '3' | '4', marca: string, anio: number | null): VehiculoAtm[] {
   const buscada = normalizarTexto(marca)
-  return tablas.vehiculos
+  const deLaMarca = tablas.vehiculos
     .filter((vehiculo) => normalizarTexto(vehiculo.marca) === buscada)
     .filter((vehiculo) => !vehiculo.seccion || vehiculo.seccion === seccion)
+  const hayRegistradas = deLaMarca.some((vehiculo) => vehiculo.registrado)
+  return deLaMarca
+    .filter((vehiculo) => !hayRegistradas || vehiculo.registrado)
     .filter((vehiculo) => anio === null || !vehiculo.sumas || vehiculo.sumas.size === 0 || vehiculo.sumas.has(anio))
     .sort((a, b) => a.modelo.localeCompare(b.modelo, 'es'))
 }
