@@ -2066,6 +2066,24 @@ export const MIGRACIONES: Migracion[] = [
       CREATE UNIQUE INDEX idx_renovaciones_poliza ON renovaciones (poliza_id, vence_el);
     `,
   },
+  {
+    version: 39,
+    descripcion: 'Multicotizador: equivalencias del vehículo del catálogo con el código de cada aseguradora',
+    // El catálogo del formulario es el de Galeno; ATM identifica el vehículo por su código de InfoAuto.
+    // Lo que se elige a mano en «Versión en ATM» (o lo que ATM cotizó sin dudas) queda acá, por código
+    // del catálogo: la próxima vez ese vehículo va directo, sin volver a adivinar por el nombre.
+    sql: `
+      CREATE TABLE equivalencias_vehiculos (
+        aseguradora TEXT NOT NULL,
+        catalogo_codigo TEXT NOT NULL,
+        codigo TEXT NOT NULL,
+        origen TEXT NOT NULL CHECK (origen IN ('MANUAL', 'AUTOMATICA')),
+        descripcion TEXT,
+        actualizado_en TEXT NOT NULL,
+        PRIMARY KEY (aseguradora, catalogo_codigo)
+      );
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {
