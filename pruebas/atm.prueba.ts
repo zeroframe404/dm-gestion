@@ -61,6 +61,8 @@ import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
 import {
   alternativasDeVersion,
   atm,
+  masParecida,
+  textoParaBuscar,
   avisoDeOtraVersion,
   consejoParaElRechazo,
   cuotasDe,
@@ -78,6 +80,8 @@ import {
   intentosDeCotizacion,
 } from '../src/main/multicotizador/atm'
 import { rankear } from '../src/main/multicotizador/equivalencias'
+import { equivalenciaGuardada } from '../src/main/multicotizador/equivalenciasGuardadas'
+import { abrirBaseDeDatos, cerrarBaseDeDatos } from '../src/main/db/base'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora } from '../src/main/servicios/multicotizador'
 import { enPesos, type CondicionIva, type SolicitudDeCotizacion } from '../src/shared/multicotizador'
 
@@ -1577,16 +1581,16 @@ test('ATM: la condición de IVA va con el código de ATM y los ingresos brutos q
   assert.equal(campo(falso, 'asegurado', 'persona'), 'J')
 })
 
-test('ATM: ante dos versiones parecidas pregunta en vez de adivinar, y con la elegida cotiza', async (t) => {
+test('ATM: ante dos versiones parecidas cotiza con la más parecida avisando, y con la elegida cotiza', async (t) => {
   const falso = atmFalso(t)
   const dudosa = conVehiculo({ version: '2.0 TSI' })
   const r = await atm.cotizar(dudosa, {})
-  assert.equal(r.estado, 'FALTAN_DATOS')
-  assert.equal(r.mensaje, 'Para cotizar, elegí: versión en atm.')
-  assert.deepEqual(r.coberturas, [])
-  assert.equal(falso.cotizados.length, 0, 'no se cotiza otro vehículo')
+  assert.equal(r.estado, 'OK', r.mensaje ?? '')
+  assert.equal(falso.cotizados.length, 1)
   const version = r.ajustes.find((a) => a.campo === 'version')!
-  assert.equal(version.valor, '')
+  assert.ok(['460711', '460712'].includes(version.valor))
+  assert.ok(r.avisos.some((a) => a.startsWith('ATM tiene varias versiones parecidas: se cotizó con la más parecida')), r.avisos.join(' | '))
+  assert.equal(r.revisar, 'version', 'abre los ajustes para que se vea')
   assert.equal(version.obligatorio, true)
   assert.equal(version.porSolicitud, true)
   assert.equal(version.dependeDe, 'marca')
@@ -1608,7 +1612,7 @@ test('ATM: ante dos versiones parecidas pregunta en vez de adivinar, y con la el
   const sinAnio = await atm.cotizar(conVehiculo({ anio: '1995' }), {})
   assert.equal(sinAnio.estado, 'FALTAN_DATOS')
   assert.equal(sinAnio.ajustes.find((a) => a.campo === 'version')?.ayuda, 'ATM no tiene versiones de VOLKSWAGEN para el año 1995.')
-  assert.equal(falso.cotizados.length, 1)
+  assert.equal(falso.cotizados.length, 2)
 })
 
 test('ATM: un 0 km sin suma todavía en sus tablas ofrece todas las versiones de la marca; un año viejo, ninguna', async (t) => {
@@ -1744,6 +1748,49 @@ test('ATM: elegida a mano no se cambia de versión, y si no tiene ninguna lo dic
   assert.ok(version.opciones.every((o) => o.texto.endsWith(' · ATM no la tiene')))
 })
 
+test('ATM: la versión elegida para un vehículo del catálogo queda recordada (tabla de equivalencias)', async (t) => {
+  const registrar = console.log
+  console.log = () => undefined
+  abrirBaseDeDatos(':memory:')
+  console.log = registrar
+  t.after(() => cerrarBaseDeDatos())
+  const noRegistrado = respuestaSoap(autoRechazado('ATM no tiene registrado el vehiculo que intenta cotizar'))
+  let rechazar = ''
+  const falso = atmFalso(t, { contestar: (docIn) => (rechazar && codigoSinCeros(hijo(hijo(docIn, 'bien'), 'cod_infoauto')?.texto) === rechazar ? noRegistrado : RESPUESTA_REAL) })
+  const dudosa = conVehiculo({ version: '2.0 TSI', codigoCatalogo: 'GALENO:4:10:20:30' })
+
+  // Con dudas cotiza la más parecida, pero eso no se recuerda: es una suposición.
+  const adivinada = await atm.cotizar(dudosa, {})
+  assert.equal(adivinada.estado, 'OK', adivinada.mensaje ?? '')
+  assert.equal(equivalenciaGuardada('ATM', 'GALENO:4:10:20:30'), null)
+
+  // Elegida a mano, queda; la próxima vez va directo, sin dudas ni aviso.
+  await atm.cotizar(dudosa, { version: '460712' })
+  assert.deepEqual(equivalenciaGuardada('ATM', 'GALENO:4:10:20:30'), { codigo: '460712', origen: 'MANUAL' })
+  const recordada = await atm.cotizar(dudosa, {})
+  assert.equal(recordada.estado, 'OK', recordada.mensaje ?? '')
+  assert.equal(campo(falso, 'bien', 'cod_infoauto'), '460712')
+  assert.equal(recordada.ajustes.find((a) => a.campo === 'version')?.valor, '460712')
+  assert.ok(!recordada.avisos.some((a) => a.includes('varias versiones parecidas')), recordada.avisos.join(' | '))
+  assert.equal(recordada.revisar, undefined)
+
+  // Si ATM después dice que no la tiene, se olvida.
+  rechazar = '460712'
+  await atm.cotizar(dudosa, {})
+  assert.equal(equivalenciaGuardada('ATM', 'GALENO:4:10:20:30'), null)
+
+  // Sin dudas y cotizada, también queda; y una elegida a mano la reemplaza.
+  rechazar = ''
+  olvidarRechazosDeAtm()
+  const clara = conVehiculo({ codigoCatalogo: 'GALENO:4:10:20:31' })
+  await atm.cotizar(clara, {})
+  assert.deepEqual(equivalenciaGuardada('ATM', 'GALENO:4:10:20:31'), { codigo: '460711', origen: 'AUTOMATICA' })
+  await atm.cotizar(clara, { version: '460712' })
+  assert.deepEqual(equivalenciaGuardada('ATM', 'GALENO:4:10:20:31'), { codigo: '460712', origen: 'MANUAL' })
+  await atm.cotizar(conVehiculo({ codigoCatalogo: 'GALENO:4:10:20:31' }), {})
+  assert.equal(campo(falso, 'bien', 'cod_infoauto'), '460712', 'lo elegido a mano gana a lo que diría el nombre')
+})
+
 test('ATM: las versiones que se prueban cuando ATM no tiene la elegida son del mismo modelo y dadas de alta', () => {
   const version = (codigo: string, modelo: string, registrado = true): VehiculoAtm => ({
     codigoInfoAuto: codigo,
@@ -1773,6 +1820,15 @@ test('ATM: las versiones que se prueban cuando ATM no tiene la elegida son del m
     'ni las que ATM ya rechazó',
   )
   assert.deepEqual(alternativasDeVersion('', ranking, manual, () => false), [], 'sin modelo no se adivina')
+
+  // Con dudas, la más parecida del mismo modelo; nunca otro modelo.
+  assert.equal(textoParaBuscar('Ranger', 'RANGER XLT 3.2 TDCI 4X4'), 'RANGER XLT 3.2 TDCI 4X4', 'sin repetir el modelo')
+  assert.equal(textoParaBuscar('Ranger', 'XLT 3.2'), 'RANGER XLT 3.2')
+  const ranger = [version('1', 'RANGER DC 4X4 XLT 3.2 L TDCI AT'), version('2', 'RANGER DC 4X4 XLS 3.2 L TDCI MT'), version('3', 'FOCUS 1.6 S')]
+  const deRanger = rankear(textoParaBuscar('Ranger', 'RANGER XLT 3.2 TDCI 4X4 C/D AT'), ranger, (v) => v.modelo)
+  assert.equal(masParecida('Ranger', deRanger, () => false)?.codigoInfoAuto, '1')
+  assert.equal(masParecida('Ranger', deRanger, (v) => v.codigoInfoAuto === '1')?.codigoInfoAuto, '2', 'salteando la rechazada')
+  assert.equal(masParecida('Focus', rankear('Focus 2.0 Titanium', [ranger[0]!, ranger[1]!], (v) => v.modelo), () => false), null)
   assert.equal(
     avisoDeOtraVersion(manual, automatica),
     'ATM no tiene dada de alta la «ETIOS 1.5 4 PTAS XLS PACK 6MT» (InfoAuto 4545101): se cotizó con la más parecida que sí tiene, «ETIOS 1.5 4 PTAS XLS PACK 6AT» (InfoAuto 4545102). Si no es la misma, elegí otra en «Versión en ATM».',

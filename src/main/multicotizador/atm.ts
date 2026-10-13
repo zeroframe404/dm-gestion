@@ -45,6 +45,7 @@ import {
   type Candidato,
   type OpcionDeLista,
 } from './equivalencias'
+import { equivalenciaGuardada, guardarEquivalencia, olvidarEquivalencia } from './equivalenciasGuardadas'
 
 export const ID_ATM = 'ATM'
 const NOMBRE = 'ATM'
@@ -275,6 +276,14 @@ function textoDeVersion(version: VehiculoAtm, anio: number, rechazada: boolean):
   return `${version.modelo}${suma ? ` · ${enPesos(suma)}` : ''}${rechazada ? NO_LA_TIENE : ''}`
 }
 
+/** El aviso de que se cotizó la más parecida entre varias que se parecen. */
+export function avisoConDudas(cotizada: VehiculoAtm): string {
+  return (
+    `ATM tiene varias versiones parecidas: se cotizó con la más parecida, «${cotizada.modelo}» (InfoAuto ${cotizada.codigoInfoAuto}). ` +
+    'Si no es la misma, elegí la correcta en «Versión en ATM»: queda recordada para este vehículo.'
+  )
+}
+
 /** El aviso de que se cotizó otra versión que la que corresponde al vehículo, porque ATM no la tiene. */
 export function avisoDeOtraVersion(pedida: VehiculoAtm, cotizada: VehiculoAtm): string {
   return (
@@ -312,6 +321,42 @@ interface VehiculoElegido {
   alternativas: VehiculoAtm[]
   /** La que correspondía elegir sola pero ATM ya rechazó: se arrancó por la siguiente más parecida. */
   reemplazada: VehiculoAtm | null
+  /** Salió de la tabla de equivalencias (elegida antes para este vehículo del catálogo). */
+  guardada: boolean
+  /** Había varias parecidas y se tomó la más parecida: se cotiza igual, pero avisando. */
+  dudosa: boolean
+}
+
+/** Desde cuánto parecido se cotiza con la más parecida aunque haya otras cerca (avisando). */
+const PARECIDO_MINIMO_CON_DUDAS = 0.4
+
+/**
+ * El texto con que se busca la versión: modelo y versión del catálogo, sin repetir el modelo si la
+ * versión ya lo trae (en el de Galeno suele venir «RANGER XLT 3.2…» con el modelo «RANGER»).
+ */
+export function textoParaBuscar(modelo: string, version: string): string {
+  const deLaVersion = new Set(palabras(version))
+  const faltan = palabras(modelo).filter((palabra) => !deLaVersion.has(palabra))
+  return [faltan.join(' '), version].filter(Boolean).join(' ')
+}
+
+/**
+ * La más parecida cuando no hay una sin dudas: del mismo modelo, dada de alta y no rechazada. Mejor
+ * cotizar la más parecida avisando que no cotizar: la persona la corrige con un clic y queda recordada.
+ */
+export function masParecida(modelo: string, ranking: Candidato<VehiculoAtm>[], rechazada: (version: VehiculoAtm) => boolean): VehiculoAtm | null {
+  const nombre = palabras(modelo)[0]
+  if (!nombre) return null
+  const hayRegistradas = ranking.some((candidato) => candidato.opcion.registrado)
+  return (
+    ranking.find(
+      (candidato) =>
+        candidato.puntaje >= PARECIDO_MINIMO_CON_DUDAS &&
+        (!hayRegistradas || candidato.opcion.registrado) &&
+        !rechazada(candidato.opcion) &&
+        similitud(nombre, candidato.opcion.modelo) > 0,
+    )?.opcion ?? null
+  )
 }
 
 function vehiculoEnAtm(
@@ -329,7 +374,7 @@ function vehiculoEnAtm(
   const marcas = marcasDeAtm(tablas, seccion).map((marca) => ({ codigo: marca, descripcion: marca }))
   const marca = valido(elegidos.marca, marcas) ?? buscarMarca(v.marca, marcas)?.codigo ?? ''
   ajustes.push({ campo: 'marca', titulo: 'Marca en ATM', opciones: opcionesDe(marcas), valor: marca, obligatorio: true, porSolicitud: true })
-  if (!marca) return { vehiculo: null, alternativas: [], reemplazada: null }
+  if (!marca) return { vehiculo: null, alternativas: [], reemplazada: null, guardada: false, dudosa: false }
 
   // Un 0 km del año (o del que viene) puede no tener suma todavía en la tabla de InfoAuto de ATM, que
   // sale una vez por noche: ahí se ofrecen todas las versiones de la marca en vez de ninguna. Para un
@@ -337,13 +382,17 @@ function vehiculoEnAtm(
   const delAnio = versionesDeAtm(tablas, seccion, marca, anio)
   const sinSumaTodavia = delAnio.length === 0 && (v.ceroKm || anio >= new Date().getFullYear())
   const versiones = sinSumaTodavia ? versionesDeAtm(tablas, seccion, marca, null) : delAnio
-  const ranking = rankear(`${v.modelo} ${v.version}`, versiones, (version) => version.modelo)
+  const ranking = rankear(textoParaBuscar(v.modelo, v.version), versiones, (version) => version.modelo)
   const aMano = versiones.find((version) => version.codigoInfoAuto === elegidos.version)
-  let elegida =
-    aMano ??
+  // Lo elegido antes para este mismo vehículo del catálogo (a mano, o sin dudas y ATM lo cotizó).
+  const equivalencia = aMano ? null : equivalenciaGuardada(ID_ATM, v.codigoCatalogo)
+  const deLaEquivalencia = equivalencia ? versiones.find((version) => version.codigoInfoAuto === equivalencia.codigo) : undefined
+  const sinDudasNiGuardada =
     (solicitud.codigoInfoAuto ? versiones.find((version) => version.codigoInfoAuto === solicitud.codigoInfoAuto) : undefined) ??
     sinDudas(ranking, 0.5, 0.1) ??
     (versiones.length === 1 ? versiones[0]! : null)
+  const conDudas = aMano || deLaEquivalencia || sinDudasNiGuardada ? null : masParecida(v.modelo, ranking, esRechazada)
+  let elegida = aMano ?? deLaEquivalencia ?? sinDudasNiGuardada ?? conDudas
   // Elegida sola, si ATM no la tiene se prueba con las que siguen; y si ya dijo que no la tiene, se
   // arranca directamente por la siguiente.
   let alternativas = elegida && !aMano ? alternativasDeVersion(v.modelo, ranking, elegida, esRechazada) : []
@@ -370,7 +419,7 @@ function vehiculoEnAtm(
     dependeDe: 'marca',
     porSolicitud: true,
   })
-  return { vehiculo: elegida, alternativas, reemplazada }
+  return { vehiculo: elegida, alternativas, reemplazada, guardada: Boolean(deLaEquivalencia) && !reemplazada, dudosa: Boolean(conDudas) }
 }
 
 interface UsoDelVehiculo {
@@ -646,6 +695,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   const sinCotizar: VehiculoAtm[] = []
   if (!cotizacion.ok && cotizacion.mensajes.some(esVehiculoNoRegistrado)) {
     anotarRechazo(vehiculo)
+    olvidarEquivalencia(ID_ATM, v.codigoCatalogo, vehiculo.codigoInfoAuto)
     for (const alternativa of elegido.alternativas) {
       const delVehiculo = esAuto ? usoParaElVehiculo(alternativa, elegidos, tablas, v.uso) : null
       const otra = await cotizarVersion(alternativa, delVehiculo?.uso ?? '', 1)
@@ -672,6 +722,18 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   }
   const pedida = elegido.reemplazada ?? elegido.vehiculo
   if (cotizacion.ok && pedida && pedida !== vehiculo) avisos.push(avisoDeOtraVersion(pedida, vehiculo))
+  // La tabla de equivalencias: lo elegido a mano, o lo elegido sin dudas, queda para este vehículo del
+  // catálogo si ATM lo cotizó. Lo adivinado (con dudas, o la parecida tras un rechazo) no: se avisa.
+  let revisar: string | undefined
+  if (cotizacion.ok && vehiculo === elegido.vehiculo && !elegido.reemplazada) {
+    const descripcion = `${vehiculo.marca} ${vehiculo.modelo}`
+    if (elegidos.version === vehiculo.codigoInfoAuto) guardarEquivalencia(ID_ATM, v.codigoCatalogo, vehiculo.codigoInfoAuto, 'MANUAL', descripcion)
+    else if (!elegido.dudosa && !elegido.guardada) guardarEquivalencia(ID_ATM, v.codigoCatalogo, vehiculo.codigoInfoAuto, 'AUTOMATICA', descripcion)
+    if (elegido.dudosa) {
+      avisos.push(avisoConDudas(vehiculo))
+      revisar = 'version'
+    }
+  }
   if (cotizacion.ok && intento.uso !== uso) {
     const nombreDelUso = (codigo: string) => tablas.usos.find((o) => o.codigo === codigo)?.descripcion ?? codigo
     avisos.push(`ATM no tiene este vehículo con el uso «${nombreDelUso(uso)}»: se cotizó con «${nombreDelUso(intento.uso)}».`)
@@ -765,6 +827,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     coberturas,
     avisos,
     ajustes,
+    ...(revisar ? { revisar } : {}),
     detalleTecnico,
   }
 }
