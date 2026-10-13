@@ -460,15 +460,27 @@ export function marcasDeAtm(tablas: TablasAtm, seccion: '3' | '4'): string[] {
  * esa tabla, o una marca que sólo trae la de InfoAuto), las de InfoAuto, que es lo que hay.
  */
 export function versionesDeAtm(tablas: TablasAtm, seccion: '3' | '4', marca: string, anio: number | null): VehiculoAtm[] {
-  const buscada = normalizarTexto(marca)
-  const deLaMarca = tablas.vehiculos
-    .filter((vehiculo) => normalizarTexto(vehiculo.marca) === buscada)
-    .filter((vehiculo) => !vehiculo.seccion || vehiculo.seccion === seccion)
+  const deLaMarca = vehiculosDeLaMarca(tablas, seccion, marca)
   const hayRegistradas = deLaMarca.some((vehiculo) => vehiculo.registrado)
   return deLaMarca
     .filter((vehiculo) => !hayRegistradas || vehiculo.registrado)
     .filter((vehiculo) => anio === null || !vehiculo.sumas || vehiculo.sumas.size === 0 || vehiculo.sumas.has(anio))
     .sort((a, b) => a.modelo.localeCompare(b.modelo, 'es'))
+}
+
+/**
+ * true si la tabla de marcas y modelos trae versiones de esa marca. Si no (la tabla falta o no se pudo
+ * leer), las versiones salen de la de InfoAuto y ATM puede no tener dada de alta la que se elija.
+ */
+export function marcaConVersionesRegistradas(tablas: TablasAtm, seccion: '3' | '4', marca: string): boolean {
+  return vehiculosDeLaMarca(tablas, seccion, marca).some((vehiculo) => vehiculo.registrado)
+}
+
+function vehiculosDeLaMarca(tablas: TablasAtm, seccion: '3' | '4', marca: string): VehiculoAtm[] {
+  const buscada = normalizarTexto(marca)
+  return tablas.vehiculos
+    .filter((vehiculo) => normalizarTexto(vehiculo.marca) === buscada)
+    .filter((vehiculo) => !vehiculo.seccion || vehiculo.seccion === seccion)
 }
 
 /** Las localidades de un código postal (con su sub-código). */

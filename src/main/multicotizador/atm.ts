@@ -22,10 +22,29 @@ import { SECCION_ATM, planesAtm, vendedoresAtm, type PlanAtm } from '../asegurad
 import { crearClienteAtm, ErrorDeAtm, type ClienteAtm, type CuentaAtm } from '../aseguradoras/atm/cliente'
 import { cotizarAtm, type CoberturaAtm, type DatosDeCotizacionAtm } from '../aseguradoras/atm/cotizacion'
 import { tablasParaCotizar, tablasEnDisco } from '../aseguradoras/atm/repositorio'
-import { localidadesDeAtm, marcasDeAtm, versionesDeAtm, type OpcionAtm, type TablasAtm, type VehiculoAtm } from '../aseguradoras/atm/tablas'
+import {
+  localidadesDeAtm,
+  marcaConVersionesRegistradas,
+  marcasDeAtm,
+  versionesDeAtm,
+  type OpcionAtm,
+  type TablasAtm,
+  type VehiculoAtm,
+} from '../aseguradoras/atm/tablas'
 import { credencialesAtm } from '../servicios/config'
 import type { CotizacionDeAseguradora, CotizadorDeAseguradora, SolicitudResuelta } from './aseguradora'
-import { buscarLocalidad, buscarMarca, CLAVES_USO, porPalabrasClave, rankear, sinDudas, type OpcionDeLista } from './equivalencias'
+import {
+  buscarLocalidad,
+  buscarMarca,
+  CLAVES_USO,
+  palabras,
+  porPalabrasClave,
+  rankear,
+  similitud,
+  sinDudas,
+  type Candidato,
+  type OpcionDeLista,
+} from './equivalencias'
 
 export const ID_ATM = 'ATM'
 const NOMBRE = 'ATM'
@@ -211,6 +230,59 @@ export function intentosDeCotizacion(vehiculo: VehiculoAtm, uso: string, probarO
   return intentos.slice(0, MAXIMO_DE_INTENTOS)
 }
 
+/** Hasta cuántas versiones parecidas se prueban cuando ATM no tiene dada de alta la elegida sola. */
+const MAXIMO_DE_ALTERNATIVAS = 2
+
+/**
+ * Con qué versiones se puede cotizar si ATM no tiene dada de alta la elegida sola: las que siguen en
+ * parecido, dadas de alta en sus tablas, del mismo modelo (de un ETIOS no se salta a un COROLLA) y que
+ * no haya rechazado ya. Cotizar otra versión es cotizar otro vehículo: por eso pocas, muy parecidas y
+ * con aviso.
+ */
+export function alternativasDeVersion(
+  modelo: string,
+  ranking: Candidato<VehiculoAtm>[],
+  elegida: VehiculoAtm,
+  rechazada: (version: VehiculoAtm) => boolean,
+): VehiculoAtm[] {
+  const nombre = palabras(modelo)[0]
+  if (!nombre) return []
+  return ranking
+    .filter((candidato) => candidato.opcion !== elegida && candidato.opcion.registrado && candidato.puntaje >= 0.5)
+    .filter((candidato) => !rechazada(candidato.opcion) && similitud(nombre, candidato.opcion.modelo) > 0)
+    .slice(0, MAXIMO_DE_ALTERNATIVAS)
+    .map((candidato) => candidato.opcion)
+}
+
+// Las versiones que ATM dijo que no tiene («no tiene registrado el vehículo» después de todos los
+// intentos), mientras la aplicación esté abierta: así no se vuelven a elegir solas y en «Versión en ATM»
+// se ve cuáles no tiene.
+const rechazadas = new Set<string>()
+
+function claveDeRechazo(ambiente: CuentaAtm['ambiente'], codigo: string, anio: number): string {
+  return `${ambiente}:${codigo}:${anio}`
+}
+
+/** Para las pruebas: que no quede nada rechazado de una a otra. */
+export function olvidarRechazosDeAtm(): void {
+  rechazadas.clear()
+}
+
+const NO_LA_TIENE = ' · ATM no la tiene'
+
+function textoDeVersion(version: VehiculoAtm, anio: number, rechazada: boolean): string {
+  const suma = version.sumas?.get(anio)
+  return `${version.modelo}${suma ? ` · ${enPesos(suma)}` : ''}${rechazada ? NO_LA_TIENE : ''}`
+}
+
+/** El aviso de que se cotizó otra versión que la que corresponde al vehículo, porque ATM no la tiene. */
+export function avisoDeOtraVersion(pedida: VehiculoAtm, cotizada: VehiculoAtm): string {
+  return (
+    `ATM no tiene dada de alta la «${pedida.modelo}» (InfoAuto ${pedida.codigoInfoAuto}): se cotizó con la más parecida que sí tiene, ` +
+    `«${cotizada.modelo}» (InfoAuto ${cotizada.codigoInfoAuto}). Si no es la misma, elegí otra en «Versión en ATM».`
+  )
+}
+
 // --- Los ajustes --------------------------------------------------------------------------------------
 
 function opcionesDe(lista: OpcionDeLista[]): AjusteDeAseguradora['opciones'] {
@@ -236,17 +308,28 @@ const CLAUSULAS_ATM: OpcionDeLista[] = [
 
 interface VehiculoElegido {
   vehiculo: VehiculoAtm | null
+  /** Las que se prueban si ATM no tiene la elegida. Vacía si la versión se eligió a mano. */
+  alternativas: VehiculoAtm[]
+  /** La que correspondía elegir sola pero ATM ya rechazó: se arrancó por la siguiente más parecida. */
+  reemplazada: VehiculoAtm | null
 }
 
-function vehiculoEnAtm(solicitud: SolicitudResuelta, elegidos: Record<string, string>, tablas: TablasAtm, ajustes: AjusteDeAseguradora[]): VehiculoElegido {
+function vehiculoEnAtm(
+  solicitud: SolicitudResuelta,
+  elegidos: Record<string, string>,
+  tablas: TablasAtm,
+  ajustes: AjusteDeAseguradora[],
+  ambiente: CuentaAtm['ambiente'],
+): VehiculoElegido {
   const v = solicitud.vehiculo
   const seccion = SECCION_ATM[v.tipo]
   const anio = Number(v.anio)
+  const esRechazada = (version: VehiculoAtm) => rechazadas.has(claveDeRechazo(ambiente, version.codigoInfoAuto, anio))
 
   const marcas = marcasDeAtm(tablas, seccion).map((marca) => ({ codigo: marca, descripcion: marca }))
   const marca = valido(elegidos.marca, marcas) ?? buscarMarca(v.marca, marcas)?.codigo ?? ''
   ajustes.push({ campo: 'marca', titulo: 'Marca en ATM', opciones: opcionesDe(marcas), valor: marca, obligatorio: true, porSolicitud: true })
-  if (!marca) return { vehiculo: null }
+  if (!marca) return { vehiculo: null, alternativas: [], reemplazada: null }
 
   // Un 0 km del año (o del que viene) puede no tener suma todavía en la tabla de InfoAuto de ATM, que
   // sale una vez por noche: ahí se ofrecen todas las versiones de la marca en vez de ninguna. Para un
@@ -255,11 +338,21 @@ function vehiculoEnAtm(solicitud: SolicitudResuelta, elegidos: Record<string, st
   const sinSumaTodavia = delAnio.length === 0 && (v.ceroKm || anio >= new Date().getFullYear())
   const versiones = sinSumaTodavia ? versionesDeAtm(tablas, seccion, marca, null) : delAnio
   const ranking = rankear(`${v.modelo} ${v.version}`, versiones, (version) => version.modelo)
-  const elegida =
-    versiones.find((version) => version.codigoInfoAuto === elegidos.version) ??
+  const aMano = versiones.find((version) => version.codigoInfoAuto === elegidos.version)
+  let elegida =
+    aMano ??
     (solicitud.codigoInfoAuto ? versiones.find((version) => version.codigoInfoAuto === solicitud.codigoInfoAuto) : undefined) ??
     sinDudas(ranking, 0.5, 0.1) ??
     (versiones.length === 1 ? versiones[0]! : null)
+  // Elegida sola, si ATM no la tiene se prueba con las que siguen; y si ya dijo que no la tiene, se
+  // arranca directamente por la siguiente.
+  let alternativas = elegida && !aMano ? alternativasDeVersion(v.modelo, ranking, elegida, esRechazada) : []
+  let reemplazada: VehiculoAtm | null = null
+  if (elegida && !aMano && esRechazada(elegida) && alternativas.length > 0) {
+    reemplazada = elegida
+    elegida = alternativas[0]!
+    alternativas = alternativas.slice(1)
+  }
   // Las más parecidas primero: la que se busca casi siempre está entre las de arriba.
   const ordenadas = [...ranking.map((candidato) => candidato.opcion), ...versiones.filter((version) => !ranking.some((c) => c.opcion === version))]
   ajustes.push({
@@ -271,16 +364,54 @@ function vehiculoEnAtm(solicitud: SolicitudResuelta, elegidos: Record<string, st
         : sinSumaTodavia
           ? `Las tablas de ATM todavía no tienen sumas para el año ${v.anio}: están todas las versiones de ${marca}. Si ATM no tiene la elegida para ese año, lo va a decir al cotizar.`
           : undefined,
-    opciones: ordenadas.map((version) => {
-      const suma = version.sumas?.get(anio)
-      return { valor: version.codigoInfoAuto, texto: `${version.modelo}${suma ? ` · ${enPesos(suma)}` : ''}` }
-    }),
+    opciones: ordenadas.map((version) => ({ valor: version.codigoInfoAuto, texto: textoDeVersion(version, anio, esRechazada(version)) })),
     valor: elegida?.codigoInfoAuto ?? '',
     obligatorio: true,
     dependeDe: 'marca',
     porSolicitud: true,
   })
-  return { vehiculo: elegida }
+  return { vehiculo: elegida, alternativas, reemplazada }
+}
+
+interface UsoDelVehiculo {
+  uso: string
+  ajuste: AjusteDeAseguradora
+  /** Si ATM tiene el vehículo sólo con el otro uso y se cotiza con ése. */
+  aviso: string | null
+}
+
+/** El uso de ATM con que se cotiza un auto y su ajuste. */
+function usoParaElVehiculo(vehiculo: VehiculoAtm, elegidos: Record<string, string>, tablas: TablasAtm, pedido: 'PARTICULAR' | 'COMERCIAL'): UsoDelVehiculo {
+  const delVehiculo: OpcionDeLista[] =
+    vehiculo.usos.length > 0
+      ? vehiculo.usos.map((u) => {
+          const nombre = tablas.usos.find((o) => o.codigo === u.codigo)?.descripcion
+          const tipoDeUso = u.tipoUso === '1' ? 'particular' : u.tipoUso === '2' ? 'comercial' : ''
+          return { codigo: u.codigo, descripcion: [nombre, tipoDeUso && !nombre ? tipoDeUso : '', `(${u.codigo})`].filter(Boolean).join(' ') }
+        })
+      : tablas.usos
+  const uso = valido(elegidos.uso, delVehiculo) ?? usoPorDefecto(vehiculo, tablas.usos, pedido)
+  // ATM puede tener el vehículo sólo con el otro uso (un utilitario, sólo comercial): se cotiza con
+  // ése, que es el único que acepta, pero a la vista.
+  const tipoDelUso = vehiculo.usos.find((u) => u.codigo === uso)?.tipoUso
+  const aviso =
+    !elegidos.uso && tipoDelUso && tipoDelUso !== TIPO_USO_ATM[pedido]
+      ? `ATM tiene este vehículo sólo con uso ${tipoDelUso === '2' ? 'comercial' : 'particular'}: se cotizó con ése.`
+      : null
+  return {
+    uso,
+    aviso,
+    ajuste: {
+      campo: 'uso',
+      titulo: 'Uso en ATM',
+      ayuda: delVehiculo.length === 0 ? 'Las tablas de ATM no traen los usos de este vehículo.' : undefined,
+      opciones: opcionesDe(delVehiculo),
+      valor: uso,
+      obligatorio: true,
+      dependeDe: 'version',
+      porSolicitud: true,
+    },
+  }
 }
 
 async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, string>): Promise<CotizacionDeAseguradora> {
@@ -380,34 +511,16 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   }
 
   // El vehículo y su uso.
-  const { vehiculo } = vehiculoEnAtm(solicitud, elegidos, tablas, ajustes)
+  const elegido = vehiculoEnAtm(solicitud, elegidos, tablas, ajustes, cuenta.ambiente)
+  let vehiculo = elegido.vehiculo
   let uso = ''
+  let avisoDeUso: string | null = null
   if (esAuto && vehiculo) {
-    const delVehiculo: OpcionDeLista[] =
-      vehiculo.usos.length > 0
-        ? vehiculo.usos.map((u) => {
-            const nombre = tablas.usos.find((o) => o.codigo === u.codigo)?.descripcion
-            const tipoDeUso = u.tipoUso === '1' ? 'particular' : u.tipoUso === '2' ? 'comercial' : ''
-            return { codigo: u.codigo, descripcion: [nombre, tipoDeUso && !nombre ? tipoDeUso : '', `(${u.codigo})`].filter(Boolean).join(' ') }
-          })
-        : tablas.usos
-    uso = valido(elegidos.uso, delVehiculo) ?? usoPorDefecto(vehiculo, tablas.usos, v.uso)
-    // ATM puede tener el vehículo sólo con el otro uso (un utilitario, sólo comercial): se cotiza con
-    // ése, que es el único que acepta, pero a la vista.
-    const tipoDelUso = vehiculo.usos.find((u) => u.codigo === uso)?.tipoUso
-    if (!elegidos.uso && tipoDelUso && tipoDelUso !== TIPO_USO_ATM[v.uso]) {
-      avisos.push(`ATM tiene este vehículo sólo con uso ${tipoDelUso === '2' ? 'comercial' : 'particular'}: se cotizó con ése.`)
-    }
-    ajustes.push({
-      campo: 'uso',
-      titulo: 'Uso en ATM',
-      ayuda: delVehiculo.length === 0 ? 'Las tablas de ATM no traen los usos de este vehículo.' : undefined,
-      opciones: opcionesDe(delVehiculo),
-      valor: uso,
-      obligatorio: true,
-      dependeDe: 'version',
-      porSolicitud: true,
-    })
+    const delVehiculo = usoParaElVehiculo(vehiculo, elegidos, tablas, v.uso)
+    uso = delVehiculo.uso
+    avisoDeUso = delVehiculo.aviso
+    if (avisoDeUso) avisos.push(avisoDeUso)
+    ajustes.push(delVehiculo.ajuste)
   }
 
   // La localidad: ATM tiene un sub-código por localidad dentro del código postal. Es opcional.
@@ -473,7 +586,6 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   }
 
   const anio = Number(v.anio)
-  const sumaDeAtm = vehiculo.sumas?.get(anio) ?? null
   const datosDelPedido = (intento: IntentoAtm): DatosDeCotizacionAtm => ({
     vendedor,
     plan: plan.codigo,
@@ -495,21 +607,71 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     alarma: alarma === '1',
     gnc: v.gnc,
   })
+  // Cada pedido a ATM, para el detalle técnico: lo que se probó y qué contestó.
+  const pedidos: Array<{ codigo: string; uso: string; resultado: string }> = []
+  const pedir = async (intento: IntentoAtm) => {
+    const respuesta = await cotizarAtm(cliente, datosDelPedido(intento))
+    pedidos.push({ codigo: intento.codigo, uso: intento.uso, resultado: respuesta.ok ? 'OK' : respuesta.mensajes.join(' · ') || 'sin detalle' })
+    return respuesta
+  }
   // «No tiene registrado el vehículo»: ATM no encuentra ese código de InfoAuto con ese uso. Antes de
   // rendirse se prueba con el código como vino en sus tablas (con los ceros de adelante) y, si el uso no
   // se eligió a mano, con los otros usos del mismo tipo que las tablas le dan al vehículo.
-  const intentos = intentosDeCotizacion(vehiculo, uso, esAuto && !elegidos.uso)
-  let intento = intentos[0]!
-  let cotizacion = await cotizarAtm(cliente, datosDelPedido(intento))
-  for (const otro of intentos.slice(1)) {
-    if (cotizacion.ok || !cotizacion.mensajes.some(esVehiculoNoRegistrado)) break
-    const otra = await cotizarAtm(cliente, datosDelPedido(otro))
-    // Si el otro intento falla por otra cosa, se muestra ése: dice más que «no registrado».
-    if (otra.ok || !otra.mensajes.some(esVehiculoNoRegistrado)) {
-      intento = otro
-      cotizacion = otra
+  const cotizarVersion = async (version: VehiculoAtm, usoDeLaVersion: string, maximo: number) => {
+    const intentos = intentosDeCotizacion(version, usoDeLaVersion, esAuto && !elegidos.uso).slice(0, maximo)
+    let intento = intentos[0]!
+    let cotizacion = await pedir(intento)
+    for (const otro of intentos.slice(1)) {
+      if (cotizacion.ok || !cotizacion.mensajes.some(esVehiculoNoRegistrado)) break
+      const otra = await pedir(otro)
+      // Si el otro intento falla por otra cosa, se muestra ése: dice más que «no registrado».
+      if (otra.ok || !otra.mensajes.some(esVehiculoNoRegistrado)) {
+        intento = otro
+        cotizacion = otra
+      }
+    }
+    return { intento, cotizacion }
+  }
+  // Con el uso elegido a mano, el rechazo puede ser por el uso y no por la versión: no se anota.
+  const anotarRechazo = (version: VehiculoAtm) => {
+    if (esAuto && elegidos.uso) return
+    rechazadas.add(claveDeRechazo(cuenta.ambiente, version.codigoInfoAuto, anio))
+    const opcion = ajustes.find((a) => a.campo === 'version')?.opciones.find((o) => o.valor === version.codigoInfoAuto)
+    if (opcion && !opcion.texto.endsWith(NO_LA_TIENE)) opcion.texto += NO_LA_TIENE
+  }
+
+  let { intento, cotizacion } = await cotizarVersion(vehiculo, uso, MAXIMO_DE_INTENTOS)
+  // Si ATM no tiene dada de alta la versión elegida sola, se prueba con las más parecidas que sí tiene
+  // (un pedido cada una). Sólo se toma una que cotice: si no, queda el rechazo de la que correspondía.
+  const sinCotizar: VehiculoAtm[] = []
+  if (!cotizacion.ok && cotizacion.mensajes.some(esVehiculoNoRegistrado)) {
+    anotarRechazo(vehiculo)
+    for (const alternativa of elegido.alternativas) {
+      const delVehiculo = esAuto ? usoParaElVehiculo(alternativa, elegidos, tablas, v.uso) : null
+      const otra = await cotizarVersion(alternativa, delVehiculo?.uso ?? '', 1)
+      if (!otra.cotizacion.ok) {
+        if (otra.cotizacion.mensajes.some(esVehiculoNoRegistrado)) anotarRechazo(alternativa)
+        sinCotizar.push(alternativa)
+        continue
+      }
+      vehiculo = alternativa
+      intento = otra.intento
+      cotizacion = otra.cotizacion
+      const ajusteDeVersion = ajustes.find((a) => a.campo === 'version')
+      if (ajusteDeVersion) ajusteDeVersion.valor = alternativa.codigoInfoAuto
+      if (delVehiculo) {
+        uso = delVehiculo.uso
+        const indice = ajustes.findIndex((a) => a.campo === 'uso')
+        if (indice >= 0) ajustes[indice] = delVehiculo.ajuste
+        const anterior = avisoDeUso ? avisos.indexOf(avisoDeUso) : -1
+        if (anterior >= 0) avisos.splice(anterior, 1)
+        if (delVehiculo.aviso) avisos.push(delVehiculo.aviso)
+      }
+      break
     }
   }
+  const pedida = elegido.reemplazada ?? elegido.vehiculo
+  if (cotizacion.ok && pedida && pedida !== vehiculo) avisos.push(avisoDeOtraVersion(pedida, vehiculo))
   if (cotizacion.ok && intento.uso !== uso) {
     const nombreDelUso = (codigo: string) => tablas.usos.find((o) => o.codigo === codigo)?.descripcion ?? codigo
     avisos.push(`ATM no tiene este vehículo con el uso «${nombreDelUso(uso)}»: se cotizó con «${nombreDelUso(intento.uso)}».`)
@@ -527,21 +689,34 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     operacion: cotizacion.operacion,
     pedido: cotizacion.pedido,
     respuesta: cotizacion.cruda,
+    // Con más de un pedido, todos: el de arriba es el que se muestra.
+    ...(pedidos.length > 1 ? { intentos: pedidos } : {}),
   }
 
   if (!cotizacion.ok) {
     const motivos = cotizacion.mensajes.length > 0 ? cotizacion.mensajes : ['sin detalle']
-    const consejo = motivos.map((motivo) => consejoParaElRechazo(motivo, v.anio)).find(Boolean)
+    const noRegistrado = motivos.some(esVehiculoNoRegistrado)
+    const consejos = [
+      motivos.map((motivo) => consejoParaElRechazo(motivo, v.anio)).find(Boolean),
+      noRegistrado && sinCotizar.length > 0 ? `Tampoco tiene ${sinCotizar.map((version) => `«${version.modelo}»`).join(' ni ')}.` : '',
+      noRegistrado && !marcaConVersionesRegistradas(tablas, SECCION_ATM[tipo], vehiculo.marca)
+        ? `Las tablas de ATM no traen las versiones de ${vehiculo.marca} que tiene dadas de alta (la de «Marcas y modelos»): actualizalas en API Aseguradoras → ATM.`
+        : '',
+    ].filter(Boolean)
+    const deLaVersion = noRegistrado || motivos.some((motivo) => /RELACION VEHICULO ANO/.test(normalizarTexto(motivo)))
     return {
       estado: 'ERROR',
-      mensaje: `ATM no cotizó: ${motivos.join(' · ')}.${consejo ? ` ${consejo}` : ''}`,
+      mensaje: `ATM no cotizó: ${motivos.join(' · ')}.${consejos.length > 0 ? ` ${consejos.join(' ')}` : ''}`,
       descripcionVehiculo,
       coberturas: [],
       avisos,
       ajustes,
+      ...(deLaVersion ? { revisar: 'version' } : {}),
       detalleTecnico,
     }
   }
+
+  const sumaDeAtm = vehiculo.sumas?.get(anio) ?? null
 
   // Siempre se pide UN plan; si ATM devolviera de varios, sólo las del pedido.
   const delPlan = cotizacion.coberturas.some((c) => c.plan === plan.codigo) ? cotizacion.coberturas.filter((c) => c.plan === plan.codigo) : cotizacion.coberturas
