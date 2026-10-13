@@ -46,6 +46,7 @@ import {
   FormatoDeTablaNoReconocido,
   leerFilas,
   localidadesDeAtm,
+  marcaConVersionesRegistradas,
   marcasDeAtm,
   partirLinea,
   separadorDe,
@@ -58,7 +59,9 @@ import {
 import { aObjeto, buscar, desescaparXml, ErrorDeXml, escaparXml, hijo, hijos, leerXml, textoDe, type NodoXml } from '../src/main/aseguradoras/atm/xml'
 import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
 import {
+  alternativasDeVersion,
   atm,
+  avisoDeOtraVersion,
   consejoParaElRechazo,
   cuotasDe,
   franquiciaDe,
@@ -66,6 +69,7 @@ import {
   iibbPorDefecto,
   IVA_ATM,
   olvidarListasDeAtm,
+  olvidarRechazosDeAtm,
   opcionesDeIibb,
   planPorDefecto,
   textoDePlan,
@@ -73,6 +77,7 @@ import {
   usoPorDefecto,
   intentosDeCotizacion,
 } from '../src/main/multicotizador/atm'
+import { rankear } from '../src/main/multicotizador/equivalencias'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora } from '../src/main/servicios/multicotizador'
 import { enPesos, type CondicionIva, type SolicitudDeCotizacion } from '../src/shared/multicotizador'
 
@@ -357,7 +362,9 @@ function atmFalso(t: Prueba, opciones: { contestar?: (docIn: NodoXml) => string;
   t.after(() => {
     usarCuentaDeAtmDePrueba(null)
     olvidarListasDeAtm()
+    olvidarRechazosDeAtm()
   })
+  olvidarRechazosDeAtm()
   guardarTablas('produccion', TABLAS_DE_PRUEBA, 'ftp', true)
   let bajadas = 0
   usarFtpDeAtmDePrueba(async () => {
@@ -1668,6 +1675,118 @@ test('ATM: si ATM no tiene registrado el vehículo, reintenta con el código com
   const otro = atmFalso(t, { contestar: () => respuestaSoap(autoRechazado('Debe informar el uso')) })
   assert.equal((await atm.cotizar(resuelta(), { version: '460712' })).estado, 'ERROR')
   assert.equal(otro.cotizados.length, 1)
+})
+
+test('ATM: si no tiene dada de alta la versión elegida sola, cotiza con la más parecida que sí tiene y lo avisa', async (t) => {
+  const noRegistrado = respuestaSoap(autoRechazado('ATM no tiene registrado el vehiculo que intenta cotizar'))
+  const falso = atmFalso(t, { contestar: (docIn) => (hijo(hijo(docIn, 'bien'), 'cod_infoauto')?.texto === '460711' ? noRegistrado : RESPUESTA_REAL) })
+  const codigos = () => falso.cotizados.map((docIn) => hijo(hijo(docIn, 'bien'), 'cod_infoauto')?.texto)
+  const r = await atm.cotizar(resuelta(), {})
+  assert.equal(r.estado, 'OK', r.mensaje ?? '')
+  assert.deepEqual(codigos(), ['460711', '460712'])
+  assert.equal(campo(falso, 'bien', 'uso'), '4262')
+  assert.equal(r.descripcionVehiculo, 'VOLKSWAGEN TIGUAN 2.0 TSI EXCLUSIVE 2012 (InfoAuto 460712)')
+  assert.ok(
+    r.avisos.includes(
+      'ATM no tiene dada de alta la «TIGUAN 2.0 TSI 4MOTION» (InfoAuto 460711): se cotizó con la más parecida que sí tiene, «TIGUAN 2.0 TSI EXCLUSIVE» (InfoAuto 460712). Si no es la misma, elegí otra en «Versión en ATM».',
+    ),
+    r.avisos.join(' | '),
+  )
+  const version = r.ajustes.find((a) => a.campo === 'version')!
+  assert.equal(version.valor, '460712')
+  assert.match(version.opciones.find((o) => o.valor === '460711')?.texto ?? '', / · ATM no la tiene$/)
+  assert.doesNotMatch(version.opciones.find((o) => o.valor === '460712')?.texto ?? '', /no la tiene/)
+  assert.equal(r.ajustes.find((a) => a.campo === 'uso')?.valor, '4262')
+  assert.equal(r.revisar, undefined)
+  assert.deepEqual(
+    (r.detalleTecnico as { intentos: Array<{ codigo: string; resultado: string }> }).intentos.map((i) => [i.codigo, i.resultado]),
+    [
+      ['460711', 'ATM no tiene registrado el vehiculo que intenta cotizar'],
+      ['460712', 'OK'],
+    ],
+  )
+
+  // La próxima vez arranca directamente por la que tiene, con el mismo aviso.
+  const otra = await atm.cotizar(resuelta(), {})
+  assert.equal(otra.estado, 'OK', otra.mensaje ?? '')
+  assert.deepEqual(codigos(), ['460711', '460712', '460712'])
+  assert.ok(otra.avisos.some((a) => a.startsWith('ATM no tiene dada de alta la «TIGUAN 2.0 TSI 4MOTION»')))
+  assert.equal((otra.detalleTecnico as { intentos?: unknown }).intentos, undefined, 'con un solo pedido no hace falta')
+})
+
+test('ATM: elegida a mano no se cambia de versión, y si no tiene ninguna lo dice y abre la versión', async (t) => {
+  const noRegistrado = respuestaSoap(autoRechazado('ATM no tiene registrado el vehiculo que intenta cotizar'))
+  const aMano = atmFalso(t, { contestar: () => noRegistrado })
+  const elegida = await atm.cotizar(resuelta(), { version: '460711' })
+  assert.equal(elegida.estado, 'ERROR')
+  assert.equal(aMano.cotizados.length, 1, 'la que eligió la persona, sin probar otra')
+  assert.equal(elegida.revisar, 'version')
+
+  const ninguna = atmFalso(t, { contestar: () => noRegistrado })
+  const codigos = () => ninguna.cotizados.map((docIn) => hijo(hijo(docIn, 'bien'), 'cod_infoauto')?.texto)
+  // Con el uso elegido a mano el rechazo puede ser por el uso: se prueba la otra, pero no se anotan.
+  const conUso = await atm.cotizar(resuelta(), { uso: '4262' })
+  assert.equal(conUso.estado, 'ERROR')
+  assert.deepEqual(codigos(), ['460711', '460712'])
+  assert.ok(conUso.ajustes.find((a) => a.campo === 'version')!.opciones.every((o) => !o.texto.includes('no la tiene')))
+
+  const r = await atm.cotizar(resuelta(), {})
+  assert.equal(r.estado, 'ERROR')
+  assert.deepEqual(codigos().slice(2), ['460711', '460712'], 'nunca el Gol: es otro modelo')
+  assert.equal(
+    r.mensaje,
+    'ATM no cotizó: ATM no tiene registrado el vehiculo que intenta cotizar. ATM no tiene dada de alta esa versión: elegí otra en «Versión en ATM» (en «Más ajustes de ATM»). Tampoco tiene «TIGUAN 2.0 TSI EXCLUSIVE».',
+  )
+  assert.equal(r.descripcionVehiculo, 'VOLKSWAGEN TIGUAN 2.0 TSI 4MOTION 2012 (InfoAuto 460711)', 'la que correspondía')
+  assert.equal(r.revisar, 'version')
+  const version = r.ajustes.find((a) => a.campo === 'version')!
+  assert.equal(version.valor, '460711')
+  assert.ok(version.opciones.every((o) => o.texto.endsWith(' · ATM no la tiene')))
+})
+
+test('ATM: las versiones que se prueban cuando ATM no tiene la elegida son del mismo modelo y dadas de alta', () => {
+  const version = (codigo: string, modelo: string, registrado = true): VehiculoAtm => ({
+    codigoInfoAuto: codigo,
+    marca: 'TOYOTA',
+    modelo,
+    seccion: '3',
+    usos: [],
+    sumas: null,
+    registrado,
+    codigosEnTablas: [],
+  })
+  const manual = version('4545101', 'ETIOS 1.5 4 PTAS XLS PACK 6MT')
+  const automatica = version('4545102', 'ETIOS 1.5 4 PTAS XLS PACK 6AT')
+  const xs = version('4545104', 'ETIOS 1.5 4 PTAS XS 6MT')
+  const sinAlta = version('4545103', 'ETIOS 1.5 4 PTAS XLS PACK 4AT', false)
+  const corolla = version('4545200', 'COROLLA 1.5 4 PTAS XLS PACK 6MT')
+  const lejana = version('4545300', 'ETIOS CROSS')
+  const ranking = rankear('Etios 1.5 4 ptas XLS Pack 6MT', [manual, automatica, xs, sinAlta, corolla, lejana], (v) => v.modelo)
+  assert.deepEqual(
+    alternativasDeVersion('Etios', ranking, manual, () => false).map((v) => v.codigoInfoAuto),
+    ['4545102', '4545104'],
+    'ni la que no está dada de alta, ni el Corolla, ni una que se parece poco',
+  )
+  assert.deepEqual(
+    alternativasDeVersion('Etios', ranking, manual, (v) => v === automatica).map((v) => v.codigoInfoAuto),
+    ['4545104'],
+    'ni las que ATM ya rechazó',
+  )
+  assert.deepEqual(alternativasDeVersion('', ranking, manual, () => false), [], 'sin modelo no se adivina')
+  assert.equal(
+    avisoDeOtraVersion(manual, automatica),
+    'ATM no tiene dada de alta la «ETIOS 1.5 4 PTAS XLS PACK 6MT» (InfoAuto 4545101): se cotizó con la más parecida que sí tiene, «ETIOS 1.5 4 PTAS XLS PACK 6AT» (InfoAuto 4545102). Si no es la misma, elegí otra en «Versión en ATM».',
+  )
+
+  // Sin la tabla de marcas y modelos no se sabe cuáles tiene dadas de alta.
+  const soloInfoAuto = armarTablas({
+    ws_au_infoauto: [{ tau_marca: 'TOYOTA', tau_model: 'ETIOS 1.5 XLS', tau_codia: '4545101', tau_anioe: '2024', tau_pre01: '1000000,00' }],
+  })
+  assert.equal(marcaConVersionesRegistradas(soloInfoAuto, '3', 'Toyota'), false)
+  const conAlta = armarTablas({
+    ws_au_marca_modelo: [{ cod_marca: '1', marca: 'TOYOTA', cod_modelo: '1', modelo: 'ETIOS 1.5 XLS', tau_codia: '4545101', cod_uso: '4262', tipo_uso: '1' }],
+  })
+  assert.equal(marcaConVersionesRegistradas(conAlta, '3', 'Toyota'), true)
 })
 
 test('ATM: los intentos de cotización prueban el código como vino y los otros usos del mismo tipo', () => {

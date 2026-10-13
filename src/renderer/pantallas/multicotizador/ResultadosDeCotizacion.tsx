@@ -5,7 +5,7 @@
 // cargar nada. Abajo, todas las coberturas juntas, agrupadas por categoría —responsabilidad civil,
 // terceros, todo riesgo— porque es la única forma de comparar compañías que nombran distinto lo mismo,
 // con la más barata de cada categoría marcada.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   CATEGORIAS_DE_COBERTURA,
   DETALLE_CATEGORIA_DE_COBERTURA,
@@ -106,6 +106,11 @@ function TarjetaDeCompania({
   const resultado = tarjeta.resultado
   const faltan = resultado?.estado === 'FALTAN_DATOS'
   const [abierta, setAbierta] = useState(false)
+  // Si la compañía no cotizó por un ajuste técnico (la versión que no tiene), se abren para verlo.
+  const revisar = resultado?.revisar
+  useEffect(() => {
+    if (revisar) setAbierta(true)
+  }, [resultado, revisar])
   // Los ajustes comerciales —modo de facturación, cuotas, bonificación, cláusula de ajuste— van
   // siempre a la vista: son lo que define el precio y lo que se compara contra la web de la
   // compañía. Los técnicos (la versión en su catálogo, su código de localidad…) quedan detrás de
