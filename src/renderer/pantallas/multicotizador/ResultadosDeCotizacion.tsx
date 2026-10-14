@@ -147,7 +147,7 @@ function TarjetaDeCompania({
               {tecnicosAMano > 0 ? ` (${tecnicosAMano} a mano)` : ''}
             </Boton>
           )}
-          {resultado?.estado === 'OK' && resultado.detalleTecnico !== undefined && (
+          {(resultado?.estado === 'OK' || resultado?.estado === 'ERROR') && resultado.detalleTecnico !== undefined && (
             <Boton
               tamano="sm"
               variante="fantasma"

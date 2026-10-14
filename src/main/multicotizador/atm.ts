@@ -21,7 +21,7 @@ import type { TipoDeVehiculo } from '../../shared/tipos'
 import { SECCION_ATM, planesAtm, vendedoresAtm, type PlanAtm } from '../aseguradoras/atm/catalogos'
 import { crearClienteAtm, ErrorDeAtm, type ClienteAtm, type CuentaAtm } from '../aseguradoras/atm/cliente'
 import { cotizarAtm, type CoberturaAtm, type DatosDeCotizacionAtm } from '../aseguradoras/atm/cotizacion'
-import { tablasParaCotizar, tablasEnDisco } from '../aseguradoras/atm/repositorio'
+import { estadoDeTablasAtm, tablasParaCotizar, tablasEnDisco } from '../aseguradoras/atm/repositorio'
 import {
   localidadesDeAtm,
   marcaConVersionesRegistradas,
@@ -753,6 +753,15 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     respuesta: cotizacion.cruda,
     // Con más de un pedido, todos: el de arriba es el que se muestra.
     ...(pedidos.length > 1 ? { intentos: pedidos } : {}),
+    // Cómo viene el vehículo en las tablas de ATM: para entender un «no tiene registrado».
+    vehiculoEnTablas: {
+      codigoInfoAuto: vehiculo.codigoInfoAuto,
+      comoVinoEnTablas: vehiculo.codigosEnTablas,
+      enMarcasYModelos: vehiculo.registrado,
+      usos: vehiculo.usos,
+      aniosConSuma: vehiculo.sumas ? [...vehiculo.sumas.keys()].sort() : null,
+      tablasBajadasEn: estadoDeTablasAtm(cuenta.ambiente).bajadasEn,
+    },
   }
 
   if (!cotizacion.ok) {
