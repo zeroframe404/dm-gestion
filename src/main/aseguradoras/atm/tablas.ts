@@ -45,7 +45,8 @@ export const DESCRIPCION_TABLA_ATM: Record<TablaAtm, string> = {
 
 /** Las columnas de cada tabla, en el orden del manual: es lo que se usa si el archivo no trae encabezado. */
 const COLUMNAS: Record<TablaAtm, string[]> = {
-  ws_au_marca_modelo: ['cod_marca', 'marca', 'cod_modelo', 'modelo', 'tau_codia', 'cod_uso', 'tipo_uso'],
+  // El archivo de verdad trae «cod_model» (sin la o) donde el manual dice «cod_modelo».
+  ws_au_marca_modelo: ['cod_marca', 'marca', 'cod_model', 'modelo', 'tau_codia', 'cod_uso', 'tipo_uso'],
   ws_au_infoauto: [
     'tau_nmarc',
     'tau_marca',
@@ -282,8 +283,15 @@ export function leerFilas(texto: string, tabla: TablaAtm): FilaDeTabla[] {
 
 /** Un vehículo en el catálogo de ATM: una versión con su código de InfoAuto. */
 export interface VehiculoAtm {
-  /** El código de InfoAuto (`cod_infoauto`). Es la clave: lo que se manda para cotizar. */
+  /** El código de InfoAuto (`cod_infoauto`, la columna `tau_codia`): único en todo el catálogo. */
   codigoInfoAuto: string
+  /** El código de marca de ATM (`cod_marca`; en la tabla de InfoAuto, `tau_nmarc`). */
+  codigoMarca: string
+  /**
+   * El código de modelo de ATM (`cod_model`; en la tabla de InfoAuto, `tau_nmode`). Vale dentro de la
+   * marca: ATM identifica el vehículo por marca + modelo, y el código de InfoAuto va aparte.
+   */
+  codigoModelo: string
   marca: string
   /** La descripción del modelo o versión, como la escribe ATM. */
   modelo: string
@@ -388,6 +396,9 @@ export function armarTablas(filas: Partial<Record<TablaAtm, FilaDeTabla[]>>): Ta
       const deInfoAuto = infoauto.get(codia)
       vehiculo = {
         codigoInfoAuto: codia,
+        codigoMarca: codigoSinCeros(fila.cod_marca),
+        // El manual la llama «cod_modelo»; el archivo de verdad, «cod_model».
+        codigoModelo: codigoSinCeros(fila.cod_model || fila.cod_modelo || deInfoAuto?.tau_nmode),
         marca: (fila.marca || deInfoAuto?.tau_marca || '').trim(),
         modelo: (fila.modelo || deInfoAuto?.tau_model || '').trim(),
         seccion: seccionPorMarca.get(codigoSinCeros(fila.cod_marca)) ?? null,
@@ -410,6 +421,8 @@ export function armarTablas(filas: Partial<Record<TablaAtm, FilaDeTabla[]>>): Ta
     const comoVino = (fila.tau_codia ?? '').trim()
     vehiculos.set(codia, {
       codigoInfoAuto: codia,
+      codigoMarca: codigoSinCeros(fila.tau_nmarc),
+      codigoModelo: codigoSinCeros(fila.tau_nmode),
       marca: (fila.tau_marca ?? '').trim(),
       modelo: (fila.tau_model ?? '').trim(),
       seccion: null,

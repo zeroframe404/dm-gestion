@@ -19,19 +19,24 @@ import {
   armarPedidoDeCotizacion,
   cotizarAtm,
   fechaParaAtm,
+  FORMAS_DEL_PEDIDO,
   leerRespuestaDeCotizacion,
   METODO_COTIZAR,
   numeroDeAtm,
   sinClave,
   type CoberturaAtm,
   type DatosDeCotizacionAtm,
+  type FormaDelPedido,
 } from '../src/main/aseguradoras/atm/cotizacion'
 import {
   actualizarTablasAtm,
   archivosEnDisco,
   estadoDeTablasAtm,
   guardarTablas,
+  formaDelPedidoRecordada,
   importarTablasAtm,
+  olvidarFormaDelPedido,
+  recordarFormaDelPedido,
   tablasEnDisco,
   tablasParaCotizar,
   usarCarpetaDeTablasAtmDePrueba,
@@ -361,7 +366,10 @@ interface AtmFalso {
  * ATM entero de mentira: la cuenta cargada, las tablas de hoy en una carpeta temporal (así no se va al
  * FTP, que si se usa queda anotado), y `fetch` contestando vendedores, planes y el SOAP.
  */
-function atmFalso(t: Prueba, opciones: { contestar?: (docIn: NodoXml) => string; vendedores?: unknown; cuenta?: typeof CUENTA } = {}): AtmFalso {
+function atmFalso(
+  t: Prueba,
+  opciones: { contestar?: (docIn: NodoXml) => string; vendedores?: unknown; cuenta?: typeof CUENTA; forma?: FormaDelPedido | null } = {},
+): AtmFalso {
   carpetaDeTablas(t)
   t.after(() => {
     usarCuentaDeAtmDePrueba(null)
@@ -370,6 +378,9 @@ function atmFalso(t: Prueba, opciones: { contestar?: (docIn: NodoXml) => string;
   })
   olvidarRechazosDeAtm()
   guardarTablas('produccion', TABLAS_DE_PRUEBA, 'ftp', true)
+  // La forma del pedido ya descubierta (la primera), salvo que la prueba quiera descubrirla (forma: null).
+  olvidarFormaDelPedido()
+  if (opciones.forma !== null) recordarFormaDelPedido('produccion', opciones.forma ?? FORMAS_DEL_PEDIDO[0]!)
   let bajadas = 0
   usarFtpDeAtmDePrueba(async () => {
     bajadas++
@@ -676,6 +687,22 @@ test('ATM: el pedido de un auto es el que ATM aceptó al probar, en el mismo ord
   )
 })
 
+test('ATM: el vehículo va con la marca y el modelo de ATM además del código de InfoAuto, en la forma que se pida', () => {
+  const cuenta = { usuario: 'MARTINEZAD', clave: 'clave' }
+  const bien = (cambios: Partial<DatosDeCotizacionAtm>) => {
+    const pedido = armarPedidoDeCotizacion(cuenta, datosDeCotizacion({ codigoMarca: '46', codigoModelo: '534', ...cambios }))
+    return pedido.slice(pedido.indexOf('<bien>') + 6, pedido.indexOf('<anofab>'))
+  }
+  assert.equal(bien({}), '<marca>46</marca><modelo>534</modelo><cod_infoauto>460711</cod_infoauto>', 'la primera forma si no se dice otra')
+  assert.equal(bien({ forma: 'marca_modelo' }), '<marca>46</marca><modelo>534</modelo><cod_infoauto>460711</cod_infoauto>')
+  assert.equal(bien({ forma: 'cod_marca_modelo' }), '<cod_marca>46</cod_marca><cod_modelo>534</cod_modelo><cod_infoauto>460711</cod_infoauto>')
+  assert.equal(bien({ forma: 'marca_modelo_codia' }), '<marca>46</marca><modelo>460711</modelo><cod_infoauto>460711</cod_infoauto>')
+  assert.equal(bien({ forma: 'infoauto' }), '<cod_infoauto>460711</cod_infoauto>')
+  // Sin la marca de ATM (el humo en vivo, que no tiene tablas), sólo el código de InfoAuto.
+  assert.equal(bien({ codigoMarca: undefined, forma: 'marca_modelo' }), '<cod_infoauto>460711</cod_infoauto>')
+  assert.deepEqual([...FORMAS_DEL_PEDIDO], ['marca_modelo', 'cod_marca_modelo', 'marca_modelo_codia', 'infoauto'], 'la de marca y modelo primero: es lo que pide el manual')
+})
+
 test('ATM: el pedido manda sólo lo que corresponde a cada caso', () => {
   const cuenta = { usuario: 'MARTINEZAD', clave: 'a&b<c' }
   const pedido = (cambios: Partial<DatosDeCotizacionAtm>) => armarPedidoDeCotizacion(cuenta, datosDeCotizacion(cambios))
@@ -866,7 +893,7 @@ test('ATM: las tablas se leen con encabezado en ; | tabulador o coma, o sin enca
   ])
   // Sin encabezado, las columnas del manual.
   assert.deepEqual(leerFilas('1;VOLKSWAGEN;10;TIGUAN 2.0 TSI;0460711;4262;1', 'ws_au_marca_modelo'), [
-    { cod_marca: '1', marca: 'VOLKSWAGEN', cod_modelo: '10', modelo: 'TIGUAN 2.0 TSI', tau_codia: '0460711', cod_uso: '4262', tipo_uso: '1' },
+    { cod_marca: '1', marca: 'VOLKSWAGEN', cod_model: '10', modelo: 'TIGUAN 2.0 TSI', tau_codia: '0460711', cod_uso: '4262', tipo_uso: '1' },
   ])
 })
 
@@ -1066,6 +1093,30 @@ test('ATM: el catálogo junta marcas y modelos con InfoAuto y las marcas por có
 })
 
 // --- Las tablas en disco y el FTP ----------------------------------------------------------------------
+
+test('ATM: el catálogo guarda la marca y el modelo de ATM de cada vehículo, con el encabezado real de sus archivos', () => {
+  // Así vienen de verdad por el FTP: «cod_model» (sin la o), códigos de InfoAuto de 5 a 8 dígitos y
+  // los nuevos con el mismo número de modelo y de InfoAuto.
+  const marcaModelo = leerFilas(
+    'cod_marca;marca;cod_model;modelo;tau_codia;cod_uso;tipo_uso\n12;CHEVROLET;606;ONIX 1.0T LTZ L/21;41473;0101;1\n45;TOYOTA;4545101;ETIOS 1.5 4 PTAS XLS PACK 6MT;4545101;0101;1\n',
+    'ws_au_marca_modelo',
+  )
+  assert.equal(marcaModelo[0]?.cod_model, '606')
+  const infoauto = leerFilas(
+    'tau_nmarc;tau_marca;tau_nmode;tau_model;tau_codia;tau_cgrup;tau_creas;tau_anioe;tau_pre01;tau_pre02\n12;CHEVROLET;606;ONIX 1.0T LTZ L/21;41473;0;0;2026;0.00;24045.00\n18;FORD;58;F-100 V8;33469;0;0;2026;0.00;0.00\n',
+    'ws_au_infoauto',
+  )
+  const tablas = armarTablas({ ws_au_marca_modelo: marcaModelo, ws_au_infoauto: infoauto })
+  const onix = tablas.vehiculos.find((v) => v.codigoInfoAuto === '41473')!
+  assert.equal(onix.codigoMarca, '12')
+  assert.equal(onix.codigoModelo, '606')
+  assert.equal(onix.registrado, true)
+  const etios = tablas.vehiculos.find((v) => v.codigoInfoAuto === '4545101')!
+  assert.deepEqual([etios.codigoMarca, etios.codigoModelo], ['45', '4545101'])
+  // Una que sólo está en la de InfoAuto: la marca y el modelo salen de ahí (son los mismos códigos).
+  const f100 = tablas.vehiculos.find((v) => v.codigoInfoAuto === '33469')!
+  assert.deepEqual([f100.codigoMarca, f100.codigoModelo, f100.registrado], ['18', '58', false])
+})
 
 test('ATM: guardar tablas deja los archivos y el estado de cada tabla, con su error si no se pudo leer', (t) => {
   const carpeta = carpetaDeTablas(t)
@@ -1314,7 +1365,7 @@ test('ATM: IVA e ingresos brutos con los códigos que ATM acepta', () => {
 })
 
 test('ATM: el uso por defecto sale del vehículo y, si no lo dice, del nombre del uso', () => {
-  const vehiculo = (usos: VehiculoAtm['usos']): VehiculoAtm => ({ codigoInfoAuto: '460711', marca: 'VW', modelo: 'TIGUAN', seccion: '3', usos, sumas: null, registrado: true, codigosEnTablas: [] })
+  const vehiculo = (usos: VehiculoAtm['usos']): VehiculoAtm => ({ codigoInfoAuto: '460711', codigoMarca: '1', codigoModelo: '10', marca: 'VW', modelo: 'TIGUAN', seccion: '3', usos, sumas: null, registrado: true, codigosEnTablas: [] })
   const usos = [
     { codigo: '4262', descripcion: 'PARTICULAR' },
     { codigo: '4263', descripcion: 'COMERCIAL / TRABAJO' },
@@ -1794,6 +1845,8 @@ test('ATM: la versión elegida para un vehículo del catálogo queda recordada (
 test('ATM: las versiones que se prueban cuando ATM no tiene la elegida son del mismo modelo y dadas de alta', () => {
   const version = (codigo: string, modelo: string, registrado = true): VehiculoAtm => ({
     codigoInfoAuto: codigo,
+    codigoMarca: '1',
+    codigoModelo: '10',
     marca: 'TOYOTA',
     modelo,
     seccion: '3',
@@ -1845,9 +1898,75 @@ test('ATM: las versiones que se prueban cuando ATM no tiene la elegida son del m
   assert.equal(marcaConVersionesRegistradas(conAlta, '3', 'Toyota'), true)
 })
 
+test('ATM: el pedido lleva la marca y el modelo de ATM de las tablas junto al código de InfoAuto', async (t) => {
+  const falso = atmFalso(t)
+  const r = await atm.cotizar(resuelta(), {})
+  assert.equal(r.estado, 'OK', r.mensaje ?? '')
+  assert.equal(falso.cotizados.length, 1)
+  assert.deepEqual(
+    hijo(falso.cotizados[0], 'bien')?.hijos.slice(0, 3).map((h) => [h.nombre, h.texto]),
+    [
+      ['marca', '1'],
+      ['modelo', '10'],
+      ['cod_infoauto', '460711'],
+    ],
+  )
+  assert.equal((r.detalleTecnico as { formaDelPedido: string }).formaDelPedido, 'marca + modelo + cod_infoauto')
+})
+
+test('ATM: si ATM no entiende la forma del pedido, prueba las otras con el mismo vehículo y recuerda la que entendió', async (t) => {
+  const noRegistrado = respuestaSoap(autoRechazado('ATM no tiene registrado el vehiculo que intenta cotizar'))
+  // Un ATM que sólo entiende «cod_marca» + «cod_modelo».
+  const falso = atmFalso(t, { forma: null, contestar: (docIn) => (hijo(hijo(docIn, 'bien'), 'cod_marca') ? RESPUESTA_REAL : noRegistrado) })
+  const etiquetas = () => falso.cotizados.map((docIn) => hijo(docIn, 'bien')?.hijos[0]?.nombre)
+  const r = await atm.cotizar(resuelta(), {})
+  assert.equal(r.estado, 'OK', r.mensaje ?? '')
+  assert.deepEqual(etiquetas(), ['marca', 'cod_marca'], 'la primera forma, y la siguiente con el mismo pedido')
+  assert.equal(formaDelPedidoRecordada('produccion'), 'cod_marca_modelo')
+  assert.equal((r.detalleTecnico as { formaDelPedido: string }).formaDelPedido, 'cod_marca + cod_modelo + cod_infoauto')
+  const intentos = (r.detalleTecnico as { intentos: Array<{ forma: string; marca: string; modelo: string; resultado: string }> }).intentos
+  assert.deepEqual(
+    intentos.map((i) => [i.forma, i.marca, i.modelo, i.resultado]),
+    [
+      ['marca + modelo + cod_infoauto', '1', '10', 'ATM no tiene registrado el vehiculo que intenta cotizar'],
+      ['cod_marca + cod_modelo + cod_infoauto', '1', '10', 'OK'],
+    ],
+  )
+
+  // La próxima va directo con la forma recordada.
+  const otra = await atm.cotizar(resuelta(), {})
+  assert.equal(otra.estado, 'OK', otra.mensaje ?? '')
+  assert.deepEqual(etiquetas(), ['marca', 'cod_marca', 'cod_marca'])
+})
+
+test('ATM: si no entiende ninguna forma, lo dice sin culpar a la versión ni probar otros usos', async (t) => {
+  const noRegistrado = respuestaSoap(autoRechazado('ATM no tiene registrado el vehiculo que intenta cotizar'))
+  const falso = atmFalso(t, { forma: null, contestar: () => noRegistrado })
+  const r = await atm.cotizar(resuelta(), {})
+  assert.equal(r.estado, 'ERROR')
+  assert.equal(falso.cotizados.length, FORMAS_DEL_PEDIDO.length, 'una vez por forma, y nada más')
+  assert.equal(formaDelPedidoRecordada('produccion'), null)
+  assert.match(r.mensaje ?? '', /Se probó identificar el vehículo de 4 formas/)
+  assert.match(r.mensaje ?? '', /Copiar datos para ATM/)
+  assert.ok(r.ajustes.find((a) => a.campo === 'version')!.opciones.every((o) => !o.texto.includes('no la tiene')), 'el rechazo no es de la versión')
+  assert.equal((r.detalleTecnico as { formaDelPedido: string }).formaDelPedido, 'marca + modelo + cod_infoauto (ATM no entendió ninguna)')
+  // Un «error inesperado» tampoco cuenta como entendido.
+  const inesperado = atmFalso(t, { forma: null, contestar: (docIn) => (hijo(hijo(docIn, 'bien'), 'marca') ? respuestaSoap(autoRechazado('Ha ocurrido un error inesperado')) : RESPUESTA_REAL) })
+  const ok = await atm.cotizar(resuelta(), {})
+  assert.equal(ok.estado, 'OK', ok.mensaje ?? '')
+  assert.deepEqual(
+    inesperado.cotizados.map((docIn) => hijo(docIn, 'bien')?.hijos[0]?.nombre),
+    ['marca', 'cod_marca'],
+    'con «marca» contestó error inesperado: se siguió con la forma siguiente',
+  )
+  assert.equal(formaDelPedidoRecordada('produccion'), 'cod_marca_modelo')
+})
+
 test('ATM: los intentos de cotización prueban el código como vino y los otros usos del mismo tipo', () => {
   const vehiculo: VehiculoAtm = {
     codigoInfoAuto: '59915',
+    codigoMarca: '1',
+    codigoModelo: '10',
     marca: 'FIAT',
     modelo: 'CRONOS 1.3 ATTRACTIVE',
     seccion: '3',

@@ -20,8 +20,8 @@ import {
 import type { TipoDeVehiculo } from '../../shared/tipos'
 import { SECCION_ATM, planesAtm, vendedoresAtm, type PlanAtm } from '../aseguradoras/atm/catalogos'
 import { crearClienteAtm, ErrorDeAtm, type ClienteAtm, type CuentaAtm } from '../aseguradoras/atm/cliente'
-import { cotizarAtm, type CoberturaAtm, type DatosDeCotizacionAtm } from '../aseguradoras/atm/cotizacion'
-import { estadoDeTablasAtm, tablasParaCotizar, tablasEnDisco } from '../aseguradoras/atm/repositorio'
+import { cotizarAtm, FORMAS_DEL_PEDIDO, NOMBRE_DE_FORMA, type CoberturaAtm, type DatosDeCotizacionAtm, type FormaDelPedido } from '../aseguradoras/atm/cotizacion'
+import { estadoDeTablasAtm, formaDelPedidoRecordada, recordarFormaDelPedido, tablasParaCotizar, tablasEnDisco } from '../aseguradoras/atm/repositorio'
 import {
   localidadesDeAtm,
   marcaConVersionesRegistradas,
@@ -635,7 +635,17 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   }
 
   const anio = Number(v.anio)
-  const datosDelPedido = (intento: IntentoAtm): DatosDeCotizacionAtm => ({
+  // Con qué etiquetas va el vehículo en el SOAP: la que ATM ya entendió en esta computadora o, hasta
+  // saberlo, la primera. Ver FORMAS_DEL_PEDIDO.
+  const formaRecordada = formaDelPedidoRecordada(cuenta.ambiente)
+  let forma: FormaDelPedido = formaRecordada ?? FORMAS_DEL_PEDIDO[0]!
+  let formaConfirmada = formaRecordada !== null
+  const confirmarForma = () => {
+    if (formaConfirmada) return
+    formaConfirmada = true
+    recordarFormaDelPedido(cuenta.ambiente, forma)
+  }
+  const datosDelPedido = (version: VehiculoAtm, intento: IntentoAtm, formaDelPedido: FormaDelPedido): DatosDeCotizacionAtm => ({
     vendedor,
     plan: plan.codigo,
     persona: solicitud.tomador.tipoPersona === 'JURIDICA' ? 'J' : 'F',
@@ -644,6 +654,9 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     bonificacion: bonificacion ? Number(bonificacion) : undefined,
     seccion: SECCION_ATM[tipo],
     codigoInfoAuto: intento.codigo,
+    codigoMarca: version.codigoMarca || undefined,
+    codigoModelo: version.codigoModelo || undefined,
+    forma: formaDelPedido,
     anio: v.anio,
     ceroKm: v.ceroKm,
     sumaAsegurada: v.sumaAsegurada ?? undefined,
@@ -657,22 +670,50 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     gnc: v.gnc,
   })
   // Cada pedido a ATM, para el detalle técnico: lo que se probó y qué contestó.
-  const pedidos: Array<{ codigo: string; uso: string; resultado: string }> = []
-  const pedir = async (intento: IntentoAtm) => {
-    const respuesta = await cotizarAtm(cliente, datosDelPedido(intento))
-    pedidos.push({ codigo: intento.codigo, uso: intento.uso, resultado: respuesta.ok ? 'OK' : respuesta.mensajes.join(' · ') || 'sin detalle' })
+  const pedidos: Array<{ forma: string; marca: string; modelo: string; codigo: string; uso: string; resultado: string }> = []
+  const pedir = async (version: VehiculoAtm, intento: IntentoAtm, formaDelPedido: FormaDelPedido = forma) => {
+    const respuesta = await cotizarAtm(cliente, datosDelPedido(version, intento, formaDelPedido))
+    pedidos.push({
+      forma: NOMBRE_DE_FORMA[formaDelPedido],
+      marca: version.codigoMarca,
+      modelo: version.codigoModelo,
+      codigo: intento.codigo,
+      uso: intento.uso,
+      resultado: respuesta.ok ? 'OK' : respuesta.mensajes.join(' · ') || 'sin detalle',
+    })
     return respuesta
   }
+  // ATM entendió el pedido si contestó cualquier cosa menos «no tiene registrado el vehículo» o un
+  // «error inesperado» (lo que dice cuando el XML no es el que espera).
+  const entendioElPedido = (respuesta: { ok: boolean; mensajes: string[] }) =>
+    respuesta.ok || !respuesta.mensajes.some((m) => esVehiculoNoRegistrado(m) || /ERROR INESPERADO/.test(normalizarTexto(m)))
   // «No tiene registrado el vehículo»: ATM no encuentra ese código de InfoAuto con ese uso. Antes de
   // rendirse se prueba con el código como vino en sus tablas (con los ceros de adelante) y, si el uso no
   // se eligió a mano, con los otros usos del mismo tipo que las tablas le dan al vehículo.
   const cotizarVersion = async (version: VehiculoAtm, usoDeLaVersion: string, maximo: number) => {
     const intentos = intentosDeCotizacion(version, usoDeLaVersion, esAuto && !elegidos.uso).slice(0, maximo)
     let intento = intentos[0]!
-    let cotizacion = await pedir(intento)
+    let cotizacion = await pedir(version, intento)
+    // Hasta que ATM haya entendido alguna forma del pedido en esta computadora, un «no registrado»
+    // puede ser por las etiquetas y no por el vehículo: se prueba el mismo pedido con las otras formas
+    // y la primera que entiende queda recordada. Si no entiende ninguna, no tiene sentido seguir con
+    // otros usos ni otras versiones.
+    if (!formaConfirmada && !entendioElPedido(cotizacion)) {
+      for (const otraForma of FORMAS_DEL_PEDIDO) {
+        if (otraForma === forma) continue
+        const otra = await pedir(version, intento, otraForma)
+        if (entendioElPedido(otra)) {
+          forma = otraForma
+          cotizacion = otra
+          break
+        }
+      }
+    }
+    if (entendioElPedido(cotizacion)) confirmarForma()
+    if (!formaConfirmada) return { intento, cotizacion }
     for (const otro of intentos.slice(1)) {
       if (cotizacion.ok || !cotizacion.mensajes.some(esVehiculoNoRegistrado)) break
-      const otra = await pedir(otro)
+      const otra = await pedir(version, otro)
       // Si el otro intento falla por otra cosa, se muestra ése: dice más que «no registrado».
       if (otra.ok || !otra.mensajes.some(esVehiculoNoRegistrado)) {
         intento = otro
@@ -693,7 +734,8 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   // Si ATM no tiene dada de alta la versión elegida sola, se prueba con las más parecidas que sí tiene
   // (un pedido cada una). Sólo se toma una que cotice: si no, queda el rechazo de la que correspondía.
   const sinCotizar: VehiculoAtm[] = []
-  if (!cotizacion.ok && cotizacion.mensajes.some(esVehiculoNoRegistrado)) {
+  // Sin una forma del pedido que ATM entienda, el «no registrado» no dice nada del vehículo.
+  if (formaConfirmada && !cotizacion.ok && cotizacion.mensajes.some(esVehiculoNoRegistrado)) {
     anotarRechazo(vehiculo)
     olvidarEquivalencia(ID_ATM, v.codigoCatalogo, vehiculo.codigoInfoAuto)
     for (const alternativa of elegido.alternativas) {
@@ -751,11 +793,14 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     operacion: cotizacion.operacion,
     pedido: cotizacion.pedido,
     respuesta: cotizacion.cruda,
+    formaDelPedido: `${NOMBRE_DE_FORMA[forma]}${formaConfirmada ? '' : ' (ATM no entendió ninguna)'}`,
     // Con más de un pedido, todos: el de arriba es el que se muestra.
     ...(pedidos.length > 1 ? { intentos: pedidos } : {}),
     // Cómo viene el vehículo en las tablas de ATM: para entender un «no tiene registrado».
     vehiculoEnTablas: {
       codigoInfoAuto: vehiculo.codigoInfoAuto,
+      codigoMarca: vehiculo.codigoMarca,
+      codigoModelo: vehiculo.codigoModelo,
       comoVinoEnTablas: vehiculo.codigosEnTablas,
       enMarcasYModelos: vehiculo.registrado,
       usos: vehiculo.usos,
@@ -768,7 +813,9 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     const motivos = cotizacion.mensajes.length > 0 ? cotizacion.mensajes : ['sin detalle']
     const noRegistrado = motivos.some(esVehiculoNoRegistrado)
     const consejos = [
-      motivos.map((motivo) => consejoParaElRechazo(motivo, v.anio)).find(Boolean),
+      noRegistrado && !formaConfirmada
+        ? `Se probó identificar el vehículo de ${FORMAS_DEL_PEDIDO.length} formas (${FORMAS_DEL_PEDIDO.map((f) => NOMBRE_DE_FORMA[f]).join('; ')}) y ATM rechazó todas: mandale a ATM los datos de «Copiar datos para ATM».`
+        : motivos.map((motivo) => consejoParaElRechazo(motivo, v.anio)).find(Boolean),
       noRegistrado && sinCotizar.length > 0 ? `Tampoco tiene ${sinCotizar.map((version) => `«${version.modelo}»`).join(' ni ')}.` : '',
       noRegistrado && !marcaConVersionesRegistradas(tablas, SECCION_ATM[tipo], vehiculo.marca)
         ? `Las tablas de ATM no traen las versiones de ${vehiculo.marca} que tiene dadas de alta (la de «Marcas y modelos»): actualizalas en API Aseguradoras → ATM.`
