@@ -3,8 +3,13 @@
 // Lo que el manual no dice y se aprendió probando contra ATM (ver la cabecera de cliente.ts):
 // - El `<plan>` es obligatorio en la práctica: sin él contesta «Ha ocurrido un error inesperado».
 // - `<alarma>` también («Debe informar si posee alarma»).
-// - El vehículo se identifica por su código de InfoAuto (`cod_infoauto`) más el código de uso
-//   (`uso`, autos) o el tipo de uso (`tipo_uso`, motos: 1 particular, 2 comercial).
+// - El vehículo va con su marca y su modelo de ATM (`marca` y `modelo`, los códigos de la tabla
+//   ws_au_marca_modelo) más el código de InfoAuto (`cod_infoauto`) y el código de uso (`uso`, autos) o
+//   el tipo de uso (`tipo_uso`, motos: 1 particular, 2 comercial). Con el código de InfoAuto solo, ATM
+//   contesta «no tiene registrado el vehículo que intenta cotizar» aunque el vehículo esté en sus
+//   tablas: el manual (D.I.B.I.) dice que valida la marca y el modelo contra esa tabla. Como el manual
+//   no se pudo leer entero, las etiquetas se prueban en varias formas y se recuerda la que ATM entiende
+//   (ver FORMAS_DEL_PEDIDO).
 // - `<fecha>` tiene que ser HOY en la Argentina (ddmmAAAA), no la fecha de vigencia.
 // - IVA: CF, IN (responsable inscripto), MT (monotributo), EX (exento). Ingresos brutos vacío para
 //   consumidor final y obligatorio para inscripto y monotributo.
@@ -13,6 +18,23 @@ import type { ClienteAtm } from './cliente'
 import { aObjeto, escaparXml, hijo, hijos, textoDe, type NodoXml } from './xml'
 
 export const METODO_COTIZAR = 'AUTOS_Cotizar_PHP'
+
+/**
+ * Con qué etiquetas va el vehículo en `<bien>`. El manual pide la marca y el modelo de ATM además del
+ * código de InfoAuto, pero no se pudo leer cómo se llaman las etiquetas: se prueban en este orden y la
+ * primera que ATM entiende (contesta algo que no sea «no tiene registrado el vehículo») queda
+ * recordada en la computadora (ver repositorio.ts).
+ */
+export type FormaDelPedido = 'marca_modelo' | 'cod_marca_modelo' | 'marca_modelo_codia' | 'infoauto'
+
+export const FORMAS_DEL_PEDIDO: readonly FormaDelPedido[] = ['marca_modelo', 'cod_marca_modelo', 'marca_modelo_codia', 'infoauto']
+
+export const NOMBRE_DE_FORMA: Record<FormaDelPedido, string> = {
+  marca_modelo: 'marca + modelo + cod_infoauto',
+  cod_marca_modelo: 'cod_marca + cod_modelo + cod_infoauto',
+  marca_modelo_codia: 'marca + modelo (con el código de InfoAuto) + cod_infoauto',
+  infoauto: 'cod_infoauto solo',
+}
 
 export interface DatosDeCotizacionAtm {
   vendedor: string
@@ -28,6 +50,12 @@ export interface DatosDeCotizacionAtm {
   seccion: '3' | '4'
   /** El código de InfoAuto del vehículo (lo que ATM llama `cod_infoauto`). */
   codigoInfoAuto: string
+  /** El código de marca de ATM (`cod_marca` de sus tablas). Sin él, sólo va el código de InfoAuto. */
+  codigoMarca?: string
+  /** El código de modelo de ATM (`cod_model` de sus tablas, dentro de la marca). */
+  codigoModelo?: string
+  /** Con qué etiquetas va el vehículo. Si no se dice, la primera de FORMAS_DEL_PEDIDO (o sólo InfoAuto si falta la marca). */
+  forma?: FormaDelPedido
   anio: string
   ceroKm: boolean
   /** Undefined = la de ATM para ese vehículo y año. */
@@ -88,7 +116,7 @@ export function armarPedidoDeCotizacion(cuenta: { usuario: string; clave: string
     datos.bonificacion !== undefined && datos.bonificacion > 0 ? etiqueta('bonificacion', numeroParaAtm(datos.bonificacion)) : '',
   ].join('')
   const bien = [
-    etiqueta('cod_infoauto', datos.codigoInfoAuto),
+    etiquetasDelVehiculo(datos),
     etiqueta('anofab', datos.anio),
     etiqueta('cerokm', datos.ceroKm ? 'S' : 'N'),
     datos.sumaAsegurada !== undefined && datos.sumaAsegurada > 0 ? etiqueta('suma', numeroParaAtm(datos.sumaAsegurada)) : '',
@@ -102,6 +130,27 @@ export function armarPedidoDeCotizacion(cuenta: { usuario: string; clave: string
     etiqueta('gnc', datos.gnc ? '1' : '0'),
   ].join('')
   return `<auto><usuario>${usuario}</usuario><asegurado>${asegurado}</asegurado><bien>${bien}</bien></auto>`
+}
+
+/** Qué forma del pedido se usa con estos datos: la pedida, o la que se puede armar con lo que hay. */
+export function formaDelPedido(datos: Pick<DatosDeCotizacionAtm, 'codigoMarca' | 'codigoModelo' | 'forma'>): FormaDelPedido {
+  if (!datos.codigoMarca || !datos.codigoModelo) return 'infoauto'
+  return datos.forma ?? FORMAS_DEL_PEDIDO[0]!
+}
+
+/** Las etiquetas que identifican al vehículo, según la forma. */
+function etiquetasDelVehiculo(datos: DatosDeCotizacionAtm): string {
+  const codia = etiqueta('cod_infoauto', datos.codigoInfoAuto)
+  switch (formaDelPedido(datos)) {
+    case 'marca_modelo':
+      return etiqueta('marca', datos.codigoMarca) + etiqueta('modelo', datos.codigoModelo) + codia
+    case 'cod_marca_modelo':
+      return etiqueta('cod_marca', datos.codigoMarca) + etiqueta('cod_modelo', datos.codigoModelo) + codia
+    case 'marca_modelo_codia':
+      return etiqueta('marca', datos.codigoMarca) + etiqueta('modelo', datos.codigoInfoAuto) + codia
+    case 'infoauto':
+      return codia
+  }
 }
 
 /** El mismo pedido con la clave tapada, para mostrarlo o guardarlo en el detalle técnico. */

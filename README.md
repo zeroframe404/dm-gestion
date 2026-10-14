@@ -1380,9 +1380,18 @@ Segunda compañía del multicotizador (`src/main/multicotizador/atm.ts`; el clie
   desarrollo `wsatm-dev.atmseguros.com.ar:2111`, mismo usuario y clave). Cada PC las baja sola al cotizar
   si tienen más de un día y las guarda en `%APPDATA%/dm-gestion/atm/<ambiente>/`. Si el FTP está
   bloqueado en esa red, se bajan a mano y se cargan con «Importar desde archivos…» en la misma pestaña,
-  que muestra el estado de cada tabla y el último error del FTP. El formato de los archivos no se pudo
-  ver al programarlo (el FTP no se alcanzaba): el lector acepta texto separado, JSON o XML, sueltos o
-  en .zip/.gz, y lo que no entiende lo dice por tabla.
+  que muestra el estado de cada tabla y el último error del FTP. Los archivos son texto separado por
+  «;» con encabezado (`ws_au_marca_modelo`: `cod_marca;marca;cod_model;modelo;tau_codia;cod_uso;tipo_uso`;
+  `ws_au_infoauto`: el formato TAU de InfoAuto con `tau_nmarc`, `tau_nmode`, `tau_codia` y los precios
+  por año en miles); el lector también acepta JSON o XML, sueltos o en .zip/.gz, y lo que no entiende lo
+  dice por tabla.
+- **El vehículo en el pedido**: ATM lo identifica por su **marca y modelo** (`cod_marca` + `cod_model` de
+  `ws_au_marca_modelo`) y además lleva el código de InfoAuto (`tau_codia`, que ATM llama
+  `cod_infoauto`) y el uso. Con el código de InfoAuto solo contesta «no tiene registrado el vehículo que
+  intenta cotizar» aunque esté en sus tablas. Como el manual (D.I.B.I., «Interfase WebService») no se
+  pudo leer entero, las etiquetas de marca y modelo se prueban en varias formas (`FORMAS_DEL_PEDIDO` en
+  `cotizacion.ts`) y la primera que ATM entiende queda recordada en `%APPDATA%/dm-gestion/atm/forma-<ambiente>.json`;
+  «Copiar datos para ATM» muestra la forma usada y cada pedido.
 - **Humo en vivo**: `npm run humo:atm` (producción, con `ATM_PROD_USUARIO` / `ATM_PROD_PASSWORD` /
   `ATM_PROD_VENDEDOR`), `-- --desarrollo` (con `ATM_DEV_*`) y `-- --ftp` para exigir además el FTP. Cada
   cotización queda registrada en ATM como una más del vendedor; no es parte de `npm run prueba`.

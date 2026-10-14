@@ -18,6 +18,7 @@ import type { AmbienteAtm, EstadoDeTablasAtm, TablaDeAtmEnDisco } from '../../..
 import { carpetaDatos } from '../../rutas'
 import { esFallaDeRed } from '../../servicios/red'
 import { ErrorDeAtm, type CuentaAtm } from './cliente'
+import { FORMAS_DEL_PEDIDO, type FormaDelPedido } from './cotizacion'
 import {
   armarTablas,
   decodificar,
@@ -60,6 +61,44 @@ export function usarCarpetaDeTablasAtmDePrueba(ruta: string | null): void {
 
 function carpeta(ambiente: AmbienteAtm): string {
   return path.join(carpetaDePrueba ?? path.join(carpetaDatos(), 'atm'), ambiente)
+}
+
+// --- La forma del pedido que ATM entiende -----------------------------------------------------------
+//
+// Con qué etiquetas va el vehículo en el SOAP (ver FORMAS_DEL_PEDIDO en cotizacion.ts). Se descubre
+// cotizando y queda en `forma-<ambiente>.json`, al lado de la carpeta de las tablas (no adentro: esa
+// carpeta se reemplaza entera con cada bajada).
+
+function rutaDeLaForma(ambiente: AmbienteAtm): string {
+  return path.join(carpetaDePrueba ?? path.join(carpetaDatos(), 'atm'), `forma-${ambiente}.json`)
+}
+
+/** La forma del pedido que ATM ya entendió en esta computadora, o null si todavía no se sabe. */
+export function formaDelPedidoRecordada(ambiente: AmbienteAtm): FormaDelPedido | null {
+  try {
+    const ruta = rutaDeLaForma(ambiente)
+    if (!existsSync(ruta)) return null
+    const datos = JSON.parse(readFileSync(ruta, 'utf8')) as { forma?: unknown }
+    return typeof datos.forma === 'string' && (FORMAS_DEL_PEDIDO as readonly string[]).includes(datos.forma) ? (datos.forma as FormaDelPedido) : null
+  } catch {
+    return null
+  }
+}
+
+export function recordarFormaDelPedido(ambiente: AmbienteAtm, forma: FormaDelPedido): void {
+  try {
+    mkdirSync(path.dirname(rutaDeLaForma(ambiente)), { recursive: true })
+    writeFileSync(rutaDeLaForma(ambiente), JSON.stringify({ forma, confirmadaEn: new Date().toISOString() }, null, 2), 'utf8')
+  } catch (error) {
+    console.error('[atm] No se pudo guardar la forma del pedido:', error)
+  }
+}
+
+/** Para las pruebas, y al cambiar la cuenta de ATM: que se vuelva a descubrir. */
+export function olvidarFormaDelPedido(ambiente?: AmbienteAtm): void {
+  for (const cual of ambiente ? [ambiente] : (['produccion', 'desarrollo'] as const)) {
+    rmSync(rutaDeLaForma(cual), { force: true })
+  }
 }
 
 interface ArchivoGuardado {
