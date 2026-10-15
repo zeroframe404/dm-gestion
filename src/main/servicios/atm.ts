@@ -12,19 +12,26 @@
 // no se repiten.
 import type {
   AmbienteAtm,
+  DatosDeEmisionAtm,
+  EmisionAtm,
   EstadoDeAjusteCompartido,
   EstadoDeAtm,
   EstadoDeTablasAtm,
+  OpcionesDeEmisionAtm,
+  PersonaDeAtm,
   PruebaDeAtm,
   VendedorDeAtm,
 } from '../../shared/tipos'
 import { planesAtm, vendedoresAtm, type PlanAtm } from '../aseguradoras/atm/catalogos'
 import { crearClienteAtm, ErrorDeAtm, type CuentaAtm } from '../aseguradoras/atm/cliente'
-import { actualizarTablasAtm, estadoDeTablasAtm, importarTablasAtm, olvidarFallosDeTablasAtm } from '../aseguradoras/atm/repositorio'
+import { emitirPropuestaAtm } from '../aseguradoras/atm/propuesta'
+import { actualizarTablasAtm, estadoDeTablasAtm, importarTablasAtm, olvidarFallosDeTablasAtm, tablasEnDisco } from '../aseguradoras/atm/repositorio'
+import { localidadesDeAtm, TABLAS_DE_EMISION, type ListasDeEmisionAtm, type TablaAtm, type TablasAtm } from '../aseguradoras/atm/tablas'
 import { olvidarListasDeAtm } from '../multicotizador/atm'
 import { borrarAtmDelVps, estadoCompartidoDeAtm, publicarSinRomper, traerAtmDelVps } from './ajustesCompartidos'
 import { borrarAtm, credencialesAtm, cuentaAtmVisible, guardarAtm } from './config'
 import { ErrorDeNegocio } from './errores'
+import { objeto, texto } from './validacion'
 
 const AMBIENTE_CORTO: Record<AmbienteAtm, string> = { produccion: 'producción', desarrollo: 'desarrollo' }
 
@@ -223,5 +230,189 @@ export function importarTablasDeAtm(rutas: string[]): EstadoDeTablasAtm {
     return importarTablasAtm(cuentaAtmVisible().ambiente, rutas)
   } catch (error) {
     throw comoErrorDeNegocio(error, 'No se pudieron importar las tablas de ATM')
+  }
+}
+
+// --- La emisión --------------------------------------------------------------
+//
+// Se emite desde el multicotizador, sobre una cobertura recién cotizada: ATM convierte esa operación en
+// propuesta o póliza (AUTOS_Propuesta_PHP, ver aseguradoras/atm/propuesta.ts).
+
+/** Qué lista de valores sale de cada tabla de emisión. */
+const LISTA_DE_TABLA: Record<string, keyof ListasDeEmisionAtm> = {
+  ws_au_tipo_doc: 'tiposDeDocumento',
+  ws_au_sexo: 'sexos',
+  ws_au_est_civil: 'estadosCiviles',
+  ws_au_nacionalidad: 'nacionalidades',
+  ws_au_actividad: 'actividades',
+  ws_au_forma_pago: 'formasDePago',
+  ws_au_tarjeta: 'tarjetas',
+  ws_au_resp_inspeccion: 'responsablesDeInspeccion',
+}
+
+function tablasDeEmisionQueFaltan(tablas: TablasAtm | null): TablaAtm[] {
+  return TABLAS_DE_EMISION.filter((tabla) => !tablas || tablas.emision[LISTA_DE_TABLA[tabla]!].length === 0)
+}
+
+/** Las computadoras que bajaron las tablas antes de que se usaran para emitir no tienen éstas: se bajan una vez. */
+const yaSeBuscaronLasDeEmision = new Set<AmbienteAtm>()
+
+export async function opcionesDeEmisionAtm(codigoPostal: string): Promise<OpcionesDeEmisionAtm> {
+  const credenciales = credencialesAtm()
+  if (!credenciales) throw new ErrorDeNegocio('Falta cargar la cuenta de ATM en API Aseguradoras → ATM.')
+  let tablas = tablasEnDisco(credenciales.ambiente)
+  if (tablasDeEmisionQueFaltan(tablas).length > 0 && !yaSeBuscaronLasDeEmision.has(credenciales.ambiente)) {
+    yaSeBuscaronLasDeEmision.add(credenciales.ambiente)
+    try {
+      await actualizarTablasAtm(cuentaDe(credenciales))
+    } catch (error) {
+      console.error('[atm] No se pudieron bajar las tablas para emitir:', motivo(error))
+    }
+    tablas = tablasEnDisco(credenciales.ambiente)
+  }
+  const vacias: ListasDeEmisionAtm = {
+    tiposDeDocumento: [],
+    sexos: [],
+    estadosCiviles: [],
+    nacionalidades: [],
+    actividades: [],
+    formasDePago: [],
+    tarjetas: [],
+    responsablesDeInspeccion: [],
+  }
+  const provincias = new Map<string, string>()
+  for (const l of tablas?.localidades ?? []) if (l.codigoProvincia && !provincias.has(l.codigoProvincia)) provincias.set(l.codigoProvincia, l.provincia)
+  return {
+    ...(tablas?.emision ?? vacias),
+    provincias: [...provincias]
+      .map(([codigo, descripcion]) => ({ codigo, descripcion }))
+      .sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es')),
+    localidades: tablas ? localidadesDeAtm(tablas, codigoPostal.trim()) : [],
+    faltan: tablasDeEmisionQueFaltan(tablas),
+  }
+}
+
+function opcional(valor: unknown, campo: string, maximo: number): string | undefined {
+  if (valor === undefined || valor === null || valor === '') return undefined
+  const limpio = texto(valor, campo, 0, maximo)
+  return limpio || undefined
+}
+
+function numerico(valor: unknown, campo: string, minimo: number, maximo: number): string {
+  const limpio = texto(valor, campo, 1, 40).replace(/[\s.-]/g, '')
+  if (!/^\d+$/.test(limpio)) throw new ErrorDeNegocio(`${campo} tiene que ser numérico.`)
+  if (limpio.length < minimo || limpio.length > maximo) throw new ErrorDeNegocio(`${campo} no es válido.`)
+  return limpio
+}
+
+function personaDeAtm(valor: unknown, quien: string): PersonaDeAtm {
+  const p = objeto(valor, `Los datos de ${quien}`)
+  return {
+    tipoDocumento: texto(p.tipoDocumento, `El tipo de documento de ${quien}`, 1, 10),
+    numeroDocumento: numerico(p.numeroDocumento, `El documento de ${quien}`, 6, 11),
+    apellido: texto(p.apellido, `El apellido de ${quien}`, 1, 100),
+    nombre: texto(p.nombre, `El nombre de ${quien}`, 1, 100),
+  }
+}
+
+/** Lo que el manual marca como obligatorio, revisado antes de mandar: ATM rechaza de a un motivo. */
+export function validarDatosDeEmisionAtm(datos: unknown): DatosDeEmisionAtm {
+  const d = objeto(datos, 'Los datos de la emisión')
+  const operacion = numerico(d.operacion, 'El número de operación (volvé a cotizar si se perdió)', 1, 15)
+  const t = objeto(d.titular, 'Los datos del titular')
+  const tipoPersona = t.tipoPersona === 'J' ? 'J' : t.tipoPersona === 'F' ? 'F' : null
+  if (!tipoPersona) throw new ErrorDeNegocio('El tipo de persona del titular no es válido.')
+  const esFisica = tipoPersona === 'F'
+  const telefono = opcional(t.telefono, 'El teléfono', 20)
+  const celular = opcional(t.celular, 'El celular', 20)
+  if (!telefono && !celular) throw new ErrorDeNegocio('Cargá un teléfono o un celular del titular.')
+  const email = texto(t.email, 'El email del titular', 1, 100)
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ErrorDeNegocio('El email del titular no es válido.')
+  const titular: DatosDeEmisionAtm['titular'] = {
+    tipoPersona,
+    tipoDocumento: texto(t.tipoDocumento, 'El tipo de documento', 1, 10),
+    numeroDocumento: numerico(t.numeroDocumento, 'El número de documento', 6, 11),
+    apellido: texto(t.apellido, esFisica ? 'El apellido y nombre' : 'La razón social', 1, 100),
+    codigoProvincia: texto(t.codigoProvincia, 'La provincia del domicilio', 1, 5),
+    localidad: texto(t.localidad, 'La localidad del domicilio', 1, 100),
+    calle: texto(t.calle, 'La calle', 1, 100),
+    altura: numerico(t.altura, 'La altura de la calle', 1, 10),
+    piso: opcional(t.piso, 'El piso', 5),
+    depto: opcional(t.depto, 'El departamento', 5),
+    codigoPostal: numerico(t.codigoPostal, 'El código postal', 4, 4),
+    subCodigoPostal: opcional(t.subCodigoPostal, 'El subcódigo postal', 5),
+    telefono,
+    celular,
+    email,
+    actividad: opcional(t.actividad, 'La actividad', 10),
+    cuit: t.cuit ? numerico(t.cuit, 'El CUIT', 11, 11) : undefined,
+  }
+  if (esFisica) {
+    titular.sexo = texto(t.sexo, 'El sexo', 1, 5)
+    titular.estadoCivil = texto(t.estadoCivil, 'El estado civil', 1, 5)
+    titular.nacionalidad = texto(t.nacionalidad, 'La nacionalidad', 1, 5)
+    titular.actividad = texto(t.actividad, 'La actividad', 1, 10)
+    titular.provinciaNacimiento = opcional(t.provinciaNacimiento, 'La provincia de nacimiento', 5)
+    titular.localidadNacimiento = opcional(t.localidadNacimiento, 'La localidad de nacimiento', 100)
+    const fecha = texto(t.fechaNacimiento, 'La fecha de nacimiento', 1, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(`${fecha}T00:00:00`).getTime())) {
+      throw new ErrorDeNegocio('La fecha de nacimiento no es válida.')
+    }
+    titular.fechaNacimiento = fecha
+  } else {
+    titular.representante = personaDeAtm(t.representante, 'el representante legal')
+  }
+
+  const v = objeto(d.vehiculo, 'Los datos del vehículo')
+  const vehiculo = {
+    patente: texto(v.patente, 'La patente', 1, 10),
+    chasis: texto(v.chasis, 'El número de chasis', 1, 20),
+    motor: texto(v.motor, 'El número de motor', 1, 20),
+  }
+
+  const f = objeto(d.formaDePago, 'La forma de pago')
+  const formaDePago: DatosDeEmisionAtm['formaDePago'] = { forma: texto(f.forma, 'La forma de pago', 1, 5) }
+  if (f.cbu !== undefined) formaDePago.cbu = numerico(f.cbu, 'El CBU', 22, 22)
+  if (f.tarjeta !== undefined) {
+    const tarjeta = objeto(f.tarjeta, 'Los datos de la tarjeta')
+    const vencimiento = numerico(tarjeta.vencimiento, 'El vencimiento de la tarjeta (MMAAAA)', 6, 6)
+    const mes = Number(vencimiento.slice(0, 2))
+    if (mes < 1 || mes > 12) throw new ErrorDeNegocio('El vencimiento de la tarjeta va como MMAAAA (por ejemplo 122028).')
+    formaDePago.tarjeta = {
+      codigo: texto(tarjeta.codigo, 'La tarjeta', 1, 5),
+      numero: numerico(tarjeta.numero, 'El número de tarjeta', 13, 19),
+      vencimiento,
+    }
+  }
+
+  return {
+    operacion,
+    cobertura: texto(d.cobertura, 'La cobertura elegida', 1, 10),
+    condicionDePago: texto(d.condicionDePago, 'La forma de pago cotizada', 1, 20),
+    titular,
+    vehiculo,
+    formaDePago,
+    acreedor: d.acreedor ? personaDeAtm(d.acreedor, 'el acreedor prendario') : undefined,
+    responsableInspeccion: opcional(d.responsableInspeccion, 'El responsable de la inspección', 30),
+  }
+}
+
+/**
+ * Emite de verdad contra ATM. No se reintenta nunca: una operación se emite una sola vez, y si ATM no
+ * contestó a tiempo puede haberla emitido igual.
+ */
+export async function emitirAtm(datos: unknown): Promise<EmisionAtm> {
+  const validados = validarDatosDeEmisionAtm(datos)
+  const credenciales = credencialesAtm()
+  if (!credenciales) throw new ErrorDeNegocio('Falta cargar la cuenta de ATM en API Aseguradoras → ATM.')
+  try {
+    return await emitirPropuestaAtm(crearClienteAtm(cuentaDe(credenciales)), validados)
+  } catch (error) {
+    if (error instanceof ErrorDeAtm && error.esDeRed) {
+      throw new ErrorDeNegocio(
+        `${error.message} Antes de volver a mandar, fijate en la web de ATM si la operación ${validados.operacion} no quedó emitida.`,
+      )
+    }
+    throw comoErrorDeNegocio(error, 'No se pudo emitir con ATM')
   }
 }

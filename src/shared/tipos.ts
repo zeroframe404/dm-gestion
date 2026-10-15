@@ -5207,7 +5207,7 @@ export interface ImpresionGaleno {
 //
 // A diferencia de Galeno, ATM no exige que los pedidos salgan de la IP del VPS: cada computadora le
 // habla directo con la cuenta que se carga una vez en API Aseguradoras → ATM y viaja a las demás
-// como el ajuste compartido `atmApi`. Por ahora sólo cotiza (multicotizador): no emite.
+// como el ajuste compartido `atmApi`. Cotiza y emite desde el multicotizador.
 // ---------------------------------------------------------------------------
 
 export const AMBIENTES_ATM = ['produccion', 'desarrollo'] as const
@@ -5271,6 +5271,118 @@ export interface EstadoDeAtm {
 export interface VendedorDeAtm {
   codigo: string
   nombre: string
+}
+
+/** Un valor de las tablas de parámetros de ATM (código y descripción). */
+export interface OpcionDeAtm {
+  codigo: string
+  descripcion: string
+}
+
+/** Una localidad del código postal cotizado, con lo que pide el domicilio del titular al emitir. */
+export interface LocalidadDeAtm {
+  codigoPostal: string
+  subCodigoPostal: string
+  localidad: string
+  provincia: string
+  codigoProvincia: string
+}
+
+/** Las listas de valores del diálogo «Emitir con ATM» (salen de sus tablas por FTP). */
+export interface OpcionesDeEmisionAtm {
+  tiposDeDocumento: OpcionDeAtm[]
+  sexos: OpcionDeAtm[]
+  estadosCiviles: OpcionDeAtm[]
+  nacionalidades: OpcionDeAtm[]
+  actividades: OpcionDeAtm[]
+  formasDePago: OpcionDeAtm[]
+  tarjetas: OpcionDeAtm[]
+  responsablesDeInspeccion: OpcionDeAtm[]
+  /** Las provincias (para la de nacimiento), sin repetir. */
+  provincias: OpcionDeAtm[]
+  /** Las localidades del código postal de la cotización. */
+  localidades: LocalidadDeAtm[]
+  /** Las tablas de emisión que faltan en esta computadora; sin ellas no se puede emitir. */
+  faltan: string[]
+}
+
+/** Una persona que ATM identifica por documento (el representante legal o el acreedor prendario). */
+export interface PersonaDeAtm {
+  tipoDocumento: string
+  numeroDocumento: string
+  apellido: string
+  nombre: string
+}
+
+/**
+ * Lo que se manda a ATM para convertir una cotización en propuesta/póliza (`AUTOS_Propuesta_PHP`,
+ * capítulo 3 del manual). Los códigos son los de sus tablas (ws_au_*).
+ */
+export interface DatosDeEmisionAtm {
+  /** El número de operación que ATM dio al cotizar. */
+  operacion: string
+  /** El código de la cobertura elegida (A0, B1…). */
+  cobertura: string
+  /** La forma de pago con que se cotizó: TARJETA, CBU, EFVO. */
+  condicionDePago: string
+  titular: {
+    /** F física, J jurídica. */
+    tipoPersona: 'F' | 'J'
+    tipoDocumento: string
+    numeroDocumento: string
+    /** Apellido y nombre, o la razón social. */
+    apellido: string
+    codigoProvincia: string
+    localidad: string
+    calle: string
+    altura: string
+    piso?: string
+    depto?: string
+    codigoPostal: string
+    subCodigoPostal?: string
+    telefono?: string
+    celular?: string
+    email: string
+    actividad?: string
+    /** Obligatorio si no es consumidor final. */
+    cuit?: string
+    // Sólo persona física:
+    sexo?: string
+    estadoCivil?: string
+    nacionalidad?: string
+    /** Sólo para argentinos. */
+    provinciaNacimiento?: string
+    localidadNacimiento?: string
+    /** AAAA-MM-DD. */
+    fechaNacimiento?: string
+    /** Sólo persona jurídica. */
+    representante?: PersonaDeAtm
+  }
+  vehiculo: { patente: string; chasis: string; motor: string }
+  formaDePago: {
+    /** El código de ws_au_forma_pago. */
+    forma: string
+    cbu?: string
+    tarjeta?: { codigo: string; numero: string; /** MMAAAA. */ vencimiento: string }
+  }
+  acreedor?: PersonaDeAtm
+  /** El código de ws_au_resp_inspeccion; sin él ATM toma al productor. */
+  responsableInspeccion?: string
+}
+
+/** Lo que contestó ATM a la propuesta aceptada. */
+export interface EmisionAtm {
+  operacion: string
+  /** POL = quedó la póliza, PRO = quedó en propuesta, INS = pendiente de inspección. */
+  estado: string
+  propuesta: string | null
+  poliza: string | null
+  /** La URL para hacer la inspección (Tecnored en autos), ya decodificada. */
+  inspeccionUrl: string | null
+  inspeccionNumero: string | null
+  linkDePago: string | null
+  /** Si la inspección mandada no fue válida, por qué (la emisión igual siguió). */
+  avisoDeInspeccion: string | null
 }
 
 /** El resultado de «Probar conexión»: la cuenta, los vendedores que tiene y los planes del vendedor. */

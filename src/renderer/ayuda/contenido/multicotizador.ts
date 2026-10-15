@@ -54,7 +54,7 @@ export const AYUDA_MULTICOTIZADOR: Record<string, ContenidoDeAyuda> = {
         titulo: 'Armar el presupuesto o emitir',
         parrafos: [
           'Tildando las coberturas que se le quieren ofrecer al cliente (hasta doce) aparece abajo «Armar presupuesto»: crea el presupuesto de siempre, con esas opciones y los datos del vehículo, y lo abre en Presupuestos, donde salen el mensaje de WhatsApp y el PDF como con cualquier otro.',
-          'En las compañías que lo permiten (hoy, Galeno) cada cobertura tiene «Emitir…»: emite la póliza en la compañía sin salir de la pantalla, con el mismo formulario que se usa desde Presupuestos. ATM por ahora sólo cotiza: sus coberturas entran al presupuesto, pero la póliza se emite por fuera del programa. Armar el presupuesto y emitir piden permiso para editar Presupuestos; cotizar, sólo para ver el Multicotizador.',
+          'En las compañías que lo permiten (Galeno y ATM) cada cobertura tiene «Emitir…»: emite la póliza en la compañía sin salir de la pantalla. En Galeno es el mismo formulario que se usa desde Presupuestos; en ATM se completan titular, vehículo y forma de pago, y si hace falta inspección ATM devuelve el enlace para hacerla. Una cotización de ATM se emite una sola vez: para emitir otra cobertura, volvé a cotizar. Armar el presupuesto y emitir piden permiso para editar Presupuestos; cotizar, sólo para ver el Multicotizador.',
         ],
       },
     ],

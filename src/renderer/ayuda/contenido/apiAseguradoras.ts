@@ -91,7 +91,7 @@ export const AYUDA_API_ASEGURADORAS: Record<string, ContenidoDeAyuda> = {
         titulo: 'Qué se puede hacer con esto',
         parrafos: [
           'Con la cuenta cargada y las tablas bajadas, el Multicotizador cotiza autos y motos en ATM al mismo tiempo que en las demás compañías, y sus coberturas entran al comparativo y al presupuesto como las de cualquiera.',
-          'Por ahora ATM sólo cotiza: la póliza no se emite desde la app. Si el cliente elige ATM, se emite como siempre, por fuera del programa.',
+          'Desde el multicotizador también se emite en ATM («Emitir…» en cada cobertura). Para eso usa más tablas del FTP (tipos de documento, formas de pago, tarjetas…): si el diálogo dice que faltan, tocá «Actualizar tablas».',
         ],
       },
       {

@@ -427,6 +427,8 @@ export interface ApiDm {
     probar: Remota<'atm:probar'>
     actualizarTablas: Remota<'atm:actualizarTablas'>
     importarTablas: Remota<'atm:importarTablas'>
+    opcionesDeEmision: Remota<'atm:opcionesDeEmision'>
+    emitir: Remota<'atm:emitir'>
   }
   multicotizador: {
     aseguradoras: Remota<'multicotizador:aseguradoras'>
