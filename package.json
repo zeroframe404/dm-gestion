@@ -34,6 +34,7 @@
     "humo:usuarios": "node scripts/humo-usuarios.mjs",
     "humo:permisos": "node scripts/humo-permisos.mjs",
     "humo:atm": "node scripts/humo-atm.mjs",
+    "humo:mercantil": "node scripts/humo-mercantil.mjs",
     "clave-hash": "node scripts/clave-hash.mjs"
   },
   "dependencies": {

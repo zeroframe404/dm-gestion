@@ -418,6 +418,13 @@ const api: ApiDm = {
     opcionesDeEmision: (codigoPostal) => invocar('atm:opcionesDeEmision', codigoPostal),
     emitir: (datos) => invocar('atm:emitir', datos),
   },
+  mercantil: {
+    estado: () => invocar('mercantil:estado'),
+    guardarCredenciales: (datos) => invocar('mercantil:guardarCredenciales', datos),
+    borrarCredenciales: () => invocar('mercantil:borrarCredenciales'),
+    traerDelServidor: () => invocar('mercantil:traerDelServidor'),
+    probar: () => invocar('mercantil:probar'),
+  },
   multicotizador: {
     aseguradoras: () => invocar('multicotizador:aseguradoras'),
     localidades: (tipoVehiculo, codigoPostal) => invocar('multicotizador:localidades', tipoVehiculo, codigoPostal),

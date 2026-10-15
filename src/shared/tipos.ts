@@ -5394,3 +5394,69 @@ export interface PruebaDeAtm {
   planesAuto: number
   planesMoto: number
 }
+
+// ---------------------------------------------------------------------------
+// Mercantil Andina — su API REST (Azure API Management): token, vehículos y cotización
+//
+// Como ATM, Mercantil no exige que los pedidos salgan de una IP dada de alta: cada computadora le habla
+// directo con la cuenta que se carga una vez en API Aseguradoras → Mercantil y viaja a las demás como
+// el ajuste compartido `mercantilApi`. Cotiza autos desde el multicotizador; no emite.
+//
+// La cuenta son TRES cosas, y las tres hacen falta (ver «Guía para la Conexión a las APIs de Mercantil
+// Andina», en docs/): el usuario y la contraseña que Mercantil manda al vincular el código de PAS, y la
+// «subscription key» del portal de APIs (la del perfil, para los productos a los que se suscribió).
+// ---------------------------------------------------------------------------
+
+export const AMBIENTES_MERCANTIL = ['produccion', 'desarrollo'] as const
+export type AmbienteMercantil = (typeof AMBIENTES_MERCANTIL)[number]
+
+export const NOMBRE_AMBIENTE_MERCANTIL: Record<AmbienteMercantil, string> = {
+  produccion: 'Producción (api.mercantilandina.com.ar)',
+  desarrollo: 'Desarrollo / QA (apidev.mercantilandina.com.ar, con las credenciales de test)',
+}
+
+/**
+ * Lo que se carga en API Aseguradoras → Mercantil. La contraseña y la clave de suscripción vacías
+ * conservan las que ya estaban.
+ */
+export interface DatosDeMercantil {
+  ambiente: AmbienteMercantil
+  /** El usuario de la API: el correo (o el usuario de test) que Mercantil dio al vincular el PAS. */
+  usuario: string
+  clave: string
+  /** La «subscription key» del portal de APIs (viaja como `Ocp-Apim-Subscription-Key`). */
+  claveDeSuscripcion: string
+  /** El código de productor (PAS) con el que se cotiza. Vacío = el que Mercantil asocia al usuario. */
+  productor: string
+}
+
+/** Cómo está la cuenta de Mercantil en esta computadora. Nunca trae la contraseña ni la clave de suscripción. */
+export interface EstadoDeMercantil {
+  configurada: boolean
+  ambiente: AmbienteMercantil
+  usuario: string
+  /** Los últimos cuatro caracteres de la clave de suscripción cargada, para reconocerla. Vacío si no hay. */
+  finDeClaveDeSuscripcion: string
+  productor: string
+  actualizadoEn: string | null
+  /** Cómo está la cuenta en el servidor (el ajuste compartido `mercantilApi`), o null si no se pudo saber. */
+  compartido: EstadoDeAjusteCompartido | null
+}
+
+/** Un productor (PAS) que Mercantil asocia a la cuenta, como lo devuelve `productores/v1`. */
+export interface ProductorDeMercantil {
+  codigo: string
+  nombre: string
+}
+
+/** El resultado de «Probar conexión»: el token, el productor asociado y el catálogo de vehículos. */
+export interface PruebaDeMercantil {
+  ok: boolean
+  detalle: string
+  /** Los productores que Mercantil lista para la cuenta (vacío si no se pudieron leer). */
+  productores: ProductorDeMercantil[]
+  /** Cuántas marcas devolvió su catálogo de vehículos (0 si no se pudo). */
+  marcas: number
+  /** Hasta cuándo vale el token que se consiguió (ISO), o null si Mercantil no lo dijo. */
+  tokenVenceEn: string | null
+}

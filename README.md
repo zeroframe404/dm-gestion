@@ -18,6 +18,7 @@ npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para 
 npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador
 npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
 npm run humo:atm                 # ATM Seguros en vivo (cuenta, planes y cotización; ver «ATM Seguros», más abajo)
+npm run humo:mercantil           # Mercantil Andina en vivo (token, productor, catálogo y cotización; ver «Mercantil Andina»)
 ```
 
 ## Primer ingreso
@@ -1344,7 +1345,7 @@ Un vehículo y las compañías que se cotizaron para él.
 
 ### Multicotizador
 
-Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno y ATM), comparados por
+Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno, ATM y Mercantil Andina), comparados por
 lo que cubre cada cobertura. Tiene su propio permiso (área `multicotizador`).
 
 - **Una solicitud común**: vehículo del catálogo de la agencia, uso, 0 km, GNC, rastreo, suma
@@ -1395,6 +1396,41 @@ Segunda compañía del multicotizador (`src/main/multicotizador/atm.ts`; el clie
 - **Humo en vivo**: `npm run humo:atm` (producción, con `ATM_PROD_USUARIO` / `ATM_PROD_PASSWORD` /
   `ATM_PROD_VENDEDOR`), `-- --desarrollo` (con `ATM_DEV_*`) y `-- --ftp` para exigir además el FTP. Cada
   cotización queda registrada en ATM como una más del vendedor; no es parte de `npm run prueba`.
+
+#### Mercantil Andina
+
+Tercera compañía del multicotizador (`src/main/multicotizador/mercantil.ts`; el cliente en
+`src/main/aseguradoras/mercantil/`). **Sólo cotiza autos** (`emite: false`): la póliza se emite desde la
+web de Mercantil, y la cotización queda en su sistema con el número que trae «Copiar datos para Mercantil Andina».
+
+- **Su API es un Azure API Management** (`docs/Guia conexion APIs Mercantil Andina.pdf`): todo pedido
+  lleva la *subscription key* del portal (`Ocp-Apim-Subscription-Key`) y, salvo el del token, un
+  `Authorization: Bearer`. El token sale de `POST credenciales/v2/` con un formulario
+  (`client_id=api-clientes-login`, `username`, `password`, `grant_type=password`) y se reusa hasta que
+  vence (`cliente.ts`). Ambientes: producción (`api.mercantilandina.com.ar`) y desarrollo
+  (`apidev.mercantilandina.com.ar`, al que van las credenciales de test). Sin restricción de IP: cada
+  PC le habla directo.
+- **La cuenta** (ambiente, usuario, contraseña, clave de suscripción y productor opcional) se carga en
+  **API Aseguradoras → Mercantil**, queda en el `config.json` de cada PC y viaja a las demás como el
+  ajuste compartido `mercantilApi` (se adopta al arrancar, como `atmApi`). La contraseña y la clave de
+  suscripción vacías conservan las guardadas. «Probar conexión» pide el token, lee el productor
+  asociado (`productores/v1/`) y cuenta las marcas del catálogo.
+- **Las rutas** se confirmaron contra el gateway sin credenciales (contesta 401 «falta la suscripción»
+  en las que existen y 404 en las que no): `vehiculos/v1/marcas`, `vehiculos/v1/marcas/{marca}/{anio}`
+  (modelos), `vehiculos/v1/marcas/{marca}/{anio}/{modelo}` (versiones con código de InfoAuto),
+  `vehiculos/v1/infoauto/{codigo}`, `cotizaciones/v2/automotores` y `productores/v1/`. **La forma de
+  lo que devuelven y del cuerpo de la cotización** sale de la documentación del portal (sólo visible
+  con la cuenta): el pedido se arma en un solo lugar (`armarPedidoDeCotizacion` en `cotizacion.ts`)
+  y las respuestas se leen por lo que son (una lista con código y descripción; filas con un precio),
+  así que si Mercantil nombra algo distinto se corrige ahí y «Copiar datos para Mercantil Andina»
+  muestra el pedido y la respuesta enteros.
+- **El vehículo**: se busca por nombre en su catálogo (marca → modelos del año → versiones), como en
+  Galeno; ante la duda se pregunta. Lo elegido a mano queda en la tabla de equivalencias para ese
+  vehículo del catálogo (`equivalencias_vehiculos`, aseguradora `MERCANTIL`).
+- **Humo en vivo**: `npm run humo:mercantil` (desarrollo, con `MERCANTIL_DEV_USUARIO` /
+  `MERCANTIL_DEV_PASSWORD` / `MERCANTIL_DEV_SUSCRIPCION`), `-- --produccion` (con `MERCANTIL_PROD_*`),
+  `MERCANTIL_PRODUCTOR` y `MERCANTIL_MARCA` / `_MODELO` / `_VERSION` / `_ANIO` / `_CP` para elegir qué
+  cotizar. No es parte de `npm run prueba`.
 
 ### Tareas
 
