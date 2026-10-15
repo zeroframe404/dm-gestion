@@ -61,6 +61,7 @@ import {
   type ArchivoSuelto,
   type VehiculoAtm,
 } from '../src/main/aseguradoras/atm/tablas'
+import { armarPedidoDePropuesta, emitirPropuestaAtm, fechaDeNacimientoParaAtm, leerRespuestaDePropuesta, METODO_PROPUESTA } from '../src/main/aseguradoras/atm/propuesta'
 import { aObjeto, buscar, desescaparXml, ErrorDeXml, escaparXml, hijo, hijos, leerXml, textoDe, type NodoXml } from '../src/main/aseguradoras/atm/xml'
 import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
 import {
@@ -87,7 +88,9 @@ import {
 import { rankear } from '../src/main/multicotizador/equivalencias'
 import { equivalenciaGuardada } from '../src/main/multicotizador/equivalenciasGuardadas'
 import { abrirBaseDeDatos, cerrarBaseDeDatos } from '../src/main/db/base'
+import { validarDatosDeEmisionAtm } from '../src/main/servicios/atm'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora } from '../src/main/servicios/multicotizador'
+import type { DatosDeEmisionAtm } from '../src/shared/tipos'
 import { enPesos, type CondicionIva, type SolicitudDeCotizacion } from '../src/shared/multicotizador'
 
 type Prueba = { after: (fn: () => void) => void }
@@ -1061,8 +1064,8 @@ test('ATM: el catálogo junta marcas y modelos con InfoAuto y las marcas por có
   )
 
   assert.deepEqual(tablas.localidades, [
-    { codigoPostal: '1870', subCodigoPostal: '1', localidad: 'AVELLANEDA', provincia: 'BUENOS AIRES' },
-    { codigoPostal: '0870', subCodigoPostal: '', localidad: 'VILLA X', provincia: 'MENDOZA' },
+    { codigoPostal: '1870', subCodigoPostal: '1', localidad: 'AVELLANEDA', provincia: 'BUENOS AIRES', codigoProvincia: '1' },
+    { codigoPostal: '0870', subCodigoPostal: '', localidad: 'VILLA X', provincia: 'MENDOZA', codigoProvincia: '12' },
   ])
   assert.deepEqual(tablas.usos, [{ codigo: '4262', descripcion: 'PARTICULAR' }])
   assert.deepEqual(tablas.ivas, [{ codigo: 'CF', descripcion: 'CONSUMIDOR FINAL' }])
@@ -1138,7 +1141,7 @@ test('ATM: guardar tablas deja los archivos y el estado de cada tabla, con su er
   assert.equal(estado.vehiculos, 4)
   assert.equal(estado.listasParaCotizar, true)
   const porTabla = Object.fromEntries(estado.tablas.map((tabla) => [tabla.tabla, tabla]))
-  assert.equal(estado.tablas.length, 8, 'todas las tablas, aunque no hayan venido')
+  assert.equal(estado.tablas.length, 16, 'todas las tablas, aunque no hayan venido (las de cotizar y las de emitir)')
   assert.deepEqual(
     [porTabla.ws_au_marca_modelo?.archivo, porTabla.ws_au_marca_modelo?.filas, porTabla.ws_au_marca_modelo?.error, porTabla.ws_au_marca_modelo?.necesaria],
     ['WS_AU_MARCA_MODELO.TXT', 5, null, true],
@@ -1433,7 +1436,7 @@ test('ATM: sin la cuenta cargada no está disponible y no sale a internet', asyn
   assert.equal(pedidos.length, 0)
 })
 
-test('ATM: el multicotizador lista ATM junto a Galeno, para autos y motos y sin emitir', (t) => {
+test('ATM: el multicotizador lista ATM junto a Galeno, para autos y motos y que emite', (t) => {
   t.after(() => usarCuentaDeAtmDePrueba(null))
   usarCuentaDeAtmDePrueba(CUENTA)
   const lista = aseguradorasDelMulticotizador()
@@ -1441,7 +1444,7 @@ test('ATM: el multicotizador lista ATM junto a Galeno, para autos y motos y sin 
     lista.map((a) => a.id),
     ['GALENO', 'ATM'],
   )
-  assert.deepEqual(lista[1], { id: ID_ATM, nombre: 'ATM', tipos: ['AUTO', 'MOTO'], emite: false, noDisponible: null })
+  assert.deepEqual(lista[1], { id: ID_ATM, nombre: 'ATM', tipos: ['AUTO', 'MOTO'], emite: true, noDisponible: null })
   usarCuentaDeAtmDePrueba(null)
   assert.equal(aseguradorasDelMulticotizador()[1]?.noDisponible, 'Falta cargar la cuenta de ATM en API Aseguradoras → ATM.')
 })
@@ -1519,7 +1522,21 @@ test('ATM: cotiza un auto de punta a punta y devuelve sus coberturas en la forma
     comision: 12370.39,
     bonificacionPorcentaje: null,
     recargoAdministrativoPorcentaje: null,
-    emision: null,
+    // Para emitir después: la operación de ESTA cotización, la cobertura y lo que se cotizó.
+    emision: {
+      tipo: 'ATM',
+      operacion: '2645461',
+      cobertura: 'A0',
+      descripcionCobertura: 'RESPONSABILIDAD CIVIL',
+      premio: 103086.61,
+      condicionDePago: 'TARJETA',
+      seccion: '3',
+      tipoPersona: 'F',
+      iva: 'CF',
+      codigoPostal: '1870',
+      subCodigoPostal: '1',
+      ceroKm: false,
+    },
   })
   assert.deepEqual(r.avisos, [])
   assert.match(r.mensaje ?? '', /^Cotizado con el plan «ANUAL\/MENSUAL» \(tarjeta de crédito, plan 02\) y el vendedor 0956112663, /)
@@ -2127,4 +2144,158 @@ test('ATM: quien no ve los números de la agencia no recibe la comisión ni en e
   const conNumeros = await cotizarEnAseguradora(pedido, true)
   assert.equal(conNumeros.coberturas[0]?.comision, 10735.81)
   assert.ok(JSON.stringify(conNumeros.detalleTecnico).includes('"comision":"10735.81"'))
+})
+
+// --- La emisión (AUTOS_Propuesta_PHP, capítulo 3 del manual) ------------------------------------------
+
+function datosDeEmision(cambios: Partial<DatosDeEmisionAtm> = {}): DatosDeEmisionAtm {
+  return {
+    operacion: '2645461',
+    cobertura: 'B1',
+    condicionDePago: 'TARJETA',
+    titular: {
+      tipoPersona: 'F',
+      tipoDocumento: 'DNI',
+      numeroDocumento: '11.896.548',
+      apellido: 'ALSINA MARIA',
+      codigoProvincia: '1',
+      localidad: 'AVELLANEDA',
+      calle: 'MITRE & CIA',
+      altura: '1100',
+      piso: '',
+      codigoPostal: '1870',
+      subCodigoPostal: '1',
+      celular: '11 2323-2323',
+      email: 'maria@ejemplo.com',
+      sexo: 'F',
+      estadoCivil: '6',
+      nacionalidad: '0',
+      actividad: '2',
+      provinciaNacimiento: '1',
+      localidadNacimiento: 'AVELLANEDA',
+      fechaNacimiento: '1980-03-07',
+    },
+    vehiculo: { patente: 'ab 123 cd', chasis: 'uyt123', motor: 'mot456' },
+    formaDePago: { forma: '2', tarjeta: { codigo: '2', numero: '5470 2222 2222 2222', vencimiento: '122028' } },
+    responsableInspeccion: 'Productor',
+    ...cambios,
+  }
+}
+
+test('ATM: la propuesta va en <auto_prop> con la operación cotizada y los datos que pide el manual', () => {
+  const pedido = leerXml(armarPedidoDePropuesta(CUENTA, datosDeEmision()))
+  assert.equal(pedido.nombre, 'auto_prop')
+  assert.equal(textoDe(hijo(pedido, 'usuario'), 'usa'), 'MARTINEZAD')
+  assert.equal(textoDe(hijo(pedido, 'usuario'), 'pass'), CLAVE, 'la clave llega entera aunque tenga & y <')
+  assert.deepEqual(aObjeto(hijo(pedido, 'propuesta')!), { operacion: '2645461', cobertura: 'B1', cond_pago: 'TARJETA' })
+  const titular = hijo(pedido, 'titular')
+  assert.equal(textoDe(titular, 'tipopersona'), 'F')
+  assert.equal(textoDe(titular, 'nrodoc'), '11896548', 'el documento, sólo dígitos')
+  assert.equal(textoDe(titular, 'calle'), 'MITRE & CIA')
+  assert.equal(textoDe(titular, 'tel_cel'), '1123232323')
+  assert.equal(hijo(titular, 'tel_part'), undefined, 'sin teléfono fijo no va la etiqueta')
+  assert.equal(textoDe(titular, 'fec_nac'), '07031980', 'ddmmAAAA')
+  assert.equal(hijo(titular, 'representante'), undefined)
+  assert.deepEqual(aObjeto(hijo(pedido, 'vehiculo')!), { patente: 'AB123CD', chasis: 'UYT123', motor: 'MOT456' })
+  assert.deepEqual(aObjeto(hijo(pedido, 'formapago')!), { forma: '2', tarjeta: { nombre: '2', numero: '5470222222222222', vcto: '122028' } })
+  assert.deepEqual(aObjeto(hijo(pedido, 'inspeccion')!), { responsable: 'Productor' })
+  assert.equal(hijo(pedido, 'acreedor'), undefined)
+
+  // Persona jurídica con CBU y acreedor: el representante legal en vez de los datos personales.
+  const juridica = datosDeEmision({
+    titular: { ...datosDeEmision().titular, tipoPersona: 'J', tipoDocumento: 'CUIT', numeroDocumento: '30-61465006-7', representante: { tipoDocumento: 'DNI', numeroDocumento: '13555666', apellido: 'ALVAREZ', nombre: 'JUAN' } },
+    formaDePago: { forma: '4', cbu: '0170000000000000000001' },
+    acreedor: { tipoDocumento: 'DNI', numeroDocumento: '10456987', apellido: 'RAMIREZ', nombre: 'PEDRO' },
+    responsableInspeccion: undefined,
+  })
+  const otro = leerXml(armarPedidoDePropuesta(CUENTA, juridica))
+  const t = hijo(otro, 'titular')
+  assert.equal(textoDe(t, 'nrodoc'), '30614650067')
+  assert.equal(hijo(t, 'sexo'), undefined)
+  assert.equal(hijo(t, 'fec_nac'), undefined)
+  assert.deepEqual(aObjeto(hijo(t, 'representante')!), { tipodoc: 'DNI', nrodoc: '13555666', apellido: 'ALVAREZ', nombre: 'JUAN' })
+  assert.deepEqual(aObjeto(hijo(otro, 'formapago')!), { forma: '4', cbu: { numero: '0170000000000000000001' } })
+  assert.deepEqual(aObjeto(hijo(otro, 'acreedor')!), { tipodoc: 'DNI', nrodoc: '10456987', apellido: 'RAMIREZ', nombre: 'PEDRO' })
+  assert.equal(hijo(otro, 'inspeccion'), undefined, 'sin responsable ATM toma al productor')
+  assert.equal(fechaDeNacimientoParaAtm('2001-12-31'), '31122001')
+})
+
+test('ATM: la respuesta de la propuesta trae póliza, propuesta y el enlace de inspección decodificado', () => {
+  const poliza = leerRespuestaDePropuesta(
+    leerXml('<auto_prop><operacion>2608940</operacion><statusSuccess>TRUE</statusSuccess><statusText>POL</statusText><npropuesta>27226</npropuesta><npoliza>905</npoliza></auto_prop>'),
+  )
+  assert.deepEqual(poliza, {
+    operacion: '2608940',
+    estado: 'POL',
+    propuesta: '27226',
+    poliza: '905',
+    inspeccionUrl: null,
+    inspeccionNumero: null,
+    linkDePago: null,
+    avisoDeInspeccion: null,
+  })
+  const pendiente = leerRespuestaDePropuesta(
+    leerXml(
+      '<auto_prop><operacion>2608941</operacion><statusSuccess>TRUE</statusSuccess><statusText>INS</statusText><npropuesta>27229</npropuesta>' +
+        '<InspeccionUrl>https%3A%2F%2Ftecnored.com%2Finsp%3Fid%3D12%26t%3Dab</InspeccionUrl><InspeccionNroTecnored>998</InspeccionNroTecnored>' +
+        '<statusSuccessInspeccion>FALSE</statusSuccessInspeccion><statusTextInspeccion><msg>Debe adjuntar 4 documentos</msg></statusTextInspeccion>' +
+        '<LinkPago>https://pago.atm/x</LinkPago></auto_prop>',
+    ),
+  )
+  assert.equal(pendiente.estado, 'INS')
+  assert.equal(pendiente.poliza, null)
+  assert.equal(pendiente.inspeccionUrl, 'https://tecnored.com/insp?id=12&t=ab')
+  assert.equal(pendiente.inspeccionNumero, '998')
+  assert.equal(pendiente.linkDePago, 'https://pago.atm/x')
+  assert.equal(pendiente.avisoDeInspeccion, 'Debe adjuntar 4 documentos')
+
+  assert.throws(
+    () =>
+      leerRespuestaDePropuesta(
+        leerXml('<auto_prop><operacion>0</operacion><statusSuccess>FALSE</statusSuccess><statusText><msg>Debe informar el número de motor</msg><msg>La patente no es válida</msg></statusText></auto_prop>'),
+      ),
+    (error: unknown) => error instanceof ErrorDeAtm && error.message === 'ATM no emitió: Debe informar el número de motor · La patente no es válida.' && !error.esDeRed,
+  )
+})
+
+test('ATM: emitir llama a AUTOS_Propuesta_PHP una sola vez con el pedido armado', async () => {
+  const llamadas: Array<{ metodo: string; docIn: string }> = []
+  const cliente: ClienteAtm = {
+    cuenta: CUENTA,
+    async soap(metodo, docIn) {
+      llamadas.push({ metodo, docIn })
+      return leerXml('<auto_prop><operacion>2645461</operacion><statusSuccess>TRUE</statusSuccess><statusText>PRO</statusText><npropuesta>1</npropuesta></auto_prop>')
+    },
+    get: async () => assert.fail('no usa REST'),
+    post: async () => assert.fail('no usa REST'),
+  }
+  const r = await emitirPropuestaAtm(cliente, datosDeEmision())
+  assert.equal(METODO_PROPUESTA, 'AUTOS_Propuesta_PHP')
+  assert.deepEqual(
+    llamadas.map((l) => l.metodo),
+    ['AUTOS_Propuesta_PHP'],
+  )
+  assert.equal(llamadas[0]!.docIn, armarPedidoDePropuesta(CUENTA, datosDeEmision()))
+  assert.equal(r.estado, 'PRO')
+  assert.equal(r.propuesta, '1')
+})
+
+test('ATM: antes de emitir se revisa lo obligatorio del manual', () => {
+  const validos = validarDatosDeEmisionAtm(datosDeEmision())
+  assert.equal(validos.titular.numeroDocumento, '11896548')
+  assert.equal(validos.titular.fechaNacimiento, '1980-03-07')
+  assert.equal(validos.formaDePago.tarjeta?.numero, '5470222222222222')
+
+  const falla = (cambios: Partial<DatosDeEmisionAtm>, mensaje: RegExp) =>
+    assert.throws(() => validarDatosDeEmisionAtm(datosDeEmision(cambios)), (error: unknown) => error instanceof Error && mensaje.test(error.message))
+  const titular = datosDeEmision().titular
+  falla({ operacion: '' }, /operación/)
+  falla({ titular: { ...titular, celular: undefined, telefono: undefined } }, /teléfono o un celular/)
+  falla({ titular: { ...titular, email: 'sin-arroba' } }, /email del titular no es válido/)
+  falla({ titular: { ...titular, fechaNacimiento: '07/03/1980' } }, /fecha de nacimiento/)
+  falla({ titular: { ...titular, sexo: '' } }, /sexo/)
+  falla({ titular: { ...titular, tipoPersona: 'J' } }, /representante legal/)
+  falla({ vehiculo: { patente: 'AB123CD', chasis: '', motor: 'X' } }, /chasis/)
+  falla({ formaDePago: { forma: '4', cbu: '123' } }, /CBU no es válido/)
+  falla({ formaDePago: { forma: '2', tarjeta: { codigo: '2', numero: '5470222222222222', vencimiento: '132028' } } }, /MMAAAA/)
 })

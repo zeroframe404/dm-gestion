@@ -263,8 +263,31 @@ export interface EmisionPosibleGaleno {
   subCodigoPostal: string
 }
 
-/** Por ahora sólo Galeno emite desde la app: cada compañía que sume emisión agrega su variante acá. */
-export type EmisionPosible = EmisionPosibleGaleno
+/**
+ * Lo que hace falta para emitir después una cobertura de ATM: el número de operación de ESA
+ * cotización (ATM la convierte en propuesta sin volver a cotizar) y lo que se cotizó.
+ */
+export interface EmisionPosibleAtm {
+  tipo: 'ATM'
+  operacion: string
+  /** El código de la cobertura (A0, B1…). */
+  cobertura: string
+  descripcionCobertura: string
+  premio: number
+  /** La forma de pago con que se cotizó (TARJETA, CBU, EFVO): va en `cond_pago`. */
+  condicionDePago: string
+  /** 3 autos, 4 motos. */
+  seccion: '3' | '4'
+  tipoPersona: 'F' | 'J'
+  /** El código de IVA de ATM con que se cotizó (CF, IN, MT, EX): fuera de CF pide CUIT. */
+  iva: string
+  codigoPostal: string
+  subCodigoPostal: string
+  ceroKm: boolean
+}
+
+/** Cada compañía que emite desde la app agrega su variante acá. */
+export type EmisionPosible = EmisionPosibleGaleno | EmisionPosibleAtm
 
 export interface CoberturaCotizada {
   aseguradora: IdAseguradora

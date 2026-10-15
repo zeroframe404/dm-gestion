@@ -193,7 +193,10 @@ export async function cotizarEnAseguradora(pedido: unknown, veNumerosDeLaAgencia
         cotizacion.coberturas.map((cobertura) => ({
           ...cobertura,
           comision: null,
-          emision: cobertura.emision ? { ...cobertura.emision, cobertura: { ...cobertura.emision.cobertura, comision: 0 } } : null,
+          emision:
+            cobertura.emision?.tipo === 'GALENO'
+              ? { ...cobertura.emision, cobertura: { ...cobertura.emision.cobertura, comision: 0 } }
+              : cobertura.emision,
         }))
     const detalleTecnico = cotizacion.detalleTecnico === undefined || veNumerosDeLaAgencia ? cotizacion.detalleTecnico : sinComisiones(cotizacion.detalleTecnico)
     return { aseguradora: aseguradora.id, nombre: aseguradora.nombre, ...cotizacion, coberturas, detalleTecnico, duracionMs: Date.now() - inicio }

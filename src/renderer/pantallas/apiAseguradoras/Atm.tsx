@@ -1,6 +1,5 @@
 // API Aseguradoras → ATM: la cuenta del web service de ATM Seguros y las tablas de parámetros que ATM
-// publica por FTP. Con las dos cosas el multicotizador cotiza en ATM; por ahora sólo cotiza, no se
-// emite desde la app.
+// publica por FTP. Con las dos cosas el multicotizador cotiza y emite en ATM.
 //
 // Dos cosas que la hacen distinta de la pestaña de Galeno:
 //
@@ -195,7 +194,7 @@ export function Atm() {
 
       <Tarjeta
         titulo="Conexión con ATM Seguros"
-        descripcion="Con esto, el multicotizador cotiza autos y motos en ATM junto con las demás compañías. Por ahora ATM sólo cotiza: la póliza no se emite desde la app. A diferencia de Galeno, ATM no pide una IP dada de alta: cada computadora le habla directo con esta cuenta, que se carga una vez acá y el resto adopta al abrir el programa."
+        descripcion="Con esto, el multicotizador cotiza autos y motos en ATM junto con las demás compañías. También emite: «Emitir…» en cada cobertura de ATM. A diferencia de Galeno, ATM no pide una IP dada de alta: cada computadora le habla directo con esta cuenta, que se carga una vez acá y el resto adopta al abrir el programa."
         acciones={
           puedeEditar && (
             <>

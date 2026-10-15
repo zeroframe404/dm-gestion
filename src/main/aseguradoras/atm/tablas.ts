@@ -25,11 +25,32 @@ export const TABLAS_ATM = [
   'ws_au_rastreo_satelital',
   'ws_au_iva',
   'ws_au_tipo_persona',
+  // Las de la emisión (capítulo 3 del manual): los datos del titular, la forma de pago y la inspección.
+  'ws_au_tipo_doc',
+  'ws_au_sexo',
+  'ws_au_est_civil',
+  'ws_au_nacionalidad',
+  'ws_au_actividad',
+  'ws_au_forma_pago',
+  'ws_au_tarjeta',
+  'ws_au_resp_inspeccion',
 ] as const
 export type TablaAtm = (typeof TABLAS_ATM)[number]
 
 /** Sin éstas no se puede cotizar: hace falta al menos una de las dos para encontrar el vehículo. */
 export const TABLAS_DE_VEHICULOS: readonly TablaAtm[] = ['ws_au_marca_modelo', 'ws_au_infoauto']
+
+/** Sin éstas no se puede emitir: son las listas de valores de la propuesta. */
+export const TABLAS_DE_EMISION: readonly TablaAtm[] = [
+  'ws_au_tipo_doc',
+  'ws_au_sexo',
+  'ws_au_est_civil',
+  'ws_au_nacionalidad',
+  'ws_au_actividad',
+  'ws_au_forma_pago',
+  'ws_au_tarjeta',
+  'ws_au_resp_inspeccion',
+]
 
 /** Para qué sirve cada una, en castellano, para la pantalla. */
 export const DESCRIPCION_TABLA_ATM: Record<TablaAtm, string> = {
@@ -41,6 +62,14 @@ export const DESCRIPCION_TABLA_ATM: Record<TablaAtm, string> = {
   ws_au_rastreo_satelital: 'Equipos de rastreo satelital',
   ws_au_iva: 'Condiciones de IVA',
   ws_au_tipo_persona: 'Tipos de persona',
+  ws_au_tipo_doc: 'Tipos de documento (para emitir)',
+  ws_au_sexo: 'Sexos (para emitir)',
+  ws_au_est_civil: 'Estados civiles (para emitir)',
+  ws_au_nacionalidad: 'Nacionalidades (para emitir)',
+  ws_au_actividad: 'Actividades (para emitir)',
+  ws_au_forma_pago: 'Formas de pago (para emitir)',
+  ws_au_tarjeta: 'Tarjetas de crédito (para emitir)',
+  ws_au_resp_inspeccion: 'Responsables de inspección (para emitir)',
 }
 
 /** Las columnas de cada tabla, en el orden del manual: es lo que se usa si el archivo no trae encabezado. */
@@ -64,6 +93,14 @@ const COLUMNAS: Record<TablaAtm, string[]> = {
   ws_au_rastreo_satelital: ['codigo', 'descripcion'],
   ws_au_iva: ['codigo', 'descripcion'],
   ws_au_tipo_persona: ['codigo', 'descripcion'],
+  ws_au_tipo_doc: ['codigo', 'descripcion'],
+  ws_au_sexo: ['codigo', 'descripcion'],
+  ws_au_est_civil: ['codigo', 'descripcion'],
+  ws_au_nacionalidad: ['codigo', 'descripcion'],
+  ws_au_actividad: ['codigo', 'descripcion'],
+  ws_au_forma_pago: ['codigo', 'descripcion'],
+  ws_au_tarjeta: ['codigo', 'descripcion', 'longitud'],
+  ws_au_resp_inspeccion: ['codigo', 'descripcion'],
 }
 
 export type FilaDeTabla = Record<string, string>
@@ -316,6 +353,8 @@ export interface LocalidadAtm {
   subCodigoPostal: string
   localidad: string
   provincia: string
+  /** El código de provincia (`codpro`): es lo que va en `<provincia>` al emitir. */
+  codigoProvincia: string
 }
 
 export interface OpcionAtm {
@@ -330,6 +369,19 @@ export interface TablasAtm {
   rastreos: OpcionAtm[]
   ivas: OpcionAtm[]
   personas: OpcionAtm[]
+  /** Las listas de valores para emitir; vacías si la tabla no se bajó. */
+  emision: ListasDeEmisionAtm
+}
+
+export interface ListasDeEmisionAtm {
+  tiposDeDocumento: OpcionAtm[]
+  sexos: OpcionAtm[]
+  estadosCiviles: OpcionAtm[]
+  nacionalidades: OpcionAtm[]
+  actividades: OpcionAtm[]
+  formasDePago: OpcionAtm[]
+  tarjetas: OpcionAtm[]
+  responsablesDeInspeccion: OpcionAtm[]
 }
 
 /** Un importe de las tablas de ATM: «21800000.00», «21800000,00», «21.800.000,00». */
@@ -439,6 +491,7 @@ export function armarTablas(filas: Partial<Record<TablaAtm, FilaDeTabla[]>>): Ta
       subCodigoPostal: (fila.subcodpos ?? '').trim(),
       localidad: (fila.localidad ?? '').trim(),
       provincia: (fila.provincia ?? '').trim(),
+      codigoProvincia: (fila.codpro ?? '').trim(),
     }))
     .filter((localidad) => /^\d{4}$/.test(localidad.codigoPostal) && localidad.localidad)
 
@@ -449,6 +502,16 @@ export function armarTablas(filas: Partial<Record<TablaAtm, FilaDeTabla[]>>): Ta
     rastreos: opciones(filas.ws_au_rastreo_satelital),
     ivas: opciones(filas.ws_au_iva),
     personas: opciones(filas.ws_au_tipo_persona),
+    emision: {
+      tiposDeDocumento: opciones(filas.ws_au_tipo_doc),
+      sexos: opciones(filas.ws_au_sexo),
+      estadosCiviles: opciones(filas.ws_au_est_civil),
+      nacionalidades: opciones(filas.ws_au_nacionalidad),
+      actividades: opciones(filas.ws_au_actividad),
+      formasDePago: opciones(filas.ws_au_forma_pago),
+      tarjetas: opciones(filas.ws_au_tarjeta),
+      responsablesDeInspeccion: opciones(filas.ws_au_resp_inspeccion),
+    },
   }
 }
 

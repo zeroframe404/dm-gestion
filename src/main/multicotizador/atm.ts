@@ -1,5 +1,6 @@
 // ATM en el multicotizador: traduce la solicitud común a su web service (SOAP `AUTOS_Cotizar_PHP`) y
-// devuelve sus coberturas en la forma común. Por ahora sólo cotiza: no emite desde la aplicación.
+// devuelve sus coberturas en la forma común. Cada cobertura trae el número de operación de la
+// cotización, con el que se emite después desde la aplicación (ver aseguradoras/atm/propuesta.ts).
 //
 // Lo que ATM pide y la solicitud común no trae —el plan (vigencia, facturación y forma de pago), su
 // código del vehículo, el código de uso, ingresos brutos— sale de su REST (planes) y de sus tablas por
@@ -853,7 +854,24 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     // ATM no devuelve el porcentaje aplicado; el pedido sí (y si no lo acepta, rechaza la cotización).
     bonificacionPorcentaje: bonificacion ? Number(bonificacion) : null,
     recargoAdministrativoPorcentaje: null,
-    emision: null,
+    // El número de operación es de ESTA cotización: es lo que ATM necesita para emitir sin volver a
+    // cotizar (AUTOS_Propuesta_PHP). Sin él no hay emisión posible desde acá.
+    emision: cotizacion.operacion
+      ? {
+          tipo: 'ATM' as const,
+          operacion: cotizacion.operacion,
+          cobertura: c.codigo,
+          descripcionCobertura: c.descripcion,
+          premio: c.premio,
+          condicionDePago: (c.formaDePago || plan.formaDePago).toUpperCase(),
+          seccion: SECCION_ATM[tipo],
+          tipoPersona: solicitud.tomador.tipoPersona === 'JURIDICA' ? ('J' as const) : ('F' as const),
+          iva,
+          codigoPostal: solicitud.codigoPostal,
+          subCodigoPostal,
+          ceroKm: v.ceroKm,
+        }
+      : null,
   }))
 
   if (cotizacion.vehiculoBlack) avisos.push('ATM marca este vehículo como «vehículo black» (de su lista de vehículos con restricciones).')
@@ -892,7 +910,7 @@ export const atm: CotizadorDeAseguradora = {
   id: ID_ATM,
   nombre: NOMBRE,
   tipos: ['AUTO', 'MOTO'],
-  emite: false,
+  emite: true,
   noDisponible: () => (cuentaActual() ? null : 'Falta cargar la cuenta de ATM en API Aseguradoras → ATM.'),
   async localidades(_tipo, codigoPostal) {
     const credenciales = cuentaActual()

@@ -150,7 +150,7 @@ export function crearClienteAtm(cuenta: CuentaAtm, opciones: OpcionesDeCliente =
           body: sobreSoap(metodo, docIn),
         },
         ESPERA_SOAP_MS,
-        'la cotización',
+        /Propuesta/i.test(metodo) ? 'la emisión' : 'la cotización',
       )
       try {
         return resultadoDelSobre(metodo, texto)

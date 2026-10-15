@@ -415,6 +415,8 @@ const api: ApiDm = {
     probar: () => invocar('atm:probar'),
     actualizarTablas: () => invocar('atm:actualizarTablas'),
     importarTablas: () => invocar('atm:importarTablas'),
+    opcionesDeEmision: (codigoPostal) => invocar('atm:opcionesDeEmision', codigoPostal),
+    emitir: (datos) => invocar('atm:emitir', datos),
   },
   multicotizador: {
     aseguradoras: () => invocar('multicotizador:aseguradoras'),

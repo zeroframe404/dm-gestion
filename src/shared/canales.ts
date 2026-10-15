@@ -213,8 +213,11 @@ import type {
   SenalParaMandar,
   // ATM Seguros.
   DatosDeAtm,
+  DatosDeEmisionAtm,
+  EmisionAtm,
   EstadoDeAtm,
   EstadoDeTablasAtm,
+  OpcionesDeEmisionAtm,
   PruebaDeAtm,
   // Galeno Seguros: cotización, emisión, consultas, cuenta corriente y ART.
   CodigoPostalGaleno,
@@ -853,6 +856,10 @@ export interface Canales {
   'atm:actualizarTablas': () => Resultado<EstadoDeTablasAtm>
   /** Abre el diálogo para elegir los archivos de las tablas; null si se cancela. */
   'atm:importarTablas': () => Resultado<EstadoDeTablasAtm | null>
+  /** Las listas de valores del diálogo «Emitir con ATM», con las localidades de ese código postal. */
+  'atm:opcionesDeEmision': (codigoPostal: string) => Resultado<OpcionesDeEmisionAtm>
+  /** Emite de verdad: convierte la operación cotizada en propuesta o póliza. */
+  'atm:emitir': (datos: DatosDeEmisionAtm) => Resultado<EmisionAtm>
 
   // Multicotizador: la misma solicitud, en todas las compañías con API. La pantalla pide UNA compañía
   // por llamado —todas a la vez— para ir llenando cada tarjeta apenas contesta su compañía.

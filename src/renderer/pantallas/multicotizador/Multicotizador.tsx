@@ -27,6 +27,7 @@ import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos } from '../../contexto/Permisos'
 import { ajustesGuardados, guardarAjustes } from '../../preferencias'
 import { DialogoEmitirGaleno } from '../presupuestos/DialogoEmitirGaleno'
+import { DialogoEmitirAtm } from './DialogoEmitirAtm'
 import { FormularioDeCotizacion, formularioVacio, solicitudDe, type FormularioMulticotizador } from './FormularioDeCotizacion'
 import { ResultadosDeCotizacion, type EstadoDeTarjeta } from './ResultadosDeCotizacion'
 
@@ -332,6 +333,24 @@ export function Multicotizador() {
             setMensaje({
               tono: 'exito',
               texto: `${aEmitir.nombreAseguradora} emitió la póliza Nº ${resultado.poliza} (${aEmitir.nombre}) por ${enPesos(resultado.premio)}.`,
+            })
+            setAEmitir(null)
+          }}
+        />
+      )}
+      {aEmitir && emision?.tipo === 'ATM' && (
+        <DialogoEmitirAtm
+          emision={emision}
+          nombreSugerido={formulario.nombre}
+          documentoSugerido={formulario.documento}
+          telefonoSugerido={formulario.telefono}
+          patenteSugerida={formulario.patente}
+          alCerrar={() => setAEmitir(null)}
+          alEmitir={(resultado) => {
+            const numero = resultado.poliza ? `la póliza Nº ${resultado.poliza}` : resultado.propuesta ? `la propuesta Nº ${resultado.propuesta}` : `la operación ${resultado.operacion}`
+            setMensaje({
+              tono: 'exito',
+              texto: `${aEmitir.nombreAseguradora} emitió ${numero} (${aEmitir.nombre}) por ${enPesos(emision.premio)}.${resultado.estado === 'INS' ? ' Queda pendiente de inspección.' : ''}`,
             })
             setAEmitir(null)
           }}

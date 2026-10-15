@@ -282,9 +282,11 @@ import {
 import {
   actualizarTablasDeAtm,
   borrarCuentaAtm,
+  emitirAtm,
   estadoAtm,
   guardarCuentaAtm,
   importarTablasDeAtm,
+  opcionesDeEmisionAtm,
   probarAtm,
   traerAtmDelServidor,
 } from './servicios/atm'
@@ -2005,6 +2007,16 @@ export function registrarIpc(): void {
     const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
     if (elegido.canceled || elegido.filePaths.length === 0) return exito(null)
     return exito(importarTablasDeAtm(elegido.filePaths))
+  })
+  // Emitir desde el multicotizador: igual que con Galeno, crea una póliza real contra un tercero y
+  // pide EDITAR Presupuestos; las listas del diálogo, sólo verlo.
+  manejar('atm:opcionesDeEmision', async (codigoPostal) => {
+    exigirVista('presupuestos')
+    return exito(await opcionesDeEmisionAtm(String(codigoPostal ?? '')))
+  })
+  manejar('atm:emitir', async (datos) => {
+    exigirEdicion('presupuestos')
+    return exito(await emitirAtm(datos))
   })
 
   // --- Multicotizador ---------------------------------------------------------
