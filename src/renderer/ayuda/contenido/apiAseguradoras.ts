@@ -152,4 +152,43 @@ export const AYUDA_API_ASEGURADORAS: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'apiAseguradoras.mercantil': {
+    clave: 'apiAseguradoras.mercantil',
+    titulo: 'API Aseguradoras → Mercantil',
+    resumen: 'La cuenta de la API de Mercantil Andina (usuario, contraseña y clave de suscripción del portal): con ella, el Multicotizador cotiza autos en Mercantil.',
+    secciones: [
+      {
+        titulo: 'Qué se puede hacer con esto',
+        parrafos: [
+          'Con la cuenta cargada, el Multicotizador cotiza autos en Mercantil Andina al mismo tiempo que en las demás compañías, y sus coberturas entran al comparativo y al presupuesto como las de cualquiera. La póliza se emite desde la web de Mercantil: la cotización queda en su sistema con el número que muestra «Copiar datos para Mercantil Andina».',
+        ],
+      },
+      {
+        titulo: 'La cuenta vive en cada computadora',
+        parrafos: [
+          'Como ATM, Mercantil no pide que los pedidos salgan de una IP dada de alta, así que cada computadora le habla directo, sin pasar por el servidor. Por eso la cuenta sí se guarda en esta computadora.',
+          'Se carga una sola vez: al guardar viaja cifrada al servidor y el resto de las computadoras la adopta al abrir el programa. El renglón de abajo de la cuenta dice si esta computadora tiene lo mismo que el servidor; si no, «Traer del servidor» la toma ya.',
+          'La carga un administrador. «Sacarla» la borra de esta computadora y del servidor: sin cuenta, Mercantil deja de cotizar.',
+        ],
+      },
+      {
+        titulo: 'Los datos que pide, y de dónde salen',
+        parrafos: ['Son tres secretos y los tres hacen falta: sin cualquiera de ellos Mercantil no da el token con el que se hace todo lo demás. Sale de la «Guía para la conexión a las APIs de Mercantil Andina» (está en la carpeta docs del programa).'],
+        lista: [
+          'Ambiente: Desarrollo es el de las credenciales de test que Mercantil manda primero (apidev.mercantilandina.com.ar): lo que cotiza no vale para el cliente. Producción es el de todos los días, con las credenciales que Mercantil da después.',
+          'Usuario y contraseña: los de la API, que Mercantil manda por correo cuando vincula el código de PAS. Para pedirlos hay que mandarle a Mercantil el código de PAS a vincular, el nombre, CUIT, correo y teléfono de la agencia, para qué es la integración y qué se va a usar (cotización de autos). No son los del portal de APIs.',
+          'Clave de suscripción: la «subscription key» que aparece en el Perfil del portal de APIs (apiportal.mercantilandina.com.ar) después de registrarse y suscribirse a los productos (Automotores). Viaja en todos los pedidos como Ocp-Apim-Subscription-Key.',
+          'Código de productor (opcional): el PAS con el que se cotiza. Vacío, se usa el que Mercantil asoció al usuario; «Probar conexión» muestra cuál es.',
+          'La contraseña y la clave de suscripción nunca vuelven a la pantalla: con la cuenta ya cargada, dejar los campos vacíos conserva las que están (sirve para cambiar sólo el productor o el ambiente).',
+        ],
+      },
+      {
+        titulo: 'Probar conexión',
+        parrafos: [
+          'Prueba la cuenta YA guardada en esta computadora, no lo que está escrito en los campos: primero se guarda y después se prueba. Hace tres cosas, que son los tres secretos: pide el token (prueba el usuario, la contraseña y la clave de suscripción), lee el productor asociado al usuario y cuenta las marcas del catálogo de vehículos (prueba que la suscripción incluya el producto de automotores).',
+          'Si Mercantil dice que la clave de suscripción falta o no vale, es la del portal: revisá el Perfil y que la suscripción esté activa. Si no acepta el usuario o la contraseña, son los que mandó Mercantil por correo, y tienen que ser del mismo ambiente que el elegido.',
+        ],
+      },
+    ],
+  },
 }

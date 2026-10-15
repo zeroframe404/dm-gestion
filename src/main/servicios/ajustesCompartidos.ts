@@ -18,13 +18,15 @@
 //   meta           app de Facebook e Instagram y su dirección de vuelta        superadministrador
 //   atmApi         cuenta del web service de ATM Seguros (usuario, clave,      administrador o superadmin
 //                  vendedor y ambiente)
+//   mercantilApi   cuenta de la API de Mercantil Andina (usuario, contraseña,   administrador o superadmin
+//                  clave de suscripción, productor y ambiente)
 //   companias      días de cobertura, comisión, renovación y plantilla         administrador o superadmin
 //   ticket         dirección y teléfono del encabezado de cada sucursal        cualquiera, la de SU sucursal
 //   referencias    las listas del módulo Compañías (ver referenciasCompartidas.ts)
 //
 // La cuenta de Galeno (`galenoApi`) también vive en el servidor, pero NO está en esta lista: Galeno sólo
 // acepta pedidos desde la IP del VPS, así que ninguna computadora se la guarda (ver servicios/galeno.ts).
-// La de ATM sí se adopta en cada una, porque ATM no tiene esa restricción y cada PC le habla directo.
+// Las de ATM y Mercantil sí se adoptan en cada una, porque no tienen esa restricción y cada PC les habla directo.
 //
 // El recorte por rol NO se hace acá: se hace en ipc.ts, que es donde se sabe quién llamó. Este archivo
 // sólo sabe llevar y traer.
@@ -42,7 +44,16 @@ import type { EstadoDeAjusteCompartido, EstadoDeGoogleEnLaAgencia } from '../../
 import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import { adoptarCompanias, valorCompartidoDeCompanias } from './companias'
-import { adoptarAtm, adoptarGoogle, adoptarMeta, valorCompartidoDeAtm, valorCompartidoDeGoogle, valorCompartidoDeMeta } from './config'
+import {
+  adoptarAtm,
+  adoptarGoogle,
+  adoptarMercantil,
+  adoptarMeta,
+  valorCompartidoDeAtm,
+  valorCompartidoDeGoogle,
+  valorCompartidoDeMercantil,
+  valorCompartidoDeMeta,
+} from './config'
 import { ErrorDeNegocio } from './errores'
 import { adoptarReferenciasDelVps } from './referenciasCompartidas'
 import { crearFuenteVps } from './sincronizacion'
@@ -88,6 +99,13 @@ const ATM: AjusteCompartido = {
   adoptar: adoptarAtm,
 }
 
+const MERCANTIL: AjusteCompartido = {
+  clave: 'mercantilApi',
+  nombre: 'la cuenta de Mercantil Andina',
+  valorLocal: valorCompartidoDeMercantil,
+  adoptar: adoptarMercantil,
+}
+
 const COMPANIAS: AjusteCompartido = {
   clave: 'companias',
   nombre: 'el catálogo de compañías',
@@ -103,7 +121,7 @@ const TICKET: AjusteCompartido = {
 }
 
 /** Los que se adoptan solos al arrancar, en el orden en que se piden. */
-const TODOS = [GOOGLE, META, ATM, COMPANIAS, TICKET]
+const TODOS = [GOOGLE, META, ATM, MERCANTIL, COMPANIAS, TICKET]
 
 /** Lo que se devuelve cuando ni siquiera hay puente: en desarrollo, o sin VPS configurado. */
 const SIN_SERVIDOR: EstadoDeAjusteCompartido = {
@@ -312,6 +330,10 @@ export const estadoCompartidoDeAtm = (): Promise<EstadoDeAjusteCompartido> => es
 export const borrarAtmDelVps = (): Promise<void> => borrarDelVps(ATM)
 /** El botón «Traer del servidor» de API Aseguradoras → ATM: lo apretó alguien, así que sí pisa lo local. */
 export const traerAtmDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(ATM, { pisarLoLocal: true })
+export const estadoCompartidoDeMercantil = (): Promise<EstadoDeAjusteCompartido> => estadoDe(MERCANTIL)
+export const borrarMercantilDelVps = (): Promise<void> => borrarDelVps(MERCANTIL)
+/** Lo mismo para API Aseguradoras → Mercantil. */
+export const traerMercantilDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(MERCANTIL, { pisarLoLocal: true })
 
 export const estadoCompartidoDeCompanias = (): Promise<EstadoDeAjusteCompartido> => estadoDe(COMPANIAS)
 export const publicarCompaniasEnElVps = (quien: string | null): Promise<EstadoDeAjusteCompartido> => publicar(COMPANIAS, quien)
@@ -398,10 +420,10 @@ function identidadDeSucursal(nombre: string): string {
  * motivo vuelve igual, para la pantalla que quiera mostrarlo.
  */
 export async function publicarSinRomper(
-  cual: 'companias' | 'google' | 'meta' | 'atmApi',
+  cual: 'companias' | 'google' | 'meta' | 'atmApi' | 'mercantilApi',
   quien: string | null,
 ): Promise<EstadoDeAjusteCompartido> {
-  const ajuste = { companias: COMPANIAS, google: GOOGLE, meta: META, atmApi: ATM }[cual]
+  const ajuste = { companias: COMPANIAS, google: GOOGLE, meta: META, atmApi: ATM, mercantilApi: MERCANTIL }[cual]
   try {
     return await publicar(ajuste, quien)
   } catch (error) {

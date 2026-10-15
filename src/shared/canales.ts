@@ -219,6 +219,10 @@ import type {
   EstadoDeTablasAtm,
   OpcionesDeEmisionAtm,
   PruebaDeAtm,
+  // Mercantil Andina.
+  DatosDeMercantil,
+  EstadoDeMercantil,
+  PruebaDeMercantil,
   // Galeno Seguros: cotización, emisión, consultas, cuenta corriente y ART.
   CodigoPostalGaleno,
   CotizacionGaleno,
@@ -860,6 +864,16 @@ export interface Canales {
   'atm:opcionesDeEmision': (codigoPostal: string) => Resultado<OpcionesDeEmisionAtm>
   /** Emite de verdad: convierte la operación cotizada en propuesta o póliza. */
   'atm:emitir': (datos: DatosDeEmisionAtm) => Resultado<EmisionAtm>
+
+  // Mercantil Andina: la cuenta de su API (compartida como `mercantilApi`). Cotizar se cotiza desde el
+  // multicotizador; el detalle vive en main/aseguradoras/mercantil/*.
+  'mercantil:estado': () => Resultado<EstadoDeMercantil>
+  'mercantil:guardarCredenciales': (datos: DatosDeMercantil) => Resultado<EstadoDeMercantil>
+  'mercantil:borrarCredenciales': () => Resultado<EstadoDeMercantil>
+  /** Adopta ya la cuenta guardada en el servidor, aunque esta computadora tenga otra. */
+  'mercantil:traerDelServidor': () => Resultado<EstadoDeMercantil>
+  /** Pide un token, lee el productor asociado y cuenta las marcas del catálogo. */
+  'mercantil:probar': () => Resultado<PruebaDeMercantil>
 
   // Multicotizador: la misma solicitud, en todas las compañías con API. La pantalla pide UNA compañía
   // por llamado —todas a la vez— para ir llenando cada tarjeta apenas contesta su compañía.

@@ -1,10 +1,11 @@
 // Las compañías que cotiza el multicotizador. Sumar una es escribir su adaptador (ver aseguradora.ts,
-// galeno.ts y atm.ts) y agregarla a esta lista: la pantalla la muestra sola, con su tarjeta y sus ajustes.
+// galeno.ts, atm.ts y mercantil.ts) y agregarla a esta lista: la pantalla la muestra sola, con su tarjeta y sus ajustes.
 import type { CotizadorDeAseguradora } from './aseguradora'
 import { atm } from './atm'
 import { galeno } from './galeno'
+import { mercantil } from './mercantil'
 
-const REGISTRADAS: readonly CotizadorDeAseguradora[] = [galeno, atm]
+const REGISTRADAS: readonly CotizadorDeAseguradora[] = [galeno, atm, mercantil]
 
 /** Las pruebas reemplazan las compañías de verdad por unas que no salen a internet. */
 let dePrueba: readonly CotizadorDeAseguradora[] | null = null

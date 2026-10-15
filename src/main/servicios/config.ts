@@ -2,7 +2,7 @@
 // Acá viven las credenciales de Google: nunca se guardan en la base ni en el repositorio.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { AMBIENTES_ATM, type AmbienteAtm, type EstadoConexionGoogle, type EstadoDeMeta } from '../../shared/tipos'
+import { AMBIENTES_ATM, AMBIENTES_MERCANTIL, type AmbienteAtm, type AmbienteMercantil, type EstadoConexionGoogle, type EstadoDeMeta } from '../../shared/tipos'
 import { rutaConfig } from '../rutas'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
@@ -82,6 +82,22 @@ interface ConfigAtm {
   actualizadoEn: string
 }
 
+/**
+ * La cuenta de la API de Mercantil Andina. Como la de ATM, vive en cada computadora (Mercantil tampoco
+ * restringe por IP) y viaja a las demás como el ajuste compartido `mercantilApi`. Son tres secretos
+ * que hacen falta juntos: el usuario y la contraseña que da Mercantil, y la «subscription key» del
+ * portal de APIs (ver la nota en shared/tipos.ts).
+ */
+interface ConfigMercantil {
+  ambiente: AmbienteMercantil
+  usuario: string
+  clave: string
+  claveDeSuscripcion: string
+  /** El código de productor (PAS) con que se cotiza; vacío = el que Mercantil asocia al usuario. */
+  productor: string
+  actualizadoEn: string
+}
+
 interface Config {
   google?: ConfigGoogle
   vps?: ConfigVps
@@ -89,6 +105,7 @@ interface Config {
   mesh?: ConfigMesh
   galeno?: ConfigGaleno
   atm?: ConfigAtm
+  mercantil?: ConfigMercantil
 }
 
 /**
@@ -498,6 +515,119 @@ export function adoptarAtm(valor: unknown): boolean {
   if (!atm.usuario || !atm.clave) return false
   const config = leerConfig()
   config.atm = { ...atm, actualizadoEn: new Date().toISOString() }
+  escribirConfig(config)
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Mercantil Andina: la cuenta de su API (ver la nota de `ConfigMercantil`).
+// ---------------------------------------------------------------------------
+
+export interface CredencialesMercantil {
+  ambiente: AmbienteMercantil
+  usuario: string
+  clave: string
+  claveDeSuscripcion: string
+  productor: string
+}
+
+function ambienteMercantil(valor: unknown): AmbienteMercantil {
+  return typeof valor === 'string' && (AMBIENTES_MERCANTIL as readonly string[]).includes(valor) ? (valor as AmbienteMercantil) : 'produccion'
+}
+
+/** Lo que se puede mostrar de la cuenta de Mercantil: todo menos la contraseña y la clave de suscripción (de ésta, el final). */
+export function cuentaMercantilVisible(): {
+  configurada: boolean
+  ambiente: AmbienteMercantil
+  usuario: string
+  finDeClaveDeSuscripcion: string
+  productor: string
+  actualizadoEn: string | null
+} {
+  const m = leerConfig().mercantil
+  return {
+    configurada: Boolean(m?.usuario && m.clave && m.claveDeSuscripcion),
+    ambiente: ambienteMercantil(m?.ambiente),
+    usuario: m?.usuario ?? '',
+    finDeClaveDeSuscripcion: m?.claveDeSuscripcion ? m.claveDeSuscripcion.slice(-4) : '',
+    productor: m?.productor ?? '',
+    actualizadoEn: m?.actualizadoEn ?? null,
+  }
+}
+
+/** La cuenta completa, sólo para el proceso principal. Null si no está cargada entera. */
+export function credencialesMercantil(): CredencialesMercantil | null {
+  const m = leerConfig().mercantil
+  if (!m?.usuario || !m.clave || !m.claveDeSuscripcion) return null
+  return { ambiente: ambienteMercantil(m.ambiente), usuario: m.usuario, clave: m.clave, claveDeSuscripcion: m.claveDeSuscripcion, productor: m.productor ?? '' }
+}
+
+/** Lo mismo que hacen `guardarMercantil` y `adoptarMercantil`: si no, la huella del ajuste compartido no cerraría nunca. */
+function normalizarMercantil(ambiente: unknown, usuario: string, clave: string, claveDeSuscripcion: string, productor: string): Omit<ConfigMercantil, 'actualizadoEn'> {
+  return {
+    ambiente: ambienteMercantil(ambiente),
+    usuario: usuario.trim(),
+    clave: clave.trim(),
+    claveDeSuscripcion: claveDeSuscripcion.trim(),
+    productor: productor.replace(/\s/g, ''),
+  }
+}
+
+export function guardarMercantil(datos: unknown): void {
+  const d = objeto(datos, 'Los datos de la cuenta de Mercantil Andina')
+  const usuario = texto(d.usuario, 'El usuario de Mercantil', 1, 120)
+  const config = leerConfig()
+  const mismoUsuario = Boolean(config.mercantil?.usuario) && config.mercantil?.usuario === usuario.trim()
+  // Con la contraseña vacía se conserva la que ya estaba: así se cambia el productor sin volver a escribirla.
+  const claveEscrita = typeof d.clave === 'string' ? d.clave.trim() : ''
+  if (!claveEscrita && config.mercantil?.usuario && !mismoUsuario) {
+    throw new ErrorDeNegocio('Cambiaste el usuario de Mercantil: escribí también su contraseña.')
+  }
+  const clave = claveEscrita || config.mercantil?.clave || ''
+  if (!clave) throw new ErrorDeNegocio('Falta la contraseña de la cuenta de Mercantil Andina.')
+  // La clave de suscripción es del portal, no del usuario: se conserva aunque cambie el usuario.
+  const suscripcionEscrita = typeof d.claveDeSuscripcion === 'string' ? d.claveDeSuscripcion.trim() : ''
+  const claveDeSuscripcion = suscripcionEscrita || config.mercantil?.claveDeSuscripcion || ''
+  if (!claveDeSuscripcion) throw new ErrorDeNegocio('Falta la clave de suscripción del portal de APIs de Mercantil (Ocp-Apim-Subscription-Key).')
+  if (/\s/.test(claveDeSuscripcion) || claveDeSuscripcion.length > 200) throw new ErrorDeNegocio('La clave de suscripción de Mercantil no es válida: es una tira de letras y números, sin espacios.')
+  const productor = typeof d.productor === 'string' ? d.productor.replace(/\s/g, '') : ''
+  if (productor && !/^\d{1,10}$/.test(productor)) {
+    throw new ErrorDeNegocio('El código de productor de Mercantil es numérico (hasta 10 números). Dejalo vacío para usar el del usuario.')
+  }
+  if (typeof d.ambiente !== 'string' || !(AMBIENTES_MERCANTIL as readonly string[]).includes(d.ambiente)) {
+    throw new ErrorDeNegocio('Elegí el ambiente de Mercantil: producción o desarrollo.')
+  }
+  escribirConfig({
+    ...config,
+    mercantil: { ...normalizarMercantil(d.ambiente, usuario, clave, claveDeSuscripcion, productor), actualizadoEn: new Date().toISOString() },
+  })
+}
+
+/** Saca la cuenta de Mercantil de esta computadora. */
+export function borrarMercantil(): void {
+  const config = leerConfig()
+  delete config.mercantil
+  escribirConfig(config)
+}
+
+/**
+ * Lo que viaja de la cuenta de Mercantil: siempre las cinco claves, en este orden y como texto (el
+ * productor vacío va vacío, no se omite), por la huella. Sin la cuenta entera no hay nada que compartir.
+ */
+export function valorCompartidoDeMercantil(): CredencialesMercantil | null {
+  const m = credencialesMercantil()
+  if (!m) return null
+  return { ambiente: m.ambiente, usuario: m.usuario, clave: m.clave, claveDeSuscripcion: m.claveDeSuscripcion, productor: m.productor }
+}
+
+export function adoptarMercantil(valor: unknown): boolean {
+  if (!valor || typeof valor !== 'object') return false
+  const v = valor as { ambiente?: unknown; usuario?: unknown; clave?: unknown; claveDeSuscripcion?: unknown; productor?: unknown }
+  const texto = (campo: unknown) => (typeof campo === 'string' ? campo : '')
+  const m = normalizarMercantil(v.ambiente, texto(v.usuario), texto(v.clave), texto(v.claveDeSuscripcion), texto(v.productor))
+  if (!m.usuario || !m.clave || !m.claveDeSuscripcion) return false
+  const config = leerConfig()
+  config.mercantil = { ...m, actualizadoEn: new Date().toISOString() }
   escribirConfig(config)
   return true
 }

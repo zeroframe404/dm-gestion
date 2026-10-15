@@ -430,6 +430,13 @@ export interface ApiDm {
     opcionesDeEmision: Remota<'atm:opcionesDeEmision'>
     emitir: Remota<'atm:emitir'>
   }
+  mercantil: {
+    estado: Remota<'mercantil:estado'>
+    guardarCredenciales: Remota<'mercantil:guardarCredenciales'>
+    borrarCredenciales: Remota<'mercantil:borrarCredenciales'>
+    traerDelServidor: Remota<'mercantil:traerDelServidor'>
+    probar: Remota<'mercantil:probar'>
+  }
   multicotizador: {
     aseguradoras: Remota<'multicotizador:aseguradoras'>
     localidades: Remota<'multicotizador:localidades'>

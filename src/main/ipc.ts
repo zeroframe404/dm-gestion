@@ -290,6 +290,7 @@ import {
   probarAtm,
   traerAtmDelServidor,
 } from './servicios/atm'
+import { borrarCuentaMercantil, estadoMercantil, guardarCuentaMercantil, probarMercantil, traerMercantilDelServidor } from './servicios/mercantil'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora, localidadesDelMulticotizador } from './servicios/multicotizador'
 import {
   borrarMetaDelVps,
@@ -2017,6 +2018,35 @@ export function registrarIpc(): void {
   manejar('atm:emitir', async (datos) => {
     exigirEdicion('presupuestos')
     return exito(await emitirAtm(datos))
+  })
+
+  // --- Mercantil Andina ---------------------------------------------------------
+  //
+  // La cuenta, con el mismo criterio que la de ATM: la ve quien ve Administración y la cargan, borran o
+  // traen del servidor sólo un administrador o el superadministrador, porque viaja a todas las
+  // computadoras (ajuste compartido `mercantilApi`). Cotizar va por el multicotizador.
+  manejar('mercantil:estado', async () => {
+    exigirVista('administracion')
+    return exito(await estadoMercantil())
+  })
+  manejar('mercantil:guardarCredenciales', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await guardarCuentaMercantil(datos, actor.nombre))
+  })
+  manejar('mercantil:borrarCredenciales', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await borrarCuentaMercantil())
+  })
+  manejar('mercantil:traerDelServidor', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await traerMercantilDelServidor())
+  })
+  manejar('mercantil:probar', async () => {
+    exigirVista('administracion')
+    return exito(await probarMercantil())
   })
 
   // --- Multicotizador ---------------------------------------------------------
