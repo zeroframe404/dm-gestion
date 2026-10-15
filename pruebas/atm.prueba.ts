@@ -1436,13 +1436,13 @@ test('ATM: sin la cuenta cargada no está disponible y no sale a internet', asyn
   assert.equal(pedidos.length, 0)
 })
 
-test('ATM: el multicotizador lista ATM junto a Galeno, para autos y motos y que emite', (t) => {
+test('ATM: el multicotizador lista ATM junto a Galeno y Mercantil, para autos y motos y que emite', (t) => {
   t.after(() => usarCuentaDeAtmDePrueba(null))
   usarCuentaDeAtmDePrueba(CUENTA)
   const lista = aseguradorasDelMulticotizador()
   assert.deepEqual(
     lista.map((a) => a.id),
-    ['GALENO', 'ATM'],
+    ['GALENO', 'ATM', 'MERCANTIL'],
   )
   assert.deepEqual(lista[1], { id: ID_ATM, nombre: 'ATM', tipos: ['AUTO', 'MOTO'], emite: true, noDisponible: null })
   usarCuentaDeAtmDePrueba(null)
