@@ -354,12 +354,15 @@ const REPORTES: Reporte[] = [
       col('telefono', 'Teléfono', 16),
       col('compania', 'Compañía', 20),
       col('numeroPoliza', 'N° de póliza', 16),
+      col('cobertura', 'Cobertura', 16),
+      col('formaPago', 'Forma de pago', 16),
       col('patente', 'Patente', 11),
       col('marca', 'Marca', 14),
       col('modelo', 'Modelo', 18),
       col('sucursal', 'Sucursal', 14),
       col('estado', 'Gestión', 14),
       col('responsable', 'Responsable', 18),
+      col('observaciones', 'Observaciones', 34),
       col('nota', 'Nota', 34),
     ],
     estados: ['pendiente', 'en gestion', 'no respondio', 'renovada', 'no renueva'],
@@ -375,8 +378,16 @@ const REPORTES: Reporte[] = [
       entreFechas(consulta, 'p.vigencia_hasta_iso', filtros)
       return consultar(
         `SELECT p.vigencia_hasta_iso AS venceEl, cl.nombre, cl.telefono, p.compania, p.numero AS numeroPoliza,
+                p.cobertura, p.forma_pago AS formaPago,
                 v.patente, v.marca, v.modelo, cl.sucursal_texto AS sucursal,
-                COALESCE(r.estado, 'pendiente') AS estado, r.responsable_nombre AS responsable, r.nota
+                COALESCE(r.estado, 'pendiente') AS estado, r.responsable_nombre AS responsable,
+                -- Como en la bandeja: la observación («con grúa», «20% aumentar cuando se renueva») a
+                -- veces está en la fila del mes y no en la póliza, así que se mira en las dos.
+                COALESCE(NULLIF(TRIM(p.observaciones), ''),
+                         (SELECT NULLIF(TRIM(c.observaciones), '') FROM cuotas_mes c
+                           WHERE c.poliza_id = p.id AND c.dada_de_baja = 0 AND NULLIF(TRIM(c.observaciones), '') IS NOT NULL
+                           ORDER BY c.id DESC LIMIT 1)) AS observaciones,
+                r.nota
            FROM polizas p
            JOIN clientes cl ON cl.id = p.cliente_id
            LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
