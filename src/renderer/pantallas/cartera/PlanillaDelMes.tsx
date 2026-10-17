@@ -127,7 +127,7 @@ function mensajeDeVacio(sucursales: readonly string[], sinSucursal: number, tota
  * exactamente la misma condición con la que se contó, así el número del cartel y las filas que
  * quedan en la tabla no pueden discrepar.
  */
-type Contador = '' | 'vencenHoy' | 'vencidos' | 'vencidosAvisados' | 'avisadosHoy' | 'coberturaPorTerminar' | 'pagadosHoy' | 'imputados' | 'adelantos'
+type Contador = '' | 'aAvisar' | 'vencenHoy' | 'vencidos' | 'vencidosAvisados' | 'avisadosHoy' | 'coberturaPorTerminar' | 'pagadosHoy' | 'imputados' | 'adelantos'
 
 function estaPagada(fila: FilaCartera): boolean {
   return Boolean(fila.pagoFecha) || fila.pagoRegistrado
@@ -149,9 +149,23 @@ function diasDeCoberturaQueQuedan(entrada: FilaConAlerta, hoy: string): number |
   return diasEntre(hoy, alerta.finCobertura)
 }
 
+/** Con cuántos días de anticipación empieza a contar la marca AVISAR VTO. */
+const DIAS_DE_ANTICIPO_AVISAR_VTO = 7
+
 function entraEnElContador(entrada: FilaConAlerta, contador: Contador, hoy: string): boolean {
   const { fila, alerta } = entrada
   switch (contador) {
+    // La marca AVISAR VTO: hay que avisarle ANTES de que venza. Entra en la ventana de los 7 días previos
+    // (la misma del semáforo amarillo) y se queda hasta que se le avisa o paga. Las de débito y las
+    // pagas no tienen `diasParaVencer`, así que quedan afuera solas.
+    case 'aAvisar':
+      return (
+        !estaPagada(fila) &&
+        normalizar(fila.avisarVto) === 'AVISAR' &&
+        !fila.fechaEnvio &&
+        alerta.diasParaVencer !== null &&
+        alerta.diasParaVencer <= DIAS_DE_ANTICIPO_AVISAR_VTO
+      )
     case 'vencenHoy':
       return !estaPagada(fila) && alerta.diasParaVencer === 0
     // Vencidos sin avisar todavía: en cuanto se les manda el WhatsApp (o se marcan a mano) pasan a
@@ -363,6 +377,7 @@ export function PlanillaDelMes() {
   // tienen que seguir diciendo lo mismo cuando se toca uno para filtrar.
   const contadores = useMemo(() => {
     const hoy = datos?.hoy ?? ''
+    let aAvisar = 0
     let vencenHoy = 0
     let vencidos = 0
     let vencidosAvisados = 0
@@ -374,6 +389,7 @@ export function PlanillaDelMes() {
     for (const entrada of conAlerta) {
       if (entraEnElContador(entrada, 'imputados', hoy)) imputados++
       if (entraEnElContador(entrada, 'adelantos', hoy)) adelantos++
+      if (entraEnElContador(entrada, 'aAvisar', hoy)) aAvisar++
       if (entraEnElContador(entrada, 'vencenHoy', hoy)) vencenHoy++
       if (entraEnElContador(entrada, 'vencidos', hoy)) vencidos++
       if (entraEnElContador(entrada, 'vencidosAvisados', hoy)) vencidosAvisados++
@@ -381,7 +397,7 @@ export function PlanillaDelMes() {
       if (entraEnElContador(entrada, 'coberturaPorTerminar', hoy)) coberturaPorTerminar++
       if (entraEnElContador(entrada, 'pagadosHoy', hoy)) pagadosHoy++
     }
-    return { total: conAlerta.length, vencenHoy, vencidos, vencidosAvisados, avisadosHoy, coberturaPorTerminar, pagadosHoy, imputados, adelantos }
+    return { total: conAlerta.length, aAvisar, vencenHoy, vencidos, vencidosAvisados, avisadosHoy, coberturaPorTerminar, pagadosHoy, imputados, adelantos }
   }, [conAlerta, datos])
 
   const filaSeleccionada = useMemo(
@@ -650,6 +666,16 @@ export function PlanillaDelMes() {
           titulo="Todas las filas del mes."
           alTocar={() => setFiltros((f) => ({ ...f, contador: '' }))}
         />
+        {(contadores.aAvisar > 0 || filtros.contador === 'aAvisar') && (
+          <Contador
+            etiqueta="A avisar (AVISAR VTO)"
+            valor={contadores.aAvisar}
+            tono="amarillo"
+            activo={filtros.contador === 'aAvisar'}
+            titulo="Filas marcadas con AVISAR VTO que vencen en los próximos 7 días (o ya vencieron) y todavía no se les avisó. En cuanto se les manda el aviso salen de acá."
+            alTocar={() => alternarContador('aAvisar')}
+          />
+        )}
         <Contador
           etiqueta="Vencen hoy"
           valor={contadores.vencenHoy}
@@ -911,7 +937,7 @@ function Contador({
 }: {
   etiqueta: string
   valor: number
-  tono?: 'neutro' | 'rojo' | 'naranja' | 'azul' | 'verde' | 'violeta'
+  tono?: 'neutro' | 'rojo' | 'naranja' | 'amarillo' | 'azul' | 'verde' | 'violeta'
   titulo?: string
   activo: boolean
   alTocar: () => void
@@ -922,6 +948,7 @@ function Contador({
     neutro: activo ? 'border-marino-500 bg-marino-50 text-marino-900' : 'border-slate-200 bg-white text-slate-900 hover:border-slate-300',
     rojo: activo ? 'border-red-500 bg-red-100 text-red-900' : 'border-red-200 bg-red-50 text-red-800 hover:border-red-300',
     naranja: activo ? 'border-orange-500 bg-orange-100 text-orange-900' : 'border-orange-200 bg-orange-50 text-orange-800 hover:border-orange-300',
+    amarillo: activo ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300',
     azul: activo ? 'border-sky-500 bg-sky-100 text-sky-900' : 'border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300',
     verde: activo ? 'border-green-500 bg-green-100 text-green-900' : 'border-green-200 bg-green-50 text-green-800 hover:border-green-300',
     violeta: activo ? 'border-violet-500 bg-violet-100 text-violet-900' : 'border-violet-200 bg-violet-50 text-violet-800 hover:border-violet-300',
