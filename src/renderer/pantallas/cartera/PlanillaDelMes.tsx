@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
 import { diasEntre } from '../../../shared/polizas'
 import {
+  avisarVtoActivo,
   calcularAlerta,
   fechaDeVencimiento,
   nombreDePeriodo,
@@ -155,13 +156,13 @@ const DIAS_DE_ANTICIPO_AVISAR_VTO = 7
 function entraEnElContador(entrada: FilaConAlerta, contador: Contador, hoy: string): boolean {
   const { fila, alerta } = entrada
   switch (contador) {
-    // La marca AVISAR VTO: hay que avisarle ANTES de que venza. Entra en la ventana de los 7 días previos
+    // La alerta AVISAR VTO (viene encendida en todas; el empleado la apaga por fila): hay que avisarle ANTES de que venza. Entra en la ventana de los 7 días previos
     // (la misma del semáforo amarillo) y se queda hasta que se le avisa o paga. Las de débito y las
     // pagas no tienen `diasParaVencer`, así que quedan afuera solas.
     case 'aAvisar':
       return (
         !estaPagada(fila) &&
-        normalizar(fila.avisarVto) === 'AVISAR' &&
+        avisarVtoActivo(fila.avisarVto) &&
         !fila.fechaEnvio &&
         alerta.diasParaVencer !== null &&
         alerta.diasParaVencer <= DIAS_DE_ANTICIPO_AVISAR_VTO
@@ -208,7 +209,6 @@ interface Filtros {
   companias: string[]
   ramas: string[]
   colores: string[]
-  soloAvisarVto: boolean
   /** Rango del día en que vence la cuota ('AAAA-MM-DD'): «los que vencen del 10 al 15». */
   desde: string
   hasta: string
@@ -222,7 +222,6 @@ const FILTROS_VACIOS: Filtros = {
   companias: [],
   ramas: [],
   colores: [],
-  soloAvisarVto: false,
   desde: '',
   hasta: '',
   contador: '',
@@ -359,7 +358,6 @@ export function PlanillaDelMes() {
       // el texto crudo, que es como sigue estando en el desplegable.
       if (filtros.ramas.length > 0 && !filtros.ramas.some((elegida) => (rama ? elegida === rama : mismoTextoDeFiltro(elegida, fila.vehiculo)))) return false
       if (filtros.colores.length > 0 && !filtros.colores.includes(alerta.color)) return false
-      if (filtros.soloAvisarVto && normalizar(fila.avisarVto) !== 'AVISAR') return false
       if (!dentroDelRango(fechaDeVencimiento(fila.periodo, fila.diaVencimientoNumero), filtros.desde, filtros.hasta)) return false
       return true
     })
@@ -668,11 +666,11 @@ export function PlanillaDelMes() {
         />
         {(contadores.aAvisar > 0 || filtros.contador === 'aAvisar') && (
           <Contador
-            etiqueta="A avisar (AVISAR VTO)"
+            etiqueta="A avisar"
             valor={contadores.aAvisar}
             tono="amarillo"
             activo={filtros.contador === 'aAvisar'}
-            titulo="Filas marcadas con AVISAR VTO que vencen en los próximos 7 días (o ya vencieron) y todavía no se les avisó. En cuanto se les manda el aviso salen de acá."
+            titulo="Filas con la alerta de aviso encendida (viene así por defecto; se apaga desde el detalle de la fila) que vencen en los próximos 7 días (o ya vencieron) y todavía no se les avisó. En cuanto se les manda el aviso salen de acá."
             alTocar={() => alternarContador('aAvisar')}
           />
         )}
@@ -789,15 +787,6 @@ export function PlanillaDelMes() {
           textoDe={(c) => NOMBRE_COLOR[c as ColorAlerta]}
           alCambiar={(v) => setFiltros((f) => ({ ...f, colores: v }))}
         />
-        <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={filtros.soloAvisarVto}
-            onChange={(evento) => setFiltros((f) => ({ ...f, soloAvisarVto: evento.target.checked }))}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          Sólo con AVISAR VTO
-        </label>
         <RangoDeFecha
           etiqueta="Vence"
           desde={filtros.desde}
@@ -810,7 +799,6 @@ export function PlanillaDelMes() {
           filtros.companias.length > 0 ||
           filtros.ramas.length > 0 ||
           filtros.colores.length > 0 ||
-          filtros.soloAvisarVto ||
           filtros.desde ||
           filtros.hasta ||
           filtros.contador) && (

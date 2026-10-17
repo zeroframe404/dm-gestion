@@ -392,7 +392,7 @@ calculado solo y las acciones de un clic.
   columna y una entrada sin destino quedaría para siempre en «no se pudo».
 - **Filtros**: buscador por nombre, patente, póliza o DNI, y desplegables por sucursal, forma de pago,
   compañía, **tipo de vehículo** (auto, moto, pick up… salen del catálogo `tiposDeVehiculo`) y color de
-  alerta, más la casilla «Sólo con AVISAR VTO».
+  alerta.
 - **Los contadores de arriba filtran**, como en Siniestros, Tareas, Leads y Presupuestos: se toca
   VENCEN HOY, VENCIDOS, AVISADOS HOY, SE LES TERMINA LA COBERTURA o PAGADOS HOY y la tabla queda con
   esas filas (volver a tocarlo, o TOTAL, muestra el mes entero). El número lo calcula la misma
