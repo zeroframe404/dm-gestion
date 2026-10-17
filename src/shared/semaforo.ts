@@ -40,6 +40,18 @@ export interface DatosDeAlerta {
 
 export const DIAS_COBERTURA_POR_DEFECTO = 30
 
+/**
+ * La alerta de AVISAR VTO viene ENCENDIDA en todas las filas: una celda vacía (o con AVISAR) cuenta como
+ * marcada, y cada empleado la apaga fila por fila. Apagarla escribe este texto, que es lo único que la
+ * distingue de la celda vacía.
+ */
+export const AVISAR_VTO_APAGADO = 'NO AVISAR'
+
+export function avisarVtoActivo(valor: string | null | undefined): boolean {
+  const texto = (valor ?? '').trim().toUpperCase().replace(/\s+/g, ' ')
+  return texto !== AVISAR_VTO_APAGADO && texto !== 'NO'
+}
+
 /** Formas de pago que se cobran solas: no hay que avisar ni perseguir el pago. */
 const FORMAS_AUTOMATICAS = new Set(['TARJETA', 'CBU', 'DEBITO', 'DEBITO AUTOMATICO', 'TARJETA DE CREDITO', 'TARJETA DE DEBITO', 'DEBITO EN CUENTA', 'TC', 'DB'])
 

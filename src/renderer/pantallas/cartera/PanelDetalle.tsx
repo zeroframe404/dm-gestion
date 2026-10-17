@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { CampoEditable, EntradaHistorial, FilaCartera } from '../../../shared/tipos'
 import type { ResultadoDeEliminacion } from '../../../shared/eliminacion'
 import { claveDeFilaDeCelda } from '../../../shared/presencia'
+import { AVISAR_VTO_APAGADO, avisarVtoActivo } from '../../../shared/semaforo'
 import { Icono } from '../../componentes/Icono'
 import { Glow, InsigniaDePresencia, motivoDelBloqueo, useCursorAdentro } from '../../componentes/Presencia'
 import { seGuardaAlSalir } from '../../componentes/presencia-reglas'
@@ -161,7 +162,17 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar,
           <section key={grupo.titulo} className="mb-4">
             <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{grupo.titulo}</p>
             <dl className="flex flex-col gap-1">
-              {grupo.campos.map(({ campo, etiqueta }) => (
+              {grupo.campos.map(({ campo, etiqueta }) =>
+                campo === 'avisarVto' ? (
+                  <AlertaDeAviso
+                    key={`${fila.filaId}-${campo}`}
+                    etiqueta={etiqueta}
+                    encendida={avisarVtoActivo(fila.avisarVto)}
+                    trabado={trabado}
+                    motivo={bloqueadaPor ? motivoDelBloqueo(bloqueadaPor) : undefined}
+                    alCambiar={(encendida) => alGuardar(campo, encendida ? 'AVISAR' : AVISAR_VTO_APAGADO)}
+                  />
+                ) : (
                 <CampoDelDetalle
                   key={`${fila.filaId}-${campo}`}
                   etiqueta={etiqueta}
@@ -170,7 +181,8 @@ export function PanelDetalle({ fila, soloLectura, alCerrar, alGuardar, alBorrar,
                   motivo={bloqueadaPor ? motivoDelBloqueo(bloqueadaPor) : undefined}
                   alGuardar={(escrito) => alGuardar(campo, escrito)}
                 />
-              ))}
+                ),
+              )}
             </dl>
           </section>
         ))}
@@ -300,6 +312,39 @@ function CampoDelDetalle({
             candado ? 'bg-slate-50' : 'hover:border-slate-300 focus:border-marino-400 focus:outline-none focus:ring-2 focus:ring-marino-500/25',
           )}
         />
+      </dd>
+    </div>
+  )
+}
+
+/** La alerta de aviso de vencimiento: viene encendida en todas las filas y cada empleado la apaga acá. */
+function AlertaDeAviso({
+  etiqueta,
+  encendida,
+  trabado,
+  motivo,
+  alCambiar,
+}: {
+  etiqueta: string
+  encendida: boolean
+  trabado: boolean
+  motivo: string | undefined
+  alCambiar: (encendida: boolean) => void
+}) {
+  return (
+    <div className="grid grid-cols-[9rem_1fr] items-center gap-2">
+      <dt className="truncate text-xs text-slate-500">{etiqueta}</dt>
+      <dd>
+        <label className={cx('inline-flex items-center gap-2 px-1.5 py-1 text-sm text-slate-800', trabado ? 'cursor-not-allowed opacity-60' : 'cursor-pointer')} title={motivo}>
+          <input
+            type="checkbox"
+            checked={encendida}
+            disabled={trabado}
+            onChange={(evento) => alCambiar(evento.currentTarget.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          {encendida ? 'Avisar antes de que venza' : 'Alerta apagada'}
+        </label>
       </dd>
     </div>
   )

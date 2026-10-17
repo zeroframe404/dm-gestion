@@ -26,6 +26,7 @@ import {
   type VehiculoDeCliente,
 } from '../../../shared/tipos'
 import { NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
+import { AVISAR_VTO_APAGADO, avisarVtoActivo } from '../../../shared/semaforo'
 import { describirRiesgo, esVehiculo, tipoDeRiesgo } from '../../../shared/riesgos'
 import { DialogoRechazo } from '../../componentes/DialogoRechazo'
 import { BotonEliminar } from '../../componentes/BotonEliminar'
@@ -159,7 +160,6 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
   const idCompanias = useId()
   const idCoberturas = useId()
   const idFormasDePago = useId()
-  const idAvisarVto = useId()
   const cima = useRef<HTMLDivElement | null>(null)
 
   const cambiar = useCallback((parte: Partial<CamposPoliza>) => setCampos((previos) => ({ ...previos, ...parte })), [])
@@ -847,16 +847,18 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
                   ayuda="De acá sale el vencimiento y la bandeja de renovaciones."
                 />
               </div>
-              <Campo
-                etiqueta="Avisar vto."
-                list={idAvisarVto}
-                value={campos.avisarVto}
-                onChange={(evento) => cambiar({ avisarVto: evento.target.value })}
-                ayuda="Poné AVISAR si esta póliza tiene que salir en los avisos de vencimiento."
-              />
-              <datalist id={idAvisarVto}>
-                <option value="AVISAR" />
-              </datalist>
+              <label className="inline-flex cursor-pointer items-start gap-2 text-sm text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={avisarVtoActivo(campos.avisarVto)}
+                  onChange={(evento) => cambiar({ avisarVto: evento.target.checked ? 'AVISAR' : AVISAR_VTO_APAGADO })}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                />
+                <span>
+                  <strong className="font-semibold">Avisar antes de que venza.</strong> Viene tildado en todas las pólizas;
+                  destildalo si a este cliente no hay que avisarle.
+                </span>
+              </label>
               <AreaTexto
                 etiqueta="Observaciones"
                 rows={4}

@@ -4,6 +4,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  AVISAR_VTO_APAGADO,
+  avisarVtoActivo,
   calcularAlerta,
   esDebitoAutomatico,
   fechaDeVencimiento,
@@ -129,4 +131,14 @@ test('violeta: la cuota está imputada a la compañía o tiene un pago adelantad
   assert.equal(calcularAlerta({ ...base, pagada: true, imputada: true }, '2026-08-20').color, 'verde')
   // Y el débito automático no tapa un imputado: lo que falta es cobrar.
   assert.equal(calcularAlerta({ ...base, formaPago: 'CBU', pagada: false, imputada: true }, '2026-08-20').color, 'violeta')
+})
+
+test('AVISAR VTO viene encendida: vacía o AVISAR cuentan como marcada, sólo NO AVISAR la apaga', () => {
+  assert.equal(avisarVtoActivo(null), true)
+  assert.equal(avisarVtoActivo(''), true)
+  assert.equal(avisarVtoActivo('AVISAR'), true)
+  assert.equal(avisarVtoActivo(' aviso  '), true)
+  assert.equal(avisarVtoActivo(AVISAR_VTO_APAGADO), false)
+  assert.equal(avisarVtoActivo(' no   avisar '), false)
+  assert.equal(avisarVtoActivo('NO'), false)
 })
