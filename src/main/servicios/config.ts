@@ -2,7 +2,18 @@
 // Acá viven las credenciales de Google: nunca se guardan en la base ni en el repositorio.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { AMBIENTES_ATM, AMBIENTES_MERCANTIL, type AmbienteAtm, type AmbienteMercantil, type EstadoConexionGoogle, type EstadoDeMeta } from '../../shared/tipos'
+import {
+  AMBIENTES_ATM,
+  AMBIENTES_EQUIDAD,
+  AMBIENTES_MERCANTIL,
+  EMPRESA_EQUIDAD_POR_DEFECTO,
+  RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO,
+  type AmbienteAtm,
+  type AmbienteEquidad,
+  type AmbienteMercantil,
+  type EstadoConexionGoogle,
+  type EstadoDeMeta,
+} from '../../shared/tipos'
 import { rutaConfig } from '../rutas'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
@@ -98,6 +109,25 @@ interface ConfigMercantil {
   actualizadoEn: string
 }
 
+/**
+ * La cuenta de la API GLM de La Equidad. Como la de ATM y la de Mercantil, vive en cada computadora
+ * (Equidad tampoco restringe por IP) y viaja a las demás como el ajuste compartido `equidadApi`. Son
+ * dos pares de credenciales (el usuario de aplicación y el de servicio, ver la nota en shared/tipos.ts)
+ * más la URL base del servlet, que cambia entre el ambiente de prueba y el de producción.
+ */
+interface ConfigEquidad {
+  ambiente: AmbienteEquidad
+  urlBase: string
+  usuario: string
+  clave: string
+  usuarioDeServicio: string
+  claveDeServicio: string
+  productor: string
+  rama: string
+  empresa: string
+  actualizadoEn: string
+}
+
 interface Config {
   google?: ConfigGoogle
   vps?: ConfigVps
@@ -106,6 +136,7 @@ interface Config {
   galeno?: ConfigGaleno
   atm?: ConfigAtm
   mercantil?: ConfigMercantil
+  equidad?: ConfigEquidad
 }
 
 /**
@@ -628,6 +659,168 @@ export function adoptarMercantil(valor: unknown): boolean {
   if (!m.usuario || !m.clave || !m.claveDeSuscripcion) return false
   const config = leerConfig()
   config.mercantil = { ...m, actualizadoEn: new Date().toISOString() }
+  escribirConfig(config)
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// La Equidad: la cuenta de su API GLM (ver la nota de `ConfigEquidad`).
+// ---------------------------------------------------------------------------
+
+export interface CredencialesEquidad {
+  ambiente: AmbienteEquidad
+  urlBase: string
+  usuario: string
+  clave: string
+  usuarioDeServicio: string
+  claveDeServicio: string
+  productor: string
+  rama: string
+  empresa: string
+}
+
+function ambienteEquidad(valor: unknown): AmbienteEquidad {
+  return typeof valor === 'string' && (AMBIENTES_EQUIDAD as readonly string[]).includes(valor) ? (valor as AmbienteEquidad) : 'produccion'
+}
+
+/** La URL base como se guarda: con esquema, sin barras de más y terminada en `/` (la misma regla que `normalizarUrlBase` del cliente). */
+function urlBaseEquidad(valor: string): string {
+  let url = valor.trim()
+  if (!url) return ''
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`
+  return `${url.replace(/\/+$/, '')}/`
+}
+
+/** Lo que se puede mostrar de la cuenta de Equidad: todo menos las dos contraseñas. */
+export function cuentaEquidadVisible(): {
+  configurada: boolean
+  ambiente: AmbienteEquidad
+  urlBase: string
+  usuario: string
+  usuarioDeServicio: string
+  productor: string
+  rama: string
+  empresa: string
+  actualizadoEn: string | null
+} {
+  const e = leerConfig().equidad
+  return {
+    configurada: Boolean(e?.urlBase && e.usuario && e.clave),
+    ambiente: ambienteEquidad(e?.ambiente),
+    urlBase: e?.urlBase ?? '',
+    usuario: e?.usuario ?? '',
+    usuarioDeServicio: e?.usuarioDeServicio ?? '',
+    productor: e?.productor ?? '',
+    rama: e?.rama || RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO,
+    empresa: e?.empresa || EMPRESA_EQUIDAD_POR_DEFECTO,
+    actualizadoEn: e?.actualizadoEn ?? null,
+  }
+}
+
+/** La cuenta completa, sólo para el proceso principal. Null si no está cargada entera. */
+export function credencialesEquidad(): CredencialesEquidad | null {
+  const e = leerConfig().equidad
+  if (!e?.urlBase || !e.usuario || !e.clave) return null
+  return {
+    ambiente: ambienteEquidad(e.ambiente),
+    urlBase: e.urlBase,
+    usuario: e.usuario,
+    clave: e.clave,
+    usuarioDeServicio: e.usuarioDeServicio ?? '',
+    claveDeServicio: e.claveDeServicio ?? '',
+    productor: e.productor ?? '',
+    rama: e.rama || RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO,
+    empresa: e.empresa || EMPRESA_EQUIDAD_POR_DEFECTO,
+  }
+}
+
+/** Lo mismo que hacen `guardarEquidad` y `adoptarEquidad`: si no, la huella del ajuste compartido no cerraría nunca. */
+function normalizarEquidad(v: Record<string, string>, ambiente: unknown): Omit<ConfigEquidad, 'actualizadoEn'> {
+  return {
+    ambiente: ambienteEquidad(ambiente),
+    urlBase: urlBaseEquidad(v.urlBase ?? ''),
+    usuario: (v.usuario ?? '').trim(),
+    clave: (v.clave ?? '').trim(),
+    usuarioDeServicio: (v.usuarioDeServicio ?? '').trim(),
+    claveDeServicio: (v.claveDeServicio ?? '').trim(),
+    productor: (v.productor ?? '').replace(/\s/g, ''),
+    rama: (v.rama ?? '').replace(/\s/g, '') || RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO,
+    empresa: (v.empresa ?? '').replace(/\s/g, '') || EMPRESA_EQUIDAD_POR_DEFECTO,
+  }
+}
+
+export function guardarEquidad(datos: unknown): void {
+  const d = objeto(datos, 'Los datos de la cuenta de Equidad')
+  const usuario = texto(d.usuario, 'El usuario de la API de Equidad', 1, 60)
+  const urlBase = urlBaseEquidad(texto(d.urlBase, 'La URL base de la API de Equidad', 1, 300))
+  if (!/^https?:\/\/[^\s/]+\S*\/$/.test(urlBase)) throw new ErrorDeNegocio('La URL base de la API de Equidad no es válida: es una dirección como https://servidor/EQUIDAD/servlet/.')
+  const config = leerConfig()
+  const mismoUsuario = Boolean(config.equidad?.usuario) && config.equidad?.usuario === usuario
+  // Con la contraseña vacía se conserva la que ya estaba: así se cambia el productor sin volver a escribirla.
+  const claveEscrita = typeof d.clave === 'string' ? d.clave.trim() : ''
+  if (!claveEscrita && config.equidad?.usuario && !mismoUsuario) {
+    throw new ErrorDeNegocio('Cambiaste el usuario de la API de Equidad: escribí también su contraseña.')
+  }
+  const clave = claveEscrita || config.equidad?.clave || ''
+  if (!clave) throw new ErrorDeNegocio('Falta la contraseña del usuario de la API de Equidad.')
+  const usuarioDeServicio = typeof d.usuarioDeServicio === 'string' ? d.usuarioDeServicio.trim() : ''
+  const claveDeServicioEscrita = typeof d.claveDeServicio === 'string' ? d.claveDeServicio.trim() : ''
+  const mismoServicio = Boolean(config.equidad?.usuarioDeServicio) && config.equidad?.usuarioDeServicio === usuarioDeServicio
+  const claveDeServicio = usuarioDeServicio ? claveDeServicioEscrita || (mismoServicio ? config.equidad?.claveDeServicio ?? '' : '') : ''
+  if (usuarioDeServicio && !claveDeServicio) throw new ErrorDeNegocio('Falta la contraseña del usuario de servicio de Equidad (la del Authorization Basic). Si Equidad no dio uno, dejá los dos campos vacíos.')
+  const productor = typeof d.productor === 'string' ? d.productor.replace(/\s/g, '') : ''
+  if (productor && !/^\d{1,7}$/.test(productor)) throw new ErrorDeNegocio('El código de productor de Equidad es numérico (hasta 7 números). Dejalo vacío para usar el que lista la API.')
+  const rama = typeof d.rama === 'string' ? d.rama.replace(/\s/g, '') : ''
+  if (rama && !/^\d{1,2}$/.test(rama)) throw new ErrorDeNegocio('El código de rama de Equidad es numérico (hasta 2 números). Dejalo vacío para usar 4 (automotores).')
+  const empresa = typeof d.empresa === 'string' ? d.empresa.replace(/\s/g, '') : ''
+  if (empresa && !/^\d{1,2}$/.test(empresa)) throw new ErrorDeNegocio('El código de empresa de Equidad es numérico (hasta 2 números). Dejalo vacío para usar 1.')
+  if (typeof d.ambiente !== 'string' || !(AMBIENTES_EQUIDAD as readonly string[]).includes(d.ambiente)) {
+    throw new ErrorDeNegocio('Elegí el ambiente de Equidad: producción o prueba.')
+  }
+  escribirConfig({
+    ...config,
+    equidad: { ...normalizarEquidad({ urlBase, usuario, clave, usuarioDeServicio, claveDeServicio, productor, rama, empresa }, d.ambiente), actualizadoEn: new Date().toISOString() },
+  })
+}
+
+/** Saca la cuenta de Equidad de esta computadora. */
+export function borrarEquidad(): void {
+  const config = leerConfig()
+  delete config.equidad
+  escribirConfig(config)
+}
+
+/**
+ * Lo que viaja de la cuenta de Equidad: siempre las nueve claves, en este orden y como texto (lo vacío
+ * va vacío, no se omite), por la huella. Sin la cuenta entera no hay nada que compartir.
+ */
+export function valorCompartidoDeEquidad(): CredencialesEquidad | null {
+  const e = credencialesEquidad()
+  if (!e) return null
+  return {
+    ambiente: e.ambiente,
+    urlBase: e.urlBase,
+    usuario: e.usuario,
+    clave: e.clave,
+    usuarioDeServicio: e.usuarioDeServicio,
+    claveDeServicio: e.claveDeServicio,
+    productor: e.productor,
+    rama: e.rama,
+    empresa: e.empresa,
+  }
+}
+
+export function adoptarEquidad(valor: unknown): boolean {
+  if (!valor || typeof valor !== 'object') return false
+  const v = valor as Record<string, unknown>
+  const textos: Record<string, string> = {}
+  for (const clave of ['urlBase', 'usuario', 'clave', 'usuarioDeServicio', 'claveDeServicio', 'productor', 'rama', 'empresa']) {
+    textos[clave] = typeof v[clave] === 'string' ? (v[clave] as string) : ''
+  }
+  const e = normalizarEquidad(textos, v.ambiente)
+  if (!e.urlBase || !e.usuario || !e.clave) return false
+  const config = leerConfig()
+  config.equidad = { ...e, actualizadoEn: new Date().toISOString() }
   escribirConfig(config)
   return true
 }

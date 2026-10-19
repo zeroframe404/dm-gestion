@@ -223,6 +223,10 @@ import type {
   DatosDeMercantil,
   EstadoDeMercantil,
   PruebaDeMercantil,
+  // La Equidad.
+  DatosDeEquidad,
+  EstadoDeEquidad,
+  PruebaDeEquidad,
   // Galeno Seguros: cotización, emisión, consultas, cuenta corriente y ART.
   CodigoPostalGaleno,
   CotizacionGaleno,
@@ -874,6 +878,16 @@ export interface Canales {
   'mercantil:traerDelServidor': () => Resultado<EstadoDeMercantil>
   /** Pide un token, lee el productor asociado y cuenta las marcas del catálogo. */
   'mercantil:probar': () => Resultado<PruebaDeMercantil>
+
+  // La Equidad: la cuenta de su API GLM (compartida como `equidadApi`). Cotizar se cotiza desde el
+  // multicotizador; el detalle vive en main/aseguradoras/equidad/*.
+  'equidad:estado': () => Resultado<EstadoDeEquidad>
+  'equidad:guardarCredenciales': (datos: DatosDeEquidad) => Resultado<EstadoDeEquidad>
+  'equidad:borrarCredenciales': () => Resultado<EstadoDeEquidad>
+  /** Adopta ya la cuenta guardada en el servidor, aunque esta computadora tenga otra. */
+  'equidad:traerDelServidor': () => Resultado<EstadoDeEquidad>
+  /** Se autentica, lee los productores del usuario, los tipos de póliza de la rama y cuenta las marcas. */
+  'equidad:probar': () => Resultado<PruebaDeEquidad>
 
   // Multicotizador: la misma solicitud, en todas las compañías con API. La pantalla pide UNA compañía
   // por llamado —todas a la vez— para ir llenando cada tarjeta apenas contesta su compañía.

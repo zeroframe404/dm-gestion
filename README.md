@@ -19,6 +19,7 @@ npm run humo:usuarios            # la base de usuarios compartida contra la app 
 npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
 npm run humo:atm                 # ATM Seguros en vivo (cuenta, planes y cotización; ver «ATM Seguros», más abajo)
 npm run humo:mercantil           # Mercantil Andina en vivo (token, productor, catálogo y cotización; ver «Mercantil Andina»)
+npm run humo:equidad             # La Equidad en vivo (autenticación, listas, catálogo y cotización; ver «La Equidad»)
 ```
 
 ## Primer ingreso
@@ -1345,7 +1346,7 @@ Un vehículo y las compañías que se cotizaron para él.
 
 ### Multicotizador
 
-Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno, ATM y Mercantil Andina), comparados por
+Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno, ATM, Mercantil Andina y Equidad), comparados por
 lo que cubre cada cobertura. Tiene su propio permiso (área `multicotizador`).
 
 - **Una solicitud común**: vehículo del catálogo de la agencia, uso, 0 km, GNC, rastreo, suma
@@ -1431,6 +1432,58 @@ web de Mercantil, y la cotización queda en su sistema con el número que trae �
   `MERCANTIL_DEV_PASSWORD` / `MERCANTIL_DEV_SUSCRIPCION`), `-- --produccion` (con `MERCANTIL_PROD_*`),
   `MERCANTIL_PRODUCTOR` y `MERCANTIL_MARCA` / `_MODELO` / `_VERSION` / `_ANIO` / `_CP` para elegir qué
   cotizar. No es parte de `npm run prueba`.
+
+#### La Equidad
+
+Cuarta compañía del multicotizador (`src/main/multicotizador/equidad.ts`; el cliente en
+`src/main/aseguradoras/equidad/`). **Por ahora sólo cotiza autos** (`emite: false`): la API sí emite
+(`EmitirCotizacion` → cuestionario de inspección → `EmitirSolicitud`) y queda para una fase siguiente;
+mientras tanto la cotización queda en Equidad con el número de solicitud que trae «Copiar datos para Equidad».
+
+- **Su API es la «API GLM»** (GeneXus, de GLM S.A.; la documentación que mandó Equidad está en
+  `docs/APIGLM V.1.11/`, un .docx por servicio más «Emision Automotor», que es el índice): cada servicio
+  es un servlet con nombre de clase Java (`ar.com.glmsa.seguros.comercial.apiglm.<area>.aws<servicio>`)
+  colgado de una **URL base por ambiente** que da la compañía (los ejemplos del documento son
+  `http://…/ATM_COM_PRUE/servlet/`). Los GET llevan los query params **en el orden del documento, y los
+  opcionales también, vacíos** (`consultaOrdenada` en `cliente.ts`); los POST llevan JSON. Las fechas de
+  los query params van AAAAMMDD; las del JSON, aaaa-mm-dd.
+- **La seguridad**: `AutenticarUsuario` (POST `{Usuario, Password}`, el «usuario de aplicación») devuelve
+  el código de usuario (`UsuCod`, el que piden todas las listas) y un token Bearer. Aparte, la compañía
+  puede dar un «usuario de servicio» para el `Authorization: Basic`. El cliente manda el Basic al
+  autenticar, el Bearer en el resto y, si un servicio rechaza el Bearer con 401, se autentica de nuevo y
+  después prueba con el Basic: el documento no dice cuál de los dos espera cada servicio, y es lo
+  primero que hay que confirmar con el usuario de test. Sin restricción de IP: cada PC le habla directo.
+- **La cuenta** (ambiente, URL base, usuario de aplicación y contraseña, usuario de servicio y
+  contraseña opcionales, productor opcional, rama de automotores —4 si Equidad no indica otra— y código de
+  empresa —1—) se carga en **API Aseguradoras → Equidad**, queda en el `config.json` de cada PC y viaja a
+  las demás como el ajuste compartido `equidadApi` (se adopta al arrancar, como `atmApi` y `mercantilApi`).
+  Las contraseñas vacías conservan las guardadas. «Probar conexión» se autentica, lista los productores
+  del usuario (`ListarProductoresDeUsuario`), los tipos de póliza de la rama (`ListarTipoDePoliza`, para
+  confirmar que la rama es la de autos) y cuenta las marcas (`ListarMarcaDeVehiculo`).
+- **Cotizar es recorrer los combos de su web, en orden**: tipo de póliza → productor → moneda → plan
+  comercial (`ListarPlanComercial`) → modo de facturación / vigencia (`ListarModoDeFacturacion`) → forma
+  de pago (`ListarFormaDePago`) → condición de pago / cuotas (`ListarCondicionDePago`, la marcada
+  `PorDefecto`); más IVA (`ListarCategoriaIVA`), ingresos brutos (`ListarCategoriaIB`), la localidad del
+  código postal (`BuscarCodigoPostal`, su subcódigo), la cláusula de ajuste (`ListarClausulaDeAjuste`) y,
+  con rastreo, la alarma satelital (`ListarAlarmaSatelital`). Cada lista es un ajuste de la tarjeta (lo
+  comercial a la vista, con `dependeDe` en cadena); se guardan media hora en memoria. La bonificación y
+  el recargo administrativo van como en Galeno (`PorcentajeBonificacion` y `PorcenjateRecargoAdm`, sic:
+  la errata es del documento y es el nombre que la API espera).
+- **El vehículo**: Equidad lo identifica por **marca + modelo + submodelo** (`BuscarVehiculos` por año y
+  marca; se busca por nombre como en Galeno, ante la duda se pregunta) más la **variante** (tipo/uso:
+  capítulo + variante RC + variante AIR, `ListarVariantesDeVehiculo`; la que nombra el uso, si no la
+  primera). La suma asegurada es la del formulario o la de `ObtenerSumaAseguradaDeVehiculo`. Lo elegido
+  a mano queda en `equivalencias_vehiculos` (aseguradora `EQUIDAD`, código `marca:modelo:submodelo`).
+- **La respuesta** de `CotizarAutomotor` se lee tal como la documenta (`cotizacion.ts`): `Coberturas`
+  (prima, % y monto de bonificación y de recargo administrativo, recargo financiero, derecho de emisión,
+  impuestos, premio, primera cuota, resto de cuotas, comisión), `Excepciones` (avisos, por cobertura o de
+  toda la cotización) y `Errores`. La forma real de lo que devuelve cada servicio no se pudo ver sin el
+  usuario de test: las listas se leen con tolerancia (mayúsculas, envoltorios) y, si algo no se
+  entiende, el error dice con qué vino y «Copiar datos para Equidad» trae pedido y respuesta.
+- **Humo en vivo**: `npm run humo:equidad` (prueba, con `EQUIDAD_PRUEBA_URL` / `EQUIDAD_PRUEBA_USUARIO` /
+  `EQUIDAD_PRUEBA_PASSWORD`), `-- --produccion` (con `EQUIDAD_PROD_*`), `EQUIDAD_SERVICIO_USUARIO` /
+  `EQUIDAD_SERVICIO_PASSWORD` (el Basic), `EQUIDAD_PRODUCTOR` / `_RAMA` / `_EMPRESA` y `EQUIDAD_MARCA` /
+  `_MODELO` / `_VERSION` / `_ANIO` / `_CP` / `_LOCALIDAD` para elegir qué cotizar. No es parte de `npm run prueba`.
 
 ### Tareas
 

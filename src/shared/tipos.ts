@@ -5460,3 +5460,92 @@ export interface PruebaDeMercantil {
   /** Hasta cuándo vale el token que se consiguió (ISO), o null si Mercantil no lo dijo. */
   tokenVenceEn: string | null
 }
+
+// ---------------------------------------------------------------------------
+// La Equidad Seguros — su API GLM (REST): autenticación, listas, vehículos y cotización
+//
+// Equidad usa la «API GLM» (GeneXus, de GLM S.A.; la documentación que mandó, «APIGLM V.1.11», está en
+// docs/). Como ATM y Mercantil, no exige que los pedidos salgan de una IP dada de alta: cada computadora
+// le habla directo con la cuenta que se carga una vez en API Aseguradoras → Equidad y viaja a las
+// demás como el ajuste compartido `equidadApi`. Cotiza autos desde el multicotizador; por ahora no
+// emite (la API lo permite —EmitirCotizacion, inspección, EmitirSolicitud— y se suma después).
+//
+// La cuenta son DOS pares de credenciales y una dirección:
+// - El «usuario de aplicación» y su contraseña (el usuario de la API GLM: va al servicio
+//   AutenticarUsuario, que devuelve el código de usuario —`UsuCod`, el que piden todas las listas— y
+//   un token Bearer para el resto).
+// - El «usuario de servicio» y su contraseña (el par del encabezado `Authorization: Basic` que la
+//   compañía da aparte; opcional según la política de la compañía).
+// - La URL base del servlet (hasta `/servlet/` inclusive), distinta en pruebas y en producción.
+// ---------------------------------------------------------------------------
+
+export const AMBIENTES_EQUIDAD = ['produccion', 'prueba'] as const
+export type AmbienteEquidad = (typeof AMBIENTES_EQUIDAD)[number]
+
+export const NOMBRE_AMBIENTE_EQUIDAD: Record<AmbienteEquidad, string> = {
+  produccion: 'Producción',
+  prueba: 'Prueba / test (con el usuario de test que manda Equidad)',
+}
+
+/** La rama de automotores en la API GLM si Equidad no indica otra (la tabla Ramas la da la compañía). */
+export const RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO = '4'
+/** El código de empresa (`EmpCod`) si Equidad no indica otro. */
+export const EMPRESA_EQUIDAD_POR_DEFECTO = '1'
+
+/**
+ * Lo que se carga en API Aseguradoras → Equidad. Las contraseñas vacías conservan las que ya estaban.
+ */
+export interface DatosDeEquidad {
+  ambiente: AmbienteEquidad
+  /** La URL base del servlet de la API GLM de Equidad, p. ej. `https://api.laequidad.com.ar/EQUIDAD/servlet/`. */
+  urlBase: string
+  /** El usuario de aplicación (el de `AutenticarUsuario`). */
+  usuario: string
+  clave: string
+  /** El usuario de servicio del `Authorization: Basic`. Vacío si Equidad no lo pide. */
+  usuarioDeServicio: string
+  claveDeServicio: string
+  /** El código de productor con que se cotiza. Vacío = el único (o el primero) que lista la API para el usuario. */
+  productor: string
+  /** El código de rama de automotores (`RamCod`). Vacío = 4. */
+  rama: string
+  /** El código de empresa (`EmpCod`). Vacío = 1. */
+  empresa: string
+}
+
+/** Cómo está la cuenta de Equidad en esta computadora. Nunca trae las contraseñas. */
+export interface EstadoDeEquidad {
+  configurada: boolean
+  ambiente: AmbienteEquidad
+  urlBase: string
+  usuario: string
+  usuarioDeServicio: string
+  productor: string
+  rama: string
+  empresa: string
+  actualizadoEn: string | null
+  /** Cómo está la cuenta en el servidor (el ajuste compartido `equidadApi`), o null si no se pudo saber. */
+  compartido: EstadoDeAjusteCompartido | null
+}
+
+/** Un productor que la API GLM lista para el usuario (`ListarProductoresDeUsuario`). */
+export interface ProductorDeEquidad {
+  codigo: string
+  nombre: string
+}
+
+/** El resultado de «Probar conexión»: la autenticación, los productores y las listas básicas. */
+export interface PruebaDeEquidad {
+  ok: boolean
+  detalle: string
+  /** El código y el nombre de usuario que devolvió `AutenticarUsuario` (vacíos si falló). */
+  usuarioCodigo: string
+  usuarioNombre: string
+  /** Hasta cuándo vale el token (ISO), o null si no lo dijo. */
+  tokenVenceEn: string | null
+  productores: ProductorDeEquidad[]
+  /** Los tipos de póliza de la rama (código y descripción), para confirmar que la rama es la de autos. */
+  tiposDePoliza: Array<{ codigo: string; descripcion: string }>
+  /** Cuántas marcas devolvió su catálogo de vehículos (0 si no se pudo). */
+  marcas: number
+}
