@@ -425,6 +425,13 @@ const api: ApiDm = {
     traerDelServidor: () => invocar('mercantil:traerDelServidor'),
     probar: () => invocar('mercantil:probar'),
   },
+  equidad: {
+    estado: () => invocar('equidad:estado'),
+    guardarCredenciales: (datos) => invocar('equidad:guardarCredenciales', datos),
+    borrarCredenciales: () => invocar('equidad:borrarCredenciales'),
+    traerDelServidor: () => invocar('equidad:traerDelServidor'),
+    probar: () => invocar('equidad:probar'),
+  },
   multicotizador: {
     aseguradoras: () => invocar('multicotizador:aseguradoras'),
     localidades: (tipoVehiculo, codigoPostal) => invocar('multicotizador:localidades', tipoVehiculo, codigoPostal),

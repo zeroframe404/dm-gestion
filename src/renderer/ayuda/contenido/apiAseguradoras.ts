@@ -191,4 +191,44 @@ export const AYUDA_API_ASEGURADORAS: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'apiAseguradoras.equidad': {
+    clave: 'apiAseguradoras.equidad',
+    titulo: 'API Aseguradoras → Equidad',
+    resumen: 'La cuenta de la API GLM de La Equidad (URL base, usuario de la API y, si lo hay, usuario de servicio): con ella, el Multicotizador cotiza autos en Equidad.',
+    secciones: [
+      {
+        titulo: 'Qué se puede hacer con esto',
+        parrafos: [
+          'Con la cuenta cargada, el Multicotizador cotiza autos en Equidad al mismo tiempo que en las demás compañías, y sus coberturas entran al comparativo y al presupuesto como las de cualquiera. Por ahora la póliza se emite desde la web de Equidad: la cotización queda en su sistema con el número de solicitud que muestra «Copiar datos para Equidad».',
+        ],
+      },
+      {
+        titulo: 'La cuenta vive en cada computadora',
+        parrafos: [
+          'Como ATM y Mercantil, Equidad no pide que los pedidos salgan de una IP dada de alta, así que cada computadora le habla directo, sin pasar por el servidor. Por eso la cuenta sí se guarda en esta computadora.',
+          'Se carga una sola vez: al guardar viaja cifrada al servidor y el resto de las computadoras la adopta al abrir el programa. El renglón de abajo de la cuenta dice si esta computadora tiene lo mismo que el servidor; si no, «Traer del servidor» la toma ya.',
+          'La carga un administrador. «Sacarla» la borra de esta computadora y del servidor: sin cuenta, Equidad deja de cotizar.',
+        ],
+      },
+      {
+        titulo: 'Los datos que pide, y de dónde salen',
+        parrafos: ['Salen de lo que manda Equidad junto con la documentación de su API GLM (la carpeta «APIGLM» en docs del programa).'],
+        lista: [
+          'Ambiente y URL base: la dirección del ambiente (prueba o producción) hasta /servlet/ inclusive; cada servicio de la API cuelga de ahí con su nombre (ar.com.glmsa.seguros.comercial.apiglm…).',
+          'Usuario de la API y contraseña: el «usuario de aplicación» con el que la API autentica (AutenticarUsuario) y que devuelve el código de usuario que usan todas las listas.',
+          'Usuario de servicio y contraseña (opcional): el par del encabezado Authorization Basic, si Equidad lo manda aparte. Si no, vacío.',
+          'Código de productor (opcional): con el que se cotiza. Vacío, se usa el que la API lista para el usuario; «Probar conexión» muestra cuáles son.',
+          'Rama de automotores y código de empresa: los códigos que piden las listas de la API. Si Equidad no indica otros, 4 y 1.',
+          'Las contraseñas nunca vuelven a la pantalla: con la cuenta ya cargada, dejar los campos vacíos conserva las que están.',
+        ],
+      },
+      {
+        titulo: 'Probar conexión',
+        parrafos: [
+          'Prueba la cuenta YA guardada en esta computadora, no lo que está escrito en los campos: primero se guarda y después se prueba. Se autentica (prueba la URL base y los usuarios), lee los productores del usuario, los tipos de póliza de la rama (si no son de autos, la rama es otra) y cuenta las marcas del catálogo de vehículos.',
+          'Si Equidad no acepta las credenciales, son las que mandó con la documentación y tienen que ser del mismo ambiente que la URL base. Si contesta que el servicio no existe (404), la URL base no termina en /servlet/ o es de otro ambiente.',
+        ],
+      },
+    ],
+  },
 }

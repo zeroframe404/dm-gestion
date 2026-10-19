@@ -20,13 +20,15 @@
 //                  vendedor y ambiente)
 //   mercantilApi   cuenta de la API de Mercantil Andina (usuario, contraseña,   administrador o superadmin
 //                  clave de suscripción, productor y ambiente)
+//   equidadApi     cuenta de la API GLM de La Equidad (URL base, usuario de     administrador o superadmin
+//                  aplicación, usuario de servicio, productor, rama y empresa)
 //   companias      días de cobertura, comisión, renovación y plantilla         administrador o superadmin
 //   ticket         dirección y teléfono del encabezado de cada sucursal        cualquiera, la de SU sucursal
 //   referencias    las listas del módulo Compañías (ver referenciasCompartidas.ts)
 //
 // La cuenta de Galeno (`galenoApi`) también vive en el servidor, pero NO está en esta lista: Galeno sólo
 // acepta pedidos desde la IP del VPS, así que ninguna computadora se la guarda (ver servicios/galeno.ts).
-// Las de ATM y Mercantil sí se adoptan en cada una, porque no tienen esa restricción y cada PC les habla directo.
+// Las de ATM, Mercantil y Equidad sí se adoptan en cada una, porque no tienen esa restricción y cada PC les habla directo.
 //
 // El recorte por rol NO se hace acá: se hace en ipc.ts, que es donde se sabe quién llamó. Este archivo
 // sólo sabe llevar y traer.
@@ -46,10 +48,12 @@ import { ahoraIso } from '../importacion/normalizar'
 import { adoptarCompanias, valorCompartidoDeCompanias } from './companias'
 import {
   adoptarAtm,
+  adoptarEquidad,
   adoptarGoogle,
   adoptarMercantil,
   adoptarMeta,
   valorCompartidoDeAtm,
+  valorCompartidoDeEquidad,
   valorCompartidoDeGoogle,
   valorCompartidoDeMercantil,
   valorCompartidoDeMeta,
@@ -106,6 +110,13 @@ const MERCANTIL: AjusteCompartido = {
   adoptar: adoptarMercantil,
 }
 
+const EQUIDAD: AjusteCompartido = {
+  clave: 'equidadApi',
+  nombre: 'la cuenta de Equidad',
+  valorLocal: valorCompartidoDeEquidad,
+  adoptar: adoptarEquidad,
+}
+
 const COMPANIAS: AjusteCompartido = {
   clave: 'companias',
   nombre: 'el catálogo de compañías',
@@ -121,7 +132,7 @@ const TICKET: AjusteCompartido = {
 }
 
 /** Los que se adoptan solos al arrancar, en el orden en que se piden. */
-const TODOS = [GOOGLE, META, ATM, MERCANTIL, COMPANIAS, TICKET]
+const TODOS = [GOOGLE, META, ATM, MERCANTIL, EQUIDAD, COMPANIAS, TICKET]
 
 /** Lo que se devuelve cuando ni siquiera hay puente: en desarrollo, o sin VPS configurado. */
 const SIN_SERVIDOR: EstadoDeAjusteCompartido = {
@@ -334,6 +345,10 @@ export const estadoCompartidoDeMercantil = (): Promise<EstadoDeAjusteCompartido>
 export const borrarMercantilDelVps = (): Promise<void> => borrarDelVps(MERCANTIL)
 /** Lo mismo para API Aseguradoras → Mercantil. */
 export const traerMercantilDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(MERCANTIL, { pisarLoLocal: true })
+export const estadoCompartidoDeEquidad = (): Promise<EstadoDeAjusteCompartido> => estadoDe(EQUIDAD)
+export const borrarEquidadDelVps = (): Promise<void> => borrarDelVps(EQUIDAD)
+/** Lo mismo para API Aseguradoras → Equidad. */
+export const traerEquidadDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(EQUIDAD, { pisarLoLocal: true })
 
 export const estadoCompartidoDeCompanias = (): Promise<EstadoDeAjusteCompartido> => estadoDe(COMPANIAS)
 export const publicarCompaniasEnElVps = (quien: string | null): Promise<EstadoDeAjusteCompartido> => publicar(COMPANIAS, quien)
@@ -420,10 +435,10 @@ function identidadDeSucursal(nombre: string): string {
  * motivo vuelve igual, para la pantalla que quiera mostrarlo.
  */
 export async function publicarSinRomper(
-  cual: 'companias' | 'google' | 'meta' | 'atmApi' | 'mercantilApi',
+  cual: 'companias' | 'google' | 'meta' | 'atmApi' | 'mercantilApi' | 'equidadApi',
   quien: string | null,
 ): Promise<EstadoDeAjusteCompartido> {
-  const ajuste = { companias: COMPANIAS, google: GOOGLE, meta: META, atmApi: ATM, mercantilApi: MERCANTIL }[cual]
+  const ajuste = { companias: COMPANIAS, google: GOOGLE, meta: META, atmApi: ATM, mercantilApi: MERCANTIL, equidadApi: EQUIDAD }[cual]
   try {
     return await publicar(ajuste, quien)
   } catch (error) {

@@ -291,6 +291,7 @@ import {
   traerAtmDelServidor,
 } from './servicios/atm'
 import { borrarCuentaMercantil, estadoMercantil, guardarCuentaMercantil, probarMercantil, traerMercantilDelServidor } from './servicios/mercantil'
+import { borrarCuentaEquidad, estadoEquidad, guardarCuentaEquidad, probarEquidad, traerEquidadDelServidor } from './servicios/equidad'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora, localidadesDelMulticotizador } from './servicios/multicotizador'
 import {
   borrarMetaDelVps,
@@ -2047,6 +2048,36 @@ export function registrarIpc(): void {
   manejar('mercantil:probar', async () => {
     exigirVista('administracion')
     return exito(await probarMercantil())
+  })
+
+  // --- La Equidad ----------------------------------------------------------------
+  //
+  // La cuenta de su API GLM, con el mismo criterio que las de ATM y Mercantil: la ve quien ve
+  // Administración y la cargan, borran o traen del servidor sólo un administrador o el
+  // superadministrador, porque viaja a todas las computadoras (ajuste compartido `equidadApi`).
+  // Cotizar va por el multicotizador.
+  manejar('equidad:estado', async () => {
+    exigirVista('administracion')
+    return exito(await estadoEquidad())
+  })
+  manejar('equidad:guardarCredenciales', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await guardarCuentaEquidad(datos, actor.nombre))
+  })
+  manejar('equidad:borrarCredenciales', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await borrarCuentaEquidad())
+  })
+  manejar('equidad:traerDelServidor', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await traerEquidadDelServidor())
+  })
+  manejar('equidad:probar', async () => {
+    exigirVista('administracion')
+    return exito(await probarEquidad())
   })
 
   // --- Multicotizador ---------------------------------------------------------
