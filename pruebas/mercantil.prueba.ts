@@ -192,6 +192,7 @@ test('Mercantil: las listas se entienden en cualquiera de sus formas', () => {
 })
 
 test('Mercantil: los productores se leen sueltos, en lista o envueltos', () => {
+  assert.deepEqual(leerProductores({ datos: [{ cuenta: 97521, nombre: 'SEGUROS DM' }] }), [{ codigo: '97521', nombre: 'SEGUROS DM' }], 'como en la colección de Mercantil')
   assert.deepEqual(leerProductores({ codigo: 12663, nombre: 'MARTINEZ DANIEL' }), [{ codigo: '12663', nombre: 'MARTINEZ DANIEL' }])
   assert.deepEqual(leerProductores({ productor: { codigo: '12663', razonSocial: 'SEGUROS DM' } }), [{ codigo: '12663', nombre: 'SEGUROS DM' }])
   assert.deepEqual(leerProductores([{ productor: 1, nombre: 'A' }, { productor: 2 }]), [
@@ -212,6 +213,49 @@ test('Mercantil: los importes vienen como vengan', () => {
   assert.equal(numeroDeMercantil('12,5'), 12.5)
   assert.equal(numeroDeMercantil('sin número'), null)
   assert.equal(numeroDeMercantil(null), null)
+})
+
+/** Una fila de `resultado` como en la respuesta de ejemplo de la colección de Mercantil. */
+function fila(producto: string, codigo: number, descripcion: string, costo: number, prima: number, cuotas: number[] = [costo], error = '') {
+  return {
+    numero: 0,
+    producto,
+    texto: descripcion,
+    titulo: producto,
+    descripcion,
+    costo,
+    cantidad_cuotas: cuotas.length,
+    desglose: { total: { prima, premio: costo, cuota: 0 }, cuotas: cuotas.map((premio, i) => ({ premio, cuota: i + 1 })) },
+    error,
+    franquicia: 0,
+    codigo_producto: codigo,
+  }
+}
+
+test('Mercantil: la respuesta de cotizaciones/v2/auto se lee de `resultado`', () => {
+  assert.equal(RUTA_COTIZACION, 'cotizaciones/v2/auto')
+  const cruda = {
+    id: 594387129,
+    rama: 5,
+    vehiculo: { id: 122944, nombre: 'CHEVROLET SPIN 1.8 LT 5 AS', anio: 2013, valor: 13452000 },
+    suma_asegurada: 13452000,
+    cuotas: 3,
+    resultado: [
+      fila('A', 800, 'A - RESPONSABILIDAD CIVIL LIMITADA', 80297.75, 46391.36, [26765.92, 26765.92, 26765.91]),
+      fila('B', 925, 'B  - R.C.L.- INCENDIO, ROBO Y ACCIDENTE TOTAL', 150878.47, 95576.78, [50292.83, 50292.82, 50292.82]),
+      fila('M PLUS', 976, 'M PLUS', 0, 0, [], 'No disponible para la zona'),
+    ],
+    advertencia: { codigo: '', descripcion: '', detalle: [] },
+  }
+  const leida = leerRespuestaDeCotizacion(cruda)
+  assert.equal(leida.ok, true)
+  assert.equal(leida.id, '594387129')
+  assert.equal(leida.sumaAsegurada, 13452000)
+  assert.deepEqual(leida.coberturas[0], { codigo: '800', descripcion: 'A - RESPONSABILIDAD CIVIL LIMITADA', premio: 80297.75, prima: 46391.36, cuota: 26765.92, cuotas: 3, franquicia: '', sumaAsegurada: null, comision: null })
+  assert.equal(leida.coberturas[1]!.descripcion, 'B - R.C.L.- INCENDIO, ROBO Y ACCIDENTE TOTAL', 'sin los espacios de más')
+  assert.equal(leida.coberturas.length, 2, 'la fila con error no es una cobertura')
+  assert.deepEqual(leida.mensajes, ['M PLUS: No disponible para la zona'])
+  assert.equal(leerRespuestaDeCotizacion({ resultado: [fila('A', 800, 'A', 1000, 800)] }).coberturas[0]!.cuota, null, 'de contado no hay cuota aparte')
 })
 
 test('Mercantil: la cotización se entiende por sus precios, estén donde estén', () => {
@@ -246,37 +290,36 @@ test('Mercantil: la cotización se entiende por sus precios, estén donde estén
   assert.deepEqual(rechazo.mensajes, ['Vehículo no válido'])
 })
 
-test('Mercantil: el pedido lleva el vehículo por su código de InfoAuto, y lo opcional sólo si está', () => {
+test('Mercantil: el pedido tiene la forma del ejemplo «Cotizar Auto» de la colección de Mercantil', () => {
   const pedido = armarPedidoDeCotizacion({
-    productor: '12663',
-    codigoInfoAuto: '320001',
-    anio: 2020,
-    ceroKm: false,
+    productor: '97521',
+    codigoInfoAuto: '120431',
+    anio: 2013,
     uso: '1',
     gnc: true,
-    valorGnc: 800000,
     rastreo: false,
-    codigoPostal: '1870',
-    localidad: 'Avellaneda',
-    vigenciaDesde: '2026-10-20',
-    cuotas: 12,
-    formaDePago: 'TC',
-    tipoPersona: 'F',
-    iva: 'CF',
+    codigoPostal: '1862',
+    cuotas: 1,
+    formaDePago: 'C',
+    iva: '5',
+    descuento: 10,
   })
   assert.deepEqual(pedido, {
-    productor: 12663,
-    cuotas: 12,
-    formaPago: 'TC',
-    vigenciaDesde: '2026-10-20',
-    vehiculo: { infoauto: 320001, anio: 2020, ceroKm: false, uso: 1, gnc: true, valorGnc: 800000, rastreador: false },
-    localidad: { codigoPostal: 1870, nombre: 'Avellaneda' },
-    persona: { tipo: 'F', iva: 'CF' },
+    localidad: { codigo_postal: 1862 },
+    vehiculo: { infoauto: 120431, anio: 2013, uso: 1, gnc: true, rastreo: 0 },
+    bonificacion: 10,
+    periodo: 1,
+    cuotas: 1,
+    pago: { tipo_pago: 'C' },
+    ajuste_suma: 0,
+    iva: 5,
+    desglose: true,
+    productor: { id: 97521 },
   })
-  const minimo = armarPedidoDeCotizacion({ codigoInfoAuto: '1', anio: 2019, ceroKm: true, uso: '1', gnc: false, rastreo: true, codigoPostal: '5000', localidad: '', vigenciaDesde: '2026-01-01', cuotas: 1, formaDePago: 'EF', tipoPersona: 'J', iva: 'RI' })
+  const minimo = armarPedidoDeCotizacion({ codigoInfoAuto: '1', anio: 2019, uso: '1', gnc: false, rastreo: true, codigoPostal: '5000', cuotas: 12, formaDePago: 'DEBITO', iva: '1' })
   assert.equal('productor' in minimo, false)
-  assert.deepEqual(minimo.localidad, { codigoPostal: 5000 })
-  assert.equal('valorGnc' in (minimo.vehiculo as object), false)
+  assert.equal('bonificacion' in minimo, false)
+  assert.equal((minimo.vehiculo as { rastreo: number }).rastreo, 1)
 })
 
 // --- El adaptador ----------------------------------------------------------------------------------------
@@ -322,10 +365,11 @@ const VERSIONES = [
 ]
 const COTIZACION = {
   id: 4711,
-  productos: [
-    { codigo: 'A', descripcion: 'RESPONSABILIDAD CIVIL', premio: 120000, prima: 100000 },
-    { codigo: 'C', descripcion: 'TERCEROS COMPLETO', premio: 240000, prima: 200000 },
-    { codigo: 'D', descripcion: 'TODO RIESGO FRANQUICIA 500000', premio: 480000, prima: 400000, franquicia: '500000' },
+  suma_asegurada: 18000000,
+  resultado: [
+    { ...fila('A', 800, 'RESPONSABILIDAD CIVIL', 120000, 100000), codigo_producto: 'A' },
+    { ...fila('C', 900, 'TERCEROS COMPLETO', 240000, 200000), codigo_producto: 'C' },
+    { ...fila('D', 950, 'TODO RIESGO FRANQUICIA 500000', 480000, 400000), codigo_producto: 'D', franquicia: '500000' },
   ],
 }
 
@@ -358,23 +402,24 @@ test('Mercantil: cotiza buscando el vehículo por marca, modelos del año y vers
     ],
   )
   assert.ok(resultado.coberturas.every((c) => c.aseguradora === ID_MERCANTIL && c.emision === null), 'Mercantil no se emite desde la app')
-  assert.match(resultado.mensaje ?? '', /12 cuotas con tarjeta de crédito/)
+  assert.match(resultado.mensaje ?? '', /12 cuotas con débito automático/)
+  assert.match(resultado.mensaje ?? '', /suma asegurada: la de Mercantil/)
   assert.match(resultado.mensaje ?? '', /cotización 4711 en Mercantil/)
 
   const post = pedidos.find((p) => p.ruta === RUTA_COTIZACION)!
-  const cuerpo = JSON.parse(post.cuerpo) as { vehiculo: Record<string, unknown>; cuotas: number; formaPago: string; persona: Record<string, unknown>; localidad: Record<string, unknown> }
+  const cuerpo = JSON.parse(post.cuerpo) as { vehiculo: Record<string, unknown>; cuotas: number; pago: { tipo_pago: string }; iva: number; localidad: Record<string, unknown> }
   assert.equal(cuerpo.vehiculo.infoauto, 320001)
   assert.equal(cuerpo.vehiculo.anio, 2020)
   assert.equal(cuerpo.vehiculo.uso, 1)
   assert.equal(cuerpo.cuotas, 12, 'con tarjeta se compara en 12 cuotas')
-  assert.equal(cuerpo.formaPago, 'TC')
-  assert.deepEqual(cuerpo.persona, { tipo: 'F', iva: 'CF' })
-  assert.deepEqual(cuerpo.localidad, { codigoPostal: 1870, nombre: 'Avellaneda' })
+  assert.equal(cuerpo.pago.tipo_pago, 'DEBITO')
+  assert.equal(cuerpo.iva, 5, 'consumidor final')
+  assert.deepEqual(cuerpo.localidad, { codigo_postal: 1870 })
 
   const ajustes = Object.fromEntries(resultado.ajustes.map((a) => [a.campo, a]))
   assert.equal(ajustes.cuotas!.valor, '12')
   assert.equal(ajustes.cuotas!.destacado, true)
-  assert.equal(ajustes.formaDePago!.valor, 'TC')
+  assert.equal(ajustes.formaDePago!.valor, 'DEBITO')
   assert.equal(ajustes.marca!.valor, '7')
   assert.equal(ajustes.modelo!.valor, '12')
   assert.equal(ajustes.version!.valor, '320001')
@@ -383,7 +428,7 @@ test('Mercantil: cotiza buscando el vehículo por marca, modelos del año y vers
 
   const detalle = JSON.stringify(resultado.detalleTecnico)
   assert.ok(!detalle.includes(CLAVE) && !detalle.includes(SUSCRIPCION) && !detalle.includes('tok-123'), 'ni los secretos ni el token se filtran')
-  assert.match(detalle, /POST cotizaciones\/v2\/automotores/)
+  assert.match(detalle, /POST cotizaciones\/v2\/auto"/)
   assert.ok(!JSON.stringify(pedidos.map((p) => p.url)).includes(SUSCRIPCION), 'la clave de suscripción va en el encabezado, nunca en la URL')
 })
 
@@ -412,17 +457,17 @@ test('Mercantil: en efectivo se cotiza de contado, y las cuotas o la forma de pa
   assert.equal(cuotasPorDefecto('DEBITO'), '12')
   const contado = await mercantil.cotizar(solicitud({}, { medioDePago: 'EFECTIVO' }), {})
   assert.equal(contado.estado, 'OK')
-  type Cuerpo = { cuotas: number; formaPago: string; persona: { iva: string } }
+  type Cuerpo = { cuotas: number; pago: { tipo_pago: string }; iva: number }
   let cuerpo = JSON.parse(pedidos.at(-1)!.cuerpo) as Cuerpo
   assert.equal(cuerpo.cuotas, 1)
-  assert.equal(cuerpo.formaPago, 'EF')
+  assert.equal(cuerpo.pago.tipo_pago, 'C')
   assert.equal(contado.coberturas[0]!.cuota, 120000, 'de contado, la cuota es el premio')
 
-  await mercantil.cotizar(solicitud(), { cuotas: '6', formaDePago: 'CBU', iva: 'RI' })
+  await mercantil.cotizar(solicitud(), { cuotas: '6', formaDePago: 'C', iva: '1' })
   cuerpo = JSON.parse(pedidos.at(-1)!.cuerpo) as Cuerpo
   assert.equal(cuerpo.cuotas, 6)
-  assert.equal(cuerpo.formaPago, 'CBU')
-  assert.equal(cuerpo.persona.iva, 'RI')
+  assert.equal(cuerpo.pago.tipo_pago, 'C')
+  assert.equal(cuerpo.iva, 1)
 })
 
 test('Mercantil: un rechazo vuelve como error en la tarjeta, con el motivo y qué revisar', async (t) => {

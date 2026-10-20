@@ -1,5 +1,5 @@
 // Mercantil Andina en el multicotizador: traduce la solicitud común a su API REST (`POST
-// cotizaciones/v2/automotores`, ver aseguradoras/mercantil/cotizacion.ts) y devuelve sus coberturas en
+// cotizaciones/v2/auto`, ver aseguradoras/mercantil/cotizacion.ts) y devuelve sus coberturas en
 // la forma común. Sólo cotiza autos; no emite (la póliza se emite desde la web de Mercantil).
 //
 // Lo que Mercantil pide y la solicitud común no trae —las cuotas, su forma de pago, su código de uso y
@@ -68,13 +68,16 @@ function cuentaActual(): CredencialesMercantil | null {
 
 // --- Las decisiones, puras (se prueban solas) ---------------------------------------------------------
 
-/** Las formas de pago de la API de Mercantil, por medio de pago de la solicitud. */
+/**
+ * Las formas de pago (`tipo_pago`) de la API de Mercantil, por medio de pago de la solicitud. La
+ * colección de Mercantil cotiza con «C» (cupón) y suscribe con «DEBITO» (débito automático de tarjeta
+ * o CBU).
+ */
 export const FORMAS_DE_PAGO_MERCANTIL: OpcionDeLista[] = [
-  { codigo: 'TC', descripcion: 'Tarjeta de crédito' },
-  { codigo: 'CBU', descripcion: 'Débito automático (CBU)' },
-  { codigo: 'EF', descripcion: 'Efectivo / cupón de pago' },
+  { codigo: 'DEBITO', descripcion: 'Débito automático (tarjeta o CBU)' },
+  { codigo: 'C', descripcion: 'Cupón de pago / efectivo' },
 ]
-export const FORMA_DE_PAGO_POR_MEDIO: Record<MedioDePago, string> = { TARJETA: 'TC', DEBITO: 'CBU', EFECTIVO: 'EF' }
+export const FORMA_DE_PAGO_POR_MEDIO: Record<MedioDePago, string> = { TARJETA: 'DEBITO', DEBITO: 'DEBITO', EFECTIVO: 'C' }
 
 /** Las cuotas que se pueden pedir. Con tarjeta o CBU la póliza anual se compara en 12 cuotas; en efectivo, de contado. */
 export const CUOTAS_MERCANTIL: OpcionDeLista[] = [
@@ -88,18 +91,18 @@ export function cuotasPorDefecto(medio: MedioDePago): string {
   return medio === 'EFECTIVO' ? '1' : '12'
 }
 
-/** Las condiciones de IVA con los códigos de Mercantil. */
+/** Las condiciones de IVA con los códigos de inscripción de Mercantil (los de AFIP: 5 es consumidor final). */
 export const IVA_MERCANTIL: Record<CondicionIva, string> = {
-  CONSUMIDOR_FINAL: 'CF',
-  RESPONSABLE_INSCRIPTO: 'RI',
-  MONOTRIBUTO: 'MT',
-  EXENTO: 'EX',
+  CONSUMIDOR_FINAL: '5',
+  RESPONSABLE_INSCRIPTO: '1',
+  MONOTRIBUTO: '6',
+  EXENTO: '4',
 }
 export const IVAS_MERCANTIL: OpcionDeLista[] = [
-  { codigo: 'CF', descripcion: 'Consumidor final' },
-  { codigo: 'RI', descripcion: 'Responsable inscripto' },
-  { codigo: 'MT', descripcion: 'Monotributo' },
-  { codigo: 'EX', descripcion: 'Exento' },
+  { codigo: '5', descripcion: 'Consumidor final' },
+  { codigo: '1', descripcion: 'Responsable inscripto' },
+  { codigo: '6', descripcion: 'Monotributo' },
+  { codigo: '4', descripcion: 'Exento' },
 ]
 
 /** Los usos de Mercantil. */
@@ -290,18 +293,12 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     productor: cuenta.productor || undefined,
     codigoInfoAuto: version.codigoInfoAuto,
     anio: Number(v.anio),
-    ceroKm: v.ceroKm,
     uso,
     gnc: v.gnc,
-    valorGnc: v.gnc && v.valorGnc !== null ? v.valorGnc : undefined,
     rastreo: v.rastreo,
-    sumaAsegurada: v.sumaAsegurada ?? undefined,
     codigoPostal: solicitud.codigoPostal,
-    localidad: solicitud.localidad,
-    vigenciaDesde: solicitud.vigenciaDesde,
     cuotas: Number(cuotas),
     formaDePago,
-    tipoPersona: solicitud.tomador.tipoPersona === 'JURIDICA' ? 'J' : 'F',
     iva,
   }
   const cotizacion = await cotizarMercantil(cliente, datos)
@@ -367,13 +364,15 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   avisos.push(...cotizacion.mensajes)
 
   const textoDe = (lista: OpcionDeLista[], codigo: string) => lista.find((o) => o.codigo === codigo)?.descripcion ?? codigo
-  const sumaUsada = v.sumaAsegurada ?? cotizacion.sumaAsegurada ?? cotizacion.coberturas.find((c) => c.sumaAsegurada)?.sumaAsegurada ?? null
+  // Mercantil cotiza con el valor de su tabla para la versión y el año (`ajuste_suma` en 0).
+  const sumaUsada = cotizacion.sumaAsegurada ?? cotizacion.coberturas.find((c) => c.sumaAsegurada)?.sumaAsegurada ?? null
+  if (v.sumaAsegurada !== null && sumaUsada !== null && sumaUsada !== v.sumaAsegurada) {
+    avisos.push(`Mercantil cotizó con su suma asegurada (${enPesos(sumaUsada)}), no con la del formulario (${enPesos(v.sumaAsegurada)}).`)
+  }
   const resumen = [
     `Cotizado en ${textoDe(CUOTAS_MERCANTIL, cuotas)} con ${textoDe(FORMAS_DE_PAGO_MERCANTIL, formaDePago).toLowerCase()}`,
     cuenta.productor ? `productor ${cuenta.productor}` : 'con el productor del usuario',
-    v.sumaAsegurada !== null
-      ? `suma asegurada ${enPesos(v.sumaAsegurada)} (la cargada en el formulario)`
-      : `suma asegurada: la de Mercantil${sumaUsada ? ` (${enPesos(sumaUsada)})` : ''}`,
+    `suma asegurada: la de Mercantil${sumaUsada ? ` (${enPesos(sumaUsada)})` : ''}`,
     cotizacion.id ? `cotización ${cotizacion.id} en Mercantil` : '',
   ]
     .filter(Boolean)

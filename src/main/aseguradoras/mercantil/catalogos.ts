@@ -91,7 +91,7 @@ export function leerProductores(respuesta: unknown): ProductorDeMercantil[] {
     // Si viene envuelto («{productor: {…}}»), se mira adentro.
     const adentro = Object.entries(f).find(([nombre, valor]) => /^productor$/i.test(nombre) && valor && typeof valor === 'object' && !Array.isArray(valor))
     const p = adentro ? (adentro[1] as Record<string, unknown>) : f
-    const codigo = campo(p, ['codigo', 'productor', 'codigoProductor', 'pas', 'numero', 'id', 'code'])
+    const codigo = campo(p, ['cuenta', 'codigo', 'productor', 'codigoProductor', 'pas', 'numero', 'id', 'code'])
     const nombre = campo(p, ['nombre', 'razonSocial', 'descripcion', 'desc', 'name', 'apellido'])
     return codigo ? [{ codigo, nombre: nombre || codigo }] : []
   })

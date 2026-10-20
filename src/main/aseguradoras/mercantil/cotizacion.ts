@@ -1,69 +1,54 @@
-// La cotización de autos en Mercantil Andina: `POST cotizaciones/v2/automotores`.
+// La cotización de autos en Mercantil Andina: `POST cotizaciones/v2/auto`.
 //
-// La ruta está confirmada contra el gateway; la FORMA del pedido y de la respuesta sale de la
-// documentación del producto Automotores del portal, que sólo se ve con la cuenta: por eso el pedido se
-// arma en UN lugar (`armarPedidoDeCotizacion`) con los nombres de siempre de su API, y la respuesta se
-// lee buscando las coberturas por lo que son (una lista de filas con un precio) y no por el nombre de
-// una clave. Si Mercantil contesta algo que no se entiende, la tarjeta lo dice y «Copiar datos para
-// Mercantil Andina» trae el pedido y la respuesta enteros para ajustar esto.
+// La ruta, la forma del pedido y la de la respuesta salen de la colección de Postman que mandó el
+// equipo de APIs de Mercantil (20/10/2026): el pedido va en snake_case (`codigo_postal`, `tipo_pago`,
+// `ajuste_suma`) con el productor como `{id}`, y la respuesta trae las coberturas en `resultado`, cada
+// una con su `codigo_producto`, su `costo` (el premio) y, con `desglose: true`, la prima y las cuotas.
+// Si Mercantil contesta algo que no se entiende, la tarjeta lo dice y «Copiar datos para Mercantil
+// Andina» trae el pedido y la respuesta enteros para ajustar esto.
 import { ErrorDeMercantil, type ClienteMercantil } from './cliente'
 import { campo } from './catalogos'
 
-export const RUTA_COTIZACION = 'cotizaciones/v2/automotores'
+export const RUTA_COTIZACION = 'cotizaciones/v2/auto'
 
 export interface DatosDeCotizacionMercantil {
   /** El código de productor (PAS). Si no se carga, Mercantil usa el del usuario. */
   productor?: string
   codigoInfoAuto: string
   anio: number
-  ceroKm: boolean
   /** El código de uso de Mercantil (ver USOS_MERCANTIL en el adaptador). */
   uso: string
   gnc: boolean
-  valorGnc?: number
   rastreo: boolean
-  sumaAsegurada?: number
   codigoPostal: string
-  localidad: string
-  /** aaaa-mm-dd. */
-  vigenciaDesde: string
   cuotas: number
-  /** El código de forma de pago de Mercantil (ver FORMAS_DE_PAGO_MERCANTIL). */
+  /** El `tipo_pago` de Mercantil (ver FORMAS_DE_PAGO_MERCANTIL). */
   formaDePago: string
-  /** F física, J jurídica. */
-  tipoPersona: 'F' | 'J'
-  /** El código de IVA de Mercantil (ver IVA_MERCANTIL). */
+  /** El código de inscripción de IVA de Mercantil (ver IVA_MERCANTIL): 5 es consumidor final. */
   iva: string
-  /** Porcentaje de descuento comercial, si se pidió uno. */
+  /** Porcentaje de bonificación (descuento comercial), si se pidió uno. */
   descuento?: number
 }
 
-/** El cuerpo del POST, con los nombres con que Mercantil nombra cada cosa en su API. */
+/** El cuerpo del POST, como el ejemplo «Cotizar Auto» de la colección de Mercantil. */
 export function armarPedidoDeCotizacion(d: DatosDeCotizacionMercantil): Record<string, unknown> {
   return {
-    ...(d.productor ? { productor: Number(d.productor) || d.productor } : {}),
-    cuotas: d.cuotas,
-    formaPago: d.formaDePago,
-    vigenciaDesde: d.vigenciaDesde,
-    ...(d.descuento !== undefined ? { descuento: d.descuento } : {}),
+    localidad: { codigo_postal: Number(d.codigoPostal) || d.codigoPostal },
     vehiculo: {
       infoauto: Number(d.codigoInfoAuto) || d.codigoInfoAuto,
       anio: d.anio,
-      ceroKm: d.ceroKm,
       uso: Number(d.uso) || d.uso,
       gnc: d.gnc,
-      ...(d.gnc && d.valorGnc ? { valorGnc: d.valorGnc } : {}),
-      rastreador: d.rastreo,
-      ...(d.sumaAsegurada ? { sumaAsegurada: d.sumaAsegurada } : {}),
+      rastreo: d.rastreo ? 1 : 0,
     },
-    localidad: {
-      codigoPostal: Number(d.codigoPostal) || d.codigoPostal,
-      ...(d.localidad ? { nombre: d.localidad } : {}),
-    },
-    persona: {
-      tipo: d.tipoPersona,
-      iva: d.iva,
-    },
+    ...(d.descuento !== undefined ? { bonificacion: d.descuento } : {}),
+    periodo: 1,
+    cuotas: d.cuotas,
+    pago: { tipo_pago: d.formaDePago },
+    ajuste_suma: 0,
+    iva: Number(d.iva) || d.iva,
+    desglose: true,
+    ...(d.productor ? { productor: { id: Number(d.productor) || d.productor } } : {}),
   }
 }
 
@@ -113,11 +98,11 @@ export function numeroDeMercantil(valor: unknown): number | null {
   return Number.isFinite(numero) ? numero : null
 }
 
-const CLAVES_DE_PREMIO = ['premio', 'premioTotal', 'premio_total', 'importeTotal', 'importe', 'total', 'precio', 'valor']
+const CLAVES_DE_PREMIO = ['costo', 'premio', 'premioTotal', 'premio_total', 'importeTotal', 'importe', 'total', 'precio', 'valor']
 const CLAVES_DE_PRIMA = ['prima', 'primaTotal', 'prima_total', 'primaNeta']
 const CLAVES_DE_CUOTA = ['cuota', 'valorCuota', 'importeCuota', 'cuotaValor', 'importe_cuota', 'premioCuota']
-const CLAVES_DE_CUOTAS = ['cuotas', 'cantidadCuotas', 'cantCuotas']
-const CLAVES_DE_SUMA = ['sumaAsegurada', 'suma_asegurada', 'suma', 'valorAsegurado', 'valor_asegurado']
+const CLAVES_DE_CUOTAS = ['cantidad_cuotas', 'cuotas', 'cantidadCuotas', 'cantCuotas']
+const CLAVES_DE_SUMA = ['suma_asegurada', 'sumaAsegurada', 'suma_asegurada', 'suma', 'valorAsegurado', 'valor_asegurado']
 const CLAVES_DE_COMISION = ['comision', 'comisionProductor', 'comision_productor', 'importeComision']
 
 function esFilaDeCobertura(fila: unknown): fila is Record<string, unknown> {
@@ -167,7 +152,58 @@ export function mensajesDe(cruda: unknown): string[] {
   return [...new Set(mensajes)]
 }
 
+function objeto(valor: unknown): Record<string, unknown> | null {
+  return valor && typeof valor === 'object' && !Array.isArray(valor) ? (valor as Record<string, unknown>) : null
+}
+
+/**
+ * Una fila de `resultado`, la forma que muestra la colección de Mercantil: `costo` es el premio y, con
+ * `desglose`, `desglose.total` trae la prima y `desglose.cuotas` el importe de cada cuota. Una fila con
+ * `error` no es una cobertura: es Mercantil diciendo por qué no la cotizó.
+ */
+function coberturaDeResultado(fila: Record<string, unknown>): CoberturaMercantil {
+  const total = objeto(objeto(fila.desglose)?.total) ?? {}
+  const cuotas = objeto(fila.desglose)?.cuotas
+  const primeraCuota = Array.isArray(cuotas) ? objeto(cuotas[0]) : null
+  const codigo = campo(fila, ['codigo_producto', 'producto', 'titulo'])
+  const descripcion = campo(fila, ['descripcion', 'texto', 'titulo', 'producto']) || codigo
+  const franquicia = campo(fila, ['franquicia'])
+  const cantidad = numeroDeMercantil(fila.cantidad_cuotas)
+  return {
+    codigo: codigo || descripcion,
+    descripcion: descripcion.replace(/\s+/g, ' ').trim(),
+    premio: numeroDeMercantil(fila.costo) ?? numeroDeMercantil(total.premio) ?? 0,
+    prima: numeroDeMercantil(total.prima) ?? 0,
+    cuota: cantidad && cantidad > 1 && primeraCuota ? numeroDeMercantil(primeraCuota.premio) : null,
+    cuotas: cantidad,
+    franquicia: franquicia && !/^0+([.,]0+)?$/.test(franquicia) ? franquicia : '',
+    sumaAsegurada: null,
+    comision: null,
+  }
+}
+
 export function leerRespuestaDeCotizacion(cruda: unknown): RespuestaDeCotizacionMercantil {
+  const resultado = objeto(cruda)?.resultado
+  if (Array.isArray(resultado)) {
+    const c = cruda as Record<string, unknown>
+    const filas = resultado.map(objeto).filter((f): f is Record<string, unknown> => f !== null)
+    const conError = filas.filter((f) => campo(f, ['error']))
+    const coberturas = filas.filter((f) => !campo(f, ['error'])).map(coberturaDeResultado).filter((cobertura) => cobertura.premio > 0)
+    const mensajes = [
+      ...new Set([
+        ...mensajesDe(cruda),
+        ...textosDe(c.advertencia),
+        ...conError.map((f) => `${campo(f, ['descripcion', 'texto', 'producto'])}: ${campo(f, ['error'])}`.replace(/^: /, '')),
+      ]),
+    ]
+    return {
+      ok: coberturas.length > 0,
+      id: campo(c, ['id']) || null,
+      coberturas,
+      mensajes,
+      sumaAsegurada: numeroDeMercantil(c.suma_asegurada) ?? numeroDeMercantil(objeto(c.vehiculo)?.valor),
+    }
+  }
   const mensajes = mensajesDe(cruda)
   const c = cruda && typeof cruda === 'object' && !Array.isArray(cruda) ? (cruda as Record<string, unknown>) : {}
   const id = campo(c, ['id', 'cotizacion', 'numero', 'numeroCotizacion', 'idCotizacion', 'nroCotizacion']) || null
