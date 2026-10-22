@@ -9,6 +9,7 @@
 // posible: HTML en una URL `data:`, sin preload, sin React, sin archivos que leer del disco. Se va sola
 // en cuanto la ventana principal está dibujada (ver `cerrarPantallaDeCarga` en index.ts).
 import { BrowserWindow } from 'electron'
+import { nombreActual } from './canal'
 import icono from '../../recursos/icon.png?inline'
 
 /**
@@ -20,7 +21,7 @@ const ESPERA_MAXIMA_MS = 1_500
 let ventana: BrowserWindow | null = null
 
 const HTML = `<!doctype html>
-<html lang="es-AR"><head><meta charset="UTF-8"><title>DM Gestión</title>
+<html lang="es-AR"><head><meta charset="UTF-8"><title>${nombreActual()}</title>
 <style>
   html,body{margin:0;height:100%;background:#0b1f3b;color:#dceafc;overflow:hidden;
     font-family:"Segoe UI",system-ui,sans-serif;user-select:none;-webkit-app-region:drag}
@@ -32,7 +33,7 @@ const HTML = `<!doctype html>
   p{margin:0;font-size:13px;opacity:.75}
   @keyframes g{to{transform:rotate(360deg)}}
 </style></head>
-<body><img src="${icono}" alt=""><h1>DM Gestión</h1><div class="giro"></div><p>Iniciando…</p></body></html>`
+<body><img src="${icono}" alt=""><h1>${nombreActual()}</h1><div class="giro"></div><p>Iniciando…</p></body></html>`
 
 /**
  * Muestra la pantalla de carga y avisa (`listo`) cuando ya está a la vista, o pasado un rato si no
@@ -66,7 +67,7 @@ export function mostrarPantallaDeCarga(listo: () => void): void {
       closable: false,
       center: true,
       show: false,
-      title: 'DM Gestión',
+      title: nombreActual(),
       backgroundColor: '#0b1f3b',
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false },
     })

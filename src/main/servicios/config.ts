@@ -176,6 +176,12 @@ export function urlDelMesh(): string {
   return escrita || MESH_URL
 }
 
+/** true si `urlBase` es el servidor de verdad de la agencia (y no un servidor de pruebas que alguien cargó). */
+export function esElVpsDeProduccion(urlBase: string): boolean {
+  const sinBarra = (url: string) => url.trim().replace(/\/+$/, '').toLowerCase()
+  return sinBarra(urlBase) === sinBarra(VPS_URL_BASE)
+}
+
 export function credencialesVps(): { urlBase: string; token: string } {
   const vps = leerConfig().vps
   return {

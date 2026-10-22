@@ -1,0 +1,95 @@
+# Trae los cambios de la rama `beta` a `master` (el programa original). Es el paso de «esto ya lo probé y
+# va a la agencia»; después se lanza Actions → Publicar → Run workflow desde `master`, como siempre.
+#
+# Qué hace, en orden, y por qué en ese orden:
+#   1. Se para en `master` y mergea `beta` ahí, EN ESTA COPIA. Si hay conflicto, corta: nada se empuja.
+#   2. Corre los tipos y el banco de pruebas sobre el resultado del merge. Es lo que va a quedar en
+#      master; si una prueba falla, corta: nada se empuja.
+#   3. Recién entonces empuja `master`.
+#   4. Deja `beta` igual a `master` (avance rápido), así la beta recibe también lo que sólo estaba en
+#      master (arreglos urgentes, el número de versión de la última publicación) y la próxima promoción
+#      parte sin diferencias.
+#
+# NO publica nada: no sube la versión, no crea tags, no toca los Releases. Eso lo hace «Publicar».
+#
+# Si `master` tiene una regla de protección que exige pull request, el push del paso 3 es rechazado y el
+# merge queda sin hacerse (no se pierde nada): en ese caso hay que permitir a «github-actions[bot]» empujar
+# a master, o promover abriendo un pull request de `beta` a `master`.
+name: Promover beta a master
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Que no corra a la vez que otra promoción ni que la sincronización inversa.
+concurrency:
+  group: ramas-beta-master
+  cancel-in-progress: false
+
+jobs:
+  promover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Traer master y beta con todo el historial
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Ver qué se promueve
+        id: cambios
+        run: |
+          git fetch origin beta
+          cantidad="$(git rev-list --count origin/master..origin/beta)"
+          echo "cantidad=$cantidad" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Cambios que pasan de beta a master: $cantidad commit(s)"
+            echo ""
+            git log origin/master..origin/beta --no-merges --pretty='format:- %s (%h)'
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Merge de beta en master
+        if: steps.cambios.outputs.cantidad != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git merge --no-ff origin/beta -m "Promover beta a master"; then
+            echo "::error::El merge de beta en master tiene conflictos. No se empujó nada. Resolvelos en un pull request de master a beta (o mergeando master en beta) y volvé a lanzar esto."
+            exit 1
+          fi
+
+      - name: Preparar Node
+        if: steps.cambios.outputs.cantidad != '0'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependencias
+        if: steps.cambios.outputs.cantidad != '0'
+        run: npm ci
+
+      - name: Verificar los tipos
+        if: steps.cambios.outputs.cantidad != '0'
+        run: npm run typecheck
+
+      - name: Correr el banco de pruebas
+        if: steps.cambios.outputs.cantidad != '0'
+        run: npm run prueba
+
+      - name: Empujar master y dejar beta igual
+        if: steps.cambios.outputs.cantidad != '0'
+        run: |
+          git push origin HEAD:master
+          git push origin HEAD:beta
+          echo "master y beta quedaron en $(git rev-parse --short HEAD). Ahora lanzá Actions → Publicar desde master." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Nada que promover
+        if: steps.cambios.outputs.cantidad == '0'
+        run: |
+          echo "beta no tiene commits que master no tenga, así que no hay nada que promover." | tee -a "$GITHUB_STEP_SUMMARY"

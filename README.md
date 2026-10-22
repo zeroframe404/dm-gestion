@@ -1795,6 +1795,90 @@ npm run publicar:parche                           # publica 1.0.1
 # aparece la barra de aviso; Reiniciar ahora deja la app en 1.0.1
 ```
 
+## Versión beta (DM Gestión (Beta))
+
+Hay dos programas, y conviven en la misma computadora:
+
+| | **DM Gestión** (original) | **DM Gestión (Beta)** |
+|---|---|---|
+| Rama | `master` | `beta` |
+| Quién lo usa | la agencia | el dueño, para probar las novedades |
+| Instalador | `DM-Gestion-Setup-X.Y.Z.exe` | `DM-Gestion-Beta-Setup-X.Y.Z-beta.N.exe` |
+| `appId` (lo que Windows ve como «el programa») | `ar.com.dmartinezseguros.gestion` | `ar.com.dmartinezseguros.gestion.beta` |
+| Datos locales | `%APPDATA%/dm-gestion/` | `%APPDATA%/dm-gestion-beta/` |
+| Se actualiza desde | el último Release (que no sea prerelease) | el Release fijo `beta-canal` (prerelease) |
+| Cómo se publica | `Publicar` (a mano, desde `master`) | **solo**, con cada push a `beta` |
+
+La beta lleva un cartel amarillo **BETA** en el ingreso y en la barra lateral, y su ventana se llama
+«DM Gestión (Beta)». Instalarla, actualizarla o desinstalarla no toca el programa normal.
+
+### El ciclo de trabajo
+
+```
+ cambios  ──►  rama beta  ──►  [Publicar beta, solo]  ──►  probás en DM Gestión (Beta)
+                  │
+                  └──►  Actions → «Promover beta a master»  ──►  Actions → «Publicar» (desde master)  ──►  la agencia
+```
+
+1. **Todo el trabajo va a `beta`** (los pull requests se abren contra `beta`). Cada push dispara
+   `.github/workflows/publicar-beta.yml`: corre el banco de pruebas, arma el instalador y lo sube al Release
+   [`beta-canal`](https://github.com/zeroframe404/dm-gestion/releases/tag/beta-canal).
+2. **La primera vez**, bajá el instalador de ese Release e instalalo. Después se actualiza sola, igual que la
+   normal: al abrir y cada 15 minutos avisa, y **Administración → Acerca de → Buscar actualizaciones** lo adelanta.
+3. **Cuando lo probado está bien**: *Actions → Promover beta a master → Run workflow*
+   (`.github/workflows/promover-beta.yml`). Mergea `beta` en `master`, corre los tipos y el banco de pruebas
+   sobre el resultado y recién ahí empuja; si hay conflictos o falla una prueba, no empuja nada.
+4. **Y a la agencia**: *Actions → Publicar → Run workflow* desde `master`, el de siempre (con `subir_version` si
+   corresponde). La promoción no publica nada ni toca los Releases de versiones.
+
+`.github/workflows/sincronizar-beta.yml` mantiene `beta` al día con `master` (un arreglo urgente hecho directo en
+`master`, el número de versión que sube `Publicar`). Si `master` y `beta` tocan lo mismo, queda en rojo para
+resolverlo a mano; no fuerza nada.
+
+### La versión de la beta
+
+No se commitea. Cada corrida de `Publicar beta` calcula `<próximo parche de la estable>-beta.<n.º de corrida>`
+(`scripts/version-beta.mjs`): con la estable en 17.7.2, la corrida 41 es **17.7.3-beta.41**. El número de corrida
+solo crece, así que cada beta es mayor que la anterior para `electron-updater`, y cuando sale una estable nueva la
+base sube con ella. **No hay que tocar el `version` del `package.json` en `beta`.** (Por eso el workflow usa
+`npm pkg set` y no `npm version`: este último corre `postversion`, que empuja a `master`.)
+
+### Cómo conviven en el VPS
+
+La beta habla con **el mismo VPS** que la normal: la misma base del GENERAL DE CLIENTES, los mismos usuarios y los
+mismos ajustes compartidos. Es lo que permite probar una novedad con datos de verdad, y lo que obliga a tener
+cuidado. Lo que está resuelto:
+
+- **Nada local se comparte.** Base SQLite (`dm.db`), `config.json`, credencial cifrada, bitácora, cerrojo de «una
+  sola instancia»: todo vive en `dm-gestion-beta/`. Una migración de la beta no puede dejar a la normal con un
+  esquema que no conoce. Al abrirla por primera vez baja la cartera del VPS, como cualquier PC nueva.
+- **La beta no reporta su versión.** El renglón «qué versión tiene cada sucursal» (pantalla de Usuarios) es de la
+  sucursal, no de la computadora; una `17.7.3-beta.41` ahí haría creer que la sucursal está al día.
+- **Las acciones que alcanzan a todas las PCs están bloqueadas desde la beta** mientras apunte al servidor real:
+  restaurar un respaldo (rebobinar) y migrar la base (`servicios/proteccionBeta.ts`). Se hacen desde la normal.
+- **Lo que NO está resuelto, y hay que saberlo:** lo que la beta cargue o borre en la cartera, los pagos, las tareas,
+  los mensajes o los **ajustes compartidos** (cuentas de ATM, Mercantil, Equidad, Meta, encabezado del ticket) lo ven
+  las demás computadoras. Probar con datos reales es probar con datos reales.
+- **Compatibilidad hacia atrás.** La normal tiene que seguir entendiendo lo que escribe la beta. Un cambio que
+  altere el formato de la grilla, de un ajuste compartido o del protocolo del canal en vivo (`protocolo.ts`) hay que
+  hacerlo compatible con lo ya publicado, o publicar la normal primero. El servidor (repo `Seguros_Daniel_Martinez`)
+  se despliega con su propio workflow y sirve a las dos.
+
+**Beta contra un servidor aparte.** Si algún día se levanta un servidor de pruebas, la beta se apunta a él sin
+publicar nada: en `%APPDATA%/dm-gestion-beta/config.json`, bloque `vps` (`{ "vps": { "urlBase": "https://…", "token": "…" } }`,
+el mismo mecanismo de siempre). Con un servidor que no es el de producción, las acciones bloqueadas se permiten.
+
+### Desarrollo
+
+- `npm run dev:beta` abre el programa en modo desarrollo *como beta* (nombre, cartel y carpeta de datos propios).
+- `npm run dist:beta` arma el instalador de la beta en una PC con Windows; exige que el `package.json` tenga una
+  versión `X.Y.Z-beta.N` (`npm pkg set version=17.7.3-beta.1`, **sin commitear**).
+- Cómo está hecho: el canal sale de la versión (`src/shared/canal.ts`, `src/main/canal.ts`); `scripts/dist-beta.mjs`
+  pisa `appId`, nombre y nombre de archivo sobre `electron-builder.yml`; la beta lee su feed `generic` en
+  `beta-canal/beta.yml` (`src/main/servicios/updater.ts`) y no los Releases por versión, así que no depende de cuál
+  sea el Release más nuevo. La normal usa «el último Release que no es prerelease» y por eso nunca ve la beta.
+  `scripts/publicar-beta.mjs` sube primero el instalador y recién al final `beta.yml`, y borra los instaladores viejos.
+
 ## Base de usuarios compartida (Fase 11, mudada al VPS en la v12.4)
 
 Los usuarios ya no viven en cada computadora: viven en **el VPS de la agencia**, en el mismo servidor
@@ -2551,7 +2635,8 @@ vez, el canal caído que NO corta el audio en el acto y la que no sobrevive a la
 
 `.github/workflows/pruebas.yml` corre `npm run typecheck` y `npm run prueba` en cada push y en cada pull
 request, en Linux (el banco de pruebas no toca Electron ni el instalador). `publicar.yml` sigue corriendo
-el banco antes de armar el instalador con cada tag `v*`.
+el banco antes de armar el instalador con cada tag `v*`. Los tres workflows de la beta (`publicar-beta.yml`,
+`promover-beta.yml`, `sincronizar-beta.yml`) están explicados en «Versión beta».
 
 ## Permisos por rol (Administración → Permisos)
 

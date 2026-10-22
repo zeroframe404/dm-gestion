@@ -8,6 +8,7 @@ import { ahoraIso } from '../importacion/normalizar'
 import { anotarEvento } from '../sincronizacion/cola'
 import { estadoGoogle } from './config'
 import { ErrorDeNegocio } from './errores'
+import { exigirQueNoSeaLaBetaContraProduccion } from './proteccionBeta'
 import { crearFuenteVps, fuenteGoogleDirecta } from './sincronizacion'
 
 export async function estadoDeLaBaseVps(): Promise<EstadoMigracionVps> {
@@ -35,6 +36,7 @@ export async function estadoDeLaBaseVps(): Promise<EstadoMigracionVps> {
 }
 
 export async function migrarAlVps(): Promise<ResumenMigracionVps> {
+  exigirQueNoSeaLaBetaContraProduccion('migrar la base al VPS')
   const google = fuenteGoogleDirecta()
   if (!google) {
     throw new ErrorDeNegocio(

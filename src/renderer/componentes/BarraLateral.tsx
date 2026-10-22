@@ -11,6 +11,7 @@ import { useUsuarioActual } from '../contexto/Sesion'
 import { esAreaDePermisos, MODULO_ADMINISTRACION, MODULO_API_ASEGURADORAS, MODULOS, type IdModulo, type Modulo } from '../modulos'
 import { barraLateralColapsada, guardarBarraLateralColapsada } from '../preferencias'
 import { Icono } from './Icono'
+import { InsigniaBeta } from './InsigniaBeta'
 import { cx } from './ui'
 
 interface PropsBarraLateral {
@@ -62,7 +63,9 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
           <div className="min-w-0">
             {/* Menos tracking que un rótulo normal: con más, el nombre no entra en el ancho de la barra. */}
             <p className="truncate text-[10px] font-bold uppercase tracking-[0.06em] text-cielo-200">Seguros Daniel Martínez</p>
-            <p className="font-display text-xl font-bold tracking-tight text-white">DM Gestión</p>
+            <p className="font-display text-xl font-bold tracking-tight text-white">
+              DM Gestión <InsigniaBeta className="ml-1 align-middle" />
+            </p>
           </div>
         )}
         <button

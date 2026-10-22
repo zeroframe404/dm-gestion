@@ -11,6 +11,7 @@ import {
   vigilarErroresSueltos,
 } from './arranque'
 import { abrirBaseDeDatos, cerrarBaseDeDatos } from './db/base'
+import { nombreActual } from './canal'
 import { cerrarPantallaDeCarga, enfocarPantallaDeCarga, mostrarPantallaDeCarga } from './pantallaDeCarga'
 import { registrarIpc } from './ipc'
 import { arrancarCartero, apurarAlCartero, pararCartero } from './mensajeria/cartero'
@@ -45,7 +46,7 @@ const URL_DESARROLLO = process.env.VITE_DEV_SERVER_URL
  */
 const ESPERA_MAXIMA_DE_LA_PANTALLA_MS = 12_000
 
-app.setName('DM Gestión')
+app.setName(nombreActual())
 
 // Antes que nada, porque lo que sigue ya puede fallar.
 vigilarErroresSueltos()
@@ -67,7 +68,7 @@ function crearVentana(): void {
     minWidth: 1024,
     minHeight: 640,
     show: false,
-    title: 'DM Gestión',
+    title: nombreActual(),
     backgroundColor: '#0b1f3b',
     autoHideMenuBar: true,
     webPreferences: {
@@ -376,7 +377,7 @@ function arrancarElPrograma(): void {
   } catch (error) {
     console.error('[app] No se pudo abrir la base de datos:', detalleDelError(error))
     dialog.showErrorBox(
-      'DM Gestión',
+      nombreActual(),
       `No se pudo abrir la base de datos local.\n\n${error instanceof Error ? error.message : String(error)}`,
     )
     app.exit(1)
