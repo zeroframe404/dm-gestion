@@ -232,6 +232,7 @@ export function consejoParaElRechazo(mensaje: string): string {
   if (/VEHICULO|INFOAUTO|VERSION|MODELO/.test(texto)) return 'Elegí otra versión en los ajustes de Mercantil.'
   if (/POSTAL|LOCALIDAD|ZONA/.test(texto)) return 'Revisá el código postal y la localidad.'
   if (/CUOTA|PAGO/.test(texto)) return 'Probá con otras cuotas o forma de pago en los ajustes de Mercantil.'
+  if (/SIN EXPLICACION/.test(texto)) return 'Probá con 1 pago y cupón en los ajustes de Mercantil; si sigue, pasale «Copiar datos para Mercantil Andina» al equipo de APIs de Mercantil.'
   return ''
 }
 
@@ -370,7 +371,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     avisos.push(`Mercantil cotizó con su suma asegurada (${enPesos(sumaUsada)}), no con la del formulario (${enPesos(v.sumaAsegurada)}).`)
   }
   const resumen = [
-    `Cotizado en ${textoDe(CUOTAS_MERCANTIL, cuotas)} con ${textoDe(FORMAS_DE_PAGO_MERCANTIL, formaDePago).toLowerCase()}`,
+    `Cotizado en ${textoDe(CUOTAS_MERCANTIL, cuotas)} con ${textoDe(FORMAS_DE_PAGO_MERCANTIL, cotizacion.formaDePago).toLowerCase()}`,
     cuenta.productor ? `productor ${cuenta.productor}` : 'con el productor del usuario',
     `suma asegurada: la de Mercantil${sumaUsada ? ` (${enPesos(sumaUsada)})` : ''}`,
     cotizacion.id ? `cotización ${cotizacion.id} en Mercantil` : '',

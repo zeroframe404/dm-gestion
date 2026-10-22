@@ -138,6 +138,9 @@ test('Mercantil: los errores de negocio vienen como «errores: [{id, texto}]»',
   assert.match(leido.mensaje, /Credenciales no válidas · Otra cosa/)
   assert.deepEqual(erroresDeNegocio({}), { texto: '' })
   assert.equal(erroresDeNegocio({ errores: ['suelto'] }).texto, 'suelto')
+  const soloCodigo = mensajeDeError(400, JSON.stringify({ errores: [{ codigo: 'MCA500' }], fecha: '2026-10-22T14:25:14.619354200' }), 'cotizaciones/v2/auto')
+  assert.equal(soloCodigo.codigo, 'MCA500')
+  assert.equal(soloCodigo.mensaje, 'Mercantil respondió 400 a cotizaciones/v2/auto: error MCA500 de Mercantil, sin explicación', 'sin el JSON crudo')
 })
 
 test('Mercantil: con un 401 que no es de la suscripción se pide otro token y se reintenta una vez', async (t) => {
@@ -479,6 +482,24 @@ test('Mercantil: un rechazo vuelve como error en la tarjeta, con el motivo y qu�
   assert.ok(resultado.detalleTecnico, 'el detalle técnico también cuando no cotizó')
   assert.equal(consejoParaElRechazo('El productor no está habilitado'), 'Revisá el código de productor cargado en API Aseguradoras → Mercantil: tiene que ser el PAS vinculado al usuario.')
   assert.equal(consejoParaElRechazo('otra cosa'), '')
+})
+
+test('Mercantil: si con débito contesta MCA500, se cotiza con cupón como en su ejemplo y se avisa', async (t) => {
+  const MCA500 = { errores: [{ codigo: 'MCA500' }], fecha: '2026-10-22T14:25:14.619354200' }
+  const pedidos = apiFalsa(t, (cuerpo) => ((cuerpo.pago as { tipo_pago: string }).tipo_pago === 'DEBITO' ? json(MCA500, 400) : json(COTIZACION)))
+  const resultado = await mercantil.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  const posts = pedidos.filter((p) => p.ruta === RUTA_COTIZACION).map((p) => JSON.parse(p.cuerpo) as { cuotas: number; pago: { tipo_pago: string } })
+  assert.deepEqual(posts.map((c) => [c.pago.tipo_pago, c.cuotas]), [['DEBITO', 12], ['C', 12]], 'las mismas cuotas')
+  assert.match(resultado.mensaje ?? '', /12 cuotas con cupón de pago/)
+  assert.match(resultado.avisos.join(' '), /no cotizó con la forma de pago «DEBITO» \(error MCA500 de Mercantil, sin explicación\): se cotizó con cupón/)
+})
+
+test('Mercantil: si con cupón tampoco cotiza, queda el rechazo original con qué probar', async (t) => {
+  apiFalsa(t, () => json({ errores: [{ codigo: 'MCA500' }] }, 400))
+  const rechazo = await mercantil.cotizar(solicitud(), {})
+  assert.equal(rechazo.estado, 'ERROR')
+  assert.match(rechazo.mensaje ?? '', /Mercantil no cotizó: error MCA500 de Mercantil, sin explicación\. Probá con 1 pago y cupón/)
 })
 
 test('Mercantil: una respuesta sin precios que no se entiende lo dice, y «Copiar datos» la trae entera', async (t) => {

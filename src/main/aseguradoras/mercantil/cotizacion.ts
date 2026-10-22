@@ -233,24 +233,47 @@ export interface CotizacionMercantil extends RespuestaDeCotizacionMercantil {
   pedido: Record<string, unknown>
   /** Lo que contestó Mercantil, sin tocar. */
   cruda: unknown
+  /** El `tipo_pago` con que cotizó al final: el pedido, o «C» si con el pedido Mercantil no cotizó. */
+  formaDePago: string
 }
 
-/**
- * Cotiza. Un rechazo de Mercantil (un 400 con `errores`) no tira: vuelve con `ok: false` y sus
- * mensajes, como cualquier otra respuesta sin coberturas. Lo que sí tira es lo que no es de la
- * cotización: sin internet, la cuenta rechazada, la ruta que no existe.
- */
-export async function cotizarMercantil(cliente: ClienteMercantil, datos: DatosDeCotizacionMercantil): Promise<CotizacionMercantil> {
+/** El `tipo_pago` del único ejemplo de cotización de la colección de Mercantil (cupón). */
+export const FORMA_DE_PAGO_DEL_EJEMPLO = 'C'
+
+async function intentar(cliente: ClienteMercantil, datos: DatosDeCotizacionMercantil): Promise<CotizacionMercantil> {
   const pedido = armarPedidoDeCotizacion(datos)
   let cruda: unknown
   try {
     cruda = await cliente.post(RUTA_COTIZACION, pedido)
   } catch (error) {
     if (error instanceof ErrorDeMercantil && !error.esDeRed && error.status !== undefined && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 404) {
-      return { ok: false, id: null, coberturas: [], mensajes: [error.message.replace(/^Mercantil respondió \d+ a [^:]+: /, '')], sumaAsegurada: null, pedido, cruda: null }
+      return { ok: false, id: null, coberturas: [], mensajes: [error.message.replace(/^Mercantil respondió \d+ a [^:]+: /, '')], sumaAsegurada: null, pedido, cruda: null, formaDePago: datos.formaDePago }
     }
     throw error
   }
-  const leida = leerRespuestaDeCotizacion(cruda)
-  return { ...leida, pedido, cruda }
+  return { ...leerRespuestaDeCotizacion(cruda), pedido, cruda, formaDePago: datos.formaDePago }
+}
+
+/**
+ * Cotiza. Un rechazo de Mercantil (un 400 con `errores`) no tira: vuelve con `ok: false` y sus
+ * mensajes, como cualquier otra respuesta sin coberturas. Lo que sí tira es lo que no es de la
+ * cotización: sin internet, la cuenta rechazada, la ruta que no existe.
+ *
+ * La colección de Mercantil cotiza sólo con `tipo_pago` «C»; «DEBITO» aparece al suscribir, con el
+ * canal y el número de tarjeta. Si con otra forma de pago Mercantil rechaza la cotización (con
+ * «DEBITO» contestó `MCA500`, sin explicación), se vuelve a pedir con «C» y se avisa.
+ */
+export async function cotizarMercantil(cliente: ClienteMercantil, datos: DatosDeCotizacionMercantil): Promise<CotizacionMercantil> {
+  const primera = await intentar(cliente, datos)
+  if (primera.ok || primera.cruda !== null || datos.formaDePago === FORMA_DE_PAGO_DEL_EJEMPLO) return primera
+  const conCupon = await intentar(cliente, { ...datos, formaDePago: FORMA_DE_PAGO_DEL_EJEMPLO })
+  if (!conCupon.ok) return primera
+  const motivo = primera.mensajes.join(' · ')
+  return {
+    ...conCupon,
+    mensajes: [
+      `Mercantil no cotizó con la forma de pago «${datos.formaDePago}»${motivo ? ` (${motivo})` : ''}: se cotizó con cupón («${FORMA_DE_PAGO_DEL_EJEMPLO}»), como en su ejemplo. El débito se elige al suscribir.`,
+      ...conCupon.mensajes,
+    ],
+  }
 }

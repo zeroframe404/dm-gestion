@@ -87,7 +87,7 @@ function textoSuelto(valor: unknown): string {
   return typeof valor === 'string' ? valor.trim() : typeof valor === 'number' ? String(valor) : ''
 }
 
-/** Los errores de negocio de Mercantil (`errores: [{id, texto}]`), en una línea; vacío si no vienen así. */
+/** Los errores de negocio de Mercantil (`errores: [{id, texto}]` o sólo `[{codigo}]`), en una línea; vacío si no vienen así. */
 export function erroresDeNegocio(datos: unknown): { texto: string; codigo?: string } {
   if (!datos || typeof datos !== 'object') return { texto: '' }
   const lista = (datos as { errores?: unknown }).errores
@@ -96,8 +96,11 @@ export function erroresDeNegocio(datos: unknown): { texto: string; codigo?: stri
     if (typeof e === 'string') return [{ id: '', texto: e.trim() }]
     if (!e || typeof e !== 'object') return []
     const error = e as Record<string, unknown>
+    const id = textoSuelto(error.id) || textoSuelto(error.codigo)
     const texto = textoSuelto(error.texto) || textoSuelto(error.mensaje) || textoSuelto(error.message) || textoSuelto(error.descripcion)
-    return texto ? [{ id: textoSuelto(error.id) || textoSuelto(error.codigo), texto }] : []
+    // A veces viene sólo el código (`{"codigo":"MCA500"}`), sin explicación.
+    if (!texto) return id ? [{ id, texto: `error ${id} de Mercantil, sin explicación` }] : []
+    return [{ id, texto }]
   })
   return { texto: errores.map((e) => e.texto).join(' · '), codigo: errores[0]?.id || undefined }
 }
