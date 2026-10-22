@@ -11,6 +11,7 @@
 // de actualizaciones ni el arranque del programa.
 import { app } from 'electron'
 import type { EstadoDeActualizacionDeSucursal } from '../../shared/tipos'
+import { esBeta } from '../canal'
 import { ahoraIso } from '../importacion/normalizar'
 import { sesion } from './sesion'
 import { crearFuenteVps } from './sincronizacion'
@@ -63,6 +64,10 @@ export function filasDesde(valor: unknown): EstadoDeActualizacionDeSucursal[] {
  * actualizaciones corre igual desde antes de iniciar sesión, y no tiene sentido inventarle una sucursal.
  */
 async function publicarPropia(rechazo?: { version: string }): Promise<void> {
+  // La beta no reporta: el renglón es el de la SUCURSAL, compartido con su PC estable, y una versión
+  // «17.7.3-beta.12» ahí le haría creer al superadministrador que la sucursal está al día (o más que
+  // al día) cuando su instalación de verdad sigue donde estaba.
+  if (esBeta()) return
   const actor = sesion()
   if (!actor) return
   const vps = crearFuenteVps()

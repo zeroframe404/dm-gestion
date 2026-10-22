@@ -6,6 +6,7 @@
 import { app } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { EstadoActualizacion } from '../../shared/tipos'
+import { canalActual, URL_DE_ACTUALIZACIONES_BETA } from '../canal'
 import { ahoraIso } from '../importacion/normalizar'
 import { reportarRechazo, reportarVersionPropia } from './estadoDeActualizaciones'
 import { emitirATodas as emitir } from './avisos'
@@ -52,22 +53,36 @@ function cambiarEstado(cambios: Partial<EstadoActualizacion>): void {
 export function iniciarActualizaciones(): void {
   if (!app.isPackaged) return
 
-  // El repositorio es PÚBLICO, así que los Releases se leen sin credenciales: no va ningún token acá.
-  //
-  // Hasta la v15.3.2 iba `private: true` con un token de lectura embebido. Cuando ese token se venció
-  // (los fine-grained personal access token de GitHub duran como mucho un año), GitHub empezó a
-  // contestar «401 Bad credentials» a TODAS las computadoras de la agencia y el programa dejó de ver
-  // las versiones nuevas: un token que caduca es una bomba de tiempo, y además viajaba dentro del
-  // instalador, a la vista de cualquiera que lo abriera. Sin token no vence nada.
-  //
-  // Si algún día el repositorio vuelve a ser privado, esto deja de funcionar y hay que publicar los
-  // Releases en un repositorio público aparte (p. ej. `dm-gestion-releases`) en vez de volver a
-  // embeber un token.
-  autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: 'zeroframe404',
-    repo: 'dm-gestion',
-  })
+  if (canalActual() === 'beta') {
+    // La beta NO mira los Releases de versiones: lee un Release fijo («beta-canal», marcado como
+    // prerelease) que cada publicación de la rama `beta` reemplaza. Dos razones:
+    //  - La estable usa «el último Release que no sea prerelease», así que jamás ve esta beta.
+    //  - La beta no depende de cuál sea el Release más nuevo del repositorio: con el proveedor `github`,
+    //    en cuanto se publicara una estable por encima de la última beta, buscaría `beta.yml` en ese
+    //    Release, no lo encontraría y se quedaría sin actualizar.
+    autoUpdater.setFeedURL({ provider: 'generic', url: URL_DE_ACTUALIZACIONES_BETA, channel: 'beta' })
+    autoUpdater.channel = 'beta'
+    // Asignar el canal prende `allowDowngrade`; acá no tiene que bajar nunca a una beta más vieja.
+    autoUpdater.allowDowngrade = false
+    cambiarEstado({ canal: 'beta' })
+  } else {
+    // El repositorio es PÚBLICO, así que los Releases se leen sin credenciales: no va ningún token acá.
+    //
+    // Hasta la v15.3.2 iba `private: true` con un token de lectura embebido. Cuando ese token se venció
+    // (los fine-grained personal access token de GitHub duran como mucho un año), GitHub empezó a
+    // contestar «401 Bad credentials» a TODAS las computadoras de la agencia y el programa dejó de ver
+    // las versiones nuevas: un token que caduca es una bomba de tiempo, y además viajaba dentro del
+    // instalador, a la vista de cualquiera que lo abriera. Sin token no vence nada.
+    //
+    // Si algún día el repositorio vuelve a ser privado, esto deja de funcionar y hay que publicar los
+    // Releases en un repositorio público aparte (p. ej. `dm-gestion-releases`) en vez de volver a
+    // embeber un token.
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'zeroframe404',
+      repo: 'dm-gestion',
+    })
+  }
   // El chequeo automático ya no descarga solo: sólo pregunta si hay algo nuevo (liviano, una consulta
   // al servidor de GitHub) y es el cartel el que decide si se baja, cuando alguien aprieta «Actualizar
   // ahora». `autoInstallOnAppQuit` sigue en `true` por si alguien cierra el programa con la descarga

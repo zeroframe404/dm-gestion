@@ -373,6 +373,8 @@ export interface SesionCerrada {
 export interface InfoApp {
   nombre: string
   version: string
+  /** `beta` en el instalador de pruebas del dueño (ver `shared/canal.ts`); `estable` en el de la agencia. */
+  canal: 'estable' | 'beta'
   electron: string
   chrome: string
   node: string

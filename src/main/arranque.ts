@@ -22,6 +22,7 @@
 import { app, dialog } from 'electron'
 import { appendFileSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
 import path from 'node:path'
+import { nombreActual } from './canal'
 
 /** Al pasarse de este tamaño, la bitácora se archiva como `.1` y se empieza una nueva. */
 const TAMANO_MAXIMO = 2 * 1024 * 1024
@@ -61,7 +62,7 @@ export function iniciarBitacora(carpetaDeDatos: string): void {
   }
 
   engancharConsola()
-  anotar(`===== DM Gestión ${app.getVersion()} — arranque ${marca()} (pid ${process.pid}) =====`)
+  anotar(`===== ${nombreActual()} ${app.getVersion()} — arranque ${marca()} (pid ${process.pid}) =====`)
   anotar(`[arranque] Carpeta de datos: ${carpetaDeDatos} (código cargado a los ${Math.round(process.uptime() * 1000)} ms)`)
 }
 
@@ -145,7 +146,7 @@ export function fallaDeArranque(paso: string, error: unknown): void {
     yaAviso = true
     try {
       dialog.showErrorBox(
-        'DM Gestión no pudo abrir',
+        `${nombreActual()} no pudo abrir`,
         `Falló ${paso}.\n\n${error instanceof Error ? error.message : String(error)}\n\n` +
           `El detalle quedó anotado en:\n${ruta ?? '(no se pudo escribir la bitácora)'}`,
       )

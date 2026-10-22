@@ -1,0 +1,57 @@
+# Mantiene `beta` al día con `master`: cada vez que `master` recibe algo que `beta` no tiene (un arreglo
+# urgente hecho directo en master, el número de versión que sube «Publicar»), se mergea en `beta`.
+#
+# Sin esto `beta` se queda atrás: perdería los arreglos urgentes y su base de versión (la beta se numera
+# como el «próximo parche» de lo que dice el package.json, ver scripts/version-beta.mjs) quedaría por
+# debajo de la última estable publicada.
+#
+# Corre cuando se empuja a master, cuando termina una publicación (el push del número de versión lo hace
+# el propio «Publicar» con su token, y los push hechos con ese token no disparan workflows) y a mano.
+# Si hay conflicto no fuerza nada: queda en rojo para que se resuelva a mano.
+name: Sincronizar beta con master
+
+on:
+  push:
+    branches: [master]
+  workflow_run:
+    workflows: ['Publicar']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ramas-beta-master
+  cancel-in-progress: false
+
+jobs:
+  sincronizar:
+    # Si lo dispara el fin de «Publicar», sólo cuando esa publicación salió bien.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Traer beta
+        uses: actions/checkout@v4
+        with:
+          ref: beta
+          fetch-depth: 0
+
+      - name: Mergear master en beta
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin master
+          faltan="$(git rev-list --count HEAD..origin/master)"
+          if [ "$faltan" = "0" ]; then
+            echo "beta ya tiene todo lo de master." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! git merge origin/master -m "Sincronizar beta con master"; then
+            echo "::error::master y beta tocaron lo mismo y el merge tiene conflictos. Mergeá master en beta a mano (o con un pull request de master a beta)."
+            exit 1
+          fi
+          git push origin HEAD:beta
+          echo "beta recibió $faltan commit(s) de master." | tee -a "$GITHUB_STEP_SUMMARY"

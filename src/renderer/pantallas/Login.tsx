@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react'
 import type { EstadoDeAcceso } from '../../shared/tipos'
 import { Icono } from '../componentes/Icono'
+import { InsigniaBeta } from '../componentes/InsigniaBeta'
 import { Alerta, Boton, Campo, CampoClave, cx } from '../componentes/ui'
 import { useAcceso } from '../contexto/Acceso'
 import { useSesion } from '../contexto/Sesion'
@@ -41,7 +42,9 @@ export function Login() {
             <Icono nombre="escudo" tamano={28} className="text-cielo-200" />
           </div>
           <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-200">Seguros Daniel Martínez</p>
-          <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight">DM Gestión</h1>
+          <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight">
+            DM Gestión <InsigniaBeta className="ml-1 align-middle" />
+          </h1>
         </div>
 
         <form onSubmit={alEnviar} noValidate className="rounded-2xl bg-white p-8 shadow-media">

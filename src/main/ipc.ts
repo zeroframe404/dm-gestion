@@ -6,6 +6,7 @@ import type { ArgumentosDe, NombreCanal, RespuestaDe } from '../shared/canales'
 import { AREA_ELIMINABLE, esTipoEliminable, motivoDeNoPoderEliminar, rolPuedeEliminar } from '../shared/eliminacion'
 import { veLosNumerosDeLaAgencia } from '../shared/permisos'
 import type { FrescuraDeMetrica, InfoApp, PodioMensual, Resultado, SesionUsuario } from '../shared/tipos'
+import { canalActual } from './canal'
 import { carpetaDatos, rutaBaseDeDatos, rutaConfig } from './rutas'
 import { cambiarClave, ingresar, salir } from './servicios/auth'
 import { comprobarAcceso, conectarEmisor, estadoDeAcceso, estadoDeUsuarios, subirLocales } from './servicios/baseDeUsuarios'
@@ -451,6 +452,7 @@ function infoApp(): InfoApp {
   return {
     nombre: app.getName(),
     version: app.getVersion(),
+    canal: canalActual(),
     electron: process.versions.electron,
     chrome: process.versions.chrome,
     node: process.versions.node,

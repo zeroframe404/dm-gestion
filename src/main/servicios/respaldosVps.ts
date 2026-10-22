@@ -18,6 +18,7 @@ import { ahoraIso } from '../importacion/normalizar'
 import { anotarEvento, vaciarCola } from '../sincronizacion/cola'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
+import { exigirQueNoSeaLaBetaContraProduccion } from './proteccionBeta'
 import { crearFuenteVps, detenerSincronizacion, sincronizarAhora } from './sincronizacion'
 import { enteroPositivo } from './validacion'
 
@@ -67,6 +68,7 @@ export async function crearRespaldoEnElVps(actor: SesionUsuario): Promise<Respal
  */
 export async function restaurarRespaldoDelVps(idCrudo: unknown, actor: SesionUsuario): Promise<ResumenDeRestauracion> {
   const id = enteroPositivo(idCrudo, 'El respaldo')
+  exigirQueNoSeaLaBetaContraProduccion('restaurar un respaldo')
   const vps = fuente()
 
   detenerSincronizacion()

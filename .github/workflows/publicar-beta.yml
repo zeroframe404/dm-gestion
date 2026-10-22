@@ -1,0 +1,85 @@
+# Arma el instalador de la BETA y lo publica en el Release fijo «beta-canal».
+#
+# Se dispara solo con cada push a la rama `beta` (y a mano desde Actions → Publicar beta → Run workflow).
+# No toca el Release de ninguna versión estable ni el `latest.yml`: la beta es otro programa instalable
+# (otro appId, otra carpeta de datos, otro nombre) que se actualiza desde SU propio Release, marcado
+# como prerelease. Ver README, «Versión beta».
+#
+# La versión no se commitea: se calcula en cada corrida como el próximo parche de la estable con el
+# sufijo `-beta.<número de corrida>` (17.7.3-beta.41; ver scripts/version-beta.mjs) y se estampa en el
+# package.json de ESTA copia de trabajo, que se descarta al terminar.
+name: Publicar beta
+
+on:
+  push:
+    branches: [beta]
+  workflow_dispatch:
+
+# `scripts/publicar-beta.mjs` crea/edita el Release con `gh`: necesita permiso de escritura.
+permissions:
+  contents: write
+
+# Dos betas a la vez se pisarían los archivos del Release. En cola, sin cancelar: cortar una publicación
+# a mitad dejaría el Release con archivos de dos versiones. GitHub guarda sólo la última en espera, que
+# es justo la que importa (la rama ya trae los cambios de las anteriores).
+concurrency:
+  group: publicar-beta
+  cancel-in-progress: false
+
+jobs:
+  publicar-beta:
+    # Tiene que ser Windows: el instalador es NSIS y el binario nativo de better-sqlite3 es el de Windows.
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Traer el código de la rama beta
+        uses: actions/checkout@v4
+        with:
+          # Siempre `beta`, aunque se lance a mano desde otra rama: este workflow no publica otra cosa.
+          ref: beta
+          fetch-depth: 0
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Poner la versión de la beta
+        id: version
+        shell: bash
+        run: |
+          version="$(node scripts/version-beta.mjs "${{ github.run_number }}")"
+          # `npm pkg set` y no `npm version`: este último corre los scripts preversion/postversion del
+          # package.json, y el postversion EMPUJA A MASTER. Acá sólo se quiere cambiar el número en esta copia.
+          npm pkg set version="$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Versión de la beta: $version"
+
+      # El mismo banco de pruebas que la estable: una beta que se instala sola en la PC del dueño tampoco
+      # tiene por qué salir rota.
+      - name: Correr el banco de pruebas
+        run: npm run prueba
+
+      - name: Armar el instalador de la beta
+        run: npm run dist:beta
+
+      - name: Publicar en el Release beta-canal
+        run: node scripts/publicar-beta.mjs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resumen
+        shell: bash
+        run: |
+          {
+            echo "### Beta ${{ steps.version.outputs.version }} publicada"
+            echo ""
+            echo "Instalador: https://github.com/${{ github.repository }}/releases/tag/beta-canal"
+            echo ""
+            echo "Si ya tenés la beta instalada, se actualiza sola (Administración → Acerca de → Buscar actualizaciones)."
+          } >> "$GITHUB_STEP_SUMMARY"

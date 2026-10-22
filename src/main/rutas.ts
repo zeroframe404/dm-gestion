@@ -2,19 +2,26 @@
 import { app } from 'electron'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { esBeta } from './canal'
 
 /** Nombre de la carpeta dentro de %APPDATA%. */
 export const NOMBRE_CARPETA_DATOS = 'dm-gestion'
 
 /**
- * Fija la carpeta de datos en %APPDATA%/dm-gestion. Tiene que ejecutarse antes del evento
+ * La beta tiene su propia carpeta: base local, config.json, credencial y bitácora aparte. Compartirla
+ * con la estable dejaría a una versión pisando (o migrando) los datos de la otra.
+ */
+export const NOMBRE_CARPETA_DATOS_BETA = 'dm-gestion-beta'
+
+/**
+ * Fija la carpeta de datos en %APPDATA%/dm-gestion (%APPDATA%/dm-gestion-beta en la beta). Tiene que ejecutarse antes del evento
  * `ready`, porque Electron resuelve `userData` en cuanto arranca.
  */
 export function configurarCarpetaDatos(): void {
   // Sólo en desarrollo: permite abrir la aplicación contra otra carpeta de datos (por ejemplo la copia
   // descargada de la hoja) sin tocar los datos de verdad.
   const aparte = !app.isPackaged ? process.env.DM_GESTION_CARPETA_DATOS : undefined
-  const carpeta = aparte ? path.resolve(aparte) : path.join(app.getPath('appData'), NOMBRE_CARPETA_DATOS)
+  const carpeta = aparte ? path.resolve(aparte) : path.join(app.getPath('appData'), esBeta() ? NOMBRE_CARPETA_DATOS_BETA : NOMBRE_CARPETA_DATOS)
   mkdirSync(carpeta, { recursive: true })
   app.setPath('userData', carpeta)
   // La caché de Chromium va aparte para no mezclarla con la base y la configuración.
