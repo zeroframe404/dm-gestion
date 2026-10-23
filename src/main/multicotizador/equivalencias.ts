@@ -4,7 +4,20 @@
 // marca, la versión del vehículo— y los nombra a su manera. Esto las compara por lo que DICEN, no por
 // el código: es lo único que tienen en común. Es puro a propósito (sin red, sin base), así se prueba
 // solo en pruebas/multicotizador.prueba.ts y lo reusa cualquier adaptador que se sume.
-import { normalizarTexto, type CondicionIva, type MedioDePago, type TipoDePersona, type UsoDelVehiculo } from '../../shared/multicotizador'
+import {
+  normalizarTexto,
+  usoBasico,
+  type AjusteDeAseguradora,
+  type ClausulaDeAjuste,
+  type CondicionIibb,
+  type CondicionIva,
+  type CuotasDeseadas,
+  type Facturacion,
+  type MedioDePago,
+  type Rastreador,
+  type TipoDePersona,
+  type UsoDelVehiculo,
+} from '../../shared/multicotizador'
 
 export interface OpcionDeLista {
   codigo: string
@@ -149,6 +162,145 @@ export const CLAVES_TIPO_DE_PERSONA: Record<TipoDePersona, string[]> = {
 export const CLAVES_USO: Record<UsoDelVehiculo, string[]> = {
   PARTICULAR: ['PARTICULAR', 'PRIVADO', 'PERSONAL'],
   COMERCIAL: ['COMERCIAL', 'TRABAJO', 'UTILITARIO', 'PROFESIONAL'],
+  TAXI: ['TAXI'],
+  REMIS: ['REMIS'],
+  TRANSPORTE_DE_PASAJEROS: ['PASAJER', 'TRANSPORTE', 'ESPECIAL'],
+  AUTOBOMBA: ['AUTOBOMBA', 'BOMBA', 'BOMBERO'],
+  POLICIA: ['POLICI', 'PATRULL'],
+  AMBULANCIA: ['AMBULANC', 'SANITARI'],
+  AUXILIO_MECANICO: ['AUXILIO', 'MECANIC', 'REMOLQUE'],
+  TRABAJO_RURAL: ['RURAL', 'AGRICOL', 'AGRO', 'CAMPO'],
+  CASA_RODANTE: ['RODANTE', 'MOTORHOME', 'CASA'],
+  TANQUE_ATMOSFERICO: ['ATMOSFERIC', 'DESAGOT', 'TANQUE'],
+  CARGAS_PELIGROSAS: ['PELIGROS', 'INFLAMABL', 'QUIMIC'],
+  ESCOLAR: ['ESCOLAR', 'ESCUELA'],
+  TRANSPORTE_DE_BIENES: ['BIENES', 'CARGA', 'MERCADERI', 'REPARTO', 'TRANSPORTE'],
+  PLATAFORMA: ['UBER', 'PLATAFORMA', 'APLICACION', 'APP', 'CABIFY', 'DIDI'],
+}
+
+/**
+ * El uso de la lista de una compañía que corresponde al de la solicitud: el que tenga ese nombre (taxi,
+ * remís, ambulancia…) y, si la compañía no lo distingue, el particular o el comercial de siempre.
+ */
+export function porUso(opciones: OpcionDeLista[], uso: UsoDelVehiculo): OpcionDeLista | null {
+  const basico = usoBasico(uso)
+  return (uso !== basico ? porPalabrasClave(opciones, CLAVES_USO[uso]) : null) ?? porPalabrasClave(opciones, CLAVES_USO[basico])
+}
+
+export const CLAVES_CONDICION_IIBB: Record<CondicionIibb, string[]> = {
+  CONSUMIDOR_FINAL: ['CONSUMIDOR', 'FINAL', 'CF'],
+  CONVENIO_MULTILATERAL: ['CONVENIO', 'MULTILATERAL'],
+  EXENTO: ['EXENT'],
+  LOCAL: ['LOCAL'],
+  REGIMEN_SIMPLIFICADO: ['SIMPLIFICADO', 'REGIMEN'],
+  RESPONSABLE_NO_INSCRIPTO: ['NO', 'RNI'],
+}
+
+/** Las marcas de rastreador como las escriben las compañías («LO JACK», «LOJACK», «ITURAN AVL»…). */
+export const CLAVES_RASTREADOR: Record<Exclude<Rastreador, 'SIN_RASTREADOR'>, string[]> = {
+  DE_LA_COMPANIA: ['COMPANIA', 'ASEGURADORA', 'CARGO', 'PROVIST'],
+  OTRO: ['OTRO', 'GENERIC'],
+  LO_JACK: ['LOJACK', 'JACK'],
+  TRACER: ['TRACER'],
+  POINTER: ['POINTER'],
+  ITURAN: ['ITURAN'],
+  UBICAR: ['UBICAR'],
+}
+
+/** El equipo de rastreo de la lista de una compañía que corresponde al de la solicitud, o null. */
+export function porRastreador(opciones: OpcionDeLista[], rastreador: Rastreador): OpcionDeLista | null {
+  return rastreador === 'SIN_RASTREADOR' ? null : porPalabrasClave(opciones, CLAVES_RASTREADOR[rastreador])
+}
+
+/** Los períodos de facturación, del más corto al más largo, con el prefijo con que se buscan. */
+export const PERIODOS_DE_FACTURACION: Array<{ facturacion: Exclude<Facturacion, 'MEJOR_COSTO'>; prefijo: string }> = [
+  { facturacion: 'MENSUAL', prefijo: 'MENSUAL' },
+  { facturacion: 'BIMESTRAL', prefijo: 'BIMESTR' },
+  { facturacion: 'TRIMESTRAL', prefijo: 'TRIMESTR' },
+  { facturacion: 'CUATRIMESTRAL', prefijo: 'CUATRIMESTR' },
+  { facturacion: 'SEMESTRAL', prefijo: 'SEMESTR' },
+  { facturacion: 'ANUAL', prefijo: 'ANUAL' },
+]
+
+/**
+ * Cada cuánto se factura lo que describe una opción: «ANUAL C/ REFACTURACIÓN TRIMESTRAL» es una póliza
+ * anual que se factura por trimestre, así que cuenta el período que NO es el anual; «ANUAL» solo es
+ * anual. Null si no nombra ninguno.
+ */
+export function periodoDeFacturacion(descripcion: string): Exclude<Facturacion, 'MEJOR_COSTO'> | null {
+  const suyas = palabras(descripcion)
+  const nombra = (prefijo: string) => suyas.some((palabra) => palabra.startsWith(prefijo))
+  return PERIODOS_DE_FACTURACION.find((periodo) => periodo.facturacion !== 'ANUAL' && nombra(periodo.prefijo))?.facturacion ?? (nombra('ANUAL') ? 'ANUAL' : null)
+}
+
+/**
+ * La primera opción (en el orden de la compañía) que factura con el período pedido. «Mejor costo» no
+ * elige nada: cada compañía arranca en la suya.
+ */
+export function porFacturacion<T extends OpcionDeLista>(opciones: T[], facturacion: Facturacion): T | null {
+  if (facturacion === 'MEJOR_COSTO') return null
+  return opciones.find((opcion) => periodoDeFacturacion(opcion.descripcion) === facturacion) ?? null
+}
+
+/** En cuántas cuotas se paga lo que describe una opción («3 CUOTAS» → 3, «CONTADO» → 1), o null. */
+export function cantidadDeCuotas(descripcion: string): number | null {
+  const texto = normalizarTexto(descripcion)
+  const numero = /\b(\d{1,2})\b/.exec(texto)
+  if (numero) return Number(numero[1])
+  return /\bCONTADO\b|\bUNIC[AO]\b|\bUNA CUOTA\b|\bUN PAGO\b/.test(texto) ? 1 : null
+}
+
+/**
+ * La opción de una lista de cuotas que corresponde a lo pedido: la de esa cantidad exacta, o la de más
+ * cuotas si se pidió la máxima. Null si no se pidió nada o la compañía no tiene esa cantidad.
+ */
+export function porCuotas<T extends OpcionDeLista>(opciones: T[], cuotas: CuotasDeseadas): T | null {
+  if (cuotas === null) return null
+  const conCantidad = opciones.map((opcion) => ({ opcion, cantidad: cantidadDeCuotas(opcion.descripcion) })).filter((o) => o.cantidad !== null)
+  if (cuotas === 'MAXIMA') {
+    let mejor: { opcion: T; cantidad: number | null } | null = null
+    for (const candidata of conCantidad) if (!mejor || candidata.cantidad! > mejor.cantidad!) mejor = candidata
+    return mejor?.opcion ?? null
+  }
+  return conCantidad.find((o) => o.cantidad === cuotas)?.opcion ?? null
+}
+
+/** Lo que se pidió de cuotas, como texto para atar a ello lo elegido a mano (ver `elegidoBajo`). */
+export function claveDeCuotas(cuotas: CuotasDeseadas): string {
+  return cuotas === null ? 'CADA_COMPANIA' : String(cuotas)
+}
+
+/**
+ * La cláusula de ajuste de la lista de una compañía con el porcentaje pedido («AUTOMÁTICO 10 %»), o la
+ * que dice que no hay cláusula si se pidió «No aplica». Null si la compañía no la tiene.
+ */
+export function porClausula<T extends OpcionDeLista>(opciones: T[], clausula: ClausulaDeAjuste): T | null {
+  const numeros = (opcion: T) => [...normalizarTexto(`${opcion.descripcion}`).matchAll(/\b(\d{1,3})\b/g)].map((m) => m[1]!)
+  if (clausula === '0') {
+    return opciones.find((opcion) => /\bSIN\b|\bNO\b|\bNINGUN/.test(normalizarTexto(opcion.descripcion))) ?? opciones.find((opcion) => numeros(opcion).includes('0')) ?? null
+  }
+  return opciones.find((opcion) => numeros(opcion).includes(clausula)) ?? null
+}
+
+// --- Lo que arranca del formulario -------------------------------------------------------------------
+//
+// Muchos ajustes de cada compañía tienen su par en el formulario: la facturación, las cuotas, la forma
+// de pago, la condición de IVA, el uso. La compañía arranca en lo que dice el formulario y en su tarjeta
+// se puede afinar (elegir cuál de sus dos modos mensuales, por ejemplo). Lo afinado vale mientras el
+// formulario siga diciendo lo mismo: por eso cada opción lleva adelante lo del formulario
+// («MENSUAL|M12»). Si ahí se elige otra cosa, lo de antes deja de ser una opción y vuelve a mandar el
+// formulario. Lo mismo pasa con lo guardado en esta computadora antes de que el formulario lo pidiera.
+
+/** Lo elegido a mano en la tarjeta, si se eligió con el formulario diciendo lo mismo que ahora. */
+export function elegidoBajo(elegido: string | undefined, delFormulario: string): string | undefined {
+  const prefijo = `${delFormulario}|`
+  return elegido?.startsWith(prefijo) ? elegido.slice(prefijo.length) : undefined
+}
+
+/** El ajuste con cada opción (y su valor) atada a lo que dice el formulario. Ver `elegidoBajo`. */
+export function bajoElFormulario(delFormulario: string, ajuste: AjusteDeAseguradora): AjusteDeAseguradora {
+  const atar = (valor: string) => (valor ? `${delFormulario}|${valor}` : '')
+  return { ...ajuste, valor: atar(ajuste.valor), opciones: ajuste.opciones.map((opcion) => ({ ...opcion, valor: atar(opcion.valor) })) }
 }
 
 /** La localidad de la lista que corresponde a la escrita; si hay una sola, ésa. */

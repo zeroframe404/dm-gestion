@@ -12,6 +12,7 @@ import test from 'node:test'
 import { abrirBaseDeDatos, cerrarBaseDeDatos } from '../src/main/db/base'
 import {
   aniosDeLaLinea,
+  aniosDeLaMarca,
   bajarCatalogo,
   comoImportacion,
   estadoDelCatalogo,
@@ -182,6 +183,36 @@ test('los años son los que tienen valuación en la tabla, del más nuevo al má
   assert.deepEqual(aniosDeLaLinea('AUTO', 'TOYOTA', 'YARIS', '13004C38'), [2026])
   // Un código que no es de esa marca y modelo no devuelve nada.
   assert.deepEqual(aniosDeLaLinea('AUTO', 'VOLKSWAGEN', 'GOL', '0306874'), [])
+})
+
+test('el multicotizador pregunta el año antes que el modelo: marca → año → modelo → versión', async () => {
+  baseLimpia()
+  usarFuenteDePrueba(vpsFalso(() => COMPLETO))
+  await bajarCatalogo()
+  // Los años de la marca son los de todas sus versiones juntas, del más nuevo al más viejo.
+  assert.deepEqual(aniosDeLaMarca('AUTO', 'TOYOTA'), [2026, 2012, 2005, 2004, 2003, 2002])
+  assert.deepEqual(aniosDeLaMarca('AUTO', ''), [])
+  // Con el año, sólo los modelos y las versiones que se ofrecen para ese año.
+  assert.deepEqual(
+    modelosDelCatalogo('AUTO', 'TOYOTA', '2026').map((modelo) => modelo.id),
+    ['YARIS'],
+  )
+  assert.deepEqual(
+    modelosDelCatalogo('AUTO', 'TOYOTA', '2004').map((modelo) => modelo.id),
+    ['HILUX'],
+  )
+  assert.deepEqual(modelosDelCatalogo('AUTO', 'TOYOTA', '1990'), [])
+  assert.deepEqual(
+    lineasDelCatalogo('AUTO', 'VOLKSWAGEN', 'GOL', '2010').map((linea) => linea.id),
+    ['13605413'],
+    'el de 3 puertas recién sale en 2014',
+  )
+  assert.equal(lineasDelCatalogo('AUTO', 'VOLKSWAGEN', 'GOL', '2015').length, 2)
+  // Sin año, como siempre: todos.
+  assert.deepEqual(
+    modelosDelCatalogo('AUTO', 'TOYOTA').map((modelo) => modelo.id),
+    ['HILUX', 'YARIS'],
+  )
 })
 
 test('resolver: la categoría la decide la carrocería, y el código es el MTM', async () => {

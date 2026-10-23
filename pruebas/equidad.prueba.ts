@@ -364,15 +364,30 @@ function solicitud(cambios: Partial<SolicitudResuelta['vehiculo']> = {}, resto: 
       uso: 'PARTICULAR',
       gnc: false,
       valorGnc: null,
-      rastreo: false,
+      rastreador: 'SIN_RASTREADOR',
+      scoring: { grua: false, alarma: false, garaje: false },
+      accesorios: [],
       sumaAsegurada: null,
       ...cambios,
     },
-    tomador: { nombre: 'Juan Pérez', documento: '20123456', telefono: '', tipoPersona: 'FISICA', condicionIva: 'CONSUMIDOR_FINAL' },
+    tomador: {
+      nombre: 'Juan Pérez',
+      apellido: '',
+      dni: '20123456',
+      cuit: '',
+      telefono: '',
+      tipoPersona: 'FISICA',
+      condicionIva: 'CONSUMIDOR_FINAL',
+      ingresosBrutos: 'CONSUMIDOR_FINAL',
+      sexo: null,
+      fechaNacimiento: '',
+    },
+    provincia: 'Buenos Aires',
     codigoPostal: '1870',
     localidad: 'Avellaneda',
     vigenciaDesde: '2026-10-20',
     medioDePago: 'TARJETA',
+    condiciones: { plan: 'SIN_PLAN', tarifa: 'SIN_DESCUENTO', comision: 'ESTANDAR', facturacion: 'MEJOR_COSTO', clausulaAjuste: '10', cuotas: 'MAXIMA' },
     codigoInfoAuto: null,
     ...resto,
   }
@@ -468,9 +483,10 @@ test('Equidad: cotiza eligiendo cada combo como la web (tipo de póliza, product
 
   const ajustes = Object.fromEntries(resultado.ajustes.map((a) => [a.campo, a]))
   assert.equal(ajustes.planComercial!.destacado, true)
-  assert.equal(ajustes.modoFacturacion!.valor, 'ANU')
-  assert.equal(ajustes.formaDePago!.valor, '2')
-  assert.equal(ajustes.condicionDePago!.valor, 'C12')
+  // Lo que tiene su par en el formulario lleva adelante lo que dice el formulario (ver `elegidoBajo`).
+  assert.equal(ajustes.modoFacturacion!.valor, 'MEJOR_COSTO|ANU')
+  assert.equal(ajustes.formaDePago!.valor, 'TARJETA|2')
+  assert.equal(ajustes.condicionDePago!.valor, 'MAXIMA|C12')
   assert.equal(ajustes.condicionDePago!.dependeDe, 'formaDePago')
   assert.equal(ajustes.tipoPoliza!.destacado, undefined)
   assert.equal(ajustes.localidad!.valor, '1870:1')
@@ -478,7 +494,7 @@ test('Equidad: cotiza eligiendo cada combo como la web (tipo de póliza, product
   assert.equal(ajustes.marca!.valor, '7')
   assert.equal(ajustes.version!.valor, '7:12:1')
   assert.equal(ajustes.version!.opciones[0]!.texto, 'CRONOS 1.3 DRIVE (7:12:1)', 'la más parecida primero')
-  assert.equal(ajustes.variante!.valor, '1:1:0')
+  assert.equal(ajustes.variante!.valor, 'PARTICULAR|1:1:0')
   assert.match(ajustes.bonificacion!.ayuda ?? '', /En esta cotización Equidad aplicó 20 %/)
 
   const detalle = JSON.stringify(resultado.detalleTecnico)
@@ -498,7 +514,7 @@ test('Equidad: con dos versiones igual de parecidas se pregunta en vez de adivin
   assert.match(conDudas.mensaje ?? '', /versión en equidad/)
   assert.ok(pedidos.every((p) => !esServicio(p, 'cotizarAutomotor')), 'sin versión no se cotiza')
 
-  const elegida = await equidad.cotizar(solicitud(), { version: '7:12:3', variante: '1:2:0', condicionDePago: 'C01', bonificacion: '15' })
+  const elegida = await equidad.cotizar(solicitud(), { version: '7:12:3', variante: 'PARTICULAR|1:2:0', condicionDePago: 'MAXIMA|C01', bonificacion: '15' })
   assert.equal(elegida.estado, 'OK', elegida.mensaje ?? '')
   const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
   const cuerpo = JSON.parse(post.cuerpo) as Record<string, unknown> & { RiesgoAUT: Record<string, unknown> }
@@ -510,9 +526,23 @@ test('Equidad: con dos versiones igual de parecidas se pregunta en vez de adivin
   assert.equal(pedidos.filter((p) => esServicio(p, 'autenticarUsuario')).length, 1, 'y la sesión también')
 })
 
+test('Equidad: la facturación, las cuotas y la cláusula arrancan en las del formulario', async (t) => {
+  const pedidos = apiFalsa(t)
+  const condiciones = { ...solicitud().condiciones, facturacion: 'SEMESTRAL' as const, cuotas: 1 }
+  const r = await equidad.cotizar(solicitud({}, { condiciones }), {})
+  assert.equal(r.estado, 'OK', r.mensaje ?? '')
+  const cuerpo = JSON.parse(pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!.cuerpo) as Record<string, unknown>
+  assert.equal(cuerpo.ModoFacturacionCodigo, 'SEM')
+  assert.equal(cuerpo.CondicionPagoCodigo, 'C01', 'una cuota es la de contado')
+  // Lo elegido en la tarjeta con otra facturación en el formulario ya no vale.
+  pedidos.length = 0
+  await equidad.cotizar(solicitud({}, { condiciones }), { modoFacturacion: 'MEJOR_COSTO|ANU' })
+  assert.equal((JSON.parse(pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!.cuerpo) as Record<string, unknown>).ModoFacturacionCodigo, 'SEM')
+})
+
 test('Equidad: la suma asegurada del formulario manda, y sin ella se pide la de Equidad', async (t) => {
   const pedidos = apiFalsa(t)
-  await equidad.cotizar(solicitud({ sumaAsegurada: 30_000_000, rastreo: true }), {})
+  await equidad.cotizar(solicitud({ sumaAsegurada: 30_000_000, rastreador: 'OTRO' }), {})
   assert.ok(pedidos.every((p) => !esServicio(p, 'obtenerSumaAseguradaDeVehiculo')), 'con suma cargada no se pide la de Equidad')
   const cuerpo = JSON.parse(pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!.cuerpo) as { RiesgoAUT: Record<string, unknown> }
   assert.equal(cuerpo.RiesgoAUT.SumaAsegurada, 30_000_000)

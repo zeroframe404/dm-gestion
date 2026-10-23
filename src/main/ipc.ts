@@ -234,6 +234,7 @@ import {
 } from './servicios/config'
 import {
   aniosDeLaLinea,
+  aniosDeLaMarca,
   estadoDelCatalogo,
   lineasDelCatalogo,
   marcasDelCatalogo,
@@ -1723,7 +1724,7 @@ export function registrarIpc(): void {
   // de las APIs de las aseguradoras, no de la agencia. Actualizar a mano y pedirle al VPS que vuelva a
   // leer las APIs es de administradores.
   manejar('vehiculos:estado', () => {
-    exigirVista('polizas', 'presupuestos', 'administracion')
+    exigirVista('polizas', 'presupuestos', 'administracion', 'multicotizador')
     return exito(estadoDelCatalogo())
   })
   manejar('vehiculos:actualizar', async () => {
@@ -1787,24 +1788,29 @@ export function registrarIpc(): void {
     exigirEdicion('administracion')
     return exito(await guardarCredencialesDeGaleno(datos, actor))
   })
+  // El catálogo lo usa también el multicotizador: quien sólo puede cotizar tiene que poder elegir el vehículo.
   manejar('vehiculos:marcas', (tipo) => {
-    exigirVista('polizas', 'presupuestos', 'cartera')
+    exigirVista('polizas', 'presupuestos', 'cartera', 'multicotizador')
     return exito(marcasDelCatalogo(tipo))
   })
-  manejar('vehiculos:modelos', (tipo, marcaId) => {
-    exigirVista('polizas', 'presupuestos', 'cartera')
-    return exito(modelosDelCatalogo(tipo, marcaId))
+  manejar('vehiculos:modelos', (tipo, marcaId, anio) => {
+    exigirVista('polizas', 'presupuestos', 'cartera', 'multicotizador')
+    return exito(modelosDelCatalogo(tipo, marcaId, anio))
   })
-  manejar('vehiculos:lineas', (tipo, marcaId, modeloId) => {
-    exigirVista('polizas', 'presupuestos', 'cartera')
-    return exito(lineasDelCatalogo(tipo, marcaId, modeloId))
+  manejar('vehiculos:lineas', (tipo, marcaId, modeloId, anio) => {
+    exigirVista('polizas', 'presupuestos', 'cartera', 'multicotizador')
+    return exito(lineasDelCatalogo(tipo, marcaId, modeloId, anio))
+  })
+  manejar('vehiculos:aniosDeMarca', (tipo, marcaId) => {
+    exigirVista('polizas', 'presupuestos', 'cartera', 'multicotizador')
+    return exito(aniosDeLaMarca(tipo, marcaId))
   })
   manejar('vehiculos:anios', (tipo, marcaId, modeloId, lineaId) => {
-    exigirVista('polizas', 'presupuestos', 'cartera')
+    exigirVista('polizas', 'presupuestos', 'cartera', 'multicotizador')
     return exito(aniosDeLaLinea(tipo, marcaId, modeloId, lineaId))
   })
   manejar('vehiculos:resolver', (tipo, marcaId, modeloId, lineaId, anio) => {
-    exigirVista('polizas', 'presupuestos', 'cartera')
+    exigirVista('polizas', 'presupuestos', 'cartera', 'multicotizador')
     return exito(resolverVehiculoDelCatalogo(tipo, marcaId, modeloId, lineaId, anio))
   })
 

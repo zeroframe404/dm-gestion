@@ -14,6 +14,7 @@ import {
   categoriaDeCobertura,
   enPesos,
   normalizarTexto,
+  tieneRastreador,
   type AjusteDeAseguradora,
   type CoberturaCotizada,
   type CondicionIva,
@@ -25,7 +26,7 @@ import { crearClienteMercantil, ErrorDeMercantil, type ClienteMercantil, type Cu
 import { cotizarMercantil, RUTA_COTIZACION, type DatosDeCotizacionMercantil } from '../aseguradoras/mercantil/cotizacion'
 import { credencialesMercantil } from '../servicios/config'
 import type { CotizacionDeAseguradora, CotizadorDeAseguradora, SolicitudResuelta } from './aseguradora'
-import { buscarMarca, rankear, sinDudas, type OpcionDeLista } from './equivalencias'
+import { bajoElFormulario, buscarMarca, claveDeCuotas, elegidoBajo, porCuotas, porUso, rankear, sinDudas, type OpcionDeLista } from './equivalencias'
 import { equivalenciaGuardada, guardarEquivalencia, olvidarEquivalencia } from './equivalenciasGuardadas'
 
 export const ID_MERCANTIL = 'MERCANTIL'
@@ -105,12 +106,14 @@ export const IVAS_MERCANTIL: OpcionDeLista[] = [
   { codigo: '4', descripcion: 'Exento' },
 ]
 
-/** Los usos de Mercantil. */
+/** Los usos de Mercantil: particular y comercial; lo que no es particular (un taxi, un remís) es comercial. */
 export const USOS_MERCANTIL: OpcionDeLista[] = [
   { codigo: '1', descripcion: 'Particular' },
   { codigo: '2', descripcion: 'Comercial' },
 ]
-export const USO_POR_DEFECTO: Record<UsoDelVehiculo, string> = { PARTICULAR: '1', COMERCIAL: '2' }
+export function usoPorDefecto(uso: UsoDelVehiculo): string {
+  return porUso(USOS_MERCANTIL, uso)?.codigo ?? '2'
+}
 
 function valido(valor: string | undefined, lista: OpcionDeLista[]): string | null {
   return valor && lista.some((opcion) => opcion.codigo === valor) ? valor : null
@@ -246,32 +249,37 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   const ajustes: AjusteDeAseguradora[] = []
   const avisos: string[] = []
 
-  // Lo comercial, a la vista: cuotas y forma de pago.
-  const cuotas = valido(elegidos.cuotas, CUOTAS_MERCANTIL) ?? cuotasPorDefecto(solicitud.medioDePago)
-  ajustes.push({
+  // Lo comercial, a la vista: cuotas y forma de pago. Arrancan en lo que dice el formulario.
+  const cuotasPedidas = claveDeCuotas(solicitud.condiciones.cuotas)
+  const cuotas =
+    valido(elegidoBajo(elegidos.cuotas, cuotasPedidas), CUOTAS_MERCANTIL) ??
+    porCuotas(CUOTAS_MERCANTIL, solicitud.condiciones.cuotas)?.codigo ??
+    cuotasPorDefecto(solicitud.medioDePago)
+  ajustes.push(bajoElFormulario(cuotasPedidas, {
     campo: 'cuotas',
     titulo: 'Cuotas',
-    ayuda: 'Con tarjeta o débito se compara en 12 cuotas, como en la web de Mercantil; en efectivo, de contado.',
+    ayuda: 'Las del formulario, si Mercantil las tiene. Si no, con tarjeta o débito se compara en 12 cuotas, como en la web de Mercantil; en efectivo, de contado.',
     opciones: opcionesDe(CUOTAS_MERCANTIL),
     valor: cuotas,
     obligatorio: true,
     destacado: true,
-  })
-  const formaDePago = valido(elegidos.formaDePago, FORMAS_DE_PAGO_MERCANTIL) ?? FORMA_DE_PAGO_POR_MEDIO[solicitud.medioDePago]
-  ajustes.push({
+  }))
+  const formaDePago = valido(elegidoBajo(elegidos.formaDePago, solicitud.medioDePago), FORMAS_DE_PAGO_MERCANTIL) ?? FORMA_DE_PAGO_POR_MEDIO[solicitud.medioDePago]
+  ajustes.push(bajoElFormulario(solicitud.medioDePago, {
     campo: 'formaDePago',
     titulo: 'Forma de pago',
     opciones: opcionesDe(FORMAS_DE_PAGO_MERCANTIL),
     valor: formaDePago,
     obligatorio: true,
     destacado: true,
-  })
+  }))
 
   // Lo técnico: IVA, uso.
-  const iva = valido(elegidos.iva, IVAS_MERCANTIL) ?? IVA_MERCANTIL[solicitud.tomador.condicionIva]
-  ajustes.push({ campo: 'iva', titulo: 'Condición de IVA', opciones: opcionesDe(IVAS_MERCANTIL), valor: iva, obligatorio: false })
-  const uso = valido(elegidos.uso, USOS_MERCANTIL) ?? USO_POR_DEFECTO[v.uso]
-  ajustes.push({ campo: 'uso', titulo: 'Uso en Mercantil', opciones: opcionesDe(USOS_MERCANTIL), valor: uso, obligatorio: false })
+  const { condicionIva } = solicitud.tomador
+  const iva = valido(elegidoBajo(elegidos.iva, condicionIva), IVAS_MERCANTIL) ?? IVA_MERCANTIL[condicionIva]
+  ajustes.push(bajoElFormulario(condicionIva, { campo: 'iva', titulo: 'Condición de IVA', opciones: opcionesDe(IVAS_MERCANTIL), valor: iva, obligatorio: false }))
+  const uso = valido(elegidoBajo(elegidos.uso, v.uso), USOS_MERCANTIL) ?? usoPorDefecto(v.uso)
+  ajustes.push(bajoElFormulario(v.uso, { campo: 'uso', titulo: 'Uso en Mercantil', opciones: opcionesDe(USOS_MERCANTIL), valor: uso, obligatorio: false }))
 
   const elegido = await vehiculoEnMercantil(cliente, solicitud, elegidos, ajustes)
 
@@ -296,7 +304,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     anio: Number(v.anio),
     uso,
     gnc: v.gnc,
-    rastreo: v.rastreo,
+    rastreo: tieneRastreador(v),
     codigoPostal: solicitud.codigoPostal,
     cuotas: Number(cuotas),
     formaDePago,

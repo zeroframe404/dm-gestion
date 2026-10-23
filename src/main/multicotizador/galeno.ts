@@ -15,6 +15,8 @@
 import {
   categoriaDeCobertura,
   enPesos,
+  nombreDelTomador,
+  tieneRastreador,
   fechaIsoDe,
   normalizarTexto,
   rangoDePorcentajes,
@@ -42,13 +44,21 @@ import {
 } from '../servicios/galeno'
 import type { CotizacionDeAseguradora, CotizadorDeAseguradora, EmisionDeLaApi, PlanDeAseguradora, SolicitudResuelta } from './aseguradora'
 import {
+  bajoElFormulario,
   buscarLocalidad,
   buscarMarca,
+  CLAVES_CONDICION_IIBB,
   CLAVES_CONDICION_IVA,
   CLAVES_MEDIO_DE_PAGO,
   CLAVES_TIPO_DE_PERSONA,
-  CLAVES_USO,
+  claveDeCuotas,
+  elegidoBajo,
+  porClausula,
+  porCuotas,
+  porFacturacion,
   porPalabrasClave,
+  porRastreador,
+  porUso,
   rankear,
   sinDudas,
   type OpcionDeLista,
@@ -328,10 +338,17 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     obligatorio: true,
   })
 
+  const { facturacion, cuotas, clausulaAjuste } = solicitud.condiciones
   const modos = plan ? await enMemoria(`modos:${tipo}:${plan}`, () => modosDeFacturacionGaleno(tipo, plan)) : []
-  // Mensual es lo que se vende en el mostrador casi siempre; si Galeno no lo ofrece, el primero.
-  const modo = valido(elegidos.modoFacturacion, modos) ?? porPalabrasClave(modos, ['MENSUAL'])?.codigo ?? modos[0]?.codigo ?? ''
-  ajustes.push({
+  // El que pide el formulario; con «Mejor costo», mensual, que es lo que se vende en el mostrador casi
+  // siempre; si Galeno no lo ofrece, el primero.
+  const modo =
+    valido(elegidoBajo(elegidos.modoFacturacion, facturacion), modos) ??
+    porFacturacion(modos, facturacion)?.codigo ??
+    porPalabrasClave(modos, ['MENSUAL'])?.codigo ??
+    modos[0]?.codigo ??
+    ''
+  ajustes.push(bajoElFormulario(facturacion, {
     campo: 'modoFacturacion',
     titulo: 'Modo de facturación',
     ayuda: 'El premio y las cuotas son del período que factura este modo: con mensual, lo que se paga por mes; con «anual c/ refacturación trimestral», el trimestre en cuotas. Para comparar con la web de Galeno hay que usar el mismo «Modo de Facturación» que ahí.',
@@ -340,7 +357,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     obligatorio: true,
     dependeDe: 'planComercial',
     destacado: true,
-  })
+  }))
 
   const [condiciones, formas] = modo
     ? await Promise.all([
@@ -348,8 +365,8 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
         enMemoria(`formas:${tipo}:${modo}:${plan}`, () => formasDePagoGaleno(tipo, modo, plan)),
       ])
     : [[], []]
-  const condicion = valido(elegidos.condicionPago, condiciones) ?? condiciones[0]?.codigo ?? ''
-  ajustes.push({
+  const condicion = valido(elegidoBajo(elegidos.condicionPago, claveDeCuotas(cuotas)), condiciones) ?? porCuotas(condiciones, cuotas)?.codigo ?? condiciones[0]?.codigo ?? ''
+  ajustes.push(bajoElFormulario(claveDeCuotas(cuotas), {
     campo: 'condicionPago',
     titulo: 'Condición de pago (cuotas)',
     ayuda: 'Las «Cuotas» de la web de Galeno: en cuántas se paga el período que factura el modo elegido.',
@@ -358,10 +375,13 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     obligatorio: true,
     dependeDe: 'modoFacturacion',
     destacado: true,
-  })
+  }))
   const forma =
-    valido(elegidos.formaPago, formas) ?? porPalabrasClave(formas, CLAVES_MEDIO_DE_PAGO[solicitud.medioDePago])?.codigo ?? formas[0]?.codigo ?? ''
-  ajustes.push({
+    valido(elegidoBajo(elegidos.formaPago, solicitud.medioDePago), formas) ??
+    porPalabrasClave(formas, CLAVES_MEDIO_DE_PAGO[solicitud.medioDePago])?.codigo ??
+    formas[0]?.codigo ??
+    ''
+  ajustes.push(bajoElFormulario(solicitud.medioDePago, {
     campo: 'formaPago',
     titulo: 'Forma de pago',
     ayuda: 'La «Forma de pago» de la web de Galeno. Cada una lleva su propio recargo financiero: con otra forma, otro premio.',
@@ -370,7 +390,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     obligatorio: true,
     dependeDe: 'modoFacturacion',
     destacado: true,
-  })
+  }))
 
   // La bonificación y el recargo administrativo: los dos números que en la web de Galeno se escriben a
   // mano arriba de la grilla («% Bonificación Prima» y «% RA»). Sin elegirlos, Galeno aplica los suyos
@@ -402,13 +422,17 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   }
   ajustes.push(ajusteRecargo)
 
-  // La cláusula de ajuste: la web de Galeno la pide en el formulario del vehículo y arranca en
-  // «Cláusula de ajuste automático 10 %». Acá se arranca en la misma, si Galeno la lista, porque es con
-  // la que compara la agencia; sin ella, Galeno aplica la suya por defecto, que puede ser otra y
-  // cambia el precio de todo lo que depende de la suma asegurada (robo, incendio, todo riesgo).
+  // La cláusula de ajuste: la que pide el formulario. Si Galeno no tiene ese porcentaje, la de su web
+  // («Cláusula de ajuste automático 10 %»), que es con la que compara la agencia; sin ninguna, Galeno
+  // aplica la suya por defecto, que puede ser otra y cambia el precio de todo lo que depende de la suma
+  // asegurada (robo, incendio, todo riesgo).
   const clausulas = await enMemoria(`clausulas:${tipo}`, () => clausulasDeAjusteGaleno()).catch(() => [] as OpcionGaleno[])
-  const clausula = valido(elegidos.clausulaAjuste, clausulas) ?? porPalabrasClave(clausulas, ['AUTOMATIC', '10'])?.codigo ?? ''
-  ajustes.push({
+  const clausula =
+    valido(elegidoBajo(elegidos.clausulaAjuste, clausulaAjuste), clausulas) ??
+    porClausula(clausulas, clausulaAjuste)?.codigo ??
+    porPalabrasClave(clausulas, ['AUTOMATIC', '10'])?.codigo ??
+    ''
+  ajustes.push(bajoElFormulario(clausulaAjuste, {
     campo: 'clausulaAjuste',
     titulo: 'Cláusula de ajuste',
     ayuda: 'La «Cláusula de ajuste» de la web de Galeno. Si no se elige, Galeno aplica la suya por defecto.',
@@ -416,7 +440,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     valor: clausula,
     obligatorio: false,
     destacado: true,
-  })
+  }))
 
   // Las listas cortas: tipo de persona, IVA y uso. El IVA y el uso son opcionales en la API de Galeno —si
   // no se reconocen se mandan sin ellos y Galeno usa los suyos por defecto.
@@ -425,22 +449,20 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     enMemoria('ivas', () => categoriasIvaGaleno()),
     enMemoria('usos', () => tiposDeUsoGaleno()),
   ])
+  const { tipoPersona, condicionIva, ingresosBrutos } = solicitud.tomador
   const persona =
-    valido(elegidos.tipoPersona, personas) ??
-    porPalabrasClave(personas, CLAVES_TIPO_DE_PERSONA[solicitud.tomador.tipoPersona])?.codigo ??
-    personas[0]?.codigo ??
-    ''
-  ajustes.push({ campo: 'tipoPersona', titulo: 'Tipo de persona', opciones: opciones(personas), valor: persona, obligatorio: true })
-  const iva = valido(elegidos.categoriaIva, ivas) ?? porPalabrasClave(ivas, CLAVES_CONDICION_IVA[solicitud.tomador.condicionIva])?.codigo ?? ''
-  ajustes.push({ campo: 'categoriaIva', titulo: 'Condición de IVA', opciones: opciones(ivas), valor: iva, obligatorio: false })
+    valido(elegidoBajo(elegidos.tipoPersona, tipoPersona), personas) ?? porPalabrasClave(personas, CLAVES_TIPO_DE_PERSONA[tipoPersona])?.codigo ?? personas[0]?.codigo ?? ''
+  ajustes.push(bajoElFormulario(tipoPersona, { campo: 'tipoPersona', titulo: 'Tipo de persona', opciones: opciones(personas), valor: persona, obligatorio: true }))
+  const iva = valido(elegidoBajo(elegidos.categoriaIva, condicionIva), ivas) ?? porPalabrasClave(ivas, CLAVES_CONDICION_IVA[condicionIva])?.codigo ?? ''
+  ajustes.push(bajoElFormulario(condicionIva, { campo: 'categoriaIva', titulo: 'Condición de IVA', opciones: opciones(ivas), valor: iva, obligatorio: false }))
   // Ingresos brutos: la web de Galeno lo pide junto al IVA («Ing. Brutos: CONSUMIDOR FINAL») y cambia
-  // los impuestos del premio. Sus categorías se llaman como las de IVA, así que se elige con las mismas
-  // palabras clave; si no se reconoce, se manda sin él y Galeno usa el suyo.
+  // los impuestos del premio. Si no se reconoce, se manda sin él y Galeno usa el suyo.
   const iibbs = await enMemoria('iibb', () => codigosIIBBGaleno()).catch(() => [] as OpcionGaleno[])
-  const iibb = valido(elegidos.codigoIIBB, iibbs) ?? porPalabrasClave(iibbs, CLAVES_CONDICION_IVA[solicitud.tomador.condicionIva])?.codigo ?? ''
-  ajustes.push({ campo: 'codigoIIBB', titulo: 'Ingresos brutos', opciones: opciones(iibbs), valor: iibb, obligatorio: false })
-  const uso = valido(elegidos.tipoUso, usos) ?? porPalabrasClave(usos, CLAVES_USO[solicitud.vehiculo.uso])?.codigo ?? ''
-  ajustes.push({ campo: 'tipoUso', titulo: 'Uso del vehículo', opciones: opciones(usos), valor: uso, obligatorio: false })
+  const iibb = valido(elegidoBajo(elegidos.codigoIIBB, ingresosBrutos), iibbs) ?? porPalabrasClave(iibbs, CLAVES_CONDICION_IIBB[ingresosBrutos])?.codigo ?? ''
+  ajustes.push(bajoElFormulario(ingresosBrutos, { campo: 'codigoIIBB', titulo: 'Ingresos brutos', opciones: opciones(iibbs), valor: iibb, obligatorio: false }))
+  const usoPedido = solicitud.vehiculo.uso
+  const uso = valido(elegidoBajo(elegidos.tipoUso, usoPedido), usos) ?? porUso(usos, usoPedido)?.codigo ?? ''
+  ajustes.push(bajoElFormulario(usoPedido, { campo: 'tipoUso', titulo: 'Uso del vehículo', opciones: opciones(usos), valor: uso, obligatorio: false }))
 
   // La localidad: Galeno tiene su propio sub-código por localidad dentro del código postal.
   const localidades = await enMemoria(`cp:${tipo}:${solicitud.codigoPostal}`, () => codigoPostalGaleno(tipo, solicitud.codigoPostal))
@@ -460,10 +482,11 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   })
 
   let rastreo = ''
-  if (solicitud.vehiculo.rastreo) {
+  const rastreador = solicitud.vehiculo.rastreador
+  if (tieneRastreador(solicitud.vehiculo)) {
     const equipos = await enMemoria('rastreo', () => equiposDeRastreoGaleno())
-    rastreo = valido(elegidos.equipoRastreo, equipos) ?? equipos[0]?.codigo ?? ''
-    ajustes.push({ campo: 'equipoRastreo', titulo: 'Equipo de rastreo', opciones: opciones(equipos), valor: rastreo, obligatorio: false })
+    rastreo = valido(elegidoBajo(elegidos.equipoRastreo, rastreador), equipos) ?? porRastreador(equipos, rastreador)?.codigo ?? equipos[0]?.codigo ?? ''
+    ajustes.push(bajoElFormulario(rastreador, { campo: 'equipoRastreo', titulo: 'Equipo de rastreo', opciones: opciones(equipos), valor: rastreo, obligatorio: false }))
   }
 
   const vehiculo = await vehiculoEnGaleno(solicitud, elegidos, ajustes)
@@ -494,7 +517,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     anioFabricacion: v.anio,
     tomadorTipoPersona: persona,
     // Galeno exige un nombre para abrir la solicitud; para una cotización rápida alcanza con uno genérico.
-    tomadorNombre: solicitud.tomador.nombre || 'COTIZACION',
+    tomadorNombre: nombreDelTomador(solicitud.tomador) || 'COTIZACION',
     codigoPostal: solicitud.codigoPostal,
     subCodigoPostal: localidad,
     condicionPagoCodigo: condicion,
@@ -505,7 +528,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     tipoUso: uso || undefined,
     poseeEquipoGnc: v.gnc,
     equipoGncValor: v.gnc && v.valorGnc !== null ? v.valorGnc : undefined,
-    poseeEquipoRastreo: v.rastreo,
+    poseeEquipoRastreo: tieneRastreador(v),
     equipoRastreoCodigo: rastreo || undefined,
     tomadorCategoriaIVACodigo: iva || undefined,
     tomadorIIBBCodigo: iibb || undefined,
