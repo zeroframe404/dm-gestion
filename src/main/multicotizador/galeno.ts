@@ -15,6 +15,7 @@
 import {
   categoriaDeCobertura,
   enPesos,
+  fechaIsoDe,
   normalizarTexto,
   rangoDePorcentajes,
   type AjusteDeAseguradora,
@@ -34,11 +35,12 @@ import {
   modelosGaleno,
   modosDeFacturacionGaleno,
   planesComercialesGaleno,
+  reporteGaleno,
   subModelosGaleno,
   tiposDePersonaGaleno,
   tiposDeUsoGaleno,
 } from '../servicios/galeno'
-import type { CotizacionDeAseguradora, CotizadorDeAseguradora, SolicitudResuelta } from './aseguradora'
+import type { CotizacionDeAseguradora, CotizadorDeAseguradora, EmisionDeLaApi, PlanDeAseguradora, SolicitudResuelta } from './aseguradora'
 import {
   buscarLocalidad,
   buscarMarca,
@@ -605,6 +607,56 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   }
 }
 
+// --- Los listados ---------------------------------------------------------------------------------------
+
+async function planes(tipo: TipoDeVehiculo): Promise<PlanDeAseguradora[]> {
+  const lista = await enMemoria(`planes:${tipo}`, () => planesComercialesGaleno(tipo))
+  return lista.map((plan) => ({ codigo: plan.codigo, descripcion: plan.descripcion, detalle: `Legajo ${plan.productorCodigo}` }))
+}
+
+/** aaaa-mm-dd → dd/mm/aaaa, que es como Galeno pide las fechas de Consultas. */
+function fechaParaConsultas(iso: string): string {
+  const [anio, mes, dia] = iso.split('-')
+  return `${dia}/${mes}/${anio}`
+}
+
+function textoDe(fila: Record<string, string | number | null>, clave: string): string {
+  const valor = fila[clave]
+  return valor === null || valor === undefined ? '' : String(valor).trim()
+}
+
+const ESTADO_DE_POLIZA_GALENO: Record<string, string> = { X: 'Vigente', N: 'No vigente', Z: 'Anulada' }
+
+/**
+ * Las pólizas emitidas en el rango, del servicio «Pólizas por legajo» de Consultas: el mismo listado que
+ * la web de Galeno filtra por fecha de emisión. Con un tipo elegido se pide su rama (4 autos, 28 motos);
+ * sin tipo, todo lo de Autos/Motos.
+ */
+async function emisiones(filtros: { desde: string; hasta: string; tipo: TipoDeVehiculo | null }): Promise<EmisionDeLaApi[]> {
+  const reporte = await reporteGaleno('POLIZAS_POR_LEGAJO', {
+    ...(filtros.tipo ? { rama: RAMA_GALENO_DE_TIPO[filtros.tipo] } : {}),
+    tipoSeguro: 'AUT',
+    fechaEmisionDesde: fechaParaConsultas(filtros.desde),
+    fechaEmisionHasta: fechaParaConsultas(filtros.hasta),
+  })
+  return reporte.filas.map((fila) => {
+    const rama = Number(textoDe(fila, 'rama'))
+    const tipo: TipoDeVehiculo | null = rama === RAMA_GALENO_DE_TIPO.AUTO ? 'AUTO' : rama === RAMA_GALENO_DE_TIPO.MOTO ? 'MOTO' : null
+    const estado = textoDe(fila, 'estado')
+    return {
+      tipo,
+      poliza: textoDe(fila, 'nroPoliza'),
+      fechaEmision: fechaIsoDe(textoDe(fila, 'fechaEmision')),
+      tomador: textoDe(fila, 'nombreTomador'),
+      patente: textoDe(fila, 'patente'),
+      cobertura: textoDe(fila, 'cobertura') || textoDe(fila, 'tipoSeguro'),
+      vigenciaDesde: fechaIsoDe(textoDe(fila, 'fecvigenciaDesde')),
+      vigenciaHasta: fechaIsoDe(textoDe(fila, 'fecvigenciaHasta')),
+      estado: ESTADO_DE_POLIZA_GALENO[estado] ?? estado,
+    }
+  })
+}
+
 export const galeno: CotizadorDeAseguradora = {
   id: ID,
   nombre: NOMBRE,
@@ -618,4 +670,7 @@ export const galeno: CotizadorDeAseguradora = {
     return lista.map((localidad) => localidad.localidad)
   },
   cotizar,
+  planes,
+  // Galeno no tiene un servicio que liste las cotizaciones hechas: sólo las emitidas.
+  emisiones,
 }

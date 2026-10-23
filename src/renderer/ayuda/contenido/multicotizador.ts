@@ -14,6 +14,15 @@ export const AYUDA_MULTICOTIZADOR: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'La sublista de la barra lateral',
+        parrafos: [
+          'El Multicotizador se abre en la barra lateral en cinco renglones. «Cotizar Vehículo» y «Cotizar Moto» son el mismo cotizador con el tipo ya elegido: cada uno guarda lo suyo, así que se puede ir a mirar otra sección y volver sin perder lo cargado.',
+          '«Cotizaciones», «Planes de Cotización» y «Emisiones» no salen de la base del VPS sino de la API de cada compañía: es lo que la compañía tiene registrado. Hoy Equidad lista sus cotizaciones; Galeno, ATM y Equidad, sus planes comerciales; y Galeno, sus pólizas emitidas.',
+          'Cuando una compañía no tiene API, o la tiene pero no está configurada en API Aseguradoras, o su API no da ese listado, o falló al pedirlo, lo que haya de ella en la base del VPS se muestra igual (las cotizaciones salen de los presupuestos; las emisiones, de las pólizas), pero con la etiqueta «Base VPS» y un ícono de advertencia. Al pasar el mouse por el ícono se lee por qué ese dato no vino de la API. Es lo que se cargó en el programa, no lo que tiene la compañía: puede estar incompleto o desactualizado.',
+          'Los planes no tienen respaldo: la base no los guarda, así que una compañía sin API muestra el motivo en lugar de planes.',
+        ],
+      },
+      {
         titulo: 'Los datos que se piden',
         parrafos: ['Son los que cualquier compañía necesita para cotizar un auto o una moto:'],
         lista: [

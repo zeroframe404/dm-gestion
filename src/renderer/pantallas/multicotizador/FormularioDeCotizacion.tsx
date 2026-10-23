@@ -52,7 +52,7 @@ function hoyIso(): string {
   return `${hoy.getFullYear()}-${dos(hoy.getMonth() + 1)}-${dos(hoy.getDate())}`
 }
 
-export function formularioVacio(aseguradoras: IdAseguradora[]): FormularioMulticotizador {
+export function formularioVacio(aseguradoras: IdAseguradora[], tipo: TipoDeVehiculo = 'AUTO'): FormularioMulticotizador {
   return {
     clienteId: null,
     nombre: '',
@@ -60,7 +60,7 @@ export function formularioVacio(aseguradoras: IdAseguradora[]): FormularioMultic
     telefono: '',
     tipoPersona: 'FISICA',
     condicionIva: 'CONSUMIDOR_FINAL',
-    vehiculo: { ...VEHICULO_ELEGIDO_VACIO, tipo: 'AUTO' },
+    vehiculo: { ...VEHICULO_ELEGIDO_VACIO, tipo },
     patente: '',
     ceroKm: false,
     uso: 'PARTICULAR',
@@ -134,6 +134,11 @@ interface Props {
   alCotizar: () => void
   alLimpiar: () => void
   aviso: string | null
+  /**
+   * El tipo ya lo eligió la sección (Cotizar Vehículo o Cotizar Moto): el formulario no lo vuelve a
+   * preguntar.
+   */
+  tipoFijo?: boolean
 }
 
 function Casilla({ etiqueta, marcada, alCambiar, deshabilitada = false, ayuda }: { etiqueta: string; marcada: boolean; alCambiar: (marcada: boolean) => void; deshabilitada?: boolean; ayuda?: string }) {
@@ -154,7 +159,7 @@ function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) 
   )
 }
 
-export function FormularioDeCotizacion({ valor: f, alCambiar, aseguradoras, cotizando, alCotizar, alLimpiar, aviso }: Props) {
+export function FormularioDeCotizacion({ valor: f, alCambiar, aseguradoras, cotizando, alCotizar, alLimpiar, aviso, tipoFijo = false }: Props) {
   const [buscando, setBuscando] = useState('')
   const [candidatos, setCandidatos] = useState<FilaCliente[]>([])
   const [localidades, setLocalidades] = useState<string[]>([])
@@ -242,7 +247,7 @@ export function FormularioDeCotizacion({ valor: f, alCambiar, aseguradoras, coti
     >
       <div className="flex flex-col gap-6">
         <Seccion titulo="Vehículo">
-          <SelectorDeVehiculo valor={f.vehiculo} alCambiar={(parte) => alCambiar({ vehiculo: { ...f.vehiculo, ...parte } })} />
+          <SelectorDeVehiculo valor={f.vehiculo} alCambiar={(parte) => alCambiar({ vehiculo: { ...f.vehiculo, ...parte } })} sinTipo={tipoFijo} />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {!f.vehiculo.catalogoCodigo && (
               <Campo

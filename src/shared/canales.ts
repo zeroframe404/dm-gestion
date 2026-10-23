@@ -1,7 +1,16 @@
 // Contrato tipado de los canales IPC: cada canal declara sus argumentos y su respuesta.
 // El proceso principal implementa exactamente estas firmas y la precarga las expone.
 import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion } from './eliminacion'
-import type { AseguradoraDelMulticotizador, PedidoDeCotizacion, ResultadoDeAseguradora } from './multicotizador'
+import type {
+  AseguradoraDelMulticotizador,
+  CotizacionListada,
+  EmisionListada,
+  FiltrosDeListado,
+  ListadoDelMulticotizador,
+  PedidoDeCotizacion,
+  PlanListado,
+  ResultadoDeAseguradora,
+} from './multicotizador'
 import type { MatrizPermisos } from './permisos'
 import type {
   TipoPestana,
@@ -894,6 +903,9 @@ export interface Canales {
   'multicotizador:aseguradoras': () => Resultado<AseguradoraDelMulticotizador[]>
   'multicotizador:localidades': (tipoVehiculo: TipoDeVehiculo, codigoPostal: string) => Resultado<string[]>
   'multicotizador:cotizar': (pedido: PedidoDeCotizacion) => Resultado<ResultadoDeAseguradora>
+  'multicotizador:cotizaciones': (filtros: FiltrosDeListado) => Resultado<ListadoDelMulticotizador<CotizacionListada>>
+  'multicotizador:planes': (tipoVehiculo: TipoDeVehiculo) => Resultado<ListadoDelMulticotizador<PlanListado>>
+  'multicotizador:emisiones': (filtros: FiltrosDeListado) => Resultado<ListadoDelMulticotizador<EmisionListada>>
 
   // Cartera → Galeno NOVEDADES (15.4). Distinto canal y distinto nombre que el bloque de arriba a
   // propósito: esto NO es la API REST de Galeno (cotización/emisión), es la sincronización con el

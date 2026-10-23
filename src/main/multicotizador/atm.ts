@@ -33,7 +33,7 @@ import {
   type VehiculoAtm,
 } from '../aseguradoras/atm/tablas'
 import { credencialesAtm } from '../servicios/config'
-import type { CotizacionDeAseguradora, CotizadorDeAseguradora, SolicitudResuelta } from './aseguradora'
+import type { CotizacionDeAseguradora, CotizadorDeAseguradora, PlanDeAseguradora, SolicitudResuelta } from './aseguradora'
 import {
   buscarLocalidad,
   buscarMarca,
@@ -906,6 +906,21 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   }
 }
 
+// --- Los listados ---------------------------------------------------------------------------------------
+
+/** Los planes del vendedor de la cuenta (el cargado o, si no, el primero), los mismos que ofrece la tarjeta. */
+async function planes(tipo: TipoDeVehiculo): Promise<PlanDeAseguradora[]> {
+  const credenciales = cuentaActual()
+  if (!credenciales) throw new ErrorDeAtm('Falta cargar la cuenta de ATM en API Aseguradoras → ATM.', false)
+  const cuenta: CuentaAtm = { ambiente: credenciales.ambiente, usuario: credenciales.usuario, clave: credenciales.clave }
+  const cliente = crearClienteAtm(cuenta)
+  const clave = `${cuenta.ambiente}:${cuenta.usuario}`
+  const vendedor = credenciales.vendedor || (await enMemoria(`vendedores:${clave}`, () => vendedoresAtm(cliente)))[0]?.codigo || ''
+  if (!vendedor) throw new ErrorDeAtm('ATM no tiene vendedores para esta cuenta: cargá el código de vendedor en API Aseguradoras → ATM.', false)
+  const lista = await enMemoria(`planes:${clave}:${tipo}:${vendedor}`, () => planesAtm(cliente, tipo, vendedor))
+  return lista.map((plan) => ({ codigo: plan.codigo, descripcion: plan.descripcion, detalle: plan.formaDePago ? `Pago: ${plan.formaDePago}` : '' }))
+}
+
 export const atm: CotizadorDeAseguradora = {
   id: ID_ATM,
   nombre: NOMBRE,
@@ -925,4 +940,7 @@ export const atm: CotizadorDeAseguradora = {
       .map((l) => l.localidad)
   },
   cotizar,
+  planes,
+  // ATM no lista cotizaciones, y sus pólizas sólo se pueden buscar de a un DNI (`policiesByDni`): no
+  // hay un listado de lo emitido en un rango de fechas.
 }

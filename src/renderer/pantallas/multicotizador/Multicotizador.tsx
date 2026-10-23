@@ -1,5 +1,9 @@
 // El Multicotizador: una sola carga de datos y el precio de todas las compañías con API a la vez.
 //
+// Tiene su sublista en la barra lateral: Cotizar Vehículo y Cotizar Moto (el mismo cotizador, con el
+// tipo ya elegido), y los listados —Cotizaciones, Planes de Cotización y Emisiones—, que salen de la
+// API de cada compañía (ver ListadosDelMulticotizador.tsx).
+//
 // Cada compañía se cotiza en su propio pedido y todas al mismo tiempo: la tarjeta de cada una se llena
 // apenas contesta, sin esperar a la más lenta, y una compañía caída no frena a las demás. Con las
 // coberturas elegidas se arma el presupuesto de siempre —el mismo del módulo Presupuestos, con su
@@ -13,14 +17,16 @@ import {
   elegidosAplicados,
   elegirAjuste,
   enPesos,
+  esSeccionDelMulticotizador,
   sinLosPorSolicitud,
   type AseguradoraDelMulticotizador,
   type CoberturaCotizada,
   type IdAseguradora,
   type ResultadoDeAseguradora,
+  type SeccionDelMulticotizador,
   type SolicitudDeCotizacion,
 } from '../../../shared/multicotizador'
-import type { DatosDePresupuesto, EmisionGaleno } from '../../../shared/tipos'
+import type { DatosDePresupuesto, EmisionGaleno, TipoDeVehiculo } from '../../../shared/tipos'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { Alerta, Boton, Cargando } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
@@ -29,6 +35,7 @@ import { ajustesGuardados, guardarAjustes } from '../../preferencias'
 import { DialogoEmitirGaleno } from '../presupuestos/DialogoEmitirGaleno'
 import { DialogoEmitirAtm } from './DialogoEmitirAtm'
 import { FormularioDeCotizacion, formularioVacio, solicitudDe, type FormularioMulticotizador } from './FormularioDeCotizacion'
+import { Cotizaciones, Emisiones, PlanesDeCotizacion } from './ListadosDelMulticotizador'
 import { ResultadosDeCotizacion, type EstadoDeTarjeta } from './ResultadosDeCotizacion'
 
 /** Lo que define el riesgo: si cambia, lo que se eligió a mano para ese vehículo o esa zona ya no vale. */
@@ -42,6 +49,34 @@ function hoyLegible(): string {
 }
 
 export function Multicotizador() {
+  const { seccion: pedida } = useNavegacion()
+  const seccion: SeccionDelMulticotizador = esSeccionDelMulticotizador(pedida) ? pedida : 'auto'
+  // Los dos cotizadores quedan montados una vez abiertos: ir a mirar Emisiones y volver no borra lo
+  // que se estaba cotizando.
+  const [abiertos, setAbiertos] = useState<Set<TipoDeVehiculo>>(() => new Set())
+  const tipo: TipoDeVehiculo | null = seccion === 'auto' ? 'AUTO' : seccion === 'moto' ? 'MOTO' : null
+  useEffect(() => {
+    if (tipo && !abiertos.has(tipo)) setAbiertos((previos) => new Set([...previos, tipo]))
+  }, [tipo, abiertos])
+
+  return (
+    <>
+      {(['AUTO', 'MOTO'] as const).map((cual) =>
+        abiertos.has(cual) || tipo === cual ? (
+          <div key={cual} hidden={tipo !== cual}>
+            <Cotizador tipo={cual} />
+          </div>
+        ) : null,
+      )}
+      {seccion === 'cotizaciones' && <Cotizaciones />}
+      {seccion === 'planes' && <PlanesDeCotizacion />}
+      {seccion === 'emisiones' && <Emisiones />}
+    </>
+  )
+}
+
+/** Cotizar Vehículo / Cotizar Moto: el mismo cotizador, con el tipo ya elegido por la sección. */
+function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
   const { ir } = useNavegacion()
   const { puedeEditar, veNumerosDeLaAgencia } = usePermisos()
   // Cotizar es mirar precios; armar el presupuesto y emitir, en cambio, escriben: piden Presupuestos.
@@ -49,7 +84,7 @@ export function Multicotizador() {
 
   const [aseguradoras, setAseguradoras] = useState<AseguradoraDelMulticotizador[] | null>(null)
   const [errorDeCarga, setErrorDeCarga] = useState<string | null>(null)
-  const [formulario, setFormulario] = useState<FormularioMulticotizador>(() => formularioVacio([]))
+  const [formulario, setFormulario] = useState<FormularioMulticotizador>(() => formularioVacio([], tipo))
   const [aviso, setAviso] = useState<string | null>(null)
   const [tarjetas, setTarjetas] = useState<Record<IdAseguradora, EstadoDeTarjeta>>({})
   const [cotizada, setCotizada] = useState<SolicitudDeCotizacion | null>(null)
@@ -160,7 +195,7 @@ export function Multicotizador() {
 
   const empezarDeNuevo = () => {
     for (const id of Object.keys(pedidos.current)) pedidos.current[id] = (pedidos.current[id] ?? 0) + 1
-    setFormulario((previo) => ({ ...formularioVacio(previo.aseguradoras), medioDePago: previo.medioDePago }))
+    setFormulario((previo) => ({ ...formularioVacio(previo.aseguradoras, tipo), medioDePago: previo.medioDePago }))
     setTarjetas({})
     setCotizada(null)
     setSeleccionadas(new Set())
@@ -254,10 +289,10 @@ export function Multicotizador() {
     <div className="flex flex-col gap-6 p-8">
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900">Multicotizador</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900">{tipo === 'MOTO' ? 'Cotizar Moto' : 'Cotizar Vehículo'}</h1>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
-            Los datos se cargan una vez y se cotizan en todas las compañías con API al mismo tiempo. Las coberturas se comparan por lo que cubren y
-            con las elegidas se arma el presupuesto de siempre, o se emite ahí mismo.
+            Los datos {tipo === 'MOTO' ? 'de la moto ' : 'del vehículo '}se cargan una vez y se cotizan en todas las compañías con API al mismo
+            tiempo. Las coberturas se comparan por lo que cubren y con las elegidas se arma el presupuesto de siempre, o se emite ahí mismo.
           </p>
         </div>
         <BotonAyuda clave="multicotizador" />
@@ -273,6 +308,7 @@ export function Multicotizador() {
         alCotizar={cotizar}
         alLimpiar={empezarDeNuevo}
         aviso={aviso}
+        tipoFijo
       />
 
       <ResultadosDeCotizacion
