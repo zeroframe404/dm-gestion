@@ -3,8 +3,12 @@
 import type {
   AjusteDeAseguradora,
   CoberturaCotizada,
+  CotizacionListada,
+  EmisionListada,
   EstadoDeCotizacion,
+  FiltrosDeListado,
   IdAseguradora,
+  PlanListado,
   SolicitudDeCotizacion,
 } from '../../shared/multicotizador'
 import type { TipoDeVehiculo } from '../../shared/tipos'
@@ -47,4 +51,19 @@ export interface CotizadorDeAseguradora {
    * todos los ajustes que sí pudo armar, para que se complete todo de una sola vez.
    */
   cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, string>): Promise<CotizacionDeAseguradora>
+
+  /**
+   * Los listados del Multicotizador, desde la API de la compañía. Son opcionales: la compañía cuya API
+   * no da ese listado no lo implementa, y el servicio muestra lo que haya en la base del VPS, marcado.
+   * Igual que `cotizar`, sólo se llaman con `noDisponible()` en null.
+   */
+  planes?(tipo: TipoDeVehiculo): Promise<PlanDeAseguradora[]>
+  cotizaciones?(filtros: FiltrosDeListado): Promise<CotizacionDeLaApi[]>
+  emisiones?(filtros: FiltrosDeListado): Promise<EmisionDeLaApi[]>
 }
+
+/** Lo que devuelve un adaptador por cada fila: el servicio le agrega la compañía y el origen. */
+type SinCompania<T> = Omit<T, 'origen' | 'aseguradora' | 'nombreAseguradora' | 'motivoVps'>
+export type PlanDeAseguradora = Omit<PlanListado, 'aseguradora' | 'nombreAseguradora' | 'tipo'>
+export type CotizacionDeLaApi = SinCompania<CotizacionListada>
+export type EmisionDeLaApi = SinCompania<EmisionListada>

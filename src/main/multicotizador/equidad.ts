@@ -18,6 +18,7 @@
 import {
   categoriaDeCobertura,
   enPesos,
+  fechaIsoDe,
   normalizarTexto,
   rangoDePorcentajes,
   type AjusteDeAseguradora,
@@ -33,6 +34,7 @@ import {
   claveDeVehiculo,
   clausulasDeAjusteEquidad,
   condicionesDePagoEquidad,
+  cotizacionesEquidad,
   formasDePagoEquidad,
   localidadesEquidad,
   marcasEquidad,
@@ -52,7 +54,7 @@ import {
 import { crearClienteEquidad, ErrorDeEquidad, SERVICIOS_EQUIDAD, type ClienteEquidad, type CuentaEquidad } from '../aseguradoras/equidad/cliente'
 import { cotizarEquidad, type DatosDeCotizacionEquidad } from '../aseguradoras/equidad/cotizacion'
 import { credencialesEquidad } from '../servicios/config'
-import type { CotizacionDeAseguradora, CotizadorDeAseguradora, SolicitudResuelta } from './aseguradora'
+import type { CotizacionDeAseguradora, CotizacionDeLaApi, CotizadorDeAseguradora, PlanDeAseguradora, SolicitudResuelta } from './aseguradora'
 import { buscarLocalidad, buscarMarca, CLAVES_CONDICION_IVA, CLAVES_MEDIO_DE_PAGO, CLAVES_USO, porPalabrasClave, rankear, sinDudas, type OpcionDeLista } from './equivalencias'
 import { equivalenciaGuardada, guardarEquivalencia, olvidarEquivalencia } from './equivalenciasGuardadas'
 import { opcionesDePorcentaje } from './galeno'
@@ -572,6 +574,55 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   return { estado: 'OK', mensaje: `${resumen}.`, descripcionVehiculo, coberturas, avisos, ajustes, detalleTecnico }
 }
 
+// --- Los listados ---------------------------------------------------------------------------------------
+
+/** El cliente, el contexto y el productor de la cuenta: lo que piden los dos listados. */
+async function contextoDeListados(): Promise<{ cliente: ClienteEquidad; c: ContextoEquidad; productor: string }> {
+  const cuenta = cuentaActual()
+  if (!cuenta) throw new ErrorDeEquidad('Falta cargar la cuenta de Equidad en API Aseguradoras → Equidad.', false)
+  const cliente = crearClienteEquidad(cuentaDe(cuenta))
+  const sesion = await cliente.sesion()
+  const c: ContextoEquidad = { usuario: sesion.usuarioCodigo, empresa: cuenta.empresa, rama: cuenta.rama }
+  const productores = await enMemoria(`productores:${c.empresa}`, () => productoresEquidad(cliente, c)).catch(() => [])
+  const productor = productorPorDefecto(
+    cuenta.productor,
+    productores.map((p) => ({ codigo: p.codigo, descripcion: p.nombre })),
+  )
+  if (!productor) throw new ErrorDeEquidad('Equidad no listó productores para el usuario: cargá el productor en API Aseguradoras → Equidad.', false)
+  return { cliente, c, productor }
+}
+
+/** Los planes comerciales de hoy, para el tipo de póliza con que se cotiza por defecto. */
+async function planes(): Promise<PlanDeAseguradora[]> {
+  const { cliente, c, productor } = await contextoDeListados()
+  const tipos = await enMemoria(`tipos:${c.rama}`, () => tiposDePolizaEquidad(cliente, c))
+  const tipoPoliza = tipoDePolizaPorDefecto(tipos)
+  if (!tipoPoliza) return []
+  const hoy = new Date().toISOString().slice(0, 10)
+  const lista = await enMemoria(`planes:${c.rama}:${tipoPoliza}:${productor}:${hoy}`, () => planesComercialesEquidad(cliente, c, tipoPoliza, productor, hoy))
+  const nombreDelTipo = tipos.find((t) => t.codigo === tipoPoliza)?.descripcion ?? tipoPoliza
+  return lista.map((plan) => ({ codigo: plan.codigo, descripcion: plan.descripcion, detalle: `Productor ${productor} · ${nombreDelTipo}` }))
+}
+
+async function cotizaciones(filtros: { desde: string; hasta: string }): Promise<CotizacionDeLaApi[]> {
+  const { cliente, c, productor } = await contextoDeListados()
+  const lista = await cotizacionesEquidad(cliente, c, productor, filtros.desde, filtros.hasta)
+  return lista.map((cotizacion) => ({
+    // Equidad cotiza sólo autos por API (la rama automotor).
+    tipo: 'AUTO',
+    numero: cotizacion.solicitud,
+    fecha: fechaIsoDe(cotizacion.fechaIngreso),
+    tomador: cotizacion.tomador,
+    vehiculo: cotizacion.esFlota ? 'Flota' : cotizacion.riesgo,
+    patente: cotizacion.patente,
+    cobertura: '',
+    premio: null,
+    sumaAsegurada: cotizacion.sumaAsegurada,
+    vigenciaDesde: fechaIsoDe(cotizacion.inicioVigencia),
+    vigenciaHasta: fechaIsoDe(cotizacion.finVigencia),
+  }))
+}
+
 export const equidad: CotizadorDeAseguradora = {
   id: ID_EQUIDAD,
   nombre: NOMBRE,
@@ -586,4 +637,7 @@ export const equidad: CotizadorDeAseguradora = {
     return [...new Set(lista.map((l) => l.localidad).filter(Boolean))]
   },
   cotizar,
+  planes,
+  cotizaciones,
+  // La API GLM no tiene un listado de pólizas emitidas.
 }

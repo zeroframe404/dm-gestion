@@ -436,6 +436,9 @@ const api: ApiDm = {
     aseguradoras: () => invocar('multicotizador:aseguradoras'),
     localidades: (tipoVehiculo, codigoPostal) => invocar('multicotizador:localidades', tipoVehiculo, codigoPostal),
     cotizar: (pedido) => invocar('multicotizador:cotizar', pedido),
+    cotizaciones: (filtros) => invocar('multicotizador:cotizaciones', filtros),
+    planes: (tipoVehiculo) => invocar('multicotizador:planes', tipoVehiculo),
+    emisiones: (filtros) => invocar('multicotizador:emisiones', filtros),
   },
   galenoNovedades: {
     estado: () => invocar('galenoNovedades:estado'),

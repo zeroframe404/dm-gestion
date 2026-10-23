@@ -4,7 +4,8 @@
 // tiene veintitrés columnas y en la notebook del mostrador esos 272 píxeles de menú son dos columnas
 // menos a la vista. La elección se guarda en esta computadora (ver `preferencias.ts`), así que la
 // notebook puede quedar siempre angosta y el monitor de la oficina siempre ancho.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavegacion } from '../contexto/Navegacion'
 import { usePermisos } from '../contexto/Permisos'
 import { useAvisosDeTareas } from '../contexto/Tareas'
 import { useUsuarioActual } from '../contexto/Sesion'
@@ -88,13 +89,17 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
         <ul className="flex flex-col gap-0.5">
           {visibles.map((modulo) => (
             <li key={modulo.id}>
-              <ItemMenu
-                modulo={modulo}
-                activo={modulo.id === moduloActivo}
-                colapsada={colapsada}
-                alElegir={alElegir}
-                pendientes={modulo.id === 'tareas' ? pendientes : 0}
-              />
+              {modulo.secciones && !colapsada ? (
+                <GrupoMenu modulo={modulo} activo={modulo.id === moduloActivo} />
+              ) : (
+                <ItemMenu
+                  modulo={modulo}
+                  activo={modulo.id === moduloActivo}
+                  colapsada={colapsada}
+                  alElegir={alElegir}
+                  pendientes={modulo.id === 'tareas' ? pendientes : 0}
+                />
+              )}
             </li>
           ))}
         </ul>
@@ -120,6 +125,72 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
         />
       </div>
     </aside>
+  )
+}
+
+/**
+ * Un módulo con sublista (el Multicotizador): el renglón del módulo abre y cierra la lista, y cada
+ * renglón de la lista abre el módulo en esa sección. Achicada la barra no hay lugar para la lista: el
+ * módulo vuelve a ser un ícono suelto que abre la primera sección.
+ */
+function GrupoMenu({ modulo, activo }: { modulo: Modulo; activo: boolean }) {
+  const { seccion, ir } = useNavegacion()
+  const secciones = modulo.secciones ?? []
+  const [abierto, setAbierto] = useState(activo)
+  // Si se llega al módulo por otro lado (Inicio, un atajo), la lista se abre sola para que se vea dónde se está.
+  useEffect(() => {
+    if (activo) setAbierto(true)
+  }, [activo])
+  const actual = activo ? (seccion ?? secciones[0]?.id) : null
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setAbierto((previo) => !previo)}
+        aria-expanded={abierto}
+        className={cx(
+          'relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cielo-100/60',
+          activo ? 'text-white' : 'text-white/80 hover:bg-white/10 hover:text-white',
+        )}
+      >
+        <Icono nombre={modulo.icono} tamano={18} className={activo ? 'text-white' : 'text-cielo-200'} />
+        <span className="truncate">{modulo.nombre}</span>
+        <Icono
+          nombre="flechaAbajo"
+          tamano={16}
+          className={cx('ml-auto shrink-0 text-cielo-200 transition-transform duration-150', abierto ? 'rotate-180' : '')}
+        />
+      </button>
+      {abierto && (
+        <ul className="mt-0.5 ml-5 flex flex-col gap-0.5 border-l border-white/15 pl-2">
+          {secciones.map((item) => {
+            const esLaActual = item.id === actual
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => ir(modulo.id, { seccion: item.id })}
+                  aria-current={esLaActual ? 'page' : undefined}
+                  className={cx(
+                    'relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] font-medium transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cielo-100/60',
+                    esLaActual ? 'bg-white/15 text-white' : 'text-white/75 hover:bg-white/10 hover:text-white',
+                  )}
+                >
+                  {esLaActual && (
+                    <span className="absolute top-1/2 -left-[9px] h-3/5 w-[3px] -translate-y-1/2 rounded-r bg-cielo-500" aria-hidden="true" />
+                  )}
+                  <Icono nombre={item.icono} tamano={16} className={esLaActual ? 'text-white' : 'text-cielo-200'} />
+                  <span className="truncate">{item.nombre}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
   )
 }
 

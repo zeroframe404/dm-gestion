@@ -294,6 +294,7 @@ import {
 import { borrarCuentaMercantil, estadoMercantil, guardarCuentaMercantil, probarMercantil, traerMercantilDelServidor } from './servicios/mercantil'
 import { borrarCuentaEquidad, estadoEquidad, guardarCuentaEquidad, probarEquidad, traerEquidadDelServidor } from './servicios/equidad'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora, localidadesDelMulticotizador } from './servicios/multicotizador'
+import { cotizacionesDelMulticotizador, emisionesDelMulticotizador, planesDelMulticotizador } from './servicios/listadosDelMulticotizador'
 import {
   borrarMetaDelVps,
   estadoCompartidoDeGoogle,
@@ -2098,6 +2099,20 @@ export function registrarIpc(): void {
   manejar('multicotizador:cotizar', async (pedido) => {
     const actor = exigirVista('multicotizador')
     return exito(await cotizarEnAseguradora(pedido, veLosNumerosDeLaAgencia(actor.rol)))
+  })
+  // Los listados salen de la API de cada compañía. El respaldo de la base del VPS son datos de otros
+  // módulos (los presupuestos, las pólizas): entra sólo si además se puede ver ese módulo.
+  manejar('multicotizador:cotizaciones', async (filtros) => {
+    const actor = exigirVista('multicotizador')
+    return exito(await cotizacionesDelMulticotizador(filtros, puedeVerElArea(actor, 'presupuestos')))
+  })
+  manejar('multicotizador:planes', async (tipoVehiculo) => {
+    exigirVista('multicotizador')
+    return exito(await planesDelMulticotizador(tipoVehiculo))
+  })
+  manejar('multicotizador:emisiones', async (filtros) => {
+    const actor = exigirVista('multicotizador')
+    return exito(await emisionesDelMulticotizador(filtros, puedeVerElArea(actor, 'polizas')))
   })
 
   // --- Marketing → Redes -----------------------------------------------------

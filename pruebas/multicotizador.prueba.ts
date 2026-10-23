@@ -34,6 +34,13 @@ import {
 import { cotizacionGalenoSinComision, sinComisiones } from '../src/main/servicios/galeno'
 import { usarAseguradorasDePrueba } from '../src/main/multicotizador/registro'
 import {
+  aseguradoraDeLaBase,
+  cotizacionesDelMulticotizador,
+  emisionesDelMulticotizador,
+  planesDelMulticotizador,
+  validarFiltrosDeListado,
+} from '../src/main/servicios/listadosDelMulticotizador'
+import {
   aseguradorasDelMulticotizador,
   cotizarEnAseguradora,
   localidadesDelMulticotizador,
@@ -45,6 +52,7 @@ import {
   elegidosAplicados,
   elegirAjuste,
   enPorcentaje,
+  fechaIsoDe,
   mejoresPorCategoria,
   rangoDePorcentajes,
   sanearElegidos,
@@ -705,4 +713,108 @@ test('sinComisiones: saca todo campo de comisión, a cualquier profundidad', () 
   })
   assert.equal(sinComisiones(null), null)
   assert.equal(sinComisiones('comision'), 'comision')
+})
+
+// --- Los listados: cotizaciones, planes y emisiones ---------------------------------------------------
+
+test('multicotizador: las fechas de cada API se leen igual', () => {
+  assert.equal(fechaIsoDe('15/03/2022'), '2022-03-15')
+  assert.equal(fechaIsoDe('3/1/2018'), '2018-01-03')
+  assert.equal(fechaIsoDe('20260115'), '2026-01-15')
+  assert.equal(fechaIsoDe('2026-01-15T00:00:00'), '2026-01-15')
+  assert.equal(fechaIsoDe('cualquier cosa'), '')
+  assert.equal(fechaIsoDe(null), '')
+})
+
+test('multicotizador: el nombre de la base se reconoce como la compañía con API', () => {
+  const registradas = [{ nombre: 'Galeno' }, { nombre: 'ATM' }, { nombre: 'Mercantil Andina' }, { nombre: 'Equidad' }]
+  assert.equal(aseguradoraDeLaBase('GALENO SEGUROS', registradas), 0)
+  assert.equal(aseguradoraDeLaBase('ATM', registradas), 1)
+  assert.equal(aseguradoraDeLaBase('Mercantil Andina S.A.', registradas), 2)
+  assert.equal(aseguradoraDeLaBase('LA EQUIDAD', registradas), 3)
+  // Palabra entera: «ATMOSFERA» no es ATM.
+  assert.equal(aseguradoraDeLaBase('ATMOSFERA SEGUROS', registradas), -1)
+  assert.equal(aseguradoraDeLaBase('Federación Patronal', registradas), -1)
+  assert.equal(aseguradoraDeLaBase(null, registradas), -1)
+})
+
+test('multicotizador: los filtros de un listado se validan', () => {
+  assert.deepEqual(validarFiltrosDeListado({ desde: '2026-01-01', hasta: '2026-01-31', tipo: 'MOTO' }), { desde: '2026-01-01', hasta: '2026-01-31', tipo: 'MOTO' })
+  assert.equal(validarFiltrosDeListado({ desde: '2026-01-01', hasta: '2026-01-31', tipo: '' }).tipo, null)
+  assert.throws(() => validarFiltrosDeListado({ desde: '2026-02-01', hasta: '2026-01-01' }), /anterior/)
+  assert.throws(() => validarFiltrosDeListado({ desde: '2024-01-01', hasta: '2026-01-01' }), /un año/)
+  assert.throws(() => validarFiltrosDeListado({ desde: '01/01/2026', hasta: '2026-01-01' }), /desde/)
+})
+
+test('multicotizador: las emisiones salen de la API; sin API, sin configurar o caída, se dice por qué', async (t) => {
+  t.after(() => usarAseguradorasDePrueba(null))
+  const pedidos: unknown[] = []
+  usarAseguradorasDePrueba([
+    aseguradoraDePrueba({
+      id: 'CON_API',
+      nombre: 'Con API',
+      tipos: ['AUTO', 'MOTO'],
+      async emisiones(filtros) {
+        pedidos.push(filtros)
+        return [
+          { tipo: 'AUTO', poliza: '1', fechaEmision: '2026-01-10', tomador: 'Ana', patente: 'AA111AA', cobertura: 'C', vigenciaDesde: '', vigenciaHasta: '', estado: 'Vigente' },
+          { tipo: 'MOTO', poliza: '2', fechaEmision: '2026-01-12', tomador: 'Beto', patente: '', cobertura: 'A', vigenciaDesde: '', vigenciaHasta: '', estado: 'Vigente' },
+        ]
+      },
+    }),
+    aseguradoraDePrueba({ id: 'SIN_LISTADO', nombre: 'Sin listado' }),
+    aseguradoraDePrueba({ id: 'SIN_CLAVE', nombre: 'Sin clave', noDisponible: () => 'Faltan las credenciales.', emisiones: async () => [] }),
+    aseguradoraDePrueba({
+      id: 'CAIDA',
+      nombre: 'Caída',
+      async emisiones() {
+        throw new Error('503 Service Unavailable')
+      },
+    }),
+  ])
+
+  // Sin permiso para Pólizas no se toca la base: sólo lo de las APIs.
+  const listado = await emisionesDelMulticotizador({ desde: '2026-01-01', hasta: '2026-01-31', tipo: 'AUTO' }, false)
+  assert.deepEqual(pedidos, [{ desde: '2026-01-01', hasta: '2026-01-31', tipo: 'AUTO' }])
+  assert.deepEqual(
+    listado.filas.map((fila) => [fila.origen, fila.aseguradora, fila.poliza]),
+    [['API', 'CON_API', '1']],
+  )
+  const fuente = (id: string) => listado.fuentes.find((f) => f.aseguradora === id)!
+  assert.equal(fuente('CON_API').origen, 'API')
+  assert.equal(fuente('SIN_LISTADO').origen, 'VPS')
+  assert.match(fuente('SIN_LISTADO').motivoVps ?? '', /su API no da el listado de pólizas emitidas/)
+  assert.match(fuente('SIN_CLAVE').motivoVps ?? '', /no está configurada/)
+  assert.match(fuente('CAIDA').motivoVps ?? '', /503/)
+  assert.match(fuente('CAIDA').error ?? '', /503/)
+  assert.match(fuente('SIN_LISTADO').motivoVps ?? '', /permiso para ver Pólizas/)
+})
+
+test('multicotizador: los planes salen sólo de la API, y la que no tiene se explica', async (t) => {
+  t.after(() => usarAseguradorasDePrueba(null))
+  usarAseguradorasDePrueba([
+    aseguradoraDePrueba({ id: 'CON_PLANES', nombre: 'Con planes', planes: async () => [{ codigo: '10', descripcion: 'Plan 10', detalle: '' }] }),
+    aseguradoraDePrueba({ id: 'SIN_PLANES', nombre: 'Sin planes' }),
+  ])
+  const autos = await planesDelMulticotizador('AUTO')
+  assert.deepEqual(autos.filas, [{ codigo: '10', descripcion: 'Plan 10', detalle: '', aseguradora: 'CON_PLANES', nombreAseguradora: 'Con planes', tipo: 'AUTO' }])
+  assert.match(autos.fuentes[1]?.error ?? '', /planes comerciales/)
+  const motos = await planesDelMulticotizador('MOTO')
+  assert.equal(motos.filas.length, 0)
+  assert.match(motos.fuentes[0]?.error ?? '', /No cotiza motos/)
+})
+
+test('multicotizador: las cotizaciones de la API llevan su compañía y su origen', async (t) => {
+  t.after(() => usarAseguradorasDePrueba(null))
+  usarAseguradorasDePrueba([
+    aseguradoraDePrueba({
+      async cotizaciones() {
+        return [{ tipo: 'AUTO', numero: '55', fecha: '2026-01-05', tomador: 'Ana', vehiculo: 'Corolla', patente: '', cobertura: '', premio: null, sumaAsegurada: 1_000_000, vigenciaDesde: '', vigenciaHasta: '' }]
+      },
+    }),
+  ])
+  const listado = await cotizacionesDelMulticotizador({ desde: '2026-01-01', hasta: '2026-01-31' }, false)
+  assert.equal(listado.filas[0]?.origen, 'API')
+  assert.equal(listado.filas[0]?.nombreAseguradora, 'Prueba')
+  assert.equal(listado.filas[0]?.motivoVps, null)
 })

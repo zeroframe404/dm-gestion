@@ -455,3 +455,126 @@ export function rangoDePorcentajes(valores: Array<number | null | undefined>): s
 
 /** El máximo de opciones que acepta un presupuesto (ver `validarOpciones` en servicios/presupuestos.ts). */
 export const MAXIMO_OPCIONES_POR_PRESUPUESTO = 12
+
+// ---------------------------------------------------------------------------
+// Los listados: cotizaciones, planes y emisiones
+// ---------------------------------------------------------------------------
+//
+// Salen de la API de cada compañía, no de la base del VPS: es lo que la compañía tiene registrado, no
+// lo que alguien cargó a mano. Cuando la compañía no tiene API, o la tiene pero no está configurada en
+// este programa, o su API no da ese listado, lo que haya en la base del VPS se muestra igual, pero
+// marcado: `origen: 'VPS'` y `motivoVps` con el porqué, para que la pantalla lo avise.
+
+/** De dónde salió una fila: la API de la compañía, o la base del VPS de la agencia (el respaldo). */
+export type OrigenDeListado = 'API' | 'VPS'
+
+/** Las secciones del Multicotizador, una por renglón de su sublista en la barra lateral. */
+export const SECCIONES_DEL_MULTICOTIZADOR = ['auto', 'moto', 'cotizaciones', 'planes', 'emisiones'] as const
+export type SeccionDelMulticotizador = (typeof SECCIONES_DEL_MULTICOTIZADOR)[number]
+
+export function esSeccionDelMulticotizador(valor: unknown): valor is SeccionDelMulticotizador {
+  return typeof valor === 'string' && (SECCIONES_DEL_MULTICOTIZADOR as readonly string[]).includes(valor)
+}
+
+export interface FiltrosDeListado {
+  /** aaaa-mm-dd. */
+  desde: string
+  /** aaaa-mm-dd. */
+  hasta: string
+  /** Null = autos y motos. */
+  tipo: TipoDeVehiculo | null
+}
+
+/** Cómo le fue a cada compañía en un listado: de dónde salió lo suyo y, si algo falló, qué. */
+export interface FuenteDeListado {
+  aseguradora: string
+  nombre: string
+  origen: OrigenDeListado
+  /** Por qué no salió de la API. Null cuando salió de la API. */
+  motivoVps: string | null
+  /** El error de la API, si la API falló (y se cayó a la base del VPS, o no hubo con qué). */
+  error: string | null
+  filas: number
+}
+
+interface FilaDeListado {
+  origen: OrigenDeListado
+  /** El id de la compañía en el multicotizador, o el nombre como está en la base si no tiene API. */
+  aseguradora: string
+  nombreAseguradora: string
+  /** Ver `FuenteDeListado.motivoVps`. */
+  motivoVps: string | null
+  /** Null si no se sabe (la compañía no lo dice y la base tampoco). */
+  tipo: TipoDeVehiculo | null
+}
+
+export interface CotizacionListada extends FilaDeListado {
+  /** El número de solicitud de la compañía, o el del presupuesto (P-0007) si sale de la base. */
+  numero: string
+  /** aaaa-mm-dd; vacío si no se sabe. */
+  fecha: string
+  tomador: string
+  vehiculo: string
+  patente: string
+  cobertura: string
+  /** Null si la compañía no lo da en el listado. */
+  premio: number | null
+  sumaAsegurada: number | null
+  vigenciaDesde: string
+  vigenciaHasta: string
+}
+
+export interface PlanListado {
+  aseguradora: IdAseguradora
+  nombreAseguradora: string
+  tipo: TipoDeVehiculo
+  codigo: string
+  descripcion: string
+  /** Lo que la compañía agrega (la forma de pago del plan, el legajo…). */
+  detalle: string
+}
+
+export interface EmisionListada extends FilaDeListado {
+  poliza: string
+  /** aaaa-mm-dd; vacío si no se sabe. */
+  fechaEmision: string
+  tomador: string
+  patente: string
+  cobertura: string
+  /** aaaa-mm-dd; vacío si no se sabe. */
+  vigenciaDesde: string
+  vigenciaHasta: string
+  estado: string
+}
+
+export interface ListadoDelMulticotizador<T> {
+  filas: T[]
+  fuentes: FuenteDeListado[]
+}
+
+/**
+ * El texto del aviso de una fila que no salió de la API. Es lo que muestra el ícono de advertencia al
+ * pasar el mouse: de dónde salió el dato, por qué, y qué quiere decir para quien lo mira.
+ */
+export function avisoDeOrigenVps(nombreAseguradora: string, motivo: string | null): string {
+  return [
+    `Este dato no viene de la API de ${nombreAseguradora}: sale de la base de datos del VPS de la agencia.`,
+    motivo ?? '',
+    'Es lo que se cargó en el programa (la planilla, el alta de la póliza o el presupuesto), no lo que la compañía tiene registrado, así que puede estar incompleto o desactualizado.',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+/** «15/03/2022», «3/1/2018» o «2022-03-15» → «2022-03-15». Vacío si no se entiende. */
+export function fechaIsoDe(valor: unknown): string {
+  if (typeof valor !== 'string' && typeof valor !== 'number') return ''
+  const texto = String(valor).trim()
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(texto)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+  const compacta = /^(\d{4})(\d{2})(\d{2})$/.exec(texto)
+  if (compacta) return `${compacta[1]}-${compacta[2]}-${compacta[3]}`
+  const dma = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(texto)
+  if (dma) return `${dma[3]}-${dma[2]!.padStart(2, '0')}-${dma[1]!.padStart(2, '0')}`
+  return ''
+}
