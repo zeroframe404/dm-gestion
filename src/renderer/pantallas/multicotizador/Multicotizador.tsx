@@ -11,14 +11,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   MAXIMO_OPCIONES_POR_PRESUPUESTO,
+  NOMBRE_COMISION,
+  NOMBRE_FACTURACION,
   NOMBRE_MEDIO_DE_PAGO,
+  NOMBRE_PLAN_DE_COTIZACION,
+  NOMBRE_RASTREADOR,
+  NOMBRE_TARIFA,
   NOMBRE_USO_DEL_VEHICULO,
   claveDeCobertura,
+  documentoDelTomador,
   elegidosAplicados,
   elegirAjuste,
   enPesos,
   esSeccionDelMulticotizador,
+  nombreDeClausula,
   sinLosPorSolicitud,
+  tieneRastreador,
   type AseguradoraDelMulticotizador,
   type CoberturaCotizada,
   type IdAseguradora,
@@ -31,10 +39,17 @@ import { BotonAyuda } from '../../componentes/Ayuda'
 import { Alerta, Boton, Cargando } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
 import { usePermisos } from '../../contexto/Permisos'
-import { ajustesGuardados, guardarAjustes } from '../../preferencias'
+import { ajustesGuardados, condicionesGuardadas, guardarAjustes, guardarCondiciones } from '../../preferencias'
 import { DialogoEmitirGaleno } from '../presupuestos/DialogoEmitirGaleno'
 import { DialogoEmitirAtm } from './DialogoEmitirAtm'
-import { FormularioDeCotizacion, formularioVacio, solicitudDe, type FormularioMulticotizador } from './FormularioDeCotizacion'
+import {
+  FormularioDeCotizacion,
+  aseguradorasACotizar,
+  condicionesDe,
+  formularioVacio,
+  solicitudDe,
+  type FormularioMulticotizador,
+} from './FormularioDeCotizacion'
 import { Cotizaciones, Emisiones, PlanesDeCotizacion } from './ListadosDelMulticotizador'
 import { ResultadosDeCotizacion, type EstadoDeTarjeta } from './ResultadosDeCotizacion'
 
@@ -46,6 +61,18 @@ function riesgoDe(solicitud: SolicitudDeCotizacion): string {
 
 function hoyLegible(): string {
   return new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+/** Para la gente (el presupuesto, los diálogos de emisión): «Juan Pérez». A las compañías va al revés. */
+function nombreParaMostrar(f: Pick<FormularioMulticotizador, 'nombre' | 'apellido'>): string {
+  return [f.nombre.trim(), f.apellido.trim()].filter(Boolean).join(' ')
+}
+
+function cuotasLegibles(solicitud: SolicitudDeCotizacion): string {
+  const { cuotas } = solicitud.condiciones
+  if (cuotas === 'MAXIMA') return 'máximas cuotas'
+  if (cuotas === null) return 'cuotas de cada compañía'
+  return cuotas === 1 ? '1 cuota' : `${cuotas} cuotas`
 }
 
 export function Multicotizador() {
@@ -84,7 +111,7 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
 
   const [aseguradoras, setAseguradoras] = useState<AseguradoraDelMulticotizador[] | null>(null)
   const [errorDeCarga, setErrorDeCarga] = useState<string | null>(null)
-  const [formulario, setFormulario] = useState<FormularioMulticotizador>(() => formularioVacio([], tipo))
+  const [formulario, setFormulario] = useState<FormularioMulticotizador>(() => formularioVacio([], tipo, condicionesGuardadas()))
   const [aviso, setAviso] = useState<string | null>(null)
   const [tarjetas, setTarjetas] = useState<Record<IdAseguradora, EstadoDeTarjeta>>({})
   const [cotizada, setCotizada] = useState<SolicitudDeCotizacion | null>(null)
@@ -153,14 +180,15 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
       setAviso(solicitud)
       return
     }
-    const aCotizar = aseguradoras.filter(
-      (a) => formulario.aseguradoras.includes(a.id) && !a.noDisponible && a.tipos.includes(solicitud.vehiculo.tipo),
-    )
+    const elegidas = aseguradorasACotizar(formulario, aseguradoras)
+    const aCotizar = aseguradoras.filter((a) => elegidas.includes(a.id) && !a.noDisponible && a.tipos.includes(solicitud.vehiculo.tipo))
     if (aCotizar.length === 0) {
       setAviso('Ninguna de las compañías elegidas cotiza este tipo de vehículo.')
       return
     }
     setAviso(null)
+    // La próxima vez el formulario arranca con estas condiciones comerciales.
+    guardarCondiciones(condicionesDe(formulario))
     setMensaje(null)
     const cambioElRiesgo = !cotizada || riesgoDe(cotizada) !== riesgoDe(solicitud)
     setCotizada(solicitud)
@@ -195,7 +223,8 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
 
   const empezarDeNuevo = () => {
     for (const id of Object.keys(pedidos.current)) pedidos.current[id] = (pedidos.current[id] ?? 0) + 1
-    setFormulario((previo) => ({ ...formularioVacio(previo.aseguradoras, tipo), medioDePago: previo.medioDePago }))
+    // Las condiciones comerciales y las compañías elegidas no son de este cliente: se conservan.
+    setFormulario((previo) => ({ ...formularioVacio(previo.aseguradoras, tipo, condicionesDe(previo)), todas: previo.todas }))
     setTarjetas({})
     setCotizada(null)
     setSeleccionadas(new Set())
@@ -231,20 +260,24 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
   }, [cotizada, formulario])
 
   const elegidas = [...seleccionadas].map((clave) => coberturas.get(clave)).filter((c): c is CoberturaCotizada => c !== undefined)
-  const faltaNombre = !formulario.nombre.trim() && formulario.clienteId === null
 
   const armarPresupuesto = async () => {
     if (!cotizada || elegidas.length === 0) return
     const v = cotizada.vehiculo
-    const extras = [v.ceroKm && '0 km', v.gnc && 'con GNC', v.rastreo && 'con rastreo'].filter(Boolean).join(', ')
+    const c = cotizada.condiciones
+    const scoring = [v.scoring.grua && 'grúa', v.scoring.alarma && 'alarma', v.scoring.garaje && 'garaje'].filter(Boolean).join(', ')
+    const extras = [v.ceroKm && '0 km', tieneRastreador(v) && `rastreador: ${NOMBRE_RASTREADOR[v.rastreador].toLowerCase()}`, scoring && `con ${scoring}`]
+      .filter(Boolean)
+      .join(', ')
+    const accesorios = v.accesorios.map((a) => `${a.nombre} (${enPesos(a.valor)})`).join(', ')
     const datos: DatosDePresupuesto = {
       leadId: null,
       clienteId: formulario.clienteId,
-      clienteNombre: formulario.nombre.trim(),
-      telefono: formulario.telefono.trim(),
-      documento: formulario.documento.trim(),
+      clienteNombre: nombreParaMostrar(cotizada.tomador),
+      telefono: cotizada.tomador.telefono,
+      documento: documentoDelTomador(cotizada.tomador),
       sucursal: '',
-      patente: formulario.patente.trim(),
+      patente: '',
       marca: v.marca,
       modelo: [v.modelo, v.version].filter(Boolean).join(' '),
       anio: v.anio,
@@ -253,9 +286,11 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
       observaciones: [
         `Cotizado con el multicotizador el ${hoyLegible()}.`,
         v.tipo === 'MOTO' ? 'Moto.' : '',
-        `CP ${cotizada.codigoPostal}${cotizada.localidad ? ` (${cotizada.localidad})` : ''}.`,
-        `Pago: ${NOMBRE_MEDIO_DE_PAGO[cotizada.medioDePago].toLowerCase()}.`,
+        `${cotizada.localidad}, ${cotizada.provincia} (CP ${cotizada.codigoPostal}).`,
+        `Pago: ${NOMBRE_MEDIO_DE_PAGO[cotizada.medioDePago].toLowerCase()}, facturación ${NOMBRE_FACTURACION[c.facturacion].toLowerCase()}, ${cuotasLegibles(cotizada)}.`,
+        `${NOMBRE_PLAN_DE_COTIZACION[c.plan]}; tarifa ${NOMBRE_TARIFA[c.tarifa].toLowerCase()}; comisión ${NOMBRE_COMISION[c.comision].toLowerCase()}; cláusula de ajuste ${nombreDeClausula(c.clausulaAjuste).toLowerCase()}.`,
         extras ? `Vehículo ${extras}.` : '',
+        accesorios ? `Accesorios: ${accesorios}.` : '',
       ]
         .filter(Boolean)
         .join(' '),
@@ -302,13 +337,12 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
 
       <FormularioDeCotizacion
         valor={formulario}
-        alCambiar={(cambios) => setFormulario((previo) => ({ ...previo, ...cambios }))}
+        alCambiar={(cambios) => setFormulario((previo) => ({ ...previo, ...(typeof cambios === 'function' ? cambios(previo) : cambios) }))}
         aseguradoras={aseguradoras}
         cotizando={Object.values(tarjetas).some((tarjeta) => tarjeta.cotizando)}
         alCotizar={cotizar}
         alLimpiar={empezarDeNuevo}
         aviso={aviso}
-        tipoFijo
       />
 
       <ResultadosDeCotizacion
@@ -330,7 +364,6 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
             <span className="text-sm text-slate-700">
               <strong className="font-semibold">{elegidas.length}</strong> cobertura{elegidas.length === 1 ? '' : 's'} elegida
               {elegidas.length === 1 ? '' : 's'}
-              {faltaNombre && <span className="ml-2 text-amber-700">· Cargá el nombre en «Para quién» para armar el presupuesto.</span>}
             </span>
             <div className="ml-auto flex items-center gap-2">
               <Boton variante="fantasma" onClick={() => setSeleccionadas(new Set())}>
@@ -341,7 +374,7 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
                 icono="presupuestos"
                 escribe
                 cargando={armando}
-                disabled={!puedePresupuestar || faltaNombre}
+                disabled={!puedePresupuestar}
                 title={puedePresupuestar ? undefined : 'Armar un presupuesto pide permiso para editar Presupuestos.'}
                 onClick={() => void armarPresupuesto()}
               >
@@ -360,10 +393,10 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
           cobertura={emision.cobertura}
           codigoPostal={emision.codigoPostal}
           subCodigoPostal={emision.subCodigoPostal}
-          nombreSugerido={formulario.nombre}
-          documentoSugerido={formulario.documento}
+          nombreSugerido={nombreParaMostrar(formulario)}
+          documentoSugerido={documentoDelTomador(formulario)}
           telefonoSugerido={formulario.telefono}
-          patenteSugerida={formulario.patente}
+          patenteSugerida=""
           alCerrar={() => setAEmitir(null)}
           alEmitir={(resultado: EmisionGaleno) => {
             setMensaje({
@@ -377,10 +410,10 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
       {aEmitir && emision?.tipo === 'ATM' && (
         <DialogoEmitirAtm
           emision={emision}
-          nombreSugerido={formulario.nombre}
-          documentoSugerido={formulario.documento}
+          nombreSugerido={nombreParaMostrar(formulario)}
+          documentoSugerido={documentoDelTomador(formulario)}
           telefonoSugerido={formulario.telefono}
-          patenteSugerida={formulario.patente}
+          patenteSugerida=""
           alCerrar={() => setAEmitir(null)}
           alEmitir={(resultado) => {
             const numero = resultado.poliza ? `la póliza Nº ${resultado.poliza}` : resultado.propuesta ? `la propuesta Nº ${resultado.propuesta}` : `la operación ${resultado.operacion}`

@@ -168,14 +168,47 @@ export function marcasDelCatalogo(tipo: unknown): OpcionDeCatalogo[] {
   return filas.map((fila) => ({ id: fila.marca, nombre: etiquetaDeMarca(fila.marca) }))
 }
 
-export function modelosDelCatalogo(tipo: unknown, marcaId: unknown): OpcionDeCatalogo[] {
+/**
+ * El año pedido, para filtrar: null si no se pidió. Una versión sin años cargados se ofrece igual,
+ * como hace `resolverVehiculoDelCatalogo`, que la acepta con cualquier año.
+ */
+function anioPedido(anio: unknown): number | null {
+  const texto = limpiar(anio)
+  return /^\d{4}$/.test(texto) ? Number(texto) : null
+}
+
+function esDelAnio(fila: Pick<FilaDelMaestro, 'anios'>, anio: number | null): boolean {
+  if (anio === null) return true
+  const anios = aniosDe(fila)
+  return anios.length === 0 || anios.includes(anio)
+}
+
+/**
+ * Los años de una marca: todos los que ofrece alguna de sus versiones. Es para el multicotizador, que
+ * pregunta el año antes que el modelo (así lo cargan las compañías en su web): después, los modelos y
+ * las versiones se filtran por ese año.
+ */
+export function aniosDeLaMarca(tipo: unknown, marcaId: unknown): number[] {
   const cual = exigirTipo(tipo)
   const marca = limpiar(marcaId)
   if (!marca) return []
+  const filas = db().prepare('SELECT anios FROM maestro_vehiculos WHERE tipo = ? AND marca = ? AND activo = 1').all(cual, marca) as Array<Pick<FilaDelMaestro, 'anios'>>
+  const anios = new Set<number>()
+  for (const fila of filas) for (const anio of aniosDe(fila)) anios.add(anio)
+  return [...anios].sort((a, b) => b - a)
+}
+
+/** Los modelos de una marca; con `anio`, sólo los que tienen alguna versión de ese año. */
+export function modelosDelCatalogo(tipo: unknown, marcaId: unknown, anio?: unknown): OpcionDeCatalogo[] {
+  const cual = exigirTipo(tipo)
+  const marca = limpiar(marcaId)
+  if (!marca) return []
+  const delAnio = anioPedido(anio)
   const filas = db()
-    .prepare('SELECT DISTINCT modelo FROM maestro_vehiculos WHERE tipo = ? AND marca = ? AND activo = 1 ORDER BY modelo')
-    .all(cual, marca) as Array<{ modelo: string }>
-  return filas.map((fila) => ({ id: fila.modelo, nombre: fila.modelo }))
+    .prepare('SELECT modelo, anios FROM maestro_vehiculos WHERE tipo = ? AND marca = ? AND activo = 1 ORDER BY modelo')
+    .all(cual, marca) as Array<Pick<FilaDelMaestro, 'modelo' | 'anios'>>
+  const modelos = [...new Set(filas.filter((fila) => esDelAnio(fila, delAnio)).map((fila) => fila.modelo))]
+  return modelos.map((modelo) => ({ id: modelo, nombre: modelo }))
 }
 
 interface FilaDelMaestro {
@@ -191,18 +224,22 @@ interface FilaDelMaestro {
   anios: string
 }
 
-export function lineasDelCatalogo(tipo: unknown, marcaId: unknown, modeloId: unknown): LineaDeCatalogo[] {
+/** Las versiones de un modelo; con `anio`, sólo las que se ofrecen para ese año. */
+export function lineasDelCatalogo(tipo: unknown, marcaId: unknown, modeloId: unknown, anio?: unknown): LineaDeCatalogo[] {
   const cual = exigirTipo(tipo)
   const marca = limpiar(marcaId)
   const modelo = limpiar(modeloId)
   if (!marca || !modelo) return []
-  const filas = db()
-    .prepare(
-      `SELECT mtm, version, carroceria, categoria, anio_desde, anio_hasta
-         FROM maestro_vehiculos WHERE tipo = ? AND marca = ? AND modelo = ? AND activo = 1
-        ORDER BY version, carroceria`,
-    )
-    .all(cual, marca, modelo) as Array<Pick<FilaDelMaestro, 'mtm' | 'version' | 'carroceria' | 'categoria' | 'anio_desde' | 'anio_hasta'>>
+  const delAnio = anioPedido(anio)
+  const filas = (
+    db()
+      .prepare(
+        `SELECT mtm, version, carroceria, categoria, anio_desde, anio_hasta, anios
+           FROM maestro_vehiculos WHERE tipo = ? AND marca = ? AND modelo = ? AND activo = 1
+          ORDER BY version, carroceria`,
+      )
+      .all(cual, marca, modelo) as Array<Pick<FilaDelMaestro, 'mtm' | 'version' | 'carroceria' | 'categoria' | 'anio_desde' | 'anio_hasta' | 'anios'>>
+  ).filter((fila) => esDelAnio(fila, delAnio))
   // La misma versión puede venir en dos carrocerías («GOL TREND 1.6» de 3 y de 5 puertas son dos
   // códigos). Ahí la carrocería va en el nombre, porque si no la lista muestra dos renglones iguales.
   const repetidas = new Set<string>()
@@ -231,7 +268,7 @@ function filaDelCodigo(tipo: TipoDeVehiculo, mtm: string): FilaDelMaestro | unde
     .get(tipo, mtm) as FilaDelMaestro | undefined
 }
 
-function aniosDe(fila: FilaDelMaestro): number[] {
+function aniosDe(fila: Pick<FilaDelMaestro, 'anios'>): number[] {
   try {
     const anios = JSON.parse(fila.anios) as unknown
     return Array.isArray(anios) ? anios.filter((anio): anio is number => Number.isInteger(anio)).sort((a, b) => b - a) : []

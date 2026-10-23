@@ -19,10 +19,13 @@ import {
   categoriaDeCobertura,
   enPesos,
   fechaIsoDe,
+  nombreDelTomador,
   normalizarTexto,
   rangoDePorcentajes,
+  tieneRastreador,
   type AjusteDeAseguradora,
   type CoberturaCotizada,
+  type UsoDelVehiculo,
 } from '../../shared/multicotizador'
 import type { TipoDeVehiculo } from '../../shared/tipos'
 import {
@@ -55,7 +58,25 @@ import { crearClienteEquidad, ErrorDeEquidad, SERVICIOS_EQUIDAD, type ClienteEqu
 import { cotizarEquidad, type DatosDeCotizacionEquidad } from '../aseguradoras/equidad/cotizacion'
 import { credencialesEquidad } from '../servicios/config'
 import type { CotizacionDeAseguradora, CotizacionDeLaApi, CotizadorDeAseguradora, PlanDeAseguradora, SolicitudResuelta } from './aseguradora'
-import { buscarLocalidad, buscarMarca, CLAVES_CONDICION_IVA, CLAVES_MEDIO_DE_PAGO, CLAVES_USO, porPalabrasClave, rankear, sinDudas, type OpcionDeLista } from './equivalencias'
+import {
+  bajoElFormulario,
+  buscarLocalidad,
+  buscarMarca,
+  CLAVES_CONDICION_IIBB,
+  CLAVES_CONDICION_IVA,
+  CLAVES_MEDIO_DE_PAGO,
+  claveDeCuotas,
+  elegidoBajo,
+  porClausula,
+  porCuotas,
+  porFacturacion,
+  porPalabrasClave,
+  porRastreador,
+  porUso,
+  rankear,
+  sinDudas,
+  type OpcionDeLista,
+} from './equivalencias'
 import { equivalenciaGuardada, guardarEquivalencia, olvidarEquivalencia } from './equivalenciasGuardadas'
 import { opcionesDePorcentaje } from './galeno'
 
@@ -145,10 +166,10 @@ export function iibbPorDefecto(categorias: OpcionEquidad[]): string {
 }
 
 /** La variante (tipo/uso): la que nombre el uso de la solicitud; si ninguna, la primera (la API dice que va por defecto). */
-export function variantePorDefecto(variantes: VarianteEquidad[], uso: 'PARTICULAR' | 'COMERCIAL'): VarianteEquidad | null {
+export function variantePorDefecto(variantes: VarianteEquidad[], uso: UsoDelVehiculo): VarianteEquidad | null {
   const opciones = variantes.map((v) => ({ codigo: claveDeVariante(v), descripcion: v.descripcion }))
-  const porUso = porPalabrasClave(opciones, CLAVES_USO[uso])
-  return (porUso ? variantes.find((v) => claveDeVariante(v) === porUso.codigo) : null) ?? variantes[0] ?? null
+  const delUso = porUso(opciones, uso)
+  return (delUso ? variantes.find((v) => claveDeVariante(v) === delUso.codigo) : null) ?? variantes[0] ?? null
 }
 
 /** Lo que conviene revisar según lo que dijo Equidad al rechazar. */
@@ -241,7 +262,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     enMemoria('monedas', () => monedasEquidad(cliente, c)),
     enMemoria('iibb', () => categoriasIbEquidad(cliente)).catch(() => [] as OpcionEquidad[]),
     enMemoria(`clausulas:${v.anio}:${v.ceroKm}`, () => clausulasDeAjusteEquidad(cliente, c, v.anio, v.ceroKm)).catch(() => [] as OpcionEquidad[]),
-    v.rastreo ? enMemoria('alarmas', () => alarmasSatelitalesEquidad(cliente, c)).catch(() => [] as OpcionEquidad[]) : Promise.resolve([] as OpcionEquidad[]),
+    tieneRastreador(v) ? enMemoria('alarmas', () => alarmasSatelitalesEquidad(cliente, c)).catch(() => [] as OpcionEquidad[]) : Promise.resolve([] as OpcionEquidad[]),
     enMemoria(`cp:${solicitud.codigoPostal}`, () => localidadesEquidad(cliente, solicitud.codigoPostal)).catch(() => [] as LocalidadEquidad[]),
   ])
 
@@ -285,8 +306,9 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     planComercial && moneda
       ? await enMemoria(`modos:${c.rama}:${tipoPoliza}:${productor}:${vigencia}:${planComercial}:${moneda}`, () => modosDeFacturacionEquidad(cliente, c, { tipoPoliza, productor, vigenciaDesde: vigencia, planComercial, moneda }))
       : []
-  const modoFacturacion = valido(elegidos.modoFacturacion, modos) ?? modos[0]?.codigo ?? ''
-  ajustes.push({
+  const { facturacion, cuotas, clausulaAjuste: clausulaPedida } = solicitud.condiciones
+  const modoFacturacion = valido(elegidoBajo(elegidos.modoFacturacion, facturacion), modos) ?? porFacturacion(modos, facturacion)?.codigo ?? modos[0]?.codigo ?? ''
+  ajustes.push(bajoElFormulario(facturacion, {
     campo: 'modoFacturacion',
     titulo: 'Vigencia / modo de facturación',
     ayuda: 'La «Vigencia» de la web de Equidad (anual, semestral, mensual…). Cambia las cuotas disponibles y el precio.',
@@ -295,35 +317,44 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     obligatorio: true,
     dependeDe: 'planComercial',
     destacado: true,
-  })
+  }))
   const formas = modoFacturacion ? await enMemoria(`formas:${c.rama}:${planComercial}:${modoFacturacion}:${moneda}`, () => formasDePagoEquidad(cliente, c, { planComercial, modoFacturacion, moneda })) : []
-  const formaDePago = valido(elegidos.formaDePago, formas) ?? porPalabrasClave(formas, CLAVES_MEDIO_DE_PAGO[solicitud.medioDePago])?.codigo ?? formas[0]?.codigo ?? ''
-  ajustes.push({
+  const formaDePago =
+    valido(elegidoBajo(elegidos.formaDePago, solicitud.medioDePago), formas) ??
+    porPalabrasClave(formas, CLAVES_MEDIO_DE_PAGO[solicitud.medioDePago])?.codigo ??
+    formas[0]?.codigo ??
+    ''
+  ajustes.push(bajoElFormulario(solicitud.medioDePago, {
     campo: 'formaDePago',
     titulo: 'Forma de pago',
-    ayuda: 'Arranca en la que corresponde al medio de pago de la solicitud. Cada una lleva su propio recargo financiero.',
+    ayuda: 'Arranca en la que corresponde a la forma de pago del formulario. Cada una lleva su propio recargo financiero.',
     opciones: opcionesDe(formas),
     valor: formaDePago,
     obligatorio: true,
     dependeDe: 'modoFacturacion',
     destacado: true,
-  })
+  }))
   const condiciones = formaDePago
     ? await enMemoria(`condiciones:${c.rama}:${tipoPoliza}:${productor}:${vigencia}:${planComercial}:${modoFacturacion}:${moneda}:${formaDePago}`, () =>
         condicionesDePagoEquidad(cliente, c, { vigenciaDesde: vigencia, productor, planComercial, modoFacturacion, moneda, tipoPoliza, formaDePago }),
       )
     : []
-  const condicionDePago = valido(elegidos.condicionDePago, condiciones) ?? condiciones.find((cond) => cond.porDefecto)?.codigo ?? condiciones[0]?.codigo ?? ''
-  ajustes.push({
+  const condicionDePago =
+    valido(elegidoBajo(elegidos.condicionDePago, claveDeCuotas(cuotas)), condiciones) ??
+    porCuotas(condiciones, cuotas)?.codigo ??
+    condiciones.find((cond) => cond.porDefecto)?.codigo ??
+    condiciones[0]?.codigo ??
+    ''
+  ajustes.push(bajoElFormulario(claveDeCuotas(cuotas), {
     campo: 'condicionDePago',
     titulo: 'Cuotas / condición de pago',
-    ayuda: 'Las «Cuotas» de la web de Equidad. Arranca en la que Equidad marca por defecto para esta forma de pago.',
+    ayuda: 'Las «Cuotas» de la web de Equidad. Arranca en las del formulario; si Equidad no tiene esa cantidad, en la que marca por defecto para esta forma de pago.',
     opciones: opcionesDe(condiciones),
     valor: condicionDePago,
     obligatorio: true,
     dependeDe: 'formaDePago',
     destacado: true,
-  })
+  }))
 
   // La bonificación y el recargo administrativo, como en Galeno: sin elegirlos, Equidad aplica los del plan.
   const opcionesDeBonificacion = opcionesDePorcentaje(60, 5)
@@ -352,8 +383,9 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   ajustes.push(ajusteRecargo)
 
   // La cláusula de ajuste, a la vista: cambia el precio de todo lo que depende de la suma asegurada.
-  const clausulaAjuste = valido(elegidos.clausulaAjuste, clausulas) ?? clausulas[0]?.codigo ?? ''
-  ajustes.push({
+  const clausulaAjuste =
+    valido(elegidoBajo(elegidos.clausulaAjuste, clausulaPedida), clausulas) ?? porClausula(clausulas, clausulaPedida)?.codigo ?? clausulas[0]?.codigo ?? ''
+  ajustes.push(bajoElFormulario(clausulaPedida, {
     campo: 'clausulaAjuste',
     titulo: 'Cláusula de ajuste',
     ayuda: clausulas.length === 0 ? 'Equidad no devolvió cláusulas de ajuste para este año: se cotiza sin cláusula.' : 'La «Cláusula de ajuste» de la web de Equidad para el año del vehículo.',
@@ -361,17 +393,21 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     valor: clausulaAjuste,
     obligatorio: false,
     destacado: true,
-  })
+  }))
 
   // 3. Lo técnico: IVA, ingresos brutos, alarma satelital.
   const ivas = tipoPoliza ? await enMemoria(`ivas:${c.rama}:${tipoPoliza}`, () => categoriasIvaEquidad(cliente, c, tipoPoliza)).catch(() => [] as OpcionEquidad[]) : []
-  const iva = valido(elegidos.iva, ivas) ?? porPalabrasClave(ivas, CLAVES_CONDICION_IVA[solicitud.tomador.condicionIva])?.codigo ?? ivas[0]?.codigo ?? ''
-  ajustes.push({ campo: 'iva', titulo: 'Categoría de IVA', opciones: opcionesDe(ivas), valor: iva, obligatorio: true, dependeDe: 'tipoPoliza' })
-  const iibb = valido(elegidos.iibb, iibbs) ?? iibbPorDefecto(iibbs)
-  ajustes.push({ campo: 'iibb', titulo: 'Ingresos brutos', opciones: opcionesDe(iibbs), valor: iibb, obligatorio: iibbs.length > 0 })
-  const alarmaSatelital = v.rastreo ? (valido(elegidos.alarmaSatelital, alarmas) ?? alarmas[0]?.codigo ?? '') : ''
-  if (v.rastreo) {
-    ajustes.push({
+  const { condicionIva, ingresosBrutos } = solicitud.tomador
+  const iva = valido(elegidoBajo(elegidos.iva, condicionIva), ivas) ?? porPalabrasClave(ivas, CLAVES_CONDICION_IVA[condicionIva])?.codigo ?? ivas[0]?.codigo ?? ''
+  ajustes.push(bajoElFormulario(condicionIva, { campo: 'iva', titulo: 'Categoría de IVA', opciones: opcionesDe(ivas), valor: iva, obligatorio: true, dependeDe: 'tipoPoliza' }))
+  const iibb = valido(elegidoBajo(elegidos.iibb, ingresosBrutos), iibbs) ?? porPalabrasClave(iibbs, CLAVES_CONDICION_IIBB[ingresosBrutos])?.codigo ?? iibbPorDefecto(iibbs)
+  ajustes.push(bajoElFormulario(ingresosBrutos, { campo: 'iibb', titulo: 'Ingresos brutos', opciones: opcionesDe(iibbs), valor: iibb, obligatorio: iibbs.length > 0 }))
+  const conRastreo = tieneRastreador(v)
+  const alarmaSatelital = conRastreo
+    ? (valido(elegidoBajo(elegidos.alarmaSatelital, v.rastreador), alarmas) ?? porRastreador(alarmas, v.rastreador)?.codigo ?? alarmas[0]?.codigo ?? '')
+    : ''
+  if (conRastreo) {
+    ajustes.push(bajoElFormulario(v.rastreador, {
       campo: 'alarmaSatelital',
       titulo: 'Equipo de rastreo en Equidad',
       ayuda: alarmas.length === 0 ? 'Equidad no devolvió alarmas satelitales: se cotiza con rastreo sin indicar cuál.' : 'Qué equipo de rastreo lleva, de la lista de Equidad.',
@@ -379,7 +415,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
       valor: alarmaSatelital,
       obligatorio: false,
       porSolicitud: true,
-    })
+    }))
   }
 
   // 4. La localidad y el vehículo.
@@ -400,8 +436,9 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   const elegido = await vehiculoEnEquidad(cliente, c, solicitud, elegidos, ajustes)
   const variantes = elegido.vehiculo ? await enMemoria(`variantes:${claveDeVehiculo(elegido.vehiculo)}`, () => variantesEquidad(cliente, c, elegido.vehiculo!)).catch(() => [] as VarianteEquidad[]) : []
   const variantesComoLista = variantes.map((variante) => ({ codigo: claveDeVariante(variante), descripcion: variante.descripcion || claveDeVariante(variante) }))
-  const varianteCodigo = valido(elegidos.variante, variantesComoLista) ?? (variantePorDefecto(variantes, v.uso) ? claveDeVariante(variantePorDefecto(variantes, v.uso)!) : '')
-  ajustes.push({
+  const delUso = variantePorDefecto(variantes, v.uso)
+  const varianteCodigo = valido(elegidoBajo(elegidos.variante, v.uso), variantesComoLista) ?? (delUso ? claveDeVariante(delUso) : '')
+  ajustes.push(bajoElFormulario(v.uso, {
     campo: 'variante',
     titulo: 'Tipo / uso en Equidad',
     ayuda: elegido.vehiculo && variantes.length === 0 ? 'Equidad no devolvió variantes para ese vehículo: elegí otra versión.' : 'La variante (tipo/uso) del vehículo en Equidad: la primera es la que su web pone por defecto.',
@@ -410,7 +447,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     obligatorio: true,
     dependeDe: 'version',
     porSolicitud: true,
-  })
+  }))
   const variante = variantes.find((variante) => claveDeVariante(variante) === varianteCodigo) ?? null
 
   const faltan = ajustes.filter((ajuste) => ajuste.obligatorio && !ajuste.valor)
@@ -452,8 +489,8 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     usuario: c.usuario,
     rama: c.rama,
     tipoPoliza,
-    tomadorNombre: solicitud.tomador.nombre || 'A COTIZAR',
-    tomadorCuit: solicitud.tomador.tipoPersona === 'JURIDICA' ? solicitud.tomador.documento.replace(/\D/g, '') : '',
+    tomadorNombre: nombreDelTomador(solicitud.tomador) || 'A COTIZAR',
+    tomadorCuit: solicitud.tomador.tipoPersona === 'JURIDICA' ? solicitud.tomador.cuit.replace(/\D/g, '') : '',
     tomadorTipoPersona: solicitud.tomador.tipoPersona === 'JURIDICA' ? '2' : '1',
     tomadorIva: iva,
     tomadorIibb: iibb,
@@ -479,11 +516,11 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
       varianteAIR: variante.varianteAIR,
       clausulaAjuste,
       adicionalGranizo: '',
-      rastreo: v.rastreo,
+      rastreo: conRastreo,
       alarmaSatelital,
       gnc: v.gnc,
       sumaAsegurada,
-      alarma: false,
+      alarma: v.scoring.alarma,
       accesorios: [],
     },
   }

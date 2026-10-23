@@ -378,6 +378,7 @@ export interface ApiDm {
     importarAhora: Remota<'vehiculos:importarAhora'>
     marcas: Remota<'vehiculos:marcas'>
     modelos: Remota<'vehiculos:modelos'>
+    aniosDeMarca: Remota<'vehiculos:aniosDeMarca'>
     lineas: Remota<'vehiculos:lineas'>
     anios: Remota<'vehiculos:anios'>
     resolver: Remota<'vehiculos:resolver'>

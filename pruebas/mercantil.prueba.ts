@@ -24,6 +24,7 @@ import {
 import { armarPedidoDeCotizacion, leerRespuestaDeCotizacion, listaDeCoberturas, numeroDeMercantil, RUTA_COTIZACION } from '../src/main/aseguradoras/mercantil/cotizacion'
 import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
 import { consejoParaElRechazo, cuotasPorDefecto, ID_MERCANTIL, mercantil, olvidarListasDeMercantil, usarCuentaDeMercantilDePrueba } from '../src/main/multicotizador/mercantil'
+import type { CuotasDeseadas } from '../src/shared/multicotizador'
 
 type Prueba = { after: (fn: () => void) => void }
 
@@ -340,15 +341,30 @@ function solicitud(cambios: Partial<SolicitudResuelta['vehiculo']> = {}, resto: 
       uso: 'PARTICULAR',
       gnc: false,
       valorGnc: null,
-      rastreo: false,
+      rastreador: 'SIN_RASTREADOR',
+      scoring: { grua: false, alarma: false, garaje: false },
+      accesorios: [],
       sumaAsegurada: null,
       ...cambios,
     },
-    tomador: { nombre: '', documento: '', telefono: '', tipoPersona: 'FISICA', condicionIva: 'CONSUMIDOR_FINAL' },
+    tomador: {
+      nombre: '',
+      apellido: '',
+      dni: '',
+      cuit: '',
+      telefono: '',
+      tipoPersona: 'FISICA',
+      condicionIva: 'CONSUMIDOR_FINAL',
+      ingresosBrutos: 'CONSUMIDOR_FINAL',
+      sexo: null,
+      fechaNacimiento: '',
+    },
+    provincia: 'Buenos Aires',
     codigoPostal: '1870',
     localidad: 'Avellaneda',
     vigenciaDesde: '2026-10-20',
     medioDePago: 'TARJETA',
+    condiciones: { plan: 'SIN_PLAN', tarifa: 'SIN_DESCUENTO', comision: 'ESTANDAR', facturacion: 'MEJOR_COSTO', clausulaAjuste: '10', cuotas: 'MAXIMA' },
     codigoInfoAuto: null,
     ...resto,
   }
@@ -420,9 +436,10 @@ test('Mercantil: cotiza buscando el vehículo por marca, modelos del año y vers
   assert.deepEqual(cuerpo.localidad, { codigo_postal: 1870 })
 
   const ajustes = Object.fromEntries(resultado.ajustes.map((a) => [a.campo, a]))
-  assert.equal(ajustes.cuotas!.valor, '12')
+  // Lo que tiene su par en el formulario lleva adelante lo que dice el formulario (ver `elegidoBajo`).
+  assert.equal(ajustes.cuotas!.valor, 'MAXIMA|12')
   assert.equal(ajustes.cuotas!.destacado, true)
-  assert.equal(ajustes.formaDePago!.valor, 'DEBITO')
+  assert.equal(ajustes.formaDePago!.valor, 'TARJETA|DEBITO')
   assert.equal(ajustes.marca!.valor, '7')
   assert.equal(ajustes.modelo!.valor, '12')
   assert.equal(ajustes.version!.valor, '320001')
@@ -454,19 +471,26 @@ test('Mercantil: con dos versiones igual de parecidas se pregunta en vez de adiv
   assert.equal(pedidos.filter((p) => p.ruta === 'vehiculos/v1/marcas').length, 1, 'las listas se guardan en memoria entre cotizaciones')
 })
 
-test('Mercantil: en efectivo se cotiza de contado, y las cuotas o la forma de pago elegidas a mano valen', async (t) => {
+test('Mercantil: las cuotas son las del formulario; sin pedir ninguna, en efectivo de contado; y lo elegido a mano vale', async (t) => {
   const pedidos = apiFalsa(t)
   assert.equal(cuotasPorDefecto('EFECTIVO'), '1')
   assert.equal(cuotasPorDefecto('DEBITO'), '12')
-  const contado = await mercantil.cotizar(solicitud({}, { medioDePago: 'EFECTIVO' }), {})
-  assert.equal(contado.estado, 'OK')
   type Cuerpo = { cuotas: number; pago: { tipo_pago: string }; iva: number }
+  const conCuotas = (cuotas: CuotasDeseadas) => ({ ...solicitud().condiciones, facturacion: 'MENSUAL' as const, cuotas })
+  await mercantil.cotizar(solicitud({}, { medioDePago: 'EFECTIVO', condiciones: { ...solicitud().condiciones, cuotas: 'MAXIMA' } }), {})
+  assert.equal((JSON.parse(pedidos.at(-1)!.cuerpo) as Cuerpo).cuotas, 12, 'la cantidad máxima posible')
+  await mercantil.cotizar(solicitud({}, { condiciones: conCuotas(3) }), {})
+  assert.equal((JSON.parse(pedidos.at(-1)!.cuerpo) as Cuerpo).cuotas, 3)
+  await mercantil.cotizar(solicitud({}, { condiciones: conCuotas(5) }), {})
+  assert.equal((JSON.parse(pedidos.at(-1)!.cuerpo) as Cuerpo).cuotas, 12, 'Mercantil no tiene 5: con tarjeta, las 12 de siempre')
+  const contado = await mercantil.cotizar(solicitud({}, { medioDePago: 'EFECTIVO', condiciones: conCuotas(null) }), {})
+  assert.equal(contado.estado, 'OK')
   let cuerpo = JSON.parse(pedidos.at(-1)!.cuerpo) as Cuerpo
   assert.equal(cuerpo.cuotas, 1)
   assert.equal(cuerpo.pago.tipo_pago, 'C')
   assert.equal(contado.coberturas[0]!.cuota, 120000, 'de contado, la cuota es el premio')
 
-  await mercantil.cotizar(solicitud(), { cuotas: '6', formaDePago: 'C', iva: '1' })
+  await mercantil.cotizar(solicitud(), { cuotas: 'MAXIMA|6', formaDePago: 'TARJETA|C', iva: 'CONSUMIDOR_FINAL|1' })
   cuerpo = JSON.parse(pedidos.at(-1)!.cuerpo) as Cuerpo
   assert.equal(cuerpo.cuotas, 6)
   assert.equal(cuerpo.pago.tipo_pago, 'C')

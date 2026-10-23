@@ -91,7 +91,7 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos } from '../src/main/db/base'
 import { validarDatosDeEmisionAtm } from '../src/main/servicios/atm'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora } from '../src/main/servicios/multicotizador'
 import type { DatosDeEmisionAtm } from '../src/shared/tipos'
-import { enPesos, type CondicionIva, type SolicitudDeCotizacion } from '../src/shared/multicotizador'
+import { enPesos, type CondicionIva, type Facturacion, type SolicitudDeCotizacion } from '../src/shared/multicotizador'
 
 type Prueba = { after: (fn: () => void) => void }
 
@@ -334,14 +334,29 @@ function solicitud(cambios: Partial<SolicitudDeCotizacion> = {}): SolicitudDeCot
       uso: 'PARTICULAR',
       gnc: false,
       valorGnc: null,
-      rastreo: false,
+      rastreador: 'SIN_RASTREADOR',
+      scoring: { grua: false, alarma: false, garaje: false },
+      accesorios: [],
       sumaAsegurada: null,
     },
-    tomador: { nombre: '', documento: '', telefono: '', tipoPersona: 'FISICA', condicionIva: 'CONSUMIDOR_FINAL' },
+    tomador: {
+      nombre: '',
+      apellido: '',
+      dni: '',
+      cuit: '',
+      telefono: '',
+      tipoPersona: 'FISICA',
+      condicionIva: 'CONSUMIDOR_FINAL',
+      ingresosBrutos: 'CONSUMIDOR_FINAL',
+      sexo: null,
+      fechaNacimiento: '',
+    },
+    provincia: 'Buenos Aires',
     codigoPostal: '1870',
     localidad: 'Avellaneda',
     vigenciaDesde: '2026-10-10',
     medioDePago: 'TARJETA',
+    condiciones: { plan: 'SIN_PLAN', tarifa: 'SIN_DESCUENTO', comision: 'ESTANDAR', facturacion: 'MEJOR_COSTO', clausulaAjuste: '10', cuotas: 'MAXIMA' },
     ...cambios,
   }
 }
@@ -1548,15 +1563,16 @@ test('ATM: cotiza un auto de punta a punta y devuelve sus coberturas en la forma
   assert.deepEqual(
     r.ajustes.map((a) => [a.campo, a.valor]),
     [
-      ['plan', '02'],
+      // Lo que tiene su par en el formulario lleva adelante lo que dice el formulario (ver `elegidoBajo`).
+      ['plan', 'TARJETA+MEJOR_COSTO|02'],
       ['bonificacion', ''],
-      ['clausulaAjuste', '10'],
+      ['clausulaAjuste', '10|10'],
       ['iva', 'CONSUMIDOR_FINAL|CF'],
       ['marca', 'VOLKSWAGEN'],
       ['version', '460711'],
-      ['uso', '4262'],
+      ['uso', 'PARTICULAR|4262'],
       ['localidad', '1'],
-      ['alarma', '0'],
+      ['alarma', '0|0'],
     ],
   )
   const ajuste = (nombre: string) => r.ajustes.find((a) => a.campo === nombre)!
@@ -1564,8 +1580,8 @@ test('ATM: cotiza un auto de punta a punta y devuelve sus coberturas en la forma
   assert.equal(ajuste('version').opciones[0]?.texto, `TIGUAN 2.0 TSI 4MOTION · ${enPesos(21_800_000)}`)
   assert.ok(!ajuste('version').opciones.some((o) => o.valor === '460100'), 'el Gol no está para 2012')
   assert.deepEqual(ajuste('uso').opciones, [
-    { valor: '4262', texto: 'PARTICULAR (4262)' },
-    { valor: '4263', texto: 'COMERCIAL (4263)' },
+    { valor: 'PARTICULAR|4262', texto: 'PARTICULAR (4262)' },
+    { valor: 'PARTICULAR|4263', texto: 'COMERCIAL (4263)' },
   ])
   assert.deepEqual(
     r.ajustes.filter((a) => a.porSolicitud).map((a) => a.campo),
@@ -1582,7 +1598,7 @@ test('ATM: cotiza un auto de punta a punta y devuelve sus coberturas en la forma
   assert.ok(!sinLaClave(r), 'la clave no aparece en ningún lado')
 
   // La segunda cotización no vuelve a pedir vendedores ni planes.
-  await atm.cotizar(resuelta(), { clausulaAjuste: '0', bonificacion: '15', alarma: '1', localidad: '2' })
+  await atm.cotizar(resuelta(), { clausulaAjuste: '10|0', bonificacion: '15', alarma: '0|1', localidad: '2' })
   assert.equal(falso.pedidos.length, 4)
   assert.equal(campo(falso, 'bien', 'ajuste'), '0')
   assert.equal(campo(falso, 'asegurado', 'bonificacion'), '15')
@@ -1600,8 +1616,15 @@ test('ATM: el plan sale del medio de pago, salvo que se elija otro; con vendedor
   assert.equal(await plan({ medioDePago: 'TARJETA' }), '02')
   assert.equal(await plan({ medioDePago: 'DEBITO' }), '11')
   assert.equal(await plan({ medioDePago: 'EFECTIVO' }), '22')
-  assert.equal(await plan({ medioDePago: 'TARJETA' }, { plan: '24' }), '24')
-  assert.equal(await plan({ medioDePago: 'TARJETA' }, { plan: '99' }), '02', 'uno que no está en la lista vuelve al de por defecto')
+  assert.equal(await plan({ medioDePago: 'TARJETA' }, { plan: 'TARJETA+MEJOR_COSTO|24' }), '24')
+  assert.equal(await plan({ medioDePago: 'TARJETA' }, { plan: 'TARJETA+MEJOR_COSTO|99' }), '02', 'uno que no está en la lista vuelve al de por defecto')
+  assert.equal(await plan({ medioDePago: 'DEBITO' }, { plan: 'TARJETA+MEJOR_COSTO|24' }), '11', 'elegido con otra forma de pago en el formulario, ya no vale')
+  assert.equal(await plan({ medioDePago: 'TARJETA' }, { plan: '24' }), '02', 'lo guardado antes de que lo pidiera el formulario no manda')
+  // La facturación del formulario: el plan de esa forma de pago que factura con ese período.
+  const conFacturacion = (facturacion: Facturacion) => ({ ...solicitud().condiciones, facturacion, cuotas: null })
+  assert.equal(await plan({ medioDePago: 'TARJETA', condiciones: conFacturacion('SEMESTRAL') }), '24')
+  assert.equal(await plan({ medioDePago: 'EFECTIVO', condiciones: conFacturacion('TRIMESTRAL') }), '21')
+  assert.equal(await plan({ medioDePago: 'TARJETA', condiciones: conFacturacion('ANUAL') }), '02', 'sin uno de ese período, el de siempre')
   assert.equal(campo(falso, 'usuario', 'vendedor'), '0956102698')
   assert.ok(!falso.pedidos.some((p) => p.url.endsWith('ws_vendedores')))
 })
@@ -1623,16 +1646,19 @@ test('ATM: la condición de IVA va con el código de ATM y los ingresos brutos q
     if (!iibb) {
       assert.equal(ajuste, undefined, 'consumidor final no elige ingresos brutos')
     } else {
-      assert.equal(ajuste?.valor, iibb)
+      assert.equal(ajuste?.valor, `CONSUMIDOR_FINAL|${iibb}`)
       assert.equal(ajuste?.obligatorio, iva !== 'EX', condicion)
     }
   }
   // Elegido a mano.
-  await atm.cotizar(conIva('RESPONSABLE_INSCRIPTO'), { iibb: 'I1' })
+  await atm.cotizar(conIva('RESPONSABLE_INSCRIPTO'), { iibb: 'CONSUMIDOR_FINAL|I1' })
   assert.equal(campo(falso, 'asegurado', 'codigo_iibb'), 'I1')
   // Régimen simplificado no es para un inscripto: vuelve al de por defecto.
-  await atm.cotizar(conIva('RESPONSABLE_INSCRIPTO'), { iibb: 'I4' })
+  await atm.cotizar(conIva('RESPONSABLE_INSCRIPTO'), { iibb: 'CONSUMIDOR_FINAL|I4' })
   assert.equal(campo(falso, 'asegurado', 'codigo_iibb'), 'I0')
+  // Los ingresos brutos del formulario: convenio multilateral es el I1 de ATM.
+  await atm.cotizar(resuelta({ tomador: { ...solicitud().tomador, condicionIva: 'RESPONSABLE_INSCRIPTO', ingresosBrutos: 'CONVENIO_MULTILATERAL' } }), {})
+  assert.equal(campo(falso, 'asegurado', 'codigo_iibb'), 'I1')
   // Cambiar el IVA desde la tarjeta cambia también los ingresos brutos. La opción lleva adelante la
   // condición del formulario: mientras el formulario diga lo mismo, vale lo elegido en la tarjeta.
   const aMano = await atm.cotizar(conIva('CONSUMIDOR_FINAL'), { iva: 'CONSUMIDOR_FINAL|MT' })
@@ -1768,7 +1794,7 @@ test('ATM: si no tiene dada de alta la versión elegida sola, cotiza con la más
   assert.equal(version.valor, '460712')
   assert.match(version.opciones.find((o) => o.valor === '460711')?.texto ?? '', / · ATM no la tiene$/)
   assert.doesNotMatch(version.opciones.find((o) => o.valor === '460712')?.texto ?? '', /no la tiene/)
-  assert.equal(r.ajustes.find((a) => a.campo === 'uso')?.valor, '4262')
+  assert.equal(r.ajustes.find((a) => a.campo === 'uso')?.valor, 'PARTICULAR|4262')
   assert.equal(r.revisar, undefined)
   assert.deepEqual(
     (r.detalleTecnico as { intentos: Array<{ codigo: string; resultado: string }> }).intentos.map((i) => [i.codigo, i.resultado]),
@@ -1797,7 +1823,7 @@ test('ATM: elegida a mano no se cambia de versión, y si no tiene ninguna lo dic
   const ninguna = atmFalso(t, { contestar: () => noRegistrado })
   const codigos = () => ninguna.cotizados.map((docIn) => hijo(hijo(docIn, 'bien'), 'cod_infoauto')?.texto)
   // Con el uso elegido a mano el rechazo puede ser por el uso: se prueba la otra, pero no se anotan.
-  const conUso = await atm.cotizar(resuelta(), { uso: '4262' })
+  const conUso = await atm.cotizar(resuelta(), { uso: 'PARTICULAR|4262' })
   assert.equal(conUso.estado, 'ERROR')
   assert.deepEqual(codigos(), ['460711', '460712'])
   assert.ok(conUso.ajustes.find((a) => a.campo === 'version')!.opciones.every((o) => !o.texto.includes('no la tiene')))
@@ -2077,26 +2103,30 @@ test('ATM: si sólo tiene el vehículo con el otro uso, cotiza con ése y lo avi
   assert.equal(campo(falso, 'bien', 'uso'), '4262')
   assert.ok(gol.avisos.includes('ATM tiene este vehículo sólo con uso particular: se cotizó con ése.'), gol.avisos.join(' | '))
   // Elegido a mano, no se avisa: la persona ya lo sabe.
-  const aMano = await atm.cotizar(conVehiculo({ modelo: 'Gol Trend', version: '1.6 Pack I', anio: '2020', uso: 'COMERCIAL' }), { uso: '4262' })
+  const aMano = await atm.cotizar(conVehiculo({ modelo: 'Gol Trend', version: '1.6 Pack I', anio: '2020', uso: 'COMERCIAL' }), { uso: 'COMERCIAL|4262' })
   assert.ok(!aMano.avisos.some((a) => /sólo con uso/.test(a)))
 })
 
 test('ATM: con rastreo satelital se elige el equipo; si no, se cotiza sin rastreo y se avisa', async (t) => {
   const falso = atmFalso(t)
-  const conRastreo = conVehiculo({ rastreo: true })
+  const conRastreo = conVehiculo({ rastreador: 'OTRO' })
   const sinElegir = await atm.cotizar(conRastreo, {})
   assert.equal(campo(falso, 'bien', 'rastreo'), 'N')
   assert.match(sinElegir.avisos.join(' '), /elegí el equipo en los ajustes de ATM/)
   assert.deepEqual(
     sinElegir.ajustes.find((a) => a.campo === 'rastreo')?.opciones,
     [
-      { valor: '7', texto: 'LO JACK' },
-      { valor: '8', texto: 'PROTEGIDO GPS' },
+      { valor: 'OTRO|7', texto: 'LO JACK' },
+      { valor: 'OTRO|8', texto: 'PROTEGIDO GPS' },
     ],
   )
-  const elegido = await atm.cotizar(conRastreo, { rastreo: '7' })
+  const elegido = await atm.cotizar(conRastreo, { rastreo: 'OTRO|7' })
   assert.equal(campo(falso, 'bien', 'rastreo'), '7')
   assert.deepEqual(elegido.avisos, [])
+  // Con la marca del rastreador en el formulario, ATM elige su equipo solo.
+  const loJack = await atm.cotizar(conVehiculo({ rastreador: 'LO_JACK' }), {})
+  assert.equal(campo(falso, 'bien', 'rastreo'), '7')
+  assert.deepEqual(loJack.avisos, [])
 })
 
 test('ATM: una moto va con su tipo de uso, sin uso de auto ni cláusula de ajuste', async (t) => {

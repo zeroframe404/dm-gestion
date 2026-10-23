@@ -4,16 +4,37 @@
 //
 // Los permisos los controla ipc.ts; acá sólo se decide qué números viajan (la comisión, no para todos).
 import {
+  CLAUSULAS_DE_AJUSTE,
+  COMISIONES,
+  CONDICIONES_IIBB,
   CONDICIONES_IVA,
+  FACTURACIONES,
+  MAXIMO_DE_CUOTAS,
   MEDIOS_DE_PAGO,
+  PLANES_DE_COTIZACION,
+  RASTREADORES,
+  SEXOS,
+  TARIFAS,
   TIPOS_DE_PERSONA,
   USOS_DEL_VEHICULO,
+  esAccesorio,
+  gncDe,
   normalizarTexto,
+  type AccesorioACotizar,
   type AseguradoraDelMulticotizador,
+  type ClausulaDeAjuste,
+  type Comision,
+  type CondicionIibb,
   type CondicionIva,
+  type CuotasDeseadas,
+  type Facturacion,
   type MedioDePago,
+  type PlanDeCotizacion,
+  type Rastreador,
   type ResultadoDeAseguradora,
+  type Sexo,
   type SolicitudDeCotizacion,
+  type Tarifa,
   type TipoDePersona,
   type UsoDelVehiculo,
 } from '../../shared/multicotizador'
@@ -55,10 +76,41 @@ function montoOpcional(valor: unknown, campo: string): number | null {
   return Math.round(valor)
 }
 
+function fechaOpcional(valor: unknown, campo: string): string {
+  if (valor === null || valor === undefined || valor === '') return ''
+  if (typeof valor !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(valor) || Number.isNaN(new Date(`${valor}T00:00:00`).getTime())) {
+    throw new ErrorDeNegocio(`${campo} no es válida.`)
+  }
+  return valor
+}
+
+/** Hasta cuántos accesorios se declaran: más que esto ya no es un vehículo, es un error de la pantalla. */
+const MAXIMO_DE_ACCESORIOS = 40
+
+function validarAccesorios(valor: unknown): AccesorioACotizar[] {
+  if (valor === null || valor === undefined) return []
+  if (!Array.isArray(valor) || valor.length > MAXIMO_DE_ACCESORIOS) throw new ErrorDeNegocio('Los accesorios no son válidos.')
+  return valor.map((bruto) => {
+    const a = objeto(bruto, 'Un accesorio')
+    if (!esAccesorio(a.nombre)) throw new ErrorDeNegocio('Uno de los accesorios no está en la lista.')
+    const monto = montoOpcional(a.valor, `El valor de «${a.nombre}»`)
+    if (monto === null) throw new ErrorDeNegocio(`Falta el valor de «${a.nombre}».`)
+    return { nombre: a.nombre, valor: monto }
+  })
+}
+
+function validarCuotas(valor: unknown): CuotasDeseadas {
+  if (valor === null || valor === undefined || valor === '') return null
+  if (valor === 'MAXIMA') return 'MAXIMA'
+  if (typeof valor === 'number' && Number.isInteger(valor) && valor >= 1 && valor <= MAXIMO_DE_CUOTAS) return valor
+  throw new ErrorDeNegocio('Las cuotas no son válidas.')
+}
+
 export function validarSolicitud(valor: unknown): SolicitudDeCotizacion {
   const d = objeto(valor, 'Los datos para cotizar')
   const v = objeto(d.vehiculo, 'Los datos del vehículo')
   const t = objeto(d.tomador, 'Los datos del tomador')
+  const c = objeto(d.condiciones, 'Las condiciones de la cotización')
 
   const tipo = unoDe<TipoDeVehiculo>(v.tipo, TIPOS_DE_VEHICULO, 'El tipo de vehículo')
   const anio = texto(v.anio, 'El año del vehículo', 4, 4)
@@ -74,7 +126,12 @@ export function validarSolicitud(valor: unknown): SolicitudDeCotizacion {
     throw new ErrorDeNegocio('La fecha de vigencia no es válida.')
   }
 
-  const gnc = booleano(v.gnc, 'El equipo de GNC')
+  const s = objeto(v.scoring ?? {}, 'El scoring del vehículo')
+  const accesorios = validarAccesorios(v.accesorios)
+  const facturacion = unoDe<Facturacion>(c.facturacion, FACTURACIONES, 'La facturación deseada')
+  const cuotas = validarCuotas(c.cuotas)
+  // Con «Mejor costo» la única opción es la cantidad máxima de cuotas: es lo que hace que el costo sea el mejor.
+  if (facturacion === 'MEJOR_COSTO' && cuotas !== 'MAXIMA') throw new ErrorDeNegocio('Con «Mejor costo» las cuotas son la cantidad máxima posible.')
   return {
     vehiculo: {
       tipo,
@@ -85,22 +142,42 @@ export function validarSolicitud(valor: unknown): SolicitudDeCotizacion {
       codigoCatalogo: textoOpcional(v.codigoCatalogo, 80),
       ceroKm: booleano(v.ceroKm, 'Si es 0 km'),
       uso: unoDe<UsoDelVehiculo>(v.uso, USOS_DEL_VEHICULO, 'El uso del vehículo'),
-      gnc,
-      valorGnc: gnc ? montoOpcional(v.valorGnc, 'El valor del equipo de GNC') : null,
-      rastreo: booleano(v.rastreo, 'El rastreo satelital'),
+      rastreador: unoDe<Rastreador>(v.rastreador, RASTREADORES, 'El rastreador'),
+      scoring: {
+        grua: booleano(s.grua ?? false, 'La grúa'),
+        alarma: booleano(s.alarma ?? false, 'La alarma'),
+        garaje: booleano(s.garaje ?? false, 'El garaje'),
+      },
+      accesorios,
+      // El GNC no se cree lo que diga la pantalla: sale de los accesorios declarados.
+      ...gncDe(accesorios),
       sumaAsegurada: montoOpcional(v.sumaAsegurada, 'La suma asegurada'),
     },
     tomador: {
       nombre: textoOpcional(t.nombre, 120),
-      documento: textoOpcional(t.documento, 40),
+      apellido: textoOpcional(t.apellido, 120),
+      dni: textoOpcional(t.dni, 20),
+      cuit: textoOpcional(t.cuit, 20),
       telefono: textoOpcional(t.telefono, 60),
       tipoPersona: unoDe<TipoDePersona>(t.tipoPersona, TIPOS_DE_PERSONA, 'El tipo de persona'),
       condicionIva: unoDe<CondicionIva>(t.condicionIva, CONDICIONES_IVA, 'La condición de IVA'),
+      ingresosBrutos: unoDe<CondicionIibb>(t.ingresosBrutos, CONDICIONES_IIBB, 'Ingresos brutos'),
+      sexo: t.sexo === null || t.sexo === undefined || t.sexo === '' ? null : unoDe<Sexo>(t.sexo, SEXOS, 'El sexo'),
+      fechaNacimiento: fechaOpcional(t.fechaNacimiento, 'La fecha de nacimiento'),
     },
+    provincia: textoOpcional(d.provincia, 60),
     codigoPostal,
     localidad: textoOpcional(d.localidad, 120),
     vigenciaDesde,
-    medioDePago: unoDe<MedioDePago>(d.medioDePago, MEDIOS_DE_PAGO, 'El medio de pago'),
+    medioDePago: unoDe<MedioDePago>(d.medioDePago, MEDIOS_DE_PAGO, 'La forma de pago'),
+    condiciones: {
+      plan: unoDe<PlanDeCotizacion>(c.plan, PLANES_DE_COTIZACION, 'El plan de cotización'),
+      tarifa: unoDe<Tarifa>(c.tarifa, TARIFAS, 'La tarifa'),
+      comision: unoDe<Comision>(c.comision, COMISIONES, 'La comisión'),
+      facturacion,
+      clausulaAjuste: unoDe<ClausulaDeAjuste>(c.clausulaAjuste, CLAUSULAS_DE_AJUSTE, 'La cláusula de ajuste'),
+      cuotas,
+    },
   }
 }
 
