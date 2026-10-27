@@ -691,9 +691,12 @@ function ambienteEquidad(valor: unknown): AmbienteEquidad {
 
 /** La URL base como se guarda: con esquema, sin barras de más y terminada en `/` (la misma regla que `normalizarUrlBase` del cliente). */
 function urlBaseEquidad(valor: string): string {
-  let url = valor.trim()
+  let url = valor.replace(/[\s\u200B-\u200D\uFEFF]/g, '')
   if (!url) return ''
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`
+  // Si pegan la dirección de un servicio (p. ej. `…/servlet/ar.com…hlogin`), la base es lo que llega hasta `/servlet/`.
+  const corte = url.search(/\/servlet\//i)
+  if (corte >= 0) url = url.slice(0, corte + '/servlet'.length)
   return `${url.replace(/\/+$/, '')}/`
 }
 

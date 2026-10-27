@@ -136,9 +136,12 @@ export function campo(objeto: Record<string, unknown>, claves: string[]): string
 
 /** La URL base tal como se guarda: con `https://` si no lo trae, sin barras de más y terminada en `/`. */
 export function normalizarUrlBase(valor: string): string {
-  let url = valor.trim()
+  let url = valor.replace(/[\s\u200B-\u200D\uFEFF]/g, '')
   if (!url) return ''
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`
+  // Si pegan la dirección de un servicio (p. ej. `…/servlet/ar.com…hlogin`), la base es lo que llega hasta `/servlet/`.
+  const corte = url.search(/\/servlet\//i)
+  if (corte >= 0) url = url.slice(0, corte + '/servlet'.length)
   return `${url.replace(/\/+$/, '')}/`
 }
 
