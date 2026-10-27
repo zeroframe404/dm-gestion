@@ -42,6 +42,8 @@ import type {
   MensajeDeRedVps,
   PublicacionDeRedVps,
 } from '../vps/fuenteVps'
+import { esDemo } from '../canal'
+import { paginasDeLaDemo, REDES_DE_LA_DEMO, type FuenteDeRedes } from '../demo/redes'
 import { crearFuenteVps } from './sincronizacion'
 import { limpiar } from '../importacion/normalizar'
 import { tokenDesdeElCodigo, tokenDeLargaDuracion, paginasDelUsuario, type PaginaConToken } from '../redes/meta'
@@ -90,8 +92,13 @@ function actorVps(actor: SesionUsuario): ActorDeRedesVps {
   return { nombre: actor.nombre, rol: actor.rol, sucursal: actor.sucursal.nombre }
 }
 
+/** Quien guarda las cuentas y le habla a Meta: el VPS. Demo: un simulador en memoria (ver demo/redes.ts). */
+function fuenteDeRedes(): FuenteDeRedes | null {
+  return esDemo() ? REDES_DE_LA_DEMO : crearFuenteVps()
+}
+
 function exigirVps() {
-  const vps = crearFuenteVps()
+  const vps = fuenteDeRedes()
   if (!vps) {
     throw new ErrorDeNegocio('La base del VPS no está disponible en esta computadora: Redes sociales necesita conexión con el servidor.')
   }
@@ -151,11 +158,12 @@ function exigirCredenciales(): { appId: string; appSecret: string } {
  */
 export async function panelDeRedes(actor: SesionUsuario): Promise<PanelDeRedes> {
   const base: Omit<PanelDeRedes, 'cuentas' | 'ultimoError'> = {
-    appConfigurada: credencialesMeta() !== null,
+    // Demo: la app de Meta figura cargada.
+    appConfigurada: esDemo() || credencialesMeta() !== null,
     puedeVincular: actor.rol === 'SUPER_ADMIN',
     sucursalPropia: actor.sucursal.nombre,
   }
-  const vps = crearFuenteVps()
+  const vps = fuenteDeRedes()
   if (!vps) {
     return { ...base, cuentas: [], ultimoError: 'La base del VPS no está disponible en esta computadora.' }
   }
@@ -199,16 +207,8 @@ export async function vincularConMeta(padre: BrowserWindow | null, actor: Sesion
   const sucursalLimpia = limpiar(sucursal)
   if (!sucursalLimpia) throw new ErrorDeNegocio('Elegí para qué sucursal es.')
   const vps = exigirVps()
-  const { appId, appSecret } = exigirCredenciales()
-
-  // La misma dirección que muestra la pantalla y que viajó con el ajuste: si acá se usara otra, el
-  // login de Facebook fallaría con un mensaje que no explica nada.
-  const vuelta = urlDeVueltaDeMeta()
-  const codigo = await pedirCodigoDeMeta(appId, vuelta, padre)
-  const tokenCorto = await tokenDesdeElCodigo(appId, appSecret, vuelta, codigo)
-  // Sin este paso el token de Página que sale después vencería a las dos horas.
-  const tokenLargo = await tokenDeLargaDuracion(appId, appSecret, tokenCorto)
-  const paginas = await paginasDelUsuario(tokenLargo)
+  // Demo: no hay login de Facebook; «trae» dos Páginas de ejemplo para elegir.
+  const paginas = esDemo() ? paginasDeLaDemo(sucursalLimpia) : await paginasDelLoginDeFacebook(padre)
 
   if (paginas.length === 0) {
     throw new ErrorDeNegocio(
@@ -226,6 +226,19 @@ export async function vincularConMeta(padre: BrowserWindow | null, actor: Sesion
     paginas: paginas.map((pagina) => ({ id: pagina.id, nombre: pagina.nombre, instagramUsuario: pagina.instagramUsuario })),
     vinculada: null,
   }
+}
+
+/** El login de Facebook en su ventana y las Páginas que administra esa persona, con su token. */
+async function paginasDelLoginDeFacebook(padre: BrowserWindow | null): Promise<PaginaConToken[]> {
+  const { appId, appSecret } = exigirCredenciales()
+  // La misma dirección que muestra la pantalla y que viajó con el ajuste: si acá se usara otra, el
+  // login de Facebook fallaría con un mensaje que no explica nada.
+  const vuelta = urlDeVueltaDeMeta()
+  const codigo = await pedirCodigoDeMeta(appId, vuelta, padre)
+  const tokenCorto = await tokenDesdeElCodigo(appId, appSecret, vuelta, codigo)
+  // Sin este paso el token de Página que sale después vencería a las dos horas.
+  const tokenLargo = await tokenDeLargaDuracion(appId, appSecret, tokenCorto)
+  return paginasDelUsuario(tokenLargo)
 }
 
 async function guardarPagina(vps: ReturnType<typeof exigirVps>, sucursal: string, pagina: PaginaConToken, actor: SesionUsuario): Promise<VinculoConMeta> {

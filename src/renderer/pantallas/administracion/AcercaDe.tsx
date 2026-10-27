@@ -7,6 +7,7 @@ import { BotonManual } from '../../componentes/BotonManual'
 import { Boton, Cargando, Tarjeta, haceCuanto } from '../../componentes/ui'
 import { avisoDeVencimiento, useAcceso } from '../../contexto/Acceso'
 import { useUsuarioActual } from '../../contexto/Sesion'
+import { useEsDemo, useNombreDeLaAgencia } from '../../canal'
 
 function textoDeSituacion(estado: EstadoActualizacion, canal: InfoApp['canal'] | undefined): string {
   switch (estado.situacion) {
@@ -53,6 +54,8 @@ function textoDeAcceso(acceso: EstadoDeAcceso, esSuperAdmin: boolean): string {
 
 export function AcercaDe() {
   const usuario = useUsuarioActual()
+  const esDemo = useEsDemo()
+  const nombreDeLaAgencia = useNombreDeLaAgencia()
   const [info, setInfo] = useState<InfoApp | null>(null)
   const [actualizacion, setActualizacion] = useState<EstadoActualizacion | null>(null)
   const [buscando, setBuscando] = useState(false)
@@ -94,7 +97,7 @@ export function AcercaDe() {
                 <Icono nombre="escudo" tamano={30} />
               </div>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-700">Seguros Daniel Martínez</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-700">{nombreDeLaAgencia}</p>
                 <h2 className="font-display text-3xl font-extrabold tracking-tight text-slate-900">DM Gestión</h2>
                 <p className="mt-0.5 text-sm font-medium text-slate-600">Versión {info.version}</p>
               </div>
@@ -161,7 +164,7 @@ export function AcercaDe() {
               {vencimiento && <dd className="mt-2 text-xs font-semibold text-amber-700">{vencimiento}</dd>}
             </div>
 
-            <p className="mt-8 text-xs text-slate-500">© {new Date().getFullYear()} Seguros Daniel Martínez. Software de uso interno.</p>
+            <p className="mt-8 text-xs text-slate-500">© {new Date().getFullYear()} {esDemo ? 'DM Gestión. Versión de demostración con datos ficticios.' : 'Seguros Daniel Martínez. Software de uso interno.'}</p>
           </>
         ) : (
           <Cargando />

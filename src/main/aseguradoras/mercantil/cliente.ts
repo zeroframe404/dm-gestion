@@ -14,6 +14,7 @@
 //   (apidev.mercantilandina.com.ar), al que van las credenciales de test.
 import { createHash } from 'node:crypto'
 import type { AmbienteMercantil } from '../../../shared/tipos'
+import { esDemo } from '../../canal'
 import { esFallaDeRed } from '../../servicios/red'
 
 export const URL_BASE_MERCANTIL: Record<AmbienteMercantil, string> = {
@@ -178,6 +179,8 @@ export function crearClienteMercantil(cuenta: CuentaMercantil, opciones: Opcione
   const clave = claveDeCuenta(cuenta, base)
 
   async function pedir(url: string, init: RequestInit, que: string): Promise<{ status: number; texto: string }> {
+    // Demo: nunca sale a Mercantil. La demo contesta antes (ver demo/); esto es por si algo se escapa.
+    if (esDemo()) throw new ErrorDeMercantil('La versión de demostración no se conecta con Mercantil Andina.', false)
     let respuesta: Response
     try {
       respuesta = await fetch(url, { ...init, signal: AbortSignal.timeout(ESPERA_MS) })

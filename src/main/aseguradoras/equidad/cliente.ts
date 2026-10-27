@@ -18,6 +18,7 @@
 //   `{Codigo, Mensaje}`. Códigos: 400 faltan parámetros, 401 falló la autenticación, 500 error
 //   interno, 501 no implementado, 503 no disponible.
 import { createHash } from 'node:crypto'
+import { esDemo } from '../../canal'
 import { esFallaDeRed } from '../../servicios/red'
 
 /** El prefijo de clase de todos los servicios. */
@@ -258,6 +259,8 @@ export function crearClienteEquidad(cuenta: CuentaEquidad): ClienteEquidad {
   const tieneServicio = Boolean(cuenta.usuarioDeServicio)
 
   async function pedir(url: string, init: RequestInit, que: string): Promise<{ status: number; texto: string }> {
+    // Demo: nunca sale a Equidad. La demo contesta antes (ver demo/); esto es por si algo se escapa.
+    if (esDemo()) throw new ErrorDeEquidad('La versión de demostración no se conecta con La Equidad.', false)
     let respuesta: Response
     try {
       respuesta = await fetch(url, { ...init, signal: AbortSignal.timeout(ESPERA_MS) })

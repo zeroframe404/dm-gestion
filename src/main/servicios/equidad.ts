@@ -11,6 +11,8 @@
 import type { EstadoDeAjusteCompartido, EstadoDeEquidad, ProductorDeEquidad, PruebaDeEquidad } from '../../shared/tipos'
 import { marcasEquidad, productoresEquidad, tiposDePolizaEquidad, type ContextoEquidad, type OpcionEquidad } from '../aseguradoras/equidad/catalogos'
 import { crearClienteEquidad, ErrorDeEquidad, olvidarSesionesDeEquidad, type CuentaEquidad } from '../aseguradoras/equidad/cliente'
+import { esDemo } from '../canal'
+import { estadoDeEquidadDemo, pruebaDeEquidadDemo } from '../demo/apis'
 import { olvidarListasDeEquidad } from '../multicotizador/equidad'
 import { borrarEquidadDelVps, estadoCompartidoDeEquidad, publicarSinRomper, traerEquidadDelVps } from './ajustesCompartidos'
 import { borrarEquidad, credencialesEquidad, cuentaEquidadVisible, guardarEquidad, type CredencialesEquidad } from './config'
@@ -55,6 +57,8 @@ function armarEstado(compartido: EstadoDeAjusteCompartido | null): EstadoDeEquid
 }
 
 export async function estadoEquidad(): Promise<EstadoDeEquidad> {
+  // Demo: la cuenta de Equidad figura cargada (ver demo/apis.ts).
+  if (esDemo()) return estadoDeEquidadDemo()
   return armarEstado(await compartidoSinRomper())
 }
 
@@ -63,12 +67,14 @@ export async function estadoEquidad(): Promise<EstadoDeEquidad> {
  * acá queda igual: el motivo vuelve en `compartido.error` y la pantalla lo muestra.
  */
 export async function guardarCuentaEquidad(datos: unknown, quien: string | null): Promise<EstadoDeEquidad> {
+  if (esDemo()) return estadoDeEquidadDemo()
   guardarEquidad(datos)
   olvidarLoDeLaCuentaAnterior()
   return armarEstado(await publicarSinRomper('equidadApi', quien))
 }
 
 export async function borrarCuentaEquidad(): Promise<EstadoDeEquidad> {
+  if (esDemo()) return estadoDeEquidadDemo()
   borrarEquidad()
   olvidarLoDeLaCuentaAnterior()
   await borrarEquidadDelVps().catch((error) => console.error('[ajustes] No se pudo borrar la cuenta de Equidad del VPS:', motivo(error)))
@@ -77,6 +83,7 @@ export async function borrarCuentaEquidad(): Promise<EstadoDeEquidad> {
 
 /** El botón «Traer del servidor»: adopta la cuenta publicada aunque esta computadora tenga otra. */
 export async function traerEquidadDelServidor(): Promise<EstadoDeEquidad> {
+  if (esDemo()) return estadoDeEquidadDemo()
   let resultado: Awaited<ReturnType<typeof traerEquidadDelVps>>
   try {
     resultado = await traerEquidadDelVps()
@@ -122,6 +129,7 @@ function textoDeProductores(configurado: string, lista: ProductorDeEquidad[]): s
  * catálogo (sin las que no se cotiza).
  */
 export async function probarEquidad(): Promise<PruebaDeEquidad> {
+  if (esDemo()) return pruebaDeEquidadDemo()
   const sinNada = { productores: [] as ProductorDeEquidad[], tiposDePoliza: [] as OpcionEquidad[], marcas: 0, usuarioCodigo: '', usuarioNombre: '', tokenVenceEn: null }
   const credenciales = credencialesEquidad()
   if (!credenciales) {

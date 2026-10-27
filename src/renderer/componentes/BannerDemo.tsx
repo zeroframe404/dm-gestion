@@ -10,16 +10,13 @@ export function BannerDemo({ alConectar }: { alConectar: () => void }) {
   return (
     <div role="note" className="flex items-center justify-center gap-3 bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white">
       <Icono nombre="info" tamano={14} />
-      <span>
-        Versión de demostración: datos ficticios, servidor simulado en esta computadora y APIs de compañías simuladas. Todo vuelve a
-        empezar al cerrar el programa.
-      </span>
+      <span className="truncate">Demostración: datos ficticios, servidor y APIs simulados. Todo vuelve a empezar al cerrar el programa.</span>
       <button
         type="button"
         onClick={alConectar}
-        className="rounded-md bg-white/15 px-2 py-0.5 font-bold text-white ring-1 ring-white/30 hover:bg-white/25"
+        className="shrink-0 whitespace-nowrap rounded-md bg-white/15 px-2 py-0.5 font-bold text-white ring-1 ring-white/30 hover:bg-white/25"
       >
-        Cómo conectarlo a su servidor →
+        Conectar a su servidor →
       </button>
     </div>
   )

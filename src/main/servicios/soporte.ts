@@ -21,6 +21,8 @@ import { clipboard, dialog, nativeImage, type BrowserWindow } from 'electron'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { ImagenDeReporte, ReporteCreado, ReporteDeError } from '../../shared/tipos'
+import { esDemo } from '../canal'
+import { reporteDeErrorDemo } from '../demo/apis'
 import { carpetaDatos } from '../rutas'
 import { credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
@@ -138,6 +140,9 @@ export async function enviarReporteDeError(reporte: ReporteDeError, contexto: { 
     if (contenido.length > MAXIMO_BYTES) throw new ErrorDeNegocio(`«${path.basename(ruta)}» pesa más de 5 MB.`)
     return { nombre: path.basename(ruta), tipo, contenidoBase64: contenido.toString('base64') }
   })
+
+  // Demo: el servidor de la demo no abre issues; el reporte «queda anotado» con un número inventado.
+  if (esDemo()) return reporteDeErrorDemo(titulo, imagenes.length)
 
   const { urlBase, token } = credencialesVps()
   let respuesta: Response

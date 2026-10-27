@@ -9,6 +9,8 @@
 // dentro del programa. Se abre en el navegador del sistema. Un control remoto de todas las máquinas
 // de la agencia es exactamente el tipo de acceso que conviene que siga pidiendo su propia clave.
 import type { EstadoDelMesh } from '../../shared/tipos'
+import { esDemo } from '../canal'
+import { estadoDelMeshDemo } from '../demo/apis'
 import { urlDelMesh } from './config'
 import { esFallaDeRed } from './red'
 
@@ -19,6 +21,8 @@ import { esFallaDeRed } from './red'
 const ESPERA_MAXIMA_MS = 6_000
 
 export async function estadoDelMesh(): Promise<EstadoDelMesh> {
+  // Demo: no se toca la consola de la agencia (ver demo/apis.ts).
+  if (esDemo()) return estadoDelMeshDemo()
   const url = urlDelMesh()
   const desde = Date.now()
   try {

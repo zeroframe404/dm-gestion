@@ -255,6 +255,10 @@ export function estadoGoogle(): EstadoConexionGoogle {
 // ---------------------------------------------------------------------------
 
 export function estadoMeta(): EstadoDeMeta {
+  // Demo: la app de Meta se ve cargada; las redes de la demo no salen a internet (ver `demo/redes.ts`).
+  if (esDemo()) {
+    return { configurada: true, appId: '100000000000000', urlDeRedireccion: urlDeVueltaDeMeta(), rutaDeConfig: rutaSegura(), actualizadoEn: null }
+  }
   const meta = leerConfig().meta
   return {
     configurada: Boolean(meta?.appId && meta.appSecret),

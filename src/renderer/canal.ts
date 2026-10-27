@@ -34,3 +34,8 @@ export function useCanal(): Canal {
 export function useEsDemo(): boolean {
   return useCanal() === 'demo'
 }
+
+/** El nombre de la agencia que se muestra arriba del de DM Gestión: la demo no es de ninguna. */
+export function useNombreDeLaAgencia(): string {
+  return useEsDemo() ? 'Agencia de demostración' : 'Seguros Daniel Martínez'
+}

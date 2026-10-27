@@ -12,6 +12,7 @@ import { useUsuarioActual } from '../contexto/Sesion'
 import { esAreaDePermisos, MODULO_ADMINISTRACION, MODULO_API_ASEGURADORAS, MODULOS, type IdModulo, type Modulo } from '../modulos'
 import { barraLateralColapsada, guardarBarraLateralColapsada } from '../preferencias'
 import { Icono } from './Icono'
+import { useNombreDeLaAgencia } from '../canal'
 import { InsigniaBeta } from './InsigniaBeta'
 import { cx } from './ui'
 
@@ -26,6 +27,7 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
   // Lo pendiente de esta persona, para el círculo rojo del módulo Tareas. Es el mismo número que
   // muestra la campana de la barra superior: los dos salen del mismo contexto.
   const { pendientes } = useAvisosDeTareas()
+  const nombreDeLaAgencia = useNombreDeLaAgencia()
   const [colapsada, setColapsada] = useState(barraLateralColapsada)
   // API Aseguradoras no es un área de permisos (no está en `puedeVer`/`AREAS`): son credenciales de un
   // tercero, no algo que necesite el mostrador, así que se esconde directamente por rol, igual que las
@@ -63,7 +65,7 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
         {!colapsada && (
           <div className="min-w-0">
             {/* Menos tracking que un rótulo normal: con más, el nombre no entra en el ancho de la barra. */}
-            <p className="truncate text-[10px] font-bold uppercase tracking-[0.06em] text-cielo-200">Seguros Daniel Martínez</p>
+            <p className="truncate text-[10px] font-bold uppercase tracking-[0.06em] text-cielo-200">{nombreDeLaAgencia}</p>
             <p className="font-display text-xl font-bold tracking-tight text-white">
               DM Gestión <InsigniaBeta className="ml-1 align-middle" />
             </p>

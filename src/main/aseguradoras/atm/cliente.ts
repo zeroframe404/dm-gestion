@@ -12,6 +12,7 @@
 // - `ws_vendedores` es POST con JSON (`usuario`, `password`); un usuario mal da 200 con `error: true`.
 // - `get_plans` es GET con `usa`, `seccion` y `vendedor` en minúscula y no pide autenticación.
 import type { AmbienteAtm } from '../../../shared/tipos'
+import { esDemo } from '../../canal'
 import { esFallaDeRed } from '../../servicios/red'
 import { buscar, escaparXml, leerXml, type NodoXml } from './xml'
 
@@ -114,6 +115,8 @@ export function crearClienteAtm(cuenta: CuentaAtm, opciones: OpcionesDeCliente =
   const base = (opciones.urlBase ?? URL_BASE_ATM[cuenta.ambiente]).replace(/\/+$/, '')
 
   async function pedir(url: string, init: RequestInit, espera: number, que: string): Promise<{ status: number; texto: string }> {
+    // Demo: nunca sale a ATM. La demo contesta antes (ver demo/); esto es por si algo se escapa.
+    if (esDemo()) throw new ErrorDeAtm('La versión de demostración no se conecta con ATM.', false)
     let respuesta: Response
     try {
       respuesta = await fetch(url, { ...init, signal: AbortSignal.timeout(espera) })

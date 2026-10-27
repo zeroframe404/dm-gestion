@@ -1,5 +1,6 @@
 // Configuración de Vite para el proceso principal de Electron.
-import { builtinModules } from 'node:module'
+import { builtinModules, createRequire } from 'node:module'
+import path from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import { quitarSecretos } from './scripts/secretos-de-la-agencia.mjs'
 
@@ -29,8 +30,16 @@ function sinSecretosDeLaAgencia(): Plugin {
   }
 }
 
+/**
+ * `ws` (el servidor del canal en vivo del simulador que corre adentro de la demo, ver
+ * `src/main/demo/servidor.ts`) exporta una versión «browser» que sólo tira error, y Vite la elige por
+ * defecto. Se apunta a mano a la de Node.
+ */
+const wsDeNode = path.join(path.dirname(createRequire(import.meta.url).resolve('ws/package.json')), 'wrapper.mjs')
+
 export default defineConfig({
   publicDir: false,
+  resolve: { alias: { ws: wsDeNode } },
   plugins: armandoLaDemo ? [sinSecretosDeLaAgencia()] : [],
   build: {
     outDir: 'dist/main',
