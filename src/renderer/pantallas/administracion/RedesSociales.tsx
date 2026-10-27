@@ -253,7 +253,9 @@ export function RedesSociales() {
             disabled={!puedeEditar}
             spellCheck={false}
             className="font-mono text-xs"
-            placeholder={esDemo ? `${EJEMPLO_URL_DEL_VPS}/meta/vuelta` : 'https://dmartinezseguros.com/meta/vuelta'}
+            // Sin el dominio de la agencia escrito acá: la pantalla va también en el instalador de la demo, que
+            // se le entrega a otras agencias (la de fábrica está arriba, en «La dirección de vuelta»).
+            placeholder={esDemo ? `${EJEMPLO_URL_DEL_VPS}/meta/vuelta` : 'https://<dominio de la agencia>/meta/vuelta'}
             ayuda="Sólo si cambió el dominio de la agencia. Se guarda con el botón «Guardar» de la tarjeta de arriba y sale para todas las computadoras; vacía vuelve a la de fábrica."
           />
         </div>
