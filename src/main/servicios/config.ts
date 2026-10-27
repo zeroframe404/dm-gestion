@@ -14,7 +14,10 @@ import {
   type EstadoConexionGoogle,
   type EstadoDeMeta,
 } from '../../shared/tipos'
+import { esDemo } from '../canal'
+import { credencialesDeLaDemo } from '../demo/servidor'
 import { rutaConfig } from '../rutas'
+import { TOKEN_DE_LA_DEMO } from '../../shared/demo'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
 
@@ -183,6 +186,9 @@ export function esElVpsDeProduccion(urlBase: string): boolean {
 }
 
 export function credencialesVps(): { urlBase: string; token: string } {
+  // La demo habla SÓLO con su servidor interno (ver `demo/servidor.ts`): ni el VPS de la agencia ni lo
+  // que diga un config.json. Mientras ese servidor no arrancó, una URL que no lleva a ningún lado.
+  if (esDemo()) return credencialesDeLaDemo() ?? { urlBase: 'http://127.0.0.1:9', token: TOKEN_DE_LA_DEMO }
   const vps = leerConfig().vps
   return {
     urlBase: typeof vps?.urlBase === 'string' && vps.urlBase.trim() ? vps.urlBase.trim() : VPS_URL_BASE,

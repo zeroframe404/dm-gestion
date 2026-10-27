@@ -100,6 +100,18 @@ export class VpsSimulado {
   reaccionesDe(mensajeId: string): Array<{ emoji: string; claves: string[] }>
   escuchar(puerto?: number): Promise<string>
   cerrar(): Promise<void>
+  /** Las pestañas de la base, en orden (la versión de demostración las cuenta para «Servidor (VPS)»). */
+  pestanas: Array<{ sheetId: number; titulo: string; indice: number; columnas: number; oculta: boolean; columnasOcultas: number[]; filas: Map<number, string[]> }>
+  /** Los ajustes compartidos, por clave, tal como los guarda el servidor. */
+  ajustes: Map<string, { clave: string; valor: object; huella: string; actualizadoEn: string; actualizadoPor: string | null }>
+  /** El manejador de /api/dmg/mensajes: la versión de demostración lo usa para sembrar conversaciones. */
+  atenderMensajes(
+    metodo: string,
+    ruta: string,
+    json: unknown,
+    responder: (estado: number, datos: unknown) => void,
+    busqueda: URLSearchParams,
+  ): void
 
   // --- El canal en vivo (14.0): un WebSocket en /api/dmg/vivo sobre el mismo servidor http ---------
   /** Las conexiones ya saludadas, por conexionId. Una computadora = una conexión. */

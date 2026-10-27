@@ -6,7 +6,9 @@ import type { ArgumentosDe, NombreCanal, RespuestaDe } from '../shared/canales'
 import { AREA_ELIMINABLE, esTipoEliminable, motivoDeNoPoderEliminar, rolPuedeEliminar } from '../shared/eliminacion'
 import { veLosNumerosDeLaAgencia } from '../shared/permisos'
 import type { FrescuraDeMetrica, InfoApp, PodioMensual, Resultado, SesionUsuario } from '../shared/tipos'
-import { canalActual } from './canal'
+import { canalActual, esDemo } from './canal'
+import { probarVpsEnLaDemo } from './demo/conexion'
+import { estadoDeLaDemo } from './demo/servidor'
 import { carpetaDatos, rutaBaseDeDatos, rutaConfig } from './rutas'
 import { cambiarClave, ingresar, salir } from './servicios/auth'
 import { comprobarAcceso, conectarEmisor, estadoDeAcceso, estadoDeUsuarios, subirLocales } from './servicios/baseDeUsuarios'
@@ -2285,6 +2287,8 @@ export function registrarIpc(): void {
 
   // Información de la aplicación
   manejar('app:info', () => exito(infoApp()))
+  manejar('demo:estado', () => exito(esDemo() ? estadoDeLaDemo() : null))
+  manejar('demo:probarVps', async (datos) => exito(await probarVpsEnLaDemo(datos)))
 
   // Actualizaciones automáticas
   manejar('actualizaciones:estado', () => exito(estadoDeActualizacion()))

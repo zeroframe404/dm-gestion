@@ -8,10 +8,12 @@ import { Boton, Cargando, Tarjeta, haceCuanto } from '../../componentes/ui'
 import { avisoDeVencimiento, useAcceso } from '../../contexto/Acceso'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
-function textoDeSituacion(estado: EstadoActualizacion): string {
+function textoDeSituacion(estado: EstadoActualizacion, canal: InfoApp['canal'] | undefined): string {
   switch (estado.situacion) {
     case 'deshabilitada':
-      return 'Desactivadas: esta es una versión de desarrollo, sin instalador.'
+      return canal === 'demo'
+        ? 'Desactivadas: la versión de demostración no se actualiza sola.'
+        : 'Desactivadas: esta es una versión de desarrollo, sin instalador.'
     case 'buscando':
       return 'Buscando actualizaciones…'
     case 'al-dia':
@@ -125,7 +127,8 @@ export function AcercaDe() {
               <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Actualizaciones</dt>
               <dd className="mt-2 flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-slate-800">
-                  Canal <span className="font-semibold">{actualizacion?.canal ?? 'estable'}</span> — {actualizacion ? textoDeSituacion(actualizacion) : 'Cargando…'}
+                  Canal <span className="font-semibold">{info?.canal === 'demo' ? 'demo' : (actualizacion?.canal ?? 'estable')}</span> —{' '}
+                  {actualizacion ? textoDeSituacion(actualizacion, info?.canal) : 'Cargando…'}
                 </span>
                 <Boton
                   icono="descargar"

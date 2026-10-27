@@ -11,7 +11,8 @@ import {
   vigilarErroresSueltos,
 } from './arranque'
 import { abrirBaseDeDatos, cerrarBaseDeDatos } from './db/base'
-import { nombreActual } from './canal'
+import { esDemo, nombreActual } from './canal'
+import { arrancarServidorDeLaDemo, pararServidorDeLaDemo } from './demo/servidor'
 import { cerrarPantallaDeCarga, enfocarPantallaDeCarga, mostrarPantallaDeCarga } from './pantallaDeCarga'
 import { registrarIpc } from './ipc'
 import { arrancarCartero, apurarAlCartero, pararCartero } from './mensajeria/cartero'
@@ -177,6 +178,8 @@ function crearVentana(): void {
  * migrada, TOKEN_DATOS se puede vaciar y revocar el token.
  */
 function almacenDeGitHub(enDesarrollo: boolean): AlmacenGitHub | null {
+  // La demo no conoce el repositorio de la agencia: sus usuarios viven en su servidor interno.
+  if (esDemo()) return null
   const tokens = enDesarrollo ? [process.env.DM_GESTION_TOKEN_DATOS ?? ''] : [TOKEN_DATOS, TOKEN_DATOS_ANTERIOR]
   if (!tokens.some((t) => t.trim() !== '')) return null
   return new AlmacenGitHub({
@@ -195,7 +198,10 @@ function almacenDeGitHub(enDesarrollo: boolean): AlmacenGitHub | null {
  * `sembrar` y los scripts de humo no pueden escribir la lista de usuarios de la agencia.
  */
 function almacenDelVps(enDesarrollo: boolean, semilla: AlmacenGitHub | null): AlmacenVps | null {
-  const credenciales = enDesarrollo
+  // La demo, en desarrollo o instalada, usa su servidor interno (ver `credencialesVps`).
+  const credenciales = esDemo()
+    ? credencialesVps()
+    : enDesarrollo
     ? process.env.DM_GESTION_VPS_URL
       ? { urlBase: process.env.DM_GESTION_VPS_URL, token: process.env.DM_GESTION_VPS_TOKEN ?? 'prueba' }
       : null
@@ -358,11 +364,12 @@ function arrancar(): void {
   if (app.isPackaged) Menu.setApplicationMenu(null)
   anotar(`[arranque] Electron listo a los ${milisegundosDesdeElInicio()} ms.`)
   mostrarPantallaDeCarga(() => {
-    try {
-      arrancarElPrograma()
-    } catch (error) {
-      fallaDeArranque('el arranque', error)
-    }
+    // La demo levanta primero su servidor interno: todo lo que sigue (usuarios, sincronización, canal
+    // en vivo) le pregunta a él. Sin la demo esto no espera nada.
+    const antes = esDemo() ? arrancarServidorDeLaDemo() : Promise.resolve()
+    antes
+      .then(() => arrancarElPrograma())
+      .catch((error) => fallaDeArranque(esDemo() ? 'el servidor de la demo' : 'el arranque', error))
   })
 }
 
@@ -458,6 +465,7 @@ if (!app.requestSingleInstanceLock()) {
       ['el canal en vivo', () => canal().parar()],
       ['la sincronización', detenerSincronizacion],
       ['la base de datos', cerrarBaseDeDatos],
+      ['el servidor de la demo', () => void pararServidorDeLaDemo()],
     ] as const) {
       try {
         cerrar()

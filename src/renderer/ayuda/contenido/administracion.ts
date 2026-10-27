@@ -566,6 +566,28 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
     ],
   },
 
+  'administracion.servidor': {
+    clave: 'administracion.servidor',
+    titulo: 'Administración → Servidor (VPS)',
+    resumen: 'Sólo en la versión de demostración: qué servidor usa el programa y cómo se conecta al de una agencia de verdad.',
+    secciones: [
+      {
+        titulo: 'Qué es el servidor',
+        parrafos: [
+          'DM Gestión trabaja contra un servidor propio de la agencia (un VPS): ahí viven la base de clientes y pólizas, los usuarios, los ajustes que se cargan una sola vez, el chat interno, los archivos adjuntos y los respaldos diarios. Cada computadora tiene una copia local para trabajar rápido y se sincroniza sola en el momento.',
+          'En la demo ese servidor está simulado adentro del propio programa, con datos inventados, y se vuelve a armar cada vez que se abre.',
+        ],
+      },
+      {
+        titulo: 'Cómo se conecta el de una agencia',
+        parrafos: [
+          'Se instala el servidor en el VPS, se le pone un dominio con https y un token secreto, y en cada computadora se cargan esa dirección y ese token. A partir de ahí todas las sucursales ven lo mismo.',
+          '«Probar conexión» recorre los pasos que hace el programa al conectarse. En la demo no sale a internet: explica qué se comprueba en cada paso y avisa los errores más comunes (una dirección sin https o un token demasiado corto).',
+        ],
+      },
+    ],
+  },
+
   'administracion.acerca': {
     clave: 'administracion.acerca',
     titulo: 'Administración → Acerca de',

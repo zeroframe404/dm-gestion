@@ -520,6 +520,10 @@ export interface ApiDm {
   app: {
     info: Remota<'app:info'>
   }
+  demo: {
+    estado: Remota<'demo:estado'>
+    probarVps: Remota<'demo:probarVps'>
+  }
   actualizaciones: {
     estado: Remota<'actualizaciones:estado'>
     buscarAhora: Remota<'actualizaciones:buscarAhora'>

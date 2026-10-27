@@ -33,6 +33,7 @@ import {
 import { FuenteVps } from '../vps/fuenteVps'
 import { cerrarMes, nombreDePestanaMensual, periodoACerrar } from './cartera'
 import { esAlmacenDeAdjuntos, hayAdjuntosPendientes, subirAdjuntosPendientes, usarAlmacenDeAdjuntos, verificarAdjuntosContraElServidor } from './adjuntos'
+import { esDemo } from '../canal'
 import { credencialesGoogle, credencialesParaDrive, credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
 import { reservarImportacionAutomatica, tipoDeImportacionEnCurso } from './importacion'
@@ -71,6 +72,8 @@ export function credencialesDelPuente(): { urlBase: string; token: string } | nu
   // sincroniza si DM_GESTION_VPS_URL apunta a un servidor local (el simulador), igual que
   // DM_GESTION_GITHUB_API con la base de usuarios.
   const empaquetada = (app as typeof app | undefined)?.isPackaged ?? false
+  // La demo, empaquetada o no, habla con su servidor interno (ver `credencialesVps`).
+  if (esDemo()) return credencialesVps()
   if (!empaquetada) {
     const urlBase = process.env.DM_GESTION_VPS_URL
     if (!urlBase) return null

@@ -52,6 +52,8 @@ function cambiarEstado(cambios: Partial<EstadoActualizacion>): void {
 /** Se llama una sola vez, al arrancar la app. En desarrollo no hay instalador del que actualizar. */
 export function iniciarActualizaciones(): void {
   if (!app.isPackaged) return
+  // La demo no se actualiza sola: se reparte como un instalador suelto y no tiene canal de novedades.
+  if (canalActual() === 'demo') return
 
   if (canalActual() === 'beta') {
     // La beta NO mira los Releases de versiones: lee un Release fijo («beta-canal», marcado como

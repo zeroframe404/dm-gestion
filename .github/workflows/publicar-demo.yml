@@ -1,0 +1,66 @@
+# Arma el instalador de la DEMO (la versión para mostrarle el programa a otras agencias) y lo publica en
+# el Release fijo «demo». Ver README, «Versión de demostración».
+#
+# Sólo a mano: Actions → Publicar demo → Run workflow, eligiendo la rama (por defecto `beta`). No toca
+# ningún otro Release: la demo es otro programa instalable (otro appId, otra carpeta de datos) que no se
+# actualiza solo. El armado saca del paquete el token y la dirección del VPS de la agencia y se niega a
+# seguir si alguno quedó adentro (scripts/dist-demo.mjs).
+name: Publicar demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publicar-demo
+  cancel-in-progress: false
+
+jobs:
+  publicar-demo:
+    # Windows: el instalador es NSIS y el binario nativo de better-sqlite3 es el de Windows.
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Traer el código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Correr el banco de pruebas
+        run: npm run prueba
+
+      - name: Armar el instalador de la demo
+        run: npm run dist:demo -- --numero ${{ github.run_number }}
+
+      - name: Guardar el instalador como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: dm-gestion-demo
+          path: release/DM-Gestion-Demo-Setup-*.exe
+          retention-days: 30
+
+      - name: Publicar en el Release demo
+        run: node scripts/publicar-demo.mjs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resumen
+        shell: bash
+        run: |
+          {
+            echo "### Demo publicada"
+            echo ""
+            echo "Instalador: https://github.com/${{ github.repository }}/releases/tag/demo"
+          } >> "$GITHUB_STEP_SUMMARY"

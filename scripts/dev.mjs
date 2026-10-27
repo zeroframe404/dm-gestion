@@ -48,6 +48,12 @@ function observar(archivoConfig, alReconstruir) {
   })
 }
 
+function canalPedido() {
+  if (process.argv.includes('--demo')) return { DM_GESTION_CANAL: 'demo' }
+  if (process.argv.includes('--beta')) return { DM_GESTION_CANAL: 'beta' }
+  return {}
+}
+
 function lanzarElectron(urlServidor) {
   if (procesoElectron) {
     procesoElectron.removeAllListeners('exit')
@@ -56,8 +62,9 @@ function lanzarElectron(urlServidor) {
   }
   procesoElectron = spawn(rutaElectron, ['.'], {
     stdio: 'inherit',
-    // `npm run dev:beta` abre el programa como beta (carpeta de datos y nombre propios) para ver el cartel.
-    env: { ...process.env, VITE_DEV_SERVER_URL: urlServidor, ...(process.argv.includes('--beta') ? { DM_GESTION_CANAL: 'beta' } : {}) },
+    // `npm run dev:beta` abre el programa como beta (carpeta de datos y nombre propios) para ver el cartel,
+    // y `npm run dev:demo` como la demo (servidor simulado y datos de ejemplo).
+    env: { ...process.env, VITE_DEV_SERVER_URL: urlServidor, ...canalPedido() },
   })
   procesoElectron.on('exit', (codigo) => {
     // Si el usuario cerró la ventana, terminamos todo.

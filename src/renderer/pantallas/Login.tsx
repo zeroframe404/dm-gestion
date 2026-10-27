@@ -1,7 +1,9 @@
 // Pantalla de inicio de sesión. Debajo del formulario dice, sin jerga, si hay conexión con la base de
 // usuarios compartida y quién puede entrar sin internet en esta computadora.
 import { useState, type FormEvent } from 'react'
-import type { EstadoDeAcceso } from '../../shared/tipos'
+import { CLAVE_DE_LA_DEMO, USUARIOS_DE_LA_DEMO } from '../../shared/demo'
+import { NOMBRE_ROL, type EstadoDeAcceso } from '../../shared/tipos'
+import { useEsDemo } from '../canal'
 import { Icono } from '../componentes/Icono'
 import { InsigniaBeta } from '../componentes/InsigniaBeta'
 import { Alerta, Boton, Campo, CampoClave, cx } from '../componentes/ui'
@@ -11,6 +13,7 @@ import { useSesion } from '../contexto/Sesion'
 export function Login() {
   const { ingresar, motivoCierre } = useSesion()
   const { acceso, comprobando } = useAcceso(true)
+  const esDemo = useEsDemo()
   const [usuario, setUsuario] = useState('')
   const [clave, setClave] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -22,9 +25,13 @@ export function Login() {
       setError('Ingresá tu usuario y tu contraseña.')
       return
     }
+    await entrar(usuario.trim(), clave)
+  }
+
+  async function entrar(conUsuario: string, conClave: string) {
     setEnviando(true)
     setError(null)
-    const mensaje = await ingresar({ usuario: usuario.trim(), clave })
+    const mensaje = await ingresar({ usuario: conUsuario, clave: conClave })
     // Si el ingreso fue correcto esta pantalla se desmonta; sólo hay que manejar el error.
     if (mensaje) {
       setError(mensaje)
@@ -41,7 +48,9 @@ export function Login() {
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
             <Icono nombre="escudo" tamano={28} className="text-cielo-200" />
           </div>
-          <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-200">Seguros Daniel Martínez</p>
+          <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-200">
+            {esDemo ? 'Versión de demostración' : 'Seguros Daniel Martínez'}
+          </p>
           <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight">
             DM Gestión <InsigniaBeta className="ml-1 align-middle" />
           </h1>
@@ -76,6 +85,36 @@ export function Login() {
             </Boton>
           </div>
         </form>
+
+        {esDemo && (
+          <div className="mt-4 rounded-2xl bg-white/10 p-4 text-white ring-1 ring-white/20">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-cielo-200">Entrar como…</p>
+            <p className="mt-1 text-xs text-white/70">
+              Cada usuario ve el programa según su rol. La contraseña de todos es <span className="font-mono font-semibold text-white">{CLAVE_DE_LA_DEMO}</span>.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {USUARIOS_DE_LA_DEMO.map((demo) => (
+                <button
+                  key={demo.usuario}
+                  type="button"
+                  disabled={enviando}
+                  title={demo.descripcion}
+                  onClick={() => {
+                    setUsuario(demo.usuario)
+                    setClave(CLAVE_DE_LA_DEMO)
+                    void entrar(demo.usuario, CLAVE_DE_LA_DEMO)
+                  }}
+                  className="rounded-lg bg-white/10 px-3 py-2 text-left ring-1 ring-white/15 transition hover:bg-white/20 disabled:opacity-50"
+                >
+                  <span className="block text-sm font-semibold">{demo.nombre}</span>
+                  <span className="block text-[11px] text-white/70">
+                    {NOMBRE_ROL[demo.rol]} · {demo.sucursal}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <LineaDeAcceso acceso={acceso} comprobando={comprobando} />
       </div>

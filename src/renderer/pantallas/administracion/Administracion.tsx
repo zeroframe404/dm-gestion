@@ -7,9 +7,10 @@
 // delante, forzar una sincronización cuando falta algo que cargó otra sucursal, la consola con la que
 // se atiende una computadora que no anda, y la versión del programa. Ninguna configura nada que afecte
 // a las demás computadoras.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AvisoConexionGoogle } from '../../componentes/AvisoConexionGoogle'
 import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
+import { useEsDemo } from '../../canal'
 import { usePermisos } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { AcercaDe } from './AcercaDe'
@@ -23,11 +24,14 @@ import { Impresora } from './Impresora'
 import { Permisos } from './Permisos'
 import { RedesSociales } from './RedesSociales'
 import { RegistroDeMensajes } from './RegistroDeMensajes'
+import { alPedirSeccion, tomarSeccionPedida } from './seccionPedida'
+import { ServidorVps } from './ServidorVps'
 import { Sincronizacion } from './Sincronizacion'
 import { SincronizarTodo } from './SincronizarTodo'
 import { Usuarios } from './Usuarios'
 
 type IdSeccion =
+  | 'servidor'
   | 'usuarios'
   | 'permisos'
   | 'registromensajes'
@@ -46,12 +50,16 @@ type IdSeccion =
 export function Administracion() {
   const usuario = useUsuarioActual()
   const { puedeVer } = usePermisos()
+  const esDemo = useEsDemo()
 
   // Las secciones visibles dependen del rol y del permiso sobre Administración. El proceso principal
   // vuelve a controlarlo en cada llamado. «Acerca de» está siempre: es donde se ve la versión, la
   // carpeta de datos y el estado del acceso, y eso lo necesita cualquiera para pedir ayuda.
   const secciones = useMemo<ItemDePestana<IdSeccion>[]>(() => {
     const lista: ItemDePestana<IdSeccion>[] = []
+    // En la demo, primero y para cualquier rol: cómo se conecta el programa al servidor de la agencia
+    // que lo compre. Es la pregunta que hace todo el que la prueba.
+    if (esDemo) lista.push({ id: 'servidor', nombre: 'Servidor (VPS)', icono: 'nube', ayuda: 'administracion.servidor' })
     if (usuario.rol === 'SUPER_ADMIN') {
       lista.push({ id: 'usuarios', nombre: 'Usuarios', icono: 'clientes', ayuda: 'administracion.usuarios' })
       lista.push({ id: 'permisos', nombre: 'Permisos', icono: 'candado', ayuda: 'administracion.permisos' })
@@ -88,9 +96,10 @@ export function Administracion() {
     lista.push({ id: 'controlremoto', nombre: 'Control remoto', icono: 'cuadricula', ayuda: 'administracion.controlremoto' })
     lista.push({ id: 'acerca', nombre: 'Acerca de', icono: 'info', ayuda: 'administracion.acerca' })
     return lista
-  }, [puedeVer, usuario.rol])
+  }, [esDemo, puedeVer, usuario.rol])
 
-  const [seccionActiva, setSeccionActiva] = useState<IdSeccion>(() => secciones[0]?.id ?? 'acerca')
+  const [seccionActiva, setSeccionActiva] = useState<IdSeccion>(() => (tomarSeccionPedida() as IdSeccion | null) ?? secciones[0]?.id ?? 'acerca')
+  useEffect(() => alPedirSeccion((pedida) => setSeccionActiva(pedida as IdSeccion)), [])
   const seccion = secciones.some((candidata) => candidata.id === seccionActiva) ? seccionActiva : 'acerca'
 
   return (
@@ -114,6 +123,7 @@ export function Administracion() {
         aria-labelledby={`tab-administracion-${seccion}`}
         className="min-w-0 flex-1 overflow-y-auto p-8"
       >
+        {seccion === 'servidor' && <ServidorVps />}
         {seccion === 'usuarios' && <Usuarios />}
         {seccion === 'permisos' && <Permisos />}
         {seccion === 'registromensajes' && <RegistroDeMensajes />}

@@ -495,6 +495,10 @@ const api: ApiDm = {
   app: {
     info: () => invocar('app:info'),
   },
+  demo: {
+    estado: () => invocar('demo:estado'),
+    probarVps: (datos) => invocar('demo:probarVps', datos),
+  },
   actualizaciones: {
     estado: () => invocar('actualizaciones:estado'),
     buscarAhora: () => invocar('actualizaciones:buscarAhora'),
