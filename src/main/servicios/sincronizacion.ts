@@ -248,8 +248,9 @@ export async function arrancarSincronizacion(): Promise<void> {
   // base» en una PC nueva de la agencia: si no, Métricas no tendría mes anterior y la ficha del cliente
   // no tendría historial.
   const completa = esDemo() && !demoYaBajoTodo
-  await motor.sincronizarAhora(completa)
-  if (completa) demoYaBajoTodo = true
+  const resultado = await motor.sincronizarAhora(completa)
+  // Si otra bajada se adelantó (`null`), la completa no corrió: se vuelve a intentar en el próximo ingreso.
+  if (completa && resultado) demoYaBajoTodo = true
   // 12.7: lo que esta computadora cree de cada archivo adjunto se contrasta con lo que el servidor
   // tiene de verdad, en segundo plano. Lo que figuraba subido sin estarlo vuelve a subir solo.
   void verificarAdjuntosContraElServidor().catch((error: unknown) => {

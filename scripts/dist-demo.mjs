@@ -14,7 +14,7 @@
 // Uso: `npm run dist:demo` (en Windows). `-- --sin-instalador` compila y revisa sin llamar a
 // electron-builder (para comprobarlo en cualquier sistema). N sale de GITHUB_RUN_NUMBER o de `-- --numero 5`.
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { valoresSecretos } from './secretos-de-la-agencia.mjs'
 
@@ -40,6 +40,10 @@ const version = `${partes[1]}.${partes[2]}.${Number(partes[3]) + 1}-demo.${numer
 const vite = path.join(raiz, 'node_modules', 'vite', 'bin', 'vite.js')
 const correr = (args, env = {}) => execFileSync(process.execPath, args, { cwd: raiz, stdio: 'inherit', env: { ...process.env, ...env } })
 
+// Lo que compila el banco de pruebas (dist/pruebas, dist/solo) se arma SIN quitar los secretos, y
+// electron-builder empaqueta dist/**: se borra antes, y además el instalador lleva sólo lo del programa.
+for (const carpeta of ['dist/pruebas', 'dist/solo', 'dist/manual']) rmSync(path.join(raiz, carpeta), { recursive: true, force: true })
+
 console.log(`[dist-demo] Compilando la demo ${version} sin los datos de la agencia…`)
 execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'typecheck'], { cwd: raiz, stdio: 'inherit', shell: process.platform === 'win32' })
 for (const config of ['vite.preload.config.mts', 'vite.main.config.mts', 'vite.config.mts']) {
@@ -47,8 +51,16 @@ for (const config of ['vite.preload.config.mts', 'vite.main.config.mts', 'vite.c
 }
 
 // La revisión: ningún valor secreto puede haber sobrevivido en lo que va adentro del instalador.
+// Se recorre TODO dist/ (renderer y mapas de fuentes incluidos), no un par de archivos: lo que esté ahí
+// adentro puede terminar en el instalador.
 const secretos = valoresSecretos(leer)
-const paquete = ['dist/main/index.js', 'dist/preload/index.js'].map((archivo) => ({ archivo, texto: leer(archivo) }))
+function archivosDe(carpeta) {
+  return readdirSync(path.join(raiz, carpeta)).flatMap((nombre) => {
+    const relativo = `${carpeta}/${nombre}`
+    return statSync(path.join(raiz, relativo)).isDirectory() ? archivosDe(relativo) : [relativo]
+  })
+}
+const paquete = archivosDe('dist').map((archivo) => ({ archivo, texto: readFileSync(path.join(raiz, archivo), 'latin1') }))
 const filtrados = secretos.flatMap(({ constante, valor }) =>
   paquete.filter(({ texto }) => texto.includes(valor)).map(({ archivo }) => `${constante} en ${archivo}`),
 )
@@ -76,4 +88,9 @@ correr([
   '-c.artifactName=DM-Gestion-Demo-Setup-${version}.${ext}',
   '-c.nsis.shortcutName=DM Gestión (Demo)',
   '-c.copyright=Copyright © 2026 DM Gestión',
+  // Sólo el programa: nada de lo que el banco de pruebas pueda haber dejado en dist/.
+  '-c.files=dist/main/**/*',
+  '-c.files=dist/preload/**/*',
+  '-c.files=dist/renderer/**/*',
+  '-c.files=package.json',
 ])

@@ -16,7 +16,7 @@ import { arrancarServidorDeLaDemo, pararServidorDeLaDemo } from './demo/servidor
 import { cerrarPantallaDeCarga, enfocarPantallaDeCarga, mostrarPantallaDeCarga } from './pantallaDeCarga'
 import { registrarIpc } from './ipc'
 import { arrancarCartero, apurarAlCartero, pararCartero } from './mensajeria/cartero'
-import { carpetaDatos, configurarCarpetaDatos, rutaBaseDeDatos } from './rutas'
+import { carpetaDatos, configurarCarpetaDatos, limpiarDatosDeLaDemo, rutaBaseDeDatos } from './rutas'
 import { adoptarAjustesAlArrancar } from './servicios/ajustesCompartidos'
 import { bajarCatalogoAlArrancar } from './servicios/catalogoVehiculos'
 import { configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
@@ -298,7 +298,8 @@ function engancharElCanal(): void {
 }
 
 /**
- * El candado de los permisos del navegador (14.0): sólo el micrófono, y sólo para esta pantalla.
+ * El candado de los permisos del navegador (14.0): sólo el micrófono —y escribir en el portapapeles, para
+ * los botones «Copiar»—, y sólo para esta pantalla.
  *
  * Hasta la 14.0 no había ningún manejador puesto, y eso NO significa que estuviera todo negado:
  * Electron, sin manejador, **concede por omisión**. Cualquier cosa que la pantalla pidiera —cámara,
@@ -331,6 +332,12 @@ function blindarLosPermisos(): void {
 
   session.defaultSession.setPermissionRequestHandler((contenido, permiso, responder, detalles) => {
     const deLaPantalla = nuestraPantalla(contenido)
+    // Escribir en el portapapeles: los botones «Copiar» (la dirección del control remoto, la de vuelta de
+    // Meta, el config.json del VPS, la planilla de General Excel). Sólo escribir: leerlo sigue negado.
+    if (permiso === 'clipboard-sanitized-write' && deLaPantalla) {
+      responder(true)
+      return
+    }
     if (permiso !== 'media' || !deLaPantalla) {
       // Queda anotado: si alguna vez algo del programa necesita otro permiso, esta línea de la bitácora
       // es la que lo explica. Sin ella sería una función del navegador que «no anda» y nada más.
@@ -350,6 +357,7 @@ function blindarLosPermisos(): void {
   })
 
   session.defaultSession.setPermissionCheckHandler((contenido, permiso, _origen, detalles) => {
+    if (permiso === 'clipboard-sanitized-write') return nuestraPantalla(contenido)
     if (permiso !== 'media' || !nuestraPantalla(contenido)) return false
     return detalles.mediaType === 'audio' || detalles.mediaType === 'unknown' || detalles.mediaType === undefined
   })
@@ -366,10 +374,22 @@ function arrancar(): void {
   mostrarPantallaDeCarga(() => {
     // La demo levanta primero su servidor interno: todo lo que sigue (usuarios, sincronización, canal
     // en vivo) le pregunta a él. Sin la demo esto no espera nada.
-    const antes = esDemo() ? arrancarServidorDeLaDemo() : Promise.resolve()
-    antes
-      .then(() => arrancarElPrograma())
-      .catch((error) => fallaDeArranque(esDemo() ? 'el servidor de la demo' : 'el arranque', error))
+    const antes = esDemo()
+      ? arrancarServidorDeLaDemo().catch((error) => {
+          fallaDeArranque('el servidor de la demo', error)
+          throw error
+        })
+      : Promise.resolve()
+    antes.then(
+      () => {
+        try {
+          arrancarElPrograma()
+        } catch (error) {
+          fallaDeArranque('el arranque', error)
+        }
+      },
+      () => undefined,
+    )
   })
 }
 
@@ -422,6 +442,12 @@ if (!app.requestSingleInstanceLock()) {
   anotar('[app] Ya había otra instancia abierta: este arranque se cierra y le pasa el foco.')
   app.exit(0)
 } else {
+  // La demo arranca de cero cada vez; recién acá, con el cerrojo, se puede vaciar su carpeta.
+  try {
+    limpiarDatosDeLaDemo()
+  } catch (error) {
+    fallaDeArranque('la limpieza de los datos de la demo', error)
+  }
   app.on('second-instance', () => {
     // Otro doble click. Si esta instancia se quedó sin ventana (algo falló después de abrir la base,
     // o la ventana se destruyó), el doble click tiene que RESCATARLA en vez de no hacer nada: sin

@@ -343,7 +343,19 @@ for (const hoy of DIAS) {
   })
 }
 
-test('datos de la demo: entran por el VPS simulado, con el catálogo de vehículos', async () => {
+/**
+ * El `fetch` de verdad, tomado al cargar el archivo: antes de que corra ninguna prueba. Otras pruebas del
+ * banco lo reemplazan por uno falso y, si alguna se olvida de devolverlo, ésta —la que habla por HTTP con
+ * el simulador— no puede quedar a merced de eso.
+ */
+const fetchDeVerdad = globalThis.fetch
+
+test('datos de la demo: entran por el VPS simulado, con el catálogo de vehículos', async (t) => {
+  const fetchPuesto = globalThis.fetch
+  globalThis.fetch = fetchDeVerdad
+  t.after(() => {
+    globalThis.fetch = fetchPuesto
+  })
   const hoy = DIAS[0]!
   const datos = armarDatosDeLaDemo(fechaLocal(hoy))
   const vps = new VpsSimulado({ pestanas: datos.pestanas })

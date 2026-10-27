@@ -40,9 +40,10 @@ export function quitarSecretos(rutaAbsoluta, codigo) {
   let toco = false
   for (const { archivo, constante, reemplazo } of SECRETOS) {
     if (!normalizada.endsWith(archivo)) continue
-    const nuevo = resultado.replace(patron(constante), (_todo, inicio) => `${inicio}'${reemplazo}'`)
-    if (nuevo === resultado) throw new Error(`No se pudo quitar ${constante} de ${archivo}.`)
-    resultado = nuevo
+    // Que no esté la constante es un error (alguien la renombró y el secreto pasaría de largo); que ya
+    // valga lo mismo que el reemplazo (TOKEN_DATOS_ANTERIOR vacío), no.
+    if (!patron(constante).test(resultado)) throw new Error(`No se encontró ${constante} en ${archivo}.`)
+    resultado = resultado.replace(patron(constante), (_todo, inicio) => `${inicio}'${reemplazo}'`)
     toco = true
   }
   return toco ? resultado : null
