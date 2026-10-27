@@ -2,6 +2,9 @@
 // saber las dos puntas. El proceso principal crea estos usuarios en el servidor simulado y la pantalla
 // de ingreso los ofrece para entrar con un click, así quien prueba la demo no tiene que adivinar nada.
 
+/** Cómo se llama la agencia en la demo: arriba del nombre del programa, en los mensajes y en los PDF. */
+export const NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO = 'Agencia de demostración'
+
 /** La misma contraseña para todos: es una demo con datos inventados, no hay nada que proteger. */
 export const CLAVE_DE_LA_DEMO = 'demo1234'
 

@@ -11,9 +11,11 @@ import { cotizar as cotizarEnGaleno } from '../src/main/aseguradoras/galeno/coti
 import { emitir as emitirEnGaleno } from '../src/main/aseguradoras/galeno/emision'
 import * as catalogosGaleno from '../src/main/aseguradoras/galeno/catalogos'
 import type { DatosDeEmisionGaleno } from '../src/shared/tipos'
-import { ASEGURADORAS_DE_LA_DEMO } from '../src/main/demo/aseguradoras'
+import { estadoDeAtmDemo, emisionDeAtmDemo } from '../src/main/demo/apis'
+import { ASEGURADORAS_DE_LA_DEMO, olvidarLaSesionDeLaDemo } from '../src/main/demo/aseguradoras'
 import { clienteGalenoDeLaDemo, LEGAJO_DE_LA_DEMO } from '../src/main/demo/galeno'
-import { demorasDeLaDemo, fechaIso, sumarDias } from '../src/main/demo/simulacion'
+import { anioDeEjemplo, demorasDeLaDemo, fechaIso, patenteDe, sumarDias, VEHICULOS_DE_EJEMPLO } from '../src/main/demo/simulacion'
+import { telefonoParaMostrar, whatsappDeLaDemo } from '../src/main/demo/whatsapp'
 import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
 import { atm } from '../src/main/multicotizador/atm'
 import { equidad } from '../src/main/multicotizador/equidad'
@@ -74,15 +76,17 @@ function premios(coberturas: Array<{ codigo: string; premio: number }>): Record<
   return Object.fromEntries(coberturas.map((c) => [c.codigo, c.premio]))
 }
 
-test('demo: mismos ids, nombres y tipos que las compañías de verdad, más dos de ejemplo, y todas disponibles', () => {
-  for (const real of [galeno, atm, mercantil, equidad]) {
+test('demo: sólo las compañías que el programa integra de verdad, con sus ids, nombres y tipos, y todas disponibles', () => {
+  const reales = [galeno, atm, mercantil, equidad]
+  for (const real of reales) {
     const demo = ASEGURADORAS_DE_LA_DEMO.find((a) => a.id === real.id)
     assert.ok(demo, real.id)
     assert.equal(demo.nombre, real.nombre)
     assert.deepEqual([...demo.tipos], [...real.tipos])
     assert.equal(demo.emite, real.emite)
   }
-  assert.ok(ASEGURADORAS_DE_LA_DEMO.length >= 5)
+  // Ni Federación Patronal ni Sancor: no tienen API en el programa, no se le muestran a otra agencia.
+  assert.deepEqual(ASEGURADORAS_DE_LA_DEMO.map((a) => a.id).sort(), reales.map((r) => r.id).sort())
   for (const aseguradora of ASEGURADORAS_DE_LA_DEMO) {
     assert.equal(aseguradora.noDisponible(), null, aseguradora.nombre)
     assert.ok(aseguradora.planes && aseguradora.cotizaciones && aseguradora.emisiones, aseguradora.nombre)
@@ -96,7 +100,8 @@ test('demo: cada compañía cotiza autos, motos y pick ups en varias categorías
     ['Hilux 2022', HILUX],
   ] as const) {
     const cotizan = ASEGURADORAS_DE_LA_DEMO.filter((a) => a.tipos.includes(pedido.vehiculo.tipo))
-    assert.ok(cotizan.length >= 3, nombre)
+    // Motos cotizan Galeno y ATM; autos, las cuatro.
+    assert.ok(cotizan.length >= (pedido.vehiculo.tipo === 'MOTO' ? 2 : 4), nombre)
     for (const aseguradora of cotizan) {
       const r = await aseguradora.cotizar(pedido, {})
       const donde = `${aseguradora.nombre} / ${nombre}`
@@ -240,6 +245,8 @@ test('demo: Galeno y ATM dejan emitir; las otras no', async () => {
 })
 
 test('demo: los listados del multicotizador tienen filas, dentro del rango y del tipo pedido', async () => {
+  // Sólo lo inventado: lo cotizado en las pruebas de arriba no tiene patente (ver la prueba de la sesión).
+  olvidarLaSesionDeLaDemo()
   const hoy = fechaIso(new Date())
   const filtros = { desde: sumarDias(hoy, -60), hasta: hoy, tipo: null }
   let cotizaciones = 0
@@ -343,4 +350,163 @@ test('demo: el cliente de Galeno contesta catálogos, cotiza y emite con la form
   const pdf = await cliente.pedirCrudo('/api/imprimir', { metodo: 'POST', body: { tipoImpresion: 'P', poliza: String(emision.poliza), rama: 4, legajo: LEGAJO_DE_LA_DEMO } })
   assert.equal(pdf.headers.get('content-type'), 'application/pdf')
   assert.match(await pdf.text(), /^%PDF-1\.4[\s\S]*%%EOF\n$/)
+})
+
+test('demo: lo cotizado y emitido en la sesión aparece arriba de todo en Cotizaciones y Emisiones', async () => {
+  olvidarLaSesionDeLaDemo()
+  const hoy = fechaIso(new Date())
+  const filtros = { desde: sumarDias(hoy, -30), hasta: hoy, tipo: null }
+  const [galenoDemo, atmDemo] = [ASEGURADORAS_DE_LA_DEMO.find((a) => a.id === 'GALENO')!, ASEGURADORAS_DE_LA_DEMO.find((a) => a.id === 'ATM')!]
+  const pedido = solicitud({}, { vigenciaDesde: hoy })
+
+  // Galeno: se cotiza en el multicotizador y se emite por su API simulada.
+  const cotizada = await galenoDemo.cotizar(pedido, {})
+  const completo = cotizada.coberturas.find((c) => c.categoria === 'TERCEROS_COMPLETO')!
+  const emisionGaleno = completo.emision!
+  assert.equal(emisionGaleno.tipo, 'GALENO')
+  if (emisionGaleno.tipo !== 'GALENO') return
+  const cotizaciones = await galenoDemo.cotizaciones!(filtros)
+  assert.equal(cotizaciones[0]!.numero, String(emisionGaleno.solicitud))
+  assert.equal(cotizaciones[0]!.tomador, 'PÉREZ JUAN')
+  assert.match(cotizaciones[0]!.vehiculo, /GOL TREND/)
+  assert.equal(cotizaciones[0]!.premio, completo.premio)
+  // Cotizar dos veces lo mismo no lo repite.
+  await galenoDemo.cotizar(structuredClone(pedido), {})
+  assert.equal((await galenoDemo.cotizaciones!(filtros)).filter((c) => c.numero === String(emisionGaleno.solicitud)).length, 1)
+  assert.deepEqual(await galenoDemo.cotizaciones!({ ...filtros, tipo: 'MOTO' }).then((filas) => filas.filter((c) => c.numero === String(emisionGaleno.solicitud))), [])
+
+  const emitida = await emitirEnGaleno(clienteGalenoDeLaDemo(), {
+    rama: emisionGaleno.rama,
+    solicitud: emisionGaleno.solicitud,
+    instalacion: 1,
+    cobertura: emisionGaleno.cobertura.cobertura,
+    tomador: { tipoDocumentoCodigo: '96', documentoNumero: '30123456', nombre: 'PEREZ JUAN', categoriaIVACodigo: '5', calleNombre: 'MITRE', calleNumero: '100', codigoPostal: '1870', subCodigoPostal: '1' },
+    aseguradoEsTomador: true,
+    vehiculo: { patente: 'ac123bd', motor: 'CFZ123456', chasis: '9BWAB45U0KT000001' },
+    formaPago: {},
+  } as unknown as DatosDeEmisionGaleno)
+  assert.equal(emitida.premio, completo.premio)
+  const polizasGaleno = await galenoDemo.emisiones!(filtros)
+  assert.equal(polizasGaleno[0]!.poliza, String(emitida.poliza))
+  assert.equal(polizasGaleno[0]!.patente, 'AC123BD')
+  assert.equal(polizasGaleno[0]!.tomador, 'PEREZ JUAN')
+  assert.equal(polizasGaleno[0]!.cobertura, completo.nombre)
+  assert.equal(polizasGaleno[0]!.fechaEmision, hoy)
+
+  // También en las consultas de Galeno y en la impresión.
+  const cliente = clienteGalenoDeLaDemo()
+  const porLegajo = await cliente.pedirJson<Array<{ nroPoliza: string; patente: string }>>('/api/polizas/consultaXLegajo', { metodo: 'POST', body: {} })
+  assert.equal(porLegajo[0]!.nroPoliza, String(emitida.poliza))
+  const pdf = await (await cliente.pedirCrudo('/api/imprimir', { metodo: 'POST', body: { tipoImpresion: 'P', poliza: String(emitida.poliza), rama: 4 } })).text()
+  assert.ok(pdf.includes('AC123BD') && pdf.includes('PEREZ JUAN'), 'la póliza impresa es la emitida')
+
+  // ATM: la operación cotizada se emite y queda en su listado.
+  const enAtm = await atmDemo.cotizar(pedido, {})
+  const coberturaAtm = enAtm.coberturas.find((c) => c.categoria === 'TERCEROS_COMPLETO')!
+  const emisionAtm = coberturaAtm.emision!
+  assert.equal(emisionAtm.tipo, 'ATM')
+  if (emisionAtm.tipo !== 'ATM') return
+  const resultado = await emisionDeAtmDemo({
+    operacion: emisionAtm.operacion,
+    cobertura: emisionAtm.cobertura,
+    condicionDePago: emisionAtm.condicionDePago,
+    titular: { apellido: 'Pérez Juan' },
+    vehiculo: { patente: 'AC123BD', chasis: '', motor: '' },
+  } as unknown as Parameters<typeof emisionDeAtmDemo>[0])
+  const polizasAtm = await atmDemo.emisiones!(filtros)
+  assert.equal(polizasAtm[0]!.poliza, resultado.poliza)
+  assert.equal(polizasAtm[0]!.tomador, 'PÉREZ JUAN')
+  assert.equal(polizasAtm[0]!.cobertura, coberturaAtm.nombre)
+  // Lo de Galeno no se mezcla con lo de ATM.
+  assert.ok(!polizasAtm.some((p) => p.poliza === String(emitida.poliza)))
+  olvidarLaSesionDeLaDemo()
+})
+
+test('demo: patentes y años creíbles (nada de «HHH333» ni de un Cronos 2012)', async () => {
+  const patentes = Array.from({ length: 300 }, (_, i) => patenteDe(`prueba:${i}`, 2012 + (i % 15)))
+  for (const patente of patentes) {
+    assert.match(patente, /^([A-Z]{3}\d{3}|A[A-K]\d{3}[A-Z]{2})$/, patente)
+    assert.ok(!/^(.)\1\1/.test(patente) || !/(\d)\1\1$/.test(patente), `patente de juguete: ${patente}`)
+  }
+  assert.ok(new Set(patentes).size > 290, 'casi todas distintas')
+  // La serie va con el año: una patente nueva de 2017 empieza con AB, una vieja de 2012 con K.
+  assert.match(patenteDe('x', 2017), /^AB/)
+  assert.match(patenteDe('x', 2012), /^K/)
+  for (const vehiculo of VEHICULOS_DE_EJEMPLO) {
+    for (let i = 0; i < 40; i++) {
+      const anio = anioDeEjemplo(`prueba:${i}`, vehiculo, 2026)
+      assert.ok(anio >= vehiculo.desde && anio <= (vehiculo.hasta ?? 2026), `${vehiculo.modelo} ${anio}`)
+    }
+  }
+  // Y en los listados.
+  olvidarLaSesionDeLaDemo()
+  const hoy = fechaIso(new Date())
+  for (const aseguradora of ASEGURADORAS_DE_LA_DEMO) {
+    for (const fila of await aseguradora.cotizaciones!({ desde: sumarDias(hoy, -60), hasta: hoy, tipo: null })) {
+      const ejemplo = VEHICULOS_DE_EJEMPLO.find((v) => fila.vehiculo.startsWith(`${v.marca} ${v.modelo} ${v.version} `))!
+      assert.ok(ejemplo, fila.vehiculo)
+      const anio = Number(fila.vehiculo.split(' ').at(-1))
+      assert.ok(anio >= ejemplo.desde && anio <= (ejemplo.hasta ?? new Date().getFullYear()), fila.vehiculo)
+    }
+  }
+})
+
+test('demo: la descripción del vehículo no repite el modelo cuando la versión ya lo trae', async () => {
+  const galenoDemo = ASEGURADORAS_DE_LA_DEMO.find((a) => a.id === 'GALENO')!
+  const r = await galenoDemo.cotizar(solicitud({ marca: 'Volkswagen', modelo: 'Gol Trend', version: 'Gol Trend 1.6 Trendline' }), {})
+  assert.equal(r.descripcionVehiculo, 'VOLKSWAGEN GOL TREND 1.6 TRENDLINE 2019')
+  const sinModelo = await galenoDemo.cotizar(GOL, {})
+  assert.equal(sinModelo.descripcionVehiculo, 'VOLKSWAGEN GOL TREND 1.6 TRENDLINE 5P 2019')
+})
+
+test('demo: las consultas de Galeno cuentan lo mismo (cuotas impagas = saldo vencido) y los riesgos son de una póliza', async () => {
+  olvidarLaSesionDeLaDemo()
+  const cliente = clienteGalenoDeLaDemo()
+  const pedir = <T>(ruta: string, body: Record<string, unknown> = {}) => cliente.pedirJson<T>(ruta, { metodo: 'POST', body })
+  const impagas = await pedir<Array<{ poliza: string; nroCuota: number; saldoCuota: number }>>('/api/polizas/cuotasImpagas')
+  const vigentes = await pedir<Array<{ poliza: string; sumaSaldoVencido: number }>>('/api/polizas/vigentes')
+  const cobradas = await pedir<Array<{ poliza: string; nroCuota: number }>>('/api/polizas/cuotasCobradas')
+  assert.ok(impagas.length > 0)
+  assert.deepEqual(
+    impagas.map((c) => c.poliza).sort(),
+    vigentes.filter((p) => p.sumaSaldoVencido > 0).map((p) => p.poliza).sort(),
+  )
+  for (const impaga of impagas) {
+    assert.equal(vigentes.find((p) => p.poliza === impaga.poliza)!.sumaSaldoVencido, impaga.saldoCuota)
+    assert.equal(cobradas.find((c) => c.poliza === impaga.poliza)!.nroCuota, impaga.nroCuota - 1, 'la cuota impaga no figura como cobrada')
+  }
+  const riesgos = await pedir<Array<{ nombreAsegurado: string }>>('/api/polizas/obtenerPolizasRiesgo')
+  assert.equal(riesgos.length, 1)
+  const una = vigentes[3]!.poliza
+  assert.deepEqual((await pedir<Array<{ poliza: string }>>('/api/polizas/vigentes', { nroPoliza: una })).map((p) => p.poliza), [una])
+  assert.deepEqual(await pedir('/api/polizas/obtenerPolizasRiesgo', { poliza: '999' }), [])
+
+  // La impresión trae los datos de la póliza, con tildes y la marca de agua.
+  const poliza = (await pedir<Array<{ nroPoliza: string; patente: string; nombreTomador: string }>>('/api/polizas/consultaXLegajo'))[0]!
+  const pdf = await (await cliente.pedirCrudo('/api/imprimir', { metodo: 'POST', body: { tipoImpresion: 'P', poliza: poliza.nroPoliza, rama: 4 } })).text()
+  assert.match(pdf, /^%PDF-1\.4[\s\S]*%%EOF\n$/)
+  assert.ok(pdf.includes('/WinAnsiEncoding'))
+  assert.ok(pdf.includes('DEMOSTRACI\\323N'), 'la marca de agua, con su tilde')
+  assert.ok(pdf.includes(poliza.patente))
+  assert.ok(/^[\x00-\x7f]*$/.test(pdf), 'sólo ASCII: las posiciones de la tabla xref dan justo')
+  const xref = Number(/startxref\n(\d+)/.exec(pdf)![1])
+  assert.ok(pdf.slice(xref).startsWith('xref'))
+})
+
+test('demo: las tablas de ATM tienen cantidades creíbles', () => {
+  const tablas = Object.fromEntries(estadoDeAtmDemo().tablas!.tablas.map((t) => [t.tabla, t.filas]))
+  assert.equal(tablas.ws_au_sexo, 2)
+  assert.ok(tablas.ws_au_est_civil! <= 6 && tablas.ws_au_tipo_doc! <= 8)
+  assert.ok(tablas.ws_au_infoauto! > 10_000)
+})
+
+test('demo: los enlaces de WhatsApp se reconocen para mostrar el mensaje en vez de abrirlos', () => {
+  assert.deepEqual(whatsappDeLaDemo('https://wa.me/5491134559091?text=Hola%20Beatriz%2C%20te%20escribo'), { telefono: '5491134559091', texto: 'Hola Beatriz, te escribo' })
+  assert.deepEqual(whatsappDeLaDemo('https://api.whatsapp.com/send?phone=5491100000000&text=hola'), { telefono: '5491100000000', texto: 'hola' })
+  assert.deepEqual(whatsappDeLaDemo('https://wa.me/5491134559091'), { telefono: '5491134559091', texto: '' })
+  assert.equal(whatsappDeLaDemo('https://meshcentral.com/'), null)
+  assert.equal(whatsappDeLaDemo('https://example.com/wa.me/123'), null)
+  assert.equal(whatsappDeLaDemo('no es una dirección'), null)
+  assert.equal(telefonoParaMostrar('5491134559091'), '+54 9 11 3455-9091')
+  assert.equal(telefonoParaMostrar(''), 'sin número')
 })

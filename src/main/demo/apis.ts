@@ -25,7 +25,8 @@ import type {
   ReporteCreado,
   ResumenDePasadaDeGaleno,
 } from '../../shared/tipos'
-import { DESCRIPCION_TABLA_ATM, TABLAS_ATM, TABLAS_DE_VEHICULOS } from '../aseguradoras/atm/tablas'
+import { DESCRIPCION_TABLA_ATM, TABLAS_ATM, TABLAS_DE_VEHICULOS, type TablaAtm } from '../aseguradoras/atm/tablas'
+import { anotarEmisionDeLaSesion, cotizadoEnLaSesion } from './aseguradoras'
 import { LEGAJO_DE_LA_DEMO } from './galeno'
 import { enteroDe, esperarComoLaApi, hashDe, localidadesDeEjemplo } from './simulacion'
 
@@ -82,6 +83,32 @@ export async function pruebaDeNovedadesDemo(): Promise<PruebaDeGalenoNovedades> 
 
 // --- ATM -----------------------------------------------------------------------------------------------
 
+/**
+ * Cuántas filas trae cada tabla de ATM: las grandes, del orden de las de verdad; las chicas, las que
+ * tiene la lista (dos sexos, cuatro estados civiles…). «Sexos: 46 filas» delata la simulación.
+ */
+const FILAS_DE_LA_TABLA_ATM: Partial<Record<TablaAtm, number>> = {
+  ws_au_marcas: 142,
+  ws_au_usos: 6,
+  ws_au_rastreo_satelital: 6,
+  ws_au_iva: 4,
+  ws_au_tipo_persona: 2,
+  ws_au_tipo_doc: 6,
+  ws_au_sexo: 2,
+  ws_au_est_civil: 4,
+  ws_au_nacionalidad: 6,
+  ws_au_actividad: 6,
+  ws_au_forma_pago: 3,
+  ws_au_tarjeta: 5,
+  ws_au_resp_inspeccion: 3,
+}
+
+function filasDeLaTablaAtm(tabla: TablaAtm): number {
+  if (tabla === 'ws_au_infoauto' || tabla === 'ws_au_marca_modelo') return enteroDe(`atm:${tabla}`, 21_000, 24_000)
+  if (tabla === 'ws_au_localidades') return enteroDe(`atm:${tabla}`, 8_000, 9_000)
+  return FILAS_DE_LA_TABLA_ATM[tabla] ?? 6
+}
+
 function tablasDeAtmDemo(origen: 'ftp' | 'archivos', bajadasEn: string): EstadoDeTablasAtm {
   return {
     ambiente: 'produccion',
@@ -91,7 +118,7 @@ function tablasDeAtmDemo(origen: 'ftp' | 'archivos', bajadasEn: string): EstadoD
       tabla,
       descripcion: DESCRIPCION_TABLA_ATM[tabla],
       archivo: `${tabla}.txt`,
-      filas: enteroDe(`atm:${tabla}`, 12, tabla === 'ws_au_infoauto' || tabla === 'ws_au_marca_modelo' ? 24_000 : tabla === 'ws_au_localidades' ? 9_000 : 60),
+      filas: filasDeLaTablaAtm(tabla),
       error: null,
       necesaria: TABLAS_DE_VEHICULOS.includes(tabla),
     })),
@@ -160,14 +187,26 @@ export async function opcionesDeEmisionAtmDemo(codigoPostal: string): Promise<Op
   }
 }
 
-/** Emite «de mentira»: la operación queda como póliza, con un número que no existe en ATM. */
+/**
+ * Emite «de mentira»: la operación queda como póliza, con un número que no existe en ATM. Queda anotada
+ * en la sesión, así aparece en Emisiones del multicotizador (ver «Lo de esta sesión» en aseguradoras.ts).
+ */
 export async function emisionDeAtmDemo(datos: DatosDeEmisionAtm): Promise<EmisionAtm> {
   await esperarComoLaApi(1200, 2500)
+  const poliza = `30${String(hashDe(`atm:poliza:${datos.operacion}:${datos.cobertura}`) % 1_000_000).padStart(6, '0')}`
+  anotarEmisionDeLaSesion('ATM', {
+    poliza,
+    numeroDeCotizacion: datos.operacion,
+    cobertura: datos.cobertura,
+    tomador: datos.titular.apellido,
+    patente: datos.vehiculo.patente,
+    premio: cotizadoEnLaSesion('ATM', datos.operacion, datos.cobertura)?.premio ?? 0,
+  })
   return {
     operacion: datos.operacion,
     estado: 'POL',
     propuesta: null,
-    poliza: `30${String(hashDe(`atm:poliza:${datos.operacion}:${datos.cobertura}`) % 1_000_000).padStart(6, '0')}`,
+    poliza,
     inspeccionUrl: null,
     inspeccionNumero: null,
     linkDePago: null,

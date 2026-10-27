@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { EmisionPosibleAtm } from '../../../shared/multicotizador'
 import { enPesos } from '../../../shared/multicotizador'
 import type { DatosDeEmisionAtm, EmisionAtm, OpcionDeAtm, OpcionesDeEmisionAtm } from '../../../shared/tipos'
+import { useEsDemo } from '../../canal'
 import { Alerta, Boton, Campo, Cargando, Dialogo, Selector } from '../../componentes/ui'
 
 interface Props {
@@ -48,6 +49,7 @@ function tipoDeForma(forma: OpcionDeAtm | undefined): TipoDeFormaDePago {
 const esCapital = (provincia: string) => /CAPITAL|C\s*\.?\s*A\s*\.?\s*B\s*\.?\s*A|CIUDAD AUT/i.test(provincia)
 
 export function DialogoEmitirAtm({ emision, nombreSugerido, documentoSugerido, telefonoSugerido, patenteSugerida, alCerrar, alEmitir }: Props) {
+  const esDemo = useEsDemo()
   const [opciones, setOpciones] = useState<OpcionesDeEmisionAtm | null>(null)
   const [errorDeCarga, setErrorDeCarga] = useState<string | null>(null)
   const esFisica = emision.tipoPersona === 'F'
@@ -239,11 +241,18 @@ export function DialogoEmitirAtm({ emision, nombreSugerido, documentoSugerido, t
         }
       >
         <div className="flex flex-col gap-3 text-sm text-slate-700">
-          <Alerta tono="exito">
-            La operación {resultado.operacion || emision.operacion} {ESTADO[resultado.estado] ?? `quedó en estado ${resultado.estado || 'desconocido'}`}.
-            {resultado.poliza && ` Póliza Nº ${resultado.poliza}.`}
-            {resultado.propuesta && ` Propuesta Nº ${resultado.propuesta}.`}
-          </Alerta>
+          {esDemo ? (
+            <Alerta tono="exito">
+              Emisión simulada: la operación {resultado.operacion || emision.operacion} se emitió como póliza de demostración
+              {resultado.poliza ? ` Nº ${resultado.poliza}` : ''}. No llegó a ATM; ya aparece en Multicotizador → Emisiones.
+            </Alerta>
+          ) : (
+            <Alerta tono="exito">
+              La operación {resultado.operacion || emision.operacion} {ESTADO[resultado.estado] ?? `quedó en estado ${resultado.estado || 'desconocido'}`}.
+              {resultado.poliza && ` Póliza Nº ${resultado.poliza}.`}
+              {resultado.propuesta && ` Propuesta Nº ${resultado.propuesta}.`}
+            </Alerta>
+          )}
           {resultado.avisoDeInspeccion && <Alerta tono="aviso">Inspección: {resultado.avisoDeInspeccion}</Alerta>}
           {resultado.inspeccionUrl && (
             <div className="flex flex-wrap items-center gap-2">
@@ -273,7 +282,11 @@ export function DialogoEmitirAtm({ emision, nombreSugerido, documentoSugerido, t
       abierto
       ancho="lg"
       titulo={`Emitir con ATM — ${emision.descripcionCobertura}`}
-      descripcion={`Premio ${enPesos(emision.premio)} · operación ${emision.operacion}. Esto emite de verdad contra ATM y una operación se emite una sola vez: revisá los datos antes de mandar.`}
+      descripcion={`Premio ${enPesos(emision.premio)} · operación ${emision.operacion}. ${
+        esDemo
+          ? 'Es una demostración: la emisión se simula y no llega a ATM. Probala tranquilo.'
+          : 'Esto emite de verdad contra ATM y una operación se emite una sola vez: revisá los datos antes de mandar.'
+      }`}
       alCerrar={alCerrar}
       pie={
         <>

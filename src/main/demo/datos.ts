@@ -397,6 +397,9 @@ const COMPANIAS: CompaniaDemo[] = [
   { nombre: 'METROPOL', peso: 4, vigencias: [12], prefijo: '6', digitos: 6, factor: 0.91, franquicia: 390_000 },
 ]
 
+/** Los nombres de las compañías de la cartera, como van en la planilla: el servidor de la demo les siembra la comisión. */
+export const COMPANIAS_DE_LA_DEMO: readonly string[] = COMPANIAS.map((c) => c.nombre)
+
 /** Las que la agencia renueva a mano (servicios/companias.ts): son las que llenan la bandeja de renovaciones. */
 const COMPANIAS_DE_RENOVACION_MANUAL = ['AGROSALTA', 'RIO URUGUAY', 'METROPOL']
 
@@ -772,8 +775,10 @@ class GeneradorDeLaDemo {
   // Lo que unas pestañas le pasan a las otras.
   private leads: Array<{ id: string; nombre: string; telefono: string; documento: string; sucursal: SucursalDemo; dia: number; estado: string; tipo: string; marca: string; modelo: string; anio: number; usuario: string; notas: string[] }> = []
   private presupuestos: Array<{ id: string; numero: string; nombre: string; sucursal: SucursalDemo; dia: number; estado: string; usuario: string }> = []
-  private siniestros: Array<{ id: string; poliza: Poliza; numero: string; estado: string; dia: number }> = []
+  private siniestros: Array<{ id: string; poliza: Poliza; numero: string; estado: string; dia: number; observacion: string }> = []
   private comentarios: Fila[] = []
+  /** El `_ID` del siniestro de la Hilux de Sarandí (ver `siniestroDeLaHilux`), o null si no se armó. */
+  private idDeLaHilux: string | null = null
   private filasDePagos: Array<{ fila: Fila; dia: number; sucursal: SucursalDemo; medio: string; importe: number; imputado: boolean }> = []
   private clientesSoloRiesgo: Cliente[] = []
 
@@ -1147,10 +1152,16 @@ class GeneradorDeLaDemo {
     for (const p of tomar(manuales, 4, (x) => x.formaPago === 'TRANSFERENCIA' || x.formaPago === 'MERCADO PAGO' || x.formaPago === 'EFECTIVO')) {
       p.imputada = true
     }
-    // Débitos rechazados: el del mes si ya se debitó, si no el del mes pasado.
+    // Débitos rechazados: el del mes si ya se debitó, si no el del mes pasado. Se reparten POR SUCURSAL y
+    // no al azar sobre toda la cartera: la campana y la pestaña Rechazos arrancan filtradas por el local
+    // de quien entra, y Martina (Dock Sud) o Lucía (Sarandí) no pueden abrirlas vacías. Sarandí lleva dos
+    // porque el chat de ejemplo lo dice (ver `CONVERSACIONES` en servidor.ts).
     const automaticas = azar.mezclar(vigentes.filter((p) => p.automatica && antiguas(p)))
-    for (const p of tomar(automaticas, 5)) {
-      p.rechazoMes = vencimientoEn(this.mesActual, p.diaDeVencimiento) < this.hoy ? this.mesActual : this.mesActual - 1
+    const RECHAZOS_POR_SUCURSAL: Record<NombreDeSucursal, number> = { 'Dock Sud': 3, Lanús: 2, Sarandí: 2, Daniel: 1 }
+    for (const sucursal of SUCURSALES_DEMO) {
+      for (const p of tomar(automaticas, RECHAZOS_POR_SUCURSAL[sucursal.nombre] ?? 1, (x) => x.cliente.sucursal === sucursal)) {
+        p.rechazoMes = vencimientoEn(this.mesActual, p.diaDeVencimiento) < this.hoy ? this.mesActual : this.mesActual - 1
+      }
     }
     // Renovaciones manuales: unas vencidas sin renovar y otras que vencen en las próximas semanas.
     const deRenovacionManual = azar.mezclar(vigentes.filter((p) => COMPANIAS_DE_RENOVACION_MANUAL.includes(p.compania.nombre) && p.altaMes < this.primerMes))
@@ -1521,7 +1532,8 @@ class GeneradorDeLaDemo {
             ? `S-${partesDe(dia).anio}-${azar.entero(10000, 99999)}`
             : String(azar.entero(1_000_000, 9_999_999))
       const id = this.ids.de('siniestro', i, this.hoy)
-      this.siniestros.push({ id, poliza: p, numero, estado, dia })
+      const observacion = azar.elegir(OBSERVACIONES[estado])
+      this.siniestros.push({ id, poliza: p, numero, estado, dia, observacion })
       filas.push({
         dia,
         fila: {
@@ -1547,13 +1559,66 @@ class GeneradorDeLaDemo {
           'PATENTE DEL TERCERO': conTercero ? this.nuevaPatente(azar, 'AUTO', azar.entero(2008, this.hoyPartes.anio)) : '',
           LESIONADOS: conTercero ? (lesionados ? 'SI' : 'NO') : '',
           'DETALLE DE LESIONADOS': lesionados ? azar.elegir(['EL CONDUCTOR DE LA MOTO, GOLPE EN LA RODILLA', 'ACOMPAÑANTE DEL OTRO AUTO, CERVICALGIA']) : '',
-          OBSERVACIONES: azar.elegir(OBSERVACIONES[estado]),
+          OBSERVACIONES: observacion,
           _ID: id,
         },
       })
     }
+
+    // El de la Hilux de Sarandí, que entró hoy: es del que habla el chat de ejemplo entre Lucía y Martina
+    // (servidor.ts), y del que cuelga la tarea que Lucía le dejó a Martina (`pestanaTareas`). Va aparte y
+    // con su propio azar para no correr los 32 de arriba.
+    const hilux = this.siniestroDeLaHilux()
+    if (hilux) filas.push(hilux)
     filas.sort((a, b) => a.dia - b.dia)
     return { titulo: 'SINIESTROS', valores: armar(ENC_SINIESTROS, filas.map((f) => f.fila)) }
+  }
+
+  /**
+   * Un choque de una Hilux de Sarandí cargado hoy, todavía sin número de siniestro. Si la cartera no
+   * tuviera una Hilux vigente en Sarandí (no pasa con la semilla de hoy) se usa otra pick-up del local,
+   * y si tampoco hay, cualquier póliza del local: que falte el auto exacto es mejor que una tarea suelta.
+   */
+  private siniestroDeLaHilux(): { dia: number; fila: Fila } | null {
+    const azar = new Azar('siniestro-hilux')
+    const libres = this.vigentes(
+      (p) => p.cliente.sucursal.nombre === 'Sarandí' && p.altaMes <= this.mesActual - 1 && !this.siniestros.some((s) => s.poliza === p),
+    )
+    const p = libres.find((x) => x.modelo.modelo === 'HILUX') ?? libres.find((x) => x.rama === 'PICK UP') ?? libres[0]
+    if (!p) return null
+    const dia = this.hoy
+    const id = this.ids.de('siniestro', 'hilux', this.hoy)
+    this.siniestros.push({ id, poliza: p, numero: '', estado: 'CARGADO', dia, observacion: '' })
+    this.idDeLaHilux = id
+    return {
+      dia,
+      fila: {
+        LOCAL: p.cliente.sucursal.enLaPlanilla,
+        'FECHA DE CARGA': textoDe(dia),
+        FECHA: textoDe(dia - 1),
+        'APELLIDO Y NOMBRE': p.cliente.nombre,
+        DNI: p.cliente.documento,
+        TELEFONO: p.cliente.telefono,
+        PATENTE: p.patente,
+        MARCA: p.modelo.marca,
+        MODELO: p.version,
+        CIA: p.compania.nombre,
+        'N° POLIZA': p.numero,
+        COBERTURA: p.cobertura,
+        'N° SINIESTRO': '',
+        DESCRIPCION: 'CHOQUE EN ESQUINA, DAÑO EN PARAGOLPE DELANTERO Y OPTICA',
+        ESTADO: 'CARGADO',
+        IMPORTE: '',
+        ABOGADO: '',
+        'CIA DEL TERCERO': azar.elegir(COMPANIAS).nombre,
+        'TEL DEL TERCERO': this.telefono(azar),
+        'PATENTE DEL TERCERO': this.nuevaPatente(azar, 'AUTO', azar.entero(2012, this.hoyPartes.anio)),
+        LESIONADOS: 'NO',
+        'DETALLE DE LESIONADOS': '',
+        OBSERVACIONES: 'DENUNCIA CARGADA CON LAS FOTOS, ESPERANDO NUMERO DE SINIESTRO',
+        _ID: id,
+      },
+    }
   }
 
   private pestanaCobertura(): PestanaDeLaDemo {
@@ -1581,9 +1646,16 @@ class GeneradorDeLaDemo {
   // Las pestañas de la aplicación
   // -------------------------------------------------------------------------
 
-  private comentario(tipo: 'LEAD' | 'SINIESTRO' | 'TAREA', vinculo: string, dia: number, usuario: string, texto: string, clave: string): void {
+  /**
+   * `paso` ordena los comentarios de una misma línea de tiempo que caen el mismo día: cada paso va más
+   * tarde que el anterior. Los de HOY van temprano (8 a 9 de la mañana, hora argentina): la demo se arma
+   * por día, sin reloj, y un comentario «de hoy» no puede quedar con una hora que todavía no llegó.
+   */
+  private comentario(tipo: 'LEAD' | 'SINIESTRO' | 'TAREA', vinculo: string, dia: number, usuario: string, texto: string, clave: string, paso = 0): void {
     const azar = new Azar(`hora|${clave}`)
-    const hora = `${String(azar.entero(12, 21)).padStart(2, '0')}:${String(azar.entero(0, 59)).padStart(2, '0')}`
+    const horas = dia >= this.hoy ? 11 : Math.min(21, 12 + paso * 3 + azar.entero(0, 2))
+    const minutos = dia >= this.hoy ? Math.min(59, paso * 15 + azar.entero(0, 14)) : azar.entero(0, 59)
+    const hora = `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}`
     this.comentarios.push({
       FECHA: `${isoDe(dia)}T${hora}:00.000Z`,
       TIPO: tipo,
@@ -1646,7 +1718,7 @@ class GeneradorDeLaDemo {
       }
       const id = this.ids.de('lead', i, this.hoy)
       const notas = [procedencia[origen], ...(estado === 'NUEVO' && azar.si(0.5) ? [] : [azar.elegir(NOTAS_POR_ESTADO[estado])])].filter(Boolean)
-      notas.forEach((texto, n) => this.comentario('LEAD', id, Math.min(this.hoy, dia + n * azar.entero(0, 3)), usuario, texto, `lead|${i}|${n}`))
+      notas.forEach((texto, n) => this.comentario('LEAD', id, Math.min(this.hoy, dia + n * azar.entero(0, 3)), usuario, texto, `lead|${i}|${n}`, n))
       const telefono = this.telefono(azar)
       const documento = azar.si(0.35) ? String(this.nuevoDni(azar, this.hoyPartes.anio - azar.entero(20, 60))) : ''
       this.leads.push({ id, nombre, telefono, documento, sucursal, dia, estado, tipo, marca, modelo, anio, usuario, notas })
@@ -1771,9 +1843,13 @@ class GeneradorDeLaDemo {
 
   private pestanaRechazos(): PestanaDeLaDemo {
     const azar = new Azar('rechazos')
+    /** El primero de cada sucursal queda PENDIENTE aunque sea viejo: es el que enciende la campana del local. */
+    const conAviso = new Set<SucursalDemo>()
     const filas = this.polizas
       .filter((p) => p.rechazoMes !== null)
       .map((p, i): Fila => {
+        const primeroDelLocal = !conAviso.has(p.cliente.sucursal)
+        conAviso.add(p.cliente.sucursal)
         const mes = p.rechazoMes ?? this.mesActual
         const dia = Math.min(this.hoy, vencimientoEn(mes, p.diaDeVencimiento) + azar.entero(2, 5))
         const motivo = p.formaPago === 'TARJETA' ? 'TARJETA RECHAZADA' : azar.elegir(['SIN FONDOS', 'CBU RECHAZADO', 'CUENTA CERRADA'])
@@ -1791,8 +1867,9 @@ class GeneradorDeLaDemo {
           MES: periodoDe(mes),
           MOTIVO: motivo,
           OBSERVACIONES: motivo === 'TARJETA RECHAZADA' ? 'Pedirle otra tarjeta' : 'Avisarle que pague en el local',
-          ESTADO: this.hoy - dia > 6 ? 'VISTO' : 'PENDIENTE',
-          'CARGADO POR': azar.elegir(['Carlos Ferreyra', 'Martina Demo']),
+          ESTADO: primeroDelLocal || this.hoy - dia <= 6 ? 'PENDIENTE' : 'VISTO',
+          // Lo carga alguien del mismo mostrador, que es quien ve el rebote en el resumen del banco.
+          'CARGADO POR': azar.elegir(p.cliente.sucursal.usuarios),
           _ID: this.ids.de('rechazo', i, this.hoy),
         }
       })
@@ -1903,11 +1980,57 @@ class GeneradorDeLaDemo {
       }
     })
 
-    // Los siniestros también tienen su línea de tiempo.
-    const OBSERVACIONES_DE_SINIESTRO = ['Se cargó la denuncia en la web de la compañía', 'El asegurado mandó las fotos por WhatsApp', 'El perito pasa el jueves a la mañana', 'La compañía pidió el presupuesto del taller']
-    this.siniestros.slice(0, 14).forEach((s, i) => {
-      const usuario = azar.elegir(s.poliza.cliente.sucursal.usuarios)
-      this.comentario('SINIESTRO', s.id, Math.min(this.hoy, s.dia + azar.entero(1, 6)), usuario, azar.elegir(OBSERVACIONES_DE_SINIESTRO), `siniestro|${i}`)
+    // La que Lucía le dejó a Martina por el siniestro de la Hilux («te quedó en Tareas con vencimiento el
+    // viernes», en el chat de ejemplo de servidor.ts). Fija y sin azar: si el chat la promete, tiene que estar.
+    const hilux = this.siniestros.find((s) => s.id === this.idDeLaHilux)
+    if (hilux) {
+      const diaDeLaSemana = (((this.hoy + 4) % 7) + 7) % 7
+      const viernes = this.hoy + ((5 - diaDeLaSemana + 7) % 7 || 7)
+      filas.push({
+        FECHA: isoDe(this.hoy),
+        TITULO: 'Seguir el siniestro de la Hilux con la compañía',
+        DESCRIPCION: `Lo cargó Lucía con las fotos. Pedir el número de siniestro a ${hilux.poliza.compania.nombre} y el turno con el perito.`,
+        'ASIGNADO A': 'Martina Demo',
+        LOCAL: sucursalDe('Martina Demo'),
+        VENCE: isoDe(viernes),
+        PRIORIDAD: 'ALTA',
+        ESTADO: 'Pendiente',
+        VINCULO: `Siniestro ${hilux.poliza.patente} · ${hilux.poliza.cliente.nombre}`,
+        'CREADO POR': 'Lucía Gómez',
+        'VINCULO ID': `SINIESTRO:${hilux.id}`,
+        _ID: this.ids.de('tarea', 'hilux', this.hoy),
+      })
+    }
+
+    // Los siniestros también tienen su línea de tiempo: todos, no unos pocos, porque la ficha que abra
+    // quien mira la demo no puede decir «Todavía no hay observaciones». Una a tres, según cuánto anduvo el
+    // trámite, en orden y nunca después de hoy.
+    const PASOS_DEL_SINIESTRO: Record<string, string[]> = {
+      'SIN RESPONDER': ['Se le mandó el cuestionario por WhatsApp', 'No contesta: volver a llamar mañana'],
+      CARGADO: ['Se cargó la denuncia en la web de la compañía', 'Esperando el número de siniestro'],
+      'EN TRAMITE': ['Se cargó la denuncia en la web de la compañía', 'El perito pasa el jueves a la mañana', 'La compañía pidió el presupuesto del taller'],
+      'ESPERANDO DOCUMENTACION': ['Se cargó la denuncia en la web de la compañía', 'El asegurado mandó las fotos por WhatsApp', 'Falta el registro del tercero: se lo pedimos'],
+      CERRADO: ['Se cargó la denuncia en la web de la compañía', 'El perito aprobó la reparación', 'La compañía liquidó el siniestro: cerrado'],
+    }
+    this.siniestros.forEach((s, i) => {
+      if (s === hilux) {
+        this.comentario('SINIESTRO', s.id, this.hoy, 'Lucía Gómez', 'Cargado con las fotos que mandó el asegurado. Le pasé el seguimiento a Martina.', 'siniestro|hilux')
+        return
+      }
+      // La línea de tiempo cuenta lo mismo que la fila: un CERRADO que la compañía rechazó no puede decir
+      // que se liquidó, y uno CARGADO que ya tiene número no lo puede estar esperando.
+      let pasos = PASOS_DEL_SINIESTRO[s.estado] ?? PASOS_DEL_SINIESTRO['EN TRAMITE']!
+      if (s.estado === 'CERRADO' && s.observacion.startsWith('RECHAZADO')) {
+        pasos = ['Se cargó la denuncia en la web de la compañía', 'La compañía pidió la póliza y las fotos', 'La compañía lo rechazó por falta de cobertura: se le avisó al asegurado']
+      } else if (s.estado === 'CARGADO' && s.numero) {
+        pasos = ['Se cargó la denuncia en la web de la compañía', `La compañía dio el número de siniestro ${s.numero}`]
+      }
+      const cuantas = Math.min(pasos.length, 1 + azar.entero(0, 2))
+      let dia = s.dia
+      for (let n = 0; n < cuantas; n++) {
+        dia = Math.min(this.hoy, dia + azar.entero(1, 6))
+        this.comentario('SINIESTRO', s.id, dia, azar.elegir(s.poliza.cliente.sucursal.usuarios), pasos[n]!, `siniestro|${i}|${n}`, n)
+      }
     })
     return { titulo: 'APP TAREAS', valores: armar(ENC_APP_TAREAS, filas) }
   }

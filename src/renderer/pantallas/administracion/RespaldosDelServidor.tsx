@@ -232,7 +232,7 @@ function DialogoRestaurar({
         <Alerta tono="error">
           La base va a quedar exactamente como estaba el {respaldo.dia}, y{' '}
           <strong className="font-semibold">se descarta todo lo que se cargó desde entonces</strong>: altas, pagos,
-          bajas y renovaciones, en las cinco computadoras. Lo que esta computadora tenga esperando para subir también se
+          bajas y renovaciones, en todas las computadoras. Lo que esta computadora tenga esperando para subir también se
           descarta.
         </Alerta>
 

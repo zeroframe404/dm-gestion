@@ -2,6 +2,13 @@
 // producción». Cumplen el mismo contrato que los adaptadores de verdad (ver multicotizador/aseguradora.ts)
 // y con los mismos ids, nombres y tipos de vehículo —así lo propio de cada compañía en la pantalla, como
 // emitir con Galeno o con ATM, sigue andando—, pero ninguna sale a internet: el precio se calcula acá.
+// Son sólo las que el programa integra de verdad (Galeno, ATM, Mercantil Andina y La Equidad): mostrarle
+// a otra agencia una compañía que cotiza en la demo y no existe en API Aseguradoras sería venderle algo
+// que el programa no tiene.
+//
+// LO DE ESTA SESIÓN: lo que se cotiza y se emite en la demo queda anotado en memoria (ver «Lo de esta
+// sesión», abajo) y aparece arriba de todo en los listados de Cotizaciones y Emisiones: quien evalúa el
+// programa emite y lo busca en el listado. Se pierde al cerrar el programa, como corresponde.
 //
 // EL PRECIO no es un número al azar: sale de lo mismo que mira una compañía —el valor del vehículo (por
 // su año, su modelo y la suma asegurada), la zona del código postal, el uso, el rastreador y el scoring,
@@ -30,8 +37,10 @@ import { RAMA_GALENO_DE_TIPO, type CoberturaCotizadaGaleno, type TipoDeVehiculo 
 import type { CotizacionDeAseguradora, CotizacionDeLaApi, CotizadorDeAseguradora, EmisionDeLaApi, PlanDeAseguradora, SolicitudResuelta } from '../multicotizador/aseguradora'
 import { bajoElFormulario, claveDeCuotas, elegidoBajo } from '../multicotizador/equivalencias'
 import {
+  anioDeEjemplo,
   azarDe,
   diasDelRango,
+  fechaIso,
   enteroDe,
   esperarComoLaApi,
   factorDeZona,
@@ -459,71 +468,6 @@ const COMPANIAS: Compania[] = [
     usos: USOS,
     equiposDeRastreo: RASTREO,
   },
-  // Dos compañías más, sólo de la demo: la pantalla del multicotizador es la misma para cualquiera, y
-  // con seis tarjetas se ve mejor qué es comparar.
-  {
-    id: 'FEDERACION_PATRONAL',
-    nombre: 'Federación Patronal',
-    tipos: ['AUTO', 'MOTO'],
-    emite: null,
-    factor: 1.03,
-    demora: [400, 900],
-    modos: [MODOS.MENSUAL, MODOS.TRIMESTRAL, MODOS.SEMESTRAL, MODOS.ANUAL],
-    clausulas: ['0', '10', '20', '30'],
-    recargoAdministrativo: 10,
-    vigenciaMeses: 12,
-    prefijoSolicitud: '6',
-    prefijoPoliza: '15',
-    tituloVersion: 'Versión en Federación Patronal',
-    planes: (tipo) => [{ codigo: tipo === 'MOTO' ? 'MO' : 'AU', texto: tipo === 'MOTO' ? 'Motovehículos' : 'Automotores Particulares', factor: 1, comision: 0.19 }],
-    coberturas: (tipo) =>
-      tipo === 'MOTO'
-        ? [
-            { codigo: 'A', nombre: 'Responsabilidad Civil', nivel: 'RC', adicionales: [] },
-            { codigo: 'B', nombre: 'Robo y Destrucción Total', nivel: 'BASICO', adicionales: [] },
-            { codigo: 'C', nombre: 'Terceros Completo', nivel: 'COMPLETO', adicionales: [] },
-          ]
-        : [
-            { codigo: 'A', nombre: 'Responsabilidad Civil', nivel: 'RC', adicionales: [] },
-            { codigo: 'B', nombre: 'Robo y Destrucción Total', nivel: 'BASICO', adicionales: [] },
-            { codigo: 'C', nombre: 'Terceros Completo', nivel: 'COMPLETO', adicionales: ['Cristales', 'Cerraduras'] },
-            { codigo: 'CG', nombre: 'Terceros Completo con Granizo', nivel: 'PREMIUM', adicionales: ['Granizo', 'Cristales', 'Cerraduras'] },
-            { codigo: 'D', nombre: 'Todo Riesgo con Franquicia {franquicia}', nivel: 'TODO_RIESGO', franquicia: 4, adicionales: ['Granizo'] },
-          ],
-    formasDePago: FORMAS_DE_PAGO,
-    usos: USOS,
-    equiposDeRastreo: RASTREO,
-  },
-  {
-    id: 'SANCOR',
-    nombre: 'Sancor Seguros',
-    tipos: ['AUTO'],
-    emite: null,
-    factor: 1.05,
-    demora: [300, 800],
-    modos: [MODOS.MENSUAL, MODOS.SEMESTRAL],
-    clausulas: ['0', '10', '20'],
-    recargoAdministrativo: 8,
-    vigenciaMeses: 6,
-    prefijoSolicitud: '8',
-    prefijoPoliza: '6',
-    tituloVersion: 'Versión en Sancor',
-    planes: () => [
-      { codigo: 'P1', texto: 'Autos Familiar', factor: 1, comision: 0.21 },
-      { codigo: 'P3', texto: 'Autos Bonificado', factor: 0.92, comision: 0.13 },
-    ],
-    coberturas: () => [
-      { codigo: 'RC', nombre: 'Responsabilidad Civil', nivel: 'RC', adicionales: [] },
-      { codigo: 'PT', nombre: 'Pérdida Total por Robo e Incendio', nivel: 'BASICO', adicionales: [] },
-      { codigo: 'TC', nombre: 'Terceros Completo', nivel: 'COMPLETO', adicionales: ['Cristales', 'Cerraduras'] },
-      { codigo: 'TC+', nombre: 'Terceros Completo Plus', nivel: 'PREMIUM', adicionales: ['Granizo', 'Cristales', 'Cerraduras', 'Auxilio 300 km'] },
-      { codigo: 'TR3', nombre: 'Todo Riesgo Franquicia {franquicia}', nivel: 'TODO_RIESGO', franquicia: 3, adicionales: ['Granizo'] },
-      { codigo: 'TR6', nombre: 'Todo Riesgo Franquicia {franquicia}', nivel: 'TODO_RIESGO', franquicia: 6, adicionales: ['Granizo'] },
-    ],
-    formasDePago: FORMAS_DE_PAGO.filter((forma) => forma.codigo !== 'EF'),
-    usos: USOS.slice(0, 4),
-    equiposDeRastreo: RASTREO,
-  },
 ]
 
 // --- Los ajustes ---------------------------------------------------------------------------------------
@@ -543,8 +487,10 @@ function valido<T extends { codigo: string }>(elegido: string | undefined, lista
 /** Las versiones de la compañía para el vehículo pedido: la que coincide, una más equipada y una más básica. */
 function versionesDe(solicitud: SolicitudResuelta): Array<{ codigo: string; texto: string; factor: number }> {
   const v = solicitud.vehiculo
-  const nombre = `${v.marca} ${v.modelo}`.toUpperCase()
   const pedida = v.version.trim().toUpperCase()
+  // La versión del catálogo muchas veces ya trae el modelo («GOL TREND 1.6 TRENDLINE»): no repetirlo.
+  const traeElModelo = Boolean(v.modelo.trim()) && normalizarTexto(pedida).startsWith(normalizarTexto(v.modelo))
+  const nombre = (traeElModelo ? v.marca : `${v.marca} ${v.modelo}`).toUpperCase()
   return [
     { codigo: 'V1', texto: `${nombre} ${pedida || 'BASE'}`.trim(), factor: 1 },
     { codigo: 'V2', texto: `${nombre} ${pedida ? `${pedida} FULL` : 'FULL'}`, factor: 1.12 },
@@ -818,7 +764,15 @@ async function cotizarEn(compania: Compania, solicitud: SolicitudResuelta, elegi
   }
   const tarifadas = tarifar(compania, riesgo, condicion)
   const numero = numeroDe(compania.prefijoSolicitud, `${compania.id}:${JSON.stringify(solicitud)}:${JSON.stringify(elegidos)}`)
-  if (compania.emite === 'GALENO') anotarCotizacionDeGalenoDemo(Number(numero), tarifadas)
+  anotarCotizacionDeLaSesion(compania.id, {
+    numero,
+    tipo: solicitud.vehiculo.tipo,
+    tomador: `${solicitud.tomador.apellido} ${solicitud.tomador.nombre}`,
+    vehiculo: `${elecciones.version.texto} ${solicitud.vehiculo.ceroKm ? '0 KM' : solicitud.vehiculo.anio}`,
+    sumaAsegurada: riesgo.suma,
+    vigenciaDesde: solicitud.vigenciaDesde,
+    coberturas: tarifadas,
+  })
 
   const coberturas: CoberturaCotizada[] = tarifadas.map((t) => ({
     aseguradora: compania.id,
@@ -907,7 +861,7 @@ function filasInventadas(compania: Compania, filtros: FiltrosDeListado, que: str
       const semilla = `${compania.id}:${que}:${dia}:${i}`
       const tipo = unoDe(`${semilla}:tipo`, tipos)
       const ejemplo = unoDe(semilla, VEHICULOS_DE_EJEMPLO.filter((vehiculo) => vehiculo.tipo === tipo))
-      const anio = enteroDe(`${semilla}:anio`, 2008, anioActual())
+      const anio = anioDeEjemplo(`${semilla}:anio`, ejemplo, anioActual())
       const suma = valorEstimado(tipo, ejemplo.marca, ejemplo.modelo, ejemplo.version, anio)
       const riesgo: Riesgo = {
         tipo,
@@ -952,7 +906,7 @@ function listadosDe(compania: Compania): Pick<CotizadorDeAseguradora, 'planes' |
     },
     async cotizaciones(filtros: FiltrosDeListado): Promise<CotizacionDeLaApi[]> {
       await esperarComoLaApi(compania.demora[0], compania.demora[1])
-      return filasInventadas(compania, filtros, 'cotizacion', 3).map((fila) => {
+      const inventadas = filasInventadas(compania, filtros, 'cotizacion', 3).map((fila) => {
         const desde = sumarDias(fila.dia, enteroDe(`${fila.semilla}:vigencia`, 0, 10))
         return {
           tipo: fila.tipo,
@@ -968,10 +922,15 @@ function listadosDe(compania: Compania): Pick<CotizadorDeAseguradora, 'planes' |
           vigenciaHasta: sumarMeses(desde, compania.vigenciaMeses),
         }
       })
+      const deLaSesion = cotizacionesDeLaSesion.filter((c) => c.compania === compania.id && dentroDelListado(c.fila.fecha, c.fila.tipo, filtros)).map((c) => ({ ...c.fila }))
+      return [...deLaSesion, ...inventadas]
     },
     async emisiones(filtros: FiltrosDeListado): Promise<EmisionDeLaApi[]> {
       await esperarComoLaApi(compania.demora[0], compania.demora[1])
-      return filasInventadas(compania, filtros, 'emision', 1).map((fila) => ({
+      const deLaSesion = emisionesDeLaSesion
+        .filter((e) => e.compania === compania.id && dentroDelListado(e.fecha, e.tipo, filtros))
+        .map((e): EmisionDeLaApi => ({ tipo: e.tipo, poliza: e.poliza, fechaEmision: e.fecha, tomador: e.tomador, patente: e.patente, cobertura: e.cobertura, vigenciaDesde: e.desde, vigenciaHasta: e.hasta, estado: 'Vigente' }))
+      const inventadas = filasInventadas(compania, filtros, 'emision', 1).map((fila) => ({
         tipo: fila.tipo,
         poliza: numeroDe(compania.prefijoPoliza, fila.semilla, 6),
         fechaEmision: fila.dia,
@@ -982,6 +941,7 @@ function listadosDe(compania: Compania): Pick<CotizadorDeAseguradora, 'planes' |
         vigenciaHasta: sumarMeses(fila.dia, compania.vigenciaMeses),
         estado: unoDe(`${fila.semilla}:estado`, ESTADOS_DE_EMISION),
       }))
+      return [...deLaSesion, ...inventadas]
     },
   }
 }
@@ -1008,20 +968,161 @@ function comoCotizador(compania: Compania): CotizadorDeAseguradora {
 /** Las compañías del multicotizador en la demo (ver `aseguradorasRegistradas` en multicotizador/registro.ts). */
 export const ASEGURADORAS_DE_LA_DEMO: readonly CotizadorDeAseguradora[] = COMPANIAS.map(comoCotizador)
 
+// --- Lo de esta sesión ---------------------------------------------------------------------------------
+//
+// Lo cotizado y lo emitido mientras el programa está abierto, en memoria y nada más: los listados lo
+// muestran arriba de lo inventado, la emisión cobra lo mismo que se cotizó y la impresión de Galeno
+// encuentra la póliza recién emitida. Lo usan cotizarEn (acá), galeno.ts y la emisión de ATM (apis.ts).
+
+/** Hasta cuántas se recuerdan: nadie emite una cotización de hace doscientas cotizaciones. */
+const MAXIMO_DE_LA_SESION = 200
+
+interface CoberturaDeLaSesion {
+  nombre: string
+  premio: number
+  impuestos: number
+}
+
+interface CotizacionDeLaSesion {
+  compania: string
+  fila: CotizacionDeLaApi
+  sumaAsegurada: number
+  coberturas: Map<string, CoberturaDeLaSesion>
+  /** Cuántos meses cubre el premio cotizado (el período de facturación). */
+  meses: number
+}
+
+export interface EmisionDeLaSesion {
+  compania: string
+  tipo: TipoDeVehiculo
+  poliza: string
+  /** aaaa-mm-dd. */
+  fecha: string
+  tomador: string
+  patente: string
+  /** El nombre de la cobertura emitida. */
+  cobertura: string
+  vehiculo: string
+  sumaAsegurada: number | null
+  premio: number
+  /** Cuántos meses cubre `premio` (el período de facturación con que se cotizó). */
+  meses: number
+  desde: string
+  hasta: string
+}
+
+/** Lo más nuevo primero, como lo lista una compañía. */
+const cotizacionesDeLaSesion: CotizacionDeLaSesion[] = []
+const emisionesDeLaSesion: EmisionDeLaSesion[] = []
+
+function dentroDelListado(fecha: string, tipo: TipoDeVehiculo | null, filtros: FiltrosDeListado): boolean {
+  return fecha >= filtros.desde && fecha <= filtros.hasta && (!filtros.tipo || tipo === filtros.tipo)
+}
+
+function vigenciaDe(compania: string): number {
+  return COMPANIAS.find((c) => c.id === compania)?.vigenciaMeses ?? 12
+}
+
+function anotar<T>(lista: T[], nueva: T, esLaMisma: (vieja: T) => boolean): void {
+  const repetida = lista.findIndex(esLaMisma)
+  if (repetida >= 0) lista.splice(repetida, 1)
+  lista.unshift(nueva)
+  if (lista.length > MAXIMO_DE_LA_SESION) lista.length = MAXIMO_DE_LA_SESION
+}
+
+export interface CotizacionParaLaSesion {
+  numero: string
+  tipo: TipoDeVehiculo
+  tomador: string
+  vehiculo: string
+  sumaAsegurada: number
+  /** aaaa-mm-dd; si no es una fecha, la de hoy. */
+  vigenciaDesde: string
+  coberturas: Array<{ codigo: string; nombre: string; premio: number; impuestos: number }>
+  /** Cuántos meses cubre el premio (mensual = 1, el valor por omisión). */
+  meses?: number
+}
+
+/** Anota una cotización de la demo: la misma cotización dos veces (mismo número) queda una sola vez. */
+export function anotarCotizacionDeLaSesion(compania: string, cotizacion: CotizacionParaLaSesion): void {
+  if (cotizacion.coberturas.length === 0) return
+  const hoy = fechaIso(new Date())
+  const desde = /^\d{4}-\d{2}-\d{2}$/.test(cotizacion.vigenciaDesde) ? cotizacion.vigenciaDesde : hoy
+  // En el listado va una sola cobertura: la de terceros completo, que es la que más se vende.
+  const mostrada = cotizacion.coberturas.find((c) => categoriaDeCobertura(c.nombre, c.codigo) === 'TERCEROS_COMPLETO') ?? cotizacion.coberturas[0]!
+  const fila: CotizacionDeLaApi = {
+    tipo: cotizacion.tipo,
+    numero: cotizacion.numero,
+    fecha: hoy,
+    tomador: normalizarTomador(cotizacion.tomador),
+    vehiculo: cotizacion.vehiculo.toUpperCase(),
+    patente: '',
+    cobertura: mostrada.nombre,
+    premio: mostrada.premio,
+    sumaAsegurada: cotizacion.sumaAsegurada,
+    vigenciaDesde: desde,
+    vigenciaHasta: sumarMeses(desde, vigenciaDe(compania)),
+  }
+  const coberturas = new Map(cotizacion.coberturas.map((c) => [c.codigo, { nombre: c.nombre, premio: c.premio, impuestos: c.impuestos }]))
+  anotar(cotizacionesDeLaSesion, { compania, fila, sumaAsegurada: cotizacion.sumaAsegurada, coberturas, meses: cotizacion.meses ?? 1 }, (c) => c.compania === compania && c.fila.numero === cotizacion.numero)
+}
+
+function normalizarTomador(tomador: string): string {
+  return tomador.replace(/\s+/g, ' ').trim().toUpperCase()
+}
+
+/** Lo que se cotizó en esta sesión para esa cobertura (para emitir por lo mismo), o null. */
+export function cotizadoEnLaSesion(compania: string, numero: string, cobertura: string): CoberturaDeLaSesion | null {
+  return cotizacionesDeLaSesion.find((c) => c.compania === compania && c.fila.numero === numero)?.coberturas.get(cobertura) ?? null
+}
+
+export interface EmisionParaLaSesion {
+  poliza: string
+  /** El número de la cotización que se emitió (la solicitud de Galeno, la operación de ATM). */
+  numeroDeCotizacion: string
+  cobertura: string
+  tomador: string
+  patente: string
+  premio: number
+  tipo?: TipoDeVehiculo
+}
+
+/** Anota una emisión de la demo, con lo que se había cotizado (el vehículo, la cobertura, la vigencia). */
+export function anotarEmisionDeLaSesion(compania: string, emision: EmisionParaLaSesion): EmisionDeLaSesion {
+  const cotizada = cotizacionesDeLaSesion.find((c) => c.compania === compania && c.fila.numero === emision.numeroDeCotizacion)
+  const hoy = fechaIso(new Date())
+  const desde = cotizada && cotizada.fila.vigenciaDesde >= hoy ? cotizada.fila.vigenciaDesde : hoy
+  const nueva: EmisionDeLaSesion = {
+    compania,
+    tipo: cotizada?.fila.tipo ?? emision.tipo ?? 'AUTO',
+    poliza: emision.poliza,
+    fecha: hoy,
+    tomador: normalizarTomador(emision.tomador) || cotizada?.fila.tomador || '',
+    patente: emision.patente.trim().toUpperCase(),
+    cobertura: cotizada?.coberturas.get(emision.cobertura)?.nombre ?? emision.cobertura,
+    vehiculo: cotizada?.fila.vehiculo ?? '',
+    sumaAsegurada: cotizada?.sumaAsegurada ?? null,
+    premio: emision.premio,
+    meses: cotizada?.meses ?? 1,
+    desde,
+    hasta: sumarMeses(desde, vigenciaDe(compania)),
+  }
+  anotar(emisionesDeLaSesion, nueva, (e) => e.compania === compania && e.poliza === emision.poliza)
+  return nueva
+}
+
+/** Las pólizas emitidas en esta sesión con esa compañía, lo más nuevo primero. */
+export function emisionesDeLaSesionCon(compania: string): EmisionDeLaSesion[] {
+  return emisionesDeLaSesion.filter((e) => e.compania === compania).map((e) => ({ ...e }))
+}
+
+/** Para las pruebas: empezar de cero. */
+export function olvidarLaSesionDeLaDemo(): void {
+  cotizacionesDeLaSesion.length = 0
+  emisionesDeLaSesion.length = 0
+}
+
 // --- Para el cliente de Galeno de la demo (ver galeno.ts) ---------------------------------------------
-
-/** Lo cotizado con Galeno en la demo, por número de solicitud: al emitir se cobra lo mismo que se cotizó. */
-const cotizadoEnGaleno = new Map<number, Map<string, { premio: number; impuestos: number }>>()
-
-export function anotarCotizacionDeGalenoDemo(solicitud: number, coberturas: Array<{ codigo: string; premio: number; impuestos: number }>): void {
-  cotizadoEnGaleno.set(solicitud, new Map(coberturas.map((c) => [c.codigo, { premio: c.premio, impuestos: c.impuestos }])))
-  // Sólo hacen falta las últimas: nadie emite una cotización de hace cien cotizaciones.
-  if (cotizadoEnGaleno.size > 200) cotizadoEnGaleno.delete(cotizadoEnGaleno.keys().next().value!)
-}
-
-export function cotizadoEnGalenoDemo(solicitud: number, cobertura: string): { premio: number; impuestos: number } | null {
-  return cotizadoEnGaleno.get(solicitud)?.get(cobertura) ?? null
-}
 
 export interface PedidoDeGalenoDemo {
   tipo: TipoDeVehiculo

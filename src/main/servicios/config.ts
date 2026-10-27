@@ -17,7 +17,7 @@ import {
 import { esDemo } from '../canal'
 import { credencialesDeLaDemo } from '../demo/servidor'
 import { rutaConfig } from '../rutas'
-import { TOKEN_DE_LA_DEMO } from '../../shared/demo'
+import { EJEMPLO_URL_DEL_VPS, TOKEN_DE_LA_DEMO } from '../../shared/demo'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
 
@@ -153,10 +153,18 @@ interface Config {
  */
 export const URL_DE_REDIRECCION_DE_META = 'https://dmartinezseguros.com/meta/vuelta'
 
+/**
+ * La de fábrica en la demo: la del mismo dominio de ejemplo que muestra «Servidor (VPS)». La de la
+ * agencia no se le muestra a otra agencia (y en el instalador de la demo ni siquiera está, ver
+ * scripts/secretos-de-la-agencia.mjs).
+ */
+const URL_DE_VUELTA_DE_LA_DEMO = `${EJEMPLO_URL_DEL_VPS}/meta/vuelta`
+
 /** La dirección de vuelta vigente: la cargada, o la de fábrica mientras nadie haya cargado otra. */
 export function urlDeVueltaDeMeta(): string {
   const escrita = leerConfig().meta?.urlDeRedireccion
-  return typeof escrita === 'string' && escrita.trim() ? escrita.trim() : URL_DE_REDIRECCION_DE_META
+  if (typeof escrita === 'string' && escrita.trim()) return escrita.trim()
+  return esDemo() ? URL_DE_VUELTA_DE_LA_DEMO : URL_DE_REDIRECCION_DE_META
 }
 
 // La base del GENERAL DE CLIENTES vive en el VPS de la agencia desde la v12. La URL y el token van

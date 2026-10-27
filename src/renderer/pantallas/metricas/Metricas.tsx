@@ -10,6 +10,7 @@ import { NOMBRE_RAMA_DE_METRICA, RAMAS_DE_METRICA, type RamaDeMetrica, type Tabl
 import { FiltroMultiple } from '../../componentes/FiltroMultiple'
 import { Alerta, Cargando, Tarjeta } from '../../componentes/ui'
 import { BotonAyuda } from '../../componentes/Ayuda'
+import { useEsDemo } from '../../canal'
 import { momento, pesos, pesosRedondos } from '../cobranzas/formato'
 import { GraficoDeBarras, GraficoDeLinea, numero, Ranking, TarjetaGrande } from './graficos'
 
@@ -20,6 +21,7 @@ const COLOR_DE_RAMA: Record<RamaDeMetrica, string> = {
 }
 
 export function Metricas() {
+  const esDemo = useEsDemo()
   const [datos, setDatos] = useState<TableroMetricas | null>(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -249,12 +251,21 @@ export function Metricas() {
         </Tarjeta>
       </div>
 
-      <p className="shrink-0 text-xs leading-relaxed text-slate-500">
-        Los seguros activos son las filas de la planilla del mes elegido, que es lo mismo que cuentan los COUNTIF de la pestaña SEGUROS
-        ACT de la hoja, más los riesgos varios de la pestaña RIESGOS VARIOS cuya vigencia cubre el mes. Las altas se deducen comparando
-        contra el mes anterior, igual que lo hace el contador; las de la pestaña RIESGOS VARIOS, por su fecha de emisión (o de vigencia
-        desde, si no tienen emisión). Las bajas salen de la pestaña de BAJAS de ese mes.
-      </p>
+      {esDemo ? (
+        // La demo no viene de la hoja de la agencia: las pestañas SEGUROS ACT y sus COUNTIF no le dicen nada a otra agencia.
+        <p className="shrink-0 text-xs leading-relaxed text-slate-500">
+          Los seguros activos son las pólizas de la planilla del mes elegido, más los riesgos varios cuya vigencia cubre el mes. Las
+          altas se deducen comparando contra el mes anterior; las de riesgos varios, por su fecha de emisión (o de vigencia desde, si no
+          tienen emisión). Las bajas son las que se dieron de baja ese mes.
+        </p>
+      ) : (
+        <p className="shrink-0 text-xs leading-relaxed text-slate-500">
+          Los seguros activos son las filas de la planilla del mes elegido, que es lo mismo que cuentan los COUNTIF de la pestaña SEGUROS
+          ACT de la hoja, más los riesgos varios de la pestaña RIESGOS VARIOS cuya vigencia cubre el mes. Las altas se deducen comparando
+          contra el mes anterior, igual que lo hace el contador; las de la pestaña RIESGOS VARIOS, por su fecha de emisión (o de vigencia
+          desde, si no tienen emisión). Las bajas salen de la pestaña de BAJAS de ese mes.
+        </p>
+      )}
     </div>
   )
 }

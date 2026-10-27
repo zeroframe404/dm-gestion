@@ -8,13 +8,22 @@
 //   · TARDA LO QUE TARDARÍA. Una compañía que contesta en 0 ms delata la simulación; cada respuesta
 //     espera un rato parecido al de la API de verdad. Las pruebas apagan la espera.
 
-/** Un número de 32 bits estable para un texto (FNV-1a). */
+/**
+ * Un número de 32 bits estable para un texto: FNV-1a con el mezclado final de Murmur3 (fmix32). Sin ese
+ * final, dos semillas que cambian sólo en la última letra («…:l1», «…:l2») daban casi el mismo número, y
+ * de ahí salían patentes como «HHH333» y valores correlacionados entre sí.
+ */
 export function hashDe(texto: string): number {
   let h = 0x811c9dc5
   for (let i = 0; i < texto.length; i++) {
     h ^= texto.charCodeAt(i)
     h = Math.imul(h, 0x01000193)
   }
+  h ^= h >>> 16
+  h = Math.imul(h, 0x85ebca6b)
+  h ^= h >>> 13
+  h = Math.imul(h, 0xc2b2ae35)
+  h ^= h >>> 16
   return h >>> 0
 }
 
@@ -102,31 +111,60 @@ export interface VehiculoDeEjemplo {
   marca: string
   modelo: string
   version: string
+  /** Los años en que se fabricó esa versión: un productor nota enseguida un Cronos 2012. */
+  desde: number
+  /** Null si se sigue fabricando. */
+  hasta: number | null
 }
 
 export const VEHICULOS_DE_EJEMPLO: readonly VehiculoDeEjemplo[] = [
-  { tipo: 'AUTO', marca: 'VOLKSWAGEN', modelo: 'GOL TREND', version: '1.6 TRENDLINE 5P' },
-  { tipo: 'AUTO', marca: 'VOLKSWAGEN', modelo: 'AMAROK', version: '2.0 TDI 4X2 HIGHLINE' },
-  { tipo: 'AUTO', marca: 'TOYOTA', modelo: 'COROLLA', version: '1.8 XEI CVT' },
-  { tipo: 'AUTO', marca: 'TOYOTA', modelo: 'HILUX', version: '2.8 DC 4X4 SRV' },
-  { tipo: 'AUTO', marca: 'FIAT', modelo: 'CRONOS', version: '1.3 DRIVE GSE' },
-  { tipo: 'AUTO', marca: 'PEUGEOT', modelo: '208', version: '1.6 ALLURE' },
-  { tipo: 'AUTO', marca: 'CHEVROLET', modelo: 'ONIX', version: '1.2 LT' },
-  { tipo: 'AUTO', marca: 'FORD', modelo: 'RANGER', version: '3.2 DC 4X4 XLT' },
-  { tipo: 'AUTO', marca: 'RENAULT', modelo: 'SANDERO', version: '1.6 STEPWAY INTENS' },
-  { tipo: 'AUTO', marca: 'FORD', modelo: 'FOCUS', version: '2.0 SE PLUS' },
-  { tipo: 'MOTO', marca: 'HONDA', modelo: 'WAVE', version: '110 S' },
-  { tipo: 'MOTO', marca: 'MOTOMEL', modelo: 'BLITZ', version: '110 V8 FULL' },
-  { tipo: 'MOTO', marca: 'YAMAHA', modelo: 'FZ', version: 'FZ-S FI 150' },
-  { tipo: 'MOTO', marca: 'CORVEN', modelo: 'ENERGY', version: '110' },
+  { tipo: 'AUTO', marca: 'VOLKSWAGEN', modelo: 'GOL TREND', version: '1.6 TRENDLINE 5P', desde: 2009, hasta: 2023 },
+  { tipo: 'AUTO', marca: 'VOLKSWAGEN', modelo: 'AMAROK', version: '2.0 TDI 4X2 HIGHLINE', desde: 2011, hasta: null },
+  { tipo: 'AUTO', marca: 'TOYOTA', modelo: 'COROLLA', version: '1.8 XEI CVT', desde: 2015, hasta: null },
+  { tipo: 'AUTO', marca: 'TOYOTA', modelo: 'HILUX', version: '2.8 DC 4X4 SRV', desde: 2016, hasta: null },
+  { tipo: 'AUTO', marca: 'FIAT', modelo: 'CRONOS', version: '1.3 DRIVE GSE', desde: 2018, hasta: null },
+  { tipo: 'AUTO', marca: 'PEUGEOT', modelo: '208', version: '1.6 ALLURE', desde: 2014, hasta: null },
+  { tipo: 'AUTO', marca: 'CHEVROLET', modelo: 'ONIX', version: '1.2 LT', desde: 2020, hasta: null },
+  { tipo: 'AUTO', marca: 'FORD', modelo: 'RANGER', version: '3.2 DC 4X4 XLT', desde: 2012, hasta: 2023 },
+  { tipo: 'AUTO', marca: 'RENAULT', modelo: 'SANDERO', version: '1.6 STEPWAY INTENS', desde: 2017, hasta: null },
+  { tipo: 'AUTO', marca: 'FORD', modelo: 'FOCUS', version: '2.0 SE PLUS', desde: 2014, hasta: 2019 },
+  { tipo: 'MOTO', marca: 'HONDA', modelo: 'WAVE', version: '110 S', desde: 2010, hasta: null },
+  { tipo: 'MOTO', marca: 'MOTOMEL', modelo: 'BLITZ', version: '110 V8 FULL', desde: 2012, hasta: null },
+  { tipo: 'MOTO', marca: 'YAMAHA', modelo: 'FZ', version: 'FZ-S FI 150', desde: 2016, hasta: null },
+  { tipo: 'MOTO', marca: 'CORVEN', modelo: 'ENERGY', version: '110', desde: 2010, hasta: null },
 ]
 
-/** Una patente con el formato que corresponde al año: AB123CD desde 2016, ABC123 antes (motos: A123BCD / 123ABC). */
+/** Un año en que se fabricó el vehículo de ejemplo, siempre el mismo para la misma semilla. */
+export function anioDeEjemplo(semilla: string, vehiculo: VehiculoDeEjemplo, anioActual = new Date().getFullYear()): number {
+  const hasta = Math.min(vehiculo.hasta ?? anioActual, anioActual)
+  return enteroDe(semilla, Math.min(vehiculo.desde, hasta), hasta)
+}
+
+/**
+ * La primera letra de las patentes viejas (ABC123) según el año: la serie avanzó letra por letra desde
+ * 1995 hasta que en 2016 llegó el formato del Mercosur.
+ */
+const PRIMERA_LETRA_POR_ANIO: Record<number, string> = {
+  1995: 'A', 1996: 'A', 1997: 'B', 1998: 'C', 1999: 'D', 2000: 'D', 2001: 'E', 2002: 'E', 2003: 'E', 2004: 'F', 2005: 'F',
+  2006: 'F', 2007: 'G', 2008: 'H', 2009: 'H', 2010: 'I', 2011: 'J', 2012: 'K', 2013: 'M', 2014: 'N', 2015: 'O',
+}
+
+/**
+ * Una patente con el formato y la serie que corresponden al año: AB123CD desde 2016 (la segunda letra
+ * avanza con los años: AA en 2016, AI en 2026) y ABC123 antes, con la primera letra de su época. Motos:
+ * A123BCD desde 2016, 123ABC antes.
+ */
 export function patenteDe(semilla: string, anio: number, tipo: 'AUTO' | 'MOTO' = 'AUTO'): string {
   const letra = (i: number) => String.fromCharCode(65 + enteroDe(`${semilla}:l${i}`, 0, 25))
   const numero = (i: number) => String(enteroDe(`${semilla}:n${i}`, 0, 9))
-  if (tipo === 'MOTO') return anio >= 2016 ? `${letra(1)}${numero(1)}${numero(2)}${numero(3)}${letra(2)}${letra(3)}${letra(4)}` : `${numero(1)}${numero(2)}${numero(3)}${letra(1)}${letra(2)}${letra(3)}`
-  return anio >= 2016 ? `${letra(1)}${letra(2)}${numero(1)}${numero(2)}${numero(3)}${letra(3)}${letra(4)}` : `${letra(1)}${letra(2)}${letra(3)}${numero(1)}${numero(2)}${numero(3)}`
+  const tres = `${numero(1)}${numero(2)}${numero(3)}`
+  if (anio >= 2016) {
+    // La serie nueva avanza de a poco: unos ocho pares de letras en diez años.
+    const serie = String.fromCharCode(65 + Math.min(25, Math.round((anio - 2016) * 0.8)))
+    return tipo === 'MOTO' ? `A${tres}${serie}${letra(3)}${letra(4)}` : `A${serie}${tres}${letra(3)}${letra(4)}`
+  }
+  const primera = PRIMERA_LETRA_POR_ANIO[Math.max(1995, anio)] ?? 'A'
+  return tipo === 'MOTO' ? `${tres}${primera}${letra(2)}${letra(3)}` : `${primera}${letra(2)}${letra(3)}${tres}`
 }
 
 export interface LocalidadDeEjemplo {

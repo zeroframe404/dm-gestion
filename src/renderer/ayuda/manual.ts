@@ -16,6 +16,7 @@ import { AREAS, DESCRIPCION_AREA, NOMBRE_NIVEL, permisosPorDefecto } from '../..
 import { SUCURSALES } from '../../shared/sucursales'
 import { NOMBRE_ROL } from '../../shared/tipos'
 import { MODULOS, MODULO_ADMINISTRACION, MODULO_API_ASEGURADORAS, type Modulo } from '../modulos'
+import { nombreDeLaAgencia } from '../agencia'
 import { CONTENIDO_AYUDA } from './contenido'
 import type { ContenidoDeAyuda } from './tipos'
 
@@ -26,6 +27,8 @@ export interface DatosDelManual {
   fecha: string
   /** El logo como data URI. Vacío = la portada va sin logo, que se ve bien igual. */
   logo?: string
+  /** A nombre de quién sale. Sin decir nada, el de la agencia (en la demo, la de demostración). */
+  agencia?: string
 }
 
 /**
@@ -133,14 +136,14 @@ const CIERRE = [
 // El armado de las páginas
 // ---------------------------------------------------------------------------
 
-function hoja(numero: number, total: number, titulo: string, cuerpo: string): string {
+function hoja(numero: number, total: number, titulo: string, cuerpo: string, agencia: string): string {
   return `<section class="hoja">
   <header class="cabecera">
     <span class="marca">DM Gestión · Manual</span>
     <span class="titulo-hoja">${escapar(titulo)}</span>
   </header>
   <div class="cuerpo">${cuerpo}</div>
-  <footer class="pie"><span>Seguros Daniel Martínez</span><span>${numero} de ${total}</span></footer>
+  <footer class="pie"><span>${escapar(agencia)}</span><span>${numero} de ${total}</span></footer>
 </section>`
 }
 
@@ -257,12 +260,14 @@ export function htmlDelManual(datos: DatosDelManual): string {
   const total = 7 + paginasDeModulos.length
   let numero = 0
   const paginas: string[] = []
+  const agencia = datos.agencia ?? nombreDeLaAgencia()
+  const pagina = (n: number, de: number, titulo: string, contenido: string) => hoja(n, de, titulo, contenido, agencia)
 
   // --- 1. Portada ----------------------------------------------------------
   paginas.push(`<section class="hoja portada">
   <div class="portada-arriba">
     ${datos.logo ? `<img class="logo" src="${datos.logo}" alt="" />` : ''}
-    <p class="portada-marca">Seguros Daniel Martínez</p>
+    <p class="portada-marca">${escapar(agencia)}</p>
     <h1>DM&nbsp;Gestión</h1>
     <p class="portada-bajada">Manual para empezar a usar el programa</p>
   </div>
@@ -275,7 +280,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
 
   // --- 2. Qué es esto ------------------------------------------------------
   paginas.push(
-    hoja(
+    pagina(
       ++numero,
       total,
       'Qué es DM Gestión',
@@ -297,7 +302,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
 
   // --- 3. Primeros pasos ---------------------------------------------------
   paginas.push(
-    hoja(
+    pagina(
       ++numero,
       total,
       'Primeros pasos',
@@ -311,7 +316,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
   // --- 4 a 7. Los módulos --------------------------------------------------
   for (const [indice, grupo] of paginasDeModulos.entries()) {
     paginas.push(
-      hoja(
+      pagina(
         ++numero,
         total,
         indice === 0 ? 'Los módulos, uno por uno' : 'Los módulos (continuación)',
@@ -325,7 +330,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
   // --- 8. Roles y permisos -------------------------------------------------
   const matriz = permisosPorDefecto()
   paginas.push(
-    hoja(
+    pagina(
       ++numero,
       total,
       'Quién ve qué',
@@ -351,7 +356,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
 
   // --- 9. Atajos -----------------------------------------------------------
   paginas.push(
-    hoja(
+    pagina(
       ++numero,
       total,
       'Para hacerlo más rápido',
@@ -370,7 +375,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
   // --- 10. Glosario --------------------------------------------------------
   const conceptos = conceptosDelPrograma(14)
   paginas.push(
-    hoja(
+    pagina(
       ++numero,
       total,
       'Las palabras que se usan',
@@ -383,7 +388,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
 
   // --- 11. Contratapa ------------------------------------------------------
   paginas.push(
-    hoja(
+    pagina(
       ++numero,
       total,
       'Para terminar',
@@ -393,7 +398,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
         <p>Andá a <strong>Administración → Acerca de</strong> y anotá la versión que dice ahí. Con eso, y contando qué estabas haciendo cuando pasó, se resuelve mucho más rápido.</p>
         <p>Y si el problema es que algo que cargaron en otra sucursal no aparece, probá primero <strong>Administración → Sincronizar</strong>.</p>
       </div>
-      <p class="firma">Seguros Daniel Martínez · DM Gestión ${escapar(datos.version)}</p>`,
+      <p class="firma">${escapar(agencia)} · DM Gestión ${escapar(datos.version)}</p>`,
     ),
   )
 

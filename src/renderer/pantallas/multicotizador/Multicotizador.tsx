@@ -35,6 +35,7 @@ import {
   type SolicitudDeCotizacion,
 } from '../../../shared/multicotizador'
 import type { DatosDePresupuesto, EmisionGaleno, TipoDeVehiculo } from '../../../shared/tipos'
+import { useEsDemo } from '../../canal'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { Alerta, Boton, Cargando } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
@@ -106,6 +107,7 @@ export function Multicotizador() {
 function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
   const { ir } = useNavegacion()
   const { puedeEditar, veNumerosDeLaAgencia } = usePermisos()
+  const esDemo = useEsDemo()
   // Cotizar es mirar precios; armar el presupuesto y emitir, en cambio, escriben: piden Presupuestos.
   const puedePresupuestar = puedeEditar('presupuestos')
 
@@ -401,7 +403,9 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
           alEmitir={(resultado: EmisionGaleno) => {
             setMensaje({
               tono: 'exito',
-              texto: `${aEmitir.nombreAseguradora} emitió la póliza Nº ${resultado.poliza} (${aEmitir.nombre}) por ${enPesos(resultado.premio)}.`,
+              texto: esDemo
+                ? `Emisión simulada con ${aEmitir.nombreAseguradora}: póliza de demostración Nº ${resultado.poliza} (${aEmitir.nombre}) por ${enPesos(resultado.premio)}. No llegó a la compañía; ya aparece en Emisiones.`
+                : `${aEmitir.nombreAseguradora} emitió la póliza Nº ${resultado.poliza} (${aEmitir.nombre}) por ${enPesos(resultado.premio)}.`,
             })
             setAEmitir(null)
           }}
@@ -419,7 +423,9 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
             const numero = resultado.poliza ? `la póliza Nº ${resultado.poliza}` : resultado.propuesta ? `la propuesta Nº ${resultado.propuesta}` : `la operación ${resultado.operacion}`
             setMensaje({
               tono: 'exito',
-              texto: `${aEmitir.nombreAseguradora} emitió ${numero} (${aEmitir.nombre}) por ${enPesos(emision.premio)}.${resultado.estado === 'INS' ? ' Queda pendiente de inspección.' : ''}`,
+              texto: esDemo
+                ? `Emisión simulada con ${aEmitir.nombreAseguradora}: ${numero.replace('la póliza', 'la póliza de demostración')} (${aEmitir.nombre}) por ${enPesos(emision.premio)}. No llegó a la compañía; ya aparece en Emisiones.`
+                : `${aEmitir.nombreAseguradora} emitió ${numero} (${aEmitir.nombre}) por ${enPesos(emision.premio)}.${resultado.estado === 'INS' ? ' Queda pendiente de inspección.' : ''}`,
             })
             setAEmitir(null)
           }}

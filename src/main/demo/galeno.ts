@@ -6,8 +6,9 @@
 import { RAMA_GALENO_DE_TIPO, type TipoDeVehiculo } from '../../shared/tipos'
 import type { MedioDePago, UsoDelVehiculo } from '../../shared/multicotizador'
 import type { ClienteGaleno } from '../aseguradoras/galeno/cliente'
-import { anotarCotizacionDeGalenoDemo, coberturasDeGalenoDemo, cotizadoEnGalenoDemo, planesDeGalenoDemo, valorEstimado } from './aseguradoras'
+import { anotarCotizacionDeLaSesion, anotarEmisionDeLaSesion, coberturasDeGalenoDemo, cotizadoEnLaSesion, emisionesDeLaSesionCon, planesDeGalenoDemo, valorEstimado } from './aseguradoras'
 import {
+  anioDeEjemplo,
   enteroDe,
   esperarComoLaApi,
   fechaArgentina,
@@ -120,14 +121,42 @@ interface PolizaDeEjemplo {
   desde: string
   hasta: string
   endoso: number
+  /** Emitida en esta sesión: todavía no tiene cuotas vencidas ni cobradas. */
+  deLaSesion?: boolean
 }
 
+/** Las pólizas de la cartera de ejemplo: las emitidas en esta sesión primero, después las inventadas. */
 function carteraDeEjemplo(): PolizaDeEjemplo[] {
+  return [...emitidasEnLaSesion(), ...carteraInventada()]
+}
+
+function emitidasEnLaSesion(): PolizaDeEjemplo[] {
+  return emisionesDeLaSesionCon('GALENO').map((e) => ({
+    numero: e.poliza,
+    rama: RAMA_GALENO_DE_TIPO[e.tipo],
+    tipo: e.tipo,
+    tomador: e.tomador,
+    patente: e.patente,
+    vehiculo: e.vehiculo,
+    cobertura: e.cobertura.toUpperCase(),
+    suma: e.sumaAsegurada ?? 0,
+    // La cartera inventada lleva premio mensual (las consultas lo multiplican por 12); el emitido es el
+    // del período con que se cotizó.
+    premio: redondear(e.premio / Math.max(1, e.meses)),
+    emision: e.fecha,
+    desde: e.desde,
+    hasta: e.hasta,
+    endoso: 0,
+    deLaSesion: true,
+  }))
+}
+
+function carteraInventada(): PolizaDeEjemplo[] {
   const hoy = fechaIso(new Date())
   return Array.from({ length: 24 }, (_, i) => {
     const semilla = `galeno:cartera:${i}`
     const ejemplo = VEHICULOS_DE_EJEMPLO[i % VEHICULOS_DE_EJEMPLO.length]!
-    const anio = enteroDe(`${semilla}:anio`, 2010, new Date().getFullYear())
+    const anio = anioDeEjemplo(`${semilla}:anio`, ejemplo)
     const suma = valorEstimado(ejemplo.tipo, ejemplo.marca, ejemplo.modelo, ejemplo.version, anio)
     const emision = sumarDias(hoy, -enteroDe(`${semilla}:emision`, 3, 330))
     return {
@@ -148,8 +177,28 @@ function carteraDeEjemplo(): PolizaDeEjemplo[] {
   })
 }
 
-function reporteDeConsultas(ruta: string): unknown {
-  const cartera = carteraDeEjemplo()
+/** La póliza o la patente que se pidió, si se pidió alguna (cada consulta llama distinto al campo). */
+function filtrarCartera(cartera: PolizaDeEjemplo[], body: Cuerpo): PolizaDeEjemplo[] {
+  const poliza = String(body.poliza ?? body.nroPoliza ?? '').trim()
+  const patente = String(body.patente ?? '').replace(/\s/g, '').toUpperCase()
+  return cartera.filter((p) => (!poliza || p.numero === poliza) && (!patente || p.patente === patente))
+}
+
+/**
+ * Las que deben una cuota. Es UNA sola regla para «Cuotas impagas», el saldo vencido de «Pólizas
+ * vigentes» y «Cuotas cobradas», así las tres consultas cuentan lo mismo.
+ */
+function debeUnaCuota(p: PolizaDeEjemplo): boolean {
+  return !p.deLaSesion && hashDe(`impaga:${p.numero}`) % 4 === 0
+}
+
+function cuotaImpaga(p: PolizaDeEjemplo): number {
+  return enteroDe(`cuota:${p.numero}`, 2, 11)
+}
+
+function reporteDeConsultas(ruta: string, body: Cuerpo): unknown {
+  const cartera = filtrarCartera(carteraDeEjemplo(), body)
+  const hoy = fechaIso(new Date())
   const f = fechaArgentina
   switch (ruta) {
     case '/api/polizas/consultaXLegajo':
@@ -165,8 +214,9 @@ function reporteDeConsultas(ruta: string): unknown {
         estado: 'X',
       }))
     case '/api/polizas/obtenerPolizasRiesgo':
-      return cartera.slice(0, 6).map((p, i) => ({
-        numRiesgo: i + 1,
+      // Los riesgos son de UNA póliza (en autos, uno por vehículo): sin número de póliza, los de la primera.
+      return cartera.slice(0, 1).map((p) => ({
+        numRiesgo: 1,
         descRiesgo: p.vehiculo,
         patente: p.patente,
         desCobertura: p.cobertura,
@@ -183,32 +233,36 @@ function reporteDeConsultas(ruta: string): unknown {
         nombreTomador: p.tomador,
         patenteVehiculo: p.patente,
         coberturaRiesgo: p.cobertura,
-        premioPoliza: p.premio * 12,
+        premioPoliza: redondear(p.premio * 12),
         fechaEmisionEndoso: f(p.emision),
         fechaIniVigPoliza: f(p.desde),
         fechaFinVigPoliza: f(p.hasta),
       }))
     case '/api/polizas/cuotasImpagas':
+      return cartera.filter(debeUnaCuota).map((p) => ({
+        poliza: p.numero,
+        nroCuota: cuotaImpaga(p),
+        tomador: p.tomador,
+        fechaVtoAsegurado: f(sumarDias(hoy, -enteroDe(`vto:${p.numero}`, 1, 40))),
+        saldoCuota: p.premio,
+        estadoPoliza: 'VIGENTE',
+      }))
+    case '/api/polizas/cuotasCobradas':
+      // La última cobrada: en las que deben una, la anterior a la impaga.
       return cartera
-        .filter((p) => hashDe(`impaga:${p.numero}`) % 4 === 0)
+        .filter((p) => !p.deLaSesion)
         .map((p) => ({
           poliza: p.numero,
-          nroCuota: enteroDe(`cuota:${p.numero}`, 2, 11),
+          nroCuota: debeUnaCuota(p) ? cuotaImpaga(p) - 1 : enteroDe(`cuota:${p.numero}`, 1, 10),
           tomador: p.tomador,
-          fechaVtoAsegurado: f(sumarDias(fechaIso(new Date()), -enteroDe(`vto:${p.numero}`, 1, 40))),
-          saldoCuota: p.premio,
-          estadoPoliza: 'VIGENTE',
+          // La que debe una: la cobrada venció un mes antes que la impaga (mismo `vto:`), no al azar.
+          fechaVencimientoCuota: f(
+            debeUnaCuota(p) ? sumarDias(hoy, -enteroDe(`vto:${p.numero}`, 1, 40) - 30) : sumarDias(hoy, -enteroDe(`cobro:${p.numero}`, 1, 30)),
+          ),
+          premioCobradoCuota: p.premio,
+          formaPagoCuota: unoDe(`forma:${p.numero}`, ['TARJETA DE CREDITO', 'DEBITO EN CUENTA', 'EFECTIVO']),
+          fechaContableImputacion: f(sumarDias(hoy, -enteroDe(`imputa:${p.numero}`, 0, 25) - (debeUnaCuota(p) ? 30 : 0))),
         }))
-    case '/api/polizas/cuotasCobradas':
-      return cartera.map((p) => ({
-        poliza: p.numero,
-        nroCuota: enteroDe(`cuota:${p.numero}`, 1, 10),
-        tomador: p.tomador,
-        fechaVencimientoCuota: f(sumarDias(fechaIso(new Date()), -enteroDe(`cobro:${p.numero}`, 1, 30))),
-        premioCobradoCuota: p.premio,
-        formaPagoCuota: unoDe(`forma:${p.numero}`, ['TARJETA DE CREDITO', 'DEBITO EN CUENTA', 'EFECTIVO']),
-        fechaContableImputacion: f(sumarDias(fechaIso(new Date()), -enteroDe(`imputa:${p.numero}`, 0, 25))),
-      }))
     case '/api/polizas/vigentes':
       return cartera.map((p) => ({
         poliza: p.numero,
@@ -216,8 +270,8 @@ function reporteDeConsultas(ruta: string): unknown {
         tomador: p.tomador,
         nombreAsegurado: p.tomador,
         sumaAsegurada: p.suma,
-        sumaPremios: p.premio * 12,
-        sumaSaldoVencido: hashDe(`saldo:${p.numero}`) % 5 === 0 ? p.premio : 0,
+        sumaPremios: redondear(p.premio * 12),
+        sumaSaldoVencido: debeUnaCuota(p) ? p.premio : 0,
       }))
     case '/api/polizas/obtenerModificacionesEndosos':
       return cartera
@@ -255,7 +309,8 @@ function reporteDeConsultas(ruta: string): unknown {
         razonSocialProductor: 'AGENCIA DE DEMOSTRACION',
       }))
     case '/api/polizas/detalle': {
-      const p = cartera[0]!
+      const p = cartera[0]
+      if (!p) return null
       return { poliza: p.numero, rama: p.rama, tomador: p.tomador, vehiculo: p.vehiculo, patente: p.patente, cobertura: p.cobertura, sumaAsegurada: p.suma, vigenciaDesde: f(p.desde), vigenciaHasta: f(p.hasta), demo: true }
     }
     default:
@@ -301,24 +356,54 @@ function csvDeArt(): string {
 }
 
 // --- La impresión: un PDF de verdad, de una hoja, que dice que es de demostración ---------------------
+//
+// Armado a mano (no hay ventana con la que imprimir un HTML: esto corre también en las pruebas), pero con
+// lo que trae una póliza —tomador, vehículo, patente, cobertura, vigencia, premio—, con tildes y con una
+// marca de agua «DEMOSTRACIÓN» que no deja dudas.
 
-function sinTildes(texto: string): string {
-  return texto.normalize('NFD').replace(/[̀-ͯ]/g, '')
+/** Las letras de Windows-1252 que no están en Latin-1 y que pueden aparecer en un texto. */
+const WIN_ANSI: Record<string, number> = { '–': 0x96, '—': 0x97, '‘': 0x91, '’': 0x92, '“': 0x93, '”': 0x94, '•': 0x95, '…': 0x85, '€': 0x80 }
+
+/** Un texto para un string de PDF: ASCII tal cual y el resto como octal de WinAnsi, así cada carácter del archivo es un byte. */
+function textoPdf(texto: string): string {
+  let salida = ''
+  for (const letra of texto) {
+    const codigo = letra.codePointAt(0)!
+    if (letra === '\\' || letra === '(' || letra === ')') salida += `\\${letra}`
+    else if (codigo >= 0x20 && codigo <= 0x7e) salida += letra
+    else {
+      const byte = WIN_ANSI[letra] ?? (codigo >= 0xa0 && codigo <= 0xff ? codigo : 0x3f)
+      salida += `\\${byte.toString(8).padStart(3, '0')}`
+    }
+  }
+  return salida
 }
 
-/** Un PDF mínimo (Helvetica, una página) armado a mano: alcanza para que se abra en cualquier visor. */
-function pdfDeDemostracion(lineas: string[]): string {
-  // Sólo ASCII: así cada carácter es un byte y las posiciones de la tabla xref dan justo.
-  const escapar = (texto: string) =>
-    sinTildes(texto)
-      .replace(/[^\x20-\x7e]/g, '')
-      .replace(/[\\()]/g, (c) => `\\${c}`)
-  const contenido = lineas.map((linea, i) => `BT /F1 ${i === 0 ? 16 : 11} Tf 56 ${780 - i * 22} Td (${escapar(linea)}) Tj ET`).join('\n')
+interface Renglon {
+  texto: string
+  x: number
+  y: number
+  tamano?: number
+  negrita?: boolean
+  /** 0 negro … 1 blanco. */
+  gris?: number
+}
+
+/** Un PDF de una página A4 (Helvetica) con los renglones y los trazos dados. */
+function pdfDeDemostracion(renglones: Renglon[], trazos: string): string {
+  const texto = renglones
+    .map((r) => `BT ${r.gris ?? 0} g /${r.negrita ? 'F2' : 'F1'} ${r.tamano ?? 10} Tf ${r.x} ${r.y} Td (${textoPdf(r.texto)}) Tj ET`)
+    .join('\n')
+  // La marca de agua va primero, para que el texto le quede encima.
+  const marca = `q BT 0.91 g /F2 70 Tf 0.766 0.643 -0.643 0.766 95 150 Tm (${textoPdf('DEMOSTRACIÓN')}) Tj ET Q`
+  const contenido = `${marca}\n${trazos}\n${texto}`
+  const fuente = (nombre: string) => `<< /Type /Font /Subtype /Type1 /BaseFont /${nombre} /Encoding /WinAnsiEncoding >>`
   const objetos = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>',
+    fuente('Helvetica'),
+    fuente('Helvetica-Bold'),
     `<< /Length ${contenido.length} >>\nstream\n${contenido}\nendstream`,
   ]
   let pdf = '%PDF-1.4\n'
@@ -333,7 +418,97 @@ function pdfDeDemostracion(lineas: string[]): string {
   return pdf
 }
 
-const DOCUMENTO: Record<string, string> = { P: 'Poliza', C: 'Certificado de cobertura', M: 'Certificado Mercosur' }
+const DOCUMENTO: Record<string, string> = { P: 'Póliza', C: 'Certificado de cobertura', M: 'Certificado Mercosur' }
+
+function pesos(monto: number): string {
+  return `$ ${monto.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** La póliza que se pidió imprimir: la de la cartera (o la recién emitida); si no está, una armada con su número. */
+function polizaParaImprimir(numero: string, rama: number): PolizaDeEjemplo {
+  const encontrada = carteraDeEjemplo().find((p) => p.numero === numero)
+  if (encontrada) return encontrada
+  const tipo: TipoDeVehiculo = rama === RAMA_GALENO_DE_TIPO.MOTO ? 'MOTO' : 'AUTO'
+  const semilla = `galeno:impresion:${numero}`
+  const ejemplo = unoDe(semilla, VEHICULOS_DE_EJEMPLO.filter((v) => v.tipo === tipo))
+  const anio = anioDeEjemplo(`${semilla}:anio`, ejemplo)
+  const suma = valorEstimado(ejemplo.tipo, ejemplo.marca, ejemplo.modelo, ejemplo.version, anio)
+  const emision = sumarDias(fechaIso(new Date()), -enteroDe(`${semilla}:emision`, 3, 200))
+  return {
+    numero: numero || '4000000',
+    rama: RAMA_GALENO_DE_TIPO[tipo],
+    tipo,
+    tomador: personaDe(semilla),
+    patente: patenteDe(semilla, anio, tipo),
+    vehiculo: `${ejemplo.marca} ${ejemplo.modelo} ${ejemplo.version} ${anio}`,
+    cobertura: 'TERCEROS COMPLETO',
+    suma,
+    premio: redondear(suma * 0.0062 + 30_000),
+    emision,
+    desde: emision,
+    hasta: sumarMeses(emision, 12),
+    endoso: 0,
+  }
+}
+
+function pdfDePoliza(cuerpo: Cuerpo): string {
+  const que = DOCUMENTO[String(cuerpo.tipoImpresion)] ?? 'Documento'
+  const p = polizaParaImprimir(String(cuerpo.poliza ?? '').trim(), Number(cuerpo.rama))
+  const legajo = String(cuerpo.legajo ?? LEGAJO_DE_LA_DEMO)
+  const f = fechaArgentina
+  const renglones: Renglon[] = [
+    { texto: 'GALENO SEGUROS', x: 56, y: 800, tamano: 18, negrita: true, gris: 1 },
+    { texto: `${que} · Seguro de ${p.tipo === 'MOTO' ? 'motovehículos' : 'automotores'}`, x: 56, y: 782, tamano: 11, gris: 1 },
+    { texto: `Nº ${p.numero}`, x: 430, y: 800, tamano: 16, negrita: true, gris: 1 },
+    { texto: `Rama ${p.rama} · Endoso ${p.endoso}`, x: 430, y: 782, tamano: 10, gris: 1 },
+  ]
+  let y = 730
+  /** Cada fila, uno o dos campos (etiqueta y valor); uno solo ocupa todo el ancho. */
+  const seccion = (titulo: string, filas: Array<Array<[string, string]>>) => {
+    renglones.push({ texto: titulo.toUpperCase(), x: 56, y, tamano: 9, negrita: true, gris: 0.35 })
+    y -= 20
+    for (const campos of filas) {
+      for (const [j, [etiqueta, valor]] of campos.entries()) {
+        const x = j === 0 ? 56 : 330
+        renglones.push({ texto: etiqueta, x, y, tamano: 8, gris: 0.45 })
+        renglones.push({ texto: valor || '—', x, y: y - 13, tamano: 11 })
+      }
+      y -= 34
+    }
+    y -= 12
+  }
+  seccion('Tomador / asegurado', [
+    [
+      ['Apellido y nombre', p.tomador],
+      ['Productor', `Legajo ${legajo} · Agencia de demostración`],
+    ],
+  ])
+  seccion('Vehículo asegurado', [
+    [['Marca, modelo, versión y año', p.vehiculo]],
+    [
+      ['Patente', p.patente],
+      ['Uso', 'Particular'],
+    ],
+    [['Suma asegurada', p.suma ? pesos(p.suma) : '']],
+  ])
+  seccion('Cobertura y vigencia', [
+    [['Cobertura', p.cobertura]],
+    [
+      ['Vigencia', `Del ${f(p.desde)} al ${f(p.hasta)}, a las 12 hs`],
+      ['Fecha de emisión', f(p.emision)],
+    ],
+    [['Premio', pesos(p.premio)]],
+  ])
+  renglones.push(
+    { texto: 'DOCUMENTO DE DEMOSTRACIÓN', x: 56, y: 110, tamano: 10, negrita: true, gris: 0.2 },
+    { texto: 'Lo generó la versión de demostración de DM Gestión con datos inventados: no es una póliza real', x: 56, y: 94, tamano: 9, gris: 0.3 },
+    { texto: 'ni tiene validez ante Galeno Seguros ni ante ninguna otra compañía.', x: 56, y: 81, tamano: 9, gris: 0.3 },
+    { texto: `Impreso el ${f(fechaIso(new Date()))}.`, x: 56, y: 62, tamano: 8, gris: 0.45 },
+  )
+  // La franja de arriba y las líneas que separan las secciones.
+  const trazos = ['q 0.09 0.27 0.49 rg 0 762 595 80 re f Q', 'q 0.8 G 0.6 w 56 125 m 539 125 l S Q'].join('\n')
+  return pdfDeDemostracion(renglones, trazos)
+}
 
 // --- El cliente ----------------------------------------------------------------------------------------
 
@@ -374,15 +549,22 @@ function cotizar(body: Cuerpo): Cuerpo {
     planCodigo: String(body.planComercialCodigo ?? ''),
     juridica: Number(body.tomadorTipoPersona) === 2,
   })
-  anotarCotizacionDeGalenoDemo(
-    solicitud,
-    coberturas.map((c) => ({ codigo: c.cobertura, premio: c.premio, impuestos: c.impuestos })),
-  )
+  const descripcionVehiculo = `${marca} ${modelo} ${version} ${body.ceroKM === 'S' ? '0 KM' : anio}`
+  anotarCotizacionDeLaSesion('GALENO', {
+    numero: String(solicitud),
+    tipo,
+    tomador: String(body.tomadorNombre ?? ''),
+    vehiculo: descripcionVehiculo,
+    sumaAsegurada: typeof body.sumaAsegurada === 'number' ? body.sumaAsegurada : valorEstimado(tipo, marca, modelo, version, anio),
+    vigenciaDesde: fechaIsoDeGaleno(String(body.vigenciaDesde ?? '')),
+    coberturas: coberturas.map((c) => ({ codigo: c.cobertura, nombre: c.descripcionCobertura, premio: c.premio, impuestos: c.impuestos })),
+    meses,
+  })
   return {
     rama,
     solicitud,
     instalacion: 1,
-    descripcionVehiculo: `${marca} ${modelo} ${version} ${body.ceroKM === 'S' ? '0 KM' : anio}`,
+    descripcionVehiculo,
     coberturas,
     excepciones: [],
     errores: [],
@@ -390,14 +572,35 @@ function cotizar(body: Cuerpo): Cuerpo {
   }
 }
 
+/** dd/mm/aaaa (como la pide Galeno al cotizar) → aaaa-mm-dd; vacío si no es una fecha. */
+function fechaIsoDeGaleno(fecha: string): string {
+  const partes = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fecha.trim())
+  return partes ? `${partes[3]}-${partes[2]}-${partes[1]}` : /^\d{4}-\d{2}-\d{2}$/.test(fecha.trim()) ? fecha.trim() : ''
+}
+
 function emitir(body: Cuerpo, conInspeccion: boolean): Cuerpo {
   const solicitud = Number(body.solicitud)
-  const cotizado = cotizadoEnGalenoDemo(solicitud, String(body.cobertura ?? ''))
+  const cobertura = String(body.cobertura ?? '')
+  const cotizado = cotizadoEnLaSesion('GALENO', String(solicitud), cobertura)
   const premio = cotizado?.premio ?? 95_000
+  const rama = Number(body.rama) || RAMA_GALENO_DE_TIPO.AUTO
+  const poliza = Number(`4${String(hashDe(`poliza:${solicitud}:${cobertura}`) % 1_000_000).padStart(6, '0')}`)
+  const tomador = body.tomador && typeof body.tomador === 'object' ? (body.tomador as Cuerpo) : {}
+  const vehiculo = body.vehiculo && typeof body.vehiculo === 'object' ? (body.vehiculo as Cuerpo) : {}
+  // Queda en la sesión: aparece en Emisiones del multicotizador, en las consultas y en «Imprimir».
+  anotarEmisionDeLaSesion('GALENO', {
+    poliza: String(poliza),
+    numeroDeCotizacion: String(solicitud),
+    cobertura,
+    tomador: String(tomador.nombre ?? ''),
+    patente: String(vehiculo.patente ?? ''),
+    premio,
+    tipo: rama === RAMA_GALENO_DE_TIPO.MOTO ? 'MOTO' : 'AUTO',
+  })
   return {
     idServicioEmision: enteroDe(`emision:${solicitud}`, 100_000, 999_999),
-    rama: Number(body.rama) || RAMA_GALENO_DE_TIPO.AUTO,
-    poliza: Number(`4${String(hashDe(`poliza:${solicitud}:${String(body.cobertura)}`) % 1_000_000).padStart(6, '0')}`),
+    rama,
+    poliza,
     endoso: 0,
     estadoSolicitud: 'E',
     impuestos: cotizado?.impuestos ?? redondear(premio * 0.19),
@@ -459,7 +662,7 @@ function contestar(ruta: string, body: Cuerpo): unknown {
   if (camino === '/api/cotizadores/auto/cotizar') return cotizar(body)
   if (camino === '/api/emisores/auto/emitir') return emitir(body, false)
   if (camino === '/api/emisores/auto/emitirConInspeccion') return emitir(body, true)
-  return reporteDeConsultas(camino)
+  return reporteDeConsultas(camino, body)
 }
 
 /** Un `ClienteGaleno` que no sale a ningún lado: contesta como Galeno, después de lo que tardaría Galeno. */
@@ -478,17 +681,7 @@ export function clienteGalenoDeLaDemo(): ClienteGaleno {
         return new Response(csvDeArt(), { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8' } })
       }
       if (ruta.startsWith('/api/imprimir')) {
-        const que = DOCUMENTO[String(cuerpo.tipoImpresion)] ?? 'Documento'
-        const pdf = pdfDeDemostracion([
-          `Galeno Seguros - ${que} (DEMOSTRACION)`,
-          `Poliza N ${String(cuerpo.poliza ?? '')} - Rama ${String(cuerpo.rama ?? '')}`,
-          `Legajo del productor: ${String(cuerpo.legajo ?? LEGAJO_DE_LA_DEMO)}`,
-          `Emitido el ${fechaArgentina(fechaIso(new Date()))}`,
-          '',
-          'Este documento lo genero la version de demostracion de DM Gestion.',
-          'No es una poliza real ni tiene validez ante ninguna compania.',
-        ])
-        return new Response(pdf, { status: 200, headers: { 'content-type': 'application/pdf' } })
+        return new Response(pdfDePoliza(cuerpo), { status: 200, headers: { 'content-type': 'application/pdf' } })
       }
       return new Response(JSON.stringify(contestar(ruta, cuerpo)), { status: 200, headers: { 'content-type': 'application/json' } })
     },

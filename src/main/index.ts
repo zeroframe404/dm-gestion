@@ -12,7 +12,9 @@ import {
 } from './arranque'
 import { abrirBaseDeDatos, cerrarBaseDeDatos } from './db/base'
 import { esDemo, nombreActual } from './canal'
+import { firmarPlantillasDeLaDemo } from './demo/identidad'
 import { arrancarServidorDeLaDemo, pararServidorDeLaDemo } from './demo/servidor'
+import { mostrarWhatsappDeLaDemo, whatsappDeLaDemo } from './demo/whatsapp'
 import { cerrarPantallaDeCarga, enfocarPantallaDeCarga, mostrarPantallaDeCarga } from './pantallaDeCarga'
 import { registrarIpc } from './ipc'
 import { arrancarCartero, apurarAlCartero, pararCartero } from './mensajeria/cartero'
@@ -154,7 +156,11 @@ function crearVentana(): void {
 
   // Los enlaces externos se abren en el navegador; nunca en una ventana de la app.
   ventana.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    // Demo: un enlace de WhatsApp (los organizadores, por ejemplo) no abre un chat con un número de
+    // ejemplo que puede ser de alguien; muestra cómo llegaría el mensaje (ver `demo/whatsapp.ts`).
+    const whatsapp = esDemo() ? whatsappDeLaDemo(url) : null
+    if (whatsapp) void mostrarWhatsappDeLaDemo(whatsapp, ventana)
+    else if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
   ventana.webContents.on('will-navigate', (evento, url) => {
@@ -413,6 +419,9 @@ function arrancarElPrograma(): void {
 
   // Cada paso avisa con su nombre si falla, en vez de dejar el programa a medio abrir y en silencio.
   if (!paso('la revisión de las importaciones a medio hacer', marcarImportacionesInterrumpidas)) return
+  // Demo: las plantillas de WhatsApp que siembran las migraciones van firmadas con el nombre de la
+  // agencia; en la demo se firman con el de la demo. Fuera de la demo no hace nada.
+  paso('la firma de las plantillas de la demo', firmarPlantillasDeLaDemo)
   if (!paso('la preparación de la base de usuarios', prepararBaseDeUsuarios)) return
   if (!paso('el registro de los canales internos', registrarIpc)) return
   if (!paso('el canal en vivo con la base de la agencia', engancharElCanal)) return
