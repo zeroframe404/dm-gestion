@@ -15,6 +15,8 @@ npm run dev       # desarrollo con recarga automática (usuarios locales: sin DM
 npm run prueba    # las pruebas propias, sin tocar ninguna base real ni GitHub
 npm run prueba:sola -- pruebas/duplicados.prueba.ts   # un solo archivo del banco de pruebas (empaqueta y corre ése)
 npm run dist      # genera el instalador NSIS en release/, sin publicarlo (para probarlo local)
+npm run dev:demo  # la versión de demostración: servidor simulado, datos de ejemplo y APIs simuladas
+npm run dist:demo # el instalador de la demo, sin los datos de la agencia (ver «Versión de demostración»)
 npm run humo:usuarios            # la base de usuarios compartida contra la app real y un simulador
 npm run humo:usuarios -- --real  # lo mismo contra el repositorio real, en un archivo de prueba que se borra al final
 npm run humo:atm                 # ATM Seguros en vivo (cuenta, planes y cotización; ver «ATM Seguros», más abajo)
@@ -1878,6 +1880,62 @@ el mismo mecanismo de siempre). Con un servidor que no es el de producción, las
   `beta-canal/beta.yml` (`src/main/servicios/updater.ts`) y no los Releases por versión, así que no depende de cuál
   sea el Release más nuevo. La normal usa «el último Release que no es prerelease» y por eso nunca ve la beta.
   `scripts/publicar-beta.mjs` sube primero el instalador y recién al final `beta.yml`, y borra los instaladores viejos.
+
+## Versión de demostración (DM Gestión (Demo))
+
+Un tercer programa, para **mostrarle DM Gestión a otras agencias** y venderlo. Es el mismo código que la estable y
+la beta; lo que cambia es con quién habla:
+
+| | **DM Gestión (Demo)** |
+|---|---|
+| Instalador | `DM-Gestion-Demo-Setup-X.Y.Z-demo.N.exe` (`npm run dist:demo`, o *Actions → Publicar demo*) |
+| `appId` | `ar.com.dmartinezseguros.gestion.demo`: se instala al lado de la normal y de la beta sin tocarlas |
+| Datos locales | `%APPDATA%/dm-gestion-demo/`, **que se vacía en cada arranque** |
+| Servidor | uno **simulado adentro del programa** (127.0.0.1), nunca el VPS de la agencia |
+| APIs de las compañías | simuladas: cotizaciones, emisión, listados y consultas inventadas, sin salir a internet |
+| Se actualiza | no: es un instalador suelto |
+| En desarrollo | `npm run dev:demo` (o `DM_GESTION_CANAL=demo` con la app sin empaquetar) |
+
+El canal sale de la versión, como el de la beta: `17.7.3-demo.4` es la demo (`shared/canal.ts`). La versión no se
+commitea: `scripts/dist-demo.mjs` la arma (próximo parche + `-demo.<n>`) y la pasa por `extraMetadata`.
+
+### Qué trae
+
+- **Un VPS simulado** (`src/main/demo/servidor.ts`): el mismo `scripts/vps-simulado.mjs` de las pruebas, corriendo
+  adentro del proceso principal. El programa no sabe que es una demo: ingresa, baja la base, la importa y sincroniza
+  igual que en la agencia, con canal en vivo, presencia, chat, adjuntos y respaldos. No guarda nada en disco: cada
+  vez que se abre arranca con los mismos datos de ejemplo.
+- **Datos de ejemplo fechados a hoy** (`src/main/demo/datos.ts`, determinista): ~320 clientes, pólizas de las 7
+  ramas en las 4 sucursales, 10 meses de planillas con cuotas pagas, impagas, vencidas e imputadas, renovaciones
+  próximas, bajas, siniestros en todos los estados, AMP, riesgos varios, reglas de cobertura, pagos, caja, rechazos,
+  leads, presupuestos, tareas, comentarios y un catálogo de vehículos. Las pruebas (`pruebas/demo-datos.prueba.ts`)
+  comprueban que entra limpio por el importador para varias fechas, incluido el cruce de diciembre a enero.
+- **Usuarios de ejemplo** (`src/shared/demo.ts`), uno por rol, todos con la contraseña `demo1234`; la pantalla de
+  ingreso los ofrece con un click. Más unas conversaciones de chat y las cuentas de las compañías «cargadas».
+- **Las APIs simuladas** (`src/main/demo/aseguradoras.ts`, `galeno.ts`, `apis.ts`, `redes.ts`): Galeno, ATM,
+  Mercantil Andina y La Equidad con sus mismos ids (y dos compañías más de ejemplo), precios deterministas que
+  dependen del vehículo, la zona, el pago y los ajustes; emisión de Galeno y ATM con número de póliza inventado; y
+  las pantallas de API Aseguradoras, redes sociales, control remoto y «Reportar error» respondiendo sin red. Como red
+  de seguridad, los clientes HTTP de cada compañía y de Meta se niegan a salir si están en la demo.
+- **Administración → Servidor (VPS)**: con qué servidor habla la demo, cómo es la arquitectura, los pasos para poner
+  en marcha el servidor de una agencia y un formulario de dirección + token con «Probar conexión» **simulado** (no
+  sale a internet; valida lo que se puede validar sin red: https y el largo del token) y el `config.json` armado.
+- La franja verde de arriba, la insignia **DEMO** y «Agencia de demostración» en lugar del nombre de la agencia.
+
+### Lo que NO lleva el instalador
+
+El código fuente tiene escritos el token del puente y la dirección del VPS de la agencia, la del control remoto y el
+token de GitHub de la semilla de usuarios. La demo no los usa, pero estando en el código viajarían adentro del .exe.
+`npm run dist:demo` compila el proceso principal con `DM_GESTION_DEMO=1`, que los reemplaza
+(`scripts/secretos-de-la-agencia.mjs`, plugin de `vite.main.config.mts`), y **revisa el resultado**: si alguno de
+esos valores sigue en el paquete, no arma el instalador. Si se agrega otro secreto al código, hay que sumarlo ahí.
+
+### Cómo se publica
+
+*Actions → Publicar demo → Run workflow* (`.github/workflows/publicar-demo.yml`), eligiendo la rama. Corre el banco
+de pruebas, arma el instalador, lo guarda como artefacto y lo sube al Release fijo
+[`demo`](https://github.com/zeroframe404/dm-gestion/releases/tag/demo) (prerelease, nunca «Latest»: la estable no lo
+ve). Ése es el enlace para mandarle a una agencia interesada.
 
 ## Base de usuarios compartida (Fase 11, mudada al VPS en la v12.4)
 

@@ -231,6 +231,9 @@ usarAlmacenDeAdjuntos(() => {
   return crearFuenteVps()
 })
 
+/** Demo: si ya se bajó la base entera en esta ejecución (ver `arrancarSincronizacion`). */
+let demoYaBajoTodo = false
+
 /** Se llama al abrir sesión: enciende el motor y baja lo que haya. */
 export async function arrancarSincronizacion(): Promise<void> {
   const motor = obtenerMotor()
@@ -240,7 +243,13 @@ export async function arrancarSincronizacion(): Promise<void> {
   // computadora y las bajas y las cuotas que la base tiene dos veces. Antes de bajar, así viajan en el
   // mismo ciclo.
   repararAlArrancar()
-  await motor.sincronizarAhora()
+  // Demo: la base local arranca vacía cada vez, y la bajada de todos los días trae sólo las pestañas del
+  // mes. La primera vez se baja e importa TODO (los diez meses de ejemplo), como hace «Reimportar la
+  // base» en una PC nueva de la agencia: si no, Métricas no tendría mes anterior y la ficha del cliente
+  // no tendría historial.
+  const completa = esDemo() && !demoYaBajoTodo
+  await motor.sincronizarAhora(completa)
+  if (completa) demoYaBajoTodo = true
   // 12.7: lo que esta computadora cree de cada archivo adjunto se contrasta con lo que el servidor
   // tiene de verdad, en segundo plano. Lo que figuraba subido sin estarlo vuelve a subir solo.
   void verificarAdjuntosContraElServidor().catch((error: unknown) => {
