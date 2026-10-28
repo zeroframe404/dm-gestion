@@ -20,7 +20,7 @@ import { BrowserWindow } from 'electron'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { claveDeSucursal, sucursalCanonica } from '../../shared/sucursales'
-import type { ConfigImpresora, DatosDeImpresora, DireccionDeSucursal, PedidoDeTicket } from '../../shared/tipos'
+import type { ConfigImpresora, DatosDeImpresora, DireccionDeSucursal, PedidoDeTicket, TipoDeImpresora } from '../../shared/tipos'
 import { fechaDeVencimiento, periodoSiguiente } from '../../shared/semaforo'
 import { db } from '../db/base'
 import { carpetaDatos } from '../rutas'
@@ -139,6 +139,7 @@ export async function configuracionDeImpresora(): Promise<ConfigImpresora> {
   const { nombres, predeterminada } = await impresorasDelSistema()
   return {
     habilitada: guardada.habilitada,
+    tipo: guardada.tipo,
     preguntar: guardada.preguntar,
     impresora: guardada.impresora,
     anchoMm: guardada.anchoMm,
@@ -343,9 +344,14 @@ const RESERVA_DEL_CABEZAL_MM = 10
 export const SANGRIA_DEL_TICKET_MM = 1.5
 
 /** El ancho de texto que entra de verdad en un papel de `anchoMm`. */
-export function anchoUtilDelTicket(anchoMm: number): number {
+export function anchoUtilDelTicket(anchoMm: number, tipo: TipoDeImpresora = 'termica'): number {
+  // En una impresora común no hay cabezal que recorte el borde: el comprobante ocupa su ancho entero.
+  if (tipo === 'comun') return Math.max(anchoMm, 30)
   return Math.max(anchoMm - RESERVA_DEL_CABEZAL_MM - SANGRIA_DEL_TICKET_MM, 30)
 }
+
+/** Margen de la hoja A4 donde se apoya el comprobante cuando se imprime en una impresora común. */
+const MARGEN_HOJA_COMUN_MM = 15
 
 /** Courier New es monoespaciada: cada carácter ocupa 0,6 em. De ahí sale, exacta, cuánto mide una línea. */
 const ANCHO_DE_CARACTER_EM = 0.6
@@ -383,8 +389,9 @@ export function puntosDelEncabezado(utilMm: number, caracteresDeLaLineaMasLarga:
  * Nada queda pegado al borde derecho y nada se sale del ancho útil: lo que no entra baja de renglón,
  * que en un ticket se lee igual, mientras que lo que se pasa del cabezal directamente no existe.
  */
-export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number): string {
-  const util = anchoUtilDelTicket(anchoMm)
+export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number, tipo: TipoDeImpresora = 'termica'): string {
+  const util = anchoUtilDelTicket(anchoMm, tipo)
+  const comun = tipo === 'comun'
   // El teléfono va en un bloque que no se parte: si la línea no entra, baja entero al renglón
   // siguiente. Medio número de teléfono impreso es peor que ninguno.
   const provinciaYTelefono = datos.telefono ? `${AGENCIA.provincia} - Tel: ${datos.telefono}` : AGENCIA.provincia
@@ -398,8 +405,9 @@ export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number): string {
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Comprobante</title><style>
   @page { margin: 0; }
-  /* Sin centrar y con sangría a la izquierda: la reserva del cabezal queda toda del lado que se recorta. */
-  body { width: ${util}mm; margin: 0 0 0 ${SANGRIA_DEL_TICKET_MM}mm; padding: 3mm 0 6mm; font-family: "Courier New", monospace; font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
+  /* Sin centrar y con sangría a la izquierda: la reserva del cabezal queda toda del lado que se recorta.
+     En una hoja A4 el comprobante va arriba a la izquierda, con margen normal de hoja. */
+  body { width: ${util}mm; margin: 0 0 0 ${comun ? MARGEN_HOJA_COMUN_MM : SANGRIA_DEL_TICKET_MM}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
   p { margin: 0; }
   /* Los datos de la agencia van más chicos que el resto: cuánto, lo decide el ancho del papel. */
   .encabezado { font-size: ${puntosDeAgencia}pt; }
@@ -452,7 +460,7 @@ function altoEnMicrones(): number {
  * corta el papel cuando termina el trabajo, así que pedirle dos copias devuelve los dos tickets
  * pegados. Dos tickets = dos llamadas a esta función, y entre una y otra la guillotina corta.
  */
-async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anchoMm: number): Promise<void> {
+async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anchoMm: number, tipo: TipoDeImpresora): Promise<void> {
   await new Promise<void>((resolver, rechazar) => {
     // `print` puede fallar de tres maneras: llamar al callback con error, tirar en el acto (un
     // nombre de impresora que no existe) o no volver nunca. Las tres tienen que terminar acá, y una
@@ -474,7 +482,7 @@ async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anc
           deviceName,
           printBackground: false,
           margins: { marginType: 'none' },
-          pageSize: { width: Math.round(anchoMm * 1000), height: altoEnMicrones() },
+          pageSize: tipo === 'comun' ? 'A4' : { width: Math.round(anchoMm * 1000), height: altoEnMicrones() },
           copies: 1,
         },
         (exito, motivo) => terminar(exito ? undefined : new Error(motivo || 'La impresora rechazó el trabajo.')),
@@ -491,7 +499,7 @@ async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anc
  * ya salió y el mostrador tiene que enterarse de que el duplicado no—, y la ventana oculta se cierra
  * siempre.
  */
-async function imprimirHtml(html: string, deviceName: string, anchoMm: number, copias: number): Promise<void> {
+async function imprimirHtml(html: string, deviceName: string, anchoMm: number, copias: number, tipo: TipoDeImpresora): Promise<void> {
   const carpeta = path.join(carpetaDatos(), 'tickets')
   mkdirSync(carpeta, { recursive: true })
   // Un nombre por impresión: dos cobros seguidos pueden estar imprimiendo a la vez y el segundo no
@@ -511,7 +519,7 @@ async function imprimirHtml(html: string, deviceName: string, anchoMm: number, c
       // Entre un ticket y el siguiente se espera: sin la pausa el spooler puede juntar los dos
       // trabajos y volveríamos a la tira sin corte del medio.
       if (copia > 1) await esperar(PAUSA_ENTRE_TICKETS_MS)
-      await imprimirUnTrabajo(ventana, deviceName, anchoMm)
+      await imprimirUnTrabajo(ventana, deviceName, anchoMm, tipo)
     }
   } finally {
     if (!ventana.isDestroyed()) ventana.destroy()
@@ -536,7 +544,7 @@ export async function imprimirTicketSiCorresponde(datos: DatosDeTicket, copias?:
   if (!config.habilitada || !config.impresora) return false
   const cantidad = comoCantidadDeCopias(copias, config.copias)
   try {
-    await imprimirHtml(htmlDelTicket(datos, config.anchoMm), config.impresora, config.anchoMm, cantidad)
+    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo), config.impresora, config.anchoMm, cantidad, config.tipo)
     anotarErrorDeImpresion(null)
     return true
   } catch (error) {
@@ -730,7 +738,7 @@ export async function imprimirTicketDePago(pagoId: number, copias?: number): Pro
 export async function imprimirTicketDePrueba(sucursal: string): Promise<void> {
   const config = impresoraGuardada()
   if (!config.habilitada || !config.impresora) {
-    throw new ErrorDeNegocio('Primero elegí la impresora térmica y activá el ticket.')
+    throw new ErrorDeNegocio('Primero elegí la impresora y activá el ticket.')
   }
   const ahora = new Date()
   const hoy = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
@@ -752,7 +760,7 @@ export async function imprimirTicketDePrueba(sucursal: string): Promise<void> {
     proximoVencimiento: comoFechaLarga(fechaDeVencimiento(periodoSiguiente(hoy.slice(0, 7)), ahora.getDate()) ?? ''),
   }
   try {
-    await imprimirHtml(htmlDelTicket(datos, config.anchoMm), config.impresora, config.anchoMm, 1)
+    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo), config.impresora, config.anchoMm, 1, config.tipo)
     anotarErrorDeImpresion(null)
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : String(error)

@@ -2477,8 +2477,12 @@ export interface ResumenComisiones {
 
 // --- Ticketeadora térmica (opcional) ---
 
+/** «termica»: rollo angosto (POS-80). «comun»: impresora de hoja A4, de escritorio. */
+export type TipoDeImpresora = 'termica' | 'comun'
+
 export interface ConfigImpresora {
   habilitada: boolean
+  tipo: TipoDeImpresora
   /**
    * Con esto activado, cada pago pregunta antes de imprimir en vez de sacar el ticket solo: hay
    * compañías que no piden comprobante y el rollo se gasta igual.
@@ -2501,6 +2505,8 @@ export interface ConfigImpresora {
 
 export interface DatosDeImpresora {
   habilitada: boolean
+  /** Sin mandarlo se conserva lo guardado (térmica si nunca se eligió). */
+  tipo?: TipoDeImpresora
   preguntar: boolean
   impresora: string
   anchoMm: number

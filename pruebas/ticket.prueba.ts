@@ -309,6 +309,25 @@ test('la letra del encabezado se achica lo justo para que la línea más larga e
   assert.equal(puntosDelEncabezado(anchoUtilDelTicket(110), largo), 8)
 })
 
+test('una configuración vieja sin tipo sigue siendo térmica y se puede pasar a impresora común', () => {
+  baseDePrueba()
+  guardarCrudo('impresora_ticket', JSON.stringify({ habilitada: true, impresora: 'POS-80', anchoMm: 80 }))
+  assert.equal(impresoraGuardada().tipo, 'termica')
+  guardarImpresora({ habilitada: true, tipo: 'comun', preguntar: true, impresora: 'HP LaserJet', anchoMm: 80, copias: 1 })
+  assert.equal(impresoraGuardada().tipo, 'comun')
+  // Sin mandar el tipo se conserva el que había.
+  guardarImpresora({ habilitada: true, preguntar: true, impresora: 'HP LaserJet', anchoMm: 80, copias: 1 })
+  assert.equal(impresoraGuardada().tipo, 'comun')
+  cerrarBaseDeDatos()
+})
+
+test('en una impresora común el comprobante usa el ancho entero y se apoya en la hoja con margen', () => {
+  assert.equal(anchoUtilDelTicket(80, 'comun'), 80)
+  assert.ok(anchoUtilDelTicket(80, 'termica') < 80)
+  const html = htmlDelTicket(ticketDeEjemplo(), 80, 'comun')
+  assert.ok(html.includes('width: 80mm'))
+})
+
 test('por más que no entre, la letra del encabezado nunca baja de lo legible', () => {
   assert.equal(puntosDelEncabezado(anchoUtilDelTicket(58), 42), 6)
 })

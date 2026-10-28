@@ -1,10 +1,11 @@
-// Impresora: la ticketeadora térmica de 80 mm (POS-80) del mostrador. Es opcional; si no está
+// Impresora: la ticketeadora térmica de 80 mm (POS-80) del mostrador, o una impresora común de hojas
+// A4 si el mostrador no tiene ticketeadora. Es opcional; si no está
 // configurada, cobrar funciona igual y no se imprime nada.
 //
 // La pantalla la abre cualquiera, con el rol que sea: la impresora es la que tiene esta PC delante y
 // quien cobra es quien necesita apagarla, cambiarla o dejar de gastar papel sin esperar a nadie.
 import { useCallback, useEffect, useState } from 'react'
-import type { ConfigImpresora, DireccionDeSucursal } from '../../../shared/tipos'
+import type { ConfigImpresora, DireccionDeSucursal, TipoDeImpresora } from '../../../shared/tipos'
 import { Alerta, Boton, Campo, Cargando, Selector, Tarjeta, cx } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
@@ -17,6 +18,7 @@ export function Impresora() {
   const [aviso, setAviso] = useState<string | null>(null)
 
   const [habilitada, setHabilitada] = useState(false)
+  const [tipo, setTipo] = useState<TipoDeImpresora>('termica')
   const [preguntar, setPreguntar] = useState(true)
   const [impresora, setImpresora] = useState('')
   const [anchoMm, setAnchoMm] = useState('80')
@@ -25,6 +27,7 @@ export function Impresora() {
   const aplicar = useCallback((config: ConfigImpresora) => {
     setEstado(config)
     setHabilitada(config.habilitada)
+    setTipo(config.tipo)
     setPreguntar(config.preguntar)
     setImpresora(config.impresora ?? config.predeterminada ?? '')
     setAnchoMm(String(config.anchoMm))
@@ -47,7 +50,7 @@ export function Impresora() {
     setGuardando(true)
     setError(null)
     setAviso(null)
-    const resultado = await window.dm.impresora.guardar({ habilitada, preguntar, impresora, anchoMm: Number(anchoMm), copias })
+    const resultado = await window.dm.impresora.guardar({ habilitada, tipo, preguntar, impresora, anchoMm: Number(anchoMm), copias })
     setGuardando(false)
     if (resultado.ok) {
       aplicar(resultado.datos)
@@ -82,6 +85,7 @@ export function Impresora() {
   const sinImpresoras = estado.disponibles.length === 0
   const hayCambios =
     habilitada !== estado.habilitada ||
+    tipo !== estado.tipo ||
     preguntar !== estado.preguntar ||
     impresora !== (estado.impresora ?? '') ||
     Number(anchoMm) !== estado.anchoMm ||
@@ -98,8 +102,8 @@ export function Impresora() {
       )}
 
       <Tarjeta
-        titulo="Ticketeadora térmica"
-        descripcion="Si esta PC tiene una impresora térmica de 80 mm, al registrar un pago puede salir el comprobante. Es opcional: sin configurar, cobrar funciona igual."
+        titulo="Impresora del comprobante"
+        descripcion="Si esta PC tiene una ticketeadora térmica de 80 mm o una impresora común, al registrar un pago puede salir el comprobante. Es opcional: sin configurar, cobrar funciona igual."
         acciones={
           <>
             <Boton
@@ -151,6 +155,30 @@ export function Impresora() {
             </span>
           </label>
 
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Tipo de impresora</span>
+            <div className="flex max-w-md gap-2">
+              {([['termica', 'Ticketeadora térmica'], ['comun', 'Impresora común (hoja A4)']] as const).map(([valor, texto]) => (
+                <button
+                  key={valor}
+                  type="button"
+                  onClick={() => setTipo(valor)}
+                  className={cx(
+                    'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+                    tipo === valor ? 'border-marino-500 bg-marino-50 text-marino-900 ring-2 ring-marino-500/20' : 'border-slate-200 text-slate-700 hover:bg-slate-50',
+                  )}
+                >
+                  {texto}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              {tipo === 'comun'
+                ? 'El comprobante sale en una hoja A4, arriba a la izquierda, con el mismo contenido y ancho que el ticket.'
+                : 'El comprobante sale en el rollo angosto y la ticketeadora corta el papel.'}
+            </p>
+          </div>
+
           {sinImpresoras ? (
             <Campo
               etiqueta="Impresora"
@@ -170,18 +198,22 @@ export function Impresora() {
           )}
 
           <Campo
-            etiqueta="Ancho del papel (mm)"
+            etiqueta={tipo === 'comun' ? 'Ancho del comprobante en la hoja (mm)' : 'Ancho del papel (mm)'}
             type="number"
             min={40}
             max={120}
             value={anchoMm}
             onChange={(evento) => setAnchoMm(evento.target.value)}
-            ayuda="Es el ancho del rollo, no el del texto: el comprobante ya se compone más angosto porque el cabezal no llega al borde del papel. Una POS-80 usa 80 mm."
+            ayuda={
+              tipo === 'comun'
+                ? 'Qué tan ancho sale el comprobante dentro de la hoja A4. 80 mm lo deja del tamaño de un ticket.'
+                : 'Es el ancho del rollo, no el del texto: el comprobante ya se compone más angosto porque el cabezal no llega al borde del papel. Una POS-80 usa 80 mm.'
+            }
             className="max-w-40"
           />
 
           <div>
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">Cantidad de tickets por pago</span>
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Cantidad de comprobantes por pago</span>
             <div className="flex max-w-64 gap-2">
               {[1, 2].map((cantidad) => (
                 <button
