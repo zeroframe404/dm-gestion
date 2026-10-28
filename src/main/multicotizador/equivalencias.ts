@@ -176,6 +176,7 @@ export const CLAVES_USO: Record<UsoDelVehiculo, string[]> = {
   ESCOLAR: ['ESCOLAR', 'ESCUELA'],
   TRANSPORTE_DE_BIENES: ['BIENES', 'CARGA', 'MERCADERI', 'REPARTO', 'TRANSPORTE'],
   PLATAFORMA: ['UBER', 'PLATAFORMA', 'APLICACION', 'APP', 'CABIFY', 'DIDI'],
+  OTRO: [],
 }
 
 /**
