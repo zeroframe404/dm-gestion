@@ -42,6 +42,7 @@ export const USOS_DEL_VEHICULO = [
   'ESCOLAR',
   'TRANSPORTE_DE_BIENES',
   'PLATAFORMA',
+  'OTRO',
 ] as const
 export type UsoDelVehiculo = (typeof USOS_DEL_VEHICULO)[number]
 
@@ -62,6 +63,7 @@ export const NOMBRE_USO_DEL_VEHICULO: Record<UsoDelVehiculo, string> = {
   ESCOLAR: 'Escolar y servicio especial',
   TRANSPORTE_DE_BIENES: 'Transporte de bienes',
   PLATAFORMA: 'Plataforma tipo Uber',
+  OTRO: 'Otros usos',
 }
 
 /**
@@ -291,6 +293,10 @@ export interface VehiculoACotizar {
   ceroKm: boolean
   uso: UsoDelVehiculo
   rastreador: Rastreador
+  /** Con uso «Otros usos»: el uso, como se escribió. Vacío en cualquier otro caso. */
+  usoOtro?: string
+  /** Con «Otro rastreador»: la marca, como se escribió. Vacío si es desconocida o si el rastreador es otro. */
+  marcaRastreador?: string
   scoring: ScoringDelVehiculo
   accesorios: AccesorioACotizar[]
   /** Si entre los accesorios está el equipo de GNC (ver `gncDe`). */

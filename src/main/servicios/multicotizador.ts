@@ -143,6 +143,8 @@ export function validarSolicitud(valor: unknown): SolicitudDeCotizacion {
       ceroKm: booleano(v.ceroKm, 'Si es 0 km'),
       uso: unoDe<UsoDelVehiculo>(v.uso, USOS_DEL_VEHICULO, 'El uso del vehículo'),
       rastreador: unoDe<Rastreador>(v.rastreador, RASTREADORES, 'El rastreador'),
+      usoOtro: v.uso === 'OTRO' ? textoOpcional(v.usoOtro, 120) : '',
+      marcaRastreador: v.rastreador === 'OTRO' ? textoOpcional(v.marcaRastreador, 80) : '',
       scoring: {
         grua: booleano(s.grua ?? false, 'La grúa'),
         alarma: booleano(s.alarma ?? false, 'La alarma'),

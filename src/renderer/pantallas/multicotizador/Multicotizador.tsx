@@ -266,7 +266,7 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
     const v = cotizada.vehiculo
     const c = cotizada.condiciones
     const scoring = [v.scoring.grua && 'grúa', v.scoring.alarma && 'alarma', v.scoring.garaje && 'garaje'].filter(Boolean).join(', ')
-    const extras = [v.ceroKm && '0 km', tieneRastreador(v) && `rastreador: ${NOMBRE_RASTREADOR[v.rastreador].toLowerCase()}`, scoring && `con ${scoring}`]
+    const extras = [v.ceroKm && '0 km', tieneRastreador(v) && `rastreador: ${v.rastreador === 'OTRO' && v.marcaRastreador ? v.marcaRastreador : NOMBRE_RASTREADOR[v.rastreador].toLowerCase()}`, scoring && `con ${scoring}`]
       .filter(Boolean)
       .join(', ')
     const accesorios = v.accesorios.map((a) => `${a.nombre} (${enPesos(a.valor)})`).join(', ')
@@ -281,7 +281,7 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
       marca: v.marca,
       modelo: [v.modelo, v.version].filter(Boolean).join(' '),
       anio: v.anio,
-      tipoVehiculo: NOMBRE_USO_DEL_VEHICULO[v.uso],
+      tipoVehiculo: v.uso === 'OTRO' && v.usoOtro ? v.usoOtro : NOMBRE_USO_DEL_VEHICULO[v.uso],
       sumaAsegurada: v.sumaAsegurada ? enPesos(v.sumaAsegurada) : '',
       observaciones: [
         `Cotizado con el multicotizador el ${hoyLegible()}.`,

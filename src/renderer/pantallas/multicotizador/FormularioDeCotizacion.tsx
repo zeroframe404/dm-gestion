@@ -97,6 +97,9 @@ export interface FormularioMulticotizador {
   ceroKm: boolean
   uso: UsoDelVehiculo
   rastreador: Rastreador
+  usoOtro: string
+  marcaRastreador: string
+  marcaRastreadorDesconocida: boolean
   scoring: ScoringDelVehiculo
   // La cotización
   plan: PlanDeCotizacion
@@ -147,6 +150,9 @@ export function formularioVacio(aseguradoras: IdAseguradora[], tipo: TipoDeVehic
     ceroKm: false,
     uso: 'PARTICULAR',
     rastreador: 'SIN_RASTREADOR',
+    usoOtro: '',
+    marcaRastreador: '',
+    marcaRastreadorDesconocida: false,
     scoring: { ...SCORING_VACIO },
     plan,
     tarifa: fijadas?.tarifa ?? condiciones.tarifa ?? '',
@@ -207,6 +213,8 @@ type CampoConError =
   | 'vigenciaDesde'
   | 'aseguradoras'
   | 'accesorios'
+  | 'usoOtro'
+  | 'marcaRastreador'
 
 /** Qué falta o está mal, campo por campo. Vacío = se puede cotizar. */
 export function erroresDe(f: FormularioMulticotizador): Partial<Record<CampoConError, string>> {
@@ -226,6 +234,8 @@ export function erroresDe(f: FormularioMulticotizador): Partial<Record<CampoConE
   if (!/^\d{4}$/.test(v.anio.trim())) errores.anio = 'Elegí el año.'
   if (!v.modelo.trim()) errores.modelo = 'Elegí el modelo.'
   if (!v.linea.trim()) errores.linea = 'Elegí la versión.'
+  if (f.uso === 'OTRO' && !f.usoOtro.trim()) errores.usoOtro = 'Indicá el uso.'
+  if (f.rastreador === 'OTRO' && !f.marcaRastreadorDesconocida && !f.marcaRastreador.trim()) errores.marcaRastreador = 'Escribí la marca, o tildá «Marca desconocida».'
   if (!f.tarifa) errores.tarifa = 'Elegí la tarifa.'
   if (!f.comision) errores.comision = 'Elegí la comisión.'
   if (!f.facturacion) errores.facturacion = 'Elegí la facturación.'
@@ -256,6 +266,8 @@ const NOMBRE_DEL_CAMPO: Record<CampoConError, string> = {
   vigenciaDesde: 'la vigencia',
   aseguradoras: 'las compañías',
   accesorios: 'el valor de los accesorios',
+  usoOtro: 'el uso',
+  marcaRastreador: 'la marca del rastreador',
 }
 
 /**
@@ -281,6 +293,8 @@ export function solicitudDe(f: FormularioMulticotizador): SolicitudDeCotizacion 
       ceroKm: f.ceroKm,
       uso: f.uso,
       rastreador: f.rastreador,
+      usoOtro: f.uso === 'OTRO' ? f.usoOtro.trim() : '',
+      marcaRastreador: f.rastreador === 'OTRO' && !f.marcaRastreadorDesconocida ? f.marcaRastreador.trim() : '',
       scoring: { ...f.scoring },
       accesorios,
       ...gncDe(accesorios),
@@ -620,6 +634,25 @@ export function FormularioDeCotizacion({ valor: f, alCambiar, aseguradoras, coti
                   onChange={(e) => alCambiar({ rastreador: e.target.value as Rastreador })}
                   opciones={RASTREADORES.map((rastreador) => ({ valor: rastreador, texto: NOMBRE_RASTREADOR[rastreador] }))}
                 />
+                {f.uso === 'OTRO' && (
+                  <Campo etiqueta="Indique el uso *" value={f.usoOtro} error={errores.usoOtro} onChange={(e) => alCambiar({ usoOtro: e.target.value })} />
+                )}
+                {f.rastreador === 'OTRO' && (
+                  <div className="flex flex-col gap-2">
+                    <Campo
+                      etiqueta="Marca del rastreador *"
+                      value={f.marcaRastreadorDesconocida ? '' : f.marcaRastreador}
+                      disabled={f.marcaRastreadorDesconocida}
+                      error={errores.marcaRastreador}
+                      onChange={(e) => alCambiar({ marcaRastreador: e.target.value })}
+                    />
+                    <Casilla
+                      etiqueta="Marca desconocida"
+                      marcada={f.marcaRastreadorDesconocida}
+                      alCambiar={(marcaRastreadorDesconocida) => alCambiar({ marcaRastreadorDesconocida, marcaRastreador: '' })}
+                    />
+                  </div>
+                )}
               </div>
               <fieldset className="flex flex-col gap-2">
                 <legend className="mb-1.5 text-sm font-medium text-slate-700">Scoring</legend>

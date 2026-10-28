@@ -224,8 +224,8 @@ export function VehiculoDelCotizador({ valor, alCambiar, ceroKm, alCambiarCeroKm
             <Campo
               etiqueta="Modelo *"
               value={valor.modelo}
-              disabled={!valor.marca.trim()}
-              placeholder={valor.marca.trim() ? '' : 'Escribí primero la marca'}
+              disabled={!valor.marca.trim() || !/^\d{4}$/.test(valor.anio.trim())}
+              placeholder={valor.marca.trim() && /^\d{4}$/.test(valor.anio.trim()) ? '' : 'Escribí primero la marca y el año'}
               error={errores.modelo}
               onChange={(e) => alCambiar({ modelo: e.target.value, catalogoCodigo: '' })}
             />
@@ -243,11 +243,11 @@ export function VehiculoDelCotizador({ valor, alCambiar, ceroKm, alCambiarCeroKm
             <Selector
               etiqueta="Modelo *"
               value={eleccion.modeloId}
-              disabled={!eleccion.marcaId}
+              disabled={!eleccion.marcaId || !valor.anio}
               error={errores.modelo}
               onChange={(e) => elegirModelo(e.target.value)}
               opciones={[
-                { valor: '', texto: eleccion.marcaId ? 'Elegí el modelo…' : 'Elegí primero la marca' },
+                { valor: '', texto: !eleccion.marcaId ? 'Elegí primero la marca' : valor.anio ? 'Elegí el modelo…' : 'Elegí primero el año' },
                 ...modelos.map((m) => ({ valor: m.id, texto: m.nombre })),
               ]}
               ayuda={eleccion.marcaId && valor.anio ? `Los que se ofrecen en ${valor.anio}.` : undefined}
