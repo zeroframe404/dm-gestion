@@ -243,6 +243,41 @@ function revisarLaBase(db: BaseDeDatos, informe: InformeImportacion, hoy: string
   assert.equal(contar(db, 'SELECT COUNT(*) AS n FROM pagos WHERE fecha_iso IS NULL OR importe_monto IS NULL OR periodo IS NULL OR cliente_id IS NULL OR poliza_id IS NULL'), 0)
   assert.ok(contar(db, `SELECT COUNT(*) AS n FROM pagos WHERE fecha_iso = ? OR fecha_iso = ?`, hoy, isoDe(hoyDia - 1)) >= 1, 'cobros de hoy o de ayer')
   assert.ok(contar(db, `SELECT COUNT(*) AS n FROM pagos WHERE estado_cobro = 'IMPUTADO'`) >= 2)
+  // El historial de la ficha del cliente: meses de pagos y no sólo los últimos días, uno por cuota pagada.
+  assert.ok(contar(db, 'SELECT COUNT(DISTINCT periodo) AS n FROM pagos') >= 6, 'pagos de varios meses')
+  assert.ok(contar(db, `SELECT COUNT(DISTINCT cliente_id) AS n FROM pagos`) >= contar(db, 'SELECT COUNT(*) AS n FROM clientes') * 0.7, 'la mayoría de los clientes tiene pagos')
+  const periodosDePagos = (db.prepare('SELECT DISTINCT periodo FROM pagos ORDER BY periodo').all() as Array<{ periodo: string }>).map((x) => x.periodo)
+  for (const periodo of periodosDePagos) {
+    // Lo cobrado de un mes sale de los pagos y las «cuotas cobradas» de la planilla: tienen que ser las mismas.
+    const cobradas = contar(db, `SELECT COUNT(*) AS n FROM cuotas_mes WHERE periodo = ? AND pago_fecha IS NOT NULL AND dada_de_baja = 0 AND poliza_id IN (SELECT id FROM polizas WHERE activa = 1)`, periodo)
+    const pagadas = contar(db, `SELECT COUNT(*) AS n FROM pagos WHERE periodo = ? AND estado_cobro = 'PAGO'`, periodo)
+    assert.equal(pagadas, cobradas, `${periodo}: un pago por cuota cobrada`)
+  }
+  // Los meses cerrados ya se rindieron: sin cobros pendientes de revisar de hace meses.
+  assert.equal(contar(db, `SELECT COUNT(*) AS n FROM pagos WHERE periodo < ? AND COALESCE(resultado, '') = ''`, hoy.slice(0, 7)), 0, 'sin rendiciones pendientes de meses cerrados')
+
+  // --- Siniestros: la línea de tiempo y la observación cuentan lo que pasó.
+  assert.equal(
+    contar(db, `SELECT COUNT(*) AS n FROM siniestros s WHERE s.estado = 'CERRADO' AND NOT EXISTS (
+        SELECT 1 FROM siniestro_observaciones o WHERE o.siniestro_id = s.id AND (o.texto LIKE '%liquid%' OR o.texto LIKE '%rechaz%'))`),
+    0,
+    'todo siniestro CERRADO llega hasta la liquidación o el rechazo',
+  )
+  assert.equal(
+    contar(db, `SELECT COUNT(*) AS n FROM siniestros s JOIN siniestro_observaciones o ON o.siniestro_id = s.id WHERE substr(o.creado_en, 1, 10) < s.fecha_carga_iso`),
+    0,
+    'la línea de tiempo arranca el día de la carga, no antes',
+  )
+  assert.equal(contar(db, `SELECT COUNT(*) AS n FROM siniestros WHERE observaciones LIKE '%REPARADO%' AND (descripcion LIKE '%ROBO%' OR cobertura = 'RC')`), 0, 'sin «reparado» en robos ni RC')
+  assert.equal(contar(db, `SELECT COUNT(*) AS n FROM siniestros WHERE observaciones LIKE '%TERCERO%' AND COALESCE(tercero_compania, '') = ''`), 0, 'sin «falta el registro del tercero» si no hay tercero')
+  assert.equal(contar(db, `SELECT COUNT(*) AS n FROM siniestros WHERE descripcion LIKE '%CHOCARON%' AND COALESCE(tercero_compania, '') = ''`), 0, 'los datos del tercero de «lo chocaron»')
+  assert.equal(contar(db, `SELECT COUNT(*) AS n FROM siniestros WHERE cobertura = 'RC' AND descripcion NOT LIKE 'RECLAMO%' AND descripcion NOT LIKE 'CAIDA EN MOTO%' AND descripcion NOT LIKE 'ROBO%'`), 0, 'una RC sólo denuncia reclamos de terceros')
+  // El de la Hilux, que cuelga de la tarea que pide al perito: con una cobertura que cubre el daño propio.
+  assert.equal(
+    contar(db, `SELECT COUNT(*) AS n FROM siniestros s JOIN polizas p ON p.id = s.poliza_id JOIN vehiculos v ON v.id = p.vehiculo_id WHERE v.modelo LIKE '%HILUX%' AND s.fecha_carga_iso = ? AND s.cobertura = 'RC'`, hoy),
+    0,
+    'la Hilux de hoy no es una RC',
+  )
   const caja = contar(db, 'SELECT COUNT(*) AS n FROM caja_movimientos')
   assert.ok(caja >= 40, `movimientos de caja: ${caja}`)
   assert.equal(contar(db, `SELECT COUNT(DISTINCT sucursal) AS n FROM caja_movimientos`), SUCURSALES.length)
@@ -260,7 +295,22 @@ function revisarLaBase(db: BaseDeDatos, informe: InformeImportacion, hoy: string
 
 test('datos de la demo: la grilla es determinista y con la forma que escribe la aplicación', () => {
   const datos = armarDatosDeLaDemo(fechaLocal('2026-10-27', 9))
-  assert.deepEqual(datos, armarDatosDeLaDemo(fechaLocal('2026-10-27', 23)), 'el mismo día da la misma grilla, a cualquier hora')
+  assert.deepEqual(datos, armarDatosDeLaDemo(fechaLocal('2026-10-27', 9)), 'el mismo instante da exactamente la misma grilla')
+  // A otra hora del mismo día sólo cambia la hora de los comentarios de HOY (se cuentan hacia atrás desde ahora).
+  const tarde = armarDatosDeLaDemo(fechaLocal('2026-10-27', 23))
+  assert.deepEqual(datos.vehiculos, tarde.vehiculos)
+  assert.equal(datos.pestanas.length, tarde.pestanas.length)
+  datos.pestanas.forEach((pestana, n) => {
+    const otra = tarde.pestanas[n]!
+    assert.equal(pestana.titulo, otra.titulo)
+    if (pestana.titulo !== 'APP COMENTARIOS') return assert.deepEqual(pestana.valores, otra.valores, `«${pestana.titulo}» igual a cualquier hora`)
+    const columna = pestana.valores[0]!.indexOf('FECHA')
+    pestana.valores.forEach((fila, i) => {
+      const gemela = otra.valores[i]!
+      if (i === 0 || !fila[columna]!.startsWith('2026-10-27')) return assert.deepEqual(fila, gemela)
+      assert.deepEqual(fila.filter((_, c) => c !== columna), gemela.filter((_, c) => c !== columna), 'sólo cambia la hora de los comentarios de hoy')
+    })
+  })
   assert.notDeepEqual(datos.pestanas, armarDatosDeLaDemo(fechaLocal('2026-10-28')).pestanas, 'otro día corre las fechas')
 
   const titulos = datos.pestanas.map((p) => p.titulo)

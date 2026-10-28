@@ -269,8 +269,27 @@ test('datos de la demo: rechazos en cada sucursal, la tarea de la Hilux y observ
     assert.ok(siniestro, 'la tarea cuelga de un siniestro que existe')
     assert.equal(siniestro.LOCAL, 'SARANDI')
     assert.equal(siniestro.MODELO!.startsWith('HILUX'), true)
+    // Con RC no hay daño propio ni perito: la Hilux tiene una cobertura que sí los cubre.
+    assert.notEqual(siniestro.COBERTURA, 'RC', 'la Hilux no es una RC')
 
     const comentarios = tabla('APP COMENTARIOS').filter((c) => c.TIPO === 'SINIESTRO')
     for (const s of siniestros) assert.ok(comentarios.some((c) => c.VINCULO === `SINIESTRO:${s._ID}`), `el siniestro ${s._ID} tiene observaciones`)
+  }
+})
+
+test('datos de la demo: los comentarios de hoy van hacia atrás desde la hora de apertura, nunca en el futuro', () => {
+  // También de madrugada y recién abierto el local: ni antes de las 00:00 ni después de ahora.
+  for (const hora of [0, 8, 10, 23]) {
+    const hoy = new Date(2026, 9, 27, hora, 5)
+    const inicio = new Date(2026, 9, 27).getTime()
+    const [encabezados, ...filas] = armarDatosDeLaDemo(hoy).pestanas.find((p) => p.titulo === 'APP COMENTARIOS')!.valores
+    const columna = encabezados!.indexOf('FECHA')
+    let deHoy = 0
+    for (const fila of filas) {
+      const momento = new Date(fila[columna]!).getTime()
+      assert.ok(momento <= hoy.getTime(), `${hora} h: comentario en el futuro (${fila[columna]})`)
+      if (momento >= inicio) deHoy++
+    }
+    assert.ok(deHoy >= 3, `${hora} h: comentarios de hoy (${deHoy})`)
   }
 })
