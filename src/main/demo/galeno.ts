@@ -6,7 +6,7 @@
 import { RAMA_GALENO_DE_TIPO, type TipoDeVehiculo } from '../../shared/tipos'
 import type { MedioDePago, UsoDelVehiculo } from '../../shared/multicotizador'
 import type { ClienteGaleno } from '../aseguradoras/galeno/cliente'
-import { anotarCotizacionDeLaSesion, anotarEmisionDeLaSesion, coberturasDeGalenoDemo, cotizadoEnLaSesion, emisionesDeLaSesionCon, planesDeGalenoDemo, valorEstimado } from './aseguradoras'
+import { anotarCotizacionDeLaSesion, anotarEmisionDeLaSesion, coberturasDeGalenoDemo, cotizadoEnLaSesion, emisionesDeLaSesionCon, planesDeGalenoDemo, polizasInventadasDe, valorEstimado } from './aseguradoras'
 import {
   anioDeEjemplo,
   enteroDe,
@@ -29,25 +29,120 @@ export const LEGAJO_DE_LA_DEMO = '84512'
 
 // --- El catálogo de vehículos de Galeno -----------------------------------------------------------------
 
-const MARCAS: Record<TipoDeVehiculo, Array<{ codigo: string; nombre: string; modelos: string[] }>> = {
-  AUTO: [
-    { codigo: '46', nombre: 'VOLKSWAGEN', modelos: ['GOL TREND', 'POLO', 'AMAROK', 'TAOS'] },
-    { codigo: '23', nombre: 'FORD', modelos: ['KA', 'FOCUS', 'RANGER', 'TERRITORY'] },
-    { codigo: '12', nombre: 'CHEVROLET', modelos: ['ONIX', 'CRUZE', 'S10', 'TRACKER'] },
-    { codigo: '21', nombre: 'FIAT', modelos: ['ARGO', 'CRONOS', 'STRADA', 'TORO'] },
-    { codigo: '51', nombre: 'TOYOTA', modelos: ['ETIOS', 'YARIS', 'COROLLA', 'HILUX'] },
-    { codigo: '40', nombre: 'PEUGEOT', modelos: ['208', '2008', '308', 'PARTNER'] },
-    { codigo: '44', nombre: 'RENAULT', modelos: ['SANDERO', 'LOGAN', 'DUSTER', 'KANGOO'] },
-  ],
-  MOTO: [
-    { codigo: '30', nombre: 'HONDA', modelos: ['WAVE', 'CB 190R', 'XR 150L'] },
-    { codigo: '57', nombre: 'YAMAHA', modelos: ['YBR 125', 'FZ', 'XTZ 250'] },
-    { codigo: '70', nombre: 'MOTOMEL', modelos: ['BLITZ', 'SKUA 150'] },
-    { codigo: '71', nombre: 'CORVEN', modelos: ['ENERGY', 'TRIAX 150'] },
-  ],
+interface VersionDeGaleno {
+  texto: string
+  /** Los años en que se vendió esa versión; sin límite si no se indica. */
+  desde?: number
+  hasta?: number
 }
 
-const VERSIONES: Record<TipoDeVehiculo, string[]> = { AUTO: ['BASE', 'INTERMEDIA', 'FULL'], MOTO: ['STD', 'FULL'] }
+interface ModeloDeGaleno {
+  nombre: string
+  /** El primer año de fabricación y el último (null si se sigue fabricando): un Cronos 2005 no existe. */
+  desde: number
+  hasta: number | null
+  versiones: VersionDeGaleno[]
+}
+
+const unaVersion = (texto: string, desde?: number, hasta?: number): VersionDeGaleno => ({ texto, desde, hasta })
+const unModelo = (nombre: string, desde: number, hasta: number | null, ...versiones: VersionDeGaleno[]): ModeloDeGaleno => ({ nombre, desde, hasta, versiones })
+
+const MARCAS: Record<TipoDeVehiculo, Array<{ codigo: string; nombre: string; modelos: ModeloDeGaleno[] }>> = {
+  AUTO: [
+    {
+      codigo: '46',
+      nombre: 'VOLKSWAGEN',
+      modelos: [
+        unModelo('GOL TREND', 2009, 2023, unaVersion('1.6 TRENDLINE 5P'), unaVersion('1.6 COMFORTLINE 5P'), unaVersion('1.6 HIGHLINE 5P', 2009, 2018)),
+        unModelo('POLO', 2018, null, unaVersion('1.6 MSI TRACK'), unaVersion('1.6 MSI HIGHLINE'), unaVersion('1.4 TSI GTS', 2019)),
+        unModelo('AMAROK', 2011, null, unaVersion('2.0 TDI 4X2 HIGHLINE'), unaVersion('2.0 TDI 4X4 HIGHLINE'), unaVersion('3.0 V6 4X4 EXTREME')),
+        unModelo('TAOS', 2021, null, unaVersion('1.4 TSI COMFORTLINE'), unaVersion('1.4 TSI HIGHLINE')),
+      ],
+    },
+    {
+      codigo: '23',
+      nombre: 'FORD',
+      modelos: [
+        unModelo('KA', 2008, 2021, unaVersion('1.0 FLY VIRAL', 2008, 2015), unaVersion('1.5 SE', 2016), unaVersion('1.5 SEL', 2016)),
+        unModelo('FOCUS', 2009, 2019, unaVersion('2.0 SE PLUS'), unaVersion('2.0 TITANIUM AT')),
+        unModelo('RANGER', 2012, null, unaVersion('3.2 DC 4X4 XLT', 2012, 2023), unaVersion('3.2 DC 4X2 XL', 2012, 2023), unaVersion('3.0 V6 DC 4X4 LIMITED', 2023)),
+        unModelo('TERRITORY', 2020, null, unaVersion('1.5 TURBO SEL'), unaVersion('1.5 TURBO TITANIUM')),
+      ],
+    },
+    {
+      codigo: '12',
+      nombre: 'CHEVROLET',
+      modelos: [
+        unModelo('ONIX', 2013, null, unaVersion('1.4 LT', 2013, 2019), unaVersion('1.2 LT', 2020), unaVersion('1.2 PREMIER', 2020)),
+        unModelo('CRUZE', 2011, 2023, unaVersion('1.4 TURBO LT'), unaVersion('1.4 TURBO LTZ'), unaVersion('1.4 TURBO PREMIER', 2017)),
+        unModelo('S10', 2012, null, unaVersion('2.8 DC 4X2 LS'), unaVersion('2.8 DC 4X4 LT'), unaVersion('2.8 DC 4X4 HIGH COUNTRY')),
+        unModelo('TRACKER', 2013, null, unaVersion('1.8 LTZ', 2013, 2019), unaVersion('1.2 TURBO LT', 2020), unaVersion('1.2 TURBO PREMIER', 2020)),
+      ],
+    },
+    {
+      codigo: '21',
+      nombre: 'FIAT',
+      modelos: [
+        unModelo('ARGO', 2018, null, unaVersion('1.3 DRIVE'), unaVersion('1.8 PRECISION')),
+        unModelo('CRONOS', 2018, null, unaVersion('1.3 DRIVE GSE'), unaVersion('1.8 PRECISION')),
+        unModelo('STRADA', 2012, null, unaVersion('1.4 WORKING', 2012, 2020), unaVersion('1.6 ADVENTURE', 2012, 2020), unaVersion('1.3 FREEDOM', 2020)),
+        unModelo('TORO', 2016, null, unaVersion('2.0 TD350 4X4 FREEDOM'), unaVersion('2.0 TD350 4X4 VOLCANO'), unaVersion('1.8 AT6 4X2 FREEDOM')),
+      ],
+    },
+    {
+      codigo: '51',
+      nombre: 'TOYOTA',
+      modelos: [
+        unModelo('ETIOS', 2013, 2023, unaVersion('1.5 X'), unaVersion('1.5 XLS'), unaVersion('1.5 PLATINUM')),
+        unModelo('YARIS', 2018, null, unaVersion('1.5 XS CVT'), unaVersion('1.5 XLS CVT')),
+        unModelo('COROLLA', 2014, null, unaVersion('1.8 XEI CVT', 2014, 2022), unaVersion('1.8 SEG CVT', 2014, 2022), unaVersion('2.0 XEI CVT', 2019), unaVersion('2.0 SEG CVT', 2019)),
+        unModelo('HILUX', 2005, null, unaVersion('2.5 DC 4X2 DX', 2005, 2015), unaVersion('3.0 DC 4X4 SRV', 2005, 2015), unaVersion('2.8 DC 4X4 SRV', 2016), unaVersion('2.8 DC 4X2 SR', 2016)),
+      ],
+    },
+    {
+      codigo: '40',
+      nombre: 'PEUGEOT',
+      modelos: [
+        unModelo('208', 2014, null, unaVersion('1.6 ALLURE'), unaVersion('1.6 FELINE'), unaVersion('1.2 PURETECH ALLURE', 2021)),
+        unModelo('2008', 2016, null, unaVersion('1.6 ALLURE'), unaVersion('1.6 FELINE'), unaVersion('1.6 THP SPORT', 2018)),
+        unModelo('308', 2012, 2022, unaVersion('1.6 ALLURE'), unaVersion('1.6 FELINE'), unaVersion('1.6 THP SPORT')),
+        unModelo('PARTNER', 2008, null, unaVersion('1.6 HDI CONFORT'), unaVersion('1.6 HDI PATAGONICA')),
+      ],
+    },
+    {
+      codigo: '44',
+      nombre: 'RENAULT',
+      modelos: [
+        unModelo('SANDERO', 2008, null, unaVersion('1.6 EXPRESSION'), unaVersion('1.6 PRIVILEGE'), unaVersion('1.6 STEPWAY INTENS', 2017)),
+        unModelo('LOGAN', 2008, null, unaVersion('1.6 EXPRESSION'), unaVersion('1.6 PRIVILEGE')),
+        unModelo('DUSTER', 2011, null, unaVersion('1.6 4X2 DYNAMIQUE'), unaVersion('2.0 4X4 PRIVILEGE')),
+        unModelo('KANGOO', 2008, null, unaVersion('1.6 EXPRESSION'), unaVersion('1.6 CONFORT 5 ASIENTOS')),
+      ],
+    },
+  ],
+  MOTO: [
+    {
+      codigo: '30',
+      nombre: 'HONDA',
+      modelos: [unModelo('WAVE', 2010, null, unaVersion('110 S'), unaVersion('110 S FULL')), unModelo('CB 190R', 2015, null, unaVersion('190R'), unaVersion('190R ABS', 2019)), unModelo('XR 150L', 2014, null, unaVersion('150L'))],
+    },
+    {
+      codigo: '57',
+      nombre: 'YAMAHA',
+      modelos: [unModelo('YBR 125', 2008, null, unaVersion('125 ED'), unaVersion('125 FULL')), unModelo('FZ', 2016, null, unaVersion('FZ-S FI 150'), unaVersion('FZ 25')), unModelo('XTZ 250', 2018, null, unaVersion('250'), unaVersion('250 ABS', 2020))],
+    },
+    {
+      codigo: '70',
+      nombre: 'MOTOMEL',
+      modelos: [unModelo('BLITZ', 2012, null, unaVersion('110 V8 FULL'), unaVersion('110 V8 BASE')), unModelo('SKUA 150', 2013, null, unaVersion('150 V6'), unaVersion('150 V6 FULL'))],
+    },
+    {
+      codigo: '71',
+      nombre: 'CORVEN',
+      modelos: [unModelo('ENERGY', 2010, null, unaVersion('110'), unaVersion('110 FULL')), unModelo('TRIAX 150', 2012, null, unaVersion('150 R3'), unaVersion('150 R3 FULL'))],
+    },
+  ],
+}
 
 function todasLasMarcas() {
   return [...MARCAS.AUTO.map((m) => ({ ...m, tipo: 'AUTO' as const })), ...MARCAS.MOTO.map((m) => ({ ...m, tipo: 'MOTO' as const }))]
@@ -60,6 +155,12 @@ function modeloDe(marcaCodigo: string, modeloCodigo: string) {
   const indice = Number(modeloCodigo.slice(marcaCodigo.length)) - 1
   const modelo = marca.modelos[indice]
   return modelo ? { marca, modelo } : null
+}
+
+/** Las versiones de un modelo que se vendieron ese año (todas, si el año no es un número). */
+function versionesDelAnio(modelo: ModeloDeGaleno, anio: number): VersionDeGaleno[] {
+  if (!Number.isFinite(anio) || anio <= 0) return modelo.versiones
+  return modelo.versiones.filter((v) => anio >= (v.desde ?? 0) && anio <= (v.hasta ?? Infinity))
 }
 
 // --- Las listas de valores ----------------------------------------------------------------------------
@@ -123,6 +224,8 @@ interface PolizaDeEjemplo {
   endoso: number
   /** Emitida en esta sesión: todavía no tiene cuotas vencidas ni cobradas. */
   deLaSesion?: boolean
+  /** Anulada: no está vigente y no debe nada. */
+  anulada?: boolean
 }
 
 /** Las pólizas de la cartera de ejemplo: las emitidas en esta sesión primero, después las inventadas. */
@@ -151,30 +254,31 @@ function emitidasEnLaSesion(): PolizaDeEjemplo[] {
   }))
 }
 
+/**
+ * Las pólizas del legajo: las MISMAS que lista Emisiones del multicotizador para Galeno (las de los últimos
+ * doce meses, que son las que siguen vigentes), con el mismo número, tomador, patente y fecha de emisión.
+ */
 function carteraInventada(): PolizaDeEjemplo[] {
   const hoy = fechaIso(new Date())
-  return Array.from({ length: 24 }, (_, i) => {
-    const semilla = `galeno:cartera:${i}`
-    const ejemplo = VEHICULOS_DE_EJEMPLO[i % VEHICULOS_DE_EJEMPLO.length]!
-    const anio = anioDeEjemplo(`${semilla}:anio`, ejemplo)
-    const suma = valorEstimado(ejemplo.tipo, ejemplo.marca, ejemplo.modelo, ejemplo.version, anio)
-    const emision = sumarDias(hoy, -enteroDe(`${semilla}:emision`, 3, 330))
-    return {
-      numero: `4${String(hashDe(semilla) % 1_000_000).padStart(6, '0')}`,
-      rama: RAMA_GALENO_DE_TIPO[ejemplo.tipo],
-      tipo: ejemplo.tipo,
-      tomador: personaDe(semilla),
-      patente: patenteDe(semilla, anio, ejemplo.tipo),
-      vehiculo: `${ejemplo.marca} ${ejemplo.modelo} ${ejemplo.version} ${anio}`,
-      cobertura: unoDe(`${semilla}:cobertura`, ['RESPONSABILIDAD CIVIL', 'TERCEROS COMPLETO', 'TERCEROS COMPLETO PLUS C/ GRANIZO', 'TODO RIESGO C/ FRANQUICIA']),
-      suma,
-      premio: redondear(suma * (0.005 + enteroDe(`${semilla}:tasa`, 0, 60) / 10_000) + 30_000),
-      emision,
-      desde: emision,
-      hasta: sumarMeses(emision, 12),
-      endoso: enteroDe(`${semilla}:endoso`, 0, 3),
-    }
-  })
+  return polizasInventadasDe('GALENO', { desde: sumarDias(hoy, -350), hasta: hoy, tipo: null })
+    .map((p) => ({
+      numero: p.poliza,
+      rama: RAMA_GALENO_DE_TIPO[p.tipo],
+      tipo: p.tipo,
+      tomador: p.tomador,
+      patente: p.patente,
+      vehiculo: p.vehiculo,
+      cobertura: p.cobertura.toUpperCase(),
+      suma: p.suma,
+      premio: p.premioMensual,
+      emision: p.emision,
+      desde: p.desde,
+      hasta: p.hasta,
+      endoso: enteroDe(`galeno:endoso:${p.poliza}`, 0, 3),
+      anulada: p.estado === 'Anulada',
+    }))
+    // Lo más nuevo primero, como en Emisiones.
+    .reverse()
 }
 
 /** La póliza o la patente que se pidió, si se pidió alguna (cada consulta llama distinto al campo). */
@@ -184,16 +288,33 @@ function filtrarCartera(cartera: PolizaDeEjemplo[], body: Cuerpo): PolizaDeEjemp
   return cartera.filter((p) => (!poliza || p.numero === poliza) && (!patente || p.patente === patente))
 }
 
-/**
- * Las que deben una cuota. Es UNA sola regla para «Cuotas impagas», el saldo vencido de «Pólizas
- * vigentes» y «Cuotas cobradas», así las tres consultas cuentan lo mismo.
- */
-function debeUnaCuota(p: PolizaDeEjemplo): boolean {
-  return !p.deLaSesion && hashDe(`impaga:${p.numero}`) % 4 === 0
+/** Cuántas cuotas ya vencieron: la primera vence el día que empieza la vigencia y después una por mes (hasta 12). */
+function cuotasVencidas(p: PolizaDeEjemplo): number {
+  const hoy = fechaIso(new Date())
+  let n = 1
+  while (n < 12 && sumarMeses(p.desde, n) <= hoy) n++
+  return n
 }
 
+/** El vencimiento de la cuota `n`: parte de donde empieza la vigencia, así nunca es anterior a ella. */
+function vencimientoDeCuota(p: PolizaDeEjemplo, n: number): string {
+  return sumarMeses(p.desde, n - 1)
+}
+
+/**
+ * Las que deben una cuota. Es UNA sola regla para «Cuotas impagas», el saldo vencido de «Pólizas
+ * vigentes» y «Cuotas cobradas», así las tres consultas cuentan lo mismo. Sólo puede deber una la póliza
+ * que ya pasó de la primera cuota, y la impaga es la última que venció (ya vencida, no la de hoy).
+ */
+function debeUnaCuota(p: PolizaDeEjemplo): boolean {
+  if (p.deLaSesion || p.anulada) return false
+  const vencidas = cuotasVencidas(p)
+  return vencidas >= 2 && vencimientoDeCuota(p, vencidas) < fechaIso(new Date()) && hashDe(`impaga:${p.numero}`) % 4 === 0
+}
+
+/** El número de la cuota impaga: la última vencida. */
 function cuotaImpaga(p: PolizaDeEjemplo): number {
-  return enteroDe(`cuota:${p.numero}`, 2, 11)
+  return cuotasVencidas(p)
 }
 
 function reporteDeConsultas(ruta: string, body: Cuerpo): unknown {
@@ -211,7 +332,7 @@ function reporteDeConsultas(ruta: string, body: Cuerpo): unknown {
         fecvigenciaDesde: f(p.desde),
         fecvigenciaHasta: f(p.hasta),
         fechaEmision: f(p.emision),
-        estado: 'X',
+        estado: p.anulada ? 'A' : 'X',
       }))
     case '/api/polizas/obtenerPolizasRiesgo':
       // Los riesgos son de UNA póliza (en autos, uno por vehículo): sin número de póliza, los de la primera.
@@ -243,28 +364,31 @@ function reporteDeConsultas(ruta: string, body: Cuerpo): unknown {
         poliza: p.numero,
         nroCuota: cuotaImpaga(p),
         tomador: p.tomador,
-        fechaVtoAsegurado: f(sumarDias(hoy, -enteroDe(`vto:${p.numero}`, 1, 40))),
+        fechaVtoAsegurado: f(vencimientoDeCuota(p, cuotaImpaga(p))),
         saldoCuota: p.premio,
         estadoPoliza: 'VIGENTE',
       }))
     case '/api/polizas/cuotasCobradas':
-      // La última cobrada: en las que deben una, la anterior a la impaga.
+      // La última cobrada: la última que venció, o la anterior en las que deben una (la impaga).
       return cartera
-        .filter((p) => !p.deLaSesion)
-        .map((p) => ({
-          poliza: p.numero,
-          nroCuota: debeUnaCuota(p) ? cuotaImpaga(p) - 1 : enteroDe(`cuota:${p.numero}`, 1, 10),
-          tomador: p.tomador,
-          // La que debe una: la cobrada venció un mes antes que la impaga (mismo `vto:`), no al azar.
-          fechaVencimientoCuota: f(
-            debeUnaCuota(p) ? sumarDias(hoy, -enteroDe(`vto:${p.numero}`, 1, 40) - 30) : sumarDias(hoy, -enteroDe(`cobro:${p.numero}`, 1, 30)),
-          ),
-          premioCobradoCuota: p.premio,
-          formaPagoCuota: unoDe(`forma:${p.numero}`, ['TARJETA DE CREDITO', 'DEBITO EN CUENTA', 'EFECTIVO']),
-          fechaContableImputacion: f(sumarDias(hoy, -enteroDe(`imputa:${p.numero}`, 0, 25) - (debeUnaCuota(p) ? 30 : 0))),
-        }))
+        .filter((p) => !p.deLaSesion && !p.anulada)
+        .map((p) => {
+          const nroCuota = debeUnaCuota(p) ? cuotaImpaga(p) - 1 : cuotasVencidas(p)
+          const vencimiento = vencimientoDeCuota(p, nroCuota)
+          const cobro = sumarDias(vencimiento, enteroDe(`cobro:${p.numero}`, 0, 4))
+          return {
+            poliza: p.numero,
+            nroCuota,
+            tomador: p.tomador,
+            fechaVencimientoCuota: f(vencimiento),
+            premioCobradoCuota: p.premio,
+            formaPagoCuota: unoDe(`forma:${p.numero}`, ['TARJETA DE CREDITO', 'DEBITO EN CUENTA', 'EFECTIVO']),
+            // Se cobra a los pocos días del vencimiento, y nunca en el futuro.
+            fechaContableImputacion: f(cobro > hoy ? hoy : cobro),
+          }
+        })
     case '/api/polizas/vigentes':
-      return cartera.map((p) => ({
+      return cartera.filter((p) => !p.anulada).map((p) => ({
         poliza: p.numero,
         descRama: p.tipo === 'MOTO' ? 'MOTOS' : 'AUTOMOTORES',
         tomador: p.tomador,
@@ -520,8 +644,9 @@ function cotizar(body: Cuerpo): Cuerpo {
   const anio = Number(body.anioFabricacion) || new Date().getFullYear()
   const encontrado = modeloDe(String(body.marcaCodigo ?? ''), String(body.modeloCodigo ?? ''))
   const marca = encontrado?.marca.nombre ?? 'VEHICULO'
-  const modelo = encontrado?.modelo ?? 'GENERICO'
-  const version = VERSIONES[tipo][Number(body.subModeloCodigo ?? 1) - 1] ?? VERSIONES[tipo][0]!
+  const modelo = encontrado?.modelo.nombre ?? 'GENERICO'
+  const versiones = encontrado?.modelo.versiones ?? []
+  const version = (versiones[Number(body.subModeloCodigo ?? 1) - 1] ?? versiones[0])?.texto ?? 'BASE'
   const modo = String(body.modoFacturacionCodigo ?? 'M')
   const meses = MESES_DEL_MODO[modo] ?? 1
   const cuotas = Math.min(meses, Math.max(1, Number(body.condicionPagoCodigo) || 1))
@@ -629,22 +754,28 @@ function contestar(ruta: string, body: Cuerpo): unknown {
   let partes = /^\/api\/cotizadores\/auto\/modelos\/([^/]+)$/.exec(camino)
   if (partes) {
     const marca = todasLasMarcas().find((m) => m.codigo === decodeURIComponent(partes![1]!))
-    return (marca?.modelos ?? []).map((modelo, i) => opcion(`${marca!.codigo}${String(i + 1).padStart(2, '0')}`, modelo))
+    return (marca?.modelos ?? []).map((modelo, i) => opcion(`${marca!.codigo}${String(i + 1).padStart(2, '0')}`, modelo.nombre))
   }
   partes = /^\/api\/cotizadores\/auto\/anios\/([^/]+)\/([^/]+)$/.exec(camino)
   if (partes) {
-    const hasta = new Date().getFullYear() + 1
-    return Array.from({ length: hasta - 2005 + 1 }, (_, i) => String(hasta - i)).map((anio) => opcion(anio, anio))
+    // Sólo los años en que se fabricó ese modelo; el de los que se siguen fabricando llega al año que viene.
+    const encontrado = modeloDe(decodeURIComponent(partes[1]!), decodeURIComponent(partes[2]!))
+    if (!encontrado) return []
+    const tope = new Date().getFullYear() + 1
+    const hasta = Math.min(encontrado.modelo.hasta ?? tope, tope)
+    return Array.from({ length: Math.max(0, hasta - encontrado.modelo.desde + 1) }, (_, i) => String(hasta - i)).map((anio) => opcion(anio, anio))
   }
   partes = /^\/api\/cotizadores\/auto\/submodelos\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(camino)
   if (partes) {
     const encontrado = modeloDe(decodeURIComponent(partes[1]!), decodeURIComponent(partes[2]!))
     if (!encontrado) return []
-    return VERSIONES[encontrado.marca.tipo].map((version, i) => ({
-      version: `${encontrado.modelo} ${version}`,
+    const disponibles = versionesDelAnio(encontrado.modelo, Number(decodeURIComponent(partes[3]!)))
+    // El código de la versión es su lugar en la lista completa del modelo, no en la del año.
+    return disponibles.map((version) => ({
+      version: `${encontrado.modelo.nombre} ${version.texto}`,
       codigoMarca: Number(encontrado.marca.codigo),
       codigoModelo: Number(decodeURIComponent(partes![2]!)),
-      codigoSubModelo: i + 1,
+      codigoSubModelo: encontrado.modelo.versiones.indexOf(version) + 1,
     }))
   }
   partes = /^\/api\/cotizadores\/comun\/codigoPostal\/(\d+)\/([^/]+)$/.exec(camino)

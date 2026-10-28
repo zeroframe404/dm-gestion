@@ -61,12 +61,57 @@ type Nivel = 'RC' | 'BASICO' | 'COMPLETO' | 'PREMIUM' | 'TODO_RIESGO'
 
 const PICK_UPS = /\b(HILUX|RANGER|AMAROK|S ?10|FRONTIER|TORO|STRADA|SAVEIRO|OROCH|ALASKAN|MAVERICK|PICK ?UP|L ?200|DC|CD)\b/
 
-/** Cuánto vale el modelo respecto de un auto mediano: lo de siempre del mercado, y si no se conoce, un valor estable. */
+/**
+ * Cuánto vale el modelo respecto de un auto mediano: lo de siempre del mercado, y si no se conoce, un valor
+ * estable. Cada modelo tiene el suyo (un Gol no vale lo mismo que un Onix ni una Wave lo que una Blitz):
+ * los más específicos van primero («COROLLA CROSS» antes que «COROLLA»).
+ */
 const SEGMENTOS: Array<[RegExp, number]> = [
-  [/\b(GOL|UP|KA|MOBI|CLIO|SANDERO|ONIX|PRISMA|ETIOS|CORSA|FIESTA|PALIO|SIENA|ARGO|CRONOS|208|207|KWID|LOGAN|C3)\b/, 0.62],
-  [/\b(COROLLA|CRUZE|FOCUS|VENTO|MEGANE|308|408|CIVIC|SENTRA|FLUENCE|VIRTUS|POLO)\b/, 1.15],
-  [/\b(TAOS|COMPASS|T ?CROSS|TRACKER|2008|3008|ECOSPORT|DUSTER|KICKS|RENEGADE|TERRITORY|NIVUS|HR ?V|COROLLA CROSS)\b/, 1.3],
-  [/\b(110|125|WAVE|BLITZ|ENERGY|SMASH|DAX|BIZ|CRYPTON|MOTARD|SKUA 150)\b/, 0.62],
+  // Autos chicos.
+  [/\bMOBI\b/, 0.42],
+  [/\b(KWID|CLIO)\b/, 0.45],
+  [/\bUP\b/, 0.48],
+  [/\b(CORSA|PALIO)\b/, 0.5],
+  [/\bSIENA\b/, 0.52],
+  [/\bGOL\b/, 0.55],
+  [/\b(KA|FIESTA)\b/, 0.56],
+  [/\b(ETIOS|LOGAN|C3)\b/, 0.58],
+  [/\b(PRISMA|207)\b/, 0.6],
+  [/\bSANDERO\b/, 0.62],
+  [/\bARGO\b/, 0.64],
+  [/\bONIX\b/, 0.66],
+  [/\bCRONOS\b/, 0.68],
+  [/\b208\b/, 0.7],
+  // Sedanes y medianos.
+  [/\bVIRTUS\b/, 0.95],
+  [/\b(FOCUS|MEGANE)\b/, 0.98],
+  [/\b(VENTO|FLUENCE|POLO)\b/, 1.02],
+  [/\b308\b/, 1.05],
+  [/\bSENTRA\b/, 1.07],
+  [/\bCRUZE\b/, 1.1],
+  [/\b408\b/, 1.12],
+  [/\bCOROLLA CROSS\b/, 1.5],
+  [/\bCOROLLA\b/, 1.2],
+  [/\bCIVIC\b/, 1.25],
+  // SUV y crossover.
+  [/\b(ECOSPORT|DUSTER)\b/, 1.1],
+  [/\bNIVUS\b/, 1.18],
+  [/\b(TRACKER|2008)\b/, 1.22],
+  [/\b(T ?CROSS|RENEGADE)\b/, 1.25],
+  [/\bKICKS\b/, 1.28],
+  [/\bTERRITORY\b/, 1.32],
+  [/\bHR ?V\b/, 1.4],
+  [/\b(TAOS|3008)\b/, 1.45],
+  [/\bCOMPASS\b/, 1.55],
+  // Motos: la de mayor marca vale más que la económica.
+  [/\b(SMASH|ENERGY)\b/, 0.56],
+  [/\bBLITZ\b/, 0.6],
+  [/\b(DAX|CRYPTON)\b/, 0.62],
+  [/\bBIZ\b/, 0.66],
+  [/\bWAVE\b/, 0.74],
+  [/\bMOTARD\b/, 0.8],
+  [/\bSKUA 150\b/, 0.84],
+  [/\b(110|125)\b/, 0.62],
 ]
 
 interface Riesgo {
@@ -217,7 +262,8 @@ function tarifar(compania: Compania, riesgo: Riesgo, condicion: Condicion): Tari
       const neto = primaNeta + recargoAdministrativo + recargoFinanciero + derechoEmision
       const impuestos = redondear(neto * IMPUESTOS[condicion.condicionIva])
       const premio = redondear(neto + impuestos)
-      const cuota = redondear((premio - derechoEmision) / condicion.cuotas)
+      // Con una sola cuota no hay «resto»: lo que se paga es el premio entero, de una vez.
+      const cuota = condicion.cuotas === 1 ? premio : redondear((premio - derechoEmision) / condicion.cuotas)
       return {
         codigo: c.codigo,
         nombre: c.nombre.replace('{franquicia}', pesosRedondos(franquiciaEnPesos)),
@@ -230,7 +276,7 @@ function tarifar(compania: Compania, riesgo: Riesgo, condicion: Condicion): Tari
         derechoEmision,
         impuestos,
         premio,
-        primeraCuota: redondear(cuota + derechoEmision),
+        primeraCuota: condicion.cuotas === 1 ? premio : redondear(cuota + derechoEmision),
         cuota,
         comision: redondear(primaNeta * condicion.comision),
         bonificacionPorcentaje: condicion.bonificacion,
@@ -698,7 +744,8 @@ function emisionDe(compania: Compania, solicitud: SolicitudResuelta, elecciones:
       impuestos: t.impuestos,
       premio: t.premio,
       importeCuota1: t.primeraCuota,
-      importeRestoCuotas: t.cuota,
+      // Con una sola cuota Galeno no tiene «resto de cuotas».
+      importeRestoCuotas: elecciones.cuotas === 1 ? 0 : t.cuota,
       comision: t.comision,
       listaAdicionales: t.adicionales,
       franquicia: t.franquicia,
@@ -897,6 +944,49 @@ function filasInventadas(compania: Compania, filtros: FiltrosDeListado, que: str
   return filas.slice(0, 300)
 }
 
+/** Una póliza «de la API» de una compañía: la misma fila para el listado de Emisiones y para sus consultas. */
+export interface PolizaInventada {
+  tipo: TipoDeVehiculo
+  poliza: string
+  tomador: string
+  patente: string
+  /** «MARCA MODELO VERSIÓN AÑO». */
+  vehiculo: string
+  cobertura: string
+  suma: number
+  /** El premio de UN mes de cobertura, impuestos incluidos. */
+  premioMensual: number
+  /** aaaa-mm-dd. */
+  emision: string
+  desde: string
+  hasta: string
+  estado: string
+}
+
+/**
+ * Las pólizas que la compañía «emitió» en el rango. Es UNA sola cartera: Emisiones del multicotizador y
+ * las consultas de la API de Galeno (pólizas por legajo, cuotas…) salen de acá, así una póliza que está
+ * en una pantalla está en la otra.
+ */
+export function polizasInventadasDe(companiaId: string, filtros: FiltrosDeListado): PolizaInventada[] {
+  const compania = COMPANIAS.find((c) => c.id === companiaId)
+  if (!compania) return []
+  return filasInventadas(compania, filtros, 'emision', 1).map((fila) => ({
+    tipo: fila.tipo,
+    poliza: numeroDe(compania.prefijoPoliza, fila.semilla, 6),
+    tomador: fila.tomador,
+    patente: fila.patente,
+    vehiculo: fila.vehiculo,
+    cobertura: fila.cobertura.nombre,
+    suma: fila.suma,
+    premioMensual: fila.cobertura.premio,
+    emision: fila.dia,
+    desde: fila.dia,
+    hasta: sumarMeses(fila.dia, compania.vigenciaMeses),
+    estado: unoDe(`${fila.semilla}:estado`, ESTADOS_DE_EMISION),
+  }))
+}
+
 function listadosDe(compania: Compania): Pick<CotizadorDeAseguradora, 'planes' | 'cotizaciones' | 'emisiones'> {
   return {
     async planes(tipo: TipoDeVehiculo): Promise<PlanDeAseguradora[]> {
@@ -930,17 +1020,9 @@ function listadosDe(compania: Compania): Pick<CotizadorDeAseguradora, 'planes' |
       const deLaSesion = emisionesDeLaSesion
         .filter((e) => e.compania === compania.id && dentroDelListado(e.fecha, e.tipo, filtros))
         .map((e): EmisionDeLaApi => ({ tipo: e.tipo, poliza: e.poliza, fechaEmision: e.fecha, tomador: e.tomador, patente: e.patente, cobertura: e.cobertura, vigenciaDesde: e.desde, vigenciaHasta: e.hasta, estado: 'Vigente' }))
-      const inventadas = filasInventadas(compania, filtros, 'emision', 1).map((fila) => ({
-        tipo: fila.tipo,
-        poliza: numeroDe(compania.prefijoPoliza, fila.semilla, 6),
-        fechaEmision: fila.dia,
-        tomador: fila.tomador,
-        patente: fila.patente,
-        cobertura: fila.cobertura.nombre,
-        vigenciaDesde: fila.dia,
-        vigenciaHasta: sumarMeses(fila.dia, compania.vigenciaMeses),
-        estado: unoDe(`${fila.semilla}:estado`, ESTADOS_DE_EMISION),
-      }))
+      const inventadas = polizasInventadasDe(compania.id, filtros).map(
+        (p): EmisionDeLaApi => ({ tipo: p.tipo, poliza: p.poliza, fechaEmision: p.emision, tomador: p.tomador, patente: p.patente, cobertura: p.cobertura, vigenciaDesde: p.desde, vigenciaHasta: p.hasta, estado: p.estado }),
+      )
       return [...deLaSesion, ...inventadas]
     },
   }
@@ -1071,6 +1153,22 @@ function normalizarTomador(tomador: string): string {
   return tomador.replace(/\s+/g, ' ').trim().toUpperCase()
 }
 
+const sinTildes = (texto: string) => texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+/**
+ * Las compañías guardan «APELLIDO NOMBRE»; el diálogo de emisión puede sugerir «Nombre Apellido». Si el
+ * tomador es el mismo que el de la cotización (mismas palabras, sin mirar tildes ni el orden), queda en el
+ * orden de la cotización y con lo que se escribió al emitir; si es otro, se deja como se escribió.
+ */
+function enElOrdenDe(tomador: string, cotizado: string): string {
+  const palabras = tomador.split(' ').filter(Boolean)
+  const modelo = cotizado.split(' ').filter(Boolean)
+  if (palabras.length < 2 || palabras.length !== modelo.length) return tomador
+  const escritas = new Map(palabras.map((p) => [sinTildes(p), p]))
+  if (escritas.size !== palabras.length || !modelo.every((p) => escritas.has(sinTildes(p)))) return tomador
+  return modelo.map((p) => escritas.get(sinTildes(p))!).join(' ')
+}
+
 /** Lo que se cotizó en esta sesión para esa cobertura (para emitir por lo mismo), o null. */
 export function cotizadoEnLaSesion(compania: string, numero: string, cobertura: string): CoberturaDeLaSesion | null {
   return cotizacionesDeLaSesion.find((c) => c.compania === compania && c.fila.numero === numero)?.coberturas.get(cobertura) ?? null
@@ -1097,7 +1195,7 @@ export function anotarEmisionDeLaSesion(compania: string, emision: EmisionParaLa
     tipo: cotizada?.fila.tipo ?? emision.tipo ?? 'AUTO',
     poliza: emision.poliza,
     fecha: hoy,
-    tomador: normalizarTomador(emision.tomador) || cotizada?.fila.tomador || '',
+    tomador: enElOrdenDe(normalizarTomador(emision.tomador), cotizada?.fila.tomador ?? '') || cotizada?.fila.tomador || '',
     patente: emision.patente.trim().toUpperCase(),
     cobertura: cotizada?.coberturas.get(emision.cobertura)?.nombre ?? emision.cobertura,
     vehiculo: cotizada?.fila.vehiculo ?? '',
@@ -1192,7 +1290,7 @@ export function coberturasDeGalenoDemo(pedido: PedidoDeGalenoDemo): CoberturaCot
     impuestos: t.impuestos,
     premio: t.premio,
     importeCuota1: t.primeraCuota,
-    importeRestoCuotas: t.cuota,
+    importeRestoCuotas: pedido.cuotas === 1 ? 0 : t.cuota,
     comision: t.comision,
     listaAdicionales: t.adicionales,
     franquicia: t.franquicia,

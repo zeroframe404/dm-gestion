@@ -12,9 +12,9 @@ import { emitir as emitirEnGaleno } from '../src/main/aseguradoras/galeno/emisio
 import * as catalogosGaleno from '../src/main/aseguradoras/galeno/catalogos'
 import type { DatosDeEmisionGaleno } from '../src/shared/tipos'
 import { estadoDeAtmDemo, emisionDeAtmDemo } from '../src/main/demo/apis'
-import { ASEGURADORAS_DE_LA_DEMO, olvidarLaSesionDeLaDemo } from '../src/main/demo/aseguradoras'
+import { ASEGURADORAS_DE_LA_DEMO, olvidarLaSesionDeLaDemo, valorEstimado } from '../src/main/demo/aseguradoras'
 import { clienteGalenoDeLaDemo, LEGAJO_DE_LA_DEMO } from '../src/main/demo/galeno'
-import { anioDeEjemplo, demorasDeLaDemo, fechaIso, patenteDe, sumarDias, VEHICULOS_DE_EJEMPLO } from '../src/main/demo/simulacion'
+import { anioDeEjemplo, demorasDeLaDemo, fechaIso, patenteDe, sumarDias, sumarMeses, VEHICULOS_DE_EJEMPLO } from '../src/main/demo/simulacion'
 import { telefonoParaMostrar, whatsappDeLaDemo } from '../src/main/demo/whatsapp'
 import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
 import { atm } from '../src/main/multicotizador/atm'
@@ -509,4 +509,149 @@ test('demo: los enlaces de WhatsApp se reconocen para mostrar el mensaje en vez 
   assert.equal(whatsappDeLaDemo('no es una dirección'), null)
   assert.equal(telefonoParaMostrar('5491134559091'), '+54 9 11 3455-9091')
   assert.equal(telefonoParaMostrar(''), 'sin número')
+})
+
+test('demo: las cuotas de Galeno cierran con la vigencia de la póliza', async () => {
+  olvidarLaSesionDeLaDemo()
+  const hoy = fechaIso(new Date())
+  const cliente = clienteGalenoDeLaDemo()
+  const pedir = <T>(ruta: string) => cliente.pedirJson<T>(ruta, { metodo: 'POST', body: {} })
+  const polizas = await pedir<Array<{ nroPoliza: string; fecvigenciaDesde: string }>>('/api/polizas/consultaXLegajo')
+  const iso = (f: string) => f.split('/').reverse().join('-')
+  const desdeDe = new Map(polizas.map((p) => [p.nroPoliza, iso(p.fecvigenciaDesde)]))
+  const cobradas = await pedir<Array<{ poliza: string; nroCuota: number; fechaVencimientoCuota: string; fechaContableImputacion: string }>>('/api/polizas/cuotasCobradas')
+  const impagas = await pedir<Array<{ poliza: string; nroCuota: number; fechaVtoAsegurado: string }>>('/api/polizas/cuotasImpagas')
+  assert.ok(cobradas.length > 20 && impagas.length > 3, `${cobradas.length} cobradas, ${impagas.length} impagas`)
+  for (const c of cobradas) {
+    const desde = desdeDe.get(c.poliza)!
+    const vence = iso(c.fechaVencimientoCuota)
+    assert.ok(c.nroCuota >= 1 && c.nroCuota <= 12, `cuota ${c.nroCuota}`)
+    // La cuota N vence N-1 meses después de que arranca la vigencia, y no en el futuro.
+    assert.equal(vence, sumarMeses(desde, c.nroCuota - 1), `${c.poliza}: la cuota ${c.nroCuota} no vence donde corresponde`)
+    assert.ok(vence >= desde && vence <= hoy, `${c.poliza}: cobrada con vencimiento ${vence} y vigencia desde ${desde}`)
+    assert.ok(iso(c.fechaContableImputacion) >= vence && iso(c.fechaContableImputacion) <= hoy, `${c.poliza}: imputada fuera de fecha`)
+  }
+  for (const c of impagas) {
+    const desde = desdeDe.get(c.poliza)!
+    const vence = iso(c.fechaVtoAsegurado)
+    assert.ok(c.nroCuota >= 2, `${c.poliza}: debe la cuota ${c.nroCuota}, que es la primera`)
+    assert.equal(vence, sumarMeses(desde, c.nroCuota - 1))
+    assert.ok(vence < hoy, `${c.poliza}: impaga que todavía no venció`)
+  }
+})
+
+test('demo: Emisiones de Galeno y «Pólizas por legajo» son la misma cartera', async () => {
+  olvidarLaSesionDeLaDemo()
+  const hoy = fechaIso(new Date())
+  const galenoDemo = ASEGURADORAS_DE_LA_DEMO.find((a) => a.id === 'GALENO')!
+  const emisiones = await galenoDemo.emisiones!({ desde: sumarDias(hoy, -30), hasta: hoy, tipo: null })
+  assert.ok(emisiones.length > 5)
+  const legajo = await clienteGalenoDeLaDemo().pedirJson<Array<{ nroPoliza: string; nombreTomador: string; patente: string; fechaEmision: string }>>('/api/polizas/consultaXLegajo', { metodo: 'POST', body: {} })
+  for (const e of emisiones) {
+    const p = legajo.find((l) => l.nroPoliza === e.poliza)
+    assert.ok(p, `la póliza ${e.poliza} de Emisiones no está en el legajo`)
+    assert.equal(p.nombreTomador, e.tomador)
+    assert.equal(p.patente, e.patente)
+    assert.equal(p.fechaEmision.split('/').reverse().join('-'), e.fechaEmision)
+  }
+  // Y al revés: las del legajo emitidas dentro del rango están en Emisiones.
+  const desde = sumarDias(hoy, -30)
+  for (const p of legajo) {
+    const emision = p.fechaEmision.split('/').reverse().join('-')
+    if (emision >= desde) assert.ok(emisiones.some((e) => e.poliza === p.nroPoliza), `la póliza ${p.nroPoliza} del legajo no está en Emisiones`)
+  }
+})
+
+test('demo: el catálogo de Galeno sólo ofrece los años y las versiones que existen', async () => {
+  const cliente = clienteGalenoDeLaDemo()
+  const marcas = await catalogosGaleno.marcas(cliente, 4)
+  const fiat = marcas.find((m) => m.descripcion === 'FIAT')!
+  const cronos = (await catalogosGaleno.modelos(cliente, fiat.codigo)).find((m) => m.descripcion === 'CRONOS')!
+  const anios = (await catalogosGaleno.anios(cliente, fiat.codigo, cronos.codigo)).map((a) => Number(a.codigo))
+  assert.equal(Math.min(...anios), 2018, 'un Cronos no se fabricó antes de 2018')
+  assert.equal(Math.max(...anios), new Date().getFullYear() + 1)
+  const versiones = await catalogosGaleno.subModelos(cliente, fiat.codigo, cronos.codigo, '2020')
+  assert.ok(versiones.some((v) => v.version === 'CRONOS 1.3 DRIVE GSE'))
+  assert.ok(!versiones.some((v) => /INTERMEDIA|BASE|FULL/.test(v.version)), 'versiones genéricas')
+  // Un modelo que se dejó de fabricar no ofrece años posteriores, y las versiones dependen del año.
+  const vw = marcas.find((m) => m.descripcion === 'VOLKSWAGEN')!
+  const gol = (await catalogosGaleno.modelos(cliente, vw.codigo)).find((m) => m.descripcion === 'GOL TREND')!
+  assert.equal(Math.max(...(await catalogosGaleno.anios(cliente, vw.codigo, gol.codigo)).map((a) => Number(a.codigo))), 2023)
+  const toyota = marcas.find((m) => m.descripcion === 'TOYOTA')!
+  const hilux = (await catalogosGaleno.modelos(cliente, toyota.codigo)).find((m) => m.descripcion === 'HILUX')!
+  const viejas = (await catalogosGaleno.subModelos(cliente, toyota.codigo, hilux.codigo, '2010')).map((v) => v.version)
+  const nuevas = (await catalogosGaleno.subModelos(cliente, toyota.codigo, hilux.codigo, '2022')).map((v) => v.version)
+  assert.ok(viejas.length > 0 && nuevas.length > 0 && viejas.every((v) => !nuevas.includes(v)))
+  // La cotización queda con la versión elegida, no con una genérica.
+  const elegida = versiones.find((v) => v.version === 'CRONOS 1.8 PRECISION')!
+  const localidades = await catalogosGaleno.codigoPostal(cliente, 4, '1870')
+  const cotizacion = await cotizarEnGaleno(cliente, LEGAJO_DE_LA_DEMO, {
+    tipoVehiculo: 'AUTO',
+    planComercialCodigo: (await catalogosGaleno.planesComerciales(cliente, 4))[0]!.codPlanComercial,
+    ceroKm: false,
+    idInfoAuto: null,
+    marcaCodigo: fiat.codigo,
+    modeloCodigo: String(elegida.codigoModelo),
+    subModeloCodigo: String(elegida.codigoSubModelo),
+    anioFabricacion: '2020',
+    tomadorTipoPersona: '1',
+    tomadorNombre: 'PEREZ JUAN',
+    codigoPostal: '1870',
+    subCodigoPostal: localidades[0]!.subCodigoPostal,
+    condicionPagoCodigo: '01',
+    vigenciaDesde: fechaIso(new Date()),
+    modoFacturacionCodigo: 'M',
+    formaPagoCodigo: '1',
+    poseeEquipoGnc: false,
+    poseeEquipoRastreo: false,
+  })
+  assert.equal(cotizacion.descripcionVehiculo, 'FIAT CRONOS 1.8 PRECISION 2020')
+})
+
+test('demo: cada modelo tiene su valor (no todos los autos de un año valen lo mismo)', () => {
+  const valor = (marca: string, modelo: string, version: string, anio = 2022) => valorEstimado(marca === 'HONDA' || marca === 'MOTOMEL' || marca === 'CORVEN' ? 'MOTO' : 'AUTO', marca, modelo, version, anio)
+  const autos = [valor('VOLKSWAGEN', 'GOL TREND', '1.6 TRENDLINE 5P'), valor('CHEVROLET', 'ONIX', '1.2 LT'), valor('FIAT', 'CRONOS', '1.3 DRIVE GSE'), valor('PEUGEOT', '208', '1.6 ALLURE'), valor('RENAULT', 'SANDERO', '1.6 STEPWAY INTENS')]
+  assert.equal(new Set(autos).size, autos.length, `valores repetidos: ${autos.join(', ')}`)
+  assert.ok(valor('HONDA', 'WAVE', '110 S', 2018) > valor('MOTOMEL', 'BLITZ', '110 V8 FULL', 2018))
+  assert.ok(valor('HONDA', 'WAVE', '110 S', 2018) > valor('CORVEN', 'ENERGY', '110', 2018))
+  assert.ok(valor('TOYOTA', 'COROLLA CROSS', '2.0 XEI CVT') > valor('TOYOTA', 'COROLLA', '2.0 XEI CVT'))
+})
+
+test('demo: con una sola cuota no hay «resto de cuotas» y la cuota es el premio', async () => {
+  const galenoDemo = ASEGURADORAS_DE_LA_DEMO.find((a) => a.id === 'GALENO')!
+  const semestral = (await galenoDemo.cotizar(GOL, {})).ajustes.find((a) => a.campo === 'modoFacturacion')!.opciones.find((o) => o.texto === 'Semestral')!
+  const pedido = (cuotas: SolicitudResuelta['condiciones']['cuotas']) => solicitud({}, { condiciones: { ...GOL.condiciones, facturacion: 'MEJOR_COSTO', cuotas } })
+  const una = await galenoDemo.cotizar(pedido(1), { modoFacturacion: semestral.valor })
+  for (const c of una.coberturas) {
+    assert.equal(c.cuota, c.premio, c.codigo)
+    assert.equal(c.primeraCuota, c.premio, c.codigo)
+    if (c.emision?.tipo === 'GALENO') assert.equal(c.emision.cobertura.importeRestoCuotas, 0)
+  }
+  // Con varias cuotas sí hay resto, más chico que el premio.
+  const varias = await galenoDemo.cotizar(pedido(6), { modoFacturacion: semestral.valor })
+  assert.ok(varias.coberturas.every((c) => c.cuota !== null && c.cuota < c.premio / 5))
+  assert.ok(varias.coberturas.every((c) => c.emision?.tipo !== 'GALENO' || c.emision.cobertura.importeRestoCuotas > 0))
+})
+
+test('demo: el tomador emitido queda como lo guarda la compañía («APELLIDO NOMBRE»)', async () => {
+  olvidarLaSesionDeLaDemo()
+  const hoy = fechaIso(new Date())
+  const galenoDemo = ASEGURADORAS_DE_LA_DEMO.find((a) => a.id === 'GALENO')!
+  const cotizada = await galenoDemo.cotizar(solicitud({}, { vigenciaDesde: hoy }), {})
+  const emision = cotizada.coberturas.find((c) => c.categoria === 'TERCEROS_COMPLETO')!.emision!
+  if (emision.tipo !== 'GALENO') throw new Error('Galeno emite por su API')
+  // El diálogo sugirió «Nombre Apellido».
+  await emitirEnGaleno(clienteGalenoDeLaDemo(), {
+    rama: emision.rama,
+    solicitud: emision.solicitud,
+    instalacion: 1,
+    cobertura: emision.cobertura.cobertura,
+    tomador: { tipoDocumentoCodigo: '96', documentoNumero: '30123456', nombre: 'Juan Perez', categoriaIVACodigo: '5', calleNombre: 'MITRE', calleNumero: '100', codigoPostal: '1870', subCodigoPostal: '1' },
+    aseguradoEsTomador: true,
+    vehiculo: { patente: 'AC123BD', motor: 'CFZ123456', chasis: '9BWAB45U0KT000001' },
+    formaPago: {},
+  } as unknown as DatosDeEmisionGaleno)
+  const [la] = await galenoDemo.emisiones!({ desde: sumarDias(hoy, -1), hasta: hoy, tipo: null })
+  assert.equal(la!.tomador, 'PEREZ JUAN')
+  olvidarLaSesionDeLaDemo()
 })
