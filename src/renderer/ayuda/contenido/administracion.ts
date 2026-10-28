@@ -487,7 +487,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'De dónde sale',
         parrafos: [
-          'De las APIs de TODAS las aseguradoras cargadas en el servidor (hoy Galeno, autos y motos). Es la regla: cada vez que se baja el catálogo, sale de todas las APIs que haya; si mañana se suma otra compañía, sus vehículos se suman solos. Una versión que dos compañías llaman igual aparece una sola vez. No hay usuario ni clave que cargar acá: se usan los de cada aseguradora en API Aseguradoras.',
+          'De las APIs de TODAS las aseguradoras cargadas en el servidor, autos y motos. Es la regla: cada vez que se baja el catálogo, sale de todas las APIs que haya; si mañana se suma otra compañía, sus vehículos se suman solos. Una versión que dos compañías llaman igual aparece una sola vez. No hay usuario ni clave que cargar acá: se usan los de cada aseguradora en API Aseguradoras.',
           'El servidor de la agencia recorre las APIs una vez por día —son miles de pedidos, por eso lo hace él y no cada computadora— y publica lo que cambió. Las computadoras bajan lo nuevo al abrir el programa y cada algunas horas. Nadie tiene que hacer nada.',
           'La tarjeta «Lo que leyó el servidor» muestra cada lectura: cuántas versiones trajo cada aseguradora y si alguna falló. Si una API responde a medias (se cortaron pedidos) o trae muchos menos vehículos que la vez anterior, lo que ya estaba publicado no se borra y queda anotado ahí.',
         ],

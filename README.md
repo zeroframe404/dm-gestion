@@ -1920,7 +1920,7 @@ commitea: `scripts/dist-demo.mjs` la arma (próximo parche + `-demo.<n>`) y la p
 - **Administración → Servidor (VPS)**: con qué servidor habla la demo, cómo es la arquitectura, los pasos para poner
   en marcha el servidor de una agencia y un formulario de dirección + token con «Probar conexión» **simulado** (no
   sale a internet; valida lo que se puede validar sin red: https y el largo del token) y el `config.json` armado.
-- La franja verde de arriba, la insignia **DEMO** y «Agencia de demostración» en lugar del nombre de la agencia.
+- La franja verde de arriba, la insignia **DEMO** y «Seguros Demo» en lugar del nombre de la agencia.
 
 ### Lo que NO lleva el instalador
 

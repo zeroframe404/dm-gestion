@@ -28,3 +28,13 @@ export function canalSinEsperar(): Canal {
 export function nombreDeLaAgencia(canal: Canal = canalSinEsperar()): string {
   return canal === 'demo' ? NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO : FIRMA_DE_LOS_MENSAJES
 }
+
+/**
+ * Lo que dice la pantalla después de «Avisar por WhatsApp». En la demo no se abre WhatsApp (se muestra
+ * cómo llegaría el mensaje, ver `main/demo/whatsapp.ts`), así que no puede decir «abierto». Sin el punto
+ * final del nombre: «FLETES ESCALADA S.R.L.» más el punto de la oración daba «S.R.L..».
+ */
+export function avisoDeWhatsapp(nombre: string | null): string {
+  const quien = (nombre ?? 'el cliente').replace(/\.+$/, '')
+  return canalSinEsperar() === 'demo' ? `Se mostró cómo le llegaría el WhatsApp a ${quien} (demostración)` : `WhatsApp abierto para ${quien}`
+}

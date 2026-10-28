@@ -120,6 +120,10 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set())
   const [aEmitir, setAEmitir] = useState<CoberturaCotizada | null>(null)
   const [mensaje, setMensaje] = useState<{ tono: 'exito' | 'error'; texto: string } | null>(null)
+  const refDelMensaje = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (mensaje) refDelMensaje.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [mensaje])
   const [armando, setArmando] = useState(false)
   /**
    * El número del último pedido de cada compañía. Si se vuelve a cotizar antes de que conteste el
@@ -335,7 +339,13 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
         <BotonAyuda clave="multicotizador" />
       </div>
 
-      {mensaje && <Alerta tono={mensaje.tono}>{mensaje.texto}</Alerta>}
+      {/* Al emitir desde la tabla (que está mucho más abajo) el resultado aparece acá arriba: se lo trae a
+          la vista, o quien emitió no se entera de que salió. */}
+      {mensaje && (
+        <div ref={refDelMensaje}>
+          <Alerta tono={mensaje.tono}>{mensaje.texto}</Alerta>
+        </div>
+      )}
 
       <FormularioDeCotizacion
         valor={formulario}

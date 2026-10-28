@@ -349,7 +349,7 @@ function Comparativo({
                       <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
                         {cobertura.cuota !== null ? enPesos(cobertura.cuota) : '—'}
                         {cobertura.primeraCuota !== null && cobertura.primeraCuota !== cobertura.cuota && (
-                          <div className="text-xs text-slate-400">1ª: {enPesos(cobertura.primeraCuota)}</div>
+                          <div className="whitespace-nowrap text-xs text-slate-400">1ª: {enPesos(cobertura.primeraCuota)}</div>
                         )}
                       </td>
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-slate-900">

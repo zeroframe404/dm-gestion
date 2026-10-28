@@ -32,6 +32,7 @@ import { DialogoBaja } from './DialogoBaja'
 import { DialogoPago } from './DialogoPago'
 import { PanelDetalle } from './PanelDetalle'
 import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
+import { avisoDeWhatsapp } from '../../agencia'
 
 /**
  * De qué campo lógico es cada columna que se puede editar.
@@ -435,7 +436,7 @@ export function PlanillaDelMes() {
       reemplazar(resultado.datos.fila)
       const abierto = await window.dm.sistema.abrirEnlace(resultado.datos.url)
       if (!abierto.ok) setError(abierto.error)
-      else setAviso(`WhatsApp abierto para ${resultado.datos.fila.nombre ?? 'el cliente'}. La fila quedó como ENVIADO.`)
+      else setAviso(`${avisoDeWhatsapp(resultado.datos.fila.nombre)}. La fila quedó como ENVIADO.`)
     },
     [reemplazar],
   )
