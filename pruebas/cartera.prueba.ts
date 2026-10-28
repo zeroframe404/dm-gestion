@@ -29,7 +29,7 @@ import { editarCompania, listarCompanias } from '../src/main/servicios/companias
 import { listarRiesgos } from '../src/main/servicios/riesgos'
 import { historialDeFila } from '../src/main/servicios/historial'
 import { deshacerEntradaDeHistorial } from '../src/main/servicios/deshacer'
-import { guardarPlantillaDeAviso } from '../src/main/servicios/plantillas'
+import { guardarPlantillaDeAviso, saludoDe } from '../src/main/servicios/plantillas'
 import { calcularAlerta, periodoDeHoy, periodoSiguiente } from '../src/shared/semaforo'
 import type { FilaCartera, FiltrosClientes, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
@@ -174,7 +174,8 @@ test('avisar arma el WhatsApp y deja la fila como ENVIADO con la fecha', async (
 
   const aviso = prepararAviso(fila.filaId, DANIEL)
   assert.match(aviso.url, /^https:\/\/wa\.me\/5491144445555\?text=/)
-  assert.equal(aviso.mensaje, 'Hola MARIA, vence el 10 tu cuota de $$ 24.420.')
+  // La planilla escribe la cuota con su «$ » y la plantilla trae el suyo: va uno solo, pegado al número.
+  assert.equal(aviso.mensaje, 'Hola MARIA, vence el 10 tu cuota de $24.420.')
   assert.equal(aviso.fila.aviso, `ENVIADO ${Number(planilla.hoy.slice(8, 10))}`)
   assert.equal(aviso.fila.fechaEnvio, planilla.hoy)
   assert.equal(decodeURIComponent(aviso.url.split('text=')[1]!), aviso.mensaje)
@@ -971,4 +972,13 @@ test('ponerle desde la planilla el número de otra póliza de la misma compañí
   assert.equal(conPuntos.numeroPoliza, '777.111')
   assert.equal(unico<string>(db, 'SELECT clave FROM polizas WHERE id = ?', fila.polizaId), `POL:${CLIENTES.lopez.cia}|${CLIENTES.lopez.poliza}`)
   cerrarBaseDeDatos()
+})
+
+test('el saludo usa el nombre de pila, y a una empresa la saluda por su nombre sin la sigla', () => {
+  assert.equal(saludoDe('GONZALEZ MARIA'), 'MARIA')
+  assert.equal(saludoDe('PEREZ'), 'PEREZ')
+  assert.equal(saludoDe('FLETES ESCALADA S.R.L.'), 'FLETES ESCALADA')
+  assert.equal(saludoDe('FERRETERIA DEL SUD S.A.'), 'FERRETERIA DEL SUD')
+  assert.equal(saludoDe('ACME SRL'), 'ACME')
+  assert.equal(saludoDe(null), '')
 })

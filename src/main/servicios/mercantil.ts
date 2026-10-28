@@ -11,6 +11,8 @@
 import type { EstadoDeAjusteCompartido, EstadoDeMercantil, ProductorDeMercantil, PruebaDeMercantil } from '../../shared/tipos'
 import { marcasMercantil, productoresMercantil } from '../aseguradoras/mercantil/catalogos'
 import { crearClienteMercantil, ErrorDeMercantil, olvidarTokensDeMercantil, type CuentaMercantil } from '../aseguradoras/mercantil/cliente'
+import { esDemo } from '../canal'
+import { estadoDeMercantilDemo, pruebaDeMercantilDemo } from '../demo/apis'
 import { olvidarListasDeMercantil } from '../multicotizador/mercantil'
 import { borrarMercantilDelVps, estadoCompartidoDeMercantil, publicarSinRomper, traerMercantilDelVps } from './ajustesCompartidos'
 import { borrarMercantil, credencialesMercantil, cuentaMercantilVisible, guardarMercantil, type CredencialesMercantil } from './config'
@@ -49,6 +51,8 @@ function armarEstado(compartido: EstadoDeAjusteCompartido | null): EstadoDeMerca
 }
 
 export async function estadoMercantil(): Promise<EstadoDeMercantil> {
+  // Demo: la cuenta de Mercantil figura cargada (ver demo/apis.ts).
+  if (esDemo()) return estadoDeMercantilDemo()
   return armarEstado(await compartidoSinRomper())
 }
 
@@ -57,12 +61,14 @@ export async function estadoMercantil(): Promise<EstadoDeMercantil> {
  * acá queda igual: el motivo vuelve en `compartido.error` y la pantalla lo muestra.
  */
 export async function guardarCuentaMercantil(datos: unknown, quien: string | null): Promise<EstadoDeMercantil> {
+  if (esDemo()) return estadoDeMercantilDemo()
   guardarMercantil(datos)
   olvidarLoDeLaCuentaAnterior()
   return armarEstado(await publicarSinRomper('mercantilApi', quien))
 }
 
 export async function borrarCuentaMercantil(): Promise<EstadoDeMercantil> {
+  if (esDemo()) return estadoDeMercantilDemo()
   borrarMercantil()
   olvidarLoDeLaCuentaAnterior()
   await borrarMercantilDelVps().catch((error) => console.error('[ajustes] No se pudo borrar la cuenta de Mercantil del VPS:', motivo(error)))
@@ -71,6 +77,7 @@ export async function borrarCuentaMercantil(): Promise<EstadoDeMercantil> {
 
 /** El botón «Traer del servidor»: adopta la cuenta publicada aunque esta computadora tenga otra. */
 export async function traerMercantilDelServidor(): Promise<EstadoDeMercantil> {
+  if (esDemo()) return estadoDeMercantilDemo()
   let resultado: Awaited<ReturnType<typeof traerMercantilDelVps>>
   try {
     resultado = await traerMercantilDelVps()
@@ -115,6 +122,7 @@ function textoDeProductores(configurado: string, lista: ProductorDeMercantil[]):
  * del catálogo (prueba que la suscripción incluya el producto de vehículos, sin el que no se cotiza).
  */
 export async function probarMercantil(): Promise<PruebaDeMercantil> {
+  if (esDemo()) return pruebaDeMercantilDemo()
   const credenciales = credencialesMercantil()
   if (!credenciales) {
     return {

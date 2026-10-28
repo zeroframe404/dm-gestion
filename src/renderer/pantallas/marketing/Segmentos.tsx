@@ -21,6 +21,7 @@ import { Alerta, Boton, Campo, Cargando, cx, Dialogo, Etiqueta, Tarjeta } from '
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { pesos } from '../cobranzas/formato'
+import { avisoDeWhatsapp } from '../../agencia'
 
 export function Segmentos() {
   const usuario = useUsuarioActual()
@@ -80,7 +81,7 @@ export function Segmentos() {
       setError(abierto.error)
       return
     }
-    setAviso(`WhatsApp abierto para ${fila.nombre ?? 'el cliente'}. Van ${resultado.datos.avisados} de ${datos!.total} avisados.`)
+    setAviso(`${avisoDeWhatsapp(fila.nombre)}. Van ${resultado.datos.avisados} de ${datos!.total} avisados.`)
     // La fila puede haberse ido de la lista (si el segmento pide «sin avisar»): se recarga entera.
     void cargar(datos!.segmentoId, datos!.filtros, datos!.plantillaClave)
   }

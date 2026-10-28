@@ -14,7 +14,10 @@ import {
   type EstadoConexionGoogle,
   type EstadoDeMeta,
 } from '../../shared/tipos'
+import { esDemo } from '../canal'
+import { credencialesDeLaDemo } from '../demo/servidor'
 import { rutaConfig } from '../rutas'
+import { EJEMPLO_URL_DEL_VPS, TOKEN_DE_LA_DEMO } from '../../shared/demo'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
 
@@ -150,10 +153,18 @@ interface Config {
  */
 export const URL_DE_REDIRECCION_DE_META = 'https://dmartinezseguros.com/meta/vuelta'
 
+/**
+ * La de fábrica en la demo: la del mismo dominio de ejemplo que muestra «Servidor (VPS)». La de la
+ * agencia no se le muestra a otra agencia (y en el instalador de la demo ni siquiera está, ver
+ * scripts/secretos-de-la-agencia.mjs).
+ */
+const URL_DE_VUELTA_DE_LA_DEMO = `${EJEMPLO_URL_DEL_VPS}/meta/vuelta`
+
 /** La dirección de vuelta vigente: la cargada, o la de fábrica mientras nadie haya cargado otra. */
 export function urlDeVueltaDeMeta(): string {
   const escrita = leerConfig().meta?.urlDeRedireccion
-  return typeof escrita === 'string' && escrita.trim() ? escrita.trim() : URL_DE_REDIRECCION_DE_META
+  if (typeof escrita === 'string' && escrita.trim()) return escrita.trim()
+  return esDemo() ? URL_DE_VUELTA_DE_LA_DEMO : URL_DE_REDIRECCION_DE_META
 }
 
 // La base del GENERAL DE CLIENTES vive en el VPS de la agencia desde la v12. La URL y el token van
@@ -183,6 +194,9 @@ export function esElVpsDeProduccion(urlBase: string): boolean {
 }
 
 export function credencialesVps(): { urlBase: string; token: string } {
+  // La demo habla SÓLO con su servidor interno (ver `demo/servidor.ts`): ni el VPS de la agencia ni lo
+  // que diga un config.json. Mientras ese servidor no arrancó, una URL que no lleva a ningún lado.
+  if (esDemo()) return credencialesDeLaDemo() ?? { urlBase: 'http://127.0.0.1:9', token: TOKEN_DE_LA_DEMO }
   const vps = leerConfig().vps
   return {
     urlBase: typeof vps?.urlBase === 'string' && vps.urlBase.trim() ? vps.urlBase.trim() : VPS_URL_BASE,
@@ -249,6 +263,10 @@ export function estadoGoogle(): EstadoConexionGoogle {
 // ---------------------------------------------------------------------------
 
 export function estadoMeta(): EstadoDeMeta {
+  // Demo: la app de Meta se ve cargada; las redes de la demo no salen a internet (ver `demo/redes.ts`).
+  if (esDemo()) {
+    return { configurada: true, appId: '100000000000000', urlDeRedireccion: urlDeVueltaDeMeta(), rutaDeConfig: rutaSegura(), actualizadoEn: null }
+  }
   const meta = leerConfig().meta
   return {
     configurada: Boolean(meta?.appId && meta.appSecret),

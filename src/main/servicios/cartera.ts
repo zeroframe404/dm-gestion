@@ -732,7 +732,9 @@ export function telefonoParaWhatsapp(telefono: string | null): string {
 export function armarMensaje(plantilla: string, fila: FilaCartera): string {
   return aplicarPlantilla(plantilla, {
     nombre: saludoDe(fila.nombre),
-    cuota: fila.cuota,
+    // Las plantillas ya traen el «$» delante de {cuota} y la planilla escribe la cuota con el suyo
+    // («$ 18.500»): sin esto el mensaje decía «por $$ 18.500».
+    cuota: fila.cuota?.replace(/^\s*\$\s*/, '') ?? null,
     vencimiento: fila.diaVencimiento,
     patente: fila.patente,
     compania: fila.compania,

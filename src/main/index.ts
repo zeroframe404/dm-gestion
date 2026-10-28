@@ -11,11 +11,14 @@ import {
   vigilarErroresSueltos,
 } from './arranque'
 import { abrirBaseDeDatos, cerrarBaseDeDatos } from './db/base'
-import { nombreActual } from './canal'
+import { esDemo, nombreActual } from './canal'
+import { firmarPlantillasDeLaDemo } from './demo/identidad'
+import { arrancarServidorDeLaDemo, pararServidorDeLaDemo } from './demo/servidor'
+import { mostrarWhatsappDeLaDemo, whatsappDeLaDemo } from './demo/whatsapp'
 import { cerrarPantallaDeCarga, enfocarPantallaDeCarga, mostrarPantallaDeCarga } from './pantallaDeCarga'
 import { registrarIpc } from './ipc'
 import { arrancarCartero, apurarAlCartero, pararCartero } from './mensajeria/cartero'
-import { carpetaDatos, configurarCarpetaDatos, rutaBaseDeDatos } from './rutas'
+import { carpetaDatos, configurarCarpetaDatos, limpiarDatosDeLaDemo, rutaBaseDeDatos } from './rutas'
 import { adoptarAjustesAlArrancar } from './servicios/ajustesCompartidos'
 import { bajarCatalogoAlArrancar } from './servicios/catalogoVehiculos'
 import { configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
@@ -153,7 +156,11 @@ function crearVentana(): void {
 
   // Los enlaces externos se abren en el navegador; nunca en una ventana de la app.
   ventana.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    // Demo: un enlace de WhatsApp (los organizadores, por ejemplo) no abre un chat con un número de
+    // ejemplo que puede ser de alguien; muestra cómo llegaría el mensaje (ver `demo/whatsapp.ts`).
+    const whatsapp = esDemo() ? whatsappDeLaDemo(url) : null
+    if (whatsapp) void mostrarWhatsappDeLaDemo(whatsapp, ventana)
+    else if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
   ventana.webContents.on('will-navigate', (evento, url) => {
@@ -177,6 +184,8 @@ function crearVentana(): void {
  * migrada, TOKEN_DATOS se puede vaciar y revocar el token.
  */
 function almacenDeGitHub(enDesarrollo: boolean): AlmacenGitHub | null {
+  // La demo no conoce el repositorio de la agencia: sus usuarios viven en su servidor interno.
+  if (esDemo()) return null
   const tokens = enDesarrollo ? [process.env.DM_GESTION_TOKEN_DATOS ?? ''] : [TOKEN_DATOS, TOKEN_DATOS_ANTERIOR]
   if (!tokens.some((t) => t.trim() !== '')) return null
   return new AlmacenGitHub({
@@ -195,7 +204,10 @@ function almacenDeGitHub(enDesarrollo: boolean): AlmacenGitHub | null {
  * `sembrar` y los scripts de humo no pueden escribir la lista de usuarios de la agencia.
  */
 function almacenDelVps(enDesarrollo: boolean, semilla: AlmacenGitHub | null): AlmacenVps | null {
-  const credenciales = enDesarrollo
+  // La demo, en desarrollo o instalada, usa su servidor interno (ver `credencialesVps`).
+  const credenciales = esDemo()
+    ? credencialesVps()
+    : enDesarrollo
     ? process.env.DM_GESTION_VPS_URL
       ? { urlBase: process.env.DM_GESTION_VPS_URL, token: process.env.DM_GESTION_VPS_TOKEN ?? 'prueba' }
       : null
@@ -292,7 +304,8 @@ function engancharElCanal(): void {
 }
 
 /**
- * El candado de los permisos del navegador (14.0): sólo el micrófono, y sólo para esta pantalla.
+ * El candado de los permisos del navegador (14.0): sólo el micrófono —y escribir en el portapapeles, para
+ * los botones «Copiar»—, y sólo para esta pantalla.
  *
  * Hasta la 14.0 no había ningún manejador puesto, y eso NO significa que estuviera todo negado:
  * Electron, sin manejador, **concede por omisión**. Cualquier cosa que la pantalla pidiera —cámara,
@@ -325,6 +338,12 @@ function blindarLosPermisos(): void {
 
   session.defaultSession.setPermissionRequestHandler((contenido, permiso, responder, detalles) => {
     const deLaPantalla = nuestraPantalla(contenido)
+    // Escribir en el portapapeles: los botones «Copiar» (la dirección del control remoto, la de vuelta de
+    // Meta, el config.json del VPS, la planilla de General Excel). Sólo escribir: leerlo sigue negado.
+    if (permiso === 'clipboard-sanitized-write' && deLaPantalla) {
+      responder(true)
+      return
+    }
     if (permiso !== 'media' || !deLaPantalla) {
       // Queda anotado: si alguna vez algo del programa necesita otro permiso, esta línea de la bitácora
       // es la que lo explica. Sin ella sería una función del navegador que «no anda» y nada más.
@@ -344,6 +363,7 @@ function blindarLosPermisos(): void {
   })
 
   session.defaultSession.setPermissionCheckHandler((contenido, permiso, _origen, detalles) => {
+    if (permiso === 'clipboard-sanitized-write') return nuestraPantalla(contenido)
     if (permiso !== 'media' || !nuestraPantalla(contenido)) return false
     return detalles.mediaType === 'audio' || detalles.mediaType === 'unknown' || detalles.mediaType === undefined
   })
@@ -358,11 +378,24 @@ function arrancar(): void {
   if (app.isPackaged) Menu.setApplicationMenu(null)
   anotar(`[arranque] Electron listo a los ${milisegundosDesdeElInicio()} ms.`)
   mostrarPantallaDeCarga(() => {
-    try {
-      arrancarElPrograma()
-    } catch (error) {
-      fallaDeArranque('el arranque', error)
-    }
+    // La demo levanta primero su servidor interno: todo lo que sigue (usuarios, sincronización, canal
+    // en vivo) le pregunta a él. Sin la demo esto no espera nada.
+    const antes = esDemo()
+      ? arrancarServidorDeLaDemo().catch((error) => {
+          fallaDeArranque('el servidor de la demo', error)
+          throw error
+        })
+      : Promise.resolve()
+    antes.then(
+      () => {
+        try {
+          arrancarElPrograma()
+        } catch (error) {
+          fallaDeArranque('el arranque', error)
+        }
+      },
+      () => undefined,
+    )
   })
 }
 
@@ -386,6 +419,9 @@ function arrancarElPrograma(): void {
 
   // Cada paso avisa con su nombre si falla, en vez de dejar el programa a medio abrir y en silencio.
   if (!paso('la revisión de las importaciones a medio hacer', marcarImportacionesInterrumpidas)) return
+  // Demo: las plantillas de WhatsApp que siembran las migraciones van firmadas con el nombre de la
+  // agencia; en la demo se firman con el de la demo. Fuera de la demo no hace nada.
+  paso('la firma de las plantillas de la demo', firmarPlantillasDeLaDemo)
   if (!paso('la preparación de la base de usuarios', prepararBaseDeUsuarios)) return
   if (!paso('el registro de los canales internos', registrarIpc)) return
   if (!paso('el canal en vivo con la base de la agencia', engancharElCanal)) return
@@ -415,6 +451,12 @@ if (!app.requestSingleInstanceLock()) {
   anotar('[app] Ya había otra instancia abierta: este arranque se cierra y le pasa el foco.')
   app.exit(0)
 } else {
+  // La demo arranca de cero cada vez; recién acá, con el cerrojo, se puede vaciar su carpeta.
+  try {
+    limpiarDatosDeLaDemo()
+  } catch (error) {
+    fallaDeArranque('la limpieza de los datos de la demo', error)
+  }
   app.on('second-instance', () => {
     // Otro doble click. Si esta instancia se quedó sin ventana (algo falló después de abrir la base,
     // o la ventana se destruyó), el doble click tiene que RESCATARLA en vez de no hacer nada: sin
@@ -458,6 +500,7 @@ if (!app.requestSingleInstanceLock()) {
       ['el canal en vivo', () => canal().parar()],
       ['la sincronización', detenerSincronizacion],
       ['la base de datos', cerrarBaseDeDatos],
+      ['el servidor de la demo', () => void pararServidorDeLaDemo()],
     ] as const) {
       try {
         cerrar()

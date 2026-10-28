@@ -2,6 +2,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { canalDelPrograma } from './canal'
 import { ProveedorSesion } from './contexto/Sesion'
 import { precargarSonidos } from './sonidos'
 import { iniciarTema } from './tema'
@@ -24,10 +25,18 @@ precargarSonidos()
 const raiz = document.getElementById('raiz')
 if (!raiz) throw new Error('No se encontró el elemento raíz (#raiz).')
 
-createRoot(raiz).render(
-  <StrictMode>
-    <ProveedorSesion>
-      <App />
-    </ProveedorSesion>
-  </StrictMode>,
-)
+// El canal (estable, beta o demo) se pregunta antes de dibujar: es una consulta al proceso principal que
+// contesta al instante, y sin ella el primer cuadro del ingreso y de la barra lateral de la demo saldría
+// con el nombre de la agencia y cambiaría un momento después. Si por lo que sea no contesta, a los dos
+// segundos se dibuja igual: más vale un nombre equivocado un instante que una pantalla en blanco.
+const MAXIMO_PARA_ESPERAR_EL_CANAL = 2000
+
+void Promise.race([canalDelPrograma(), new Promise((listo) => setTimeout(listo, MAXIMO_PARA_ESPERAR_EL_CANAL))]).finally(() => {
+  createRoot(raiz).render(
+    <StrictMode>
+      <ProveedorSesion>
+        <App />
+      </ProveedorSesion>
+    </StrictMode>,
+  )
+})

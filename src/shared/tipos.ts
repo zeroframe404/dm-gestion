@@ -373,8 +373,8 @@ export interface SesionCerrada {
 export interface InfoApp {
   nombre: string
   version: string
-  /** `beta` en el instalador de pruebas del dueño (ver `shared/canal.ts`); `estable` en el de la agencia. */
-  canal: 'estable' | 'beta'
+  /** `beta` en el instalador de pruebas del dueño, `demo` en el de demostración (ver `shared/canal.ts`); `estable` en el de la agencia. */
+  canal: 'estable' | 'beta' | 'demo'
   electron: string
   chrome: string
   node: string
@@ -1121,8 +1121,15 @@ export interface PlantillaAviso {
   texto: string
 }
 
-export const PLANTILLA_AVISO_POR_DEFECTO =
-  'Hola {nombre}, te recordamos que el {vencimiento} vence la cuota de tu seguro por ${cuota}. Cualquier duda escribinos. Seguros Daniel Martínez.'
+/** Con qué nombre firma la agencia los mensajes de fábrica. La demo firma con el suyo (ver `main/demo/identidad.ts`). */
+export const FIRMA_DE_LOS_MENSAJES = 'Seguros Daniel Martínez'
+
+/** La plantilla de fábrica, firmada por quien corresponda: la agencia o, en la demo, la de demostración. */
+export function plantillaDeAvisoFirmada(firma: string): string {
+  return `Hola {nombre}, te recordamos que el {vencimiento} vence la cuota de tu seguro por $\{cuota}. Cualquier duda escribinos. ${firma}.`
+}
+
+export const PLANTILLA_AVISO_POR_DEFECTO = plantillaDeAvisoFirmada(FIRMA_DE_LOS_MENSAJES)
 
 export interface ResumenCierreDeMes {
   periodo: string

@@ -175,12 +175,24 @@ interface PedidoHttp {
   cuerpo: string
 }
 
-/** Reemplaza `fetch` hasta que termine la prueba; anota cada pedido. */
+/** El `fetch` de verdad de cada prueba: el que había ANTES del primer `fetchFalso` de esa prueba. */
+const fetchDeVerdad = new WeakMap<Prueba, typeof fetch>()
+
+/**
+ * Reemplaza `fetch` hasta que termine la prueba; anota cada pedido.
+ *
+ * Una prueba puede llamarla varias veces. Antes cada llamada guardaba como «original» el falso de la
+ * anterior, y como los `after` corren en el orden en que se registraron, el último en correr dejaba un
+ * falso puesto para el resto del banco. Ahora se guarda el de verdad una sola vez por prueba.
+ */
 function fetchFalso(t: Prueba, contestar: (pedido: PedidoHttp) => Response): PedidoHttp[] {
-  const fetchOriginal = globalThis.fetch
-  t.after(() => {
-    globalThis.fetch = fetchOriginal
-  })
+  if (!fetchDeVerdad.has(t)) {
+    fetchDeVerdad.set(t, globalThis.fetch)
+    t.after(() => {
+      const original = fetchDeVerdad.get(t)
+      if (original) globalThis.fetch = original
+    })
+  }
   const pedidos: PedidoHttp[] = []
   globalThis.fetch = (async (url: string | URL | Request, opciones: RequestInit = {}) => {
     const pedido: PedidoHttp = {

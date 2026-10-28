@@ -28,6 +28,7 @@ import { hoyLocal } from '../../shared/semaforo'
 import { coincideAlguno, dentroDelRango, limiteDeFecha, listaDeFiltro } from '../../shared/filtros'
 import { mismaSucursal } from '../../shared/sucursales'
 import { db } from '../db/base'
+import { nombreDeLaAgencia } from '../demo/identidad'
 import { ahoraIso, generarId, interpretarNumero, limpiar, normalizarPatente, normalizarTexto } from '../importacion/normalizar'
 import { encolar } from '../sincronizacion/cola'
 import { opcionesAJson } from '../sincronizacion/vinculos'
@@ -48,8 +49,10 @@ export function pestanaDePresupuestos(): string {
   return nombreDePestana('APP_PRESUPUESTOS', PESTANA_POR_DEFECTO)
 }
 
-/** Cómo se llama la agencia en el mensaje y en el PDF. */
-export const NOMBRE_DE_LA_ASEGURADORA = 'SEGUROS DANIEL MARTÍNEZ'
+/** Cómo se llama la agencia en el mensaje y en el PDF: en mayúsculas, y en la demo la de demostración. */
+export function nombreDeLaAseguradora(): string {
+  return nombreDeLaAgencia().toLocaleUpperCase('es-AR')
+}
 
 // ---------------------------------------------------------------------------
 // Lectura
@@ -315,7 +318,7 @@ function describirVehiculo(p: FilaPresupuesto): string {
 export function armarMensaje(presupuesto: FilaPresupuesto, opciones: OpcionDePresupuesto[]): string {
   const lineas: string[] = []
   const quien = saludo(presupuesto.clienteNombre)
-  lineas.push(`Hola${quien ? ` ${quien}` : ''}, te paso el presupuesto de ${NOMBRE_DE_LA_ASEGURADORA}.`)
+  lineas.push(`Hola${quien ? ` ${quien}` : ''}, te paso el presupuesto de ${nombreDeLaAseguradora()}.`)
   const vehiculo = describirVehiculo(presupuesto)
   if (vehiculo) lineas.push(`Vehículo: ${vehiculo}`)
   lineas.push('')
@@ -894,7 +897,7 @@ export function htmlDelPresupuesto(ficha: FichaPresupuesto): string {
 </style></head><body>
   <header>
     <div class="numero">Presupuesto <strong>${escapar(p.numero)}</strong>${p.version > 1 ? `versión ${p.version}` : ''}</div>
-    <h1>${escapar(NOMBRE_DE_LA_ASEGURADORA)}</h1>
+    <h1>${escapar(nombreDeLaAseguradora())}</h1>
     <p class="sub">${escapar(limpiar(p.sucursal) || 'Casa central')} · ${escapar(fechaLegible(p.creadoEn))}</p>
   </header>
 

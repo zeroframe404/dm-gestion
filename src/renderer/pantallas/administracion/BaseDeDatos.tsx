@@ -5,9 +5,12 @@ import { useCallback, useEffect, useState } from 'react'
 import type { EstadoMigracionVps, ResumenMigracionVps } from '../../../shared/tipos'
 import { Alerta, Boton, Cargando, Tarjeta } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
+import { useEsDemo } from '../../canal'
 
 export function BaseDeDatos() {
   const usuario = useUsuarioActual()
+  // La demo no tiene una «versión 12» de la que acordarse: arrancó así.
+  const esDemo = useEsDemo()
   const [estado, setEstado] = useState<EstadoMigracionVps | null>(null)
   const [cargando, setCargando] = useState(true)
   const [migrando, setMigrando] = useState(false)
@@ -55,7 +58,11 @@ export function BaseDeDatos() {
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <Tarjeta
         titulo="Base de datos del GENERAL DE CLIENTES"
-        descripcion="Desde la versión 12 la cartera vive en la base del VPS de la agencia. Todas las computadoras sincronizan contra ella; la hoja de Google dejó de ser la fuente de verdad."
+        descripcion={
+          esDemo
+            ? 'La cartera vive en la base del VPS de la agencia. Todas las computadoras sincronizan contra ella; la hoja de Google no es la fuente de verdad.'
+            : 'Desde la versión 12 la cartera vive en la base del VPS de la agencia. Todas las computadoras sincronizan contra ella; la hoja de Google dejó de ser la fuente de verdad.'
+        }
       >
         {cargando ? (
           <Cargando />
@@ -72,7 +79,7 @@ export function BaseDeDatos() {
             ) : base?.inicializada ? (
               <Alerta tono="exito">
                 La base está migrada y en uso: {base.pestanas} pestañas y {base.filas} filas.
-                {base.inicializada_en && <> Migrada el {new Date(base.inicializada_en).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}.</>}
+                {base.inicializada_en && <> Migrada el {new Date(base.inicializada_en).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}.</>}
               </Alerta>
             ) : (
               <Alerta tono="aviso">

@@ -5,13 +5,14 @@
 // «Avisar» de la planilla del mes arma su mensaje con la plantilla fija `aviso_vencimiento`.
 import {
   CLAVE_AVISO_DE_VENCIMIENTO,
-  PLANTILLA_AVISO_POR_DEFECTO,
+  plantillaDeAvisoFirmada,
   VARIABLES_DE_PLANTILLA,
   type DatosDePlantilla,
   type PlantillaAviso,
   type PlantillaDeMensaje,
   type VariableDePlantilla,
 } from '../../shared/tipos'
+import { nombreDeLaAgencia } from '../demo/identidad'
 import { db } from '../db/base'
 import { ahoraIso, normalizarTexto } from '../importacion/normalizar'
 import { ErrorDeNegocio } from './errores'
@@ -53,9 +54,15 @@ export function aplicarPlantilla(plantilla: string, valores: Partial<Record<Vari
  * que es el nombre de pila. Es la misma regla desde la Fase 4 y no puede haber dos.
  */
 export function saludoDe(nombre: string | null): string {
+  // Una empresa no tiene nombre de pila: «FLETES ESCALADA S.R.L.» se saluda «FLETES ESCALADA», no «ESCALADA».
+  const sinSociedad = (nombre ?? '').trim().replace(SIGLA_SOCIETARIA, '').trim()
+  if (sinSociedad !== (nombre ?? '').trim()) return sinSociedad
   const partes = (nombre ?? '').split(/\s+/).filter(Boolean)
   return partes.length > 1 ? partes[1]! : (partes[0] ?? '')
 }
+
+/** S.A., S.R.L., SRL, S.A.S., S.A.U. o S.C.A. al final del nombre, con o sin puntos y coma. */
+const SIGLA_SOCIETARIA = /,?\s+(S\.?\s?A\.?\s?[SU]?\.?|S\.?\s?R\.?\s?L\.?|S\.?\s?C\.?\s?A\.?)$/i
 
 function aPlantilla(cruda: PlantillaCruda): PlantillaDeMensaje {
   return {
@@ -92,7 +99,7 @@ export function textoDePlantilla(clave: string): string {
 /** La plantilla del botón «Avisar». Si alguien la vació, vuelve la de fábrica: nunca un mensaje en blanco. */
 export function plantillaDeAviso(): string {
   const guardada = textoDePlantilla(CLAVE_AVISO_DE_VENCIMIENTO)
-  return guardada.trim() ? guardada : PLANTILLA_AVISO_POR_DEFECTO
+  return guardada.trim() ? guardada : plantillaDeAvisoFirmada(nombreDeLaAgencia())
 }
 
 // ---------------------------------------------------------------------------

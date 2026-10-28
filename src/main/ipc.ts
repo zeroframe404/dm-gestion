@@ -6,7 +6,10 @@ import type { ArgumentosDe, NombreCanal, RespuestaDe } from '../shared/canales'
 import { AREA_ELIMINABLE, esTipoEliminable, motivoDeNoPoderEliminar, rolPuedeEliminar } from '../shared/eliminacion'
 import { veLosNumerosDeLaAgencia } from '../shared/permisos'
 import type { FrescuraDeMetrica, InfoApp, PodioMensual, Resultado, SesionUsuario } from '../shared/tipos'
-import { canalActual } from './canal'
+import { canalActual, esDemo } from './canal'
+import { probarVpsEnLaDemo } from './demo/conexion'
+import { estadoDeLaDemo } from './demo/servidor'
+import { mostrarWhatsappDeLaDemo, whatsappDeLaDemo } from './demo/whatsapp'
 import { carpetaDatos, rutaBaseDeDatos, rutaConfig } from './rutas'
 import { cambiarClave, ingresar, salir } from './servicios/auth'
 import { comprobarAcceso, conectarEmisor, estadoDeAcceso, estadoDeUsuarios, subirLocales } from './servicios/baseDeUsuarios'
@@ -2279,12 +2282,21 @@ export function registrarIpc(): void {
   manejar('sistema:abrirEnlace', async (url) => {
     exigirSesion()
     if (!/^https?:\/\//i.test(url)) throw new ErrorDeNegocio('Sólo se pueden abrir direcciones http o https.')
+    // Demo: los teléfonos de ejemplo parecen celulares de verdad; en vez de abrirle un chat a un
+    // desconocido, se muestra cómo le llegaría el mensaje al cliente (ver demo/whatsapp.ts).
+    const whatsapp = esDemo() ? whatsappDeLaDemo(url) : null
+    if (whatsapp) {
+      await mostrarWhatsappDeLaDemo(whatsapp, BrowserWindow.getFocusedWindow())
+      return exito(null)
+    }
     await shell.openExternal(url)
     return exito(null)
   })
 
   // Información de la aplicación
   manejar('app:info', () => exito(infoApp()))
+  manejar('demo:estado', () => exito(esDemo() ? estadoDeLaDemo() : null))
+  manejar('demo:probarVps', async (datos) => exito(await probarVpsEnLaDemo(datos)))
 
   // Actualizaciones automáticas
   manejar('actualizaciones:estado', () => exito(estadoDeActualizacion()))

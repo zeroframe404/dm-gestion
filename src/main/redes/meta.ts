@@ -9,6 +9,7 @@
 //
 // Sin librerías, con `fetch`, igual que `usuarios/github.ts`. Toda URL y la versión de la API viven
 // acá para que subir de versión sea tocar una constante y no buscar cadenas por todo el proyecto.
+import { esDemo } from '../canal'
 import { esFallaDeRed } from '../servicios/red'
 
 export const VERSION_GRAPH = 'v23.0'
@@ -85,6 +86,8 @@ async function interpretar(respuesta: Response): Promise<unknown> {
 }
 
 async function llamar(url: string, opciones?: RequestInit): Promise<unknown> {
+  // Demo: nunca sale a Facebook. La demo contesta antes (ver demo/redes.ts); esto es por si algo se escapa.
+  if (esDemo()) throw new ErrorDeMetaApi('La versión de demostración no se conecta con Facebook.', null, null)
   const cortar = AbortSignal.timeout(ESPERA_MAXIMA_MS)
   try {
     return await interpretar(await fetch(url, { ...opciones, signal: cortar }))

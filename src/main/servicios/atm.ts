@@ -27,6 +27,8 @@ import { crearClienteAtm, ErrorDeAtm, type CuentaAtm } from '../aseguradoras/atm
 import { emitirPropuestaAtm } from '../aseguradoras/atm/propuesta'
 import { actualizarTablasAtm, estadoDeTablasAtm, importarTablasAtm, olvidarFallosDeTablasAtm, tablasEnDisco } from '../aseguradoras/atm/repositorio'
 import { localidadesDeAtm, TABLAS_DE_EMISION, type ListasDeEmisionAtm, type TablaAtm, type TablasAtm } from '../aseguradoras/atm/tablas'
+import { esDemo } from '../canal'
+import { actualizarTablasDeAtmDemo, emisionDeAtmDemo, estadoDeAtmDemo, opcionesDeEmisionAtmDemo, pruebaDeAtmDemo } from '../demo/apis'
 import { olvidarListasDeAtm } from '../multicotizador/atm'
 import { borrarAtmDelVps, estadoCompartidoDeAtm, publicarSinRomper, traerAtmDelVps } from './ajustesCompartidos'
 import { borrarAtm, credencialesAtm, cuentaAtmVisible, guardarAtm } from './config'
@@ -72,6 +74,8 @@ function armarEstado(compartido: EstadoDeAjusteCompartido | null): EstadoDeAtm {
 }
 
 export async function estadoAtm(): Promise<EstadoDeAtm> {
+  // Demo: la cuenta de ATM figura cargada, con las tablas al día (ver demo/apis.ts).
+  if (esDemo()) return estadoDeAtmDemo()
   return armarEstado(await compartidoSinRomper())
 }
 
@@ -81,6 +85,7 @@ export async function estadoAtm(): Promise<EstadoDeAtm> {
  * rojo por algo que sí se guardó.
  */
 export async function guardarCuentaAtm(datos: unknown, quien: string | null): Promise<EstadoDeAtm> {
+  if (esDemo()) return estadoDeAtmDemo()
   guardarAtm(datos)
   // Los vendedores y los planes en memoria eran de la cuenta anterior, y la última falla del FTP
   // también (con la clave corregida, las tablas se vuelven a bajar solas sin esperar media hora).
@@ -90,6 +95,7 @@ export async function guardarCuentaAtm(datos: unknown, quien: string | null): Pr
 }
 
 export async function borrarCuentaAtm(): Promise<EstadoDeAtm> {
+  if (esDemo()) return estadoDeAtmDemo()
   borrarAtm()
   olvidarListasDeAtm()
   olvidarFallosDeTablasAtm()
@@ -101,6 +107,7 @@ export async function borrarCuentaAtm(): Promise<EstadoDeAtm> {
 
 /** El botón «Traer del servidor»: adopta la cuenta publicada aunque esta computadora tenga otra. */
 export async function traerAtmDelServidor(): Promise<EstadoDeAtm> {
+  if (esDemo()) return estadoDeAtmDemo()
   let resultado: Awaited<ReturnType<typeof traerAtmDelVps>>
   try {
     resultado = await traerAtmDelVps()
@@ -160,6 +167,7 @@ function textoDePlanes(que: string, resultado: PromiseSettledResult<PlanAtm[]>):
  * que se va a cotizar (sin planes no hay cotización posible).
  */
 export async function probarAtm(): Promise<PruebaDeAtm> {
+  if (esDemo()) return pruebaDeAtmDemo()
   const credenciales = credencialesAtm()
   if (!credenciales) {
     return {
@@ -209,6 +217,8 @@ export async function probarAtm(): Promise<PruebaDeAtm> {
 
 /** «Actualizar tablas»: las baja del FTP de ATM, que pide el mismo usuario y clave que el web service. */
 export async function actualizarTablasDeAtm(): Promise<EstadoDeTablasAtm> {
+  // Demo: no hay FTP al que ir; las tablas «se bajan» igual.
+  if (esDemo()) return actualizarTablasDeAtmDemo('ftp')
   const credenciales = credencialesAtm()
   if (!credenciales) {
     throw new ErrorDeNegocio('Para bajar las tablas del FTP de ATM primero cargá la cuenta: el FTP usa el mismo usuario y la misma clave.')
@@ -226,6 +236,8 @@ export async function actualizarTablasDeAtm(): Promise<EstadoDeTablasAtm> {
  */
 export function importarTablasDeAtm(rutas: string[]): EstadoDeTablasAtm {
   if (rutas.length === 0) throw new ErrorDeNegocio('Elegí al menos un archivo con las tablas de ATM.')
+  // Demo: las tablas ya están; no se lee ni se pisa nada.
+  if (esDemo()) return estadoDeAtmDemo().tablas
   try {
     return importarTablasAtm(cuentaAtmVisible().ambiente, rutas)
   } catch (error) {
@@ -258,6 +270,7 @@ function tablasDeEmisionQueFaltan(tablas: TablasAtm | null): TablaAtm[] {
 const yaSeBuscaronLasDeEmision = new Set<AmbienteAtm>()
 
 export async function opcionesDeEmisionAtm(codigoPostal: string): Promise<OpcionesDeEmisionAtm> {
+  if (esDemo()) return opcionesDeEmisionAtmDemo(codigoPostal)
   const credenciales = credencialesAtm()
   if (!credenciales) throw new ErrorDeNegocio('Falta cargar la cuenta de ATM en API Aseguradoras → ATM.')
   let tablas = tablasEnDisco(credenciales.ambiente)
@@ -403,6 +416,8 @@ export function validarDatosDeEmisionAtm(datos: unknown): DatosDeEmisionAtm {
  */
 export async function emitirAtm(datos: unknown): Promise<EmisionAtm> {
   const validados = validarDatosDeEmisionAtm(datos)
+  // Demo: se valida todo igual que de verdad y la operación queda «emitida» con un número inventado.
+  if (esDemo()) return emisionDeAtmDemo(validados)
   const credenciales = credencialesAtm()
   if (!credenciales) throw new ErrorDeNegocio('Falta cargar la cuenta de ATM en API Aseguradoras → ATM.')
   try {

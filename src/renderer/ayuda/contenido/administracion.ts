@@ -487,7 +487,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'De dónde sale',
         parrafos: [
-          'De las APIs de TODAS las aseguradoras cargadas en el servidor (hoy Galeno, autos y motos). Es la regla: cada vez que se baja el catálogo, sale de todas las APIs que haya; si mañana se suma otra compañía, sus vehículos se suman solos. Una versión que dos compañías llaman igual aparece una sola vez. No hay usuario ni clave que cargar acá: se usan los de cada aseguradora en API Aseguradoras.',
+          'De las APIs de TODAS las aseguradoras cargadas en el servidor, autos y motos. Es la regla: cada vez que se baja el catálogo, sale de todas las APIs que haya; si mañana se suma otra compañía, sus vehículos se suman solos. Una versión que dos compañías llaman igual aparece una sola vez. No hay usuario ni clave que cargar acá: se usan los de cada aseguradora en API Aseguradoras.',
           'El servidor de la agencia recorre las APIs una vez por día —son miles de pedidos, por eso lo hace él y no cada computadora— y publica lo que cambió. Las computadoras bajan lo nuevo al abrir el programa y cada algunas horas. Nadie tiene que hacer nada.',
           'La tarjeta «Lo que leyó el servidor» muestra cada lectura: cuántas versiones trajo cada aseguradora y si alguna falló. Si una API responde a medias (se cortaron pedidos) o trae muchos menos vehículos que la vez anterior, lo que ya estaba publicado no se borra y queda anotado ahí.',
         ],
@@ -562,6 +562,28 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Agente',
         explicacion: 'El programita que se instala una vez en cada computadora y es lo que la hace aparecer en la consola. Sin agente, esa máquina no se ve.',
+      },
+    ],
+  },
+
+  'administracion.servidor': {
+    clave: 'administracion.servidor',
+    titulo: 'Administración → Servidor (VPS)',
+    resumen: 'Sólo en la versión de demostración: qué servidor usa el programa y cómo se conecta al de una agencia de verdad.',
+    secciones: [
+      {
+        titulo: 'Qué es el servidor',
+        parrafos: [
+          'DM Gestión trabaja contra un servidor propio de la agencia (un VPS): ahí viven la base de clientes y pólizas, los usuarios, los ajustes que se cargan una sola vez, el chat interno, los archivos adjuntos y los respaldos diarios. Cada computadora tiene una copia local para trabajar rápido y se sincroniza sola en el momento.',
+          'En la demo ese servidor está simulado adentro del propio programa, con datos inventados, y se vuelve a armar cada vez que se abre.',
+        ],
+      },
+      {
+        titulo: 'Cómo se conecta el de una agencia',
+        parrafos: [
+          'Se instala el servidor en el VPS, se le pone un dominio con https y un token secreto, y en cada computadora se cargan esa dirección y ese token. A partir de ahí todas las sucursales ven lo mismo.',
+          '«Probar conexión» recorre los pasos que hace el programa al conectarse. En la demo no sale a internet: explica qué se comprueba en cada paso y avisa los errores más comunes (una dirección sin https o un token demasiado corto).',
+        ],
       },
     ],
   },

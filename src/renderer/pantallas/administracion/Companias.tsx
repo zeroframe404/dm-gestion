@@ -6,7 +6,8 @@
 // la mitad de una llamada. Tocarla sigue siendo de administradores, y el porcentaje de comisión —que
 // es lo que gana la agencia— ni siquiera llega a un empleado: el proceso principal lo manda en null.
 import { useCallback, useEffect, useState } from 'react'
-import { PLANTILLA_AVISO_POR_DEFECTO, type Compania } from '../../../shared/tipos'
+import { plantillaDeAvisoFirmada, type Compania } from '../../../shared/tipos'
+import { nombreDeLaAgencia } from '../../agencia'
 import { Alerta, AreaTexto, Boton, Cargando, Tarjeta, cx } from '../../componentes/ui'
 import { usePuedeEditar, useVeNumerosDeLaAgencia } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -197,7 +198,7 @@ export function Companias() {
         acciones={
           puedeEditar && (
             <>
-              <Boton onClick={() => setPlantilla(PLANTILLA_AVISO_POR_DEFECTO)}>Restaurar el original</Boton>
+              <Boton onClick={() => setPlantilla(plantillaDeAvisoFirmada(nombreDeLaAgencia()))}>Restaurar el original</Boton>
               <Boton variante="primario" icono="ok" onClick={() => void guardarPlantilla()} cargando={guardandoPlantilla}>
                 Guardar
               </Boton>

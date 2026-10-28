@@ -21,6 +21,7 @@ import type {
 } from '../../../shared/tipos'
 import { Alerta, Boton, Campo, Dialogo, Selector } from '../../componentes/ui'
 import { DialogoEmitirGaleno } from './DialogoEmitirGaleno'
+import { useEsDemo } from '../../canal'
 
 interface Props {
   tipoVehiculoSugerido: TipoDeVehiculo
@@ -49,6 +50,7 @@ function importe(valor: number): string {
 }
 
 export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, patenteSugerida, documentoSugerido, telefonoSugerido, alCerrar, alAgregarOpciones }: Props) {
+  const esDemo = useEsDemo()
   const [tipoVehiculo, setTipoVehiculo] = useState<TipoDeVehiculo>(tipoVehiculoSugerido)
 
   const [planes, setPlanes] = useState<PlanComercialDeGaleno[]>([])
@@ -566,7 +568,8 @@ export function DialogoCotizarGaleno({ tipoVehiculoSugerido, nombreSugerido, pat
                       <DatoDelDesglose etiqueta="Derecho de emisión" valor={c.derechoEmision} />
                       <DatoDelDesglose etiqueta="Impuestos" valor={c.impuestos} />
                       <DatoDelDesglose etiqueta="Cuota 1" valor={c.importeCuota1} />
-                      <DatoDelDesglose etiqueta="Resto de cuotas" valor={c.importeRestoCuotas} />
+                      {/* Demo: con una sola cuota la simulación devuelve 0 de resto de cuotas, que no hay que mostrar. */}
+                      {!(esDemo && c.importeRestoCuotas === 0) && <DatoDelDesglose etiqueta="Resto de cuotas" valor={c.importeRestoCuotas} />}
                     </dl>
                   </div>
                   <Boton onClick={() => setAEmitir(c)}>Emitir…</Boton>

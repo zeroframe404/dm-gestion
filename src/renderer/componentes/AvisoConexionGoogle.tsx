@@ -16,6 +16,7 @@
 //      único que pasó es que se cayó internet.
 import { useCallback, useEffect, useState } from 'react'
 import type { EstadoDeGoogleEnLaAgencia } from '../../shared/tipos'
+import { useEsDemo } from '../canal'
 import { useUsuarioActual } from '../contexto/Sesion'
 import { Alerta, Boton } from './ui'
 
@@ -26,6 +27,7 @@ import { Alerta, Boton } from './ui'
  */
 export function AvisoConexionGoogle({ className = 'mt-6' }: { className?: string }) {
   const usuario = useUsuarioActual()
+  const esDemo = useEsDemo()
   const [estado, setEstado] = useState<EstadoDeGoogleEnLaAgencia | null>(null)
   const [trayendo, setTrayendo] = useState(false)
   const [detalle, setDetalle] = useState<string | null>(null)
@@ -43,6 +45,8 @@ export function AvisoConexionGoogle({ className = 'mt-6' }: { className?: string
   // nada: ver la regla 2 del encabezado. No se le va a decir a nadie que falta una credencial cuando lo
   // único que pasó es que se cayó internet.
   if (!estado || estado.error || !estado.hayServidor) return null
+  // La demo no sube respaldos ni adjuntos a ningún Drive: el aviso sólo asustaría a quien la mira.
+  if (esDemo) return null
   if (estado.enElServidor && estado.enEstaComputadora && estado.alDia) return null
 
   const traer = async () => {

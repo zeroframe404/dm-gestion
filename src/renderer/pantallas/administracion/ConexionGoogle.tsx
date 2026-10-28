@@ -8,12 +8,15 @@ import { EstadoCompartido } from '../../componentes/EstadoCompartido'
 import { Alerta, AreaTexto, Boton, Campo, Cargando, Tarjeta } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
+import { useEsDemo } from '../../canal'
 
 export function ConexionGoogle() {
   // La MIRAN los administradores; la CARGA sólo el superadministrador, porque lo que se guarda acá
   // pisa la cuenta de las otras cuatro computadoras. Con Administración en «sólo ver», ni eso.
   const usuario = useUsuarioActual()
   const puedeEditar = usePuedeEditar('administracion') && usuario.rol === 'SUPER_ADMIN'
+  // La demo no tiene una «versión 12» de la que acordarse: arrancó así.
+  const esDemo = useEsDemo()
   const [estado, setEstado] = useState<EstadoConexionGoogle | null>(null)
   const [rutaConfig, setRutaConfig] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -65,7 +68,7 @@ export function ConexionGoogle() {
     <div className="mx-auto max-w-3xl">
       <Tarjeta
         titulo="Google Drive (obligatoria)"
-        descripcion="Desde la versión 12 la base vive en el VPS y el programa no sincroniza más con la hoja (el servidor la mantiene como copia de lectura). Esta cuenta de Google queda sólo para Drive: los respaldos diarios y los adjuntos de siniestros. Es obligatoria: la carga el superadministrador una vez, viaja al VPS y la adoptan solas las cinco computadoras, sea quien sea el que las use."
+        descripcion={`${esDemo ? 'La base vive en el VPS y el programa no sincroniza con la hoja' : 'Desde la versión 12 la base vive en el VPS y el programa no sincroniza más con la hoja'} (el servidor la mantiene como copia de lectura). Esta cuenta de Google queda sólo para Drive: los respaldos diarios y los adjuntos de siniestros. Es obligatoria: la carga el superadministrador una vez, viaja al VPS y la adoptan solas todas las computadoras, sea quien sea el que las use.`}
       >
         {cargando ? (
           <Cargando />
@@ -135,7 +138,7 @@ export function ConexionGoogle() {
 
             {!puedeEditar && usuario.rol !== 'SUPER_ADMIN' && (
               <Alerta tono="info">
-                La conexión con Google la carga el superadministrador: lo que se guarda acá vale para las cinco computadoras.
+                La conexión con Google la carga el superadministrador: lo que se guarda acá vale para todas las computadoras.
               </Alerta>
             )}
 

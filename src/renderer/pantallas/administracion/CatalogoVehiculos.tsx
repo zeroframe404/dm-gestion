@@ -181,7 +181,7 @@ export function CatalogoVehiculos() {
 
       <Tarjeta
         titulo="Catálogo de vehículos (APIs de las aseguradoras)"
-        descripcion="Con esto las pólizas, los presupuestos y el multicotizador ofrecen marca, modelo, versión y año en listas en vez de pedirlos escritos, y la categoría —pick-up, SUV, furgón, camión— la decide el catálogo y no quien está cargando. Sale de las APIs de todas las aseguradoras cargadas (hoy Galeno, autos y motos)."
+        descripcion="Con esto las pólizas, los presupuestos y el multicotizador ofrecen marca, modelo, versión y año en listas en vez de pedirlos escritos, y la categoría —pick-up, SUV, furgón, camión— la decide el catálogo y no quien está cargando. Sale de las APIs de todas las aseguradoras cargadas, autos y motos."
         acciones={
           puedeEditar && (
             <Boton variante="primario" icono="refrescar" onClick={() => void bajar()} cargando={trabajando === 'bajar'} disabled={trabajando !== null}>

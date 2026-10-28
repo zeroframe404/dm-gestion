@@ -11,6 +11,7 @@ import type {
   PlanListado,
   ResultadoDeAseguradora,
 } from './multicotizador'
+import type { EstadoDeLaDemo, PasoDePruebaDeVps } from './demo'
 import type { MatrizPermisos } from './permisos'
 import type {
   TipoPestana,
@@ -983,6 +984,11 @@ export interface Canales {
   'soporte:reportar': (reporte: ReporteDeError) => Resultado<ReporteCreado>
 
   'app:info': () => Resultado<InfoApp>
+
+  // La versión de demostración (canal «demo»): el servidor interno y la prueba de conexión simulada de
+  // Administración → Servidor (VPS). Fuera de la demo, `estado` contesta null y `probarVps` se niega.
+  'demo:estado': () => Resultado<EstadoDeLaDemo | null>
+  'demo:probarVps': (datos: { urlBase: string; token: string }) => Resultado<PasoDePruebaDeVps[]>
 
   // Actualizaciones: chequeo automático liviano (al abrir y cada 15 minutos) más el botón manual de
   // Acerca de. `actualizarAhora` dispara la descarga que el chequeo automático ya no arranca solo, y

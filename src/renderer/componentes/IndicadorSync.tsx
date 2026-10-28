@@ -93,7 +93,11 @@ function aspectoDe(estado: EstadoSincronizacion, conexion: SituacionDeConexion):
     texto: 'En vivo',
     // «Última subida» es la última vez que HUBO algo para subir (si nadie cargó nada, queda vieja y
     // no significa que la sincronización esté caída): se aclara para que no asuste.
-    detalle: `Todo lo de esta computadora está en la base de la agencia. Última subida ${haceCuanto(estado.ultimaSubida)} (la última vez que hubo cambios para subir).`,
+    // Sin ninguna subida todavía (recién abierto, o nadie cargó nada) «Última subida todavía nunca» se
+    // leía mal: se dice con todas las letras.
+    detalle: estado.ultimaSubida
+      ? `Todo lo de esta computadora está en la base de la agencia. Última subida ${haceCuanto(estado.ultimaSubida)} (la última vez que hubo cambios para subir).`
+      : 'Todo lo de esta computadora está en la base de la agencia. Todavía no hubo cambios para subir desde esta computadora.',
   }
 }
 

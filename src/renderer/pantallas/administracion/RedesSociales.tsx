@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { EstadoDeMeta, VinculoConMeta } from '../../../shared/tipos'
 import { SUCURSALES } from '../../../shared/sucursales'
+import { EJEMPLO_URL_DEL_VPS } from '../../../shared/demo'
+import { useEsDemo } from '../../canal'
 import { EstadoCompartido } from '../../componentes/EstadoCompartido'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Campo, CampoClave, Cargando, Etiqueta, Tarjeta } from '../../componentes/ui'
@@ -22,6 +24,8 @@ export function RedesSociales() {
   // La carga sólo el superadministrador: lo que se guarda acá pisa la app de las otras computadoras.
   const usuario = useUsuarioActual()
   const puedeEditar = usePuedeEditar('administracion') && usuario.rol === 'SUPER_ADMIN'
+  // En la demo, el ejemplo del campo es el dominio de ejemplo y no el de la agencia.
+  const esDemo = useEsDemo()
   const [estado, setEstado] = useState<EstadoDeMeta | null>(null)
   const [appId, setAppId] = useState('')
   const [appSecret, setAppSecret] = useState('')
@@ -249,7 +253,9 @@ export function RedesSociales() {
             disabled={!puedeEditar}
             spellCheck={false}
             className="font-mono text-xs"
-            placeholder="https://dmartinezseguros.com/meta/vuelta"
+            // Sin el dominio de la agencia escrito acá: la pantalla va también en el instalador de la demo, que
+            // se le entrega a otras agencias (la de fábrica está arriba, en «La dirección de vuelta»).
+            placeholder={esDemo ? `${EJEMPLO_URL_DEL_VPS}/meta/vuelta` : 'https://<dominio de la agencia>/meta/vuelta'}
             ayuda="Sólo si cambió el dominio de la agencia. Se guarda con el botón «Guardar» de la tarjeta de arriba y sale para todas las computadoras; vacía vuelve a la de fábrica."
           />
         </div>

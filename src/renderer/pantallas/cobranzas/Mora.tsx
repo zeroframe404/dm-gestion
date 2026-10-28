@@ -15,6 +15,7 @@ import { TablaVirtual, type ColumnaTabla } from '../../componentes/TablaVirtual'
 import { Alerta, Boton, Cargando, cx } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { numero, pesos } from './formato'
+import { avisoDeWhatsapp } from '../../agencia'
 
 const FILTROS_VACIOS: FiltrosMora = {
   busqueda: '',
@@ -90,10 +91,10 @@ export function Mora() {
     const abierto = await window.dm.sistema.abrirEnlace(resultado.datos.url)
     setAvisando(null)
     if (!abierto.ok) setError(abierto.error)
-    else if (resultado.datos.marcada) setAviso(`WhatsApp abierto para ${fila.nombre ?? 'el cliente'}. La fila quedó como ENVIADO.`)
+    else if (resultado.datos.marcada) setAviso(`${avisoDeWhatsapp(fila.nombre)}. La fila quedó como ENVIADO.`)
     else
       setAviso(
-        `WhatsApp abierto para ${fila.nombre ?? 'el cliente'}. La cuota es de ${nombreDePeriodo(fila.periodo)}, un mes ya cerrado: la planilla no se tocó, el aviso quedó en el historial.`,
+        `${avisoDeWhatsapp(fila.nombre)}. La cuota es de ${nombreDePeriodo(fila.periodo)}, un mes ya cerrado: la planilla no se tocó, el aviso quedó en el historial.`,
       )
   }
 

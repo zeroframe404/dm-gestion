@@ -17,6 +17,7 @@
 // La cuenta de Galeno (usuario, clave, ambiente, URL y Authorization de producción) ya no se carga acá:
 // se edita desde API Aseguradoras → Galeno, que ahora guarda el ajuste compartido `galenoApi` en el
 // VPS. Esta computadora no la necesita ni la ve.
+import { esDemo } from '../../canal'
 import { esFallaDeRed } from '../../servicios/red'
 
 const ESPERA_MAXIMA_MS = 45_000
@@ -103,6 +104,8 @@ export function crearClienteGaleno(vps: CredencialesVps): ClienteGaleno {
   const base = vps.urlBase.replace(/\/+$/, '')
 
   async function pedir(url: string, opciones: RequestInit): Promise<Response> {
+    // Demo: nunca sale a Galeno. En la demo el cliente es el de demo/galeno.ts; esto es por si algo se escapa.
+    if (esDemo()) throw new ErrorDeGaleno('La versión de demostración no se conecta con Galeno.', false)
     try {
       return await fetch(url, { ...opciones, signal: AbortSignal.timeout(ESPERA_MAXIMA_MS) })
     } catch (error) {

@@ -35,6 +35,9 @@ import { cotizar as cotizarEnGaleno } from '../aseguradoras/galeno/cotizacion'
 import * as cuentaCorriente from '../aseguradoras/galeno/cuentaCorriente'
 import { emitir as emitirEnGaleno, emitirConInspeccion as emitirConInspeccionEnGaleno } from '../aseguradoras/galeno/emision'
 import * as impresion from '../aseguradoras/galeno/impresion'
+import { esDemo } from '../canal'
+import { estadoDeGalenoDemo, pruebaDeGalenoDemo } from '../demo/apis'
+import { clienteGalenoDeLaDemo } from '../demo/galeno'
 import { credencialesVps, guardarLegajoGaleno, legajoGaleno } from './config'
 import { ErrorDeNegocio } from './errores'
 import { crearFuenteVps } from './sincronizacion'
@@ -51,7 +54,8 @@ import { objeto, texto } from './validacion'
 let clienteEnMemoria: ClienteGaleno | null = null
 
 function cliente(): ClienteGaleno {
-  if (!clienteEnMemoria) clienteEnMemoria = crearClienteGaleno(credencialesVps())
+  // Demo: un cliente que contesta como Galeno sin salir a ningún lado (ver demo/galeno.ts).
+  if (!clienteEnMemoria) clienteEnMemoria = esDemo() ? clienteGalenoDeLaDemo() : crearClienteGaleno(credencialesVps())
   return clienteEnMemoria
 }
 
@@ -99,6 +103,8 @@ function fuenteVps() {
 }
 
 export async function estadoGaleno(): Promise<EstadoDeGaleno> {
+  // Demo: la cuenta de Galeno figura cargada en el servidor.
+  if (esDemo()) return estadoDeGalenoDemo()
   const productorCodigo = legajoGaleno()
   try {
     const ficha = await fuenteVps().estadoAjuste('galenoApi')
@@ -132,6 +138,8 @@ export async function guardarGaleno(datos: unknown, actor: SesionUsuario): Promi
     )
   }
   if (urlBase && !/^https:\/\//i.test(urlBase)) throw new ErrorDeNegocio('La URL base de Galeno tiene que empezar con https://.')
+  // Demo: se valida igual, pero no hay cuenta que guardar.
+  if (esDemo()) return estadoDeGalenoDemo()
 
   await fuenteVps().guardarAjuste(
     'galenoApi',
@@ -142,11 +150,13 @@ export async function guardarGaleno(datos: unknown, actor: SesionUsuario): Promi
 }
 
 export async function borrarGaleno(): Promise<EstadoDeGaleno> {
+  if (esDemo()) return estadoDeGalenoDemo()
   await fuenteVps().borrarAjuste('galenoApi')
   return estadoGaleno()
 }
 
 export async function probarGaleno(): Promise<PruebaDeGaleno> {
+  if (esDemo()) return pruebaDeGalenoDemo()
   try {
     const cli = cliente()
     const lista = await catalogos.ramas(cli)

@@ -6,8 +6,13 @@ import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 
-/** Las mismas claves que acepta el servidor real: es una lista blanca, no un almacén libre. */
-const CLAVES_DE_AJUSTE = new Set(['vehiculos', 'referencias', 'google', 'meta', 'ticket', 'companias', 'galeno', 'galenoApi', 'atmApi', 'mercantilApi', 'equidadApi'])
+/**
+ * Las mismas claves que acepta el servidor real: es una lista blanca, no un almacén libre. Más
+ * `actualizaciones_sucursales`, que el programa usa (servicios/estadoDeActualizaciones.ts) y la demo
+ * necesita para la columna «Versión del programa» de Usuarios: OJO, el servidor real todavía no la tiene
+ * en su lista (ajustes.service.ts del repositorio del VPS).
+ */
+const CLAVES_DE_AJUSTE = new Set(['vehiculos', 'referencias', 'google', 'meta', 'ticket', 'companias', 'galeno', 'galenoApi', 'atmApi', 'mercantilApi', 'equidadApi', 'actualizaciones_sucursales'])
 
 const TOKEN_POR_DEFECTO = 'prueba'
 

@@ -29,6 +29,7 @@ import {
   type VistaPreviaDeReporte,
 } from '../../shared/tipos'
 import { db } from '../db/base'
+import { nombreDeLaAgencia } from '../demo/identidad'
 import { limpiar, normalizarTexto } from '../importacion/normalizar'
 import {
   aFila,
@@ -982,7 +983,7 @@ tr { break-inside: avoid; }
 .vacio { color: #64748b; padding: 6mm 0; }
 </style></head><body>
 <h1>${escaparXml(armado.titulo)}</h1>
-<p class="pie">Seguros Daniel Martínez · ${armado.filas.length} fila(s) · generado el ${hoyLocal()}</p>
+<p class="pie">${escaparXml(nombreDeLaAgencia())} · ${armado.filas.length} fila(s) · generado el ${hoyLocal()}</p>
 ${vacio || `<table><thead><tr>${encabezados}</tr></thead><tbody>${cuerpo}</tbody></table>`}
 </body></html>`
   return { nombre: nombreDeArchivo(armado, 'pdf'), html }

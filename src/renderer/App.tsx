@@ -2,6 +2,7 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { AvisoActualizacion } from './componentes/AvisoActualizacion'
 import { AvisoDePisado } from './componentes/AvisoDePisado'
+import { BannerDemo } from './componentes/BannerDemo'
 import { BannerSinConexion } from './componentes/BannerSinConexion'
 import { CartelActualizacionDisponible } from './componentes/CartelActualizacionDisponible'
 import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
@@ -27,6 +28,7 @@ import { buscarModulo, esAreaDePermisos, type IdModulo } from './modulos'
 import { CambiarClave } from './pantallas/CambiarClave'
 import { Inicio } from './pantallas/Inicio'
 import { Login } from './pantallas/Login'
+import { pedirSeccionDeAdministracion } from './pantallas/administracion/seccionPedida'
 
 // Cada módulo se carga la primera vez que se abre (12.6). Antes los dieciséis venían en el mismo
 // paquete que el ingreso: la ventana no dibujaba nada hasta que el navegador terminaba de leer
@@ -215,6 +217,13 @@ function Marco({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Arriba del aviso de actualización: que no se pueda guardar nada no puede quedar segundo. */}
         <BannerSinConexion />
+        {/* La franja de la demo (sólo en la versión de demostración), con el atajo a «Servidor (VPS)». */}
+        <BannerDemo
+          alConectar={() => {
+            pedirSeccionDeAdministracion('servidor')
+            alElegir('administracion')
+          }}
+        />
         {/* Y la llamada en curso (14.0) arriba del aviso de actualización por lo mismo: mientras se
             está hablando hay que poder cortar desde cualquier pantalla. Debajo del banner de conexión,
             que es el que explica por qué no se puede guardar. */}

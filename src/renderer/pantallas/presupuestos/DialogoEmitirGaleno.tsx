@@ -16,6 +16,7 @@ import {
   type EmisionGaleno,
   type OpcionGaleno,
 } from '../../../shared/tipos'
+import { useEsDemo } from '../../canal'
 import { Alerta, Boton, Campo, Dialogo, Selector } from '../../componentes/ui'
 
 interface Props {
@@ -49,6 +50,7 @@ export function DialogoEmitirGaleno({
   alCerrar,
   alEmitir,
 }: Props) {
+  const esDemo = useEsDemo()
   const [tiposDeDocumento, setTiposDeDocumento] = useState<OpcionGaleno[]>([])
   const [nacionalidades, setNacionalidades] = useState<OpcionGaleno[]>([])
   const [categoriasIva, setCategoriasIva] = useState<OpcionGaleno[]>([])
@@ -173,7 +175,9 @@ export function DialogoEmitirGaleno({
       abierto
       ancho="lg"
       titulo={`Emitir con Galeno — ${cobertura.descripcionCobertura}`}
-      descripcion={`Premio $ ${cobertura.premio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}. Esto emite la póliza de verdad contra Galeno: revisá los datos antes de mandar.`}
+      descripcion={`Premio $ ${cobertura.premio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}. ${
+        esDemo ? 'Es una demostración: la emisión se simula y no llega a Galeno. Probala tranquilo.' : 'Esto emite la póliza de verdad contra Galeno: revisá los datos antes de mandar.'
+      }`}
       alCerrar={alCerrar}
       pie={
         <>

@@ -35,6 +35,7 @@ import {
   type SolicitudDeCotizacion,
 } from '../../../shared/multicotizador'
 import type { DatosDePresupuesto, EmisionGaleno, TipoDeVehiculo } from '../../../shared/tipos'
+import { useEsDemo } from '../../canal'
 import { BotonAyuda } from '../../componentes/Ayuda'
 import { Alerta, Boton, Cargando } from '../../componentes/ui'
 import { useNavegacion } from '../../contexto/Navegacion'
@@ -106,6 +107,7 @@ export function Multicotizador() {
 function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
   const { ir } = useNavegacion()
   const { puedeEditar, veNumerosDeLaAgencia } = usePermisos()
+  const esDemo = useEsDemo()
   // Cotizar es mirar precios; armar el presupuesto y emitir, en cambio, escriben: piden Presupuestos.
   const puedePresupuestar = puedeEditar('presupuestos')
 
@@ -118,6 +120,10 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set())
   const [aEmitir, setAEmitir] = useState<CoberturaCotizada | null>(null)
   const [mensaje, setMensaje] = useState<{ tono: 'exito' | 'error'; texto: string } | null>(null)
+  const refDelMensaje = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (mensaje) refDelMensaje.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [mensaje])
   const [armando, setArmando] = useState(false)
   /**
    * El número del último pedido de cada compañía. Si se vuelve a cotizar antes de que conteste el
@@ -333,7 +339,13 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
         <BotonAyuda clave="multicotizador" />
       </div>
 
-      {mensaje && <Alerta tono={mensaje.tono}>{mensaje.texto}</Alerta>}
+      {/* Al emitir desde la tabla (que está mucho más abajo) el resultado aparece acá arriba: se lo trae a
+          la vista, o quien emitió no se entera de que salió. */}
+      {mensaje && (
+        <div ref={refDelMensaje}>
+          <Alerta tono={mensaje.tono}>{mensaje.texto}</Alerta>
+        </div>
+      )}
 
       <FormularioDeCotizacion
         valor={formulario}
@@ -401,7 +413,9 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
           alEmitir={(resultado: EmisionGaleno) => {
             setMensaje({
               tono: 'exito',
-              texto: `${aEmitir.nombreAseguradora} emitió la póliza Nº ${resultado.poliza} (${aEmitir.nombre}) por ${enPesos(resultado.premio)}.`,
+              texto: esDemo
+                ? `Emisión simulada con ${aEmitir.nombreAseguradora}: póliza de demostración Nº ${resultado.poliza} (${aEmitir.nombre}) por ${enPesos(resultado.premio)}. No llegó a la compañía; ya aparece en Emisiones.`
+                : `${aEmitir.nombreAseguradora} emitió la póliza Nº ${resultado.poliza} (${aEmitir.nombre}) por ${enPesos(resultado.premio)}.`,
             })
             setAEmitir(null)
           }}
@@ -419,7 +433,9 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
             const numero = resultado.poliza ? `la póliza Nº ${resultado.poliza}` : resultado.propuesta ? `la propuesta Nº ${resultado.propuesta}` : `la operación ${resultado.operacion}`
             setMensaje({
               tono: 'exito',
-              texto: `${aEmitir.nombreAseguradora} emitió ${numero} (${aEmitir.nombre}) por ${enPesos(emision.premio)}.${resultado.estado === 'INS' ? ' Queda pendiente de inspección.' : ''}`,
+              texto: esDemo
+                ? `Emisión simulada con ${aEmitir.nombreAseguradora}: ${numero.replace('la póliza', 'la póliza de demostración')} (${aEmitir.nombre}) por ${enPesos(emision.premio)}. No llegó a la compañía; ya aparece en Emisiones.`
+                : `${aEmitir.nombreAseguradora} emitió ${numero} (${aEmitir.nombre}) por ${enPesos(emision.premio)}.${resultado.estado === 'INS' ? ' Queda pendiente de inspección.' : ''}`,
             })
             setAEmitir(null)
           }}

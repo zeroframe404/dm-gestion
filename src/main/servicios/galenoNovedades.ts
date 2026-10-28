@@ -39,7 +39,9 @@ import type {
   ResumenDePasadaDeGaleno,
   SesionUsuario,
 } from '../../shared/tipos'
+import { esDemo } from '../canal'
 import { db } from '../db/base'
+import { compartidoDeLaDemo, estadoDeNovedadesDemo, pasadaDeNovedadesDemo, pruebaDeNovedadesDemo } from '../demo/apis'
 import { normalizarDocumento, normalizarNumeroPoliza } from '../importacion/normalizar'
 import { crearCliente } from './clientes'
 import { ErrorDeNegocio } from './errores'
@@ -62,10 +64,13 @@ function vps() {
 // ── Consultas ─────────────────────────────────────────────────────────────────────────────────
 
 export async function estadoDeGaleno(): Promise<EstadoDeGalenoNovedades> {
+  // Demo: el servidor «consulta el portal» y no encuentra novedades (ver demo/apis.ts).
+  if (esDemo()) return estadoDeNovedadesDemo()
   return vps().estadoDeGaleno()
 }
 
 export async function sincronizarGaleno(): Promise<ResumenDePasadaDeGaleno> {
+  if (esDemo()) return pasadaDeNovedadesDemo()
   return vps().forzarPasadaDeGaleno()
 }
 
@@ -73,6 +78,7 @@ export async function sincronizarGaleno(): Promise<ResumenDePasadaDeGaleno> {
 // propia `probarGaleno()`, que prueba OTRA credencial (la de esta computadora contra la API de Galeno,
 // no el usuario del portal que consulta el VPS). Los dos módulos se importan juntos en ipc.ts.
 export async function probarGalenoNovedades(): Promise<PruebaDeGalenoNovedades> {
+  if (esDemo()) return pruebaDeNovedadesDemo()
   return vps().probarGaleno()
 }
 
@@ -86,6 +92,7 @@ export async function probarGalenoNovedades(): Promise<PruebaDeGalenoNovedades> 
 // Por eso tampoco hay `adoptar`: no hay nada que adoptar al arrancar.
 
 export async function estadoCompartidoDeGaleno(): Promise<EstadoDeAjusteCompartido> {
+  if (esDemo()) return compartidoDeLaDemo()
   const fuente = crearFuenteVps()
   if (!fuente) return { enElServidor: false, actualizadoEn: null, actualizadoPor: null, alDia: false, error: null }
   try {
@@ -119,6 +126,7 @@ export async function guardarCredencialesDeGaleno(
   if (!usuario || !clave) {
     throw new ErrorDeNegocio('Hacen falta el usuario y la clave del portal de Galeno.')
   }
+  if (esDemo()) return compartidoDeLaDemo()
 
   await vps().guardarAjuste(
     'galeno',
@@ -235,6 +243,8 @@ export function resolverNovedad(novedad: NovedadDeGaleno): FilaDeBandejaDeGaleno
 }
 
 export async function bandejaDeGaleno(): Promise<FilaDeBandejaDeGaleno[]> {
+  // Demo: no hay cola de novedades (así tampoco se drena nada al ingresar).
+  if (esDemo()) return []
   const novedades = await vps().pendientesDeGaleno()
   return novedades.map(resolverNovedad)
 }
