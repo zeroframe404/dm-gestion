@@ -2,7 +2,7 @@
 // Cobranzas y las direcciones que encabezan su comprobante. Las plantillas de los mensajes se mudaron
 // a plantillas.ts en la Fase 9, que es cuando dejaron de ser una sola.
 import { claveDeSucursal, mismaSucursal, sucursalCanonica, type NombreDeSucursal } from '../../shared/sucursales'
-import type { DatosDeImpresora } from '../../shared/tipos'
+import type { DatosDeImpresora, TipoDeImpresora } from '../../shared/tipos'
 import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import { ErrorDeNegocio } from './errores'
@@ -38,6 +38,8 @@ export const COPIAS_MAXIMAS = 2
 
 export interface ImpresoraGuardada {
   habilitada: boolean
+  /** Térmica de rollo o impresora común de hoja A4. */
+  tipo: TipoDeImpresora
   /** Preguntar antes de cada ticket en vez de imprimirlo solo. */
   preguntar: boolean
   impresora: string | null
@@ -48,6 +50,7 @@ export interface ImpresoraGuardada {
 
 const SIN_IMPRESORA: ImpresoraGuardada = {
   habilitada: false,
+  tipo: 'termica',
   preguntar: true,
   impresora: null,
   anchoMm: ANCHO_TICKET_POR_DEFECTO,
@@ -66,6 +69,8 @@ export function impresoraGuardada(): ImpresoraGuardada {
     const datos = JSON.parse(crudo) as Partial<ImpresoraGuardada>
     return {
       habilitada: datos.habilitada === true,
+      // Configuraciones anteriores a la impresora común no traen la clave: eran todas térmicas.
+      tipo: datos.tipo === 'comun' ? 'comun' : 'termica',
       // Sin la clave guardada (configuraciones anteriores a que existiera la pregunta) se pregunta:
       // gastar papel de más molesta más que un cartel, y el cartel se apaga con un tilde.
       preguntar: datos.preguntar !== false,
@@ -90,11 +95,15 @@ export function guardarImpresora(datos: DatosDeImpresora): ImpresoraGuardada {
   if (!Number.isInteger(copias) || copias < 1 || copias > COPIAS_MAXIMAS) {
     throw new ErrorDeNegocio(`La cantidad de tickets tiene que ser 1 o ${COPIAS_MAXIMAS}.`)
   }
+  if (datos.tipo !== undefined && datos.tipo !== 'termica' && datos.tipo !== 'comun') {
+    throw new ErrorDeNegocio('El tipo de impresora tiene que ser «térmica» o «común».')
+  }
   if (datos.habilitada === true && !impresora) {
-    throw new ErrorDeNegocio('Elegí la impresora térmica antes de activar el ticket.')
+    throw new ErrorDeNegocio('Elegí la impresora antes de activar el ticket.')
   }
   const nueva: ImpresoraGuardada = {
     habilitada: datos.habilitada === true,
+    tipo: datos.tipo ?? impresoraGuardada().tipo,
     preguntar: datos.preguntar === true,
     impresora: impresora || null,
     anchoMm: ancho,

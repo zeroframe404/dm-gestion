@@ -195,7 +195,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Para qué sirve',
         parrafos: [
-          'Si el mostrador de una sucursal tiene una impresora térmica de las que usan rollo angosto (80 mm, las típicas de los comercios), esta pantalla la configura para que, al registrar un pago en Cobranzas, salga el comprobante. Es completamente opcional: sin configurar nada, cobrar y registrar pagos funciona exactamente igual, simplemente no sale ningún papel.',
+          'Si el mostrador de una sucursal tiene una impresora térmica de las que usan rollo angosto (80 mm, las típicas de los comercios), esta pantalla la configura para que, al registrar un pago en Cobranzas, salga el comprobante. Si en ese mostrador no hay ticketeadora, se puede elegir «Impresora común (hoja A4)» en «Tipo de impresora»: el comprobante sale igual, arriba a la izquierda de una hoja A4, sin que la impresora lo corte. Es completamente opcional: sin configurar nada, cobrar y registrar pagos funciona exactamente igual, simplemente no sale ningún papel.',
           'La pantalla la ve y la usa cualquier persona con sesión abierta, sea EMPLEADO, ADMIN o SUPER_ADMIN: la impresora es la que tiene esa computadora delante, y quien cobra es quien se da cuenta de que hay que cambiarla, apagarla o dejar de gastar papel, sin tener que esperar a un administrador.',
         ],
       },
