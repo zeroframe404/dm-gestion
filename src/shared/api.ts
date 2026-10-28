@@ -378,6 +378,7 @@ export interface ApiDm {
     importarAhora: Remota<'vehiculos:importarAhora'>
     marcas: Remota<'vehiculos:marcas'>
     modelos: Remota<'vehiculos:modelos'>
+    aniosDeMarca: Remota<'vehiculos:aniosDeMarca'>
     lineas: Remota<'vehiculos:lineas'>
     anios: Remota<'vehiculos:anios'>
     resolver: Remota<'vehiculos:resolver'>
@@ -448,6 +449,9 @@ export interface ApiDm {
     aseguradoras: Remota<'multicotizador:aseguradoras'>
     localidades: Remota<'multicotizador:localidades'>
     cotizar: Remota<'multicotizador:cotizar'>
+    cotizaciones: Remota<'multicotizador:cotizaciones'>
+    planes: Remota<'multicotizador:planes'>
+    emisiones: Remota<'multicotizador:emisiones'>
   },
   /** Cartera → Galeno: las novedades del portal (distinto de `galeno`, la API REST). Ver canales.ts. */
   galenoNovedades: {

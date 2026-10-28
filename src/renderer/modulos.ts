@@ -1,4 +1,5 @@
 // Módulos de la aplicación, en el orden en que aparecen en la barra lateral.
+import type { SeccionDelMulticotizador } from '../shared/multicotizador'
 import { esArea, type Area } from '../shared/permisos'
 import type { NombreIcono } from './componentes/Icono'
 
@@ -31,7 +32,27 @@ export interface Modulo {
   descripcion: string
   /** Si es false, el módulo muestra la pantalla «Próximamente». */
   disponible: boolean
+  /**
+   * Su sublista en la barra lateral: cada renglón abre el módulo en esa sección (el `seccion` de la
+   * navegación). Sin esto, el módulo es un renglón suelto.
+   */
+  secciones?: SeccionDeModulo[]
 }
+
+export interface SeccionDeModulo {
+  id: string
+  nombre: string
+  icono: NombreIcono
+}
+
+/** La sublista del Multicotizador: cotizar separado por auto y moto, y lo que salió de cotizar. */
+export const SECCIONES_MULTICOTIZADOR: Array<SeccionDeModulo & { id: SeccionDelMulticotizador }> = [
+  { id: 'auto', nombre: 'Cotizar Vehículo', icono: 'auto' },
+  { id: 'moto', nombre: 'Cotizar Moto', icono: 'moto' },
+  { id: 'cotizaciones', nombre: 'Cotizaciones', icono: 'lista' },
+  { id: 'planes', nombre: 'Planes de Cotización', icono: 'presupuestos' },
+  { id: 'emisiones', nombre: 'Emisiones', icono: 'polizas' },
+]
 
 export const MODULOS: Modulo[] = [
   { id: 'inicio', nombre: 'Inicio', icono: 'inicio', descripcion: 'Resumen general y accesos rápidos.', disponible: true },
@@ -63,6 +84,7 @@ export const MODULOS: Modulo[] = [
     icono: 'billete',
     descripcion: 'Un auto o una moto cotizados en todas las compañías con API a la vez, comparados por cobertura.',
     disponible: true,
+    secciones: SECCIONES_MULTICOTIZADOR,
   },
   {
     id: 'polizas',

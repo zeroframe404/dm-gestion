@@ -8,7 +8,7 @@
 //
 // Ninguna de estas funciones puede romper una pantalla: si `localStorage` está bloqueado se trabaja
 // con los valores por defecto y listo. Es una preferencia, no un dato.
-import { sanearElegidos } from '../shared/multicotizador'
+import { sanearCondiciones, sanearElegidos, type CondicionesRecordadas } from '../shared/multicotizador'
 import type { Tema } from './tema-valores'
 import { escalaGuardada, sanearOcultas, type ColumnaElegible } from './vista'
 
@@ -17,6 +17,7 @@ const CLAVE_BARRA_LATERAL = 'dm.vista.barraLateral'
 const CLAVE_TEMA = 'dm.vista.tema'
 const PREFIJO_COLUMNAS = 'dm.vista.columnas.'
 const PREFIJO_AJUSTES_MULTICOTIZADOR = 'dm.multicotizador.ajustes.'
+const CLAVE_CONDICIONES_MULTICOTIZADOR = 'dm.multicotizador.condiciones'
 
 function leer(clave: string): string | null {
   try {
@@ -141,4 +142,23 @@ export function ajustesGuardados(aseguradora: string): Record<string, string> {
 
 export function guardarAjustes(aseguradora: string, elegidos: Record<string, string>): void {
   escribir(PREFIJO_AJUSTES_MULTICOTIZADOR + aseguradora, JSON.stringify(sanearElegidos(elegidos)))
+}
+
+/**
+ * Las condiciones comerciales del formulario del Multicotizador (plan, tarifa, comisión, facturación,
+ * forma de pago, cláusula y cuotas) con las que se cotizó la última vez en esta computadora: el
+ * formulario arranca con ésas. Por qué es de la computadora y no de la agencia: ver `ajustesGuardados`.
+ */
+export function condicionesGuardadas(): CondicionesRecordadas {
+  const guardado = leer(CLAVE_CONDICIONES_MULTICOTIZADOR)
+  if (!guardado) return {}
+  try {
+    return sanearCondiciones(JSON.parse(guardado))
+  } catch {
+    return {}
+  }
+}
+
+export function guardarCondiciones(condiciones: CondicionesRecordadas): void {
+  escribir(CLAVE_CONDICIONES_MULTICOTIZADOR, JSON.stringify(sanearCondiciones(condiciones)))
 }

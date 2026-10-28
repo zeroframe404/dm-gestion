@@ -13,10 +13,14 @@ import {
   categoriaDeCobertura,
   enPesos,
   normalizarTexto,
+  tieneRastreador,
+  usoBasico,
   type AjusteDeAseguradora,
   type CoberturaCotizada,
   type CondicionIva,
+  type Facturacion,
   type MedioDePago,
+  type UsoDelVehiculo as UsoPedido,
 } from '../../shared/multicotizador'
 import type { TipoDeVehiculo } from '../../shared/tipos'
 import { SECCION_ATM, planesAtm, vendedoresAtm, type PlanAtm } from '../aseguradoras/atm/catalogos'
@@ -33,13 +37,19 @@ import {
   type VehiculoAtm,
 } from '../aseguradoras/atm/tablas'
 import { credencialesAtm } from '../servicios/config'
-import type { CotizacionDeAseguradora, CotizadorDeAseguradora, SolicitudResuelta } from './aseguradora'
+import type { CotizacionDeAseguradora, CotizadorDeAseguradora, PlanDeAseguradora, SolicitudResuelta } from './aseguradora'
 import {
+  bajoElFormulario,
   buscarLocalidad,
   buscarMarca,
+  CLAVES_CONDICION_IIBB,
   CLAVES_USO,
+  elegidoBajo,
   palabras,
+  periodoDeFacturacion,
+  porClausula,
   porPalabrasClave,
+  porRastreador,
   rankear,
   similitud,
   sinDudas,
@@ -103,12 +113,14 @@ function rangoDePeriodo(plan: PlanAtm): number {
 
 /**
  * El plan con que se cotiza si no se eligió otro: de la forma de pago del medio elegido, el que factura
- * más seguido («ANUAL/MENSUAL» con tarjeta o con CBU). Sin ninguno de esa forma de pago, el primero.
+ * con el período pedido en el formulario o, con «Mejor costo», el que factura más seguido
+ * («ANUAL/MENSUAL» con tarjeta o con CBU). Sin ninguno de esa forma de pago, el primero.
  */
-export function planPorDefecto(planes: PlanAtm[], medio: MedioDePago): PlanAtm | undefined {
+export function planPorDefecto(planes: PlanAtm[], medio: MedioDePago, facturacion: Facturacion = 'MEJOR_COSTO'): PlanAtm | undefined {
   const deEseMedio = planes.filter((plan) => plan.formaDePagoCodigo === FORMA_DE_PAGO_ATM[medio])
   const candidatos = deEseMedio.length > 0 ? deEseMedio : planes
-  return [...candidatos].sort((a, b) => rangoDePeriodo(a) - rangoDePeriodo(b))[0]
+  const delPeriodo = facturacion === 'MEJOR_COSTO' ? [] : candidatos.filter((plan) => periodoDeFacturacion(plan.descripcion) === facturacion)
+  return [...(delPeriodo.length > 0 ? delPeriodo : candidatos)].sort((a, b) => rangoDePeriodo(a) - rangoDePeriodo(b))[0]
 }
 
 const NOMBRE_FORMA_DE_PAGO: Record<string, string> = { TARJETA: 'tarjeta de crédito', CBU: 'débito por CBU', EFVO: 'efectivo / cupón' }
@@ -160,12 +172,18 @@ export function opcionesDeIibb(iva: string): OpcionAtm[] {
 /** Particular → 1, comercial → 2: así distingue ATM los usos (columna `tipo_uso`). */
 const TIPO_USO_ATM = { PARTICULAR: '1', COMERCIAL: '2' } as const
 
-/** El uso de ATM con que se cotiza el vehículo: el del tipo pedido; si las tablas no lo dicen, por su nombre. */
-export function usoPorDefecto(vehiculo: VehiculoAtm | null, usos: OpcionAtm[], uso: 'PARTICULAR' | 'COMERCIAL'): string {
-  const delTipo = vehiculo?.usos.find((u) => u.tipoUso === TIPO_USO_ATM[uso])
-  if (delTipo) return delTipo.codigo
+/**
+ * El uso de ATM con que se cotiza el vehículo: el que tenga el nombre del pedido (taxi, remís…); si no,
+ * el del tipo pedido (particular o comercial); si las tablas no lo dicen, por su nombre.
+ */
+export function usoPorDefecto(vehiculo: VehiculoAtm | null, usos: OpcionAtm[], uso: UsoPedido): string {
   const lista = vehiculo && vehiculo.usos.length > 0 ? vehiculo.usos.map((u) => usos.find((o) => o.codigo === u.codigo) ?? { codigo: u.codigo, descripcion: u.codigo }) : usos
-  return porPalabrasClave(lista, CLAVES_USO[uso])?.codigo ?? (lista.length === 1 ? lista[0]!.codigo : '')
+  const basico = usoBasico(uso)
+  const conEseNombre = uso !== basico ? porPalabrasClave(lista, CLAVES_USO[uso]) : null
+  if (conEseNombre) return conEseNombre.codigo
+  const delTipo = vehiculo?.usos.find((u) => u.tipoUso === TIPO_USO_ATM[basico])
+  if (delTipo) return delTipo.codigo
+  return porPalabrasClave(lista, CLAVES_USO[basico])?.codigo ?? (lista.length === 1 ? lista[0]!.codigo : '')
 }
 
 /**
@@ -430,8 +448,8 @@ interface UsoDelVehiculo {
   aviso: string | null
 }
 
-/** El uso de ATM con que se cotiza un auto y su ajuste. */
-function usoParaElVehiculo(vehiculo: VehiculoAtm, elegidos: Record<string, string>, tablas: TablasAtm, pedido: 'PARTICULAR' | 'COMERCIAL'): UsoDelVehiculo {
+/** El uso de ATM con que se cotiza un auto y su ajuste. `aMano` es el elegido en la tarjeta (ver `elegidoBajo`). */
+function usoParaElVehiculo(vehiculo: VehiculoAtm, aMano: string | undefined, tablas: TablasAtm, pedido: UsoPedido): UsoDelVehiculo {
   const delVehiculo: OpcionDeLista[] =
     vehiculo.usos.length > 0
       ? vehiculo.usos.map((u) => {
@@ -440,18 +458,18 @@ function usoParaElVehiculo(vehiculo: VehiculoAtm, elegidos: Record<string, strin
           return { codigo: u.codigo, descripcion: [nombre, tipoDeUso && !nombre ? tipoDeUso : '', `(${u.codigo})`].filter(Boolean).join(' ') }
         })
       : tablas.usos
-  const uso = valido(elegidos.uso, delVehiculo) ?? usoPorDefecto(vehiculo, tablas.usos, pedido)
+  const uso = valido(aMano, delVehiculo) ?? usoPorDefecto(vehiculo, tablas.usos, pedido)
   // ATM puede tener el vehículo sólo con el otro uso (un utilitario, sólo comercial): se cotiza con
   // ése, que es el único que acepta, pero a la vista.
   const tipoDelUso = vehiculo.usos.find((u) => u.codigo === uso)?.tipoUso
   const aviso =
-    !elegidos.uso && tipoDelUso && tipoDelUso !== TIPO_USO_ATM[pedido]
+    !aMano && tipoDelUso && tipoDelUso !== TIPO_USO_ATM[usoBasico(pedido)]
       ? `ATM tiene este vehículo sólo con uso ${tipoDelUso === '2' ? 'comercial' : 'particular'}: se cotizó con ése.`
       : null
   return {
     uso,
     aviso,
-    ajuste: {
+    ajuste: bajoElFormulario(pedido, {
       campo: 'uso',
       titulo: 'Uso en ATM',
       ayuda: delVehiculo.length === 0 ? 'Las tablas de ATM no traen los usos de este vehículo.' : undefined,
@@ -460,7 +478,7 @@ function usoParaElVehiculo(vehiculo: VehiculoAtm, elegidos: Record<string, strin
       obligatorio: true,
       dependeDe: 'version',
       porSolicitud: true,
-    },
+    }),
   }
 }
 
@@ -481,10 +499,14 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     credenciales.vendedor || (await enMemoria(`vendedores:${clave}`, () => vendedoresAtm(cliente)))[0]?.codigo || ''
   if (!vendedor) throw new ErrorDeAtm('ATM no tiene vendedores para esta cuenta: cargá el código de vendedor en API Aseguradoras → ATM.', false)
 
-  // El plan: vigencia, facturación, cuotas y forma de pago, todo junto.
+  // El plan: vigencia, facturación, cuotas y forma de pago, todo junto. Arranca en el de la forma de pago
+  // y la facturación del formulario.
   const planes = await enMemoria(`planes:${clave}:${tipo}:${vendedor}`, () => planesAtm(cliente, tipo, vendedor))
-  const plan = planes.find((p) => p.codigo === elegidos.plan) ?? planPorDefecto(planes, solicitud.medioDePago)
-  ajustes.push({
+  const { facturacion, clausulaAjuste } = solicitud.condiciones
+  const delFormulario = `${solicitud.medioDePago}+${facturacion}`
+  const planAMano = elegidoBajo(elegidos.plan, delFormulario)
+  const plan = planes.find((p) => p.codigo === planAMano) ?? planPorDefecto(planes, solicitud.medioDePago, facturacion)
+  ajustes.push(bajoElFormulario(delFormulario, {
     campo: 'plan',
     titulo: 'Plan',
     ayuda:
@@ -493,7 +515,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     valor: plan?.codigo ?? '',
     obligatorio: true,
     destacado: true,
-  })
+  }))
 
   const bonificaciones = opcionesDePorcentaje(50, 5)
   const bonificacion = valido(elegidos.bonificacion, bonificaciones) ?? ''
@@ -509,16 +531,17 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
 
   let clausula = ''
   if (esAuto) {
-    clausula = valido(elegidos.clausulaAjuste, CLAUSULAS_ATM) ?? '10'
-    ajustes.push({
+    clausula = valido(elegidoBajo(elegidos.clausulaAjuste, clausulaAjuste), CLAUSULAS_ATM) ?? porClausula(CLAUSULAS_ATM, clausulaAjuste)?.codigo ?? '10'
+    if (porClausula(CLAUSULAS_ATM, clausulaAjuste) === null) avisos.push(`ATM no tiene cláusula de ajuste de ${clausulaAjuste} %: se cotizó con ${clausula} %.`)
+    ajustes.push(bajoElFormulario(clausulaAjuste, {
       campo: 'clausulaAjuste',
       titulo: 'Cláusula de ajuste',
-      ayuda: 'Cuánto puede subir la suma asegurada durante la vigencia. El manual de ATM cotiza por defecto con 10 %.',
+      ayuda: 'Cuánto puede subir la suma asegurada durante la vigencia. ATM tiene sin cláusula, 10 % y 20 %.',
       opciones: opcionesDe(CLAUSULAS_ATM),
       valor: clausula,
       obligatorio: false,
       destacado: true,
-    })
+    }))
   }
 
   // Las tablas (vehículos, usos, localidades). Sin ellas no hay con qué identificar el vehículo.
@@ -534,21 +557,18 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   // Es del cliente, no de la agencia: lo cambiado a mano vale mientras el formulario diga la misma
   // condición de IVA. Por eso cada opción lleva adelante la del formulario («CONSUMIDOR_FINAL|EX»): si
   // ahí se elige otra, lo de antes deja de ser una opción y vuelve a mandar el formulario.
-  const delFormulario = solicitud.tomador.condicionIva
-  const elegidoIva = elegidos.iva?.startsWith(`${delFormulario}|`) ? elegidos.iva.slice(delFormulario.length + 1) : undefined
-  const iva = valido(elegidoIva, ivas) ?? IVA_ATM[delFormulario]
-  ajustes.push({
-    campo: 'iva',
-    titulo: 'Condición de IVA',
-    opciones: ivas.map((o) => ({ valor: `${delFormulario}|${o.codigo}`, texto: o.descripcion })),
-    valor: `${delFormulario}|${iva}`,
-    obligatorio: true,
-    porSolicitud: true,
-  })
+  const { condicionIva, ingresosBrutos } = solicitud.tomador
+  const iva = valido(elegidoBajo(elegidos.iva, condicionIva), ivas) ?? IVA_ATM[condicionIva]
+  ajustes.push(
+    bajoElFormulario(condicionIva, { campo: 'iva', titulo: 'Condición de IVA', opciones: opcionesDe(ivas), valor: iva, obligatorio: true, porSolicitud: true }),
+  )
   const iibbs = opcionesDeIibb(iva)
-  const iibb = iibbs.length > 0 ? (valido(elegidos.iibb, iibbs) ?? iibbPorDefecto(iva)) : ''
+  const iibb =
+    iibbs.length > 0
+      ? (valido(elegidoBajo(elegidos.iibb, ingresosBrutos), iibbs) ?? porPalabrasClave(iibbs, CLAVES_CONDICION_IIBB[ingresosBrutos])?.codigo ?? iibbPorDefecto(iva))
+      : ''
   if (iibbs.length > 0) {
-    ajustes.push({
+    ajustes.push(bajoElFormulario(ingresosBrutos, {
       campo: 'iibb',
       titulo: 'Ingresos brutos',
       ayuda: 'ATM lo pide para inscriptos, monotributistas y exentos (para consumidor final no va).',
@@ -557,16 +577,17 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
       obligatorio: iva === 'IN' || iva === 'MT',
       dependeDe: 'iva',
       porSolicitud: true,
-    })
+    }))
   }
 
   // El vehículo y su uso.
+  const usoAMano = esAuto ? elegidoBajo(elegidos.uso, v.uso) : undefined
   const elegido = vehiculoEnAtm(solicitud, elegidos, tablas, ajustes, cuenta.ambiente)
   let vehiculo = elegido.vehiculo
   let uso = ''
   let avisoDeUso: string | null = null
   if (esAuto && vehiculo) {
-    const delVehiculo = usoParaElVehiculo(vehiculo, elegidos, tablas, v.uso)
+    const delVehiculo = usoParaElVehiculo(vehiculo, usoAMano, tablas, v.uso)
     uso = delVehiculo.uso
     avisoDeUso = delVehiculo.aviso
     if (avisoDeUso) avisos.push(avisoDeUso)
@@ -595,12 +616,13 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     })
   }
 
-  // El rastreo: ATM pide el código de su equipo. Sin elegirlo se cotiza como sin rastreo.
+  // El rastreo: ATM pide el código de su equipo, el del formulario si lo tiene. Sin él se cotiza como
+  // sin rastreo.
   let rastreo = ''
-  if (v.rastreo) {
+  if (tieneRastreador(v)) {
     if (tablas.rastreos.length > 0) {
-      rastreo = valido(elegidos.rastreo, tablas.rastreos) ?? ''
-      ajustes.push({
+      rastreo = valido(elegidoBajo(elegidos.rastreo, v.rastreador), tablas.rastreos) ?? porRastreador(tablas.rastreos, v.rastreador)?.codigo ?? ''
+      ajustes.push(bajoElFormulario(v.rastreador, {
         campo: 'rastreo',
         titulo: 'Equipo de rastreo',
         ayuda: 'Si no se elige, ATM cotiza como si no tuviera rastreo.',
@@ -608,7 +630,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
         valor: rastreo,
         obligatorio: false,
         porSolicitud: true,
-      })
+      }))
       if (!rastreo) avisos.push('Tiene rastreo satelital: elegí el equipo en los ajustes de ATM para que lo tenga en cuenta. Mientras tanto se cotizó sin rastreo.')
     } else {
       avisos.push('Tiene rastreo satelital, pero las tablas de ATM no traen sus equipos: se cotizó sin rastreo.')
@@ -619,9 +641,10 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     { codigo: '0', descripcion: 'No tiene' },
     { codigo: '1', descripcion: 'Tiene alarma' },
   ]
-  const alarma = valido(elegidos.alarma, alarmas) ?? '0'
-  // Es del vehículo: no se arrastra a la próxima cotización.
-  ajustes.push({ campo: 'alarma', titulo: 'Alarma', opciones: opcionesDe(alarmas), valor: alarma, obligatorio: false, porSolicitud: true })
+  // Arranca en lo que dice el scoring del formulario. Es del vehículo: no se arrastra a la próxima cotización.
+  const conAlarma = v.scoring.alarma ? '1' : '0'
+  const alarma = valido(elegidoBajo(elegidos.alarma, conAlarma), alarmas) ?? conAlarma
+  ajustes.push(bajoElFormulario(conAlarma, { campo: 'alarma', titulo: 'Alarma', opciones: opcionesDe(alarmas), valor: alarma, obligatorio: false, porSolicitud: true }))
 
   const faltan = ajustes.filter((ajuste) => ajuste.obligatorio && !ajuste.valor)
   if (faltan.length > 0 || !plan || !vehiculo) {
@@ -662,7 +685,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     ceroKm: v.ceroKm,
     sumaAsegurada: v.sumaAsegurada ?? undefined,
     uso: esAuto ? intento.uso : undefined,
-    tipoUso: esAuto ? undefined : TIPO_USO_ATM[v.uso],
+    tipoUso: esAuto ? undefined : TIPO_USO_ATM[usoBasico(v.uso)],
     codigoPostal: solicitud.codigoPostal,
     subCodigoPostal: subCodigoPostal || undefined,
     ajuste: esAuto ? Number(clausula) : undefined,
@@ -692,7 +715,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   // rendirse se prueba con el código como vino en sus tablas (con los ceros de adelante) y, si el uso no
   // se eligió a mano, con los otros usos del mismo tipo que las tablas le dan al vehículo.
   const cotizarVersion = async (version: VehiculoAtm, usoDeLaVersion: string, maximo: number) => {
-    const intentos = intentosDeCotizacion(version, usoDeLaVersion, esAuto && !elegidos.uso).slice(0, maximo)
+    const intentos = intentosDeCotizacion(version, usoDeLaVersion, esAuto && !usoAMano).slice(0, maximo)
     let intento = intentos[0]!
     let cotizacion = await pedir(version, intento)
     // Hasta que ATM haya entendido alguna forma del pedido en esta computadora, un «no registrado»
@@ -725,7 +748,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   }
   // Con el uso elegido a mano, el rechazo puede ser por el uso y no por la versión: no se anota.
   const anotarRechazo = (version: VehiculoAtm) => {
-    if (esAuto && elegidos.uso) return
+    if (esAuto && usoAMano) return
     rechazadas.add(claveDeRechazo(cuenta.ambiente, version.codigoInfoAuto, anio))
     const opcion = ajustes.find((a) => a.campo === 'version')?.opciones.find((o) => o.valor === version.codigoInfoAuto)
     if (opcion && !opcion.texto.endsWith(NO_LA_TIENE)) opcion.texto += NO_LA_TIENE
@@ -740,7 +763,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     anotarRechazo(vehiculo)
     olvidarEquivalencia(ID_ATM, v.codigoCatalogo, vehiculo.codigoInfoAuto)
     for (const alternativa of elegido.alternativas) {
-      const delVehiculo = esAuto ? usoParaElVehiculo(alternativa, elegidos, tablas, v.uso) : null
+      const delVehiculo = esAuto ? usoParaElVehiculo(alternativa, usoAMano, tablas, v.uso) : null
       const otra = await cotizarVersion(alternativa, delVehiculo?.uso ?? '', 1)
       if (!otra.cotizacion.ok) {
         if (otra.cotizacion.mensajes.some(esVehiculoNoRegistrado)) anotarRechazo(alternativa)
@@ -906,6 +929,21 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   }
 }
 
+// --- Los listados ---------------------------------------------------------------------------------------
+
+/** Los planes del vendedor de la cuenta (el cargado o, si no, el primero), los mismos que ofrece la tarjeta. */
+async function planes(tipo: TipoDeVehiculo): Promise<PlanDeAseguradora[]> {
+  const credenciales = cuentaActual()
+  if (!credenciales) throw new ErrorDeAtm('Falta cargar la cuenta de ATM en API Aseguradoras → ATM.', false)
+  const cuenta: CuentaAtm = { ambiente: credenciales.ambiente, usuario: credenciales.usuario, clave: credenciales.clave }
+  const cliente = crearClienteAtm(cuenta)
+  const clave = `${cuenta.ambiente}:${cuenta.usuario}`
+  const vendedor = credenciales.vendedor || (await enMemoria(`vendedores:${clave}`, () => vendedoresAtm(cliente)))[0]?.codigo || ''
+  if (!vendedor) throw new ErrorDeAtm('ATM no tiene vendedores para esta cuenta: cargá el código de vendedor en API Aseguradoras → ATM.', false)
+  const lista = await enMemoria(`planes:${clave}:${tipo}:${vendedor}`, () => planesAtm(cliente, tipo, vendedor))
+  return lista.map((plan) => ({ codigo: plan.codigo, descripcion: plan.descripcion, detalle: plan.formaDePago ? `Pago: ${plan.formaDePago}` : '' }))
+}
+
 export const atm: CotizadorDeAseguradora = {
   id: ID_ATM,
   nombre: NOMBRE,
@@ -925,4 +963,7 @@ export const atm: CotizadorDeAseguradora = {
       .map((l) => l.localidad)
   },
   cotizar,
+  planes,
+  // ATM no lista cotizaciones, y sus pólizas sólo se pueden buscar de a un DNI (`policiesByDni`): no
+  // hay un listado de lo emitido en un rango de fechas.
 }

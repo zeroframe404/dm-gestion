@@ -233,6 +233,8 @@ const TRAZOS = {
   ),
   flechaDerecha: <path d="m9 18 6-6-6-6" />,
   flechaIzquierda: <path d="m15 18-6-6 6-6" />,
+  flechaAbajo: <path d="m6 9 6 6 6-6" />,
+  lista: <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />,
   auto: (
     <>
       <path d="M5 17h14M6.5 17v2a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-2M20.5 17v2a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-2" />

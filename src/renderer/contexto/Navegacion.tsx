@@ -37,6 +37,11 @@ export interface ParametrosDeNavegacion {
 
 interface Navegacion {
   modulo: IdModulo
+  /**
+   * La sección del módulo abierta desde su sublista de la barra lateral (ver `Modulo.secciones`). A
+   * diferencia de `parametros`, no se consume: la barra la usa para marcar el renglón activo.
+   */
+  seccion: string | null
   parametros: ParametrosDeNavegacion
   /** Cambia de módulo. Los parámetros son de un solo uso: los consume la pantalla que se abre. */
   ir: (modulo: IdModulo, parametros?: ParametrosDeNavegacion) => void
@@ -49,15 +54,17 @@ const ContextoNavegacion = createContext<Navegacion | null>(null)
 export function ProveedorNavegacion({ children }: { children: ReactNode }) {
   const [modulo, setModulo] = useState<IdModulo>('inicio')
   const [parametros, setParametros] = useState<ParametrosDeNavegacion>({})
+  const [seccion, setSeccion] = useState<string | null>(null)
 
   const ir = useCallback((destino: IdModulo, nuevos: ParametrosDeNavegacion = {}) => {
     setModulo(destino)
     setParametros(nuevos)
+    setSeccion(nuevos.seccion ?? null)
   }, [])
 
   const limpiarParametros = useCallback(() => setParametros({}), [])
 
-  const valor = useMemo(() => ({ modulo, parametros, ir, limpiarParametros }), [modulo, parametros, ir, limpiarParametros])
+  const valor = useMemo(() => ({ modulo, seccion, parametros, ir, limpiarParametros }), [modulo, seccion, parametros, ir, limpiarParametros])
   return <ContextoNavegacion.Provider value={valor}>{children}</ContextoNavegacion.Provider>
 }
 

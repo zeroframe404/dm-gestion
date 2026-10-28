@@ -9,11 +9,21 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { CotizadorDeAseguradora } from '../src/main/multicotizador/aseguradora'
 import {
+  bajoElFormulario,
   buscarLocalidad,
   buscarMarca,
+  cantidadDeCuotas,
+  CLAVES_CONDICION_IIBB,
   CLAVES_MEDIO_DE_PAGO,
   codigoPostalDeCuatro,
+  elegidoBajo,
+  periodoDeFacturacion,
+  porClausula,
+  porCuotas,
+  porFacturacion,
   porPalabrasClave,
+  porRastreador,
+  porUso,
   rankear,
   similitud,
   sinDudas,
@@ -34,6 +44,13 @@ import {
 import { cotizacionGalenoSinComision, sinComisiones } from '../src/main/servicios/galeno'
 import { usarAseguradorasDePrueba } from '../src/main/multicotizador/registro'
 import {
+  aseguradoraDeLaBase,
+  cotizacionesDelMulticotizador,
+  emisionesDelMulticotizador,
+  planesDelMulticotizador,
+  validarFiltrosDeListado,
+} from '../src/main/servicios/listadosDelMulticotizador'
+import {
   aseguradorasDelMulticotizador,
   cotizarEnAseguradora,
   localidadesDelMulticotizador,
@@ -45,8 +62,10 @@ import {
   elegidosAplicados,
   elegirAjuste,
   enPorcentaje,
+  fechaIsoDe,
   mejoresPorCategoria,
   rangoDePorcentajes,
+  sanearCondiciones,
   sanearElegidos,
   sinLosPorSolicitud,
   type AjusteDeAseguradora,
@@ -69,14 +88,29 @@ function solicitud(cambios: Partial<SolicitudDeCotizacion> = {}): SolicitudDeCot
       uso: 'PARTICULAR',
       gnc: false,
       valorGnc: null,
-      rastreo: false,
+      rastreador: 'SIN_RASTREADOR',
+      scoring: { grua: false, alarma: false, garaje: false },
+      accesorios: [],
       sumaAsegurada: null,
     },
-    tomador: { nombre: '', documento: '', telefono: '', tipoPersona: 'FISICA', condicionIva: 'CONSUMIDOR_FINAL' },
+    tomador: {
+      nombre: '',
+      apellido: '',
+      dni: '',
+      cuit: '',
+      telefono: '',
+      tipoPersona: 'FISICA',
+      condicionIva: 'CONSUMIDOR_FINAL',
+      ingresosBrutos: 'CONSUMIDOR_FINAL',
+      sexo: null,
+      fechaNacimiento: '',
+    },
+    provincia: 'Buenos Aires',
     codigoPostal: '1870',
     localidad: 'Avellaneda',
     vigenciaDesde: '2026-10-01',
     medioDePago: 'TARJETA',
+    condiciones: { plan: 'SIN_PLAN', tarifa: 'SIN_DESCUENTO', comision: 'ESTANDAR', facturacion: 'MEJOR_COSTO', clausulaAjuste: '10', cuotas: 'MAXIMA' },
     ...cambios,
   }
 }
@@ -240,6 +274,107 @@ test('multicotizador: las listas cortas de cada compañía se eligen por palabra
   assert.equal(porPalabrasClave(deGaleno, CLAVES_MEDIO_DE_PAGO.TARJETA)?.codigo, '2')
 })
 
+test('multicotizador: lo del formulario se traduce a las listas de cada compañía', () => {
+  // El uso: el que tenga ese nombre y, si la compañía no lo distingue, particular o comercial.
+  const usos = [
+    { codigo: '1', descripcion: 'PARTICULAR' },
+    { codigo: '2', descripcion: 'COMERCIAL' },
+    { codigo: '7', descripcion: 'TAXI / REMIS' },
+  ]
+  assert.equal(porUso(usos, 'PARTICULAR')?.codigo, '1')
+  assert.equal(porUso(usos, 'TAXI')?.codigo, '7')
+  assert.equal(porUso(usos, 'REMIS')?.codigo, '7')
+  assert.equal(porUso(usos, 'AMBULANCIA')?.codigo, '2', 'sin un uso con ese nombre, comercial')
+  assert.equal(porUso(usos, 'PLATAFORMA')?.codigo, '2')
+
+  // La facturación: cuenta el período que no es el anual («anual con refacturación trimestral» es trimestral).
+  assert.equal(periodoDeFacturacion('ANUAL C/ REFACTURACION TRIMESTRAL'), 'TRIMESTRAL')
+  assert.equal(periodoDeFacturacion('Anual'), 'ANUAL')
+  assert.equal(periodoDeFacturacion('CUATRIMESTRAL'), 'CUATRIMESTRAL')
+  assert.equal(periodoDeFacturacion('Contado'), null)
+  const modos = [
+    { codigo: 'A', descripcion: 'ANUAL' },
+    { codigo: 'AT', descripcion: 'ANUAL C/ REFACT. TRIMESTRAL' },
+    { codigo: 'M', descripcion: 'MENSUAL' },
+  ]
+  assert.equal(porFacturacion(modos, 'ANUAL')?.codigo, 'A')
+  assert.equal(porFacturacion(modos, 'TRIMESTRAL')?.codigo, 'AT')
+  assert.equal(porFacturacion(modos, 'MENSUAL')?.codigo, 'M')
+  assert.equal(porFacturacion(modos, 'SEMESTRAL'), null)
+  assert.equal(porFacturacion(modos, 'MEJOR_COSTO'), null, 'con «Mejor costo» decide cada compañía')
+
+  // Las cuotas: la cantidad exacta, o la mayor que tenga.
+  assert.equal(cantidadDeCuotas('CONTADO'), 1)
+  assert.equal(cantidadDeCuotas('6 CUOTAS'), 6)
+  assert.equal(cantidadDeCuotas('Débito'), null)
+  const cuotas = [
+    { codigo: 'C', descripcion: 'Contado' },
+    { codigo: '3', descripcion: '3 cuotas' },
+    { codigo: '10', descripcion: '10 cuotas sin interés' },
+  ]
+  assert.equal(porCuotas(cuotas, 'MAXIMA')?.codigo, '10')
+  assert.equal(porCuotas(cuotas, 1)?.codigo, 'C')
+  assert.equal(porCuotas(cuotas, 3)?.codigo, '3')
+  assert.equal(porCuotas(cuotas, 12), null)
+  assert.equal(porCuotas(cuotas, null), null)
+
+  // La cláusula de ajuste, por su porcentaje (15 no es 5).
+  const clausulas = [
+    { codigo: 'S', descripcion: 'Sin cláusula de ajuste' },
+    { codigo: 'A15', descripcion: 'Ajuste automático 15%' },
+    { codigo: 'A5', descripcion: 'Ajuste automático 5 %' },
+  ]
+  assert.equal(porClausula(clausulas, '5')?.codigo, 'A5')
+  assert.equal(porClausula(clausulas, '15')?.codigo, 'A15')
+  assert.equal(porClausula(clausulas, '0')?.codigo, 'S')
+  assert.equal(porClausula(clausulas, '30'), null)
+
+  // El rastreador y los ingresos brutos, por palabras clave.
+  const equipos = [
+    { codigo: '1', descripcion: 'LO JACK' },
+    { codigo: '2', descripcion: 'ITURAN AVL' },
+    { codigo: '9', descripcion: 'OTROS' },
+  ]
+  assert.equal(porRastreador(equipos, 'LO_JACK')?.codigo, '1')
+  assert.equal(porRastreador(equipos, 'ITURAN')?.codigo, '2')
+  assert.equal(porRastreador(equipos, 'OTRO')?.codigo, '9')
+  assert.equal(porRastreador(equipos, 'SIN_RASTREADOR'), null)
+  const iibbs = [
+    { codigo: 'L', descripcion: 'Inscripto local' },
+    { codigo: 'CM', descripcion: 'Convenio multilateral' },
+    { codigo: 'RS', descripcion: 'Régimen simplificado' },
+  ]
+  assert.equal(porPalabrasClave(iibbs, CLAVES_CONDICION_IIBB.CONVENIO_MULTILATERAL)?.codigo, 'CM')
+  assert.equal(porPalabrasClave(iibbs, CLAVES_CONDICION_IIBB.LOCAL)?.codigo, 'L')
+  assert.equal(porPalabrasClave(iibbs, CLAVES_CONDICION_IIBB.REGIMEN_SIMPLIFICADO)?.codigo, 'RS')
+})
+
+test('multicotizador: lo afinado en la tarjeta vale mientras el formulario diga lo mismo', () => {
+  const ajuste = bajoElFormulario('MENSUAL', {
+    campo: 'modoFacturacion',
+    titulo: 'Modo',
+    opciones: [
+      { valor: 'M1', texto: 'Mensual' },
+      { valor: 'M2', texto: 'Anual c/ refact. mensual' },
+    ],
+    valor: 'M1',
+    obligatorio: true,
+  })
+  assert.deepEqual(
+    ajuste.opciones.map((o) => o.valor),
+    ['MENSUAL|M1', 'MENSUAL|M2'],
+  )
+  assert.equal(ajuste.valor, 'MENSUAL|M1')
+  // Elegido en la tarjeta con «Mensual» en el formulario: vale con «Mensual» y no con otra cosa.
+  assert.equal(elegidoBajo('MENSUAL|M2', 'MENSUAL'), 'M2')
+  assert.equal(elegidoBajo('MENSUAL|M2', 'ANUAL'), undefined)
+  // Lo guardado antes de que el formulario lo pidiera (sin el prefijo) ya no manda.
+  assert.equal(elegidoBajo('M2', 'MENSUAL'), undefined)
+  assert.equal(elegidoBajo(undefined, 'MENSUAL'), undefined)
+  // Un ajuste sin valor sigue sin valor (la compañía no pudo elegir).
+  assert.equal(bajoElFormulario('MENSUAL', { ...ajuste, valor: '' }).valor, '')
+})
+
 test('multicotizador: lo elegido a mano se guarda sin lo que dependía del vehículo, y se lee saneado', () => {
   const ajustes: AjusteDeAseguradora[] = [
     { campo: 'modoFacturacion', titulo: 'Modo', opciones: [], valor: '031', obligatorio: true, destacado: true },
@@ -256,6 +391,14 @@ test('multicotizador: lo elegido a mano se guarda sin lo que dependía del vehí
   // Lo que vuelve del localStorage puede ser cualquier cosa: sólo pasan pares texto → texto no vacío.
   assert.deepEqual(sanearElegidos({ bonificacion: ' 40 ', vacio: '  ', numero: 5, lista: ['x'], ['a'.repeat(41)]: '1' }), { bonificacion: '40' })
   assert.deepEqual(sanearElegidos(null), {})
+  // Las condiciones comerciales recordadas: sólo las opciones válidas.
+  assert.deepEqual(
+    sanearCondiciones({ plan: 'SIN_PLAN', tarifa: 'REGALADA', comision: 'MAXIMA', facturacion: 'MENSUAL', clausulaAjuste: '12', cuotas: 13, medioDePago: 'DEBITO' }),
+    { plan: 'SIN_PLAN', comision: 'MAXIMA', facturacion: 'MENSUAL', medioDePago: 'DEBITO' },
+  )
+  assert.deepEqual(sanearCondiciones({ cuotas: 'MAXIMA' }), { cuotas: 'MAXIMA' })
+  assert.deepEqual(sanearCondiciones({ cuotas: null }), { cuotas: null }, 'null es «las que dé cada compañía»: se recuerda')
+  assert.deepEqual(sanearCondiciones('texto'), {})
   assert.deepEqual(sanearElegidos('{"bonificacion":"40"}'), {})
   assert.deepEqual(sanearElegidos([{ bonificacion: '40' }]), {})
   assert.equal(sanearElegidos({ plan: 'x'.repeat(100) }).plan?.length, 80)
@@ -325,12 +468,31 @@ test('multicotizador: la solicitud se valida antes de salir a ninguna compañía
   assert.equal(buena.codigoPostal, '1870')
   assert.equal(buena.vehiculo.valorGnc, null)
 
-  const conGnc = validarSolicitud({ ...solicitud(), vehiculo: { ...solicitud().vehiculo, gnc: true, valorGnc: 850_000.4 } })
-  assert.equal(conGnc.vehiculo.valorGnc, 850_000)
+  // El GNC sale de los accesorios declarados, no de lo que diga la pantalla.
+  const conGnc = validarSolicitud({
+    ...solicitud(),
+    vehiculo: { ...solicitud().vehiculo, gnc: false, accesorios: [{ nombre: 'Equipo de GNC', valor: 850_000.4 }, { nombre: 'Alarma', valor: 90_000 }] },
+  })
+  assert.deepEqual([conGnc.vehiculo.gnc, conGnc.vehiculo.valorGnc], [true, 850_000])
+  const sinGnc = validarSolicitud({ ...solicitud(), vehiculo: { ...solicitud().vehiculo, gnc: true, valorGnc: 1 } })
+  assert.deepEqual([sinGnc.vehiculo.gnc, sinGnc.vehiculo.valorGnc], [false, null])
+  assert.throws(() => validarSolicitud({ ...solicitud(), vehiculo: { ...solicitud().vehiculo, accesorios: [{ nombre: 'Jacuzzi', valor: 10 }] } }), /no está en la lista/)
+  assert.throws(() => validarSolicitud({ ...solicitud(), vehiculo: { ...solicitud().vehiculo, accesorios: [{ nombre: 'Radio', valor: 0 }] } }), /Radio/)
 
   assert.throws(() => validarSolicitud({ ...solicitud(), codigoPostal: '18' }), /cuatro números/)
   assert.throws(() => validarSolicitud({ ...solicitud(), vigenciaDesde: '01/10/2026' }), /vigencia/)
-  assert.throws(() => validarSolicitud({ ...solicitud(), medioDePago: 'BITCOIN' }), /medio de pago/)
+  assert.throws(() => validarSolicitud({ ...solicitud(), medioDePago: 'BITCOIN' }), /forma de pago/)
+  assert.throws(() => validarSolicitud({ ...solicitud(), vehiculo: { ...solicitud().vehiculo, uso: 'NAVE' } }), /uso/)
+  assert.throws(() => validarSolicitud({ ...solicitud(), vehiculo: { ...solicitud().vehiculo, rastreador: 'GPS' } }), /rastreador/)
+  assert.throws(() => validarSolicitud({ ...solicitud(), tomador: { ...solicitud().tomador, ingresosBrutos: 'X' } }), /Ingresos brutos/)
+  assert.throws(() => validarSolicitud({ ...solicitud(), tomador: { ...solicitud().tomador, fechaNacimiento: '31/12/1990' } }), /nacimiento/)
+  // Con «Mejor costo» sólo vale la cantidad máxima de cuotas; con otra facturación, de 1 a 12 o ninguna.
+  const condiciones = solicitud().condiciones
+  assert.throws(() => validarSolicitud({ ...solicitud(), condiciones: { ...condiciones, cuotas: 3 } }), /Mejor costo/)
+  assert.equal(validarSolicitud({ ...solicitud(), condiciones: { ...condiciones, facturacion: 'MENSUAL', cuotas: 3 } }).condiciones.cuotas, 3)
+  assert.equal(validarSolicitud({ ...solicitud(), condiciones: { ...condiciones, facturacion: 'MENSUAL', cuotas: null } }).condiciones.cuotas, null)
+  assert.throws(() => validarSolicitud({ ...solicitud(), condiciones: { ...condiciones, facturacion: 'MENSUAL', cuotas: 13 } }), /cuotas/)
+  assert.throws(() => validarSolicitud({ ...solicitud(), condiciones: { ...condiciones, clausulaAjuste: '12' } }), /cláusula/)
   assert.throws(() => validarSolicitud({ ...solicitud(), vehiculo: { ...solicitud().vehiculo, anio: '1900' } }), /año/)
   assert.throws(() => validarSolicitud({ ...solicitud(), vehiculo: { ...solicitud().vehiculo, marca: '' } }), /marca/)
   assert.throws(
@@ -705,4 +867,108 @@ test('sinComisiones: saca todo campo de comisión, a cualquier profundidad', () 
   })
   assert.equal(sinComisiones(null), null)
   assert.equal(sinComisiones('comision'), 'comision')
+})
+
+// --- Los listados: cotizaciones, planes y emisiones ---------------------------------------------------
+
+test('multicotizador: las fechas de cada API se leen igual', () => {
+  assert.equal(fechaIsoDe('15/03/2022'), '2022-03-15')
+  assert.equal(fechaIsoDe('3/1/2018'), '2018-01-03')
+  assert.equal(fechaIsoDe('20260115'), '2026-01-15')
+  assert.equal(fechaIsoDe('2026-01-15T00:00:00'), '2026-01-15')
+  assert.equal(fechaIsoDe('cualquier cosa'), '')
+  assert.equal(fechaIsoDe(null), '')
+})
+
+test('multicotizador: el nombre de la base se reconoce como la compañía con API', () => {
+  const registradas = [{ nombre: 'Galeno' }, { nombre: 'ATM' }, { nombre: 'Mercantil Andina' }, { nombre: 'Equidad' }]
+  assert.equal(aseguradoraDeLaBase('GALENO SEGUROS', registradas), 0)
+  assert.equal(aseguradoraDeLaBase('ATM', registradas), 1)
+  assert.equal(aseguradoraDeLaBase('Mercantil Andina S.A.', registradas), 2)
+  assert.equal(aseguradoraDeLaBase('LA EQUIDAD', registradas), 3)
+  // Palabra entera: «ATMOSFERA» no es ATM.
+  assert.equal(aseguradoraDeLaBase('ATMOSFERA SEGUROS', registradas), -1)
+  assert.equal(aseguradoraDeLaBase('Federación Patronal', registradas), -1)
+  assert.equal(aseguradoraDeLaBase(null, registradas), -1)
+})
+
+test('multicotizador: los filtros de un listado se validan', () => {
+  assert.deepEqual(validarFiltrosDeListado({ desde: '2026-01-01', hasta: '2026-01-31', tipo: 'MOTO' }), { desde: '2026-01-01', hasta: '2026-01-31', tipo: 'MOTO' })
+  assert.equal(validarFiltrosDeListado({ desde: '2026-01-01', hasta: '2026-01-31', tipo: '' }).tipo, null)
+  assert.throws(() => validarFiltrosDeListado({ desde: '2026-02-01', hasta: '2026-01-01' }), /anterior/)
+  assert.throws(() => validarFiltrosDeListado({ desde: '2024-01-01', hasta: '2026-01-01' }), /un año/)
+  assert.throws(() => validarFiltrosDeListado({ desde: '01/01/2026', hasta: '2026-01-01' }), /desde/)
+})
+
+test('multicotizador: las emisiones salen de la API; sin API, sin configurar o caída, se dice por qué', async (t) => {
+  t.after(() => usarAseguradorasDePrueba(null))
+  const pedidos: unknown[] = []
+  usarAseguradorasDePrueba([
+    aseguradoraDePrueba({
+      id: 'CON_API',
+      nombre: 'Con API',
+      tipos: ['AUTO', 'MOTO'],
+      async emisiones(filtros) {
+        pedidos.push(filtros)
+        return [
+          { tipo: 'AUTO', poliza: '1', fechaEmision: '2026-01-10', tomador: 'Ana', patente: 'AA111AA', cobertura: 'C', vigenciaDesde: '', vigenciaHasta: '', estado: 'Vigente' },
+          { tipo: 'MOTO', poliza: '2', fechaEmision: '2026-01-12', tomador: 'Beto', patente: '', cobertura: 'A', vigenciaDesde: '', vigenciaHasta: '', estado: 'Vigente' },
+        ]
+      },
+    }),
+    aseguradoraDePrueba({ id: 'SIN_LISTADO', nombre: 'Sin listado' }),
+    aseguradoraDePrueba({ id: 'SIN_CLAVE', nombre: 'Sin clave', noDisponible: () => 'Faltan las credenciales.', emisiones: async () => [] }),
+    aseguradoraDePrueba({
+      id: 'CAIDA',
+      nombre: 'Caída',
+      async emisiones() {
+        throw new Error('503 Service Unavailable')
+      },
+    }),
+  ])
+
+  // Sin permiso para Pólizas no se toca la base: sólo lo de las APIs.
+  const listado = await emisionesDelMulticotizador({ desde: '2026-01-01', hasta: '2026-01-31', tipo: 'AUTO' }, false)
+  assert.deepEqual(pedidos, [{ desde: '2026-01-01', hasta: '2026-01-31', tipo: 'AUTO' }])
+  assert.deepEqual(
+    listado.filas.map((fila) => [fila.origen, fila.aseguradora, fila.poliza]),
+    [['API', 'CON_API', '1']],
+  )
+  const fuente = (id: string) => listado.fuentes.find((f) => f.aseguradora === id)!
+  assert.equal(fuente('CON_API').origen, 'API')
+  assert.equal(fuente('SIN_LISTADO').origen, 'VPS')
+  assert.match(fuente('SIN_LISTADO').motivoVps ?? '', /su API no da el listado de pólizas emitidas/)
+  assert.match(fuente('SIN_CLAVE').motivoVps ?? '', /no está configurada/)
+  assert.match(fuente('CAIDA').motivoVps ?? '', /503/)
+  assert.match(fuente('CAIDA').error ?? '', /503/)
+  assert.match(fuente('SIN_LISTADO').motivoVps ?? '', /permiso para ver Pólizas/)
+})
+
+test('multicotizador: los planes salen sólo de la API, y la que no tiene se explica', async (t) => {
+  t.after(() => usarAseguradorasDePrueba(null))
+  usarAseguradorasDePrueba([
+    aseguradoraDePrueba({ id: 'CON_PLANES', nombre: 'Con planes', planes: async () => [{ codigo: '10', descripcion: 'Plan 10', detalle: '' }] }),
+    aseguradoraDePrueba({ id: 'SIN_PLANES', nombre: 'Sin planes' }),
+  ])
+  const autos = await planesDelMulticotizador('AUTO')
+  assert.deepEqual(autos.filas, [{ codigo: '10', descripcion: 'Plan 10', detalle: '', aseguradora: 'CON_PLANES', nombreAseguradora: 'Con planes', tipo: 'AUTO' }])
+  assert.match(autos.fuentes[1]?.error ?? '', /planes comerciales/)
+  const motos = await planesDelMulticotizador('MOTO')
+  assert.equal(motos.filas.length, 0)
+  assert.match(motos.fuentes[0]?.error ?? '', /No cotiza motos/)
+})
+
+test('multicotizador: las cotizaciones de la API llevan su compañía y su origen', async (t) => {
+  t.after(() => usarAseguradorasDePrueba(null))
+  usarAseguradorasDePrueba([
+    aseguradoraDePrueba({
+      async cotizaciones() {
+        return [{ tipo: 'AUTO', numero: '55', fecha: '2026-01-05', tomador: 'Ana', vehiculo: 'Corolla', patente: '', cobertura: '', premio: null, sumaAsegurada: 1_000_000, vigenciaDesde: '', vigenciaHasta: '' }]
+      },
+    }),
+  ])
+  const listado = await cotizacionesDelMulticotizador({ desde: '2026-01-01', hasta: '2026-01-31' }, false)
+  assert.equal(listado.filas[0]?.origen, 'API')
+  assert.equal(listado.filas[0]?.nombreAseguradora, 'Prueba')
+  assert.equal(listado.filas[0]?.motivoVps, null)
 })

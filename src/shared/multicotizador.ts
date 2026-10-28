@@ -16,29 +16,69 @@ import type { CoberturaCotizadaGaleno, TipoDeVehiculo } from './tipos'
 /** El identificador de una compañía en el multicotizador ('GALENO' hoy; mañana las que se sumen). */
 export type IdAseguradora = string
 
-export const MEDIOS_DE_PAGO = ['TARJETA', 'DEBITO', 'EFECTIVO'] as const
+export const MEDIOS_DE_PAGO = ['EFECTIVO', 'TARJETA', 'DEBITO'] as const
 export type MedioDePago = (typeof MEDIOS_DE_PAGO)[number]
 
 export const NOMBRE_MEDIO_DE_PAGO: Record<MedioDePago, string> = {
+  EFECTIVO: 'Efectivo',
   TARJETA: 'Tarjeta de crédito',
-  DEBITO: 'Débito automático (CBU)',
-  EFECTIVO: 'Efectivo / cupón de pago',
+  DEBITO: 'CBU',
 }
 
-export const USOS_DEL_VEHICULO = ['PARTICULAR', 'COMERCIAL'] as const
+export const USOS_DEL_VEHICULO = [
+  'PARTICULAR',
+  'COMERCIAL',
+  'TAXI',
+  'REMIS',
+  'TRANSPORTE_DE_PASAJEROS',
+  'AUTOBOMBA',
+  'POLICIA',
+  'AMBULANCIA',
+  'AUXILIO_MECANICO',
+  'TRABAJO_RURAL',
+  'CASA_RODANTE',
+  'TANQUE_ATMOSFERICO',
+  'CARGAS_PELIGROSAS',
+  'ESCOLAR',
+  'TRANSPORTE_DE_BIENES',
+  'PLATAFORMA',
+] as const
 export type UsoDelVehiculo = (typeof USOS_DEL_VEHICULO)[number]
 
 export const NOMBRE_USO_DEL_VEHICULO: Record<UsoDelVehiculo, string> = {
   PARTICULAR: 'Particular',
   COMERCIAL: 'Comercial',
+  TAXI: 'Taxi',
+  REMIS: 'Remís',
+  TRANSPORTE_DE_PASAJEROS: 'Especial transporte de pasajeros',
+  AUTOBOMBA: 'Autobomba',
+  POLICIA: 'Policía',
+  AMBULANCIA: 'Ambulancia',
+  AUXILIO_MECANICO: 'Auxilio mecánico',
+  TRABAJO_RURAL: 'Trabajo rural',
+  CASA_RODANTE: 'Casa rodante con propulsión',
+  TANQUE_ATMOSFERICO: 'Tanque atmosférico',
+  CARGAS_PELIGROSAS: 'Cargas peligrosas',
+  ESCOLAR: 'Escolar y servicio especial',
+  TRANSPORTE_DE_BIENES: 'Transporte de bienes',
+  PLATAFORMA: 'Plataforma tipo Uber',
+}
+
+/**
+ * Casi todas las APIs distinguen sólo dos usos, particular y comercial: todo lo que no es particular
+ * (un taxi, una ambulancia, un auto de plataforma) se cotiza como comercial cuando la compañía no tiene
+ * un uso con ese nombre.
+ */
+export function usoBasico(uso: UsoDelVehiculo): 'PARTICULAR' | 'COMERCIAL' {
+  return uso === 'PARTICULAR' ? 'PARTICULAR' : 'COMERCIAL'
 }
 
 export const TIPOS_DE_PERSONA = ['FISICA', 'JURIDICA'] as const
 export type TipoDePersona = (typeof TIPOS_DE_PERSONA)[number]
 
 export const NOMBRE_TIPO_DE_PERSONA: Record<TipoDePersona, string> = {
-  FISICA: 'Persona física',
-  JURIDICA: 'Persona jurídica (empresa)',
+  FISICA: 'Física',
+  JURIDICA: 'Jurídica',
 }
 
 export const CONDICIONES_IVA = ['CONSUMIDOR_FINAL', 'MONOTRIBUTO', 'RESPONSABLE_INSCRIPTO', 'EXENTO'] as const
@@ -49,6 +89,194 @@ export const NOMBRE_CONDICION_IVA: Record<CondicionIva, string> = {
   MONOTRIBUTO: 'Monotributista',
   RESPONSABLE_INSCRIPTO: 'Responsable inscripto',
   EXENTO: 'Exento',
+}
+
+export const CONDICIONES_IIBB = ['CONSUMIDOR_FINAL', 'CONVENIO_MULTILATERAL', 'EXENTO', 'LOCAL', 'REGIMEN_SIMPLIFICADO', 'RESPONSABLE_NO_INSCRIPTO'] as const
+export type CondicionIibb = (typeof CONDICIONES_IIBB)[number]
+
+export const NOMBRE_CONDICION_IIBB: Record<CondicionIibb, string> = {
+  CONSUMIDOR_FINAL: 'Consumidor final',
+  CONVENIO_MULTILATERAL: 'Convenio multilateral',
+  EXENTO: 'Exento',
+  LOCAL: 'Local',
+  REGIMEN_SIMPLIFICADO: 'Régimen simplificado',
+  RESPONSABLE_NO_INSCRIPTO: 'Responsable no inscripto',
+}
+
+export const SEXOS = ['MASCULINO', 'FEMENINO'] as const
+export type Sexo = (typeof SEXOS)[number]
+
+export const NOMBRE_SEXO: Record<Sexo, string> = { MASCULINO: 'Masculino', FEMENINO: 'Femenino' }
+
+/** El rastreador que lleva el vehículo. Todos menos «Sin rastreador» cotizan con rastreo. */
+export const RASTREADORES = ['SIN_RASTREADOR', 'DE_LA_COMPANIA', 'OTRO', 'LO_JACK', 'TRACER', 'POINTER', 'ITURAN', 'UBICAR'] as const
+export type Rastreador = (typeof RASTREADORES)[number]
+
+export const NOMBRE_RASTREADOR: Record<Rastreador, string> = {
+  SIN_RASTREADOR: 'Sin rastreador',
+  DE_LA_COMPANIA: 'Rastreador a cargo de la compañía',
+  OTRO: 'Otro rastreador',
+  LO_JACK: 'Lo Jack',
+  TRACER: 'Tracer',
+  POINTER: 'Pointer',
+  ITURAN: 'Ituran AVL',
+  UBICAR: 'Ubicar',
+}
+
+export function tieneRastreador(vehiculo: { rastreador: Rastreador }): boolean {
+  return vehiculo.rastreador !== 'SIN_RASTREADOR'
+}
+
+/** Lo que baja el riesgo del vehículo: se tilda lo que tiene. */
+export interface ScoringDelVehiculo {
+  grua: boolean
+  alarma: boolean
+  garaje: boolean
+}
+
+export const SCORING_VACIO: ScoringDelVehiculo = { grua: false, alarma: false, garaje: false }
+
+/**
+ * Los accesorios que se pueden declarar, con su valor. Es la lista que usan las compañías (cada una
+ * con sus códigos); el equipo de GNC es además el que define si el vehículo «tiene GNC».
+ */
+export const ACCESORIOS = [
+  'ABS',
+  'Air bags',
+  'Aire acondicionado',
+  'Alarma',
+  'Alerón',
+  'Alfombras',
+  'Amortiguadores',
+  'Antena común',
+  'Antena eléctrica',
+  'Antena especial VHF',
+  'Apoya cabezas',
+  'Asiento o butaca',
+  'Audio y video',
+  'Barra antivuelcos',
+  'Blindaje',
+  'Bluetooth',
+  'Cabina',
+  'Caja acero',
+  'Caja aluminio',
+  'Caja automática',
+  'Caja madera',
+  'Caja metálica',
+  'Caja mudancera',
+  'Caja secuencial',
+  'Caja térmica',
+  'Caja volcadora',
+  'Calefactor',
+  'Caño de escape',
+  'Carrocería',
+  'Cerraduras',
+  'Cierre centralizado',
+  'Cinturones inerciales',
+  'Climatizador',
+  'Computadora a bordo',
+  'Control crucero de velocidad',
+  'Cristales blindados',
+  'Cristales laterales',
+  'Cubierta auxiliar',
+  'Cubiertas especiales',
+  'Cúpula',
+  'Daños por granizo',
+  'Defensa',
+  'Dirección asistida',
+  'Dirección eléctrica',
+  'Dirección hidráulica',
+  'Dispositivo de rastreo',
+  'DVD',
+  'Eje balancín',
+  'Eje neumático',
+  'Equipo de frío',
+  'Equipo de GNC',
+  'Espejos laterales',
+  'Estribos',
+  'Faros antiniebla',
+  'Faros de iodo',
+  'Faros xenón',
+  'Furgón',
+  'Furgón térmico',
+  'Gancho de remolque',
+  'Grúa hidráulica',
+  'Hormigonera',
+  'Levantavidrios eléctrico',
+  'Llantas especiales',
+  'Lonas',
+  'Luneta térmica y parabrisas',
+  'Malacate',
+  'Motor diésel',
+  'Parlantes',
+  'Porta equipaje',
+  'Portón hidráulico',
+  'Radio',
+  'Sensor de estacionamiento',
+  'Silenciador',
+  'Spoiler',
+  'Stereo',
+  'Tacógrafo',
+  'Tapizado de cuero',
+  'Tapizado deportivo',
+  'Tapizado interior',
+  'Techo corredizo',
+  'Varios',
+  'Vidrios polarizados',
+  'Volante deportivo',
+  'Batea',
+  'Caja cerealera',
+  'Caja paquetera',
+  'Caja sider',
+  'Cámara de estacionamiento',
+  'Doble cabina',
+  'Doble eje',
+  'Equipamiento discapacitados Kivi',
+  'Pala mecánica',
+  'Plato de enganche',
+  'Porta volquete',
+  'Roll Off On',
+  'Tanque cisterna',
+  'Tanque fibra de vidrio',
+  'Tolva',
+  'Vidrios furgón',
+  'Tasas',
+  'Ecualizador',
+  'Baliza',
+  'Motohormiguera',
+  'Rampa elevadora',
+  'Equipo compactador',
+  'Diferencial',
+  'Pintura bicapa',
+  'Equipo autobomba',
+  'Deflector',
+  'Turbo',
+  'Grupo electrógeno',
+  'Bumper',
+  'Motor naftero',
+  'Cubre cárter',
+  'Reloj',
+  'Marcadores',
+  'Genérico',
+] as const
+export type Accesorio = (typeof ACCESORIOS)[number]
+
+export const ACCESORIO_GNC: Accesorio = 'Equipo de GNC'
+
+export function esAccesorio(valor: unknown): valor is Accesorio {
+  return typeof valor === 'string' && (ACCESORIOS as readonly string[]).includes(valor)
+}
+
+export interface AccesorioACotizar {
+  nombre: Accesorio
+  /** En pesos. */
+  valor: number
+}
+
+/** El equipo de GNC sale de los accesorios: si está declarado, el vehículo tiene GNC y vale eso. */
+export function gncDe(accesorios: AccesorioACotizar[]): { gnc: boolean; valorGnc: number | null } {
+  const equipo = accesorios.find((accesorio) => accesorio.nombre === ACCESORIO_GNC)
+  return { gnc: Boolean(equipo), valorGnc: equipo && equipo.valor > 0 ? equipo.valor : null }
 }
 
 export interface VehiculoACotizar {
@@ -62,31 +290,162 @@ export interface VehiculoACotizar {
   codigoCatalogo: string
   ceroKm: boolean
   uso: UsoDelVehiculo
+  rastreador: Rastreador
+  scoring: ScoringDelVehiculo
+  accesorios: AccesorioACotizar[]
+  /** Si entre los accesorios está el equipo de GNC (ver `gncDe`). */
   gnc: boolean
   /** El valor del equipo de GNC, en pesos. Null si no se sabe. */
   valorGnc: number | null
-  rastreo: boolean
   /** Null = la que diga cada compañía para ese vehículo (casi siempre la de InfoAuto). */
   sumaAsegurada: number | null
 }
 
 export interface TomadorACotizar {
   nombre: string
-  documento: string
+  /** O la razón social, si es una persona jurídica. */
+  apellido: string
+  dni: string
+  cuit: string
   telefono: string
   tipoPersona: TipoDePersona
   condicionIva: CondicionIva
+  ingresosBrutos: CondicionIibb
+  sexo: Sexo | null
+  /** aaaa-mm-dd, o vacío si no se cargó. */
+  fechaNacimiento: string
+}
+
+/** Como lo piden las compañías: «PÉREZ JUAN». Vacío si no se cargó nada. */
+export function nombreDelTomador(tomador: Pick<TomadorACotizar, 'nombre' | 'apellido'>): string {
+  return [tomador.apellido, tomador.nombre]
+    .map((parte) => parte.trim())
+    .filter(Boolean)
+    .join(' ')
+}
+
+/** El documento que se le muestra a la compañía: el CUIT si se cargó, si no el DNI. */
+export function documentoDelTomador(tomador: Pick<TomadorACotizar, 'dni' | 'cuit'>): string {
+  return tomador.cuit.trim() || tomador.dni.trim()
+}
+
+// ---------------------------------------------------------------------------
+// Las condiciones comerciales: lo mismo que la web de cada compañía pide arriba de su grilla
+// ---------------------------------------------------------------------------
+
+export const PLANES_DE_COTIZACION = ['SIN_PLAN', 'COMISION_MAXIMA', 'DESCUENTO_MAXIMO'] as const
+export type PlanDeCotizacion = (typeof PLANES_DE_COTIZACION)[number]
+
+export const NOMBRE_PLAN_DE_COTIZACION: Record<PlanDeCotizacion, string> = {
+  SIN_PLAN: 'Sin plan',
+  COMISION_MAXIMA: 'Comisión máxima',
+  DESCUENTO_MAXIMO: 'Descuento máximo',
+}
+
+export const TARIFAS = ['DESCUENTO_MAXIMO', 'DESCUENTO_MEDIO', 'SIN_DESCUENTO', 'EXTRA_PRIMA_MAXIMA'] as const
+export type Tarifa = (typeof TARIFAS)[number]
+
+export const NOMBRE_TARIFA: Record<Tarifa, string> = {
+  DESCUENTO_MAXIMO: 'Descuento máximo',
+  DESCUENTO_MEDIO: 'Descuento medio',
+  SIN_DESCUENTO: 'Sin descuento',
+  EXTRA_PRIMA_MAXIMA: 'Extra prima máxima',
+}
+
+export const COMISIONES = ['ESTANDAR', 'MAXIMA', 'MINIMA'] as const
+export type Comision = (typeof COMISIONES)[number]
+
+export const NOMBRE_COMISION: Record<Comision, string> = { ESTANDAR: 'Estándar', MAXIMA: 'Máxima', MINIMA: 'Mínima' }
+
+/**
+ * Un plan es un atajo: fija la tarifa y la comisión de una vez. Ganar la comisión máxima es no
+ * resignar nada de ella en descuento; dar el descuento máximo es resignar toda la que se pueda.
+ */
+export const LO_QUE_FIJA_EL_PLAN: Record<Exclude<PlanDeCotizacion, 'SIN_PLAN'>, { tarifa: Tarifa; comision: Comision }> = {
+  COMISION_MAXIMA: { tarifa: 'SIN_DESCUENTO', comision: 'MAXIMA' },
+  DESCUENTO_MAXIMO: { tarifa: 'DESCUENTO_MAXIMO', comision: 'MINIMA' },
+}
+
+export const FACTURACIONES = ['MEJOR_COSTO', 'MENSUAL', 'BIMESTRAL', 'TRIMESTRAL', 'CUATRIMESTRAL', 'SEMESTRAL', 'ANUAL'] as const
+export type Facturacion = (typeof FACTURACIONES)[number]
+
+export const NOMBRE_FACTURACION: Record<Facturacion, string> = {
+  MEJOR_COSTO: 'Mejor costo',
+  MENSUAL: 'Mensual',
+  BIMESTRAL: 'Bimestral',
+  TRIMESTRAL: 'Trimestral',
+  CUATRIMESTRAL: 'Cuatrimestral',
+  SEMESTRAL: 'Semestral',
+  ANUAL: 'Anual',
+}
+
+/** El porcentaje de la cláusula de ajuste; '0' es «No aplica». */
+export const CLAUSULAS_DE_AJUSTE = ['0', '5', '10', '15', '20', '25', '30', '40', '50'] as const
+export type ClausulaDeAjuste = (typeof CLAUSULAS_DE_AJUSTE)[number]
+
+export function nombreDeClausula(clausula: ClausulaDeAjuste): string {
+  return clausula === '0' ? 'No aplica' : `${clausula} %`
+}
+
+export const MAXIMO_DE_CUOTAS = 12
+
+/**
+ * En cuántas cuotas se quiere pagar: 'MAXIMA' es la cantidad máxima que dé cada compañía (lo único que
+ * tiene sentido con «Mejor costo»), un número de 1 a 12 es esa cantidad, y null es que cada compañía
+ * use la suya.
+ */
+export type CuotasDeseadas = 'MAXIMA' | number | null
+
+export interface CondicionesDeCotizacion {
+  plan: PlanDeCotizacion
+  tarifa: Tarifa
+  comision: Comision
+  facturacion: Facturacion
+  clausulaAjuste: ClausulaDeAjuste
+  cuotas: CuotasDeseadas
+}
+
+/**
+ * Las condiciones comerciales que esta computadora usó la última vez, más la forma de pago: con eso el
+ * formulario arranca como lo deja la agencia y no hay que elegir seis desplegables en cada cotización.
+ * Lo que no sea una opción válida (otro formato, un localStorage editado a mano) se descarta.
+ */
+export type CondicionesRecordadas = Partial<CondicionesDeCotizacion & { medioDePago: MedioDePago }>
+
+function unaDe<T extends string>(valor: unknown, lista: readonly T[]): T | undefined {
+  return typeof valor === 'string' && (lista as readonly string[]).includes(valor) ? (valor as T) : undefined
+}
+
+export function sanearCondiciones(valor: unknown): CondicionesRecordadas {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return {}
+  const v = valor as Record<string, unknown>
+  const cuotas =
+    v.cuotas === 'MAXIMA' || v.cuotas === null || (typeof v.cuotas === 'number' && Number.isInteger(v.cuotas) && v.cuotas >= 1 && v.cuotas <= MAXIMO_DE_CUOTAS)
+      ? (v.cuotas as CuotasDeseadas)
+      : undefined
+  const saneadas: CondicionesRecordadas = {
+    plan: unaDe(v.plan, PLANES_DE_COTIZACION),
+    tarifa: unaDe(v.tarifa, TARIFAS),
+    comision: unaDe(v.comision, COMISIONES),
+    facturacion: unaDe(v.facturacion, FACTURACIONES),
+    clausulaAjuste: unaDe(v.clausulaAjuste, CLAUSULAS_DE_AJUSTE),
+    medioDePago: unaDe(v.medioDePago, MEDIOS_DE_PAGO),
+    cuotas,
+  }
+  return Object.fromEntries(Object.entries(saneadas).filter(([, valor]) => valor !== undefined)) as CondicionesRecordadas
 }
 
 export interface SolicitudDeCotizacion {
   vehiculo: VehiculoACotizar
   tomador: TomadorACotizar
+  provincia: string
   codigoPostal: string
   /** El nombre de la localidad: desempata los códigos postales que abarcan más de una. */
   localidad: string
   /** aaaa-mm-dd. */
   vigenciaDesde: string
   medioDePago: MedioDePago
+  condiciones: CondicionesDeCotizacion
 }
 
 /**
@@ -455,3 +814,126 @@ export function rangoDePorcentajes(valores: Array<number | null | undefined>): s
 
 /** El máximo de opciones que acepta un presupuesto (ver `validarOpciones` en servicios/presupuestos.ts). */
 export const MAXIMO_OPCIONES_POR_PRESUPUESTO = 12
+
+// ---------------------------------------------------------------------------
+// Los listados: cotizaciones, planes y emisiones
+// ---------------------------------------------------------------------------
+//
+// Salen de la API de cada compañía, no de la base del VPS: es lo que la compañía tiene registrado, no
+// lo que alguien cargó a mano. Cuando la compañía no tiene API, o la tiene pero no está configurada en
+// este programa, o su API no da ese listado, lo que haya en la base del VPS se muestra igual, pero
+// marcado: `origen: 'VPS'` y `motivoVps` con el porqué, para que la pantalla lo avise.
+
+/** De dónde salió una fila: la API de la compañía, o la base del VPS de la agencia (el respaldo). */
+export type OrigenDeListado = 'API' | 'VPS'
+
+/** Las secciones del Multicotizador, una por renglón de su sublista en la barra lateral. */
+export const SECCIONES_DEL_MULTICOTIZADOR = ['auto', 'moto', 'cotizaciones', 'planes', 'emisiones'] as const
+export type SeccionDelMulticotizador = (typeof SECCIONES_DEL_MULTICOTIZADOR)[number]
+
+export function esSeccionDelMulticotizador(valor: unknown): valor is SeccionDelMulticotizador {
+  return typeof valor === 'string' && (SECCIONES_DEL_MULTICOTIZADOR as readonly string[]).includes(valor)
+}
+
+export interface FiltrosDeListado {
+  /** aaaa-mm-dd. */
+  desde: string
+  /** aaaa-mm-dd. */
+  hasta: string
+  /** Null = autos y motos. */
+  tipo: TipoDeVehiculo | null
+}
+
+/** Cómo le fue a cada compañía en un listado: de dónde salió lo suyo y, si algo falló, qué. */
+export interface FuenteDeListado {
+  aseguradora: string
+  nombre: string
+  origen: OrigenDeListado
+  /** Por qué no salió de la API. Null cuando salió de la API. */
+  motivoVps: string | null
+  /** El error de la API, si la API falló (y se cayó a la base del VPS, o no hubo con qué). */
+  error: string | null
+  filas: number
+}
+
+interface FilaDeListado {
+  origen: OrigenDeListado
+  /** El id de la compañía en el multicotizador, o el nombre como está en la base si no tiene API. */
+  aseguradora: string
+  nombreAseguradora: string
+  /** Ver `FuenteDeListado.motivoVps`. */
+  motivoVps: string | null
+  /** Null si no se sabe (la compañía no lo dice y la base tampoco). */
+  tipo: TipoDeVehiculo | null
+}
+
+export interface CotizacionListada extends FilaDeListado {
+  /** El número de solicitud de la compañía, o el del presupuesto (P-0007) si sale de la base. */
+  numero: string
+  /** aaaa-mm-dd; vacío si no se sabe. */
+  fecha: string
+  tomador: string
+  vehiculo: string
+  patente: string
+  cobertura: string
+  /** Null si la compañía no lo da en el listado. */
+  premio: number | null
+  sumaAsegurada: number | null
+  vigenciaDesde: string
+  vigenciaHasta: string
+}
+
+export interface PlanListado {
+  aseguradora: IdAseguradora
+  nombreAseguradora: string
+  tipo: TipoDeVehiculo
+  codigo: string
+  descripcion: string
+  /** Lo que la compañía agrega (la forma de pago del plan, el legajo…). */
+  detalle: string
+}
+
+export interface EmisionListada extends FilaDeListado {
+  poliza: string
+  /** aaaa-mm-dd; vacío si no se sabe. */
+  fechaEmision: string
+  tomador: string
+  patente: string
+  cobertura: string
+  /** aaaa-mm-dd; vacío si no se sabe. */
+  vigenciaDesde: string
+  vigenciaHasta: string
+  estado: string
+}
+
+export interface ListadoDelMulticotizador<T> {
+  filas: T[]
+  fuentes: FuenteDeListado[]
+}
+
+/**
+ * El texto del aviso de una fila que no salió de la API. Es lo que muestra el ícono de advertencia al
+ * pasar el mouse: de dónde salió el dato, por qué, y qué quiere decir para quien lo mira.
+ */
+export function avisoDeOrigenVps(nombreAseguradora: string, motivo: string | null): string {
+  return [
+    `Este dato no viene de la API de ${nombreAseguradora}: sale de la base de datos del VPS de la agencia.`,
+    motivo ?? '',
+    'Es lo que se cargó en el programa (la planilla, el alta de la póliza o el presupuesto), no lo que la compañía tiene registrado, así que puede estar incompleto o desactualizado.',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+/** «15/03/2022», «3/1/2018» o «2022-03-15» → «2022-03-15». Vacío si no se entiende. */
+export function fechaIsoDe(valor: unknown): string {
+  if (typeof valor !== 'string' && typeof valor !== 'number') return ''
+  const texto = String(valor).trim()
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(texto)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+  const compacta = /^(\d{4})(\d{2})(\d{2})$/.exec(texto)
+  if (compacta) return `${compacta[1]}-${compacta[2]}-${compacta[3]}`
+  const dma = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(texto)
+  if (dma) return `${dma[3]}-${dma[2]!.padStart(2, '0')}-${dma[1]!.padStart(2, '0')}`
+  return ''
+}

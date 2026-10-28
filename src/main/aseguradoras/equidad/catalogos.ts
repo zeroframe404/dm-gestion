@@ -330,3 +330,55 @@ export async function sumaAseguradaEquidad(
   const valor = numeroDeEquidad(campo(r, ['ValorAsegurado', 'SumaAsegurada']))
   return valor && valor > 0 ? valor : null
 }
+
+/** Una fila de `ListarCotizaciones`: una solicitud que quedó en estado cotizada. */
+export interface CotizacionDeEquidad {
+  rama: string
+  solicitud: string
+  tomador: string
+  /** La descripción del vehículo (vacía en las de flota). */
+  riesgo: string
+  /** Como vino: Equidad la manda aaaa-mm-dd o AAAAMMDD según la instalación. */
+  fechaIngreso: string
+  inicioVigencia: string
+  finVigencia: string
+  sumaAsegurada: number | null
+  patente: string
+  esFlota: boolean
+}
+
+/**
+ * Las cotizaciones visibles del usuario ingresadas en el rango (`ListarCotizaciones`). La solicitud, la
+ * patente y el tomador son filtros: van vacíos para traer todas.
+ */
+export async function cotizacionesEquidad(cliente: ClienteEquidad, c: ContextoEquidad, productor: string, desde: string, hasta: string): Promise<CotizacionDeEquidad[]> {
+  const respuesta = await cliente.get('listarCotizaciones', [
+    ['UsuCod', c.usuario],
+    ['RamCod', c.rama],
+    ['ProCod', productor],
+    ['FechaDesde', fechaCompacta(desde)],
+    ['FechaHasta', fechaCompacta(hasta)],
+    ['SolNro', ''],
+    ['Patente', ''],
+    ['TomadorNombre', ''],
+  ])
+  return filas(respuesta, 'las cotizaciones').flatMap((f) => {
+    const solicitud = campo(f, ['Solicitud', 'SolNro'])
+    if (!solicitud) return []
+    const flota = campo(f, ['EsFlota']).toLowerCase()
+    return [
+      {
+        rama: campo(f, ['RamaCodigo', 'Rama']),
+        solicitud,
+        tomador: campo(f, ['TomadorNombre']),
+        riesgo: campo(f, ['RiesgoCubierto']),
+        fechaIngreso: campo(f, ['FechaIngreso']),
+        inicioVigencia: campo(f, ['FechaInicioVigencia']),
+        finVigencia: campo(f, ['FechaFinVigencia']),
+        sumaAsegurada: numeroDeEquidad(campo(f, ['SumaAsegurada'])),
+        patente: campo(f, ['Patente']),
+        esFlota: flota === 'true' || flota === 's' || flota === '1',
+      },
+    ]
+  })
+}

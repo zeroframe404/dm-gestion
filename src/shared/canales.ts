@@ -1,7 +1,16 @@
 // Contrato tipado de los canales IPC: cada canal declara sus argumentos y su respuesta.
 // El proceso principal implementa exactamente estas firmas y la precarga las expone.
 import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion } from './eliminacion'
-import type { AseguradoraDelMulticotizador, PedidoDeCotizacion, ResultadoDeAseguradora } from './multicotizador'
+import type {
+  AseguradoraDelMulticotizador,
+  CotizacionListada,
+  EmisionListada,
+  FiltrosDeListado,
+  ListadoDelMulticotizador,
+  PedidoDeCotizacion,
+  PlanListado,
+  ResultadoDeAseguradora,
+} from './multicotizador'
 import type { MatrizPermisos } from './permisos'
 import type {
   TipoPestana,
@@ -797,8 +806,12 @@ export interface Canales {
    */
   'vehiculos:importarAhora': (forzar: boolean) => Resultado<ResultadoDeImportarAhora>
   'vehiculos:marcas': (tipo: TipoDeVehiculo) => Resultado<OpcionDeCatalogo[]>
-  'vehiculos:modelos': (tipo: TipoDeVehiculo, marcaId: string) => Resultado<OpcionDeCatalogo[]>
-  'vehiculos:lineas': (tipo: TipoDeVehiculo, marcaId: string, modeloId: string) => Resultado<LineaDeCatalogo[]>
+  /** Con `anio`, sólo los modelos que tienen alguna versión de ese año. */
+  'vehiculos:modelos': (tipo: TipoDeVehiculo, marcaId: string, anio?: string) => Resultado<OpcionDeCatalogo[]>
+  /** Con `anio`, sólo las versiones que se ofrecen para ese año. */
+  'vehiculos:lineas': (tipo: TipoDeVehiculo, marcaId: string, modeloId: string, anio?: string) => Resultado<LineaDeCatalogo[]>
+  /** Los años de una marca (los de todas sus versiones): el multicotizador pide el año antes que el modelo. */
+  'vehiculos:aniosDeMarca': (tipo: TipoDeVehiculo, marcaId: string) => Resultado<number[]>
   'vehiculos:anios': (tipo: TipoDeVehiculo, marcaId: string, modeloId: string, lineaId: string) => Resultado<number[]>
   /** El vehículo terminado, con la categoría que decide el catálogo y que no se puede elegir. */
   'vehiculos:resolver': (
@@ -894,6 +907,9 @@ export interface Canales {
   'multicotizador:aseguradoras': () => Resultado<AseguradoraDelMulticotizador[]>
   'multicotizador:localidades': (tipoVehiculo: TipoDeVehiculo, codigoPostal: string) => Resultado<string[]>
   'multicotizador:cotizar': (pedido: PedidoDeCotizacion) => Resultado<ResultadoDeAseguradora>
+  'multicotizador:cotizaciones': (filtros: FiltrosDeListado) => Resultado<ListadoDelMulticotizador<CotizacionListada>>
+  'multicotizador:planes': (tipoVehiculo: TipoDeVehiculo) => Resultado<ListadoDelMulticotizador<PlanListado>>
+  'multicotizador:emisiones': (filtros: FiltrosDeListado) => Resultado<ListadoDelMulticotizador<EmisionListada>>
 
   // Cartera → Galeno NOVEDADES (15.4). Distinto canal y distinto nombre que el bloque de arriba a
   // propósito: esto NO es la API REST de Galeno (cotización/emisión), es la sincronización con el
