@@ -26,7 +26,7 @@ import { BotonManual } from '../componentes/BotonManual'
 import { useNavegacion } from '../contexto/Navegacion'
 import { usePermisos } from '../contexto/Permisos'
 import { useUsuarioActual } from '../contexto/Sesion'
-import { esAreaDePermisos, MODULOS, type IdModulo } from '../modulos'
+import { MODULOS, moduloVisible, type IdModulo } from '../modulos'
 import { nombreDePeriodo } from '../../shared/semaforo'
 import { momento } from './cobranzas/formato'
 import { mesCorto, numero } from './metricas/graficos'
@@ -39,7 +39,7 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
   // El mapa de módulos muestra sólo los que esta persona puede abrir: ofrecer un atajo a una pantalla
   // que después dice «no tenés permiso» no le sirve a nadie.
   const modulosDeTrabajo = MODULOS.filter(
-    (modulo) => modulo.id !== 'inicio' && (!esAreaDePermisos(modulo.id) || puedeVer(modulo.id)),
+    (modulo) => modulo.id !== 'inicio' && moduloVisible(modulo, puedeVer),
   )
 
   return (

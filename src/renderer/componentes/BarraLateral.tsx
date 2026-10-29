@@ -9,7 +9,17 @@ import { useNavegacion } from '../contexto/Navegacion'
 import { usePermisos } from '../contexto/Permisos'
 import { useAvisosDeTareas } from '../contexto/Tareas'
 import { useUsuarioActual } from '../contexto/Sesion'
-import { esAreaDePermisos, MODULO_ADMINISTRACION, MODULO_API_ASEGURADORAS, MODULOS, type IdModulo, type Modulo } from '../modulos'
+import {
+  MODULO_ADMINISTRACION,
+  MODULO_API_ASEGURADORAS,
+  MODULOS,
+  moduloVisible,
+  primeraSeccionVisible,
+  seccionesVisibles,
+  type IdModulo,
+  type Modulo,
+  type SeccionDeModulo,
+} from '../modulos'
 import { barraLateralColapsada, guardarBarraLateralColapsada } from '../preferencias'
 import { Icono } from './Icono'
 import { useNombreDeLaAgencia } from '../canal'
@@ -35,10 +45,9 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
   const veApiAseguradoras = usuario.rol !== 'EMPLEADO' && puedeVer('administracion')
   // Inicio siempre está; el resto, según los permisos del rol. Administración también, porque «Acerca
   // de» la ve todo el mundo: adentro se muestran sólo las secciones que correspondan.
-  const visibles = useMemo(
-    () => MODULOS.filter((modulo) => !esAreaDePermisos(modulo.id) || puedeVer(modulo.id)),
-    [puedeVer],
-  )
+  // Un módulo con sublista (Cartera) se ve si alguna de sus sub-entradas se puede abrir.
+  const visibles = useMemo(() => MODULOS.filter((modulo) => moduloVisible(modulo, puedeVer)), [puedeVer])
+  const { ir } = useNavegacion()
 
   const alternar = () => {
     const siguiente = !colapsada
@@ -94,13 +103,27 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
               {modulo.secciones && !colapsada ? (
                 <GrupoMenu modulo={modulo} activo={modulo.id === moduloActivo} />
               ) : (
-                <ItemMenu
-                  modulo={modulo}
-                  activo={modulo.id === moduloActivo}
-                  colapsada={colapsada}
-                  alElegir={alElegir}
-                  pendientes={modulo.id === 'tareas' ? pendientes : 0}
-                />
+                <>
+                  <ItemMenu
+                    modulo={modulo}
+                    activo={modulo.id === moduloActivo}
+                    colapsada={colapsada}
+                    // Un módulo con sublista abre en la primera sección que esta persona puede ver; si ya
+                    // está adentro, el ícono no la saca de la sección en la que está.
+                    alElegir={(id) => {
+                      if (modulo.secciones && id === moduloActivo) return
+                      if (modulo.secciones) ir(id, { seccion: primeraSeccionVisible(modulo, puedeVer) })
+                      else alElegir(id)
+                    }}
+                    pendientes={modulo.id === 'tareas' ? pendientes : 0}
+                  />
+                  {/* Achicada la barra no hay lugar para la lista, pero Cartera tiene siete pantallas que
+                      sólo se abren desde ahí: con el módulo abierto, sus secciones quedan como íconos
+                      debajo, con el nombre en el globo. */}
+                  {modulo.secciones && colapsada && modulo.id === moduloActivo && (
+                    <SeccionesAchicadas modulo={modulo} secciones={seccionesVisibles(modulo, puedeVer)} />
+                  )}
+                </>
               )}
             </li>
           ))}
@@ -137,13 +160,15 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
  */
 function GrupoMenu({ modulo, activo }: { modulo: Modulo; activo: boolean }) {
   const { seccion, ir } = useNavegacion()
-  const secciones = modulo.secciones ?? []
+  const { puedeVer } = usePermisos()
+  // Sólo las sub-entradas que esta persona puede abrir (Cartera pide un permiso distinto por renglón).
+  const secciones = seccionesVisibles(modulo, puedeVer)
   const [abierto, setAbierto] = useState(activo)
   // Si se llega al módulo por otro lado (Inicio, un atajo), la lista se abre sola para que se vea dónde se está.
   useEffect(() => {
     if (activo) setAbierto(true)
   }, [activo])
-  const actual = activo ? (seccion ?? secciones[0]?.id) : null
+  const actual = activo ? seccionActual(modulo, secciones, seccion) : null
 
   return (
     <div>
@@ -193,6 +218,50 @@ function GrupoMenu({ modulo, activo }: { modulo: Modulo; activo: boolean }) {
         </ul>
       )}
     </div>
+  )
+}
+
+/**
+ * Qué renglón de la sublista está marcado. La navegación puede traer una sección que no es un renglón:
+ * en Cartera, las pestañas internas de la planilla ('rechazos', 'reglas'…) o nada. Eso es la planilla.
+ */
+function seccionActual(modulo: Modulo, secciones: SeccionDeModulo[], seccion: string | null): string | undefined {
+  if (secciones.some((item) => item.id === seccion)) return seccion ?? undefined
+  return modulo.id === 'cartera' ? 'planilla' : secciones[0]?.id
+}
+
+/** La sublista de un módulo con la barra achicada: un ícono por sección, debajo del ícono del módulo. */
+function SeccionesAchicadas({ modulo, secciones }: { modulo: Modulo; secciones: SeccionDeModulo[] }) {
+  const { seccion, ir } = useNavegacion()
+  const actual = seccionActual(modulo, secciones, seccion)
+  return (
+    <ul className="mt-0.5 flex flex-col items-center gap-0.5" aria-label={`Secciones de ${modulo.nombre}`}>
+      {secciones.map((item) => {
+        const esLaActual = item.id === actual
+        const nombre = `${modulo.nombre} · ${item.nombre}`
+        return (
+          <li key={item.id} className="w-full">
+            <button
+              type="button"
+              onClick={() => ir(modulo.id, { seccion: item.id })}
+              title={nombre}
+              aria-label={nombre}
+              aria-current={esLaActual ? 'page' : undefined}
+              className={cx(
+                'relative flex w-full items-center justify-center rounded-lg py-1.5 transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cielo-100/60',
+                esLaActual ? 'bg-white/15 text-white' : 'text-white/75 hover:bg-white/10 hover:text-white',
+              )}
+            >
+              {esLaActual && (
+                <span className="absolute top-1/2 left-0 h-3/5 w-[3px] -translate-y-1/2 rounded-r bg-cielo-500" aria-hidden="true" />
+              )}
+              <Icono nombre={item.icono} tamano={15} className={esLaActual ? 'text-white' : 'text-cielo-200'} />
+            </button>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

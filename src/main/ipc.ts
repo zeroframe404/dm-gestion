@@ -64,6 +64,11 @@ import {
   xlsxDePlanillaClasica,
   xlsxDelReporte,
 } from './servicios/reportes'
+import { xlsxGenerico } from './servicios/excelGenerico'
+import { listarAsegurados } from './servicios/listadoAsegurados'
+import { listarPolizasDelListado } from './servicios/listadoPolizas'
+import { listarSiniestrosDelListado } from './servicios/listadoSiniestros'
+import { listarVencimientos } from './servicios/listadoVencimientos'
 import { borrarPlantilla, crearPlantilla, editarPlantilla, listarPlantillas } from './servicios/plantillas'
 import {
   comentarios,
@@ -1656,6 +1661,31 @@ export function registrarIpc(): void {
     if (areas.length === 0) throw new ErrorDeNegocio('Ese listado no se puede bajar como planilla.')
     exigirVista(...areas)
     const archivo = xlsxDelReporte(pedido)
+    return exito(await guardarBinarioComo({ ...archivo, descripcion: 'Planilla de Excel' }, ventanaActual()))
+  })
+  // Los listados de Cartera (contrato en shared/listados/index.ts): lectura pura, con el permiso del
+  // área de cada tabla. Cada servicio sanea sus filtros; acá sólo se exige la vista.
+  manejar('listados:asegurados', (filtros) => {
+    exigirVista('clientes')
+    return exito(listarAsegurados(filtros))
+  })
+  manejar('listados:polizas', (filtros) => {
+    exigirVista('polizas')
+    return exito(listarPolizasDelListado(filtros))
+  })
+  manejar('listados:siniestros', (filtros) => {
+    exigirVista('siniestros')
+    return exito(listarSiniestrosDelListado(filtros))
+  })
+  manejar('listados:vencimientos', (filtros) => {
+    exigirVista('renovaciones')
+    return exito(listarVencimientos(filtros))
+  })
+  // El Excel genérico de los listados: no toca la base, sólo guarda en esta computadora lo que la
+  // pantalla ya calculó. Alcanza con poder ver alguno de los listados.
+  manejar('listados:exportarExcel', async (pedido) => {
+    exigirVista('clientes', 'polizas', 'siniestros', 'renovaciones')
+    const archivo = xlsxGenerico(pedido)
     return exito(await guardarBinarioComo({ ...archivo, descripcion: 'Planilla de Excel' }, ventanaActual()))
   })
   manejar('reportes:vistaPrevia', (pedido) => {

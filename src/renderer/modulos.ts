@@ -43,6 +43,12 @@ export interface SeccionDeModulo {
   id: string
   nombre: string
   icono: NombreIcono
+  /**
+   * El área de permisos de este renglón, cuando no es la del módulo (Cartera: Asegurados se abre con
+   * el permiso de Clientes, Vencimientos con el de Renovaciones…). Sin esto el renglón hereda el
+   * permiso del módulo. Ver `moduloVisible` y `areaDelDestino`.
+   */
+  area?: Area
 }
 
 /** La sublista del Multicotizador: cotizar separado por auto y moto, y lo que salió de cotizar. */
@@ -54,14 +60,50 @@ export const SECCIONES_MULTICOTIZADOR: Array<SeccionDeModulo & { id: SeccionDelM
   { id: 'emisiones', nombre: 'Emisiones', icono: 'polizas' },
 ]
 
+export type IdSeccionDeCartera =
+  | 'planilla'
+  | 'asegurados'
+  | 'grupos'
+  | 'polizas'
+  | 'siniestros'
+  | 'vencimientos'
+  | 'indiceAumentos'
+  | 'rubrica'
+
+/**
+ * La sublista de Cartera. «Planilla del mes» es la pantalla de siempre (con sus pestañas internas:
+ * Bajas, Rechazos, Galeno…) y va primera; el resto son los listados. Cada renglón se abre con el
+ * permiso del área que ya existe para ese dato: no hay áreas nuevas.
+ */
+export const SECCIONES_CARTERA: Array<SeccionDeModulo & { id: IdSeccionDeCartera; area: Area }> = [
+  { id: 'planilla', nombre: 'Planilla del mes', icono: 'tabla', area: 'cartera' },
+  { id: 'asegurados', nombre: 'Asegurados', icono: 'usuario', area: 'clientes' },
+  { id: 'grupos', nombre: 'Grupos', icono: 'clientes', area: 'clientes' },
+  { id: 'polizas', nombre: 'Pólizas', icono: 'polizas', area: 'polizas' },
+  { id: 'siniestros', nombre: 'Siniestros', icono: 'siniestros', area: 'siniestros' },
+  { id: 'vencimientos', nombre: 'Vencimientos', icono: 'calendario', area: 'renovaciones' },
+  { id: 'indiceAumentos', nombre: 'Índice de Aumentos', icono: 'porcentaje', area: 'polizas' },
+  { id: 'rubrica', nombre: 'Rúbrica Digital', icono: 'lapiz', area: 'reportes' },
+]
+
+/**
+ * Qué renglón de Cartera corresponde a la sección pedida. La navegación también usa `seccion` para
+ * las pestañas internas de la planilla (`ir('cartera', { seccion: 'reglas' })`, 'rechazos'…): todo lo
+ * que no sea un renglón del menú —incluido nulo— es la planilla, que es donde viven esas pestañas.
+ */
+export function seccionDeCartera(seccion: string | null | undefined): IdSeccionDeCartera {
+  return SECCIONES_CARTERA.find((item) => item.id === seccion)?.id ?? 'planilla'
+}
+
 export const MODULOS: Modulo[] = [
   { id: 'inicio', nombre: 'Inicio', icono: 'inicio', descripcion: 'Resumen general y accesos rápidos.', disponible: true },
   {
     id: 'cartera',
     nombre: 'Cartera',
     icono: 'cartera',
-    descripcion: 'La planilla mensual: semáforo de vencimientos, avisos y pagos.',
+    descripcion: 'La planilla mensual (semáforo, avisos y pagos) y los listados de asegurados, pólizas, siniestros y vencimientos.',
     disponible: true,
+    secciones: SECCIONES_CARTERA,
   },
   { id: 'clientes', nombre: 'Clientes', icono: 'clientes', descripcion: 'La ficha de cada cliente: datos, vehículos, pólizas, pagos y siniestros.', disponible: true },
   {
@@ -198,6 +240,41 @@ export const MODULO_API_ASEGURADORAS: Modulo = {
  */
 export function esAreaDePermisos(id: IdModulo): id is IdModulo & Area {
   return esArea(id)
+}
+
+/** Las sub-entradas de un módulo que esta persona puede abrir (las que no piden un área propia siempre se ven). */
+export function seccionesVisibles(modulo: Modulo, puedeVer: (area: Area) => boolean): SeccionDeModulo[] {
+  return (modulo.secciones ?? []).filter((item) => !item.area || puedeVer(item.area))
+}
+
+/**
+ * Si el módulo aparece en la barra lateral y en Inicio. Un módulo con sub-entradas que piden su propia
+ * área (Cartera) se ve si alguna de ellas es visible; el resto, con el permiso de su área.
+ */
+export function moduloVisible(modulo: Modulo, puedeVer: (area: Area) => boolean): boolean {
+  if (modulo.secciones?.some((item) => item.area)) return seccionesVisibles(modulo, puedeVer).length > 0
+  return !esAreaDePermisos(modulo.id) || puedeVer(modulo.id)
+}
+
+/**
+ * A qué sección mandar a quien abre el módulo «a secas» (el ícono de la barra achicada, el mapa de
+ * Inicio): la primera que pueda ver. Sólo importa en los módulos cuyas sub-entradas piden su propia
+ * área (Cartera): quien no tiene la planilla pero sí Clientes tiene que caer en Asegurados y no en un
+ * «no tenés permiso». En el resto devuelve undefined y el módulo abre en su sección de siempre.
+ */
+export function primeraSeccionVisible(modulo: Modulo, puedeVer: (area: Area) => boolean): string | undefined {
+  if (!modulo.secciones?.some((item) => item.area)) return undefined
+  return seccionesVisibles(modulo, puedeVer)[0]?.id
+}
+
+/**
+ * El área de permisos que exige abrir `id` en `seccion`, o null si no pide ninguna (Inicio,
+ * Administración, API Aseguradoras). Para Cartera depende de la sección: una sección desconocida es
+ * la planilla, que sigue pidiendo el permiso de Cartera como siempre.
+ */
+export function areaDelDestino(id: IdModulo, seccion: string | null | undefined): Area | null {
+  if (id === 'cartera') return SECCIONES_CARTERA.find((item) => item.id === seccionDeCartera(seccion))?.area ?? 'cartera'
+  return esAreaDePermisos(id) && id !== 'administracion' ? id : null
 }
 
 export function buscarModulo(id: IdModulo): Modulo {

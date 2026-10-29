@@ -24,7 +24,7 @@ import { ProveedorDatosEnVivo } from './contexto/DatosEnVivo'
 import { ProveedorPerfiles } from './contexto/Perfiles'
 import { ProveedorPresencia, useFocoDeModulo } from './contexto/Presencia'
 import { ProveedorTareas } from './contexto/Tareas'
-import { buscarModulo, esAreaDePermisos, type IdModulo } from './modulos'
+import { areaDelDestino, buscarModulo, primeraSeccionVisible, seccionDeCartera, SECCIONES_CARTERA, type IdModulo, type IdSeccionDeCartera, type Modulo } from './modulos'
 import { CambiarClave } from './pantallas/CambiarClave'
 import { Inicio } from './pantallas/Inicio'
 import { Login } from './pantallas/Login'
@@ -52,6 +52,55 @@ const Tareas = lazy(() => import('./pantallas/tareas/Tareas').then((m) => ({ def
 const Polizas = lazy(() => import('./pantallas/polizas/Polizas').then((m) => ({ default: m.Polizas })))
 const Renovaciones = lazy(() => import('./pantallas/renovaciones/Renovaciones').then((m) => ({ default: m.Renovaciones })))
 const Siniestros = lazy(() => import('./pantallas/siniestros/Siniestros').then((m) => ({ default: m.Siniestros })))
+// Los listados de Cartera (Asegurados, Pólizas, Siniestros, Vencimientos): cada uno exporta su componente por defecto.
+const AseguradosListado = lazy(() => import('./pantallas/cartera/listados/AseguradosListado'))
+const PolizasListado = lazy(() => import('./pantallas/cartera/listados/PolizasListado'))
+const SiniestrosListado = lazy(() => import('./pantallas/cartera/listados/SiniestrosListado'))
+const VencimientosListado = lazy(() => import('./pantallas/cartera/listados/VencimientosListado'))
+
+/**
+ * Las sub-entradas de Cartera que todavía no tienen pantalla: abren «Próximamente» con su propia
+ * descripción. Faltan datos o especificación, no ganas: no se simula nada.
+ */
+const PROXIMAMENTE_DE_CARTERA: Partial<Record<IdSeccionDeCartera, Modulo>> = {
+  grupos: {
+    id: 'cartera',
+    nombre: 'Grupos',
+    icono: 'clientes',
+    descripcion:
+      'Agrupar a los clientes que van juntos (una familia, una empresa y sus socios) para verlos y renovarlos en conjunto. Todavía no hay forma de cargar esos grupos en DM Gestión.',
+    disponible: false,
+  },
+  indiceAumentos: {
+    id: 'cartera',
+    nombre: 'Índice de Aumentos',
+    icono: 'porcentaje',
+    descripcion:
+      'Cuánto aumentó cada póliza en cada renovación. Para calcularlo hace falta el historial de endosos, que el programa todavía no guarda.',
+    disponible: false,
+  },
+  rubrica: {
+    id: 'cartera',
+    nombre: 'Rúbrica Digital',
+    icono: 'lapiz',
+    descripcion:
+      'El libro de rúbrica digital para presentar ante la Superintendencia de Seguros. Falta la especificación oficial del archivo (XML), así que todavía no se puede generar.',
+    disponible: false,
+  },
+}
+
+/** Qué pantalla de Cartera corresponde a cada renglón de su sublista. La planilla es la de siempre. */
+function contenidoDeCartera(seccion: string | null) {
+  const id = seccionDeCartera(seccion)
+  if (id === 'asegurados') return <AseguradosListado />
+  if (id === 'polizas') return <PolizasListado />
+  if (id === 'siniestros') return <SiniestrosListado />
+  if (id === 'vencimientos') return <VencimientosListado />
+  const proximamente = PROXIMAMENTE_DE_CARTERA[id]
+  if (proximamente) return <Proximamente modulo={proximamente} />
+  // Planilla del mes, y también las pestañas internas que se piden por seccion ('reglas', 'rechazos'…).
+  return <Cartera />
+}
 
 export function App() {
   const { usuario, cargando } = useSesion()
@@ -114,7 +163,7 @@ function PantallaDeCarga() {
 
 /** Ventana principal: barra lateral, barra superior y el módulo activo. */
 function Escritorio() {
-  const { modulo: moduloActivo, ir } = useNavegacion()
+  const { modulo: moduloActivo, seccion, ir } = useNavegacion()
   const { puedeVer } = usePermisos()
   const modulo = buscarModulo(moduloActivo)
 
@@ -131,20 +180,30 @@ function Escritorio() {
   // la pantalla muestra sólo las secciones que correspondan. API Aseguradoras tampoco es un área de
   // permisos —no está en `AREAS`—, así que también pasa de largo acá; el gate lo hace la pantalla
   // misma, por rol (ver `ApiAseguradoras`), y `BarraLateral` la esconde del todo a quien no le toca.
-  const area = esAreaDePermisos(modulo.id) && modulo.id !== 'administracion' ? modulo.id : null
+  //
+  // Cartera es la excepción al revés: cada sub-entrada se abre con el permiso de su propia área
+  // (Asegurados con Clientes, Vencimientos con Renovaciones…), así que el gate mira la sección.
+  const area = areaDelDestino(modulo.id, seccion)
   if (area && !puedeVer(area)) {
+    const nombre =
+      modulo.id === 'cartera'
+        ? (SECCIONES_CARTERA.find((item) => item.id === seccionDeCartera(seccion))?.nombre ?? modulo.nombre)
+        : modulo.nombre
     return (
       <Marco moduloActivo={moduloActivo} titulo={modulo.nombre} alElegir={ir}>
-        <SinPermiso nombre={modulo.nombre} />
+        <SinPermiso nombre={nombre} />
       </Marco>
     )
   }
 
   let contenido
   if (modulo.id === 'inicio') {
-    contenido = <Inicio alNavegar={(destino) => ir(destino)} />
+    // Un módulo con sublista de permisos propios (Cartera) abre en la primera sección que se puede ver.
+    contenido = (
+      <Inicio alNavegar={(destino) => ir(destino, { seccion: primeraSeccionVisible(buscarModulo(destino), puedeVer) })} />
+    )
   } else if (modulo.id === 'cartera') {
-    contenido = <Cartera />
+    contenido = contenidoDeCartera(seccion)
   } else if (modulo.id === 'clientes') {
     contenido = <Clientes />
   } else if (modulo.id === 'leads') {

@@ -113,7 +113,8 @@ para las dos puntas:
   vieja —o una computadora a medio actualizar— no se queda sin filtro en silencio.
 - El control es `FiltroMultiple` (`src/renderer/componentes/`), un botón con panel de casillas. No es
   un `<select multiple>`: ése se maneja con Ctrl, no dice cuántas hay elegidas y no entra en una barra
-  de una línea.
+  de una línea. Con `variante="chips"` (los listados de Cartera) el disparador es un campo con la
+  etiqueta arriba y un chip por opción elegida («Todas ×» si no hay ninguna); el panel es el mismo.
 
 Lo que **no** elige de a varios, y por qué:
 
@@ -360,7 +361,30 @@ La flecha de arriba de la barra azul la achica de 272 px a una tira de 64 px con
 nombre de cada módulo queda en el `title`. Son dos columnas más de la planilla a la vista en la notebook
 del mostrador.
 
+Achicada, un módulo con sublista (Cartera, Multicotizador) es un solo ícono que abre su primera sección
+visible; con el módulo abierto, sus secciones aparecen como íconos chicos debajo, con el nombre en el `title`.
+
 ## Cartera (la planilla del mes)
+
+**Cartera es un grupo del menú** con una sublista (`SECCIONES_CARTERA` en `src/renderer/modulos.ts`): *Planilla
+del mes* (la de siempre, con todas sus pestañas internas), *Asegurados*, *Grupos*, *Pólizas*, *Siniestros*,
+*Vencimientos*, *Índice de Aumentos* y *Rúbrica Digital*. Cada renglón se abre con el permiso del área que ya
+existía para ese dato (no hay áreas nuevas): Planilla → Cartera, Asegurados y Grupos → Clientes, Pólizas e
+Índice de Aumentos → Pólizas, Siniestros → Siniestros, Vencimientos → Renovaciones, Rúbrica Digital → Reportes. El
+grupo se ve si alguna sub-entrada se puede abrir.
+
+- **Enlaces profundos**: `ir('cartera', { seccion })` sigue aceptando las pestañas internas de la planilla
+  (`'rechazos'`, `'reglas'`, `'bajas'`…). La sección nula o desconocida es la planilla.
+- **Listados** (`src/renderer/pantallas/cartera/listados/`): Asegurados, Pólizas, Siniestros y Vencimientos son
+  consultas de sólo lectura (JOINs al leer, sin migraciones ni columnas nuevas) más exportación a Excel local. Su
+  contrato (canales `listados:*`, tipos en `src/shared/listados/`, servicios `listado*.ts`) está documentado
+  al principio de `src/shared/listados/index.ts`; los componentes compartidos (encabezado, filtros, tabla,
+  paginador, chips) viven en `src/renderer/componentes/listados/`.
+- **Excel genérico**: `exportarAExcel({ titulo, columnas, filas })` (`src/renderer/exportarAExcel.ts`) manda lo
+  que la pantalla ya calculó al canal `listados:exportarExcel`, que guarda un `.xlsx` con el diálogo
+  «Guardar como»; no toca la base ni el servidor.
+- **Grupos, Índice de Aumentos y Rúbrica Digital** abren «Próximamente»: faltan los datos (grupos de clientes,
+  historial de endosos) o la especificación oficial (XML de la SSN). No se simula nada.
 
 **Cartera → Planilla del mes** es la pantalla de todos los días: la misma hoja de Excel, con el semáforo
 calculado solo y las acciones de un clic.
@@ -2701,7 +2725,8 @@ el banco antes de armar el instalador con cada tag `v*`. Los tres workflows de l
 Los tres roles siguen siendo los mismos (EMPLEADO, ADMIN, SUPER_ADMIN), pero ahora **qué ve y qué toca
 cada uno se configura**, módulo por módulo, desde **Administración → Permisos** (sólo SUPER_ADMIN).
 
-- Una fila por módulo (13: Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros,
+- Una fila por módulo (el permiso es por módulo; las sub-entradas de Cartera usan el de su área, ver «Cartera»;
+  13: Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros,
   Cobranzas, Métricas, Reportes, Marketing, Tareas y Administración) y una columna por rol configurable
   (ADMIN y EMPLEADO). Cada cruce vale **`ninguno`** (el módulo no aparece en la barra lateral y sus
   llamados se rechazan), **`ver`** (se abre y se consulta, pero los botones que cambian algo quedan
