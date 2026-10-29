@@ -55,7 +55,7 @@ export const AYUDA_INICIO: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'El mapa de módulos',
         parrafos: [
-          'Cada tarjeta representa un módulo de la aplicación (Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros, Cobranzas, Métricas, Reportes, Marketing y Tareas) con una descripción de una línea de qué hace. Hacer clic en cualquiera te lleva directo a ese módulo, es un acceso rápido más que la barra lateral. Cartera agrupa la planilla del mes y los listados de asegurados, pólizas, siniestros y vencimientos: en la barra lateral se abre como una lista, y cada renglón se ve según tus permisos. Un módulo que todavía no está disponible en esta versión aparece marcado «Próximamente».',
+          'Cada tarjeta representa un módulo de la aplicación (Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros, Cobranzas, Métricas, Reportes, Marketing y Tareas) con una descripción de una línea de qué hace. Hacer clic en cualquiera te lleva directo a ese módulo, es un acceso rápido más que la barra lateral. Cartera agrupa la planilla del mes y los listados de asegurados, pólizas, siniestros y vencimientos: en la barra lateral se abre como una lista, y cada renglón se ve según tus permisos. Cobranzas también: el panel de siempre (caja del día, mora, imputados) y los listados de vencimientos de cuotas, rechazos y comisiones. Un módulo que todavía no está disponible en esta versión aparece marcado «Próximamente».',
         ],
       },
     ],

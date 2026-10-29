@@ -39,7 +39,7 @@ export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
   // El mapa de módulos muestra sólo los que esta persona puede abrir: ofrecer un atajo a una pantalla
   // que después dice «no tenés permiso» no le sirve a nadie.
   const modulosDeTrabajo = MODULOS.filter(
-    (modulo) => modulo.id !== 'inicio' && moduloVisible(modulo, puedeVer),
+    (modulo) => modulo.id !== 'inicio' && moduloVisible(modulo, puedeVer, usuario.rol),
   )
 
   return (

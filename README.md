@@ -361,7 +361,7 @@ La flecha de arriba de la barra azul la achica de 272 px a una tira de 64 px con
 nombre de cada módulo queda en el `title`. Son dos columnas más de la planilla a la vista en la notebook
 del mostrador.
 
-Achicada, un módulo con sublista (Cartera, Multicotizador) es un solo ícono que abre su primera sección
+Achicada, un módulo con sublista (Cartera, Cobranzas, Multicotizador) es un solo ícono que abre su primera sección
 visible; con el módulo abierto, sus secciones aparecen como íconos chicos debajo, con el nombre en el `title`.
 
 ## Cartera (la planilla del mes)
@@ -1020,6 +1020,21 @@ que se dieron de baja mientras la aplicación venía corriendo sí tienen ficha 
 El módulo **Cobranzas** mira los mismos pagos de tres maneras: por día (la caja), por mes (la
 rendición) y por compañía (las comisiones). Todos salen de la tabla `pagos`, que se llena tanto con
 «Registrar pago» de la Cartera como con el alta manual de la caja.
+
+**Cobranzas es un grupo del menú** con una sublista (`SECCIONES_COBRANZAS` en `src/renderer/modulos.ts`): *Panel
+de cobranzas* (el módulo de siempre, con sus pestañas internas: Caja del día, Mora, Imputados y Comisiones),
+*Vencimientos Cuotas*, *Rechazos* y *Comisiones* (los tres listados nuevos). Las cuatro sub-entradas se abren con el
+permiso del área **Cobranzas** (no hay áreas nuevas); *Comisiones* además es sólo para ADMIN y SUPER_ADMIN, igual
+que la pestaña del panel y el canal `cobranzas:comisiones`.
+
+- **Enlaces profundos**: `ir('cobranzas', { seccion })` sigue aceptando las pestañas internas del panel (`'caja'`,
+  `'mora'`, `'imputados'`, `'comisiones'`). La sección nula o desconocida es el panel. Para no chocar con la
+  pestaña `'comisiones'`, el listado nuevo se llama `'comisionesListado'` por dentro.
+- **Listados** (`src/renderer/pantallas/cobranzas/listados/`): son consultas de sólo lectura más exportación a Excel
+  local, con el mismo contrato que los de Cartera (canales `listados:cuotas`, `listados:rechazos` y
+  `listados:comisiones`; tipos en `src/shared/listados/{cuotas,rechazos,comisiones}.ts`; servicios
+  `listadoCuotas.ts`, `listadoRechazos.ts` y `listadoComisiones.ts`). Ver `src/shared/listados/index.ts`. Lo que no
+  existe en los datos (Vendedores, Grupos) se muestra apagado o como «—»; no se inventa nada.
 
 ### Caja del día
 
@@ -2725,7 +2740,7 @@ el banco antes de armar el instalador con cada tag `v*`. Los tres workflows de l
 Los tres roles siguen siendo los mismos (EMPLEADO, ADMIN, SUPER_ADMIN), pero ahora **qué ve y qué toca
 cada uno se configura**, módulo por módulo, desde **Administración → Permisos** (sólo SUPER_ADMIN).
 
-- Una fila por módulo (el permiso es por módulo; las sub-entradas de Cartera usan el de su área, ver «Cartera»;
+- Una fila por módulo (el permiso es por módulo; las sub-entradas de Cartera usan el de su área, ver «Cartera», y las de Cobranzas el de Cobranzas;
   13: Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros,
   Cobranzas, Métricas, Reportes, Marketing, Tareas y Administración) y una columna por rol configurable
   (ADMIN y EMPLEADO). Cada cruce vale **`ninguno`** (el módulo no aparece en la barra lateral y sus

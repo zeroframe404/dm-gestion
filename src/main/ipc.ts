@@ -66,7 +66,10 @@ import {
 } from './servicios/reportes'
 import { xlsxGenerico } from './servicios/excelGenerico'
 import { listarAsegurados } from './servicios/listadoAsegurados'
+import { listarComisionesDelListado, opcionesDeComisiones } from './servicios/listadoComisiones'
+import { listarVencimientosDeCuotas } from './servicios/listadoCuotas'
 import { listarPolizasDelListado } from './servicios/listadoPolizas'
+import { listarRechazosDelListado } from './servicios/listadoRechazos'
 import { listarSiniestrosDelListado } from './servicios/listadoSiniestros'
 import { listarVencimientos } from './servicios/listadoVencimientos'
 import { borrarPlantilla, crearPlantilla, editarPlantilla, listarPlantillas } from './servicios/plantillas'
@@ -1663,7 +1666,7 @@ export function registrarIpc(): void {
     const archivo = xlsxDelReporte(pedido)
     return exito(await guardarBinarioComo({ ...archivo, descripcion: 'Planilla de Excel' }, ventanaActual()))
   })
-  // Los listados de Cartera (contrato en shared/listados/index.ts): lectura pura, con el permiso del
+  // Los listados de Cartera y de Cobranzas (contrato en shared/listados/index.ts): lectura pura, con el permiso del
   // área de cada tabla. Cada servicio sanea sus filtros; acá sólo se exige la vista.
   manejar('listados:asegurados', (filtros) => {
     exigirVista('clientes')
@@ -1681,10 +1684,31 @@ export function registrarIpc(): void {
     exigirVista('renovaciones')
     return exito(listarVencimientos(filtros))
   })
+  // Los listados de Cobranzas: mismo contrato, con el permiso del área Cobranzas.
+  manejar('listados:cuotas', (filtros) => {
+    exigirVista('cobranzas')
+    return exito(listarVencimientosDeCuotas(filtros))
+  })
+  manejar('listados:rechazos', (filtros) => {
+    exigirVista('cobranzas')
+    return exito(listarRechazosDelListado(filtros))
+  })
+  // Las comisiones son números de la agencia: como 'cobranzas:comisiones', sólo ADMIN y SUPER_ADMIN.
+  manejar('listados:comisiones', (filtros) => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('cobranzas')
+    return exito(listarComisionesDelListado(filtros))
+  })
+  // Las opciones de los desplegables, sin armar filas: mismo permiso que el listado.
+  manejar('listados:comisionesOpciones', () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('cobranzas')
+    return exito(opcionesDeComisiones())
+  })
   // El Excel genérico de los listados: no toca la base, sólo guarda en esta computadora lo que la
-  // pantalla ya calculó. Alcanza con poder ver alguno de los listados.
+  // pantalla ya calculó. Alcanza con poder ver alguno de los listados (los de Cartera o los de Cobranzas).
   manejar('listados:exportarExcel', async (pedido) => {
-    exigirVista('clientes', 'polizas', 'siniestros', 'renovaciones')
+    exigirVista('clientes', 'polizas', 'siniestros', 'renovaciones', 'cobranzas')
     const archivo = xlsxGenerico(pedido)
     return exito(await guardarBinarioComo({ ...archivo, descripcion: 'Planilla de Excel' }, ventanaActual()))
   })

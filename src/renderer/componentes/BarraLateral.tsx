@@ -46,7 +46,7 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
   // Inicio siempre está; el resto, según los permisos del rol. Administración también, porque «Acerca
   // de» la ve todo el mundo: adentro se muestran sólo las secciones que correspondan.
   // Un módulo con sublista (Cartera) se ve si alguna de sus sub-entradas se puede abrir.
-  const visibles = useMemo(() => MODULOS.filter((modulo) => moduloVisible(modulo, puedeVer)), [puedeVer])
+  const visibles = useMemo(() => MODULOS.filter((modulo) => moduloVisible(modulo, puedeVer, usuario.rol)), [puedeVer, usuario.rol])
   const { ir } = useNavegacion()
 
   const alternar = () => {
@@ -112,7 +112,7 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
                     // está adentro, el ícono no la saca de la sección en la que está.
                     alElegir={(id) => {
                       if (modulo.secciones && id === moduloActivo) return
-                      if (modulo.secciones) ir(id, { seccion: primeraSeccionVisible(modulo, puedeVer) })
+                      if (modulo.secciones) ir(id, { seccion: primeraSeccionVisible(modulo, puedeVer, usuario.rol) })
                       else alElegir(id)
                     }}
                     pendientes={modulo.id === 'tareas' ? pendientes : 0}
@@ -121,7 +121,7 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
                       sólo se abren desde ahí: con el módulo abierto, sus secciones quedan como íconos
                       debajo, con el nombre en el globo. */}
                   {modulo.secciones && colapsada && modulo.id === moduloActivo && (
-                    <SeccionesAchicadas modulo={modulo} secciones={seccionesVisibles(modulo, puedeVer)} />
+                    <SeccionesAchicadas modulo={modulo} secciones={seccionesVisibles(modulo, puedeVer, usuario.rol)} />
                   )}
                 </>
               )}
@@ -161,8 +161,10 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
 function GrupoMenu({ modulo, activo }: { modulo: Modulo; activo: boolean }) {
   const { seccion, ir } = useNavegacion()
   const { puedeVer } = usePermisos()
-  // Sólo las sub-entradas que esta persona puede abrir (Cartera pide un permiso distinto por renglón).
-  const secciones = seccionesVisibles(modulo, puedeVer)
+  const usuario = useUsuarioActual()
+  // Sólo las sub-entradas que esta persona puede abrir (Cartera pide un permiso distinto por renglón;
+  // Cobranzas → Comisiones, además, sólo la ven los administradores).
+  const secciones = seccionesVisibles(modulo, puedeVer, usuario.rol)
   const [abierto, setAbierto] = useState(activo)
   // Si se llega al módulo por otro lado (Inicio, un atajo), la lista se abre sola para que se vea dónde se está.
   useEffect(() => {
@@ -223,11 +225,14 @@ function GrupoMenu({ modulo, activo }: { modulo: Modulo; activo: boolean }) {
 
 /**
  * Qué renglón de la sublista está marcado. La navegación puede traer una sección que no es un renglón:
- * en Cartera, las pestañas internas de la planilla ('rechazos', 'reglas'…) o nada. Eso es la planilla.
+ * en Cartera, las pestañas internas de la planilla ('rechazos', 'reglas'…) o nada. Eso es la planilla; en
+ * Cobranzas, las pestañas internas del panel ('caja', 'mora', 'imputados', 'comisiones') o nada: el panel.
  */
 function seccionActual(modulo: Modulo, secciones: SeccionDeModulo[], seccion: string | null): string | undefined {
   if (secciones.some((item) => item.id === seccion)) return seccion ?? undefined
-  return modulo.id === 'cartera' ? 'planilla' : secciones[0]?.id
+  if (modulo.id === 'cartera') return 'planilla'
+  if (modulo.id === 'cobranzas') return 'panel'
+  return secciones[0]?.id
 }
 
 /** La sublista de un módulo con la barra achicada: un ícono por sección, debajo del ícono del módulo. */

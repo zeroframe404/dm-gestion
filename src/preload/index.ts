@@ -353,6 +353,10 @@ const api: ApiDm = {
     polizas: (filtros) => invocar('listados:polizas', filtros),
     siniestros: (filtros) => invocar('listados:siniestros', filtros),
     vencimientos: (filtros) => invocar('listados:vencimientos', filtros),
+    cuotas: (filtros) => invocar('listados:cuotas', filtros),
+    rechazos: (filtros) => invocar('listados:rechazos', filtros),
+    comisiones: (filtros) => invocar('listados:comisiones', filtros),
+    comisionesOpciones: () => invocar('listados:comisionesOpciones'),
     exportarExcel: (pedido) => invocar('listados:exportarExcel', pedido),
   },
   marketing: {
