@@ -17,14 +17,25 @@ import { Proximamente } from './componentes/Proximamente'
 import { Alerta } from './componentes/ui'
 import { ProveedorNavegacion, useNavegacion } from './contexto/Navegacion'
 import { ProveedorPermisos, usePermisos } from './contexto/Permisos'
-import { useSesion } from './contexto/Sesion'
+import { useSesion, useUsuarioActual } from './contexto/Sesion'
 import { ProveedorConexion } from './contexto/Conexion'
 import { ProveedorLlamada } from './contexto/Llamada'
 import { ProveedorDatosEnVivo } from './contexto/DatosEnVivo'
 import { ProveedorPerfiles } from './contexto/Perfiles'
 import { ProveedorPresencia, useFocoDeModulo } from './contexto/Presencia'
 import { ProveedorTareas } from './contexto/Tareas'
-import { areaDelDestino, buscarModulo, primeraSeccionVisible, seccionDeCartera, SECCIONES_CARTERA, type IdModulo, type IdSeccionDeCartera, type Modulo } from './modulos'
+import {
+  buscarModulo,
+  primeraSeccionVisible,
+  puedeAbrirDestino,
+  seccionDeCartera,
+  seccionDeCobranzas,
+  SECCIONES_CARTERA,
+  SECCIONES_COBRANZAS,
+  type IdModulo,
+  type IdSeccionDeCartera,
+  type Modulo,
+} from './modulos'
 import { CambiarClave } from './pantallas/CambiarClave'
 import { Inicio } from './pantallas/Inicio'
 import { Login } from './pantallas/Login'
@@ -57,6 +68,10 @@ const AseguradosListado = lazy(() => import('./pantallas/cartera/listados/Asegur
 const PolizasListado = lazy(() => import('./pantallas/cartera/listados/PolizasListado'))
 const SiniestrosListado = lazy(() => import('./pantallas/cartera/listados/SiniestrosListado'))
 const VencimientosListado = lazy(() => import('./pantallas/cartera/listados/VencimientosListado'))
+// Los listados de Cobranzas (Vencimientos Cuotas, Rechazos, Comisiones): ídem, con el componente por defecto.
+const VencimientosCuotasListado = lazy(() => import('./pantallas/cobranzas/listados/VencimientosCuotasListado'))
+const RechazosListado = lazy(() => import('./pantallas/cobranzas/listados/RechazosListado'))
+const ComisionesListado = lazy(() => import('./pantallas/cobranzas/listados/ComisionesListado'))
 
 /**
  * Las sub-entradas de Cartera que todavía no tienen pantalla: abren «Próximamente» con su propia
@@ -100,6 +115,19 @@ function contenidoDeCartera(seccion: string | null) {
   if (proximamente) return <Proximamente modulo={proximamente} />
   // Planilla del mes, y también las pestañas internas que se piden por seccion ('reglas', 'rechazos'…).
   return <Cartera />
+}
+
+/**
+ * Qué pantalla de Cobranzas corresponde a cada renglón de su sublista. El panel es el módulo de siempre,
+ * sin cambios: sus pestañas internas se piden por `seccion` ('caja', 'mora', 'imputados', 'comisiones')
+ * y cualquier cosa que no sea un renglón del menú —incluido nulo— cae ahí.
+ */
+function contenidoDeCobranzas(seccion: string | null) {
+  const id = seccionDeCobranzas(seccion)
+  if (id === 'vencimientosCuotas') return <VencimientosCuotasListado />
+  if (id === 'rechazos') return <RechazosListado />
+  if (id === 'comisionesListado') return <ComisionesListado />
+  return <Cobranzas />
 }
 
 export function App() {
@@ -165,6 +193,7 @@ function PantallaDeCarga() {
 function Escritorio() {
   const { modulo: moduloActivo, seccion, ir } = useNavegacion()
   const { puedeVer } = usePermisos()
+  const usuario = useUsuarioActual()
   const modulo = buscarModulo(moduloActivo)
 
   // El piso de la presencia (14.0): mientras no haya una celda ni una ficha abierta, lo que las otras
@@ -183,12 +212,16 @@ function Escritorio() {
   //
   // Cartera es la excepción al revés: cada sub-entrada se abre con el permiso de su propia área
   // (Asegurados con Clientes, Vencimientos con Renovaciones…), así que el gate mira la sección.
-  const area = areaDelDestino(modulo.id, seccion)
-  if (area && !puedeVer(area)) {
+  //
+  // Cobranzas hace lo mismo con su sublista (todas piden el área Cobranzas, y Comisiones además es
+  // sólo para administradores, como la pestaña de siempre).
+  if (!puedeAbrirDestino(modulo.id, seccion, puedeVer, usuario.rol)) {
     const nombre =
       modulo.id === 'cartera'
         ? (SECCIONES_CARTERA.find((item) => item.id === seccionDeCartera(seccion))?.nombre ?? modulo.nombre)
-        : modulo.nombre
+        : modulo.id === 'cobranzas'
+          ? (SECCIONES_COBRANZAS.find((item) => item.id === seccionDeCobranzas(seccion))?.nombre ?? modulo.nombre)
+          : modulo.nombre
     return (
       <Marco moduloActivo={moduloActivo} titulo={modulo.nombre} alElegir={ir}>
         <SinPermiso nombre={nombre} />
@@ -198,9 +231,11 @@ function Escritorio() {
 
   let contenido
   if (modulo.id === 'inicio') {
-    // Un módulo con sublista de permisos propios (Cartera) abre en la primera sección que se puede ver.
+    // Un módulo con sublista de permisos propios (Cartera, Cobranzas) abre en la primera sección que se puede ver.
     contenido = (
-      <Inicio alNavegar={(destino) => ir(destino, { seccion: primeraSeccionVisible(buscarModulo(destino), puedeVer) })} />
+      <Inicio
+        alNavegar={(destino) => ir(destino, { seccion: primeraSeccionVisible(buscarModulo(destino), puedeVer, usuario.rol) })}
+      />
     )
   } else if (modulo.id === 'cartera') {
     contenido = contenidoDeCartera(seccion)
@@ -223,7 +258,7 @@ function Escritorio() {
   } else if (modulo.id === 'siniestros') {
     contenido = <Siniestros />
   } else if (modulo.id === 'cobranzas') {
-    contenido = <Cobranzas />
+    contenido = contenidoDeCobranzas(seccion)
   } else if (modulo.id === 'metricas') {
     contenido = <Metricas />
   } else if (modulo.id === 'reportes') {

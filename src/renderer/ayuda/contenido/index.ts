@@ -5,6 +5,7 @@ import { AYUDA_CARTERA } from './cartera'
 import { AYUDA_CARTERA_LISTADOS } from './carteraListados'
 import { AYUDA_CLIENTES } from './clientes'
 import { AYUDA_COBRANZAS } from './cobranzas'
+import { AYUDA_COBRANZAS_LISTADOS } from './cobranzasListados'
 import { AYUDA_COMPANIAS } from './companias'
 import { AYUDA_EXCEL } from './excel'
 import { AYUDA_INICIO } from './inicio'
@@ -26,6 +27,7 @@ export const CONTENIDO_AYUDA: Record<string, ContenidoDeAyuda> = {
   ...AYUDA_CARTERA,
   ...AYUDA_CARTERA_LISTADOS,
   ...AYUDA_COBRANZAS,
+  ...AYUDA_COBRANZAS_LISTADOS,
   ...AYUDA_CLIENTES,
   ...AYUDA_LEADS,
   ...AYUDA_PRESUPUESTOS,

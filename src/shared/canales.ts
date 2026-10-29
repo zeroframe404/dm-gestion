@@ -15,13 +15,20 @@ import type { EstadoDeLaDemo, PasoDePruebaDeVps } from './demo'
 import type { MatrizPermisos } from './permisos'
 import type {
   FilaDeAsegurado,
+  FilaDeComision,
+  FilaDeCuota,
   FilaDePolizaListado,
+  FilaDeRechazo,
   FilaDeSiniestroListado,
   FilaDeVencimiento,
   FiltrosDeAsegurados,
+  FiltrosDeComisiones,
+  FiltrosDeCuotas,
   FiltrosDePolizasListado,
+  FiltrosDeRechazos,
   FiltrosDeSiniestrosListado,
   FiltrosDeVencimientos,
+  OpcionesDeComisiones,
   PedidoDeExcel,
 } from './listados'
 import type {
@@ -783,6 +790,15 @@ export interface Canales {
   'listados:polizas': (filtros: FiltrosDePolizasListado) => Resultado<FilaDePolizaListado[]>
   'listados:siniestros': (filtros: FiltrosDeSiniestrosListado) => Resultado<FilaDeSiniestroListado[]>
   'listados:vencimientos': (filtros: FiltrosDeVencimientos) => Resultado<FilaDeVencimiento[]>
+  /**
+   * Los listados de Cobranzas (Vencimientos Cuotas, Rechazos y Comisiones), mismo contrato. Piden el área
+   * Cobranzas; Comisiones además exige rol ADMIN o SUPER_ADMIN, igual que 'cobranzas:comisiones'.
+   */
+  'listados:cuotas': (filtros: FiltrosDeCuotas) => Resultado<FilaDeCuota[]>
+  'listados:rechazos': (filtros: FiltrosDeRechazos) => Resultado<FilaDeRechazo[]>
+  'listados:comisiones': (filtros: FiltrosDeComisiones) => Resultado<FilaDeComision[]>
+  /** Sólo las opciones de los desplegables de Comisiones (valores distintos), sin filas ni cálculo. */
+  'listados:comisionesOpciones': () => Resultado<OpcionesDeComisiones>
   /**
    * Guarda un .xlsx local con lo que la pantalla ya calculó ({titulo, columnas, filas}), con el diálogo
    * «Guardar como». No lee ni escribe la base: devuelve la ruta elegida, o null si se canceló.
