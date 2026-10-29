@@ -79,8 +79,10 @@ test('demo: los ajustes sembrados se adoptan y quedan «al día» en una base de
   const carpeta = mkdtempSync(path.join(tmpdir(), 'dm-demo-servidor-'))
   const registrar = console.log
   console.log = () => undefined
+  let db: ReturnType<typeof abrirBaseDeDatos>
   try {
-    abrirBaseDeDatos(path.join(carpeta, 'dm.db'))
+    // Una sola apertura: un segundo handle quedaba sin cerrar y en Windows no dejaba borrar la carpeta (EBUSY).
+    db = abrirBaseDeDatos(path.join(carpeta, 'dm.db'))
     await arrancarServidorDeLaDemo(new Date(2026, 9, 27, 10))
   } finally {
     console.log = registrar
@@ -91,7 +93,6 @@ test('demo: los ajustes sembrados se adoptan y quedan «al día» en una base de
     cerrarBaseDeDatos()
     rmSync(carpeta, { recursive: true, force: true })
   })
-  const db = abrirBaseDeDatos(path.join(carpeta, 'dm.db'))
   refirmarPlantillas(db, NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO)
   const fuente = new FuenteVps(credencialesDeLaDemo()!)
 
