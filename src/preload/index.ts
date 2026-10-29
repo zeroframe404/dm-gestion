@@ -125,6 +125,10 @@ const api: ApiDm = {
       invocar('cobranzas:cambiarResultado', pagoId, resultado, companias, sucursales),
     comisiones: (periodo) => invocar('cobranzas:comisiones', periodo),
   },
+  almacenamiento: {
+    estado: () => invocar('almacenamiento:estado'),
+    guardarTotal: (gigabytes) => invocar('almacenamiento:guardarTotal', gigabytes),
+  },
   impresora: {
     estado: () => invocar('impresora:estado'),
     guardar: (datos) => invocar('impresora:guardar', datos),

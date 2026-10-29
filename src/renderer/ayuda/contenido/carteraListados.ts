@@ -28,7 +28,7 @@ export const AYUDA_CARTERA_LISTADOS: Record<string, ContenidoDeAyuda> = {
   },
   'cartera.grupos': {
     clave: 'cartera.grupos',
-    titulo: 'Cartera → Grupos',
+    titulo: 'Cartera → Flotas',
     resumen: 'Agrupar clientes que van juntos (una familia, una empresa y sus socios). Todavía no está disponible.',
     secciones: [
       {

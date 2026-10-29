@@ -84,7 +84,7 @@ export type IdSeccionDeCartera =
 export const SECCIONES_CARTERA: Array<SeccionDeModulo & { id: IdSeccionDeCartera; area: Area }> = [
   { id: 'planilla', nombre: 'Planilla del mes', icono: 'tabla', area: 'cartera' },
   { id: 'asegurados', nombre: 'Asegurados', icono: 'usuario', area: 'clientes' },
-  { id: 'grupos', nombre: 'Grupos', icono: 'clientes', area: 'clientes' },
+  { id: 'grupos', nombre: 'Flotas', icono: 'clientes', area: 'clientes' },
   { id: 'polizas', nombre: 'Pólizas', icono: 'polizas', area: 'polizas' },
   { id: 'siniestros', nombre: 'Siniestros', icono: 'siniestros', area: 'siniestros' },
   { id: 'vencimientos', nombre: 'Vencimientos', icono: 'calendario', area: 'renovaciones' },

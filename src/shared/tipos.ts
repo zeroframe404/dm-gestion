@@ -5564,3 +5564,12 @@ export interface PruebaDeEquidad {
   /** Cuántas marcas devolvió su catálogo de vehículos (0 si no se pudo). */
   marcas: number
 }
+
+export type CategoriaDeArchivo = 'imagenes' | 'pdf' | 'excel' | 'word' | 'otros'
+
+/** Espacio que ocupan los adjuntos en la nube, por tipo de archivo. */
+export interface EstadoDeAlmacenamiento {
+  usadoBytes: number
+  totalBytes: number
+  categorias: Array<{ categoria: CategoriaDeArchivo; bytes: number; archivos: number }>
+}
