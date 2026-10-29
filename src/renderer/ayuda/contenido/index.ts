@@ -2,6 +2,7 @@ import type { ContenidoDeAyuda } from '../tipos'
 import { AYUDA_ADMINISTRACION } from './administracion'
 import { AYUDA_API_ASEGURADORAS } from './apiAseguradoras'
 import { AYUDA_CARTERA } from './cartera'
+import { AYUDA_CARTERA_LISTADOS } from './carteraListados'
 import { AYUDA_CLIENTES } from './clientes'
 import { AYUDA_COBRANZAS } from './cobranzas'
 import { AYUDA_COMPANIAS } from './companias'
@@ -23,6 +24,7 @@ import { AYUDA_TAREAS } from './tareas'
 export const CONTENIDO_AYUDA: Record<string, ContenidoDeAyuda> = {
   ...AYUDA_INICIO,
   ...AYUDA_CARTERA,
+  ...AYUDA_CARTERA_LISTADOS,
   ...AYUDA_COBRANZAS,
   ...AYUDA_CLIENTES,
   ...AYUDA_LEADS,

@@ -14,6 +14,17 @@ import type {
 import type { EstadoDeLaDemo, PasoDePruebaDeVps } from './demo'
 import type { MatrizPermisos } from './permisos'
 import type {
+  FilaDeAsegurado,
+  FilaDePolizaListado,
+  FilaDeSiniestroListado,
+  FilaDeVencimiento,
+  FiltrosDeAsegurados,
+  FiltrosDePolizasListado,
+  FiltrosDeSiniestrosListado,
+  FiltrosDeVencimientos,
+  PedidoDeExcel,
+} from './listados'
+import type {
   TipoPestana,
   // Mensajería interna (12.8).
   AdjuntoDeMensaje,
@@ -763,6 +774,20 @@ export interface Canales {
    * para bajar lo mismo que ya está a la vista sería un botón que nunca funciona.
    */
   'excel:exportar': (pedido: PedidoDeReporte) => Resultado<{ ruta: string | null }>
+  /**
+   * Los listados de Cartera (ver el contrato en shared/listados/index.ts). Son de sólo lectura; cada uno
+   * pide el permiso del área de su tabla. Quien construye un listado cambia sus tipos y su servicio, no
+   * esta firma.
+   */
+  'listados:asegurados': (filtros: FiltrosDeAsegurados) => Resultado<FilaDeAsegurado[]>
+  'listados:polizas': (filtros: FiltrosDePolizasListado) => Resultado<FilaDePolizaListado[]>
+  'listados:siniestros': (filtros: FiltrosDeSiniestrosListado) => Resultado<FilaDeSiniestroListado[]>
+  'listados:vencimientos': (filtros: FiltrosDeVencimientos) => Resultado<FilaDeVencimiento[]>
+  /**
+   * Guarda un .xlsx local con lo que la pantalla ya calculó ({titulo, columnas, filas}), con el diálogo
+   * «Guardar como». No lee ni escribe la base: devuelve la ruta elegida, o null si se canceló.
+   */
+  'listados:exportarExcel': (pedido: PedidoDeExcel) => Resultado<{ ruta: string | null }>
   'reportes:vistaPrevia': (pedido: PedidoDeReporte) => Resultado<VistaPreviaDeReporte>
   /**
    * Con `ruta` en null abre el diálogo «Guardar como», que es lo que hace la pantalla, y devuelve la

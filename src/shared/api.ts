@@ -361,6 +361,14 @@ export interface ApiDm {
     filas: Remota<'excel:filas'>
     exportar: Remota<'excel:exportar'>
   }
+  /** Los listados de Cartera (shared/listados/index.ts) y su exportación genérica a Excel. */
+  listados: {
+    asegurados: Remota<'listados:asegurados'>
+    polizas: Remota<'listados:polizas'>
+    siniestros: Remota<'listados:siniestros'>
+    vencimientos: Remota<'listados:vencimientos'>
+    exportarExcel: Remota<'listados:exportarExcel'>
+  }
   marketing: {
     plantillas: Remota<'marketing:plantillas'>
     crearPlantilla: Remota<'marketing:crearPlantilla'>

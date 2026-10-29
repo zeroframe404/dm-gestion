@@ -348,6 +348,13 @@ const api: ApiDm = {
     filas: (pedido) => invocar('excel:filas', pedido),
     exportar: (pedido) => invocar('excel:exportar', pedido),
   },
+  listados: {
+    asegurados: (filtros) => invocar('listados:asegurados', filtros),
+    polizas: (filtros) => invocar('listados:polizas', filtros),
+    siniestros: (filtros) => invocar('listados:siniestros', filtros),
+    vencimientos: (filtros) => invocar('listados:vencimientos', filtros),
+    exportarExcel: (pedido) => invocar('listados:exportarExcel', pedido),
+  },
   marketing: {
     plantillas: () => invocar('marketing:plantillas'),
     crearPlantilla: (datos) => invocar('marketing:crearPlantilla', datos),

@@ -12,6 +12,11 @@
 //    filtro sin nada elegido no filtra nada.
 //  - `alCambiar` devuelve siempre una lista nueva, en el orden en que están las opciones (no en el
 //    orden en que las fueron tocando), así dos filtros equivalentes se ven iguales.
+//  - `variante="chips"` (los listados de Cartera) cambia SÓLO cómo se ve el disparador: en lugar del
+//    botón «Compañía: ATM +1», un campo con la etiqueta arriba en negrita, la línea inferior y un chip
+//    por cada opción elegida (o «Todas ×» si no hay ninguna), cada uno con su × para quitarlo. El
+//    panel de casillas, el buscador y el resto del comportamiento son los mismos. Sin `variante` todo
+//    queda exactamente como estaba.
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Icono } from './Icono'
 import { cx } from './ui'
@@ -54,6 +59,8 @@ interface PropsFiltroMultiple {
   /** A partir de cuántas opciones aparece el buscador del panel. */
   buscarDesde?: number
   className?: string
+  /** 'boton' (por defecto) es el filtro de siempre; 'chips' es el campo con chips de los listados. */
+  variante?: 'boton' | 'chips'
 }
 
 export function FiltroMultiple({
@@ -65,6 +72,7 @@ export function FiltroMultiple({
   plural = 'todas',
   buscarDesde = 8,
   className,
+  variante = 'boton',
 }: PropsFiltroMultiple) {
   const [abierto, setAbierto] = useState(false)
   const [busqueda, setBusqueda] = useState('')
@@ -197,26 +205,87 @@ export function FiltroMultiple({
 
   return (
     <div className={cx('relative', className)} ref={contenedor}>
-      <button
-        ref={boton}
-        type="button"
-        onClick={() => setAbierto((estaba) => !estaba)}
-        aria-expanded={abierto}
-        aria-haspopup="true"
-        aria-controls={abierto ? idPanel : undefined}
-        aria-label={detalle}
-        title={detalle}
-        className={cx(
-          'inline-flex h-9 max-w-56 items-center gap-1.5 rounded-lg border bg-white px-2.5 text-sm transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40',
-          elegidosAhora.length > 0
-            ? 'border-marino-400 font-semibold text-marino-800 hover:bg-marino-50'
-            : 'border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50',
-        )}
-      >
-        <span className="truncate">{resumen}</span>
-        <Icono nombre="desplegar" tamano={13} className={cx('shrink-0 opacity-60 transition-transform', abierto && 'rotate-180')} />
-      </button>
+      {variante === 'chips' ? (
+        <div>
+          <p className="mb-1 text-sm font-bold text-slate-800">{etiqueta}</p>
+          <div className="flex min-h-9 items-center gap-1.5 border-b border-slate-300 pb-1 focus-within:border-marino-500">
+            <ul className="flex min-w-0 flex-wrap items-center gap-1.5">
+              {elegidosAhora.length === 0 ? (
+                <li>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-0.5 pr-1 pl-2.5 text-xs font-semibold text-slate-700">
+                    {plural === 'todos' ? 'Todos' : 'Todas'}
+                    {/* No hay nada elegido que quitar: la × abre la lista para elegir. */}
+                    <button
+                      type="button"
+                      onClick={() => setAbierto(true)}
+                      aria-label={`Elegir ${etiqueta}`}
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+                    >
+                      <Icono nombre="cerrar" tamano={11} />
+                    </button>
+                  </span>
+                </li>
+              ) : (
+                elegidosAhora.map((valor) => {
+                  const texto = conHuerfanas.find((o) => o.valor === valor)?.texto ?? valor
+                  return (
+                    <li key={valor}>
+                      <span className="inline-flex max-w-48 items-center gap-1 rounded-full bg-marino-50 py-0.5 pr-1 pl-2.5 text-xs font-semibold text-marino-800">
+                        <span className="truncate" title={texto}>
+                          {texto}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => mandar(elegidosAhora.filter((v) => v !== valor))}
+                          aria-label={`Quitar ${texto}`}
+                          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-marino-700 hover:bg-marino-100"
+                        >
+                          <Icono nombre="cerrar" tamano={11} />
+                        </button>
+                      </span>
+                    </li>
+                  )
+                })
+              )}
+            </ul>
+            {/* El resto de la línea abre y cierra el panel. */}
+            <button
+              ref={boton}
+              type="button"
+              onClick={() => setAbierto((estaba) => !estaba)}
+              aria-expanded={abierto}
+              aria-haspopup="true"
+              aria-controls={abierto ? idPanel : undefined}
+              aria-label={detalle}
+              title={detalle}
+              className="flex h-7 min-w-6 flex-1 items-center justify-end text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40"
+            >
+              <Icono nombre="desplegar" tamano={14} className={cx('shrink-0 transition-transform', abierto && 'rotate-180')} />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          ref={boton}
+          type="button"
+          onClick={() => setAbierto((estaba) => !estaba)}
+          aria-expanded={abierto}
+          aria-haspopup="true"
+          aria-controls={abierto ? idPanel : undefined}
+          aria-label={detalle}
+          title={detalle}
+          className={cx(
+            'inline-flex h-9 max-w-56 items-center gap-1.5 rounded-lg border bg-white px-2.5 text-sm transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40',
+            elegidosAhora.length > 0
+              ? 'border-marino-400 font-semibold text-marino-800 hover:bg-marino-50'
+              : 'border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50',
+          )}
+        >
+          <span className="truncate">{resumen}</span>
+          <Icono nombre="desplegar" tamano={13} className={cx('shrink-0 opacity-60 transition-transform', abierto && 'rotate-180')} />
+        </button>
+      )}
 
       {abierto && (
         <div
