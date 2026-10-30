@@ -1,4 +1,5 @@
 // Módulos de la aplicación, en el orden en que aparecen en la barra lateral.
+import type { SeccionDeMiLink } from '../shared/miLink'
 import type { SeccionDelMulticotizador } from '../shared/multicotizador'
 import { esArea, type Area } from '../shared/permisos'
 import type { Rol } from '../shared/tipos'
@@ -11,6 +12,7 @@ export type IdModulo =
   | 'leads'
   | 'presupuestos'
   | 'multicotizador'
+  | 'miLink'
   | 'polizas'
   | 'renovaciones'
   | 'siniestros'
@@ -64,6 +66,17 @@ export const SECCIONES_MULTICOTIZADOR: Array<SeccionDeModulo & { id: SeccionDelM
   { id: 'cotizaciones', nombre: 'Cotizaciones', icono: 'lista' },
   { id: 'planes', nombre: 'Planes de Cotización', icono: 'presupuestos' },
   { id: 'emisiones', nombre: 'Emisiones', icono: 'polizas' },
+]
+
+/**
+ * La sublista de Mi link: la página que se edita y lo que llega desde ella. Todos los renglones van con
+ * el permiso del módulo; qué se ve de los demás (las solicitudes de todos) lo decide el rol en el VPS.
+ */
+export const SECCIONES_MI_LINK: Array<SeccionDeModulo & { id: SeccionDeMiLink }> = [
+  { id: 'pagina', nombre: 'Mi página', icono: 'lapiz' },
+  { id: 'solicitudes', nombre: 'Solicitudes', icono: 'bandeja' },
+  { id: 'siniestros', nombre: 'Siniestros', icono: 'siniestros' },
+  { id: 'metricas', nombre: 'Métricas', icono: 'metricas' },
 ]
 
 export type IdSeccionDeCartera =
@@ -159,6 +172,14 @@ export const MODULOS: Modulo[] = [
     descripcion: 'Un auto o una moto cotizados en todas las compañías con API a la vez, comparados por cobertura.',
     disponible: true,
     secciones: SECCIONES_MULTICOTIZADOR,
+  },
+  {
+    id: 'miLink',
+    nombre: 'Mi link',
+    icono: 'enlace',
+    descripcion: 'Tu página pública con tus contactos y coberturas, y las cotizaciones y denuncias que te llegan por ahí.',
+    disponible: true,
+    secciones: SECCIONES_MI_LINK,
   },
   {
     id: 'polizas',

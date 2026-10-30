@@ -51,6 +51,7 @@ import {
   solicitudDe,
   type FormularioMulticotizador,
 } from './FormularioDeCotizacion'
+import { formularioDesdeMiLink, tipoDeLaSolicitud, vehiculoDelCatalogo } from './desdeMiLink'
 import { Cotizaciones, Emisiones, PlanesDeCotizacion } from './ListadosDelMulticotizador'
 import { ResultadosDeCotizacion, type EstadoDeTarjeta } from './ResultadosDeCotizacion'
 
@@ -105,7 +106,7 @@ export function Multicotizador() {
 
 /** Cotizar Vehículo / Cotizar Moto: el mismo cotizador, con el tipo ya elegido por la sección. */
 function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
-  const { ir } = useNavegacion()
+  const { ir, parametros, limpiarParametros } = useNavegacion()
   const { puedeEditar, veNumerosDeLaAgencia } = usePermisos()
   const esDemo = useEsDemo()
   // Cotizar es mirar precios; armar el presupuesto y emitir, en cambio, escriben: piden Presupuestos.
@@ -126,6 +127,15 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
   }, [mensaje])
   const [armando, setArmando] = useState(false)
   /**
+   * Cuántas veces se cargó el formulario desde afuera (una solicitud de Mi link). Va de `key` del
+   * formulario: lo vuelve a montar, así el bloque del vehículo arranca en «a mano» con lo que trajo la
+   * solicitud en vez de quedarse en los desplegables del catálogo, que no lo mostrarían.
+   */
+  const [carga, setCarga] = useState(0)
+  /** El número de la última carga desde afuera: la búsqueda en el catálogo de una carga vieja no pisa la nueva. */
+  const ultimaCarga = useRef(0)
+  const [desdeMiLink, setDesdeMiLink] = useState<string | null>(null)
+  /**
    * El número del último pedido de cada compañía. Si se vuelve a cotizar antes de que conteste el
    * anterior, la respuesta vieja llega después y no tiene que pisar a la nueva.
    */
@@ -143,6 +153,57 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
       setFormulario((previo) => ({ ...previo, aseguradoras: disponibles(resultado.datos) }))
     })
   }, [])
+
+  // «Cotizar en el Multicotizador» desde una solicitud de Mi link. La recibe sólo el cotizador de su
+  // tipo: el otro (si quedó montado) no la toca ni la consume.
+  const solicitudDeMiLink = parametros.solicitudDeMiLink
+  useEffect(() => {
+    if (!solicitudDeMiLink || tipoDeLaSolicitud(solicitudDeMiLink) !== tipo) return
+    limpiarParametros()
+    for (const id of Object.keys(pedidos.current)) pedidos.current[id] = (pedidos.current[id] ?? 0) + 1
+    // Como «Empezar de nuevo»: las condiciones comerciales y las compañías elegidas se conservan.
+    setFormulario((previo) => ({
+      ...formularioDesdeMiLink(formularioVacio(previo.aseguradoras, tipo, condicionesDe(previo)), solicitudDeMiLink),
+      todas: previo.todas,
+    }))
+    setCarga((previa) => previa + 1)
+    const estaCarga = ++ultimaCarga.current
+    setTarjetas({})
+    setCotizada(null)
+    setSeleccionadas(new Set())
+    setAviso(null)
+    setMensaje(null)
+    setDesdeMiLink(
+      `Cargado desde la solicitud #${solicitudDeMiLink.numero} de Mi link (${solicitudDeMiLink.nombre}). ` +
+        'Revisá el vehículo, completá la provincia y la localidad, y cotizá.',
+    )
+    const vehiculo = solicitudDeMiLink.vehiculo
+    if (!vehiculo) return
+    // Sin cancelar desde la limpieza del efecto: `limpiarParametros` lo vuelve a disparar enseguida y
+    // tiraría la búsqueda. La vigencia la da el número de carga.
+    void vehiculoDelCatalogo(vehiculo).then((identificado) => {
+      if (ultimaCarga.current !== estaCarga || !identificado) return
+      // Sólo si nadie tocó el vehículo mientras se buscaba: pisar lo que se está escribiendo sería peor
+      // que quedarse con la carga manual.
+      setFormulario((previo) =>
+        previo.vehiculo.marca === vehiculo.marca.trim() && previo.vehiculo.modelo === vehiculo.modelo.trim() && !previo.vehiculo.catalogoCodigo
+          ? {
+              ...previo,
+              vehiculo: {
+                ...previo.vehiculo,
+                marca: identificado.marca,
+                modelo: identificado.modelo,
+                linea: identificado.linea,
+                anio: identificado.anio,
+                categoria: identificado.categoria ?? '',
+                catalogoCodigo: identificado.codigo,
+              },
+            }
+          : previo,
+      )
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- se dispara por la solicitud que llega, nada más.
+  }, [solicitudDeMiLink, tipo])
 
   const nombreDe = (id: IdAseguradora) => aseguradoras?.find((a) => a.id === id)?.nombre ?? id
 
@@ -236,6 +297,8 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
     setSeleccionadas(new Set())
     setAviso(null)
     setMensaje(null)
+    setDesdeMiLink(null)
+    ultimaCarga.current += 1
   }
 
   const coberturas = useMemo(() => {
@@ -347,7 +410,10 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
         </div>
       )}
 
+      {desdeMiLink && <Alerta tono="info">{desdeMiLink}</Alerta>}
+
       <FormularioDeCotizacion
+        key={carga}
         valor={formulario}
         alCambiar={(cambios) => setFormulario((previo) => ({ ...previo, ...(typeof cambios === 'function' ? cambios(previo) : cambios) }))}
         aseguradoras={aseguradoras}

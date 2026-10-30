@@ -6,6 +6,7 @@
 // de pólizas se vuelve al cliente. Pasar esos saltos por props obligaría a que App conozca el detalle de
 // cada pantalla.
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import type { SolicitudDeMiLink } from '../../shared/miLink'
 import type { IdModulo } from '../modulos'
 
 export interface ParametrosDeNavegacion {
@@ -33,6 +34,12 @@ export interface ParametrosDeNavegacion {
   busqueda?: string
   /** Qué área abrir en «General Excel»: lo usa el botón «Ver como Excel» de cada módulo. */
   area?: string
+  /**
+   * Abrir el Multicotizador con lo que pidió el visitante de Mi link (vehículo, nombre, teléfono y
+   * código postal) ya cargado. Viaja la solicitud entera y no su id: está en el VPS, y volver a
+   * pedirla sólo para precargar un formulario sería un viaje de más.
+   */
+  solicitudDeMiLink?: SolicitudDeMiLink
 }
 
 interface Navegacion {

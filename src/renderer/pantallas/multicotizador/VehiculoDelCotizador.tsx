@@ -34,7 +34,9 @@ interface Props {
 export function VehiculoDelCotizador({ valor, alCambiar, ceroKm, alCambiarCeroKm, errores }: Props) {
   const tipo: TipoDeVehiculo = valor.tipo === 'MOTO' ? 'MOTO' : 'AUTO'
   const [hayCatalogo, setHayCatalogo] = useState<boolean | null>(null)
-  const [aMano, setAMano] = useState(false)
+  // Un vehículo que llega ya cargado (una solicitud de Mi link) arranca a mano: los desplegables se
+  // dibujan con ids del catálogo que acá no se tienen, y lo mostrarían vacío aunque esté completo.
+  const [aMano, setAMano] = useState(() => Boolean(valor.marca.trim()))
   const [eleccion, setEleccion] = useState<Eleccion>(SIN_ELEGIR)
   const [marcas, setMarcas] = useState<OpcionDeCatalogo[]>([])
   const [anios, setAnios] = useState<number[]>([])

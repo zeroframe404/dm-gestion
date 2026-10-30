@@ -1526,6 +1526,48 @@ mientras tanto la cotización queda en Equidad con el número de solicitud que t
   `EQUIDAD_SERVICIO_PASSWORD` (el Basic), `EQUIDAD_PRODUCTOR` / `_RAMA` / `_EMPRESA` y `EQUIDAD_MARCA` /
   `_MODELO` / `_VERSION` / `_ANIO` / `_CP` / `_LOCALIDAD` para elegir qué cotizar. No es parte de `npm run prueba`.
 
+### Mi link
+
+La página pública de cada persona de la agencia: `https://dmartinezseguros.com/p/<dirección>`, con su
+nombre, una línea sobre ella, contactos, links y las coberturas que ofrece. Desde ahí el visitante pide
+cotización de auto o moto (con el catálogo de vehículos del VPS), presupuesto de otras coberturas o
+denuncia un siniestro con fotos y PDF; DM Gestión lista todo eso y muestra cuánto se visita la página.
+Va en la barra lateral después del Multicotizador, con su sublista: **Mi página** (el editor, con
+autoguardado), **Solicitudes**, **Siniestros** y **Métricas**.
+
+- **Todo vive en el VPS**, no en la grilla ni en esta computadora: la página la ve cualquiera a
+  cualquier hora y las solicitudes entran con todas las PCs apagadas. La app sólo lee y manda por
+  `/api/dmg/mi-link/*` (con el token del puente); sin servidor, la pantalla dice que hace falta conexión.
+- **El dueño** es la clave de usuario (`claveDeUsuario`, el login en minúscula), la misma de los perfiles:
+  el `id` de la base local no sirve entre computadoras. El actor (`actorClave`, `actorNombre`, `actorRol`)
+  viaja en el query string de cada pedido y el servidor decide con el rol: cada uno ve lo suyo, y ver lo
+  de otros (filtro «Usuario», «todos») es de ADMIN y SUPER_ADMIN.
+- **El candado**: la página se guarda con su `version`. Si otra computadora guardó en el medio, el VPS
+  contesta 409 y el canal vuelve con `codigo: 'version-vieja'` para que el editor recargue lo último.
+  La dirección tomada por otro también es un 409, pero sin esa marca: ahí se corrige la dirección.
+- **Permisos**: área propia `miLink`. Ver alcanza para mirar la página, los listados, las métricas y abrir
+  adjuntos; guardar la página y el seguimiento (estado y nota) piden editar.
+- **Dónde está cada cosa**: el contrato de datos en `src/shared/miLink.ts` (el servidor valida la misma
+  forma en `server/src/modules/milink/milink.contenido.ts` del repo Seguros_Daniel_Martinez); los canales
+  `miLink:*` en `src/shared/canales.ts`; el proceso principal en `src/main/servicios/miLink.ts` y los
+  pedidos en `FuenteVps` (`src/main/vps/fuenteVps.ts`); las pantallas en `src/renderer/pantallas/miLink/`;
+  la ayuda en `src/renderer/ayuda/contenido/miLink.ts`. La página HTML pública la arma el servidor
+  (Express, `GET /p/:direccion`), no es una ruta de la app ni del sitio.
+- **Adjuntos**: «abrir» baja el archivo a la temporal (`dm-gestion-mi-link/<id>-<nombre saneado>`) y lo
+  abre con el programa del sistema. **«Ver mi página»** sólo abre direcciones `/p/…` del dominio de Mi
+  link (o del servidor configurado: el de pruebas, el de la demo), siempre con `?vista=duenio`, que no
+  cuenta la visita.
+- **Simulador**: `scripts/vps-simulado.mjs` atiende los mismos endpoints en memoria (la demo y las
+  pruebas, `pruebas/mi-link.prueba.ts`); `sembrarMiLink({ solicitudes, denuncias, eventos })` carga lo que
+  en el servidor real llega desde la página pública.
+
+**Convivencia con la versión normal.** Las tablas (`dmg_mi_link*`) y las rutas (`/api/dmg/mi-link`,
+`/api/mi-link`, `/p/`) son nuevas y aditivas en el VPS: la normal no las llama y no se entera. Lo único
+compartido que se toca es la matriz de permisos: la normal no conoce el área `miLink` y la descarta al
+leer (`normalizarMatriz`), así que no se rompe; pero **si el superadministrador guarda la matriz desde la
+normal, se pierde lo configurado para Mi link y la beta vuelve al valor por defecto** (editar para todos
+los roles). Se vuelve a ajustar desde la beta, o se espera a que Mi link llegue a `master`.
+
 ### Tareas
 
 Los pendientes del equipo. La tabla existía desde la Fase 5 (se crean desde la ficha del cliente y del
