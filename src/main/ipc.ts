@@ -53,6 +53,7 @@ import { cajaConCache, comisionesConCache, imputadosConCache } from './servicios
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
 import { leerSnapshotDeMetrica } from './servicios/metricasCache'
+import { estadoDeAlmacenamiento, guardarTotalDeAlmacenamiento } from './servicios/almacenamiento'
 import { altasConCache, estadisticasConCache, podioHistorico, tableroConCache } from './servicios/metricasDesdeCache'
 import {
   areasDelReporte,
@@ -858,6 +859,14 @@ export function registrarIpc(): void {
   // Ticketeadora térmica: la usa y la configura todo el mostrador. No pide rol ni permiso sobre
   // Administración a propósito: es la impresora que tiene la PC delante, y quien cobra es quien se da
   // cuenta de que hay que cambiarla, apagarla o dejar de gastar papel.
+  manejar('almacenamiento:estado', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    return exito(estadoDeAlmacenamiento())
+  })
+  manejar('almacenamiento:guardarTotal', async (gigabytes) => {
+    exigirRol('SUPER_ADMIN')
+    return exito(guardarTotalDeAlmacenamiento(gigabytes))
+  })
   manejar('impresora:estado', async () => {
     exigirSesion()
     return exito(await configuracionDeImpresora())

@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AvisoConexionGoogle } from '../../componentes/AvisoConexionGoogle'
 import { BarraDePestanas, type ItemDePestana } from '../../componentes/BarraDePestanas'
 import { useEsDemo } from '../../canal'
+import { AlmacenamientoEnNube } from './AlmacenamientoEnNube'
 import { usePermisos } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { AcercaDe } from './AcercaDe'
@@ -38,6 +39,7 @@ type IdSeccion =
   | 'companias'
   | 'impresora'
   | 'sincronizar'
+  | 'almacenamiento'
   | 'basededatos'
   | 'google'
   | 'importar'
@@ -85,6 +87,7 @@ export function Administracion() {
       lista.push({ id: 'basededatos', nombre: 'Base de datos', icono: 'nube', ayuda: 'administracion.basededatos' })
       lista.push({ id: 'sincronizacion', nombre: 'Sincronización', icono: 'nube', ayuda: 'administracion.sincronizacion' })
       lista.push({ id: 'importar', nombre: 'Reimportar la base', icono: 'nubeBajada', ayuda: 'administracion.importar' })
+      lista.push({ id: 'almacenamiento', nombre: 'Almacenamiento en nube', icono: 'nube', ayuda: 'administracion.almacenamiento' })
       lista.push({ id: 'google', nombre: 'Google Drive', icono: 'nube', ayuda: 'administracion.google' })
       lista.push({ id: 'redessociales', nombre: 'Redes sociales', icono: 'instagram', ayuda: 'administracion.redessociales' })
       lista.push({ id: 'vehiculos', nombre: 'Catálogo de vehículos', icono: 'auto', ayuda: 'administracion.vehiculos' })
@@ -131,6 +134,7 @@ export function Administracion() {
         {seccion === 'impresora' && <Impresora />}
         {seccion === 'sincronizar' && <SincronizarTodo />}
         {seccion === 'basededatos' && <BaseDeDatos />}
+        {seccion === 'almacenamiento' && <AlmacenamientoEnNube />}
         {seccion === 'google' && <ConexionGoogle />}
         {seccion === 'importar' && <ImportarGoogle />}
         {seccion === 'sincronizacion' && <Sincronizacion />}

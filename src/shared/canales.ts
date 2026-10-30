@@ -123,6 +123,7 @@ import type {
   AvisoDeMora,
   CajaDelDia,
   ConfigImpresora,
+  EstadoDeAlmacenamiento,
   DatosDeCompania,
   DatosDeImpresora,
   DatosDeMovimientoDeCaja,
@@ -430,6 +431,9 @@ export interface Canales {
   // Ticketeadora térmica (opcional). La configura cualquiera que tenga sesión: es la impresora del
   // mostrador, y quien cobra es quien se da cuenta de que hay que cambiarla o desactivarla.
   'impresora:estado': () => Resultado<ConfigImpresora>
+  /** Espacio de los adjuntos en la nube: lo ven SUPER_ADMIN y ADMIN; el total lo carga el superadmin. */
+  'almacenamiento:estado': () => Resultado<EstadoDeAlmacenamiento>
+  'almacenamiento:guardarTotal': (gigabytes: number) => Resultado<EstadoDeAlmacenamiento>
   'impresora:guardar': (datos: DatosDeImpresora) => Resultado<ConfigImpresora>
   'impresora:prueba': () => Resultado<null>
   /** Las direcciones que encabezan el ticket, una por sucursal. */

@@ -104,6 +104,10 @@ export interface ApiDm {
     cambiarResultado: Remota<'cobranzas:cambiarResultado'>
     comisiones: Remota<'cobranzas:comisiones'>
   }
+  almacenamiento: {
+    estado: Remota<'almacenamiento:estado'>
+    guardarTotal: Remota<'almacenamiento:guardarTotal'>
+  }
   impresora: {
     estado: Remota<'impresora:estado'>
     guardar: Remota<'impresora:guardar'>
