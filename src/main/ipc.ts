@@ -309,6 +309,20 @@ import { borrarCuentaEquidad, estadoEquidad, guardarCuentaEquidad, probarEquidad
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora, localidadesDelMulticotizador } from './servicios/multicotizador'
 import { cotizacionesDelMulticotizador, emisionesDelMulticotizador, planesDelMulticotizador } from './servicios/listadosDelMulticotizador'
 import {
+  abrirArchivoDeMiLink,
+  abrirMiLinkEnElNavegador,
+  actualizarDenunciaDeMiLink,
+  actualizarSolicitudDeMiLink,
+  denunciasDeMiLink,
+  direccionLibreDeMiLink,
+  guardarMiLink,
+  metricasDeMiLink,
+  miLinkPropio,
+  PaginaDesactualizada,
+  solicitudesDeMiLink,
+  usuariosDeMiLink,
+} from './servicios/miLink'
+import {
   borrarMetaDelVps,
   estadoCompartidoDeGoogle,
   estadoCompartidoDeMeta,
@@ -409,6 +423,11 @@ function manejar<C extends NombreCanal>(canal: C, manejador: Manejador<C>): void
       // a intentar cuando vuelva internet, no un cartel rojo al lado de un campo.
       if (error instanceof SinConexion) {
         return { ok: false, error: error.message, codigo: 'sin-conexion' } satisfies Resultado<never>
+      }
+      // La página de Mi link que otra computadora guardó en el medio: la pantalla no muestra sólo el
+      // cartel, vuelve a cargar lo último (ver servicios/miLink.ts).
+      if (error instanceof PaginaDesactualizada) {
+        return { ok: false, error: error.message, codigo: 'version-vieja' } satisfies Resultado<never>
       }
       if (error instanceof ErrorDeNegocio) {
         return { ok: false, error: error.message } satisfies Resultado<never>
@@ -2185,6 +2204,35 @@ export function registrarIpc(): void {
   manejar('multicotizador:emisiones', async (filtros) => {
     const actor = exigirVista('multicotizador')
     return exito(await emisionesDelMulticotizador(filtros, puedeVerElArea(actor, 'polizas')))
+  })
+
+  // --- Mi link ---------------------------------------------------------------
+  //
+  // Todo vive en el VPS y el dueño es siempre quien tiene la sesión abierta. Mirar (la página, los
+  // listados, las métricas, abrir un adjunto) es ver Mi link; guardar la página y el seguimiento de una
+  // solicitud o una denuncia es editarlo, y como eso escribe en el servidor pide además el canal en
+  // vivo. Lo de otras personas no se decide acá: el rol viaja en cada pedido y el que dice que no es el
+  // servidor (sólo ADMIN y SUPER_ADMIN ven lo de los demás).
+  manejar('miLink:mia', async () => exito(await miLinkPropio(exigirVista('miLink'))))
+  manejar('miLink:direccionLibre', async (direccion) => exito(await direccionLibreDeMiLink(exigirVista('miLink'), direccion)))
+  manejar('miLink:guardar', async (cambios) => exito(await guardarMiLink(exigirEdicion('miLink'), cambios)))
+  manejar('miLink:solicitudes', async (filtros) => exito(await solicitudesDeMiLink(exigirVista('miLink'), filtros)))
+  manejar('miLink:actualizarSolicitud', async (id, cambios) =>
+    exito(await actualizarSolicitudDeMiLink(exigirEdicion('miLink'), id, cambios)),
+  )
+  manejar('miLink:denuncias', async (filtros) => exito(await denunciasDeMiLink(exigirVista('miLink'), filtros)))
+  manejar('miLink:actualizarDenuncia', async (id, cambios) =>
+    exito(await actualizarDenunciaDeMiLink(exigirEdicion('miLink'), id, cambios)),
+  )
+  manejar('miLink:abrirArchivo', async (archivo) => exito(await abrirArchivoDeMiLink(exigirVista('miLink'), archivo)))
+  manejar('miLink:metricas', async (dias, usuario) => exito(await metricasDeMiLink(exigirVista('miLink'), dias, usuario)))
+  manejar('miLink:abrirPagina', async (url) => {
+    exigirVista('miLink')
+    return exito(await abrirMiLinkEnElNavegador(url))
+  })
+  manejar('miLink:usuarios', () => {
+    exigirVista('miLink')
+    return exito(usuariosDeMiLink())
   })
 
   // --- Marketing → Redes -----------------------------------------------------

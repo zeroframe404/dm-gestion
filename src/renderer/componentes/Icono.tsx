@@ -231,6 +231,21 @@ const TRAZOS = {
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </>
   ),
+  /** Lo que entra de afuera y espera que alguien lo atienda (las solicitudes de Mi link). */
+  bandeja: (
+    <>
+      <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+      <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </>
+  ),
+  compartir: (
+    <>
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98" />
+    </>
+  ),
   flechaDerecha: <path d="m9 18 6-6-6-6" />,
   flechaIzquierda: <path d="m15 18-6-6 6-6" />,
   flechaAbajo: <path d="m6 9 6 6 6-6" />,
@@ -380,6 +395,13 @@ const TRAZOS = {
       <rect width="20" height="20" x="2" y="2" rx="5" />
       <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37" />
       <path d="M17.5 6.5h.01" />
+    </>
+  ),
+  /** El globito con el tubo: el botón que abre la charla con el cliente (Mi link → Solicitudes). */
+  whatsapp: (
+    <>
+      <path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21" />
+      <path d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1" />
     </>
   ),
   moto: (

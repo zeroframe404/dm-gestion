@@ -121,6 +121,7 @@ const NOMBRE_MODULO: Record<Area, string> = {
   leads: 'Leads',
   presupuestos: 'Presupuestos',
   multicotizador: 'Multicotizador',
+  miLink: 'Mi link',
   polizas: 'Pólizas',
   renovaciones: 'Renovaciones',
   siniestros: 'Siniestros',

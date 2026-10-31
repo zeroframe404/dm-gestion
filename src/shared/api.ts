@@ -469,6 +469,20 @@ export interface ApiDm {
     planes: Remota<'multicotizador:planes'>
     emisiones: Remota<'multicotizador:emisiones'>
   },
+  /** Mi link: la página pública de cada uno y lo que llega desde ella. Ver canales.ts. */
+  miLink: {
+    mia: Remota<'miLink:mia'>
+    direccionLibre: Remota<'miLink:direccionLibre'>
+    guardar: Remota<'miLink:guardar'>
+    solicitudes: Remota<'miLink:solicitudes'>
+    actualizarSolicitud: Remota<'miLink:actualizarSolicitud'>
+    denuncias: Remota<'miLink:denuncias'>
+    actualizarDenuncia: Remota<'miLink:actualizarDenuncia'>
+    abrirArchivo: Remota<'miLink:abrirArchivo'>
+    metricas: Remota<'miLink:metricas'>
+    abrirPagina: Remota<'miLink:abrirPagina'>
+    usuarios: Remota<'miLink:usuarios'>
+  }
   /** Cartera → Galeno: las novedades del portal (distinto de `galeno`, la API REST). Ver canales.ts. */
   galenoNovedades: {
     estado: Remota<'galenoNovedades:estado'>

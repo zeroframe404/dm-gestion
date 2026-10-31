@@ -54,6 +54,7 @@ const Cobranzas = lazy(() => import('./pantallas/cobranzas/Cobranzas').then((m) 
 const GeneralExcel = lazy(() => import('./pantallas/excel/GeneralExcel').then((m) => ({ default: m.GeneralExcel })))
 const Leads = lazy(() => import('./pantallas/leads/Leads').then((m) => ({ default: m.Leads })))
 const Marketing = lazy(() => import('./pantallas/marketing/Marketing').then((m) => ({ default: m.Marketing })))
+const MiLink = lazy(() => import('./pantallas/miLink/MiLink').then((m) => ({ default: m.MiLink })))
 const Multicotizador = lazy(() => import('./pantallas/multicotizador/Multicotizador').then((m) => ({ default: m.Multicotizador })))
 const Metricas = lazy(() => import('./pantallas/metricas/Metricas').then((m) => ({ default: m.Metricas })))
 const Presupuestos = lazy(() => import('./pantallas/presupuestos/Presupuestos').then((m) => ({ default: m.Presupuestos })))
@@ -247,6 +248,8 @@ function Escritorio() {
     contenido = <Presupuestos />
   } else if (modulo.id === 'multicotizador') {
     contenido = <Multicotizador />
+  } else if (modulo.id === 'miLink') {
+    contenido = <MiLink />
   } else if (modulo.id === 'tareas') {
     contenido = <Tareas />
   } else if (modulo.id === 'mensajes') {

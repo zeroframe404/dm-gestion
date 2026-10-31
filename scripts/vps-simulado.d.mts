@@ -45,7 +45,8 @@ export class VpsSimulado {
     | 'mensajesRegistro'
     | 'mensajesReaccionados'
     | 'perfilesLeidos'
-    | 'perfilesGuardados',
+    | 'perfilesGuardados'
+    | 'miLink',
     number
   >
   /** Los respaldos guardados, del más nuevo al más viejo. */
@@ -163,6 +164,31 @@ export class VpsSimulado {
   metricas: Map<string, { version: number; calculadoEn: string; payload: unknown }>
   /** «El servidor terminó de recalcular esta métrica»: sube su versión y guarda el resultado nuevo. */
   cargarMetricaDirecto(clave: string, payload: unknown): number
+  // --- Mi link: `/api/dmg/mi-link/*` en memoria, con las mismas respuestas que el servidor real ------
+  /** Las páginas, por clave del dueño. */
+  miLinks: Map<
+    string,
+    { usuarioClave: string; usuarioNombre: string; direccion: string; publicada: boolean; contenido: unknown; version: number; actualizadoEn: string }
+  >
+  /** Las solicitudes y las denuncias, con la forma de `SolicitudDeMiLink` y `DenunciaDeMiLink`. */
+  solicitudesDeMiLink: Array<Record<string, unknown> & { id: string; numero: number; usuarioClave: string }>
+  denunciasDeMiLink: Array<Record<string, unknown> & { id: string; numero: number; usuarioClave: string }>
+  /** Los bytes de los adjuntos de las denuncias, por id del archivo. */
+  archivosDeMiLink: Map<string, { denunciaId: string; nombre: string; tipo: string; contenido: Buffer }>
+  eventosDeMiLink: EventoDeMiLinkSimulado[]
+  /** Las claves que tienen foto de perfil (`tieneFoto` de la página). */
+  fotosDeMiLink: Set<string>
+  /**
+   * Carga lo que en el servidor real llega desde la página pública. Todo lo que falta toma un valor
+   * por defecto; `usuarioClave` es lo único que conviene poner siempre.
+   */
+  sembrarMiLink(datos: {
+    solicitudes?: Array<Record<string, unknown> & { usuarioClave: string }>
+    denuncias?: Array<
+      Record<string, unknown> & { usuarioClave: string; archivos?: Array<{ nombre?: string; tipo?: string; contenido: Buffer | string }> }
+    >
+    eventos?: Array<Partial<EventoDeMiLinkSimulado> & { usuarioClave: string }>
+  }): { solicitudes: Array<Record<string, unknown> & { id: string; numero: number }>; denuncias: Array<Record<string, unknown> & { id: string; numero: number; archivos: Array<{ id: string; nombre: string; tipo: string; tamano: number }> }> }
   /** Publica vehículos en el catálogo maestro simulado, con una revisión nueva. */
   cargarVehiculos(
     vehiculos: Array<{
@@ -192,6 +218,19 @@ export class VpsSimulado {
     motivo: 'DIARIO' | 'A_MANO' | 'ANTES_DE_RESTAURAR',
     hechoPor: string | null,
   ): { respaldo: { id: number; dia: string; motivo: string }; yaEstaba: boolean }
+}
+
+/** Una visita o un click a una página de Mi link. */
+export interface EventoDeMiLinkSimulado {
+  usuarioClave: string
+  evento: 'visita' | 'click'
+  bloque: string | null
+  bloqueEtiqueta: string | null
+  visitante: string
+  origen: 'directo' | 'google' | 'instagram' | 'facebook' | 'whatsapp' | 'otros'
+  dispositivo: 'celular' | 'escritorio' | 'tablet' | 'otro'
+  /** ISO. */
+  ocurridoEn: string
 }
 
 /** Quién se conectó al canal en vivo, tal como llegó en el saludo. */
