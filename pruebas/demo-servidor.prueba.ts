@@ -91,7 +91,7 @@ test('demo: los ajustes sembrados se adoptan y quedan «al día» en una base de
     globalThis.fetch = fetchPuesto
     await pararServidorDeLaDemo()
     cerrarBaseDeDatos()
-    rmSync(carpeta, { recursive: true, force: true })
+    rmSync(carpeta, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
   refirmarPlantillas(db, NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO)
   const fuente = new FuenteVps(credencialesDeLaDemo()!)
