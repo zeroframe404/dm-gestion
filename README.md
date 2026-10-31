@@ -113,7 +113,8 @@ para las dos puntas:
   vieja —o una computadora a medio actualizar— no se queda sin filtro en silencio.
 - El control es `FiltroMultiple` (`src/renderer/componentes/`), un botón con panel de casillas. No es
   un `<select multiple>`: ése se maneja con Ctrl, no dice cuántas hay elegidas y no entra en una barra
-  de una línea.
+  de una línea. Con `variante="chips"` (los listados de Cartera) el disparador es un campo con la
+  etiqueta arriba y un chip por opción elegida («Todas ×» si no hay ninguna); el panel es el mismo.
 
 Lo que **no** elige de a varios, y por qué:
 
@@ -360,7 +361,30 @@ La flecha de arriba de la barra azul la achica de 272 px a una tira de 64 px con
 nombre de cada módulo queda en el `title`. Son dos columnas más de la planilla a la vista en la notebook
 del mostrador.
 
+Achicada, un módulo con sublista (Cartera, Cobranzas, Multicotizador) es un solo ícono que abre su primera sección
+visible; con el módulo abierto, sus secciones aparecen como íconos chicos debajo, con el nombre en el `title`.
+
 ## Cartera (la planilla del mes)
+
+**Cartera es un grupo del menú** con una sublista (`SECCIONES_CARTERA` en `src/renderer/modulos.ts`): *Planilla
+del mes* (la de siempre, con todas sus pestañas internas), *Asegurados*, *Grupos*, *Pólizas*, *Siniestros*,
+*Vencimientos*, *Índice de Aumentos* y *Rúbrica Digital*. Cada renglón se abre con el permiso del área que ya
+existía para ese dato (no hay áreas nuevas): Planilla → Cartera, Asegurados y Grupos → Clientes, Pólizas e
+Índice de Aumentos → Pólizas, Siniestros → Siniestros, Vencimientos → Renovaciones, Rúbrica Digital → Reportes. El
+grupo se ve si alguna sub-entrada se puede abrir.
+
+- **Enlaces profundos**: `ir('cartera', { seccion })` sigue aceptando las pestañas internas de la planilla
+  (`'rechazos'`, `'reglas'`, `'bajas'`…). La sección nula o desconocida es la planilla.
+- **Listados** (`src/renderer/pantallas/cartera/listados/`): Asegurados, Pólizas, Siniestros y Vencimientos son
+  consultas de sólo lectura (JOINs al leer, sin migraciones ni columnas nuevas) más exportación a Excel local. Su
+  contrato (canales `listados:*`, tipos en `src/shared/listados/`, servicios `listado*.ts`) está documentado
+  al principio de `src/shared/listados/index.ts`; los componentes compartidos (encabezado, filtros, tabla,
+  paginador, chips) viven en `src/renderer/componentes/listados/`.
+- **Excel genérico**: `exportarAExcel({ titulo, columnas, filas })` (`src/renderer/exportarAExcel.ts`) manda lo
+  que la pantalla ya calculó al canal `listados:exportarExcel`, que guarda un `.xlsx` con el diálogo
+  «Guardar como»; no toca la base ni el servidor.
+- **Grupos, Índice de Aumentos y Rúbrica Digital** abren «Próximamente»: faltan los datos (grupos de clientes,
+  historial de endosos) o la especificación oficial (XML de la SSN). No se simula nada.
 
 **Cartera → Planilla del mes** es la pantalla de todos los días: la misma hoja de Excel, con el semáforo
 calculado solo y las acciones de un clic.
@@ -997,6 +1021,21 @@ El módulo **Cobranzas** mira los mismos pagos de tres maneras: por día (la caj
 rendición) y por compañía (las comisiones). Todos salen de la tabla `pagos`, que se llena tanto con
 «Registrar pago» de la Cartera como con el alta manual de la caja.
 
+**Cobranzas es un grupo del menú** con una sublista (`SECCIONES_COBRANZAS` en `src/renderer/modulos.ts`): *Panel
+de cobranzas* (el módulo de siempre, con sus pestañas internas: Caja del día, Mora, Imputados y Comisiones),
+*Vencimientos Cuotas*, *Rechazos* y *Comisiones* (los tres listados nuevos). Las cuatro sub-entradas se abren con el
+permiso del área **Cobranzas** (no hay áreas nuevas); *Comisiones* además es sólo para ADMIN y SUPER_ADMIN, igual
+que la pestaña del panel y el canal `cobranzas:comisiones`.
+
+- **Enlaces profundos**: `ir('cobranzas', { seccion })` sigue aceptando las pestañas internas del panel (`'caja'`,
+  `'mora'`, `'imputados'`, `'comisiones'`). La sección nula o desconocida es el panel. Para no chocar con la
+  pestaña `'comisiones'`, el listado nuevo se llama `'comisionesListado'` por dentro.
+- **Listados** (`src/renderer/pantallas/cobranzas/listados/`): son consultas de sólo lectura más exportación a Excel
+  local, con el mismo contrato que los de Cartera (canales `listados:cuotas`, `listados:rechazos` y
+  `listados:comisiones`; tipos en `src/shared/listados/{cuotas,rechazos,comisiones}.ts`; servicios
+  `listadoCuotas.ts`, `listadoRechazos.ts` y `listadoComisiones.ts`). Ver `src/shared/listados/index.ts`. Lo que no
+  existe en los datos (Vendedores, Grupos) se muestra apagado o como «—»; no se inventa nada.
+
 ### Caja del día
 
 Por **sucursal y fecha**: hora, cliente, DNI, compañía, póliza, patente, importe, medio de pago y
@@ -1497,6 +1536,48 @@ mientras tanto la cotización queda en Equidad con el número de solicitud que t
   `EQUIDAD_PRUEBA_PASSWORD`), `-- --produccion` (con `EQUIDAD_PROD_*`), `EQUIDAD_SERVICIO_USUARIO` /
   `EQUIDAD_SERVICIO_PASSWORD` (el Basic), `EQUIDAD_PRODUCTOR` / `_RAMA` / `_EMPRESA` y `EQUIDAD_MARCA` /
   `_MODELO` / `_VERSION` / `_ANIO` / `_CP` / `_LOCALIDAD` para elegir qué cotizar. No es parte de `npm run prueba`.
+
+### Mi link
+
+La página pública de cada persona de la agencia: `https://dmartinezseguros.com/p/<dirección>`, con su
+nombre, una línea sobre ella, contactos, links y las coberturas que ofrece. Desde ahí el visitante pide
+cotización de auto o moto (con el catálogo de vehículos del VPS), presupuesto de otras coberturas o
+denuncia un siniestro con fotos y PDF; DM Gestión lista todo eso y muestra cuánto se visita la página.
+Va en la barra lateral después del Multicotizador, con su sublista: **Mi página** (el editor, con
+autoguardado), **Solicitudes**, **Siniestros** y **Métricas**.
+
+- **Todo vive en el VPS**, no en la grilla ni en esta computadora: la página la ve cualquiera a
+  cualquier hora y las solicitudes entran con todas las PCs apagadas. La app sólo lee y manda por
+  `/api/dmg/mi-link/*` (con el token del puente); sin servidor, la pantalla dice que hace falta conexión.
+- **El dueño** es la clave de usuario (`claveDeUsuario`, el login en minúscula), la misma de los perfiles:
+  el `id` de la base local no sirve entre computadoras. El actor (`actorClave`, `actorNombre`, `actorRol`)
+  viaja en el query string de cada pedido y el servidor decide con el rol: cada uno ve lo suyo, y ver lo
+  de otros (filtro «Usuario», «todos») es de ADMIN y SUPER_ADMIN.
+- **El candado**: la página se guarda con su `version`. Si otra computadora guardó en el medio, el VPS
+  contesta 409 y el canal vuelve con `codigo: 'version-vieja'` para que el editor recargue lo último.
+  La dirección tomada por otro también es un 409, pero sin esa marca: ahí se corrige la dirección.
+- **Permisos**: área propia `miLink`. Ver alcanza para mirar la página, los listados, las métricas y abrir
+  adjuntos; guardar la página y el seguimiento (estado y nota) piden editar.
+- **Dónde está cada cosa**: el contrato de datos en `src/shared/miLink.ts` (el servidor valida la misma
+  forma en `server/src/modules/milink/milink.contenido.ts` del repo Seguros_Daniel_Martinez); los canales
+  `miLink:*` en `src/shared/canales.ts`; el proceso principal en `src/main/servicios/miLink.ts` y los
+  pedidos en `FuenteVps` (`src/main/vps/fuenteVps.ts`); las pantallas en `src/renderer/pantallas/miLink/`;
+  la ayuda en `src/renderer/ayuda/contenido/miLink.ts`. La página HTML pública la arma el servidor
+  (Express, `GET /p/:direccion`), no es una ruta de la app ni del sitio.
+- **Adjuntos**: «abrir» baja el archivo a la temporal (`dm-gestion-mi-link/<id>-<nombre saneado>`) y lo
+  abre con el programa del sistema. **«Ver mi página»** sólo abre direcciones `/p/…` del dominio de Mi
+  link (o del servidor configurado: el de pruebas, el de la demo), siempre con `?vista=duenio`, que no
+  cuenta la visita.
+- **Simulador**: `scripts/vps-simulado.mjs` atiende los mismos endpoints en memoria (la demo y las
+  pruebas, `pruebas/mi-link.prueba.ts`); `sembrarMiLink({ solicitudes, denuncias, eventos })` carga lo que
+  en el servidor real llega desde la página pública.
+
+**Convivencia con la versión normal.** Las tablas (`dmg_mi_link*`) y las rutas (`/api/dmg/mi-link`,
+`/api/mi-link`, `/p/`) son nuevas y aditivas en el VPS: la normal no las llama y no se entera. Lo único
+compartido que se toca es la matriz de permisos: la normal no conoce el área `miLink` y la descarta al
+leer (`normalizarMatriz`), así que no se rompe; pero **si el superadministrador guarda la matriz desde la
+normal, se pierde lo configurado para Mi link y la beta vuelve al valor por defecto** (editar para todos
+los roles). Se vuelve a ajustar desde la beta, o se espera a que Mi link llegue a `master`.
 
 ### Tareas
 
@@ -2712,7 +2793,8 @@ el banco antes de armar el instalador con cada tag `v*`. Los tres workflows de l
 Los tres roles siguen siendo los mismos (EMPLEADO, ADMIN, SUPER_ADMIN), pero ahora **qué ve y qué toca
 cada uno se configura**, módulo por módulo, desde **Administración → Permisos** (sólo SUPER_ADMIN).
 
-- Una fila por módulo (13: Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros,
+- Una fila por módulo (el permiso es por módulo; las sub-entradas de Cartera usan el de su área, ver «Cartera», y las de Cobranzas el de Cobranzas;
+  13: Cartera, Clientes, Leads, Presupuestos, Pólizas, Renovaciones, Siniestros,
   Cobranzas, Métricas, Reportes, Marketing, Tareas y Administración) y una columna por rol configurable
   (ADMIN y EMPLEADO). Cada cruce vale **`ninguno`** (el módulo no aparece en la barra lateral y sus
   llamados se rechazan), **`ver`** (se abre y se consulta, pero los botones que cambian algo quedan

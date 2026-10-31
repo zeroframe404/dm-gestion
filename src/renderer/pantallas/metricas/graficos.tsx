@@ -149,6 +149,11 @@ export interface SerieDeLinea {
   nombre: string
   color: string
   valores: number[]
+  /**
+   * Trazo lleno en vez de punteado. Las separaciones por rama van punteadas porque son parte del total;
+   * una serie que mide otra cosa (los clicks al lado de las visitas de Mi link) no es «parte» de nada.
+   */
+  continua?: boolean
 }
 
 const COLOR_DE_LA_LINEA = '#235ba8'
@@ -160,16 +165,46 @@ interface PropsLinea {
   nombre?: string
   /** Las líneas que la separan (por ejemplo, por rama). Sin ellas el gráfico es la línea de siempre. */
   series?: SerieDeLinea[]
+  /**
+   * Cómo se rotula cada punto en el eje. Por defecto el mes corto ('2026-08' → 'AGO'); Mi link lo usa
+   * por día. Con un formateador propio el globito también lo usa, en vez del período crudo.
+   */
+  etiquetaDe?: (periodo: string) => string
+  /** El color de la línea principal. Por defecto, el azul de la agencia. */
+  color?: string
+  /** Pinta suave el área debajo de la línea principal: ayuda a leer el volumen cuando hay una segunda serie. */
+  conArea?: boolean
+  /** Lo que se lee cuando no hay puntos. */
+  vacio?: string
 }
 
-export function GraficoDeLinea({ puntos, titulo, nombre = 'Total', series = [] }: PropsLinea) {
-  if (puntos.length === 0) return <p className="py-6 text-center text-sm text-slate-500">Todavía no hay meses cargados.</p>
+/**
+ * Cuántos rótulos entran en el eje sin pisarse: con doce meses salen todos, con noventa días uno cada
+ * ocho. El último siempre se escribe, que es el que más se mira; el salteado que le quedaría pegado, no.
+ */
+const ROTULOS_QUE_ENTRAN = 12
+
+export function GraficoDeLinea({
+  puntos,
+  titulo,
+  nombre = 'Total',
+  series = [],
+  etiquetaDe,
+  color = COLOR_DE_LA_LINEA,
+  conArea = false,
+  vacio = 'Todavía no hay meses cargados.',
+}: PropsLinea) {
+  if (puntos.length === 0) return <p className="py-6 text-center text-sm text-slate-500">{vacio}</p>
 
   const tope = topeDeEje(Math.max(...puntos.map((punto) => punto.valor), ...series.flatMap((serie) => serie.valores)))
   const util = { ancho: ANCHO - MARGEN.izquierda - MARGEN.derecha, alto: ALTO - MARGEN.arriba - MARGEN.abajo }
   const x = (i: number) => MARGEN.izquierda + (puntos.length === 1 ? util.ancho / 2 : (i / (puntos.length - 1)) * util.ancho)
   const y = (valor: number) => MARGEN.arriba + util.alto - (valor / tope) * util.alto
   const linea = puntos.map((punto, i) => `${x(i)},${y(punto.valor)}`).join(' ')
+  const rotulo = etiquetaDe ?? mesCorto
+  const salto = Math.ceil(puntos.length / ROTULOS_QUE_ENTRAN)
+  // Con muchos puntos, los círculos llenos se vuelven una oruga: se achican.
+  const radio = puntos.length > 31 ? 2 : 3.5
 
   const grafico = (
     <svg viewBox={`0 0 ${ANCHO} ${ALTO}`} className="h-auto w-full" role="img" aria-label={titulo}>
@@ -189,6 +224,14 @@ export function GraficoDeLinea({ puntos, titulo, nombre = 'Total', series = [] }
         </g>
       ))}
       {/* Las series de la separación van debajo y punteadas: la línea principal sigue siendo la que se lee primero. */}
+      {conArea && puntos.length > 1 && (
+        <polygon
+          points={`${x(0)},${y(0)} ${linea} ${x(puntos.length - 1)},${y(0)}`}
+          fill={color}
+          fillOpacity="0.12"
+          stroke="none"
+        />
+      )}
       {series.map((serie) => (
         <polyline
           key={serie.nombre}
@@ -196,21 +239,26 @@ export function GraficoDeLinea({ puntos, titulo, nombre = 'Total', series = [] }
           fill="none"
           stroke={serie.color}
           strokeWidth="2"
-          strokeDasharray="6 4"
+          strokeDasharray={serie.continua ? undefined : '6 4'}
           strokeLinejoin="round"
           strokeLinecap="round"
         />
       ))}
-      <polyline points={linea} fill="none" stroke={COLOR_DE_LA_LINEA} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      <polyline points={linea} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
       {puntos.map((punto, i) => (
         <g key={punto.periodo}>
-          <circle cx={x(i)} cy={y(punto.valor)} r="3.5" fill={COLOR_DE_LA_LINEA} />
+          <circle cx={x(i)} cy={y(punto.valor)} r={radio} fill={color} />
           <title>
-            {[`${punto.periodo}: ${numero(punto.valor)}`, ...series.map((serie) => `${serie.nombre}: ${numero(serie.valores[i] ?? 0)}`)].join(' · ')}
+            {[
+              `${etiquetaDe ? etiquetaDe(punto.periodo) : punto.periodo}: ${numero(punto.valor)}`,
+              ...series.map((serie) => `${serie.nombre}: ${numero(serie.valores[i] ?? 0)}`),
+            ].join(' · ')}
           </title>
-          <text x={x(i)} y={ALTO - 8} textAnchor="middle" fontSize="11" fill="var(--grafico-rotulo)">
-            {mesCorto(punto.periodo)}
-          </text>
+          {((i % salto === 0 && puntos.length - 1 - i >= salto / 2) || i === puntos.length - 1) && (
+            <text x={x(i)} y={ALTO - 8} textAnchor="middle" fontSize="11" fill="var(--grafico-rotulo)">
+              {rotulo(punto.periodo)}
+            </text>
+          )}
         </g>
       ))}
     </svg>
@@ -221,7 +269,7 @@ export function GraficoDeLinea({ puntos, titulo, nombre = 'Total', series = [] }
     <div>
       {grafico}
       <div className="mt-1 flex flex-wrap justify-center gap-4 text-xs text-slate-600">
-        {[{ nombre, color: COLOR_DE_LA_LINEA }, ...series].map((serie) => (
+        {[{ nombre, color }, ...series].map((serie) => (
           <span key={serie.nombre} className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: serie.color }} />
             {serie.nombre}

@@ -87,6 +87,14 @@ export function formatearDni(digitos: string): string {
   return digitos.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 }
 
+/** Formatea mientras se escribe: '2043' → '20-43', '20433709625' → '20-43370962-5'. */
+export function formatearCuitEscribiendo(digitos: string): string {
+  const d = digitos.replace(/\D/g, '').slice(0, 11)
+  if (d.length <= 2) return d
+  if (d.length <= 10) return `${d.slice(0, 2)}-${d.slice(2)}`
+  return formatearCuit(d)
+}
+
 /**
  * Lo que se escribió, resuelto. No corrige ni completa nada: sólo dice qué entendió, para que la
  * pantalla lo muestre y quien carga se dé cuenta en el momento si se le fue un dígito.

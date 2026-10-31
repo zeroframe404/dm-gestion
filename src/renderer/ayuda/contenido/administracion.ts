@@ -187,6 +187,21 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.almacenamiento': {
+    clave: 'administracion.almacenamiento',
+    titulo: 'Administración → Almacenamiento en nube',
+    resumen: 'Cuánto espacio ocupan los archivos adjuntos (fotos, denuncias, PDF, planillas) y cuánto queda libre.',
+    secciones: [
+      {
+        titulo: 'Qué muestra',
+        parrafos: [
+          'El gráfico de torta reparte el espacio usado por tipo de archivo: imágenes, PDF, Excel, Word y otros. Al pasar el mouse por una porción se resalta y se ve cuánto ocupa y cuántos archivos son.',
+          'El mismo dato está resumido en el anillo de la barra superior, al lado de «En vivo»: al pasar el mouse dice el espacio usado y el total.',
+          'El espacio total lo carga el superadministrador, porque el servidor no informa su capacidad. Lo ven los administradores y el superadministrador.',
+        ],
+      },
+    ],
+  },
   'administracion.impresora': {
     clave: 'administracion.impresora',
     titulo: 'Administración → Impresora',

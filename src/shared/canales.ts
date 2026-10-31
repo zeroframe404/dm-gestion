@@ -12,7 +12,37 @@ import type {
   ResultadoDeAseguradora,
 } from './multicotizador'
 import type { EstadoDeLaDemo, PasoDePruebaDeVps } from './demo'
+import type {
+  ArchivoDeDenuncia,
+  CambiosDeMiLink,
+  DenunciaDeMiLink,
+  EstadoDeDenuncia,
+  EstadoDeSolicitud,
+  FiltrosDeMiLink,
+  MetricasDeMiLink,
+  MiLink,
+  RangoDeMetricas,
+  SolicitudDeMiLink,
+} from './miLink'
 import type { MatrizPermisos } from './permisos'
+import type {
+  FilaDeAsegurado,
+  FilaDeComision,
+  FilaDeCuota,
+  FilaDePolizaListado,
+  FilaDeRechazo,
+  FilaDeSiniestroListado,
+  FilaDeVencimiento,
+  FiltrosDeAsegurados,
+  FiltrosDeComisiones,
+  FiltrosDeCuotas,
+  FiltrosDePolizasListado,
+  FiltrosDeRechazos,
+  FiltrosDeSiniestrosListado,
+  FiltrosDeVencimientos,
+  OpcionesDeComisiones,
+  PedidoDeExcel,
+} from './listados'
 import type {
   TipoPestana,
   // Mensajería interna (12.8).
@@ -105,6 +135,7 @@ import type {
   AvisoDeMora,
   CajaDelDia,
   ConfigImpresora,
+  EstadoDeAlmacenamiento,
   DatosDeCompania,
   DatosDeImpresora,
   DatosDeMovimientoDeCaja,
@@ -412,6 +443,9 @@ export interface Canales {
   // Ticketeadora térmica (opcional). La configura cualquiera que tenga sesión: es la impresora del
   // mostrador, y quien cobra es quien se da cuenta de que hay que cambiarla o desactivarla.
   'impresora:estado': () => Resultado<ConfigImpresora>
+  /** Espacio de los adjuntos en la nube: lo ven SUPER_ADMIN y ADMIN; el total lo carga el superadmin. */
+  'almacenamiento:estado': () => Resultado<EstadoDeAlmacenamiento>
+  'almacenamiento:guardarTotal': (gigabytes: number) => Resultado<EstadoDeAlmacenamiento>
   'impresora:guardar': (datos: DatosDeImpresora) => Resultado<ConfigImpresora>
   'impresora:prueba': () => Resultado<null>
   /** Las direcciones que encabezan el ticket, una por sucursal. */
@@ -763,6 +797,29 @@ export interface Canales {
    * para bajar lo mismo que ya está a la vista sería un botón que nunca funciona.
    */
   'excel:exportar': (pedido: PedidoDeReporte) => Resultado<{ ruta: string | null }>
+  /**
+   * Los listados de Cartera (ver el contrato en shared/listados/index.ts). Son de sólo lectura; cada uno
+   * pide el permiso del área de su tabla. Quien construye un listado cambia sus tipos y su servicio, no
+   * esta firma.
+   */
+  'listados:asegurados': (filtros: FiltrosDeAsegurados) => Resultado<FilaDeAsegurado[]>
+  'listados:polizas': (filtros: FiltrosDePolizasListado) => Resultado<FilaDePolizaListado[]>
+  'listados:siniestros': (filtros: FiltrosDeSiniestrosListado) => Resultado<FilaDeSiniestroListado[]>
+  'listados:vencimientos': (filtros: FiltrosDeVencimientos) => Resultado<FilaDeVencimiento[]>
+  /**
+   * Los listados de Cobranzas (Vencimientos Cuotas, Rechazos y Comisiones), mismo contrato. Piden el área
+   * Cobranzas; Comisiones además exige rol ADMIN o SUPER_ADMIN, igual que 'cobranzas:comisiones'.
+   */
+  'listados:cuotas': (filtros: FiltrosDeCuotas) => Resultado<FilaDeCuota[]>
+  'listados:rechazos': (filtros: FiltrosDeRechazos) => Resultado<FilaDeRechazo[]>
+  'listados:comisiones': (filtros: FiltrosDeComisiones) => Resultado<FilaDeComision[]>
+  /** Sólo las opciones de los desplegables de Comisiones (valores distintos), sin filas ni cálculo. */
+  'listados:comisionesOpciones': () => Resultado<OpcionesDeComisiones>
+  /**
+   * Guarda un .xlsx local con lo que la pantalla ya calculó ({titulo, columnas, filas}), con el diálogo
+   * «Guardar como». No lee ni escribe la base: devuelve la ruta elegida, o null si se canceló.
+   */
+  'listados:exportarExcel': (pedido: PedidoDeExcel) => Resultado<{ ruta: string | null }>
   'reportes:vistaPrevia': (pedido: PedidoDeReporte) => Resultado<VistaPreviaDeReporte>
   /**
    * Con `ruta` en null abre el diálogo «Guardar como», que es lo que hace la pantalla, y devuelve la
@@ -911,6 +968,29 @@ export interface Canales {
   'multicotizador:cotizaciones': (filtros: FiltrosDeListado) => Resultado<ListadoDelMulticotizador<CotizacionListada>>
   'multicotizador:planes': (tipoVehiculo: TipoDeVehiculo) => Resultado<ListadoDelMulticotizador<PlanListado>>
   'multicotizador:emisiones': (filtros: FiltrosDeListado) => Resultado<ListadoDelMulticotizador<EmisionListada>>
+
+  // Mi link: la página pública de cada uno, lo que le piden desde ahí y sus métricas. Todo vive en el
+  // VPS (`/api/dmg/mi-link`): esta computadora no guarda nada, sólo lee y manda. El dueño es siempre
+  // quien tiene la sesión abierta; ver lo de otro (filtro «Usuario») es de ADMIN y SUPER_ADMIN, y lo
+  // controla el servidor con el rol que viaja en cada pedido.
+  /** La página de quien tiene la sesión abierta, o null si todavía no la creó. */
+  'miLink:mia': () => Resultado<MiLink | null>
+  /** Si la dirección se puede usar (la propia cuenta como libre). */
+  'miLink:direccionLibre': (direccion: string) => Resultado<{ libre: boolean; motivo: string | null }>
+  /** Crea o guarda la página con el candado `version`: si otra computadora guardó en el medio, falla. */
+  'miLink:guardar': (cambios: CambiosDeMiLink) => Resultado<MiLink>
+  'miLink:solicitudes': (filtros: FiltrosDeMiLink) => Resultado<SolicitudDeMiLink[]>
+  'miLink:actualizarSolicitud': (id: string, cambios: { estado?: EstadoDeSolicitud; nota?: string }) => Resultado<SolicitudDeMiLink>
+  'miLink:denuncias': (filtros: FiltrosDeMiLink) => Resultado<DenunciaDeMiLink[]>
+  'miLink:actualizarDenuncia': (id: string, cambios: { estado?: EstadoDeDenuncia; nota?: string }) => Resultado<DenunciaDeMiLink>
+  /** Baja el adjunto de una denuncia a una carpeta temporal y lo abre con el programa del sistema. */
+  'miLink:abrirArchivo': (archivo: ArchivoDeDenuncia) => Resultado<void>
+  /** `usuario`: '' = las propias, 'todos' o la clave de otro (sólo administradores). */
+  'miLink:metricas': (dias: RangoDeMetricas, usuario: string) => Resultado<MetricasDeMiLink>
+  /** Abre la página en el navegador como dueño (no cuenta la visita). Sólo URLs de Mi link. */
+  'miLink:abrirPagina': (url: string) => Resultado<void>
+  /** Los usuarios activos de esta computadora, para el filtro «Usuario» de los administradores. */
+  'miLink:usuarios': () => Resultado<Array<{ clave: string; nombre: string }>>
 
   // Cartera → Galeno NOVEDADES (15.4). Distinto canal y distinto nombre que el bloque de arriba a
   // propósito: esto NO es la API REST de Galeno (cotización/emisión), es la sincronización con el

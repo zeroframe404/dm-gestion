@@ -104,6 +104,10 @@ export interface ApiDm {
     cambiarResultado: Remota<'cobranzas:cambiarResultado'>
     comisiones: Remota<'cobranzas:comisiones'>
   }
+  almacenamiento: {
+    estado: Remota<'almacenamiento:estado'>
+    guardarTotal: Remota<'almacenamiento:guardarTotal'>
+  }
   impresora: {
     estado: Remota<'impresora:estado'>
     guardar: Remota<'impresora:guardar'>
@@ -361,6 +365,18 @@ export interface ApiDm {
     filas: Remota<'excel:filas'>
     exportar: Remota<'excel:exportar'>
   }
+  /** Los listados de Cartera y de Cobranzas (shared/listados/index.ts) y su exportación genérica a Excel. */
+  listados: {
+    asegurados: Remota<'listados:asegurados'>
+    polizas: Remota<'listados:polizas'>
+    siniestros: Remota<'listados:siniestros'>
+    vencimientos: Remota<'listados:vencimientos'>
+    cuotas: Remota<'listados:cuotas'>
+    rechazos: Remota<'listados:rechazos'>
+    comisiones: Remota<'listados:comisiones'>
+    comisionesOpciones: Remota<'listados:comisionesOpciones'>
+    exportarExcel: Remota<'listados:exportarExcel'>
+  }
   marketing: {
     plantillas: Remota<'marketing:plantillas'>
     crearPlantilla: Remota<'marketing:crearPlantilla'>
@@ -453,6 +469,20 @@ export interface ApiDm {
     planes: Remota<'multicotizador:planes'>
     emisiones: Remota<'multicotizador:emisiones'>
   },
+  /** Mi link: la página pública de cada uno y lo que llega desde ella. Ver canales.ts. */
+  miLink: {
+    mia: Remota<'miLink:mia'>
+    direccionLibre: Remota<'miLink:direccionLibre'>
+    guardar: Remota<'miLink:guardar'>
+    solicitudes: Remota<'miLink:solicitudes'>
+    actualizarSolicitud: Remota<'miLink:actualizarSolicitud'>
+    denuncias: Remota<'miLink:denuncias'>
+    actualizarDenuncia: Remota<'miLink:actualizarDenuncia'>
+    abrirArchivo: Remota<'miLink:abrirArchivo'>
+    metricas: Remota<'miLink:metricas'>
+    abrirPagina: Remota<'miLink:abrirPagina'>
+    usuarios: Remota<'miLink:usuarios'>
+  }
   /** Cartera → Galeno: las novedades del portal (distinto de `galeno`, la API REST). Ver canales.ts. */
   galenoNovedades: {
     estado: Remota<'galenoNovedades:estado'>

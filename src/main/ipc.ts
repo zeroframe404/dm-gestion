@@ -53,6 +53,7 @@ import { cajaConCache, comisionesConCache, imputadosConCache } from './servicios
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
 import { leerSnapshotDeMetrica } from './servicios/metricasCache'
+import { estadoDeAlmacenamiento, guardarTotalDeAlmacenamiento } from './servicios/almacenamiento'
 import { altasConCache, estadisticasConCache, podioHistorico, tableroConCache } from './servicios/metricasDesdeCache'
 import {
   areasDelReporte,
@@ -64,6 +65,14 @@ import {
   xlsxDePlanillaClasica,
   xlsxDelReporte,
 } from './servicios/reportes'
+import { xlsxGenerico } from './servicios/excelGenerico'
+import { listarAsegurados } from './servicios/listadoAsegurados'
+import { listarComisionesDelListado, opcionesDeComisiones } from './servicios/listadoComisiones'
+import { listarVencimientosDeCuotas } from './servicios/listadoCuotas'
+import { listarPolizasDelListado } from './servicios/listadoPolizas'
+import { listarRechazosDelListado } from './servicios/listadoRechazos'
+import { listarSiniestrosDelListado } from './servicios/listadoSiniestros'
+import { listarVencimientos } from './servicios/listadoVencimientos'
 import { borrarPlantilla, crearPlantilla, editarPlantilla, listarPlantillas } from './servicios/plantillas'
 import {
   comentarios,
@@ -300,6 +309,20 @@ import { borrarCuentaEquidad, estadoEquidad, guardarCuentaEquidad, probarEquidad
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora, localidadesDelMulticotizador } from './servicios/multicotizador'
 import { cotizacionesDelMulticotizador, emisionesDelMulticotizador, planesDelMulticotizador } from './servicios/listadosDelMulticotizador'
 import {
+  abrirArchivoDeMiLink,
+  abrirMiLinkEnElNavegador,
+  actualizarDenunciaDeMiLink,
+  actualizarSolicitudDeMiLink,
+  denunciasDeMiLink,
+  direccionLibreDeMiLink,
+  guardarMiLink,
+  metricasDeMiLink,
+  miLinkPropio,
+  PaginaDesactualizada,
+  solicitudesDeMiLink,
+  usuariosDeMiLink,
+} from './servicios/miLink'
+import {
   borrarMetaDelVps,
   estadoCompartidoDeGoogle,
   estadoCompartidoDeMeta,
@@ -400,6 +423,11 @@ function manejar<C extends NombreCanal>(canal: C, manejador: Manejador<C>): void
       // a intentar cuando vuelva internet, no un cartel rojo al lado de un campo.
       if (error instanceof SinConexion) {
         return { ok: false, error: error.message, codigo: 'sin-conexion' } satisfies Resultado<never>
+      }
+      // La página de Mi link que otra computadora guardó en el medio: la pantalla no muestra sólo el
+      // cartel, vuelve a cargar lo último (ver servicios/miLink.ts).
+      if (error instanceof PaginaDesactualizada) {
+        return { ok: false, error: error.message, codigo: 'version-vieja' } satisfies Resultado<never>
       }
       if (error instanceof ErrorDeNegocio) {
         return { ok: false, error: error.message } satisfies Resultado<never>
@@ -850,6 +878,14 @@ export function registrarIpc(): void {
   // Ticketeadora térmica: la usa y la configura todo el mostrador. No pide rol ni permiso sobre
   // Administración a propósito: es la impresora que tiene la PC delante, y quien cobra es quien se da
   // cuenta de que hay que cambiarla, apagarla o dejar de gastar papel.
+  manejar('almacenamiento:estado', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    return exito(estadoDeAlmacenamiento())
+  })
+  manejar('almacenamiento:guardarTotal', async (gigabytes) => {
+    exigirRol('SUPER_ADMIN')
+    return exito(guardarTotalDeAlmacenamiento(gigabytes))
+  })
   manejar('impresora:estado', async () => {
     exigirSesion()
     return exito(await configuracionDeImpresora())
@@ -1658,6 +1694,52 @@ export function registrarIpc(): void {
     const archivo = xlsxDelReporte(pedido)
     return exito(await guardarBinarioComo({ ...archivo, descripcion: 'Planilla de Excel' }, ventanaActual()))
   })
+  // Los listados de Cartera y de Cobranzas (contrato en shared/listados/index.ts): lectura pura, con el permiso del
+  // área de cada tabla. Cada servicio sanea sus filtros; acá sólo se exige la vista.
+  manejar('listados:asegurados', (filtros) => {
+    exigirVista('clientes')
+    return exito(listarAsegurados(filtros))
+  })
+  manejar('listados:polizas', (filtros) => {
+    exigirVista('polizas')
+    return exito(listarPolizasDelListado(filtros))
+  })
+  manejar('listados:siniestros', (filtros) => {
+    exigirVista('siniestros')
+    return exito(listarSiniestrosDelListado(filtros))
+  })
+  manejar('listados:vencimientos', (filtros) => {
+    exigirVista('renovaciones')
+    return exito(listarVencimientos(filtros))
+  })
+  // Los listados de Cobranzas: mismo contrato, con el permiso del área Cobranzas.
+  manejar('listados:cuotas', (filtros) => {
+    exigirVista('cobranzas')
+    return exito(listarVencimientosDeCuotas(filtros))
+  })
+  manejar('listados:rechazos', (filtros) => {
+    exigirVista('cobranzas')
+    return exito(listarRechazosDelListado(filtros))
+  })
+  // Las comisiones son números de la agencia: como 'cobranzas:comisiones', sólo ADMIN y SUPER_ADMIN.
+  manejar('listados:comisiones', (filtros) => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('cobranzas')
+    return exito(listarComisionesDelListado(filtros))
+  })
+  // Las opciones de los desplegables, sin armar filas: mismo permiso que el listado.
+  manejar('listados:comisionesOpciones', () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirVista('cobranzas')
+    return exito(opcionesDeComisiones())
+  })
+  // El Excel genérico de los listados: no toca la base, sólo guarda en esta computadora lo que la
+  // pantalla ya calculó. Alcanza con poder ver alguno de los listados (los de Cartera o los de Cobranzas).
+  manejar('listados:exportarExcel', async (pedido) => {
+    exigirVista('clientes', 'polizas', 'siniestros', 'renovaciones', 'cobranzas')
+    const archivo = xlsxGenerico(pedido)
+    return exito(await guardarBinarioComo({ ...archivo, descripcion: 'Planilla de Excel' }, ventanaActual()))
+  })
   manejar('reportes:vistaPrevia', (pedido) => {
     exigirVista('reportes')
     return exito(vistaPreviaDeReporte(pedido))
@@ -2122,6 +2204,35 @@ export function registrarIpc(): void {
   manejar('multicotizador:emisiones', async (filtros) => {
     const actor = exigirVista('multicotizador')
     return exito(await emisionesDelMulticotizador(filtros, puedeVerElArea(actor, 'polizas')))
+  })
+
+  // --- Mi link ---------------------------------------------------------------
+  //
+  // Todo vive en el VPS y el dueño es siempre quien tiene la sesión abierta. Mirar (la página, los
+  // listados, las métricas, abrir un adjunto) es ver Mi link; guardar la página y el seguimiento de una
+  // solicitud o una denuncia es editarlo, y como eso escribe en el servidor pide además el canal en
+  // vivo. Lo de otras personas no se decide acá: el rol viaja en cada pedido y el que dice que no es el
+  // servidor (sólo ADMIN y SUPER_ADMIN ven lo de los demás).
+  manejar('miLink:mia', async () => exito(await miLinkPropio(exigirVista('miLink'))))
+  manejar('miLink:direccionLibre', async (direccion) => exito(await direccionLibreDeMiLink(exigirVista('miLink'), direccion)))
+  manejar('miLink:guardar', async (cambios) => exito(await guardarMiLink(exigirEdicion('miLink'), cambios)))
+  manejar('miLink:solicitudes', async (filtros) => exito(await solicitudesDeMiLink(exigirVista('miLink'), filtros)))
+  manejar('miLink:actualizarSolicitud', async (id, cambios) =>
+    exito(await actualizarSolicitudDeMiLink(exigirEdicion('miLink'), id, cambios)),
+  )
+  manejar('miLink:denuncias', async (filtros) => exito(await denunciasDeMiLink(exigirVista('miLink'), filtros)))
+  manejar('miLink:actualizarDenuncia', async (id, cambios) =>
+    exito(await actualizarDenunciaDeMiLink(exigirEdicion('miLink'), id, cambios)),
+  )
+  manejar('miLink:abrirArchivo', async (archivo) => exito(await abrirArchivoDeMiLink(exigirVista('miLink'), archivo)))
+  manejar('miLink:metricas', async (dias, usuario) => exito(await metricasDeMiLink(exigirVista('miLink'), dias, usuario)))
+  manejar('miLink:abrirPagina', async (url) => {
+    exigirVista('miLink')
+    return exito(await abrirMiLinkEnElNavegador(url))
+  })
+  manejar('miLink:usuarios', () => {
+    exigirVista('miLink')
+    return exito(usuariosDeMiLink())
   })
 
   // --- Marketing → Redes -----------------------------------------------------

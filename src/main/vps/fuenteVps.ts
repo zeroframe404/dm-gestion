@@ -23,6 +23,17 @@ import {
   type ResultadoDeTramos,
   type TramoDeColumna,
 } from '../importacion/fuente'
+import type {
+  CambiosDeMiLink,
+  DenunciaDeMiLink,
+  EstadoDeDenuncia,
+  EstadoDeSolicitud,
+  FiltrosDeMiLink,
+  MetricasDeMiLink,
+  MiLink,
+  RangoDeMetricas,
+  SolicitudDeMiLink,
+} from '../../shared/miLink'
 import type { AlmacenDeAdjuntos, ArchivoBajado, FichaEnElAlmacen, FichaParaElAlmacen } from '../servicios/adjuntos'
 import { ErrorDeNegocio } from '../servicios/errores'
 import { adoptarVersionPropia } from '../sincronizacion/versiones'
@@ -222,6 +233,31 @@ function consultaDeActor(actor: ActorDeRedesVps): string {
   return parametros.toString()
 }
 
+/**
+ * Quién pide algo de Mi link. Como en la mensajería, el token sólo dice «es una PC de la agencia»: la
+ * persona viaja declarada en cada pedido, y con su rol el servidor decide si puede ver lo de otros.
+ * La clave es `claveDeUsuario(usuario)`, la misma de los perfiles: es la dueña de la página.
+ */
+export interface ActorDeMiLinkVps {
+  clave: string
+  nombre: string
+  rol: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLEADO'
+}
+
+function consultaDeMiLink(actor: ActorDeMiLinkVps, extra: Record<string, string> = {}): string {
+  return new URLSearchParams({ actorClave: actor.clave, actorNombre: actor.nombre, actorRol: actor.rol, ...extra }).toString()
+}
+
+function consultaDeFiltrosDeMiLink(actor: ActorDeMiLinkVps, filtros: FiltrosDeMiLink): string {
+  return consultaDeMiLink(actor, {
+    desde: filtros.desde,
+    hasta: filtros.hasta,
+    estado: filtros.estado,
+    texto: filtros.texto,
+    usuario: filtros.usuario,
+  })
+}
+
 export interface PestanaParaMigrar {
   titulo: string
   oculta: boolean
@@ -314,7 +350,7 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
    */
   private async pedir(
     descripcion: string,
-    metodo: 'GET' | 'POST',
+    metodo: 'GET' | 'POST' | 'PUT' | 'PATCH',
     ruta: string,
     cuerpo?: unknown,
     opciones: { reintentarSinRespuesta?: boolean } = {},
@@ -1025,5 +1061,116 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
       { reintentarSinRespuesta: false },
     )) as { mensaje: MensajeDeRedVps }
     return respuesta.mensaje
+  }
+
+  // --- Mi link -----------------------------------------------------------------
+  //
+  // La página pública de cada uno, lo que llega desde ella y sus métricas (`/api/dmg/mi-link`). Las
+  // lecturas son de pantalla: alguien está mirando la ruedita, y cinco reintentos con espera le
+  // dejarían la pantalla colgada un minuto para contarle al final que no hay conexión. Guardar la
+  // página tampoco se reintenta solo: si el PUT llegó y se cortó la respuesta, repetirlo chocaría
+  // contra su propio candado (`version`) y contestaría «otra computadora guardó tu página», que es
+  // mentira. El seguimiento (estado y nota) sí: es un PATCH que deja lo mismo por más que se repita.
+
+  async miLinkMia(actor: ActorDeMiLinkVps): Promise<MiLink | null> {
+    const datos = (await this.pedir('leer tu página de Mi link', 'GET', `/api/dmg/mi-link/mia?${consultaDeMiLink(actor)}`, undefined, {
+      reintentarSinRespuesta: false,
+    })) as { link: MiLink | null }
+    return datos?.link ?? null
+  }
+
+  async miLinkDireccionLibre(actor: ActorDeMiLinkVps, direccion: string): Promise<{ libre: boolean; motivo: string | null }> {
+    const datos = (await this.pedir(
+      'consultar la dirección de Mi link',
+      'GET',
+      `/api/dmg/mi-link/direccion-libre?${consultaDeMiLink(actor, { direccion })}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { libre?: boolean; motivo?: string | null }
+    return { libre: datos?.libre === true, motivo: datos?.motivo ?? null }
+  }
+
+  async miLinkGuardar(actor: ActorDeMiLinkVps, cambios: CambiosDeMiLink): Promise<MiLink> {
+    const datos = (await this.pedir('guardar tu página de Mi link', 'PUT', `/api/dmg/mi-link/mia?${consultaDeMiLink(actor)}`, cambios, {
+      reintentarSinRespuesta: false,
+    })) as { link: MiLink }
+    return datos.link
+  }
+
+  async miLinkSolicitudes(actor: ActorDeMiLinkVps, filtros: FiltrosDeMiLink): Promise<SolicitudDeMiLink[]> {
+    const datos = (await this.pedir(
+      'listar las solicitudes de Mi link',
+      'GET',
+      `/api/dmg/mi-link/solicitudes?${consultaDeFiltrosDeMiLink(actor, filtros)}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { solicitudes: SolicitudDeMiLink[] }
+    return datos?.solicitudes ?? []
+  }
+
+  async miLinkActualizarSolicitud(
+    actor: ActorDeMiLinkVps,
+    id: string,
+    cambios: { estado?: EstadoDeSolicitud; nota?: string },
+  ): Promise<SolicitudDeMiLink> {
+    const datos = (await this.pedir(
+      'actualizar la solicitud de Mi link',
+      'PATCH',
+      `/api/dmg/mi-link/solicitudes/${encodeURIComponent(id)}?${consultaDeMiLink(actor)}`,
+      cambios,
+    )) as { solicitud: SolicitudDeMiLink }
+    return datos.solicitud
+  }
+
+  async miLinkDenuncias(actor: ActorDeMiLinkVps, filtros: FiltrosDeMiLink): Promise<DenunciaDeMiLink[]> {
+    const datos = (await this.pedir(
+      'listar las denuncias de Mi link',
+      'GET',
+      `/api/dmg/mi-link/denuncias?${consultaDeFiltrosDeMiLink(actor, filtros)}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { denuncias: DenunciaDeMiLink[] }
+    return datos?.denuncias ?? []
+  }
+
+  async miLinkActualizarDenuncia(
+    actor: ActorDeMiLinkVps,
+    id: string,
+    cambios: { estado?: EstadoDeDenuncia; nota?: string },
+  ): Promise<DenunciaDeMiLink> {
+    const datos = (await this.pedir(
+      'actualizar la denuncia de Mi link',
+      'PATCH',
+      `/api/dmg/mi-link/denuncias/${encodeURIComponent(id)}?${consultaDeMiLink(actor)}`,
+      cambios,
+    )) as { denuncia: DenunciaDeMiLink }
+    return datos.denuncia
+  }
+
+  /** Los bytes de un adjunto de denuncia (lo subió el cliente desde la página pública). */
+  /**
+   * Los bytes del adjunto y el tipo con que lo guardó el servidor (el `content-type` de la respuesta).
+   * El tipo viaja aparte porque es lo que decide con qué extensión se abre en la PC: el nombre lo eligió
+   * quien subió el archivo y no sirve para eso.
+   */
+  async miLinkBajarArchivo(actor: ActorDeMiLinkVps, id: string): Promise<{ contenido: Buffer; tipo: string }> {
+    const respuesta = await this.pedirCrudo(
+      'bajar el archivo de la denuncia',
+      'GET',
+      `/api/dmg/mi-link/archivos/${encodeURIComponent(id)}?${consultaDeMiLink(actor)}`,
+    )
+    const tipo = (respuesta.encabezados.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase()
+    return { contenido: respuesta.cuerpo, tipo }
+  }
+
+  async miLinkMetricas(actor: ActorDeMiLinkVps, dias: RangoDeMetricas, usuario: string): Promise<MetricasDeMiLink> {
+    const datos = (await this.pedir(
+      'leer las métricas de Mi link',
+      'GET',
+      `/api/dmg/mi-link/metricas?${consultaDeMiLink(actor, { dias: String(dias), usuario })}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { metricas: MetricasDeMiLink }
+    return datos.metricas
   }
 }

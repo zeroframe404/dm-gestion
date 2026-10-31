@@ -13,6 +13,7 @@ import { CampanaDeRechazos } from './CampanaDeRechazos'
 import { CampanaDeMensajes } from './CampanaDeMensajes'
 import { CampanaDeTareas } from './CampanaDeTareas'
 import { ControlDeZoom } from './ControlDeZoom'
+import { AnilloDeAlmacenamiento } from './AnilloDeAlmacenamiento'
 import { IndicadorSync } from './IndicadorSync'
 import { Boton } from './ui'
 
@@ -55,6 +56,7 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
 
       <div className="ml-auto flex shrink-0 items-center gap-4">
         <IndicadorSync />
+        {(usuario.rol === 'SUPER_ADMIN' || usuario.rol === 'ADMIN') && <AnilloDeAlmacenamiento />}
         {verRechazos && (
           <>
             <span className="h-6 w-px bg-slate-200" aria-hidden="true" />

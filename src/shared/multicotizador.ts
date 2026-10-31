@@ -105,10 +105,10 @@ export const NOMBRE_CONDICION_IIBB: Record<CondicionIibb, string> = {
   RESPONSABLE_NO_INSCRIPTO: 'Responsable no inscripto',
 }
 
-export const SEXOS = ['MASCULINO', 'FEMENINO'] as const
+export const SEXOS = ['MASCULINO', 'FEMENINO', 'OTRO'] as const
 export type Sexo = (typeof SEXOS)[number]
 
-export const NOMBRE_SEXO: Record<Sexo, string> = { MASCULINO: 'Masculino', FEMENINO: 'Femenino' }
+export const NOMBRE_SEXO: Record<Sexo, string> = { MASCULINO: 'Masculino', FEMENINO: 'Femenino', OTRO: 'Otro (no binario / X)' }
 
 /** El rastreador que lleva el vehículo. Todos menos «Sin rastreador» cotizan con rastreo. */
 export const RASTREADORES = ['SIN_RASTREADOR', 'DE_LA_COMPANIA', 'OTRO', 'LO_JACK', 'TRACER', 'POINTER', 'ITURAN', 'UBICAR'] as const

@@ -20,6 +20,7 @@ export const AREAS = [
   'leads',
   'presupuestos',
   'multicotizador',
+  'miLink',
   'polizas',
   'renovaciones',
   'siniestros',
@@ -61,6 +62,11 @@ export const DESCRIPCION_AREA: Record<Area, { nombre: string; detalle: string }>
     nombre: 'Multicotizador',
     detalle:
       'Cotizar un auto o una moto en todas las compañías con API a la vez y comparar. Armar el presupuesto y emitir desde ahí piden además editar Presupuestos.',
+  },
+  miLink: {
+    nombre: 'Mi link',
+    detalle:
+      'La página pública de cada uno (dmartinezseguros.com/p/…), las solicitudes y denuncias que llegan por ahí y sus métricas. Cada uno ve lo suyo; ver lo de los demás es sólo de administradores.',
   },
   polizas: { nombre: 'Pólizas', detalle: 'El listado por póliza y el alta.' },
   renovaciones: { nombre: 'Renovaciones', detalle: 'La bandeja de lo que vence y el seguimiento.' },

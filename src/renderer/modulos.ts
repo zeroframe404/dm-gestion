@@ -1,6 +1,8 @@
 // Módulos de la aplicación, en el orden en que aparecen en la barra lateral.
+import type { SeccionDeMiLink } from '../shared/miLink'
 import type { SeccionDelMulticotizador } from '../shared/multicotizador'
 import { esArea, type Area } from '../shared/permisos'
+import type { Rol } from '../shared/tipos'
 import type { NombreIcono } from './componentes/Icono'
 
 export type IdModulo =
@@ -10,6 +12,7 @@ export type IdModulo =
   | 'leads'
   | 'presupuestos'
   | 'multicotizador'
+  | 'miLink'
   | 'polizas'
   | 'renovaciones'
   | 'siniestros'
@@ -43,6 +46,17 @@ export interface SeccionDeModulo {
   id: string
   nombre: string
   icono: NombreIcono
+  /**
+   * El área de permisos de este renglón, cuando no es la del módulo (Cartera: Asegurados se abre con
+   * el permiso de Clientes, Vencimientos con el de Renovaciones…). Sin esto el renglón hereda el
+   * permiso del módulo. Ver `moduloVisible` y `areaDelDestino`.
+   */
+  area?: Area
+  /**
+   * Si es true, el renglón sólo lo ven ADMIN y SUPER_ADMIN (además del permiso de su área). Es el caso
+   * de las comisiones de Cobranzas: información de la agencia, no del mostrador. Ver `seccionesVisibles`.
+   */
+  soloAdmin?: boolean
 }
 
 /** La sublista del Multicotizador: cotizar separado por auto y moto, y lo que salió de cotizar. */
@@ -54,14 +68,87 @@ export const SECCIONES_MULTICOTIZADOR: Array<SeccionDeModulo & { id: SeccionDelM
   { id: 'emisiones', nombre: 'Emisiones', icono: 'polizas' },
 ]
 
+/**
+ * La sublista de Mi link: la página que se edita y lo que llega desde ella. Todos los renglones van con
+ * el permiso del módulo; qué se ve de los demás (las solicitudes de todos) lo decide el rol en el VPS.
+ */
+export const SECCIONES_MI_LINK: Array<SeccionDeModulo & { id: SeccionDeMiLink }> = [
+  { id: 'pagina', nombre: 'Mi página', icono: 'lapiz' },
+  { id: 'solicitudes', nombre: 'Solicitudes', icono: 'bandeja' },
+  { id: 'siniestros', nombre: 'Siniestros', icono: 'siniestros' },
+  { id: 'metricas', nombre: 'Métricas', icono: 'metricas' },
+]
+
+export type IdSeccionDeCartera =
+  | 'planilla'
+  | 'asegurados'
+  | 'grupos'
+  | 'polizas'
+  | 'siniestros'
+  | 'vencimientos'
+  | 'indiceAumentos'
+  | 'rubrica'
+
+/**
+ * La sublista de Cartera. «Planilla del mes» es la pantalla de siempre (con sus pestañas internas:
+ * Bajas, Rechazos, Galeno…) y va primera; el resto son los listados. Cada renglón se abre con el
+ * permiso del área que ya existe para ese dato: no hay áreas nuevas.
+ */
+export const SECCIONES_CARTERA: Array<SeccionDeModulo & { id: IdSeccionDeCartera; area: Area }> = [
+  { id: 'planilla', nombre: 'Planilla del mes', icono: 'tabla', area: 'cartera' },
+  { id: 'asegurados', nombre: 'Asegurados', icono: 'usuario', area: 'clientes' },
+  { id: 'grupos', nombre: 'Flotas', icono: 'clientes', area: 'clientes' },
+  { id: 'polizas', nombre: 'Pólizas', icono: 'polizas', area: 'polizas' },
+  { id: 'siniestros', nombre: 'Siniestros', icono: 'siniestros', area: 'siniestros' },
+  { id: 'vencimientos', nombre: 'Vencimientos', icono: 'calendario', area: 'renovaciones' },
+  { id: 'indiceAumentos', nombre: 'Índice de Aumentos', icono: 'porcentaje', area: 'polizas' },
+  { id: 'rubrica', nombre: 'Rúbrica Digital', icono: 'lapiz', area: 'reportes' },
+]
+
+/**
+ * Qué renglón de Cartera corresponde a la sección pedida. La navegación también usa `seccion` para
+ * las pestañas internas de la planilla (`ir('cartera', { seccion: 'reglas' })`, 'rechazos'…): todo lo
+ * que no sea un renglón del menú —incluido nulo— es la planilla, que es donde viven esas pestañas.
+ */
+export function seccionDeCartera(seccion: string | null | undefined): IdSeccionDeCartera {
+  return SECCIONES_CARTERA.find((item) => item.id === seccion)?.id ?? 'planilla'
+}
+
+export type IdSeccionDeCobranzas = 'panel' | 'vencimientosCuotas' | 'rechazos' | 'comisionesListado'
+
+/**
+ * La sublista de Cobranzas. «Panel de cobranzas» es el módulo de siempre (con sus pestañas internas:
+ * Caja del día, Mora, Imputados y Comisiones) y va primero; el resto son listados. Todos se abren con el
+ * permiso del área Cobranzas: no hay áreas nuevas. «Comisiones» (el listado) usa el id
+ * `comisionesListado` para no chocar con la pestaña interna `comisiones` del panel, que sigue
+ * funcionando como enlace profundo (`ir('cobranzas', { seccion: 'comisiones' })`).
+ */
+export const SECCIONES_COBRANZAS: Array<SeccionDeModulo & { id: IdSeccionDeCobranzas; area: Area }> = [
+  { id: 'panel', nombre: 'Panel de cobranzas', icono: 'billete', area: 'cobranzas' },
+  { id: 'vencimientosCuotas', nombre: 'Vencimientos Cuotas', icono: 'calendario', area: 'cobranzas' },
+  { id: 'rechazos', nombre: 'Rechazos', icono: 'alerta', area: 'cobranzas' },
+  // Como la pestaña «Comisiones» del panel y el canal cobranzas:comisiones: sólo administradores.
+  { id: 'comisionesListado', nombre: 'Comisiones', icono: 'porcentaje', area: 'cobranzas', soloAdmin: true },
+]
+
+/**
+ * Qué renglón de Cobranzas corresponde a la sección pedida. La navegación también usa `seccion` para
+ * las pestañas internas del panel ('caja', 'mora', 'imputados', 'comisiones'): todo lo que no sea un
+ * renglón del menú —incluido nulo— es el panel, que es donde viven esas pestañas.
+ */
+export function seccionDeCobranzas(seccion: string | null | undefined): IdSeccionDeCobranzas {
+  return SECCIONES_COBRANZAS.find((item) => item.id === seccion)?.id ?? 'panel'
+}
+
 export const MODULOS: Modulo[] = [
   { id: 'inicio', nombre: 'Inicio', icono: 'inicio', descripcion: 'Resumen general y accesos rápidos.', disponible: true },
   {
     id: 'cartera',
     nombre: 'Cartera',
     icono: 'cartera',
-    descripcion: 'La planilla mensual: semáforo de vencimientos, avisos y pagos.',
+    descripcion: 'La planilla mensual (semáforo, avisos y pagos) y los listados de asegurados, pólizas, siniestros y vencimientos.',
     disponible: true,
+    secciones: SECCIONES_CARTERA,
   },
   { id: 'clientes', nombre: 'Clientes', icono: 'clientes', descripcion: 'La ficha de cada cliente: datos, vehículos, pólizas, pagos y siniestros.', disponible: true },
   {
@@ -85,6 +172,14 @@ export const MODULOS: Modulo[] = [
     descripcion: 'Un auto o una moto cotizados en todas las compañías con API a la vez, comparados por cobertura.',
     disponible: true,
     secciones: SECCIONES_MULTICOTIZADOR,
+  },
+  {
+    id: 'miLink',
+    nombre: 'Mi link',
+    icono: 'enlace',
+    descripcion: 'Tu página pública con tus contactos y coberturas, y las cotizaciones y denuncias que te llegan por ahí.',
+    disponible: true,
+    secciones: SECCIONES_MI_LINK,
   },
   {
     id: 'polizas',
@@ -111,8 +206,9 @@ export const MODULOS: Modulo[] = [
     id: 'cobranzas',
     nombre: 'Cobranzas',
     icono: 'cobranzas',
-    descripcion: 'La caja del día por sucursal, la mora, la rendición mensual y las comisiones.',
+    descripcion: 'La caja del día por sucursal, la mora, la rendición mensual y las comisiones, más los listados de vencimientos de cuotas, rechazos y comisiones.',
     disponible: true,
+    secciones: SECCIONES_COBRANZAS,
   },
   {
     id: 'metricas',
@@ -198,6 +294,63 @@ export const MODULO_API_ASEGURADORAS: Modulo = {
  */
 export function esAreaDePermisos(id: IdModulo): id is IdModulo & Area {
   return esArea(id)
+}
+
+/**
+ * Las sub-entradas de un módulo que esta persona puede abrir (las que no piden un área propia siempre
+ * se ven). `rol` sólo hace falta para los renglones `soloAdmin`: sin rol, esos renglones no se ven.
+ */
+export function seccionesVisibles(modulo: Modulo, puedeVer: (area: Area) => boolean, rol?: Rol): SeccionDeModulo[] {
+  return (modulo.secciones ?? []).filter(
+    (item) => (!item.area || puedeVer(item.area)) && (!item.soloAdmin || (rol !== undefined && rol !== 'EMPLEADO')),
+  )
+}
+
+/**
+ * Si el módulo aparece en la barra lateral y en Inicio. Un módulo con sub-entradas que piden su propia
+ * área (Cartera, Cobranzas) se ve si alguna de ellas es visible; el resto, con el permiso de su área.
+ */
+export function moduloVisible(modulo: Modulo, puedeVer: (area: Area) => boolean, rol?: Rol): boolean {
+  if (modulo.secciones?.some((item) => item.area)) return seccionesVisibles(modulo, puedeVer, rol).length > 0
+  return !esAreaDePermisos(modulo.id) || puedeVer(modulo.id)
+}
+
+/**
+ * A qué sección mandar a quien abre el módulo «a secas» (el ícono de la barra achicada, el mapa de
+ * Inicio): la primera que pueda ver. Sólo importa en los módulos cuyas sub-entradas piden su propia
+ * área (Cartera, Cobranzas): quien no tiene la planilla pero sí Clientes tiene que caer en Asegurados y
+ * no en un «no tenés permiso». En el resto devuelve undefined y el módulo abre en su sección de siempre.
+ */
+export function primeraSeccionVisible(modulo: Modulo, puedeVer: (area: Area) => boolean, rol?: Rol): string | undefined {
+  if (!modulo.secciones?.some((item) => item.area)) return undefined
+  return seccionesVisibles(modulo, puedeVer, rol)[0]?.id
+}
+
+/**
+ * El área de permisos que exige abrir `id` en `seccion`, o null si no pide ninguna (Inicio,
+ * Administración, API Aseguradoras). Para Cartera y Cobranzas depende de la sección: una sección
+ * desconocida es la planilla / el panel, que siguen pidiendo el permiso del módulo como siempre.
+ */
+export function areaDelDestino(id: IdModulo, seccion: string | null | undefined): Area | null {
+  if (id === 'cartera') return SECCIONES_CARTERA.find((item) => item.id === seccionDeCartera(seccion))?.area ?? 'cartera'
+  if (id === 'cobranzas') return SECCIONES_COBRANZAS.find((item) => item.id === seccionDeCobranzas(seccion))?.area ?? 'cobranzas'
+  return esAreaDePermisos(id) && id !== 'administracion' ? id : null
+}
+
+/**
+ * Si esta persona puede abrir el módulo en esa sección: el permiso del área (`areaDelDestino`) más la
+ * restricción de rol de los renglones `soloAdmin` (Cobranzas → Comisiones).
+ */
+export function puedeAbrirDestino(
+  id: IdModulo,
+  seccion: string | null | undefined,
+  puedeVer: (area: Area) => boolean,
+  rol: Rol,
+): boolean {
+  const area = areaDelDestino(id, seccion)
+  if (area && !puedeVer(area)) return false
+  if (id === 'cobranzas' && SECCIONES_COBRANZAS.find((item) => item.id === seccionDeCobranzas(seccion))?.soloAdmin) return rol !== 'EMPLEADO'
+  return true
 }
 
 export function buscarModulo(id: IdModulo): Modulo {

@@ -2,7 +2,7 @@
 // con la misma semántica de grilla que el servidor real: pestañas ordenadas, filas numeradas
 // base 1, celdas de texto, y la migración inicial en tres fases. Lo usan las pruebas y el humo,
 // igual que github-simulado.mjs simula la base de usuarios.
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 
@@ -22,6 +22,52 @@ const RUTA_DEL_CANAL = '/api/dmg/vivo'
 const COLORES_DE_LA_PALETA = 12
 /** Cada cuánto le pide latir el servidor al cliente. El mismo número que el protocolo. */
 const LATIDO_DEL_CANAL_MS = 20_000
+
+// --- Mi link (las constantes que el servidor real saca de milink.contenido.ts) ----------------------
+//
+// El simulador es JavaScript suelto y no puede importar `src/shared/miLink.ts`: se copian las pocas
+// reglas que hacen falta para contestar igual que el servidor. Si cambian allá, cambian acá.
+const URL_BASE_DE_MI_LINK = 'https://dmartinezseguros.com'
+const PATRON_DE_DIRECCION = /^[a-z0-9](?:[a-z0-9-]{1,38})[a-z0-9]$/
+const DIRECCIONES_RESERVADAS = [
+  'admin', 'api', 'app', 'dm', 'dmg', 'gestion', 'login', 'p', 'pagina', 'seguros', 'cotizacion',
+  'siniestros', 'contacto', 'nosotros', 'coberturas', 'privacidad', 'cookies', 'soporte', 'ayuda',
+  'www', 'mail', 'agencia', 'daniel-martinez-seguros', 'dmartinezseguros',
+]
+const ESTADOS_DE_SOLICITUD = ['NUEVA', 'CONTACTADA', 'COTIZADA', 'CERRADA', 'DESCARTADA']
+const ESTADOS_DE_DENUNCIA = ['NUEVA', 'EN CURSO', 'CARGADA', 'CERRADA']
+const MENSAJE_DE_VERSION_VIEJA = 'Otra computadora guardó tu página mientras la editabas. Se vuelve a cargar con lo último guardado.'
+const MENSAJE_DE_DIRECCION_TOMADA = 'Esa dirección ya la tiene otra persona de la agencia. Probá con otra.'
+const ETIQUETA_DE_ORIGEN = { directo: 'Directo', google: 'Google', instagram: 'Instagram', facebook: 'Facebook', whatsapp: 'WhatsApp', otros: 'Otros sitios' }
+const ETIQUETA_DE_DISPOSITIVO = { celular: 'Celular', escritorio: 'Escritorio', tablet: 'Tablet', otro: 'Otro' }
+const MS_DE_ARGENTINA = 3 * 60 * 60 * 1000
+
+function motivoDeDireccionInvalida(valor) {
+  if (valor.length < 3) return 'La dirección tiene que tener al menos 3 caracteres.'
+  if (valor.length > 40) return 'La dirección puede tener hasta 40 caracteres.'
+  if (DIRECCIONES_RESERVADAS.includes(valor)) return 'Esa dirección está reservada para el sitio. Probá con otra.'
+  if (!PATRON_DE_DIRECCION.test(valor) || valor.includes('--')) {
+    return 'La dirección solo puede tener minúsculas, números y guiones (sin guiones al principio, al final ni dos seguidos).'
+  }
+  return null
+}
+
+/** aaaa-mm-dd de un instante, en hora de Argentina (UTC-3, sin horario de verano). */
+function diaDeArgentina(instante) {
+  return new Date(new Date(instante).getTime() - MS_DE_ARGENTINA).toISOString().slice(0, 10)
+}
+
+function sumarDias(dia, dias) {
+  return new Date(Date.parse(`${dia}T00:00:00.000Z`) + dias * 86_400_000).toISOString().slice(0, 10)
+}
+
+/** Un ranking como los de las métricas: de mayor a menor, y a igual valor por nombre. */
+function rankingDe(cuentas) {
+  return [...cuentas]
+    .map(([etiqueta, valor]) => ({ etiqueta, valor }))
+    .filter((fila) => fila.valor > 0)
+    .sort((una, otra) => otra.valor - una.valor || una.etiqueta.localeCompare(otra.etiqueta, 'es'))
+}
 
 function comoTexto(valor) {
   if (valor === null || valor === undefined) return ''
@@ -152,6 +198,26 @@ export class VpsSimulado {
     /** Lo que el saludo manda como configuración de WebRTC. Sin TURN, igual que un VPS sin secreto. */
     this.ice = { stun: ['stun:stun.l.google.com:19302'], turn: null }
     this.proximaConexion = 1
+
+    // --- Mi link -----------------------------------------------------------------------------------
+    //
+    // Las páginas públicas, lo que entra por ellas y sus eventos, en memoria y con la misma forma que
+    // devuelve `/api/dmg/mi-link`. Lo que en el servidor real llega por la página pública (solicitudes,
+    // denuncias, visitas y clicks) acá se carga con `sembrarMiLink`: el simulador no sirve la página.
+    /** usuarioClave → { usuarioClave, usuarioNombre, direccion, publicada, contenido, version, actualizadoEn }. */
+    this.miLinks = new Map()
+    /** Las solicitudes, en el orden en que entraron. */
+    this.solicitudesDeMiLink = []
+    /** Las denuncias, con sus archivos (los bytes van aparte, en `archivosDeMiLink`). */
+    this.denunciasDeMiLink = []
+    /** id del archivo → { denunciaId, nombre, tipo, contenido }. */
+    this.archivosDeMiLink = new Map()
+    /** Las visitas y los clicks: { usuarioClave, evento, bloque, bloqueEtiqueta, visitante, origen, dispositivo, ocurridoEn }. */
+    this.eventosDeMiLink = []
+    /** Las claves que tienen foto en el perfil (el servidor real mira `DmgPerfil.foto`). */
+    this.fotosDeMiLink = new Set()
+    this.proximoNumeroDeSolicitud = 1
+    this.proximoNumeroDeDenuncia = 1
 
     for (const pestana of opciones.pestanas ?? []) {
       this.cargarPestanaDirecto(pestana)
@@ -806,6 +872,8 @@ export class VpsSimulado {
           if (ruta.startsWith('/api/dmg/mensajes'))
             return this.atenderMensajes(pedido.method ?? 'GET', ruta, json, responder, new URLSearchParams(consulta ?? ''))
           if (ruta.startsWith('/api/dmg/vehiculos')) return this.atenderVehiculos(pedido.method ?? 'GET', ruta, json, responder, new URLSearchParams(consulta ?? ''))
+          if (ruta.startsWith('/api/dmg/mi-link'))
+            return this.atenderMiLink(pedido.method ?? 'GET', ruta, json, responder, new URLSearchParams(consulta ?? ''), respuesta)
           if (ruta.startsWith('/api/dmg/perfiles'))
             return this.atenderPerfiles(pedido.method ?? 'GET', ruta, json, responder, new URLSearchParams(consulta ?? ''))
           return this.atender(pedido.method ?? 'GET', ruta ?? '', json, responder, new URLSearchParams(consulta ?? ''))
@@ -1307,6 +1375,344 @@ export class VpsSimulado {
     // nadie pregunte, y el que la cambió no depende de su propia respuesta para verla.
     this.difundirPorElCanal({ t: 'perfil', perfil: { ...perfil } })
     return responder(200, { perfil: { ...perfil } })
+  }
+
+  // -------------------------------------------------------------------------
+  // Mi link
+  // -------------------------------------------------------------------------
+  //
+  // Los mismos endpoints que `server/src/modules/milink/milink.routes.ts` y las mismas respuestas: el
+  // candado de `version` (409 «Otra computadora…»), la dirección única, «'' = las mías, 'todos' u otra
+  // clave sólo para administradores» y las métricas armadas con TODOS los días del rango. Lo que no se
+  // replica es la validación entera del contenido (la hace el servidor de verdad, con sus pruebas): acá
+  // alcanza con que tenga la forma básica.
+
+  miLinkParaLaApp(fila) {
+    return {
+      usuarioClave: fila.usuarioClave,
+      direccion: fila.direccion,
+      publicada: fila.publicada,
+      contenido: structuredClone(fila.contenido),
+      version: fila.version,
+      actualizadaEn: fila.actualizadoEn,
+      url: `${URL_BASE_DE_MI_LINK}/p/${fila.direccion}`,
+      tieneFoto: this.fotosDeMiLink.has(fila.usuarioClave),
+    }
+  }
+
+  denunciaDeMiLinkParaLaApp(denuncia) {
+    return { ...denuncia, archivos: denuncia.archivos.map((archivo) => ({ ...archivo })) }
+  }
+
+  /** De quién se lista: '' = las del actor; 'todos' u otra clave, sólo administradores (si no, 403). */
+  usuarioDelFiltroDeMiLink(actor, valor) {
+    const pedido = String(valor ?? '').trim().toLowerCase()
+    if (!pedido || pedido === actor.clave) return { clave: actor.clave }
+    if (actor.rol !== 'ADMIN' && actor.rol !== 'SUPER_ADMIN') return { error: 'Solo un administrador puede ver lo de otras personas.' }
+    return { clave: pedido === 'todos' ? null : pedido }
+  }
+
+  /** Filtra por los mismos criterios que el servidor: dueño, rango en hora de Argentina, estado y texto. */
+  filtrarDeMiLink(lista, actor, busqueda, estados, campos) {
+    const usuario = this.usuarioDelFiltroDeMiLink(actor, busqueda.get('usuario'))
+    if (usuario.error) return { error: usuario.error, estado: 403 }
+    const estado = (busqueda.get('estado') ?? '').trim()
+    if (estado && !estados.includes(estado)) return { error: 'Ese estado no existe.', estado: 400 }
+    const desde = (busqueda.get('desde') ?? '').trim()
+    const hasta = (busqueda.get('hasta') ?? '').trim()
+    for (const [que, dia] of [['desde', desde], ['hasta', hasta]]) {
+      // `Date.parse` acepta «2026-02-30» (lo corre al 2 de marzo); el servidor lo rechaza porque ida y
+      // vuelta no da el mismo día, y acá igual, para que una prueba no pase con algo que el VPS no acepta.
+      if (dia && (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || Number.isNaN(Date.parse(`${dia}T00:00:00.000Z`)) || sumarDias(dia, 0) !== dia)) {
+        return { error: `La fecha «${que}» no es válida (aaaa-mm-dd).`, estado: 400 }
+      }
+    }
+    const texto = (busqueda.get('texto') ?? '').trim().slice(0, 100).toLowerCase()
+    const numero = /^\d{1,9}$/.test(texto) ? Number(texto) : null
+    const filas = lista
+      .filter((fila) => usuario.clave === null || fila.usuarioClave === usuario.clave)
+      .filter((fila) => !estado || fila.estado === estado)
+      .filter((fila) => {
+        const dia = diaDeArgentina(fila.creadaEn)
+        return (!desde || dia >= desde) && (!hasta || dia <= hasta)
+      })
+      .filter((fila) => !texto || fila.numero === numero || campos(fila).some((valor) => String(valor ?? '').toLowerCase().includes(texto)))
+      .sort((una, otra) => otra.creadaEn.localeCompare(una.creadaEn) || otra.numero - una.numero)
+      .slice(0, 1000)
+    return { filas }
+  }
+
+  /**
+   * El seguimiento (estado y nota) de una solicitud o denuncia, en el mismo orden que el servidor:
+   * primero lo que mandaron (400), después si existe (404) y por último si es del actor o de un
+   * administrador (403).
+   */
+  seguimientoDeMiLink(fila, inexistente, actor, json, estados, responder) {
+    if (json?.estado !== undefined && !estados.includes(json.estado)) {
+      responder(400, { error: 'Ese estado no existe.' })
+      return false
+    }
+    if (json?.nota !== undefined && typeof json.nota !== 'string') {
+      responder(400, { error: 'La nota tiene que ser un texto.' })
+      return false
+    }
+    if (typeof json?.nota === 'string' && json.nota.length > 4000) {
+      responder(400, { error: 'La nota puede tener hasta 4000 caracteres.' })
+      return false
+    }
+    if (!fila) {
+      responder(404, { error: inexistente })
+      return false
+    }
+    if (fila.usuarioClave !== actor.clave && actor.rol !== 'ADMIN' && actor.rol !== 'SUPER_ADMIN') {
+      responder(403, { error: 'Solo la persona dueña de la página o un administrador pueden hacer esto.' })
+      return false
+    }
+    if (json?.estado === undefined && json?.nota === undefined) return true
+    if (json.estado !== undefined) fila.estado = json.estado
+    if (json.nota !== undefined) fila.nota = json.nota.trim()
+    fila.actualizadaEn = new Date().toISOString()
+    return true
+  }
+
+  metricasDeMiLink(usuarioClave, diasCrudos) {
+    const dias = [7, 30, 90].includes(Number(diasCrudos)) ? Number(diasCrudos) : 30
+    const hasta = diaDeArgentina(Date.now())
+    const desde = sumarDias(hasta, -(dias - 1))
+    const delRango = (fila, fecha) => {
+      const dia = diaDeArgentina(fecha)
+      return (usuarioClave === null || fila.usuarioClave === usuarioClave) && dia >= desde && dia <= hasta
+    }
+    const eventos = this.eventosDeMiLink.filter((evento) => delRango(evento, evento.ocurridoEn))
+    const porDia = new Map(Array.from({ length: dias }, (_, indice) => [sumarDias(desde, indice), { visitas: 0, clicks: 0, visitantes: new Set() }]))
+    const bloques = new Map()
+    const origenes = new Map()
+    const dispositivos = new Map()
+    const sumar = (mapa, clave) => mapa.set(clave, (mapa.get(clave) ?? 0) + 1)
+    for (const evento of eventos) {
+      const delDia = porDia.get(diaDeArgentina(evento.ocurridoEn))
+      if (!delDia) continue
+      if (evento.evento === 'visita') {
+        delDia.visitas++
+        delDia.visitantes.add(evento.visitante)
+        sumar(origenes, ETIQUETA_DE_ORIGEN[evento.origen] ?? ETIQUETA_DE_ORIGEN.otros)
+        sumar(dispositivos, ETIQUETA_DE_DISPOSITIVO[evento.dispositivo] ?? ETIQUETA_DE_DISPOSITIVO.otro)
+      } else if (evento.evento === 'click') {
+        delDia.clicks++
+        if (evento.bloqueEtiqueta || evento.bloque) sumar(bloques, evento.bloqueEtiqueta || evento.bloque)
+      }
+    }
+    const puntos = [...porDia].map(([dia, cuenta]) => ({ dia, visitas: cuenta.visitas, clicks: cuenta.clicks }))
+    const visitas = puntos.reduce((total, punto) => total + punto.visitas, 0)
+    const clicks = puntos.reduce((total, punto) => total + punto.clicks, 0)
+    return {
+      desde,
+      hasta,
+      visitas,
+      // «Visitantes» son pares (visitante, día), como en el servidor: el que vuelve otro día cuenta dos.
+      visitantes: [...porDia.values()].reduce((total, cuenta) => total + cuenta.visitantes.size, 0),
+      clicks,
+      clicksPorVisita: visitas > 0 ? clicks / visitas : 0,
+      porDia: puntos,
+      bloques: rankingDe(bloques),
+      origenes: rankingDe(origenes),
+      dispositivos: rankingDe(dispositivos),
+      solicitudes: this.solicitudesDeMiLink.filter((fila) => delRango(fila, fila.creadaEn)).length,
+      denuncias: this.denunciasDeMiLink.filter((fila) => delRango(fila, fila.creadaEn)).length,
+    }
+  }
+
+  atenderMiLink(metodo, ruta, json, responder, busqueda, respuesta) {
+    const actor = this.actorDelPedido({}, busqueda)
+    if (!actor.clave) return responder(400, { error: 'Falta quién manda el pedido (usuario y rol).' })
+    if (!['SUPER_ADMIN', 'ADMIN', 'EMPLEADO'].includes(actor.rol)) return responder(400, { error: 'El rol de quien pide no es válido.' })
+    actor.nombre = String(busqueda.get('actorNombre') ?? actor.clave)
+    this.llamadas.miLink = (this.llamadas.miLink ?? 0) + 1
+
+    if (metodo === 'GET' && ruta === '/api/dmg/mi-link/mia') {
+      const fila = this.miLinks.get(actor.clave)
+      return responder(200, { link: fila ? this.miLinkParaLaApp(fila) : null })
+    }
+
+    if (metodo === 'GET' && ruta === '/api/dmg/mi-link/direccion-libre') {
+      const direccion = String(busqueda.get('direccion') ?? '').trim().toLowerCase()
+      const motivo = motivoDeDireccionInvalida(direccion)
+      if (motivo) return responder(200, { libre: false, motivo })
+      const duenio = [...this.miLinks.values()].find((fila) => fila.direccion === direccion)
+      if (duenio && duenio.usuarioClave !== actor.clave) return responder(200, { libre: false, motivo: MENSAJE_DE_DIRECCION_TOMADA })
+      return responder(200, { libre: true, motivo: null })
+    }
+
+    if (metodo === 'PUT' && ruta === '/api/dmg/mi-link/mia') {
+      const direccion = String(json?.direccion ?? '').trim().toLowerCase()
+      const motivo = motivoDeDireccionInvalida(direccion)
+      if (motivo) return responder(400, { error: motivo })
+      if (typeof json?.publicada !== 'boolean') return responder(400, { error: 'Falta si la página está publicada o no.' })
+      const version = json.version
+      if (version !== null && (!Number.isInteger(version) || version < 1)) return responder(400, { error: 'Falta la versión de la página que se leyó.' })
+      const contenido = json.contenido
+      if (!contenido || typeof contenido !== 'object' || contenido.v !== 1 || typeof contenido.nombre !== 'string' || !contenido.nombre.trim()) {
+        return responder(400, { error: 'El contenido de la página no es válido: falta el nombre.' })
+      }
+      const duenio = [...this.miLinks.values()].find((fila) => fila.direccion === direccion)
+      if (duenio && duenio.usuarioClave !== actor.clave) return responder(409, { error: MENSAJE_DE_DIRECCION_TOMADA })
+      const previa = this.miLinks.get(actor.clave)
+      if ((version === null && previa) || (version !== null && previa?.version !== version)) {
+        return responder(409, { error: MENSAJE_DE_VERSION_VIEJA })
+      }
+      const fila = {
+        usuarioClave: actor.clave,
+        usuarioNombre: actor.nombre,
+        direccion,
+        publicada: json.publicada,
+        contenido: structuredClone(contenido),
+        version: previa ? previa.version + 1 : 1,
+        actualizadoEn: new Date().toISOString(),
+      }
+      this.miLinks.set(actor.clave, fila)
+      return responder(200, { link: this.miLinkParaLaApp(fila) })
+    }
+
+    if (metodo === 'GET' && ruta === '/api/dmg/mi-link/solicitudes') {
+      const resultado = this.filtrarDeMiLink(this.solicitudesDeMiLink, actor, busqueda, ESTADOS_DE_SOLICITUD, (fila) => [
+        fila.nombre, fila.telefono, fila.email, fila.mensaje, fila.coberturaTitulo, fila.codigoPostal, fila.usuarioNombre,
+        fila.vehiculo?.marca, fila.vehiculo?.modelo,
+      ])
+      if (resultado.error) return responder(resultado.estado, { error: resultado.error })
+      return responder(200, { solicitudes: resultado.filas.map((fila) => structuredClone(fila)) })
+    }
+
+    if (metodo === 'GET' && ruta === '/api/dmg/mi-link/denuncias') {
+      const resultado = this.filtrarDeMiLink(this.denunciasDeMiLink, actor, busqueda, ESTADOS_DE_DENUNCIA, (fila) => [
+        fila.nombre, fila.telefono, fila.email, fila.dni, fila.patente, fila.lugar, fila.descripcion, fila.usuarioNombre,
+      ])
+      if (resultado.error) return responder(resultado.estado, { error: resultado.error })
+      return responder(200, { denuncias: resultado.filas.map((fila) => this.denunciaDeMiLinkParaLaApp(fila)) })
+    }
+
+    const seguimiento = /^\/api\/dmg\/mi-link\/(solicitudes|denuncias)\/([^/]+)$/.exec(ruta)
+    if (metodo === 'PATCH' && seguimiento) {
+      const id = decodeURIComponent(seguimiento[2]).toLowerCase()
+      if (seguimiento[1] === 'solicitudes') {
+        const fila = this.solicitudesDeMiLink.find((cada) => cada.id === id)
+        if (!this.seguimientoDeMiLink(fila, 'Esa solicitud no existe.', actor, json, ESTADOS_DE_SOLICITUD, responder)) return
+        return responder(200, { solicitud: structuredClone(fila) })
+      }
+      const fila = this.denunciasDeMiLink.find((cada) => cada.id === id)
+      if (!this.seguimientoDeMiLink(fila, 'Esa denuncia no existe.', actor, json, ESTADOS_DE_DENUNCIA, responder)) return
+      return responder(200, { denuncia: this.denunciaDeMiLinkParaLaApp(fila) })
+    }
+
+    const archivo = /^\/api\/dmg\/mi-link\/archivos\/([^/]+)$/.exec(ruta)
+    if (metodo === 'GET' && archivo) {
+      const guardado = this.archivosDeMiLink.get(decodeURIComponent(archivo[1]).toLowerCase())
+      if (!guardado) return responder(404, { error: 'Ese archivo no existe.' })
+      const denuncia = this.denunciasDeMiLink.find((cada) => cada.id === guardado.denunciaId)
+      if (denuncia && denuncia.usuarioClave !== actor.clave && actor.rol !== 'ADMIN' && actor.rol !== 'SUPER_ADMIN') {
+        return responder(403, { error: 'Solo la persona dueña de la página o un administrador pueden hacer esto.' })
+      }
+      respuesta.writeHead(200, {
+        'content-type': guardado.tipo,
+        'content-length': String(guardado.contenido.length),
+        'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(guardado.nombre)}`,
+      })
+      return respuesta.end(guardado.contenido)
+    }
+
+    if (metodo === 'GET' && ruta === '/api/dmg/mi-link/metricas') {
+      const usuario = this.usuarioDelFiltroDeMiLink(actor, busqueda.get('usuario'))
+      if (usuario.error) return responder(403, { error: usuario.error })
+      return responder(200, { metricas: this.metricasDeMiLink(usuario.clave, busqueda.get('dias')) })
+    }
+
+    return responder(404, { error: `El simulador no atiende ${metodo} ${ruta}.` })
+  }
+
+  /**
+   * Carga lo que en el servidor real llega desde la página pública: solicitudes, denuncias (con sus
+   * archivos) y eventos de visita y click. Cada cosa con valores por defecto razonables, así una prueba
+   * (o la versión de demostración) escribe sólo lo que le importa. Devuelve lo que quedó guardado.
+   */
+  sembrarMiLink({ solicitudes = [], denuncias = [], eventos = [] } = {}) {
+    const ahora = new Date().toISOString()
+    const nombreDe = (clave) => this.miLinks.get(clave)?.usuarioNombre ?? clave
+    const sembradas = solicitudes.map((cruda) => {
+      const usuarioClave = String(cruda.usuarioClave ?? '').toLowerCase()
+      const cobertura = cruda.cobertura ?? 'auto'
+      const fila = {
+        id: randomUUID(),
+        numero: this.proximoNumeroDeSolicitud++,
+        usuarioClave,
+        usuarioNombre: cruda.usuarioNombre ?? nombreDe(usuarioClave),
+        canal: cobertura === 'auto' || cobertura === 'moto' ? 'COTIZADOR' : 'FORMULARIO',
+        cobertura,
+        coberturaTitulo: cruda.coberturaTitulo ?? (cobertura === 'moto' ? 'Seguro de moto' : cobertura === 'auto' ? 'Seguro de auto' : 'Otro seguro'),
+        estado: 'NUEVA',
+        nombre: 'Cliente de prueba',
+        telefono: '11 5555-0000',
+        email: '',
+        codigoPostal: '',
+        mensaje: '',
+        vehiculo: null,
+        nota: '',
+        creadaEn: ahora,
+        ...cruda,
+      }
+      fila.usuarioClave = usuarioClave
+      fila.actualizadaEn = cruda.actualizadaEn ?? fila.creadaEn
+      this.solicitudesDeMiLink.push(fila)
+      return structuredClone(fila)
+    })
+    const sembradasDenuncias = denuncias.map(({ archivos = [], ...cruda }) => {
+      const usuarioClave = String(cruda.usuarioClave ?? '').toLowerCase()
+      const id = randomUUID()
+      const fichas = archivos.map((adjunto) => {
+        const contenido = Buffer.isBuffer(adjunto.contenido) ? adjunto.contenido : Buffer.from(String(adjunto.contenido ?? ''))
+        const ficha = { id: randomUUID(), nombre: adjunto.nombre ?? 'archivo.pdf', tipo: adjunto.tipo ?? 'application/pdf', tamano: contenido.length }
+        this.archivosDeMiLink.set(ficha.id, { denunciaId: id, nombre: ficha.nombre, tipo: ficha.tipo, contenido })
+        return ficha
+      })
+      const fila = {
+        id,
+        numero: this.proximoNumeroDeDenuncia++,
+        usuarioNombre: cruda.usuarioNombre ?? nombreDe(usuarioClave),
+        tipo: 'choque',
+        estado: 'NUEVA',
+        nombre: 'Cliente de prueba',
+        telefono: '11 5555-0000',
+        email: '',
+        dni: '',
+        patente: '',
+        fecha: '',
+        lugar: '',
+        descripcion: '',
+        hayTercero: false,
+        terceroDatos: '',
+        hayLesionados: false,
+        nota: '',
+        creadaEn: ahora,
+        ...cruda,
+        usuarioClave,
+        archivos: fichas,
+      }
+      fila.actualizadaEn = cruda.actualizadaEn ?? fila.creadaEn
+      this.denunciasDeMiLink.push(fila)
+      return this.denunciaDeMiLinkParaLaApp(fila)
+    })
+    for (const crudo of eventos) {
+      this.eventosDeMiLink.push({
+        evento: 'visita',
+        bloque: null,
+        bloqueEtiqueta: null,
+        visitante: 'visitante-de-prueba',
+        origen: 'directo',
+        dispositivo: 'celular',
+        ocurridoEn: ahora,
+        ...crudo,
+        usuarioClave: String(crudo.usuarioClave ?? '').toLowerCase(),
+      })
+    }
+    return { solicitudes: sembradas, denuncias: sembradasDenuncias }
   }
 
   /**

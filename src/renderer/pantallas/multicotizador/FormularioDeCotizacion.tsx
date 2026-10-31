@@ -7,7 +7,7 @@
 // tarjeta de resultados.
 import { useEffect, useState, type ReactNode } from 'react'
 import { PROVINCIAS } from '../../../shared/direccion'
-import { detectarDocumento } from '../../../shared/documento'
+import { detectarDocumento, formatearCuitEscribiendo, formatearDni } from '../../../shared/documento'
 import {
   ACCESORIOS,
   CLAUSULAS_DE_AJUSTE,
@@ -534,14 +534,21 @@ export function FormularioDeCotizacion({ valor: f, alCambiar, aseguradoras, coti
                   error={errores.apellido}
                   onChange={(e) => alCambiar({ apellido: e.target.value })}
                 />
-                <Campo etiqueta="DNI" value={f.dni} inputMode="numeric" error={errores.dni} onChange={(e) => alCambiar({ dni: soloNumeros(e.target.value).slice(0, 8) })} />
+                <Campo
+                  etiqueta="DNI"
+                  value={formatearDni(f.dni)}
+                  inputMode="numeric"
+                  placeholder="12.345.678"
+                  error={errores.dni}
+                  onChange={(e) => alCambiar({ dni: soloNumeros(e.target.value).slice(0, 8) })}
+                />
                 <Campo
                   etiqueta="CUIT"
-                  value={f.cuit}
+                  value={formatearCuitEscribiendo(f.cuit)}
                   inputMode="numeric"
                   placeholder="20-12345678-9"
                   error={errores.cuit}
-                  onChange={(e) => alCambiar({ cuit: e.target.value.replace(/[^\d-]/g, '').slice(0, 13) })}
+                  onChange={(e) => alCambiar({ cuit: soloNumeros(e.target.value).slice(0, 11) })}
                 />
                 <Selector
                   etiqueta="Provincia *"

@@ -125,6 +125,10 @@ const api: ApiDm = {
       invocar('cobranzas:cambiarResultado', pagoId, resultado, companias, sucursales),
     comisiones: (periodo) => invocar('cobranzas:comisiones', periodo),
   },
+  almacenamiento: {
+    estado: () => invocar('almacenamiento:estado'),
+    guardarTotal: (gigabytes) => invocar('almacenamiento:guardarTotal', gigabytes),
+  },
   impresora: {
     estado: () => invocar('impresora:estado'),
     guardar: (datos) => invocar('impresora:guardar', datos),
@@ -348,6 +352,17 @@ const api: ApiDm = {
     filas: (pedido) => invocar('excel:filas', pedido),
     exportar: (pedido) => invocar('excel:exportar', pedido),
   },
+  listados: {
+    asegurados: (filtros) => invocar('listados:asegurados', filtros),
+    polizas: (filtros) => invocar('listados:polizas', filtros),
+    siniestros: (filtros) => invocar('listados:siniestros', filtros),
+    vencimientos: (filtros) => invocar('listados:vencimientos', filtros),
+    cuotas: (filtros) => invocar('listados:cuotas', filtros),
+    rechazos: (filtros) => invocar('listados:rechazos', filtros),
+    comisiones: (filtros) => invocar('listados:comisiones', filtros),
+    comisionesOpciones: () => invocar('listados:comisionesOpciones'),
+    exportarExcel: (pedido) => invocar('listados:exportarExcel', pedido),
+  },
   marketing: {
     plantillas: () => invocar('marketing:plantillas'),
     crearPlantilla: (datos) => invocar('marketing:crearPlantilla', datos),
@@ -440,6 +455,19 @@ const api: ApiDm = {
     cotizaciones: (filtros) => invocar('multicotizador:cotizaciones', filtros),
     planes: (tipoVehiculo) => invocar('multicotizador:planes', tipoVehiculo),
     emisiones: (filtros) => invocar('multicotizador:emisiones', filtros),
+  },
+  miLink: {
+    mia: () => invocar('miLink:mia'),
+    direccionLibre: (direccion) => invocar('miLink:direccionLibre', direccion),
+    guardar: (cambios) => invocar('miLink:guardar', cambios),
+    solicitudes: (filtros) => invocar('miLink:solicitudes', filtros),
+    actualizarSolicitud: (id, cambios) => invocar('miLink:actualizarSolicitud', id, cambios),
+    denuncias: (filtros) => invocar('miLink:denuncias', filtros),
+    actualizarDenuncia: (id, cambios) => invocar('miLink:actualizarDenuncia', id, cambios),
+    abrirArchivo: (archivo) => invocar('miLink:abrirArchivo', archivo),
+    metricas: (dias, usuario) => invocar('miLink:metricas', dias, usuario),
+    abrirPagina: (url) => invocar('miLink:abrirPagina', url),
+    usuarios: () => invocar('miLink:usuarios'),
   },
   galenoNovedades: {
     estado: () => invocar('galenoNovedades:estado'),
