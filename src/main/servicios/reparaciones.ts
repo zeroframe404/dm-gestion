@@ -21,9 +21,10 @@ import { registrarLoQueNoViajo } from './adjuntos'
 import { completarPolizasSinCoberturaNiVigencias } from './completarPolizas'
 import { anotarEvento, encolar, guardarMarca, leerMarca } from '../sincronizacion/cola'
 import { filasConCambiosSinSubir, PESTANA_APP, PREFIJO_DE_BAJA } from './filas'
+import { PESTANA_PAGOS_APP } from '../sincronizacion/pestanasApp'
 import { claveDeVinculoDeTarea } from '../sincronizacion/vinculos'
 import { repararClientesDuplicados } from './duplicados'
-import { subirPagosRezagados } from './pagos'
+import { reenviarPagosSinDatos, subirPagosRezagados } from './pagos'
 
 interface BajaRepetida {
   id: number
@@ -408,6 +409,14 @@ export function repararAlArrancar(): void {
   }
   const pagos = subirPagosRezagados()
   if (pagos > 0) anotarEvento('reparacion', `${pagos} pagos que habían quedado sólo en esta computadora se encolaron hacia la base.`)
+  // 17.7.3: lo que quedó trabado contra la IMPUTADOS sin encabezados vuelve a la cola una vez, y los
+  // pagos que llegaron a la base sólo con su _ID se completan.
+  try {
+    reintentarPagosTrabados()
+    reenviarPagosSinDatos()
+  } catch (error) {
+    console.error('[reparaciones] No se pudieron reenviar los pagos trabados:', error)
+  }
   repararDuplicados()
   // 15.10.4: las pólizas que quedaron sin cobertura ni vigencias por el cierre de mes de la 15.10.2 se
   // completan con lo que esta computadora ya sabe de ellas, y la planilla del mes recibe lo que le falta.
@@ -433,6 +442,37 @@ export function repararAlArrancar(): void {
   } catch (error) {
     console.error('[reparaciones] No se pudieron registrar los adjuntos viejos:', error)
   }
+}
+
+/** Marca de que los cambios trabados contra las pestañas de pagos ya se volvieron a intentar. */
+const MARCA_PAGOS_TRABADOS = 'reintento_pagos_trabados_17_7_3'
+
+/**
+ * Vuelve a la cola, UNA sola vez, lo que quedó «No se pudo» en las pestañas de pagos que no son de la
+ * aplicación (IMPUTADOS).
+ *
+ * Con la fila 1 de IMPUTADOS reducida a «_ID», la subida no encontraba la columna del _ID y daba cada
+ * cambio por imposible («no tiene columna _ID», «la fila ya no está en la base»): cientos de
+ * resultados de rendición y de pagos nuevos esperando en cada computadora a que alguien apretara
+ * «Volver a intentar». Ahora que la subida encuentra la columna (ver `layoutDeLaFilaDelId`), se
+ * reintentan solos. Lo que siga sin poder subirse vuelve a quedar fallido con su motivo, como siempre;
+ * por eso corre una vez y no en cada arranque. Devuelve cuántas entradas volvieron a la cola.
+ */
+export function reintentarPagosTrabados(): number {
+  if (leerMarca(MARCA_PAGOS_TRABADOS)) return 0
+  const { changes } = db()
+    .prepare(
+      `UPDATE cola_sync SET estado = 'pendiente', intentos = 0, proximo_intento = NULL
+       WHERE estado = 'fallido'
+         AND pestana <> ?
+         AND pestana IN (SELECT DISTINCT pestana FROM filas_crudas WHERE tipo_pestana = 'PAGOS')`,
+    )
+    .run(PESTANA_PAGOS_APP)
+  guardarMarca(MARCA_PAGOS_TRABADOS, ahoraIso())
+  if (changes > 0) {
+    anotarEvento('reparacion', `${changes} cambios de pagos que no se habían podido subir vuelven a la cola para reintentar.`, { filas: changes })
+  }
+  return changes
 }
 
 // ---------------------------------------------------------------------------

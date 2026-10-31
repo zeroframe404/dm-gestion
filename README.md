@@ -1153,6 +1153,17 @@ Dos cosas que hacen falta saber:
   se cobró y quién cobró (`COBRADO POR`). Si la agencia tiene una IMPUTADOS por fila, se sigue usando
   ésa. Los pagos de antes de la 12.2 que nunca salieron de su computadora se encolan solos la primera
   vez que arranca la sincronización (`subirPagosRezagados`, en `pagos.ts`).
+- **IMPUTADOS sin encabezados (17.7.3).** En la base de la agencia la fila 1 de IMPUTADOS quedó con
+  sólo «_ID» y un «PAGO:…» metido (desde fines de agosto). La importación tomaba igual esa fila como
+  encabezados, pero la bajada buscaba el _ID por contenido: veía la pestaña «vacía», contaba todas sus
+  filas como nuevas en cada ciclo, y la subida daba los resultados y los pagos nuevos por imposibles
+  («no tiene columna _ID») o los agregaba sólo con su _ID. Ahora una fila 1 que tiene «_ID» y nada más
+  que _ID sueltos cuenta como encabezados también para la sincronización (`layoutDeLaFilaDelId`, en
+  `sincronizacion/hoja.ts`), así la subida titula al final las columnas que le faltan. Un pago que la
+  base tiene sólo con su _ID **sigue estando**: ni la bajada ni la importación lo dan por borrado (lo
+  hubieran borrado de la única computadora que tiene sus datos); queda anotado vacío y
+  `reenviarPagosSinDatos` se los vuelve a mandar. Lo que había quedado «No se pudo» contra IMPUTADOS
+  vuelve a la cola una sola vez (`reintentarPagosTrabados`, en `reparaciones.ts`).
 
 ### Pago adelantado y cobro imputado (12.3)
 

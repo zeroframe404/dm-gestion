@@ -320,6 +320,14 @@ function prepararSentencias(db: BaseDeDatos) {
     marcarFilasQueYaNoEstan: db.prepare(`
       UPDATE filas_crudas SET en_la_hoja = 0
       WHERE pestana = @pestana AND en_la_hoja = 1 AND (vista_en IS NULL OR vista_en <> @ahora)`),
+    /**
+     * Un pago que la base tiene sólo con su _ID (17.7.3): sigue en la hoja, pero vacío. Se anota así —sin
+     * tocar el pago— para que no cuente como desaparecido y la reparación sepa que hay que reenviarlo.
+     */
+    renglonDePagoSinDatos: db.prepare(`
+      UPDATE filas_crudas SET datos_json = '{}', huella = @huella, numero_fila = @numero_fila, sheet_id = @sheet_id,
+        importacion_id = @importacion_id, vista_en = @ahora, actualizado_en = @ahora
+      WHERE fila_id = @fila_id AND pestana = @pestana AND en_la_hoja = 1`),
     /** Las mismas filas que va a marcar la sentencia anterior, para saber cuáles fueron. */
     filasQueYaNoEstan: db.prepare(`
       SELECT fila_id FROM filas_crudas
@@ -1583,6 +1591,8 @@ class TrabajoDeImportacion {
       let encabezadosRepetidos = 0
       /** Filas con datos que traían un _ID en la hoja (aunque después se les asigne otro): 0 = la pestaña volvió vacía. */
       let filasConIdLeido = 0
+      /** Renglones de una pestaña de pagos que tienen su _ID pero ningún dato (ver más abajo). */
+      const pagosSinDatos: Array<{ numero: number; id: string; celdas: string[] }> = []
       /**
        * Tramos contiguos de filas cuyo _ID hay que escribir en la hoja (no se pisa la columna entera).
        * `previos` lleva lo que la celda decía al decidirlo: la base escribe sólo si sigue diciendo eso,
@@ -1605,6 +1615,11 @@ class TrabajoDeImportacion {
         // Una fila que repite los títulos a mitad de la planilla no es un dato: no lleva _ID ni se
         // guarda. Si le pusiéramos uno, la sincronización la vería como una fila nueva en cada ciclo.
         if (!tieneDatosLaFila(celdas)) {
+          // 17.7.3: un pago que está en la base con su _ID y nada más (así llegaron a IMPUTADOS los que
+          // se cobraron mientras la pestaña no tenía encabezados) sigue estando: no es un borrado. Si se
+          // lo diera por desaparecido, esta computadora borraría el pago, y es la única que tiene sus
+          // datos. Se anota como renglón vacío y la reparación se los vuelve a mandar.
+          if (p.tipo === 'PAGOS' && existente) pagosSinDatos.push({ numero: r + 1, id: existente, celdas })
           ids.push(existente)
           continue
         }
@@ -1690,6 +1705,17 @@ class TrabajoDeImportacion {
         this.problema(p.titulo, null, null, 'filas sin _ID no guardadas', `${sinIdEstable} filas nuevas no se guardaron porque no se pudo escribir el _ID en la hoja`)
       }
       this.db.transaction(() => {
+        for (const vacio of pagosSinDatos) {
+          this.sentencias.renglonDePagoSinDatos.run({
+            fila_id: vacio.id,
+            pestana: p.titulo,
+            numero_fila: vacio.numero,
+            sheet_id: p.sheetId,
+            huella: huellaDeFila(vacio.celdas, indiceId),
+            importacion_id: this.importacionId,
+            ahora: this.ahora,
+          })
+        }
         for (const fila of filas) {
           this.guardarFilaCruda(p, fila)
           this.contar(resumen, 'filas_crudas')
