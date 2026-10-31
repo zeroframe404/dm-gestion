@@ -18,9 +18,9 @@ import { db } from '../db/base'
 import { resolverCampo, type Campo } from '../importacion/encabezados'
 import { MESES } from '../importacion/pestanas'
 import { ahoraIso, limpiar, interpretarNumero, normalizarTexto } from '../importacion/normalizar'
-import { encolar } from '../sincronizacion/cola'
+import { anotarEvento, encolar } from '../sincronizacion/cola'
 import { PESTANA_PAGOS_APP } from '../sincronizacion/pestanasApp'
-import { registrarFilaDeLaApp } from './filas'
+import { filasConCambiosSinSubir, registrarFilaDeLaApp } from './filas'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
 import { enteroPositivo, texto as validarTexto } from './validacion'
@@ -447,8 +447,42 @@ export function anularPago(pagoId: unknown, motivo: unknown, actor: SesionUsuari
   })
 }
 
+const SELECT_PAGO_PARA_LA_HOJA = `SELECT fila_id, pestana, fecha, cliente_nombre, documento, compania, numero_poliza, patente, importe, medio,
+       periodo, observaciones, resultado, COALESCE(sucursal_cobro, sucursal_texto) AS sucursal, usuario_nombre,
+       estado_cobro, adelanto_modo, numero_ticket, revisado_en
+  FROM pagos`
+
+/**
+ * Lo que viaja de un pago a la pestaña de pagos de la base. `esDeLaApp` dice si esa pestaña es APP
+ * PAGOS, la única que tiene la columna de quién cobró.
+ */
+function camposDelPagoParaLaHoja(pago: PagoParaLaHoja, esDeLaApp: boolean): Record<string, string> {
+  const campos: Record<string, string> = {
+    fecha: pago.fecha ?? '',
+    nombre: pago.cliente_nombre ?? '',
+    documento: pago.documento ?? '',
+    sucursal: pago.sucursal ?? '',
+    compania: pago.compania ?? '',
+    numero_poliza: pago.numero_poliza ?? '',
+    patente: pago.patente ?? '',
+    importe: pago.importe ?? '',
+    medio_pago: pago.medio ?? '',
+    mes: mesParaLaHoja(pago.periodo, normalizarModoDeAdelanto(pago.adelanto_modo) !== null),
+    observaciones: pago.observaciones ?? '',
+    resultado: normalizarResultado(pago.resultado),
+  }
+  if (esDeLaApp && pago.usuario_nombre) campos.usuario = pago.usuario_nombre
+  if (normalizarEstadoDeCobro(pago.estado_cobro) === 'IMPUTADO') campos.cobro = 'IMPUTADO'
+  // Las dos de la planilla de caja viajan sólo cuando tienen algo adentro, igual que COBRO: un pago
+  // sin ticket ni revisar no manda columnas que una APP PAGOS vieja no tiene.
+  if (limpiar(pago.numero_ticket)) campos.ticket = limpiar(pago.numero_ticket)
+  if (limpiar(pago.revisado_en)) campos.revisado = REVISADO_EN_LA_HOJA
+  return campos
+}
+
 interface PagoParaLaHoja {
   fila_id: string
+  usuario_nombre: string | null
   pestana: string
   fecha: string | null
   cliente_nombre: string | null
@@ -484,14 +518,7 @@ export interface LugarDelPago {
  */
 export function asegurarPagoEnLaHoja(pagoId: number, actor: SesionUsuario | null): LugarDelPago | null {
   const hoja = hojaDeImputados()
-  const pago = db()
-    .prepare(
-      `SELECT fila_id, pestana, fecha, cliente_nombre, documento, compania, numero_poliza, patente, importe, medio,
-              periodo, observaciones, resultado, COALESCE(sucursal_cobro, sucursal_texto) AS sucursal, usuario_nombre,
-              estado_cobro, adelanto_modo, numero_ticket, revisado_en
-       FROM pagos WHERE id = ?`,
-    )
-    .get(pagoId) as (PagoParaLaHoja & { usuario_nombre: string | null }) | undefined
+  const pago = db().prepare(`${SELECT_PAGO_PARA_LA_HOJA} WHERE id = ?`).get(pagoId) as PagoParaLaHoja | undefined
   if (!pago) return null
 
   const conocida = db().prepare('SELECT pestana, en_la_hoja FROM filas_crudas WHERE fila_id = ?').get(pago.fila_id) as
@@ -503,26 +530,7 @@ export function asegurarPagoEnLaHoja(pagoId: number, actor: SesionUsuario | null
 
   db().prepare('UPDATE pagos SET pestana = ?, actualizado_en = ? WHERE id = ?').run(hoja.pestana, ahoraIso(), pagoId)
   registrarFilaDeLaApp({ filaId: pago.fila_id, pestana: hoja.pestana, tipoPestana: 'PAGOS', periodo: pago.periodo })
-  const campos: Record<string, string> = {
-    fecha: pago.fecha ?? '',
-    nombre: pago.cliente_nombre ?? '',
-    documento: pago.documento ?? '',
-    sucursal: pago.sucursal ?? '',
-    compania: pago.compania ?? '',
-    numero_poliza: pago.numero_poliza ?? '',
-    patente: pago.patente ?? '',
-    importe: pago.importe ?? '',
-    medio_pago: pago.medio ?? '',
-    mes: mesParaLaHoja(pago.periodo, normalizarModoDeAdelanto(pago.adelanto_modo) !== null),
-    observaciones: pago.observaciones ?? '',
-    resultado: normalizarResultado(pago.resultado),
-  }
-  if (hoja.esDeLaApp && pago.usuario_nombre) campos.usuario = pago.usuario_nombre
-  if (normalizarEstadoDeCobro(pago.estado_cobro) === 'IMPUTADO') campos.cobro = 'IMPUTADO'
-  // Las dos de la planilla de caja viajan sólo cuando tienen algo adentro, igual que COBRO: un pago
-  // sin ticket ni revisar no manda columnas que una APP PAGOS vieja no tiene.
-  if (limpiar(pago.numero_ticket)) campos.ticket = limpiar(pago.numero_ticket)
-  if (limpiar(pago.revisado_en)) campos.revisado = REVISADO_EN_LA_HOJA
+  const campos = camposDelPagoParaLaHoja(pago, hoja.esDeLaApp)
   encolar({ operacion: 'crear', pestana: hoja.pestana, filaId: pago.fila_id, campos }, actor)
   return { operacion: 'crear', pestana: hoja.pestana }
 }
@@ -549,6 +557,69 @@ export function subirPagosRezagados(): number {
     if (asegurarPagoEnLaHoja(id, null)?.operacion === 'crear') encolados++
   }
   return encolados
+}
+
+/**
+ * Los pagos cobrados en esta computadora que están en la base SIN SUS DATOS: el renglón existe, con su
+ * _ID, pero no tiene ni fecha ni importe. Les vuelve a mandar lo que esta computadora sabe de ellos.
+ *
+ * Pasó con IMPUTADOS en la base de la agencia: su fila 1 quedó con sólo «_ID» (y un «PAGO:…» metido),
+ * así que la pestaña no tenía columna para ningún dato. Cada pago que se cobró desde entonces se agregó
+ * con su _ID y nada más —la subida descartaba los campos «sin columna»—, y las otras computadoras no lo
+ * veían: la importación saltea un renglón sin datos. Ahora la subida titula las columnas que faltan al
+ * final de esa fila (ver `layoutDeLaFilaDelId` en hoja.ts), y esto completa los renglones que ya estaban.
+ *
+ * Sólo toca renglones a los que les faltan los dos datos que hacen a un pago (la fecha y el importe):
+ * un pago con datos en la base no se vuelve a mandar aunque alguna otra celda esté vacía, porque esa
+ * celda puede haberse vaciado a propósito desde otra computadora. Y sólo manda lo que la base tiene
+ * vacío, nunca pisa algo escrito. Es idempotente: cuando el renglón vuelve con sus datos en la bajada,
+ * deja de cumplir la condición. Devuelve cuántos pagos encoló.
+ */
+export function reenviarPagosSinDatos(): number {
+  const base = db()
+  const sinSubir = filasConCambiosSinSubir(base)
+  const filas = base
+    .prepare(
+      `SELECT p.id, fc.pestana, fc.datos_json
+       FROM pagos p
+       JOIN filas_crudas fc ON fc.fila_id = p.fila_id
+       WHERE p.hecho_en_la_app = 1 AND fc.en_la_hoja = 1 AND fc.tipo_pestana = 'PAGOS'`,
+    )
+    .all() as Array<{ id: number; pestana: string; datos_json: string }>
+
+  let reenviados = 0
+  const leerPago = base.prepare(`${SELECT_PAGO_PARA_LA_HOJA} WHERE id = ?`)
+  for (const fila of filas) {
+    let datos: Record<string, string>
+    try {
+      datos = JSON.parse(fila.datos_json) as Record<string, string>
+    } catch {
+      continue
+    }
+    // Qué dice la base de cada campo, con el mismo mapeo que usa la importación.
+    const enLaBase = new Set<string>()
+    for (const [encabezado, valor] of Object.entries(datos)) {
+      const campo = resolverCampo(encabezado, 'PAGOS')
+      if (campo && limpiar(valor) !== '') enLaBase.add(campo)
+    }
+    if (enLaBase.has('fecha') || enLaBase.has('importe')) continue
+    const pago = leerPago.get(fila.id) as PagoParaLaHoja | undefined
+    if (!pago || sinSubir.has(pago.fila_id)) continue
+    const faltan = Object.fromEntries(
+      Object.entries(camposDelPagoParaLaHoja(pago, fila.pestana === PESTANA_PAGOS_APP)).filter(
+        ([campo, valor]) => limpiar(valor) !== '' && !enLaBase.has(campo),
+      ),
+    )
+    if (Object.keys(faltan).length === 0) continue
+    encolar({ operacion: 'actualizar', pestana: fila.pestana, filaId: pago.fila_id, campos: faltan })
+    reenviados++
+  }
+  if (reenviados > 0) {
+    anotarEvento('reparacion', `${reenviados} pagos cobrados en esta computadora estaban en la base sin sus datos: se vuelven a mandar.`, {
+      filas: reenviados,
+    })
+  }
+  return reenviados
 }
 
 // ---------------------------------------------------------------------------
