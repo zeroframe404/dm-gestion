@@ -79,8 +79,11 @@ test('demo: los ajustes sembrados se adoptan y quedan «al día» en una base de
   const carpeta = mkdtempSync(path.join(tmpdir(), 'dm-demo-servidor-'))
   const registrar = console.log
   console.log = () => undefined
+  // La primera conexión se guarda para cerrarla al final: abrir la base de nuevo más abajo no la cierra, y
+  // en Windows un archivo abierto no se puede borrar (EBUSY al limpiar la carpeta temporal).
+  let primera: ReturnType<typeof abrirBaseDeDatos> | null = null
   try {
-    abrirBaseDeDatos(path.join(carpeta, 'dm.db'))
+    primera = abrirBaseDeDatos(path.join(carpeta, 'dm.db'))
     await arrancarServidorDeLaDemo(new Date(2026, 9, 27, 10))
   } finally {
     console.log = registrar
@@ -89,7 +92,8 @@ test('demo: los ajustes sembrados se adoptan y quedan «al día» en una base de
     globalThis.fetch = fetchPuesto
     await pararServidorDeLaDemo()
     cerrarBaseDeDatos()
-    rmSync(carpeta, { recursive: true, force: true })
+    if (primera?.open) primera.close()
+    rmSync(carpeta, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
   const db = abrirBaseDeDatos(path.join(carpeta, 'dm.db'))
   refirmarPlantillas(db, NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO)
