@@ -2,7 +2,7 @@
 // fila están sus encabezados y qué columna es cada campo. Se lee de a poco y se cachea un rato, porque
 // la cuota de Google es de ~60 llamadas por minuto y la estructura casi nunca cambia.
 import type { TipoPestana } from '../../shared/tipos'
-import { columnaIdPorContenido, ENCABEZADO_ID, type Campo } from '../importacion/encabezados'
+import { columnaIdPorContenido, ENCABEZADO_ID, FORMATO_ID, mapearEncabezados, type Campo } from '../importacion/encabezados'
 import type { FuenteHoja, PestanaDeHoja } from '../importacion/fuente'
 import { FILAS_PARA_ENCABEZADOS, resolverLayouts, type Layout } from '../importacion/layouts'
 import { limpiar } from '../importacion/normalizar'
@@ -40,7 +40,9 @@ export async function leerContexto(fuente: FuenteHoja): Promise<ContextoHoja> {
 
   const pestanas: PestanaSincronizable[] = estructura.pestanas.map((p) => {
     const c = clasificadas.find((x) => x.titulo === p.titulo && x.indice === p.indice)
-    return { ...p, tipo: c?.tipo ?? 'OTRA', periodo: c?.periodo ?? null, layout: layouts.get(p.titulo) }
+    const tipo = c?.tipo ?? 'OTRA'
+    const layout = layouts.get(p.titulo) ?? layoutDeLaFilaDelId((filasPorTitulo.get(p.titulo) ?? [])[0] ?? [], tipo)
+    return { ...p, tipo, periodo: c?.periodo ?? null, layout }
   })
 
   return {
@@ -50,6 +52,33 @@ export async function leerContexto(fuente: FuenteHoja): Promise<ContextoHoja> {
     porTitulo: new Map(pestanas.map((p) => [p.titulo, p])),
     avisos,
   }
+}
+
+/** Un _ID de la aplicación, solo o como referencia a otro renglón («PAGO:<_ID>», «BAJA:<_ID>»…). */
+function pareceIdDeLaApp(valor: string): boolean {
+  return FORMATO_ID.test(valor) || FORMATO_ID.test(valor.slice(valor.lastIndexOf(':') + 1))
+}
+
+/**
+ * La fila 1 de una pestaña que perdió sus títulos pero conserva el «_ID» que le escribió la
+ * importación, y nada más que eso (o, a lo sumo, algún _ID suelto que quedó metido en la fila).
+ *
+ * Así quedó IMPUTADOS en la base de la agencia: la fila 1 con sólo «_ID» y un «PAGO:…». Ninguna fila
+ * reconoce campos, así que `resolverLayouts` no le arma layout. La importación igual toma la fila 1
+ * como encabezados (y encuentra el _ID), pero la bajada buscaba el _ID por contenido, no lo encontraba
+ * y veía la pestaña «vacía» con todas sus filas «nuevas» en cada ciclo; la subida no encontraba ningún
+ * renglón y tampoco podía agregar las columnas que faltaban, así que cada pago llegaba sólo con su
+ * _ID. Con este layout las tres partes miran la misma columna, y la subida vuelve a poder titular las
+ * columnas que necesita al final de la fila 1.
+ *
+ * Una fila 1 con datos de verdad (una pestaña de bajas sin encabezados, con el «_ID» escrito al final
+ * de su primer renglón) NO cuenta: titularle columnas ahí sería escribir sobre ese renglón.
+ */
+export function layoutDeLaFilaDelId(fila: string[], tipo: TipoPestana): Layout | undefined {
+  const celdas = fila.map((celda) => limpiar(celda))
+  if (!celdas.some((celda) => celda.toUpperCase() === ENCABEZADO_ID)) return undefined
+  if (celdas.some((celda) => celda !== '' && celda.toUpperCase() !== ENCABEZADO_ID && !pareceIdDeLaApp(celda))) return undefined
+  return { filaEncabezados: 0, mapeo: mapearEncabezados(fila, tipo), puntaje: 0, prestadoDe: null }
 }
 
 /** Índice de la columna del _ID en esa pestaña: por encabezado, o por contenido si no tiene encabezados. */

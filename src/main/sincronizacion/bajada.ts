@@ -444,12 +444,29 @@ function aplicarPestana(
   )
   const refrescarLugar = sentencia(`UPDATE filas_crudas SET numero_fila = ?, sheet_id = ? WHERE fila_id = ?`)
   const marcarDesaparecida = sentencia('UPDATE filas_crudas SET en_la_hoja = 0, actualizado_en = ? WHERE fila_id = ?')
+  const vaciarCruda = sentencia(
+    `UPDATE filas_crudas SET datos_json = '{}', huella = ?, numero_fila = ?, sheet_id = ?, vista_en = ?, actualizado_en = ? WHERE fila_id = ?`,
+  )
 
   db().transaction(() => {
     for (let r = primeraFila - 1; r < valores.length; r++) {
       const celdas = valores[r] ?? []
       const tieneDatos = celdas.some((valor, i) => !columnasId.has(i) && limpiar(valor) !== '')
-      if (!tieneDatos) continue
+      if (!tieneDatos) {
+        // 17.7.3: un pago con su _ID y sin datos sigue en la base (ver `renglonDePagoSinDatos` en el
+        // importador). Darlo por desaparecido borraría el pago de esta computadora, que es la única que
+        // tiene sus datos; se lo anota vacío y la reparación se los vuelve a mandar.
+        const soloId = pestana.tipo === 'PAGOS' && columnaId !== null ? limpiar(celdas[columnaId]) : ''
+        if (soloId) {
+          vistas.add(soloId)
+          const conocida = conocidas.get(soloId)
+          const huella = huellaDeFila(celdas, columnaId)
+          if (conocida && conocida.en_la_hoja === 1 && conocida.huella !== huella && !filasBloqueadas.has(soloId)) {
+            vaciarCruda.run(huella, r + 1, pestana.sheetId, ahora, ahora, soloId)
+          }
+        }
+        continue
+      }
       // Los títulos repetidos a mitad de la planilla no son filas de datos.
       if (repiteEncabezados(celdas, pestana.layout?.mapeo.encabezados ?? [])) continue
 
