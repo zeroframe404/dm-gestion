@@ -114,13 +114,13 @@ export function Metricas() {
         ))}
         {veTodo && (
           <label className="ml-2 text-sm font-semibold text-slate-700">
-            De quién
+            Sucursal
             <select
               value={usuario}
               onChange={(e) => setUsuario(e.target.value)}
               className="ml-2 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-800 focus:border-marino-500 focus:outline-none"
             >
-              {opcionesDeUsuario(usuarios, 'Mi página').map((opcion) => (
+              {opcionesDeUsuario(usuarios, 'Sucursal elegida').map((opcion) => (
                 <option key={opcion.valor} value={opcion.valor}>
                   {opcion.texto}
                 </option>

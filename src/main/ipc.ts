@@ -318,9 +318,11 @@ import {
   guardarMiLink,
   metricasDeMiLink,
   miLinkPropio,
+  elegirSucursalDeMiLink,
+  sucursalesDeMiLink,
+  sucursalesParaElFiltro,
   PaginaDesactualizada,
   solicitudesDeMiLink,
-  usuariosDeMiLink,
 } from './servicios/miLink'
 import {
   borrarMetaDelVps,
@@ -2231,9 +2233,10 @@ export function registrarIpc(): void {
     return exito(await abrirMiLinkEnElNavegador(url))
   })
   manejar('miLink:usuarios', () => {
-    exigirVista('miLink')
-    return exito(usuariosDeMiLink())
+    return exito(sucursalesParaElFiltro(exigirVista('miLink')))
   })
+  manejar('miLink:sucursales', async () => exito(await sucursalesDeMiLink(exigirVista('miLink'))))
+  manejar('miLink:elegirSucursal', async (nombre) => exito(await elegirSucursalDeMiLink(exigirVista('miLink'), nombre)))
 
   // --- Marketing → Redes -----------------------------------------------------
   //

@@ -63,7 +63,7 @@ export function Siniestros() {
       columnas: [
         'Denuncia',
         'Estado',
-        'Usuario',
+        'Sucursal',
         'Tipo',
         'Cliente',
         'DNI',
@@ -112,7 +112,7 @@ export function Siniestros() {
         encabezado: 'Estado',
         celda: (d) => <BarraDeEstado {...AVANCE_DE_DENUNCIA[d.estado]} texto={NOMBRE_ESTADO_DE_DENUNCIA[d.estado]} />,
       },
-      { id: 'usuario', encabezado: 'Usuario', celda: (d) => d.usuarioNombre || d.usuarioClave },
+      { id: 'usuario', encabezado: 'Sucursal', celda: (d) => d.usuarioNombre || d.usuarioClave },
       { id: 'ramo', encabezado: 'Ramo', celda: (d) => <CeldaDoble principal={NOMBRE_TIPO_DE_SINIESTRO[d.tipo]} secundario={d.patente.toUpperCase()} /> },
       { id: 'cliente', encabezado: 'Cliente', celda: (d) => <CeldaDoble principal={d.nombre} secundario={d.dni ? `DNI ${d.dni}` : ''} /> },
       {
@@ -171,7 +171,7 @@ export function Siniestros() {
         alCambiar={(cambios) => setBorrador((previo) => ({ ...previo, ...cambios }))}
         estados={OPCIONES_DE_ESTADO}
         ayudaDeTexto="Nombre, teléfono, DNI o patente"
-        usuarios={veTodo ? opcionesDeUsuario(usuarios, 'Mis denuncias') : null}
+        usuarios={veTodo ? opcionesDeUsuario(usuarios, 'Sucursal elegida') : null}
         alBuscar={buscar}
         alLimpiar={limpiar}
         buscando={cargando}

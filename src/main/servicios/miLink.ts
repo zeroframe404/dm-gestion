@@ -7,10 +7,11 @@
 // está siempre. Por la misma razón no se toca la grilla ni los ajustes compartidos, y la versión normal
 // (que no conoce Mi link) no se entera de nada de esto.
 //
-// QUIÉN ES EL DUEÑO. La clave de usuario (`claveDeUsuario`, el login en minúscula), la misma de los
-// perfiles: el `id` de la base local no sirve, porque cada computadora numera a su manera. El rol viaja
-// en cada pedido y con él el servidor decide si se puede mirar lo de otro (sólo ADMIN y SUPER_ADMIN):
-// la pantalla esconde el filtro «Usuario», pero el que dice que no es el servidor.
+// QUIÉN ES EL DUEÑO. La SUCURSAL: hay una página por sucursal (cada una tiene su WhatsApp y sus redes) y
+// todos los que trabajan en ella comparten página, solicitudes y métricas. Al VPS le viaja como «clave
+// de dueño» la de la sucursal (`claveDeMiLinkDeSucursal`), así que el servidor no cambia. Sólo el
+// SUPER_ADMIN puede abrir otra sucursal o mirar todas: acá se le ignora el pedido a cualquier otro rol
+// (el servidor además deja ver lo de otros a ADMIN, pero la app no se lo ofrece ni se lo pide).
 import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -20,6 +21,7 @@ import {
   ESTADOS_DE_SOLICITUD,
   PREFIJO_DE_MI_LINK,
   RANGOS_DE_METRICAS,
+  claveDeMiLinkDeSucursal,
   URL_BASE_DE_MI_LINK,
   type ArchivoDeDenuncia,
   type CambiosDeMiLink,
@@ -31,14 +33,14 @@ import {
   type MiLink,
   type RangoDeMetricas,
   type SolicitudDeMiLink,
+  type SucursalesDeMiLink,
 } from '../../shared/miLink'
-import { claveDeUsuario } from '../../shared/texto'
+import { SUCURSALES, sucursalCanonica } from '../../shared/sucursales'
 import type { SesionUsuario } from '../../shared/tipos'
 import { ErrorDelServidorVps, type ActorDeMiLinkVps, type FuenteVps } from '../vps/fuenteVps'
 import { ErrorDeNegocio, SinConexion } from './errores'
 import { credencialesDelPuente, crearFuenteVps } from './sincronizacion'
 import { esFallaDeRed } from './red'
-import { listarUsuarios } from './usuarios'
 
 const SIN_SERVIDOR = 'Mi link necesita conexión con el servidor de la agencia.'
 
@@ -69,8 +71,32 @@ class ServidorSinRespuesta extends SinConexion {
   }
 }
 
+/**
+ * La sucursal que cada superadministrador abrió (por id de usuario). Vive en memoria: al cerrar la app
+ * vuelve a su propia sucursal, que es lo esperable.
+ */
+const sucursalElegida = new Map<number, string>()
+
+function esSuperadministrador(actor: SesionUsuario): boolean {
+  return actor.rol === 'SUPER_ADMIN'
+}
+
+/** La sucursal del usuario, escrita como la escribe el catálogo (y tal cual si no es ninguna de las cuatro). */
+function sucursalPropia(actor: SesionUsuario): string {
+  return sucursalCanonica(actor.sucursal.nombre) ?? actor.sucursal.nombre
+}
+
+/** La sucursal sobre la que se trabaja: la propia, o la que el superadministrador abrió. */
+function sucursalDeTrabajo(actor: SesionUsuario): string {
+  return (esSuperadministrador(actor) ? sucursalElegida.get(actor.id) : undefined) ?? sucursalPropia(actor)
+}
+
+function actorDeSucursal(actor: SesionUsuario, sucursal: string): ActorDeMiLinkVps {
+  return { clave: claveDeMiLinkDeSucursal(sucursal), nombre: sucursal, rol: actor.rol }
+}
+
 function actorDeMiLink(actor: SesionUsuario): ActorDeMiLinkVps {
-  return { clave: claveDeUsuario(actor.usuario), nombre: actor.nombre, rol: actor.rol }
+  return actorDeSucursal(actor, sucursalDeTrabajo(actor))
 }
 
 /**
@@ -105,14 +131,28 @@ function textoDe(valor: unknown, maximo = 200): string {
   return typeof valor === 'string' ? valor.trim().slice(0, maximo) : ''
 }
 
-function filtrosLimpios(crudo: unknown): FiltrosDeMiLink {
+/**
+ * El filtro «Sucursal» que el servidor entiende: '' = la del actor (la de trabajo), 'todos', o la clave
+ * de dueño de otra sucursal. Sólo el superadministrador puede pedir algo distinto de la suya: a cualquier
+ * otro rol se le ignora el pedido y ve la propia.
+ */
+function duenoDelFiltro(actor: SesionUsuario, pedido: unknown): string {
+  if (!esSuperadministrador(actor)) return ''
+  const texto = textoDe(pedido, 60)
+  if (!texto) return ''
+  if (texto.toLowerCase() === 'todos') return 'todos'
+  const sucursal = sucursalCanonica(texto)
+  return sucursal ? claveDeMiLinkDeSucursal(sucursal) : ''
+}
+
+function filtrosLimpios(actor: SesionUsuario, crudo: unknown): FiltrosDeMiLink {
   const filtros = (crudo && typeof crudo === 'object' ? crudo : {}) as Record<string, unknown>
   return {
     desde: textoDe(filtros.desde, 10),
     hasta: textoDe(filtros.hasta, 10),
     estado: textoDe(filtros.estado, 20),
     texto: textoDe(filtros.texto, 100),
-    usuario: claveDeUsuario(filtros.usuario),
+    usuario: duenoDelFiltro(actor, filtros.usuario),
   }
 }
 
@@ -160,7 +200,7 @@ export async function guardarMiLink(actor: SesionUsuario, crudo: unknown): Promi
 // --- Solicitudes y denuncias ----------------------------------------------------------------------
 
 export async function solicitudesDeMiLink(actor: SesionUsuario, filtros: unknown): Promise<SolicitudDeMiLink[]> {
-  return conElServidor((vps) => vps.miLinkSolicitudes(actorDeMiLink(actor), filtrosLimpios(filtros)))
+  return conElServidor((vps) => vps.miLinkSolicitudes(actorDeMiLink(actor), filtrosLimpios(actor, filtros)))
 }
 
 export async function actualizarSolicitudDeMiLink(actor: SesionUsuario, id: unknown, cambios: unknown): Promise<SolicitudDeMiLink> {
@@ -169,7 +209,7 @@ export async function actualizarSolicitudDeMiLink(actor: SesionUsuario, id: unkn
 }
 
 export async function denunciasDeMiLink(actor: SesionUsuario, filtros: unknown): Promise<DenunciaDeMiLink[]> {
-  return conElServidor((vps) => vps.miLinkDenuncias(actorDeMiLink(actor), filtrosLimpios(filtros)))
+  return conElServidor((vps) => vps.miLinkDenuncias(actorDeMiLink(actor), filtrosLimpios(actor, filtros)))
 }
 
 export async function actualizarDenunciaDeMiLink(actor: SesionUsuario, id: unknown, cambios: unknown): Promise<DenunciaDeMiLink> {
@@ -236,7 +276,7 @@ export async function abrirArchivoDeMiLink(actor: SesionUsuario, archivo: unknow
 
 export async function metricasDeMiLink(actor: SesionUsuario, dias: unknown, usuario: unknown): Promise<MetricasDeMiLink> {
   const rango: RangoDeMetricas = (RANGOS_DE_METRICAS as readonly unknown[]).includes(dias) ? (dias as RangoDeMetricas) : 30
-  return conElServidor((vps) => vps.miLinkMetricas(actorDeMiLink(actor), rango, claveDeUsuario(usuario)))
+  return conElServidor((vps) => vps.miLinkMetricas(actorDeMiLink(actor), rango, duenoDelFiltro(actor, usuario)))
 }
 
 // --- Abrir la página en el navegador --------------------------------------------------------------
@@ -288,16 +328,35 @@ export async function abrirMiLinkEnElNavegador(url: unknown): Promise<void> {
   await shell.openExternal(destino)
 }
 
-// --- El filtro «Usuario» --------------------------------------------------------------------------
+// --- Las sucursales -------------------------------------------------------------------------------
 
 /**
- * Los usuarios activos de esta computadora, para que un administrador elija de quién mirar. Salen de
- * la base local de usuarios (el espejo de la compartida), no del VPS: el servidor no puede leer la
- * base de usuarios —va cifrada— y la clave es la misma que usa para las páginas.
+ * Las sucursales para el filtro «Sucursal» del superadministrador. Se identifican por su nombre (es lo
+ * que viaja en el filtro y lo que `duenoDelFiltro` vuelve a validar contra el catálogo).
  */
-export function usuariosDeMiLink(): Array<{ clave: string; nombre: string }> {
-  return listarUsuarios()
-    .filter((usuario) => usuario.activo)
-    .map((usuario) => ({ clave: claveDeUsuario(usuario.usuario), nombre: usuario.nombre }))
-    .sort((uno, otro) => uno.nombre.localeCompare(otro.nombre, 'es'))
+export function sucursalesParaElFiltro(actor: SesionUsuario): Array<{ clave: string; nombre: string }> {
+  if (!esSuperadministrador(actor)) return []
+  return SUCURSALES.map((nombre) => ({ clave: nombre, nombre }))
+}
+
+/**
+ * Con qué sucursal se trabaja y, al superadministrador, la lista de las cuatro con su página (una
+ * consulta al VPS por sucursal; los otros roles no hacen ninguna de más).
+ */
+export async function sucursalesDeMiLink(actor: SesionUsuario): Promise<SucursalesDeMiLink> {
+  const elegida = sucursalDeTrabajo(actor)
+  if (!esSuperadministrador(actor)) return { elegida, puedeElegir: false, sucursales: [] }
+  const sucursales = await Promise.all(
+    SUCURSALES.map(async (nombre) => ({ nombre, link: await conElServidor((vps) => vps.miLinkMia(actorDeSucursal(actor, nombre))) })),
+  )
+  return { elegida, puedeElegir: true, sucursales }
+}
+
+/** El superadministrador abre otra sucursal. Cualquier otro rol no puede: tiene la suya y nada más. */
+export async function elegirSucursalDeMiLink(actor: SesionUsuario, nombre: unknown): Promise<SucursalesDeMiLink> {
+  if (!esSuperadministrador(actor)) throw new ErrorDeNegocio('Solo el superadministrador puede trabajar con otra sucursal.')
+  const sucursal = sucursalCanonica(textoDe(nombre, 60))
+  if (!sucursal) throw new ErrorDeNegocio('Esa sucursal no existe.')
+  sucursalElegida.set(actor.id, sucursal)
+  return sucursalesDeMiLink(actor)
 }

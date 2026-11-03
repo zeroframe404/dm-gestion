@@ -482,6 +482,8 @@ export interface ApiDm {
     metricas: Remota<'miLink:metricas'>
     abrirPagina: Remota<'miLink:abrirPagina'>
     usuarios: Remota<'miLink:usuarios'>
+    sucursales: Remota<'miLink:sucursales'>
+    elegirSucursal: Remota<'miLink:elegirSucursal'>
   }
   /** Cartera → Galeno: las novedades del portal (distinto de `galeno`, la API REST). Ver canales.ts. */
   galenoNovedades: {

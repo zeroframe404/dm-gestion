@@ -201,12 +201,12 @@ export function BotonDeWhatsapp({ telefono }: { telefono: string }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Los que pueden mirar lo de los demás. Es la misma regla que aplica el VPS (pedir 'todos' u otra
- * clave siendo empleado da 403): acá sólo se usa para no ofrecer un filtro que va a fallar.
+ * Quién puede mirar otras sucursales: sólo el superadministrador. El resto trabaja con la suya (hay una
+ * página por sucursal) y el proceso principal le ignora cualquier filtro que pida de otra.
  */
 export function useVeTodoMiLink(): boolean {
   const { rol } = useUsuarioActual()
-  return rol === 'ADMIN' || rol === 'SUPER_ADMIN'
+  return rol === 'SUPER_ADMIN'
 }
 
 export interface UsuarioDeMiLink {
@@ -214,7 +214,7 @@ export interface UsuarioDeMiLink {
   nombre: string
 }
 
-/** Los usuarios para el filtro «Usuario». Sólo se piden si se van a mostrar. */
+/** Las sucursales para el filtro «Sucursal». Sólo se piden si se van a mostrar. */
 export function useUsuariosDeMiLink(habilitado: boolean): UsuarioDeMiLink[] {
   const [usuarios, setUsuarios] = useState<UsuarioDeMiLink[]>([])
   useEffect(() => {
@@ -230,11 +230,11 @@ export function useUsuariosDeMiLink(habilitado: boolean): UsuarioDeMiLink[] {
   return usuarios
 }
 
-/** Las opciones del filtro «Usuario»: las propias, todas, y una por persona. */
+/** Las opciones del filtro «Sucursal»: la de trabajo, todas, y una por sucursal. */
 export function opcionesDeUsuario(usuarios: UsuarioDeMiLink[], propias: string): Array<{ valor: string; texto: string }> {
   return [
     { valor: '', texto: propias },
-    { valor: 'todos', texto: 'Toda la agencia' },
+    { valor: 'todos', texto: 'Todas las sucursales' },
     ...usuarios.map((usuario) => ({ valor: usuario.clave, texto: usuario.nombre || usuario.clave })),
   ]
 }
@@ -313,14 +313,14 @@ interface PropsFiltros {
   estados: ReadonlyArray<{ valor: string; texto: string }>
   /** Qué se puede escribir en «Buscar». */
   ayudaDeTexto: string
-  /** null = no se ofrece el filtro «Usuario» (empleados). */
+  /** null = no se ofrece el filtro «Sucursal» (todos menos el superadministrador). */
   usuarios: Array<{ valor: string; texto: string }> | null
   alBuscar: () => void
   alLimpiar: () => void
   buscando: boolean
 }
 
-/** El panel «Filtros de Búsqueda» de los dos listados: fechas, estado, texto y, para administradores, usuario. */
+/** El panel «Filtros de Búsqueda» de los dos listados: fechas, estado, texto y, para el superadministrador, sucursal. */
 export function FiltrosDeMiLinkPanel({ borrador, alCambiar, estados, ayudaDeTexto, usuarios, alBuscar, alLimpiar, buscando }: PropsFiltros) {
   return (
     <PanelDeFiltros alBuscar={alBuscar} alLimpiar={alLimpiar} buscando={buscando}>
@@ -344,7 +344,7 @@ export function FiltrosDeMiLinkPanel({ borrador, alCambiar, estados, ayudaDeText
           </select>
         </CampoDeFiltro>
         {usuarios && (
-          <CampoDeFiltro etiqueta="Usuario">
+          <CampoDeFiltro etiqueta="Sucursal">
             <select className={CLASES_INPUT_DE_FILTRO} value={borrador.usuario} onChange={(e) => alCambiar({ usuario: e.target.value })}>
               {usuarios.map((usuario) => (
                 <option key={usuario.valor} value={usuario.valor}>
