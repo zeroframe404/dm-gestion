@@ -54,7 +54,8 @@ const REINTENTO_SIN_CONEXION_MS = 10_000
  */
 let guardadoEnVuelo: Promise<unknown> = Promise.resolve()
 
-export function MiPagina() {
+/** `sucursal`: la sucursal de la página que se edita (la propia, o la que abrió el superadministrador). */
+export function MiPagina({ sucursal }: { sucursal: string }) {
   const [carga, setCarga] = useState<
     { estado: 'cargando' } | { estado: 'error'; mensaje: string } | { estado: 'lista'; link: MiLink | null; vuelta: number }
   >({ estado: 'cargando' })
@@ -72,7 +73,7 @@ export function MiPagina() {
     void cargar()
   }, [cargar])
 
-  if (carga.estado === 'cargando') return <Cargando texto="Trayendo tu página…" />
+  if (carga.estado === 'cargando') return <Cargando texto="Trayendo la página…" />
   if (carga.estado === 'error') {
     return (
       <div className="flex flex-col items-start gap-3 p-8">
@@ -84,7 +85,7 @@ export function MiPagina() {
     )
   }
   if (!carga.link) {
-    return <Bienvenida alCrear={(link) => setCarga({ estado: 'lista', link, vuelta: Date.now() })} alRecargar={() => void cargar()} />
+    return <Bienvenida sucursal={sucursal} alCrear={(link) => setCarga({ estado: 'lista', link, vuelta: Date.now() })} alRecargar={() => void cargar()} />
   }
   return <EditorDePagina key={carga.vuelta} inicial={carga.link} alRecargar={() => void cargar()} />
 }
@@ -92,21 +93,21 @@ export function MiPagina() {
 // ── Bienvenida ───────────────────────────────────────────────────────────────────────────────────
 
 /** Todavía no hay página: se elige la dirección y se crea con lo de `contenidoInicial`, sin publicar. */
-function Bienvenida({ alCrear, alRecargar }: { alCrear: (link: MiLink) => void; alRecargar: () => void }) {
+function Bienvenida({ sucursal, alCrear, alRecargar }: { sucursal: string; alCrear: (link: MiLink) => void; alRecargar: () => void }) {
   const sesion = useUsuarioActual()
   const puedeEditar = usePermisos().puedeEditar('miLink')
   const perfil = usePerfilDe(claveDeUsuario(sesion.usuario))
-  const [direccion, setDireccion] = useState(() => direccionSugerida(sesion.nombre))
+  const [direccion, setDireccion] = useState(() => direccionSugerida(sucursal))
   const [creando, setCreando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const chequeo = useChequeoDeDireccion(direccion, null)
-  const ejemplo = useMemo(() => contenidoInicial(sesion.nombre), [sesion.nombre])
+  const ejemplo = useMemo(() => contenidoInicial(sucursal), [sucursal])
 
   const crear = async () => {
     if (!chequeoPermiteGuardar(chequeo) || creando) return
     setCreando(true)
     setError(null)
-    const resultado = await window.dm.miLink.guardar({ version: null, direccion, publicada: false, contenido: contenidoInicial(sesion.nombre) })
+    const resultado = await window.dm.miLink.guardar({ version: null, direccion, publicada: false, contenido: contenidoInicial(sucursal) })
     setCreando(false)
     if (resultado.ok) alCrear(resultado.datos)
     // La creó otra computadora mientras esta mostraba la bienvenida: se trae esa, no se arma otra.
