@@ -2,9 +2,11 @@
 // y datos técnicos útiles para soporte.
 import { useEffect, useState, type ReactNode } from 'react'
 import type { EstadoActualizacion, EstadoDeAcceso, InfoApp } from '../../../shared/tipos'
+import { HISTORIAL_DE_CAMBIOS } from '../../../shared/cambios'
+import { ListaDeCambios } from '../../componentes/ListaDeCambios'
 import { Icono } from '../../componentes/Icono'
 import { BotonManual } from '../../componentes/BotonManual'
-import { Boton, Cargando, Tarjeta, haceCuanto } from '../../componentes/ui'
+import { Boton, Cargando, Dialogo, Tarjeta, haceCuanto } from '../../componentes/ui'
 import { avisoDeVencimiento, useAcceso } from '../../contexto/Acceso'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { useEsDemo, useNombreDeLaAgencia } from '../../canal'
@@ -59,6 +61,7 @@ export function AcercaDe() {
   const [info, setInfo] = useState<InfoApp | null>(null)
   const [actualizacion, setActualizacion] = useState<EstadoActualizacion | null>(null)
   const [buscando, setBuscando] = useState(false)
+  const [verHistoricos, setVerHistoricos] = useState(false)
   const { acceso, comprobando, comprobar } = useAcceso(false)
 
   useEffect(() => {
@@ -133,7 +136,11 @@ export function AcercaDe() {
                   Canal <span className="font-semibold">{info?.canal === 'demo' ? 'demo' : (actualizacion?.canal ?? 'estable')}</span> —{' '}
                   {actualizacion ? textoDeSituacion(actualizacion, info?.canal) : 'Cargando…'}
                 </span>
-                <Boton
+                <div className="flex items-center gap-2">
+                  <Boton icono="reloj" tamano="sm" onClick={() => setVerHistoricos(true)}>
+                    Históricos
+                  </Boton>
+                  <Boton
                   icono="descargar"
                   tamano="sm"
                   cargando={buscando}
@@ -142,6 +149,7 @@ export function AcercaDe() {
                 >
                   Buscar actualizaciones
                 </Boton>
+                </div>
               </dd>
             </div>
 
@@ -170,6 +178,16 @@ export function AcercaDe() {
           <Cargando />
         )}
       </Tarjeta>
+      <Dialogo
+        abierto={verHistoricos}
+        titulo="Históricos"
+        descripcion="Qué se hizo en cada actualización, de la más nueva a la más vieja."
+        alCerrar={() => setVerHistoricos(false)}
+        ancho="lg"
+        pie={<Boton onClick={() => setVerHistoricos(false)}>Cerrar</Boton>}
+      >
+        <ListaDeCambios versiones={HISTORIAL_DE_CAMBIOS} />
+      </Dialogo>
     </div>
   )
 }

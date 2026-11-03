@@ -5,6 +5,7 @@ import { AvisoDePisado } from './componentes/AvisoDePisado'
 import { BannerDemo } from './componentes/BannerDemo'
 import { BannerSinConexion } from './componentes/BannerSinConexion'
 import { CartelActualizacionDisponible } from './componentes/CartelActualizacionDisponible'
+import { CartelCambiosRecientes } from './componentes/CartelCambiosRecientes'
 import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
 import { AvisoDeZumbido } from './componentes/AvisoDeZumbido'
 import { AvisoDeLlamadaEntrante } from './componentes/AvisoDeLlamadaEntrante'
@@ -342,6 +343,8 @@ function Marco({
       <AvisoDePisado />
       {/* Igual que el resto de estos avisos: vive acá para saltar sin importar en qué pantalla se esté. */}
       <CartelActualizacionDisponible />
+      {/* Después de actualizar: qué cambió desde la última versión que vio esta persona. */}
+      <CartelCambiosRecientes />
     </div>
   )
 }
