@@ -468,6 +468,8 @@ const api: ApiDm = {
     metricas: (dias, usuario) => invocar('miLink:metricas', dias, usuario),
     abrirPagina: (url) => invocar('miLink:abrirPagina', url),
     usuarios: () => invocar('miLink:usuarios'),
+    sucursales: () => invocar('miLink:sucursales'),
+    elegirSucursal: (nombre) => invocar('miLink:elegirSucursal', nombre),
   },
   galenoNovedades: {
     estado: () => invocar('galenoNovedades:estado'),

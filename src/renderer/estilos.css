@@ -366,6 +366,19 @@ html[data-theme='dark'] .border-emerald-300 {
   border-color: #24603f;
 }
 
+html[data-theme='dark'] .bg-emerald-100 {
+  background-color: #11382a;
+}
+html[data-theme='dark'] .text-emerald-800 {
+  color: #8fe0b4;
+}
+html[data-theme='dark'] .bg-rose-100 {
+  background-color: #3d1820;
+}
+html[data-theme='dark'] .text-rose-800 {
+  color: #f4a9b5;
+}
+
 /* Ámbar: por vencer, atención */
 html[data-theme='dark'] .bg-amber-50 {
   background-color: #2b2008;

@@ -10,7 +10,6 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { VpsSimulado } from '../scripts/vps-simulado.mjs'
-import { abrirBaseDeDatos, cerrarBaseDeDatos, db } from '../src/main/db/base'
 import { ErrorDeNegocio, SinConexion } from '../src/main/servicios/errores'
 import {
   actualizarDenunciaDeMiLink,
@@ -25,7 +24,9 @@ import {
   nombreTemporalDeArchivo,
   PaginaDesactualizada,
   solicitudesDeMiLink,
-  usuariosDeMiLink,
+  sucursalesParaElFiltro,
+  sucursalesDeMiLink,
+  elegirSucursalDeMiLink,
 } from '../src/main/servicios/miLink'
 import {
   contenidoInicial,
@@ -45,7 +46,7 @@ const DANIEL: SesionUsuario = {
   sucursal: { id: 1, nombre: 'Daniel' },
   debeCambiarClave: false,
 }
-const MARIA: SesionUsuario = { ...DANIEL, id: 3, nombre: 'María Pérez', usuario: 'maria', rol: 'EMPLEADO' }
+const MARIA: SesionUsuario = { ...DANIEL, id: 3, nombre: 'María Pérez', usuario: 'maria', rol: 'EMPLEADO', sucursal: { id: 2, nombre: 'Lanús' } }
 
 const carpetas: string[] = []
 test.after(() => {
@@ -215,12 +216,12 @@ test('crear, guardar con el candado y chocar con otra computadora', async () => 
       publicada: false,
       contenido: contenidoInicial(DANIEL.nombre),
     })
-    // La clave es el login en minúscula, no el id local.
-    assert.equal(creada.usuarioClave, 'daniel')
+    // El dueño es la sucursal (no la persona): la clave sale del nombre de la sucursal.
+    assert.equal(creada.usuarioClave, 'sucursal-daniel')
     assert.equal(creada.direccion, 'daniel-martinez')
     assert.equal(creada.version, 1)
     assert.equal(creada.url, 'https://dmartinezseguros.com/p/daniel-martinez')
-    assert.equal(simulador.miLinks.get('daniel')?.usuarioNombre, 'Daniel Martínez')
+    assert.equal(simulador.miLinks.get('sucursal-daniel')?.usuarioNombre, 'Daniel')
 
     const guardada = await guardarMiLink(DANIEL, { ...creada, publicada: true, contenido: { ...creada.contenido, bio: 'Productor asesor' } })
     assert.equal(guardada.version, 2)
@@ -254,15 +255,15 @@ test('solicitudes: las propias, las de todos sólo para administradores, y el se
     const { solicitudes } = simulador.sembrarMiLink({
       solicitudes: [
         {
-          usuarioClave: 'maria',
+          usuarioClave: 'sucursal-lanus',
           cobertura: 'auto',
           nombre: 'Juan Pérez',
           telefono: '11 4444-5555',
           vehiculo: { tipo: 'AUTO', marca: 'FIAT', modelo: 'CRONOS', version: '1.3 DRIVE', anio: 2022, codigoCatalogo: '' },
           creadaEn: '2026-10-20T15:00:00.000Z',
         },
-        { usuarioClave: 'maria', cobertura: 'hogar', coberturaTitulo: 'Seguro de hogar', nombre: 'Ana Gómez', creadaEn: '2026-10-25T15:00:00.000Z' },
-        { usuarioClave: 'daniel', cobertura: 'moto', nombre: 'Pedro Díaz', creadaEn: '2026-10-26T15:00:00.000Z' },
+        { usuarioClave: 'sucursal-lanus', cobertura: 'hogar', coberturaTitulo: 'Seguro de hogar', nombre: 'Ana Gómez', creadaEn: '2026-10-25T15:00:00.000Z' },
+        { usuarioClave: 'sucursal-daniel', cobertura: 'moto', nombre: 'Pedro Díaz', creadaEn: '2026-10-26T15:00:00.000Z' },
       ],
     })
 
@@ -281,10 +282,13 @@ test('solicitudes: las propias, las de todos sólo para administradores, y el se
     // Un día que no existe lo rechaza el servidor (ida y vuelta no da el mismo día), y el simulador igual.
     await rechaza(solicitudesDeMiLink(MARIA, { ...filtrosVaciosDeMiLink(), desde: '2026-02-30' }), /«desde» no es válida/)
 
-    // Ver lo de otros es de administradores: el servidor dice que no y llega su texto.
-    await rechaza(solicitudesDeMiLink(MARIA, { ...filtrosVaciosDeMiLink(), usuario: 'todos' }), /^Solo un administrador puede ver lo de otras personas\.$/)
+    // Ver otras sucursales es del superadministrador: a los demás se les ignora el pedido (ven la suya).
+    assert.equal((await solicitudesDeMiLink(MARIA, { ...filtrosVaciosDeMiLink(), usuario: 'todos' })).length, 2)
+    assert.equal((await solicitudesDeMiLink(MARIA, { ...filtrosVaciosDeMiLink(), usuario: 'Daniel' })).length, 2)
     assert.equal((await solicitudesDeMiLink(DANIEL, { ...filtrosVaciosDeMiLink(), usuario: 'todos' })).length, 3)
-    assert.equal((await solicitudesDeMiLink(DANIEL, { ...filtrosVaciosDeMiLink(), usuario: 'MARIA' })).length, 2)
+    assert.equal((await solicitudesDeMiLink(DANIEL, { ...filtrosVaciosDeMiLink(), usuario: 'LANUS' })).length, 2)
+    // Sin filtro, el superadministrador ve la sucursal con la que trabaja (la suya hasta que abra otra).
+    assert.deepEqual((await solicitudesDeMiLink(DANIEL, filtrosVaciosDeMiLink())).map((s) => s.nombre), ['Pedro Díaz'])
 
     // El seguimiento: estado y nota, sólo el dueño o un administrador.
     const deJuan = solicitudes[0]!.id
@@ -305,7 +309,7 @@ test('denuncias: el listado con sus adjuntos y bajar uno a la carpeta temporal',
     const { denuncias } = simulador.sembrarMiLink({
       denuncias: [
         {
-          usuarioClave: 'maria',
+          usuarioClave: 'sucursal-lanus',
           tipo: 'choque',
           nombre: 'Juan Pérez',
           patente: 'AB123CD',
@@ -332,7 +336,7 @@ test('denuncias: el listado con sus adjuntos y bajar uno a la carpeta temporal',
     assert.equal(readFileSync(ruta, 'utf8'), 'JPEG DE PRUEBA')
 
     // El adjunto de otra persona no lo baja un empleado.
-    const otra = simulador.sembrarMiLink({ denuncias: [{ usuarioClave: 'daniel', archivos: [{ contenido: 'PDF' }] }] }).denuncias[0]!
+    const otra = simulador.sembrarMiLink({ denuncias: [{ usuarioClave: 'sucursal-daniel', archivos: [{ contenido: 'PDF' }] }] }).denuncias[0]!
     await rechaza(bajarArchivoDeMiLink(MARIA, otra.archivos[0]!, carpeta), /dueña de la página o un administrador/)
   })
 })
@@ -344,17 +348,17 @@ test('métricas: todos los días del rango, rankings y visitantes por día', asy
     const haceUnAnio = new Date(ahora.getTime() - 365 * 86_400_000)
     simulador.sembrarMiLink({
       eventos: [
-        { usuarioClave: 'maria', visitante: 'aaaaaaaa', origen: 'instagram', dispositivo: 'celular', ocurridoEn: ahora.toISOString() },
-        { usuarioClave: 'maria', visitante: 'aaaaaaaa', origen: 'instagram', dispositivo: 'celular', ocurridoEn: ahora.toISOString() },
-        { usuarioClave: 'maria', visitante: 'aaaaaaaa', origen: 'google', dispositivo: 'escritorio', ocurridoEn: ayer.toISOString() },
-        { usuarioClave: 'maria', evento: 'click', bloque: 'wa', bloqueEtiqueta: 'WhatsApp', ocurridoEn: ahora.toISOString() },
-        { usuarioClave: 'maria', evento: 'click', bloque: 'auto', bloqueEtiqueta: 'Seguro de auto', ocurridoEn: ahora.toISOString() },
-        { usuarioClave: 'maria', evento: 'click', bloque: 'wa', bloqueEtiqueta: 'WhatsApp', ocurridoEn: ayer.toISOString() },
+        { usuarioClave: 'sucursal-lanus', visitante: 'aaaaaaaa', origen: 'instagram', dispositivo: 'celular', ocurridoEn: ahora.toISOString() },
+        { usuarioClave: 'sucursal-lanus', visitante: 'aaaaaaaa', origen: 'instagram', dispositivo: 'celular', ocurridoEn: ahora.toISOString() },
+        { usuarioClave: 'sucursal-lanus', visitante: 'aaaaaaaa', origen: 'google', dispositivo: 'escritorio', ocurridoEn: ayer.toISOString() },
+        { usuarioClave: 'sucursal-lanus', evento: 'click', bloque: 'wa', bloqueEtiqueta: 'WhatsApp', ocurridoEn: ahora.toISOString() },
+        { usuarioClave: 'sucursal-lanus', evento: 'click', bloque: 'auto', bloqueEtiqueta: 'Seguro de auto', ocurridoEn: ahora.toISOString() },
+        { usuarioClave: 'sucursal-lanus', evento: 'click', bloque: 'wa', bloqueEtiqueta: 'WhatsApp', ocurridoEn: ayer.toISOString() },
         // Fuera del rango y de otra persona: no cuentan.
-        { usuarioClave: 'maria', ocurridoEn: haceUnAnio.toISOString() },
-        { usuarioClave: 'daniel', ocurridoEn: ahora.toISOString() },
+        { usuarioClave: 'sucursal-lanus', ocurridoEn: haceUnAnio.toISOString() },
+        { usuarioClave: 'sucursal-daniel', ocurridoEn: ahora.toISOString() },
       ],
-      solicitudes: [{ usuarioClave: 'maria' }],
+      solicitudes: [{ usuarioClave: 'sucursal-lanus' }],
     })
 
     const metricas = await metricasDeMiLink(MARIA, 7, '')
@@ -383,34 +387,40 @@ test('métricas: todos los días del rango, rankings y visitantes por día', asy
 
     // Un rango inventado cae en 30, como en el servidor.
     assert.equal((await metricasDeMiLink(MARIA, 45, '')).porDia.length, 30)
-    await rechaza(metricasDeMiLink(MARIA, 30, 'todos'), /Solo un administrador/)
+    assert.equal((await metricasDeMiLink(MARIA, 30, 'todos')).visitas, (await metricasDeMiLink(MARIA, 30, '')).visitas, 'a quien no es superadministrador se le ignora el filtro')
     assert.equal((await metricasDeMiLink(DANIEL, 90, 'todos')).visitas, 4)
   })
 })
 
-test('el filtro «Usuario» sale de la base local: sólo los activos, con su clave', () => {
-  cerrarBaseDeDatos()
-  const registrar = console.log
-  console.log = () => undefined
-  try {
-    abrirBaseDeDatos(':memory:')
-  } finally {
-    console.log = registrar
-  }
-  try {
-    // La base nueva trae a Daniel (la semilla). Se suman una activa con el login en mayúsculas y una
-    // dada de baja, directo en la tabla: crearlas por el servicio pediría la base compartida.
-    const sucursal = (db().prepare('SELECT id FROM sucursales LIMIT 1').get() as { id: number }).id
-    const insertar = db().prepare(
-      `INSERT INTO usuarios (nombre, usuario, clave_hash, rol, sucursal_id, activo, debe_cambiar_clave) VALUES (?, ?, 'x', 'EMPLEADO', ?, ?, 0)`,
-    )
-    insertar.run('Ana Ruiz', 'Ana.Ruiz', sucursal, 1)
-    insertar.run('Beto Baja', 'beto', sucursal, 0)
-    assert.deepEqual(usuariosDeMiLink(), [
-      { clave: 'ana.ruiz', nombre: 'Ana Ruiz' },
-      { clave: 'daniel', nombre: 'Daniel Martínez' },
+test('el filtro «Sucursal»: las cuatro, sólo para el superadministrador', () => {
+  assert.deepEqual(sucursalesParaElFiltro(DANIEL).map((s) => s.nombre), ['Dock Sud', 'Lanús', 'Sarandí', 'Daniel'])
+  assert.deepEqual(sucursalesParaElFiltro(MARIA), [])
+})
+
+test('una página por sucursal: el superadministrador lista las cuatro y abre otra; los demás sólo tienen la suya', async () => {
+  await conSimulador(async (simulador) => {
+    await guardarMiLink(MARIA, { version: null, direccion: 'lanus-seguros', publicada: true, contenido: contenidoInicial('Lanús') })
+    // Cualquier compañero de la misma sucursal ve la misma página.
+    const compañero: SesionUsuario = { ...MARIA, id: 9, nombre: 'Otro Empleado', usuario: 'otro' }
+    assert.equal((await miLinkPropio(compañero))?.direccion, 'lanus-seguros')
+    assert.equal(await miLinkPropio(DANIEL), null, 'la sucursal Daniel no creó la suya')
+
+    const lista = await sucursalesDeMiLink(DANIEL)
+    assert.equal(lista.puedeElegir, true)
+    assert.equal(lista.elegida, 'Daniel')
+    assert.deepEqual(lista.sucursales.map((s) => [s.nombre, s.link?.direccion ?? null]), [
+      ['Dock Sud', null],
+      ['Lanús', 'lanus-seguros'],
+      ['Sarandí', null],
+      ['Daniel', null],
     ])
-  } finally {
-    cerrarBaseDeDatos()
-  }
+    assert.deepEqual(await sucursalesDeMiLink(MARIA), { elegida: 'Lanús', puedeElegir: false, sucursales: [] })
+
+    await rechaza(elegirSucursalDeMiLink(MARIA, 'Daniel'), /Solo el superadministrador/)
+    await rechaza(elegirSucursalDeMiLink(DANIEL, 'Rosario'), /no existe/)
+    assert.equal((await elegirSucursalDeMiLink(DANIEL, 'lanus')).elegida, 'Lanús')
+    assert.equal((await miLinkPropio(DANIEL))?.direccion, 'lanus-seguros', 'ahora trabaja sobre la página de Lanús')
+    assert.equal(simulador.miLinks.size, 1)
+    await elegirSucursalDeMiLink(DANIEL, 'Daniel')
+  })
 })

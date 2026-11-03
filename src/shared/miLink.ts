@@ -8,12 +8,41 @@
 // campo acá, se agrega allá, y siempre opcional con un valor por defecto, porque una página guardada
 // con una versión vieja tiene que seguir abriendo.
 
+import { claveDeSucursal } from './sucursales'
+
 /** Las secciones de Mi link, una por renglón de su sublista en la barra lateral. */
 export const SECCIONES_DE_MI_LINK = ['pagina', 'solicitudes', 'siniestros', 'metricas'] as const
 export type SeccionDeMiLink = (typeof SECCIONES_DE_MI_LINK)[number]
 
 export function esSeccionDeMiLink(valor: unknown): valor is SeccionDeMiLink {
   return typeof valor === 'string' && (SECCIONES_DE_MI_LINK as readonly string[]).includes(valor)
+}
+
+// ── De quién es la página: de la sucursal ──────────────────────────────────────────────────────────
+//
+// Hay UNA página por sucursal, no una por persona: cada sucursal tiene su WhatsApp y sus redes, y todos
+// los que trabajan en ella arman y atienden la misma. El VPS sigue viendo «un dueño» (una clave de texto
+// opaca), así que la clave de la sucursal ocupa ese lugar y el servidor no necesita cambios.
+
+/** La clave de dueño de la página de una sucursal en el VPS (`sucursal-docksud`). */
+export function claveDeMiLinkDeSucursal(nombre: string): string {
+  return `sucursal-${claveDeSucursal(nombre).toLowerCase()}`
+}
+
+/** Una sucursal en la lista del superadministrador: su nombre y su página (null si todavía no la creó). */
+export interface SucursalDeMiLink {
+  nombre: string
+  link: MiLink | null
+}
+
+/** Qué sucursales ve quien abre Mi link y con cuál está trabajando. */
+export interface SucursalesDeMiLink {
+  /** La sucursal sobre la que se está trabajando (la propia, o la que el superadministrador abrió). */
+  elegida: string
+  /** Sólo el superadministrador puede cambiarla y ver la lista de todas. */
+  puedeElegir: boolean
+  /** Con `puedeElegir`: las cuatro, con su página. Si no, vacío. */
+  sucursales: SucursalDeMiLink[]
 }
 
 /** El dominio donde se publica. La dirección completa es `${URL_BASE_DE_MI_LINK}/p/<direccion>`. */

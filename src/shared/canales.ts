@@ -23,6 +23,7 @@ import type {
   MiLink,
   RangoDeMetricas,
   SolicitudDeMiLink,
+  SucursalesDeMiLink,
 } from './miLink'
 import type { MatrizPermisos } from './permisos'
 import type {
@@ -970,9 +971,9 @@ export interface Canales {
   'multicotizador:emisiones': (filtros: FiltrosDeListado) => Resultado<ListadoDelMulticotizador<EmisionListada>>
 
   // Mi link: la página pública de cada uno, lo que le piden desde ahí y sus métricas. Todo vive en el
-  // VPS (`/api/dmg/mi-link`): esta computadora no guarda nada, sólo lee y manda. El dueño es siempre
-  // quien tiene la sesión abierta; ver lo de otro (filtro «Usuario») es de ADMIN y SUPER_ADMIN, y lo
-  // controla el servidor con el rol que viaja en cada pedido.
+  // VPS (`/api/dmg/mi-link`): esta computadora no guarda nada, sólo lee y manda. El dueño es la
+  // SUCURSAL de quien tiene la sesión abierta (una página por sucursal); mirar otra sucursal (filtro
+  // «Sucursal», lista de sucursales) es sólo del SUPER_ADMIN.
   /** La página de quien tiene la sesión abierta, o null si todavía no la creó. */
   'miLink:mia': () => Resultado<MiLink | null>
   /** Si la dirección se puede usar (la propia cuenta como libre). */
@@ -985,12 +986,16 @@ export interface Canales {
   'miLink:actualizarDenuncia': (id: string, cambios: { estado?: EstadoDeDenuncia; nota?: string }) => Resultado<DenunciaDeMiLink>
   /** Baja el adjunto de una denuncia a una carpeta temporal y lo abre con el programa del sistema. */
   'miLink:abrirArchivo': (archivo: ArchivoDeDenuncia) => Resultado<void>
-  /** `usuario`: '' = las propias, 'todos' o la clave de otro (sólo administradores). */
+  /** `usuario`: '' = la sucursal de trabajo, 'todos' o el nombre de otra sucursal (sólo el superadministrador). */
   'miLink:metricas': (dias: RangoDeMetricas, usuario: string) => Resultado<MetricasDeMiLink>
   /** Abre la página en el navegador como dueño (no cuenta la visita). Sólo URLs de Mi link. */
   'miLink:abrirPagina': (url: string) => Resultado<void>
-  /** Los usuarios activos de esta computadora, para el filtro «Usuario» de los administradores. */
+  /** Las sucursales para el filtro «Sucursal» del superadministrador (clave = nombre, es lo que se manda en el filtro). */
   'miLink:usuarios': () => Resultado<Array<{ clave: string; nombre: string }>>
+  /** Con qué sucursal se trabaja y, para el superadministrador, la lista de las cuatro con su página. */
+  'miLink:sucursales': () => Resultado<SucursalesDeMiLink>
+  /** El superadministrador abre otra sucursal: de ahí en más la página, las solicitudes y las métricas son de ella. */
+  'miLink:elegirSucursal': (nombre: string) => Resultado<SucursalesDeMiLink>
 
   // Cartera → Galeno NOVEDADES (15.4). Distinto canal y distinto nombre que el bloque de arriba a
   // propósito: esto NO es la API REST de Galeno (cotización/emisión), es la sincronización con el

@@ -16,7 +16,7 @@ export const AYUDA_MI_LINK: Record<string, ContenidoDeAyuda> = {
         titulo: 'La sublista de la barra lateral',
         parrafos: [
           '«Mi página» es el editor: lo que se cambia se guarda solo y se ve tal cual va a quedar. «Solicitudes» son las cotizaciones y presupuestos que te pidieron; «Siniestros», las denuncias, con sus fotos y PDF; «Métricas», cuánta gente entró y qué tocó.',
-          'Cada uno ve lo suyo. Un administrador puede elegir en el filtro «Usuario» las de otra persona o las de todos.',
+          'Cada sucursal tiene su página y quienes trabajan en ella ven lo mismo. El superadministrador ve la lista de sucursales y elige en el filtro «Sucursal» la que quiere mirar o todas.',
         ],
       },
       {

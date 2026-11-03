@@ -55,7 +55,7 @@ export function Solicitudes() {
     // Lo que se ve, con los filtros aplicados y en el orden de la tabla (no sólo la página actual).
     const resultado = await exportarAExcel({
       titulo: 'Solicitudes de Mi link',
-      columnas: ['Cotización', 'Estado', 'Canal', 'Usuario', 'Ramo', 'Cobertura', 'Cliente', 'Teléfono', 'Email', 'Código postal', 'Riesgo', 'Mensaje', 'Nota', 'Fecha'],
+      columnas: ['Cotización', 'Estado', 'Canal', 'Sucursal', 'Ramo', 'Cobertura', 'Cliente', 'Teléfono', 'Email', 'Código postal', 'Riesgo', 'Mensaje', 'Nota', 'Fecha'],
       filas: filas.map((s) => [
         s.numero,
         NOMBRE_ESTADO_DE_SOLICITUD[s.estado],
@@ -91,7 +91,7 @@ export function Solicitudes() {
         encabezado: 'Canal',
         celda: (s) => <Etiqueta tono={s.canal === 'COTIZADOR' ? 'marca' : 'neutro'}>{NOMBRE_CANAL_DE_SOLICITUD[s.canal]}</Etiqueta>,
       },
-      { id: 'usuario', encabezado: 'Usuario', celda: (s) => s.usuarioNombre || s.usuarioClave },
+      { id: 'usuario', encabezado: 'Sucursal', celda: (s) => s.usuarioNombre || s.usuarioClave },
       { id: 'ramo', encabezado: 'Ramo', celda: (s) => <CeldaDoble principal={RAMO_DE_COBERTURA[s.cobertura]} secundario={s.coberturaTitulo} /> },
       { id: 'cliente', encabezado: 'Cliente', celda: (s) => <CeldaDoble principal={s.nombre} secundario={s.email} /> },
       { id: 'riesgo', encabezado: 'Riesgo', celda: (s) => riesgoDeSolicitud(s) || '—' },
@@ -128,7 +128,7 @@ export function Solicitudes() {
         alCambiar={(cambios) => setBorrador((previo) => ({ ...previo, ...cambios }))}
         estados={OPCIONES_DE_ESTADO}
         ayudaDeTexto="Nombre, teléfono, mail, marca o modelo"
-        usuarios={veTodo ? opcionesDeUsuario(usuarios, 'Mis solicitudes') : null}
+        usuarios={veTodo ? opcionesDeUsuario(usuarios, 'Sucursal elegida') : null}
         alBuscar={buscar}
         alLimpiar={limpiar}
         buscando={cargando}
