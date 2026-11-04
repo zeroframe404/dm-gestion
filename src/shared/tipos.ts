@@ -4246,6 +4246,110 @@ export interface MensajeDeRed {
 }
 
 // ---------------------------------------------------------------------------
+// Marketing · Redes · TikTok
+//
+// Cada sucursal tiene SU app de TikTok for Developers (Client Key y Client Secret) y su cuenta. La app
+// y los tokens viven cifrados en el servidor: a esta computadora no llega ningún secreto.
+// ---------------------------------------------------------------------------
+
+export const PRIVACIDADES_DE_TIKTOK = ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'] as const
+export type PrivacidadDeTikTok = (typeof PRIVACIDADES_DE_TIKTOK)[number]
+
+export const NOMBRE_PRIVACIDAD_DE_TIKTOK: Record<PrivacidadDeTikTok, string> = {
+  PUBLIC_TO_EVERYONE: 'Todo el mundo',
+  MUTUAL_FOLLOW_FRIENDS: 'Amigos (se siguen mutuamente)',
+  FOLLOWER_OF_CREATOR: 'Seguidores',
+  SELF_ONLY: 'Sólo yo (privado)',
+}
+
+/** La app y la cuenta de TikTok de una sucursal, tal como las ve la pantalla. */
+export interface CuentaDeTikTok {
+  sucursal: string
+  /** true si están cargados el Client Key y el Client Secret de esa sucursal. */
+  appCargada: boolean
+  /** El Client Key (no es secreto). Sólo lo recibe el superadministrador. */
+  clientKey: string | null
+  /** La dirección de vuelta que hay que registrar en el panel de TikTok de esa app. */
+  urlDeRedireccion: string
+  appCargadaPor: string | null
+  appCargadaEn: string | null
+  estado: 'SIN_VINCULAR' | 'ACTIVA' | 'TOKEN_RECHAZADO'
+  nombre: string | null
+  usuario: string | null
+  avatarUrl: string | null
+  vinculadoPor: string | null
+  vinculadoEn: string | null
+}
+
+/** Todo lo que necesitan las pantallas de TikTok. Nunca falla por falta de app o de vínculo: lo explica. */
+export interface PanelDeTikTok {
+  /** true si este actor puede cargar la app y vincular: sólo SUPER_ADMIN. */
+  puedeVincular: boolean
+  sucursalPropia: string | null
+  /** Una fila por sucursal (las cuatro para SUPER_ADMIN, sólo la propia para el resto), con o sin app. */
+  cuentas: CuentaDeTikTok[]
+  /** La dirección de vuelta de fábrica, para mostrarla antes de cargar ninguna app. */
+  urlDeRedireccionDeFabrica: string
+  ultimoError: string | null
+}
+
+export interface DatosDeAppDeTikTok {
+  sucursal: string
+  clientKey: string
+  /** Vacío conserva el que ya estaba. */
+  clientSecret: string
+  /** Vacía deja la de fábrica. Tiene que ser la MISMA que está registrada en el panel de TikTok. */
+  urlDeRedireccion?: string
+}
+
+/** Lo que TikTok deja hacer hoy a la cuenta. TikTok exige mostrarlo antes de publicar. */
+export interface CreadorDeTikTok {
+  nombre: string
+  usuario: string
+  avatarUrl: string | null
+  opcionesDePrivacidad: PrivacidadDeTikTok[]
+  comentariosApagados: boolean
+  duoApagado: boolean
+  stitchApagado: boolean
+  duracionMaximaSegundos: number | null
+}
+
+export interface PedidoDeTikTok {
+  sucursal: string
+  texto: string
+  /** Ruta del video elegido (siempre video: TikTok no publica texto solo ni, por ahora, fotos desde acá). */
+  ruta: string
+  /** Sin valor por defecto: TikTok exige que lo elija la persona. */
+  privacidad: PrivacidadDeTikTok | ''
+  permitirComentarios: boolean
+  permitirDuo: boolean
+  permitirStitch: boolean
+  /** «Tu marca»: la agencia promociona lo propio. */
+  contenidoPropio: boolean
+  /** «Contenido de marca»: publicidad de un tercero. No puede ir en privado. */
+  contenidoDeMarca: boolean
+  /** Fecha/hora (ISO) a la que tiene que salir sola. Vacío = publicar ya. */
+  programarPara: string
+}
+
+export interface PublicacionDeTikTok {
+  id: string
+  sucursal: string
+  /** PROGRAMADA (espera su hora) → ENVIANDO → PROCESANDO (TikTok lo tiene, falta que confirme) → PUBLICADA o FALLIDA. */
+  estado: 'PROGRAMADA' | 'ENVIANDO' | 'PROCESANDO' | 'PUBLICADA' | 'FALLIDA'
+  texto: string
+  privacidad: PrivacidadDeTikTok
+  archivoNombre: string
+  url: string | null
+  error: string | null
+  creadoPor: string
+  /** null cuando fue «publicar ahora». */
+  programadoPara: string | null
+  publicadoEn: string | null
+  creadoEn: string
+}
+
+// ---------------------------------------------------------------------------
 // Fase 9 · Marketing: plantillas de mensajes y segmentos de la cartera
 // ---------------------------------------------------------------------------
 

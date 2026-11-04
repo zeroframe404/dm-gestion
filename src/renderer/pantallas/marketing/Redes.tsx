@@ -1,4 +1,5 @@
-// Marketing → Redes: publicar en la Página de Facebook e Instagram de una sucursal.
+// Marketing → Redes: publicar en la Página de Facebook e Instagram de una sucursal (y, en su propia
+// pestaña, en su TikTok: ver `TikTok.tsx`).
 //
 // La pantalla abre SIEMPRE, incluso sin nada configurado: si falta la app de Meta o si todavía no se
 // vinculó ninguna cuenta, lo explica y dice a quién pedírselo. Un empleado no entra a Administración,
@@ -28,15 +29,17 @@ import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { Comentarios } from './Comentarios'
 import { Mensajes } from './Mensajes'
+import { TikTok } from './TikTok'
 
 const NOMBRE_TIPO_DE_CONTENIDO: Record<TipoDeContenido, string> = { FEED: 'Feed', REEL: 'Reel', STORIA: 'Historia' }
 
-type PestanaDeRedes = 'publicar' | 'comentarios' | 'mensajes'
+type PestanaDeRedes = 'publicar' | 'comentarios' | 'mensajes' | 'tiktok'
 
 const PESTANAS_DE_REDES: ItemDePestana<PestanaDeRedes>[] = [
   { id: 'publicar', nombre: 'Publicar', icono: 'subir', ayuda: 'marketing.redes' },
   { id: 'comentarios', nombre: 'Comentarios', icono: 'mensaje', ayuda: 'marketing.redes.comentarios' },
   { id: 'mensajes', nombre: 'Mensajes', icono: 'usuario', ayuda: 'marketing.redes.mensajes' },
+  { id: 'tiktok', nombre: 'TikTok', icono: 'tiktok', ayuda: 'marketing.redes.tiktok' },
 ]
 
 function cuando(iso: string): string {
@@ -216,7 +219,7 @@ export function Redes() {
     <div className="flex min-h-0 flex-1 flex-col">
       {esSuper && (
         <div className="mx-auto w-full max-w-4xl px-8 pt-8">
-          <Tarjeta titulo="Sucursal" descripcion="Cada sucursal tiene su propia cuenta de Facebook e Instagram. Elegí con cuál trabajar.">
+          <Tarjeta titulo="Sucursal" descripcion="Cada sucursal tiene su propia cuenta de Facebook, Instagram y TikTok. Elegí con cuál trabajar.">
             <Selector
               etiqueta="Sucursal"
               value={sucursalElegida}
@@ -234,6 +237,8 @@ export function Redes() {
           <Comentarios sucursal={sucursalElegida} puedeEditar={puedeEditar} />
         ) : pestana === 'mensajes' ? (
           <Mensajes sucursal={sucursalElegida} puedeEditar={puedeEditar} />
+        ) : pestana === 'tiktok' ? (
+          <TikTok key={sucursalElegida} sucursal={sucursalElegida} puedeEditar={puedeEditar} />
         ) : (
           <div className="mx-auto flex max-w-4xl flex-col gap-6 p-8">
           {error && <Alerta tono="error">{error}</Alerta>}

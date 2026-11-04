@@ -518,6 +518,17 @@ export interface ApiDm {
     conversacionMensajes: Remota<'redes:conversaciones:mensajes'>
     conversacionResponder: Remota<'redes:conversaciones:responder'>
   }
+  tiktok: {
+    panel: Remota<'tiktok:panel'>
+    guardarApp: Remota<'tiktok:guardarApp'>
+    borrarApp: Remota<'tiktok:borrarApp'>
+    vincular: Remota<'tiktok:vincular'>
+    desvincular: Remota<'tiktok:desvincular'>
+    creador: Remota<'tiktok:creador'>
+    elegirVideo: Remota<'tiktok:elegirVideo'>
+    publicar: Remota<'tiktok:publicar'>
+    publicaciones: Remota<'tiktok:publicaciones'>
+  }
   sistema: {
     abrirEnlace: Remota<'sistema:abrirEnlace'>
   }
