@@ -227,6 +227,72 @@ export interface MensajeDeRedVps {
   enviadoPor: string | null
 }
 
+export type PrivacidadDeTikTokVps = 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY'
+
+/** La app y la cuenta de TikTok de una sucursal, sin secretos (viven cifrados en el servidor). */
+export interface CuentaDeTikTokVps {
+  sucursal: string
+  appCargada: boolean
+  /** Sólo viene para SUPER_ADMIN, que es quien vincula. */
+  clientKey: string | null
+  urlDeRedireccion: string | null
+  appCargadaPor: string | null
+  appCargadaEn: string | null
+  estado: 'SIN_VINCULAR' | 'ACTIVA' | 'TOKEN_RECHAZADO'
+  nombre: string | null
+  usuario: string | null
+  avatarUrl: string | null
+  vinculadoPor: string | null
+  vinculadoEn: string | null
+}
+
+export interface AppDeTikTokParaVps {
+  sucursal: string
+  clientKey: string
+  /** Vacío conserva el que ya estaba. */
+  clientSecret: string
+  urlDeRedireccion: string | null
+}
+
+export interface CreadorDeTikTokVps {
+  nombre: string
+  usuario: string
+  avatarUrl: string | null
+  opcionesDePrivacidad: PrivacidadDeTikTokVps[]
+  comentariosApagados: boolean
+  duoApagado: boolean
+  stitchApagado: boolean
+  duracionMaximaSegundos: number | null
+}
+
+export interface PedidoDeTikTokParaVps {
+  sucursal?: string
+  texto: string
+  archivo: ArchivoParaVps
+  privacidad: PrivacidadDeTikTokVps
+  permitirComentarios: boolean
+  permitirDuo: boolean
+  permitirStitch: boolean
+  contenidoPropio: boolean
+  contenidoDeMarca: boolean
+  programarPara?: string | null
+}
+
+export interface PublicacionDeTikTokVps {
+  id: string
+  sucursal: string
+  estado: 'PROGRAMADA' | 'ENVIANDO' | 'PROCESANDO' | 'PUBLICADA' | 'FALLIDA'
+  texto: string
+  privacidad: PrivacidadDeTikTokVps
+  archivoNombre: string
+  url: string | null
+  error: string | null
+  creadoPor: string
+  programadoPara: string | null
+  publicadoEn: string | null
+  creadoEn: string
+}
+
 function consultaDeActor(actor: ActorDeRedesVps): string {
   const parametros = new URLSearchParams({ actorNombre: actor.nombre, actorRol: actor.rol })
   if (actor.sucursal) parametros.set('actorSucursal', actor.sucursal)
@@ -1061,6 +1127,101 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
       { reintentarSinRespuesta: false },
     )) as { mensaje: MensajeDeRedVps }
     return respuesta.mensaje
+  }
+
+  // --- TikTok por sucursal -----------------------------------------------------
+  //
+  // Igual que Facebook e Instagram: la app (Client Key y Client Secret) y los tokens de cada sucursal
+  // viven cifrados en el servidor, que es quien le habla a TikTok. De acá sale el secreto una sola
+  // vez, al cargar la app, y el código del ingreso de TikTok, al vincular.
+
+  async tiktokCuentas(actor: ActorDeRedesVps): Promise<CuentaDeTikTokVps[]> {
+    const datos = (await this.pedir(
+      'listar las cuentas de TikTok',
+      'GET',
+      `/api/dmg/redes/tiktok/cuentas?${consultaDeActor(actor)}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { cuentas: CuentaDeTikTokVps[] }
+    return datos?.cuentas ?? []
+  }
+
+  async tiktokGuardarApp(actor: ActorDeRedesVps, app: AppDeTikTokParaVps): Promise<CuentaDeTikTokVps> {
+    const respuesta = (await this.pedir(
+      'guardar la app de TikTok',
+      'POST',
+      '/api/dmg/redes/tiktok/apps',
+      { actor, ...app },
+      { reintentarSinRespuesta: false },
+    )) as { cuenta: CuentaDeTikTokVps }
+    return respuesta.cuenta
+  }
+
+  async tiktokBorrarApp(actor: ActorDeRedesVps, sucursal: string): Promise<void> {
+    await this.pedir(
+      'sacar la app de TikTok',
+      'POST',
+      `/api/dmg/redes/tiktok/apps/${encodeURIComponent(sucursal)}/borrar`,
+      { actor },
+      { reintentarSinRespuesta: false },
+    )
+  }
+
+  async tiktokVincular(actor: ActorDeRedesVps, datos: { sucursal: string; codigo: string; urlDeRedireccion: string }): Promise<CuentaDeTikTokVps> {
+    const respuesta = (await this.pedir(
+      'vincular la cuenta de TikTok',
+      'POST',
+      '/api/dmg/redes/tiktok/cuentas',
+      { actor, ...datos },
+      { reintentarSinRespuesta: false },
+    )) as { cuenta: CuentaDeTikTokVps }
+    return respuesta.cuenta
+  }
+
+  async tiktokDesvincular(actor: ActorDeRedesVps, sucursal: string): Promise<void> {
+    await this.pedir(
+      'desvincular la cuenta de TikTok',
+      'POST',
+      `/api/dmg/redes/tiktok/cuentas/${encodeURIComponent(sucursal)}/desvincular`,
+      { actor },
+      { reintentarSinRespuesta: false },
+    )
+  }
+
+  async tiktokCreador(actor: ActorDeRedesVps, sucursal: string): Promise<CreadorDeTikTokVps> {
+    const datos = (await this.pedir(
+      'consultar la cuenta de TikTok',
+      'GET',
+      `/api/dmg/redes/tiktok/cuentas/${encodeURIComponent(sucursal)}/creador?${consultaDeActor(actor)}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { creador: CreadorDeTikTokVps }
+    return datos.creador
+  }
+
+  /** Sin reintentos, por lo mismo que `redesPublicar`: repetir un pedido que sí llegó duplicaría el video. */
+  async tiktokPublicar(actor: ActorDeRedesVps, pedido: PedidoDeTikTokParaVps): Promise<PublicacionDeTikTokVps> {
+    const respuesta = (await this.pedir(
+      'publicar en TikTok',
+      'POST',
+      '/api/dmg/redes/tiktok/publicaciones',
+      { actor, ...pedido },
+      { reintentarSinRespuesta: false },
+    )) as { publicacion: PublicacionDeTikTokVps }
+    return respuesta.publicacion
+  }
+
+  async tiktokPublicaciones(actor: ActorDeRedesVps, sucursal?: string): Promise<PublicacionDeTikTokVps[]> {
+    const parametros = new URLSearchParams(consultaDeActor(actor))
+    if (sucursal) parametros.set('sucursal', sucursal)
+    const datos = (await this.pedir(
+      'listar las publicaciones de TikTok',
+      'GET',
+      `/api/dmg/redes/tiktok/publicaciones?${parametros}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { publicaciones: PublicacionDeTikTokVps[] }
+    return datos?.publicaciones ?? []
   }
 
   // --- Mi link -----------------------------------------------------------------

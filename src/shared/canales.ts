@@ -168,6 +168,11 @@ import type {
   DatosDeMeta,
   EstadoDeMeta,
   PanelDeRedes,
+  PanelDeTikTok,
+  DatosDeAppDeTikTok,
+  CreadorDeTikTok,
+  PedidoDeTikTok,
+  PublicacionDeTikTok,
   PedidoDePublicacion,
   PedidoDeTicket,
   PublicacionDeRed,
@@ -1053,6 +1058,22 @@ export interface Canales {
   'redes:conversaciones': (sucursal?: string) => Resultado<ConversacionDeRed[]>
   'redes:conversaciones:mensajes': (conversacionId: string) => Resultado<MensajeDeRed[]>
   'redes:conversaciones:responder': (conversacionId: string, mensaje: string) => Resultado<MensajeDeRed>
+
+  // Marketing → Redes → TikTok: cada sucursal con su app (Client Key y Client Secret) y su cuenta. La
+  // app y los tokens viven cifrados en el servidor; esta computadora nunca los guarda.
+  'tiktok:panel': () => Resultado<PanelDeTikTok>
+  /** Sólo SUPER_ADMIN: carga o cambia la app de TikTok de una sucursal. */
+  'tiktok:guardarApp': (datos: DatosDeAppDeTikTok) => Resultado<PanelDeTikTok>
+  'tiktok:borrarApp': (sucursal: string) => Resultado<PanelDeTikTok>
+  /** Abre el ingreso de TikTok para vincular la cuenta de esa sucursal. Sólo SUPER_ADMIN. */
+  'tiktok:vincular': (sucursal: string) => Resultado<PanelDeTikTok>
+  'tiktok:desvincular': (sucursal: string) => Resultado<PanelDeTikTok>
+  /** Qué deja hacer TikTok hoy a la cuenta (privacidades, interacciones, duración máxima). */
+  'tiktok:creador': (sucursal?: string) => Resultado<CreadorDeTikTok>
+  /** Abre el diálogo para elegir el video y lo revisa. null si se canceló. */
+  'tiktok:elegirVideo': () => Resultado<ArchivoParaPublicar | null>
+  'tiktok:publicar': (pedido: PedidoDeTikTok) => Resultado<PublicacionDeTikTok>
+  'tiktok:publicaciones': (sucursal?: string) => Resultado<PublicacionDeTikTok[]>
 
   'sistema:abrirEnlace': (url: string) => Resultado<null>
 

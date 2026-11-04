@@ -92,6 +92,16 @@ import {
   revisarArchivoParaPublicar,
   vincularConMeta,
 } from './servicios/redes'
+import {
+  borrarAppDeTikTok,
+  creadorDeTikTok,
+  desvincularTikTok,
+  guardarAppDeTikTok,
+  panelDeTikTok,
+  publicacionesDeTikTok,
+  publicarEnTikTok,
+  vincularTikTok,
+} from './servicios/tiktok'
 import { apurarAlCartero } from './mensajeria/cartero'
 import {
   abrirConversacionCon,
@@ -2357,6 +2367,61 @@ export function registrarIpc(): void {
   manejar('redes:conversaciones:responder', async (conversacionId, mensaje) => {
     const actor = exigirEdicion('marketing')
     return exito(await responderConversacion(actor, conversacionId, mensaje))
+  })
+
+  // --- Marketing → Redes → TikTok ---------------------------------------------
+  //
+  // Mismo reparto que Meta: la app de cada sucursal (Client Key y Client Secret) y el vínculo son del
+  // SUPER_ADMIN; publicar es editar Marketing, acotado a la sucursal propia (el servidor lo revalida).
+  // El panel lo mira Marketing y también Administración → Redes sociales, donde se carga la app.
+  manejar('tiktok:panel', async () => {
+    const actor = exigirVista('marketing', 'administracion')
+    return exito(await panelDeTikTok(actor))
+  })
+  manejar('tiktok:guardarApp', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await guardarAppDeTikTok(datos, actor))
+  })
+  manejar('tiktok:borrarApp', async (sucursal) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await borrarAppDeTikTok(sucursal, actor))
+  })
+  manejar('tiktok:vincular', async (sucursal) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    exigirEdicion('marketing')
+    return exito(await vincularTikTok(ventanaActual(), sucursal, actor))
+  })
+  manejar('tiktok:desvincular', async (sucursal) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    exigirEdicion('marketing')
+    return exito(await desvincularTikTok(sucursal, actor))
+  })
+  manejar('tiktok:creador', async (sucursal) => {
+    const actor = exigirVista('marketing')
+    return exito(await creadorDeTikTok(actor, sucursal))
+  })
+  manejar('tiktok:elegirVideo', async () => {
+    exigirEdicion('marketing')
+    const ventana = ventanaActual()
+    const opciones = {
+      title: 'Elegí el video para TikTok',
+      buttonLabel: 'Usar este video',
+      properties: ['openFile'] as Array<'openFile'>,
+      filters: [{ name: 'Videos', extensions: ['mp4', 'mov'] }],
+    }
+    const elegido = ventana ? await dialog.showOpenDialog(ventana, opciones) : await dialog.showOpenDialog(opciones)
+    if (elegido.canceled || elegido.filePaths.length === 0) return exito(null)
+    return exito(await revisarArchivoParaPublicar(elegido.filePaths[0]!))
+  })
+  manejar('tiktok:publicar', async (pedido) => {
+    const actor = exigirEdicion('marketing')
+    return exito(await publicarEnTikTok(pedido, actor))
+  })
+  manejar('tiktok:publicaciones', async (sucursal) => {
+    const actor = exigirVista('marketing')
+    return exito(await publicacionesDeTikTok(actor, sucursal))
   })
 
   // El control remoto de las computadoras de la agencia. Lo mira CUALQUIER rol: quien tiene el

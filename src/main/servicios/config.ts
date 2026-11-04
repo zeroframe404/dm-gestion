@@ -160,6 +160,18 @@ export const URL_DE_REDIRECCION_DE_META = 'https://dmartinezseguros.com/meta/vue
  */
 const URL_DE_VUELTA_DE_LA_DEMO = `${EJEMPLO_URL_DEL_VPS}/meta/vuelta`
 
+/**
+ * La dirección a la que vuelve el ingreso de TikTok. Mismo criterio que la de Meta: nunca se navega a
+ * ella, sólo tiene que estar registrada EXACTA en el panel de la app de TikTok (Login Kit → Redirect
+ * URI). Cada sucursal puede cargar otra junto con su app (se guarda en el servidor, no acá).
+ */
+export const URL_DE_REDIRECCION_DE_TIKTOK = 'https://dmartinezseguros.com/tiktok/vuelta'
+
+/** La de fábrica para TikTok (en la demo, la del dominio de ejemplo). */
+export function urlDeVueltaDeTikTokDeFabrica(): string {
+  return esDemo() ? `${EJEMPLO_URL_DEL_VPS}/tiktok/vuelta` : URL_DE_REDIRECCION_DE_TIKTOK
+}
+
 /** La dirección de vuelta vigente: la cargada, o la de fábrica mientras nadie haya cargado otra. */
 export function urlDeVueltaDeMeta(): string {
   const escrita = leerConfig().meta?.urlDeRedireccion

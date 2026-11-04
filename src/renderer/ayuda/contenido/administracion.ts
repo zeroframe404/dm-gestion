@@ -449,7 +449,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.redessociales': {
     clave: 'administracion.redessociales',
     titulo: 'Administración → Redes sociales',
-    resumen: 'La app de Meta que el programa usa para publicar en Facebook e Instagram. La carga el superadministrador una vez y la adoptan todas las computadoras.',
+    resumen: 'La app de Meta que el programa usa para publicar en Facebook e Instagram (la carga el superadministrador una vez y la adoptan todas las computadoras), y la app de TikTok de cada sucursal.',
     secciones: [
       {
         titulo: 'Qué es esto',
@@ -464,6 +464,14 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
           'Es lo que más falla. En el panel de Meta, en «Facebook Login → Configuración», hay que pegar exactamente la dirección que muestra esta pantalla, en «URI de redireccionamiento de OAuth válidos». Si no coincide letra por letra, Facebook rechaza el ingreso con un error que no explica nada. El botón «Copiar» la deja lista para pegar.',
           'El programa nunca abre esa dirección: atrapa el intento y lo cancela. No hace falta que la página exista.',
           'Se puede cambiar, por si algún día cambia el dominio de la agencia, y viaja junto con la app: las cinco computadoras usan la misma. Con que una tuviera otra, el login de Facebook fallaría ahí y en ningún otro lado, que es exactamente el problema que esto evita.',
+        ],
+      },
+      {
+        titulo: 'TikTok: una app por sucursal',
+        parrafos: [
+          'TikTok va aparte y funciona distinto: cada sucursal tiene su propia app en developers.tiktok.com, con su Client Key y su Client Secret. Se cargan en la tarjeta «TikTok: la app de cada sucursal», con «Cargar app» en la fila de cada una.',
+          'Se guardan cifrados sólo en el servidor de la agencia (no en las computadoras): es el servidor el que canjea el ingreso de TikTok y renueva el permiso todos los días. Después de cargar la app, la cuenta se vincula desde Marketing → Redes → TikTok.',
+          'En el panel de TikTok hay que agregar Login Kit y Content Posting API (con Direct Post), registrar la dirección de vuelta que muestra esta pantalla y pedir la revisión de la app. Hasta que TikTok la apruebe, todo lo que se publique sale en privado.',
         ],
       },
       {

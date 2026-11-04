@@ -204,4 +204,51 @@ export const AYUDA_MARKETING: Record<string, ContenidoDeAyuda> = {
     ],
   },
 
+  'marketing.redes.tiktok': {
+    clave: 'marketing.redes.tiktok',
+    titulo: 'Marketing → Redes → TikTok',
+    resumen: 'Publicar videos en la cuenta de TikTok de una sucursal, ahora o programados.',
+    secciones: [
+      {
+        titulo: 'Qué se hace acá',
+        parrafos: [
+          'Se elige un video (.mp4 o .mov, de hasta 40 MB), se escribe el texto, se elige quién lo puede ver y se publica, o se programa para más adelante. Sale en nombre de la cuenta de TikTok de la sucursal y queda anotado quién lo mandó y cuándo.',
+          'TikTok sólo recibe video desde el programa: no publica texto solo, y las fotos (los carruseles) todavía no.',
+          'Cada sucursal tiene su propia cuenta y su propia app de TikTok. Un administrador o un empleado publica siempre en la de su sucursal; el superadministrador puede elegir cualquiera desde el selector de arriba.',
+        ],
+      },
+      {
+        titulo: 'Antes de la primera vez',
+        parrafos: [
+          'El superadministrador carga en Administración → Redes sociales → TikTok el Client Key y el Client Secret de la app de TikTok de esa sucursal (se sacan de developers.tiktok.com). Después, acá, toca «Vincular TikTok», entra con la cuenta de la sucursal y acepta los permisos. Se hace una sola vez: el permiso queda guardado y cifrado en el servidor, y el servidor lo renueva solo todos los días.',
+          'Mientras TikTok no apruebe la app (la «revisión» que hace TikTok), todo lo que se publique sale en privado: sólo lo ve la cuenta. La pantalla lo avisa. Después de aprobada, se puede elegir cualquier privacidad.',
+        ],
+      },
+      {
+        titulo: 'Las opciones del video',
+        parrafos: [
+          'La privacidad no viene elegida: TikTok exige que la elija la persona, y sólo muestra las que la cuenta permite. Comentarios, dúos y stitch arrancan apagados; si la cuenta los tiene bloqueados en TikTok, acá también.',
+          '«Es contenido comercial» se marca cuando el video promociona algo. «Tu marca» es para lo propio de la agencia (TikTok lo marca como «Contenido promocional»); «Contenido de marca» es para una colaboración paga con un tercero (lo marca como «Colaboración pagada») y no se puede publicar en privado.',
+        ],
+      },
+      {
+        titulo: 'Por qué tarda',
+        parrafos: [
+          'TikTok no tiene programación propia: el video queda guardado en el servidor de la agencia y el servidor lo sube solo a la hora elegida. Aunque sea «publicar ahora», pasa por la misma fila: «Subiendo a TikTok», después «TikTok la está procesando» (TikTok revisa el video de su lado) y recién ahí «Publicada». La lista se actualiza sola mientras haya algo en camino.',
+          'Si algo falla, queda en la lista con el motivo que dio TikTok. Si aparece «se cortó la conexión con TikTok», un superadministrador tiene que volver a vincular la cuenta.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Client Key y Client Secret',
+        explicacion: 'El nombre y la clave de la app de TikTok de cada sucursal. Se crean en developers.tiktok.com y se cargan una sola vez en Administración. El Client Secret queda cifrado en el servidor y no vuelve a ninguna pantalla.',
+      },
+      {
+        termino: 'Dúo y stitch',
+        explicacion: 'Dos formas de que otra persona use el video en uno propio: el dúo lo pone al lado, el stitch le agrega un pedazo al principio.',
+      },
+    ],
+  },
+
 }
