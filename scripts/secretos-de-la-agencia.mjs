@@ -13,6 +13,7 @@ export const SECRETOS = [
   { archivo: 'src/main/servicios/config.ts', constante: 'VPS_URL_BASE', reemplazo: 'https://vps.invalid' },
   { archivo: 'src/main/servicios/config.ts', constante: 'MESH_URL', reemplazo: 'https://mesh.invalid' },
   { archivo: 'src/main/servicios/config.ts', constante: 'URL_DE_REDIRECCION_DE_META', reemplazo: 'https://vps.invalid/meta/vuelta' },
+  { archivo: 'src/main/servicios/config.ts', constante: 'URL_DE_REDIRECCION_DE_TIKTOK', reemplazo: 'https://vps.invalid/tiktok/vuelta' },
   { archivo: 'src/main/usuarios/github.ts', constante: 'TOKEN_DATOS', reemplazo: '' },
   { archivo: 'src/main/usuarios/github.ts', constante: 'TOKEN_DATOS_ANTERIOR', reemplazo: '' },
 ]

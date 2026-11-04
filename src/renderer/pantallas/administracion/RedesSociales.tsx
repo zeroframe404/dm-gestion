@@ -1,4 +1,5 @@
-// Administración → Redes sociales: la app de Meta con la que el programa publica.
+// Administración → Redes sociales: la app de Meta con la que el programa publica (y, más abajo, la
+// app de TikTok de cada sucursal: ver `AppsDeTikTok.tsx`).
 //
 // Es una credencial, así que vive donde viven las credenciales: cifrada en el servidor y en el
 // config.json de cada computadora, nunca en la base ni en la hoja. Mismo criterio que la cuenta de
@@ -15,6 +16,7 @@ import { SUCURSALES } from '../../../shared/sucursales'
 import { EJEMPLO_URL_DEL_VPS } from '../../../shared/demo'
 import { useEsDemo } from '../../canal'
 import { EstadoCompartido } from '../../componentes/EstadoCompartido'
+import { AppsDeTikTok } from './AppsDeTikTok'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Campo, CampoClave, Cargando, Etiqueta, Tarjeta } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
@@ -279,6 +281,9 @@ export function RedesSociales() {
           </li>
         </ul>
       </Tarjeta>
+
+      {/* TikTok va aparte: cada sucursal con su propia app, guardada sólo en el servidor. */}
+      <AppsDeTikTok puedeEditar={puedeEditar} />
     </div>
   )
 }

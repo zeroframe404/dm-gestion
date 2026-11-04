@@ -503,6 +503,17 @@ const api: ApiDm = {
     conversacionMensajes: (conversacionId) => invocar('redes:conversaciones:mensajes', conversacionId),
     conversacionResponder: (conversacionId, mensaje) => invocar('redes:conversaciones:responder', conversacionId, mensaje),
   },
+  tiktok: {
+    panel: () => invocar('tiktok:panel'),
+    guardarApp: (datos) => invocar('tiktok:guardarApp', datos),
+    borrarApp: (sucursal) => invocar('tiktok:borrarApp', sucursal),
+    vincular: (sucursal) => invocar('tiktok:vincular', sucursal),
+    desvincular: (sucursal) => invocar('tiktok:desvincular', sucursal),
+    creador: (sucursal) => invocar('tiktok:creador', sucursal),
+    elegirVideo: () => invocar('tiktok:elegirVideo'),
+    publicar: (pedido) => invocar('tiktok:publicar', pedido),
+    publicaciones: (sucursal) => invocar('tiktok:publicaciones', sucursal),
+  },
   sistema: {
     abrirEnlace: (url) => invocar('sistema:abrirEnlace', url),
   },

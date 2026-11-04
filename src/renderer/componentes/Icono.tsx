@@ -397,6 +397,8 @@ const TRAZOS = {
       <path d="M17.5 6.5h.01" />
     </>
   ),
+  /** La nota musical de TikTok, dibujada con trazo como el resto. */
+  tiktok: <path d="M9 12a4 4 0 1 0 4 4V3a5 5 0 0 0 5 5" />,
   /** El globito con el tubo: el botón que abre la charla con el cliente (Mi link → Solicitudes). */
   whatsapp: (
     <>

@@ -1,4 +1,4 @@
-// La ventana donde la persona ingresa a Facebook.
+// La ventana donde la persona ingresa a Facebook (o a TikTok, ver `redes/tiktok.ts`).
 //
 // Va en una BrowserWindow PROPIA y no en la principal, y no es un capricho: la ventana principal
 // tiene un `setWindowOpenHandler` que manda cualquier http(s) al navegador del sistema y un
@@ -16,6 +16,19 @@ import { urlDeAutorizacion } from './meta'
 /** Si en cinco minutos nadie terminó de ingresar, se cierra sola: no puede quedar una ventana viva. */
 export const TIEMPO_MAXIMO_DE_INGRESO_MS = 5 * 60 * 1000
 
+/** Lo que cambia entre el ingreso de Facebook y el de TikTok: la dirección, la red y la sesión. */
+export interface IngresoDeRed {
+  /** La dirección del diálogo de la red, ya armada con el `state` de abajo. */
+  urlDelIngreso: (estado: string) => string
+  /** Tiene que empezar EXACTAMENTE como la registrada en el panel de la red. */
+  urlDeRedireccion: string
+  /** «Facebook», «TikTok»: para los títulos y los mensajes. */
+  red: string
+  /** La sesión de la ventana: cada red con la suya, para que no se mezclen las cookies. */
+  particion: string
+  padre: BrowserWindow | null
+}
+
 /**
  * Abre el diálogo de Facebook y devuelve el código de autorización.
  *
@@ -24,7 +37,19 @@ export const TIEMPO_MAXIMO_DE_INGRESO_MS = 5 * 60 * 1000
  * siquiera exista. Es el error de configuración más común y por eso la pantalla la muestra con un
  * botón para copiarla.
  */
-export async function pedirCodigoDeMeta(appId: string, urlDeRedireccion: string, padre: BrowserWindow | null): Promise<string> {
+export function pedirCodigoDeMeta(appId: string, urlDeRedireccion: string, padre: BrowserWindow | null): Promise<string> {
+  return pedirCodigoDeAutorizacion({
+    urlDelIngreso: (estado) => urlDeAutorizacion(appId, urlDeRedireccion, estado),
+    urlDeRedireccion,
+    red: 'Facebook',
+    particion: 'meta-login',
+    padre,
+  })
+}
+
+/** El ingreso de una red en su ventana propia (ver arriba por qué), hasta que vuelve con el código. */
+export async function pedirCodigoDeAutorizacion(ingreso: IngresoDeRed): Promise<string> {
+  const { urlDeRedireccion, red, particion, padre } = ingreso
   // El `state` es contra el falseo de la vuelta: si el que llega no es el que se mandó, no se acepta.
   const estadoEsperado = randomUUID()
 
@@ -33,9 +58,9 @@ export async function pedirCodigoDeMeta(appId: string, urlDeRedireccion: string,
     height: 760,
     parent: padre ?? undefined,
     modal: Boolean(padre),
-    title: 'Ingresar en Facebook',
+    title: `Ingresar en ${red}`,
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition: 'meta-login' },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition: particion },
   })
 
   return new Promise<string>((resolver, rechazar) => {
@@ -55,7 +80,7 @@ export async function pedirCodigoDeMeta(appId: string, urlDeRedireccion: string,
     }
 
     const reloj = setTimeout(
-      () => terminar(new ErrorDeNegocio('Se agotó el tiempo para ingresar en Facebook. Probá de nuevo.')),
+      () => terminar(new ErrorDeNegocio(`Se agotó el tiempo para ingresar en ${red}. Probá de nuevo.`)),
       TIEMPO_MAXIMO_DE_INGRESO_MS,
     )
 
@@ -67,25 +92,25 @@ export async function pedirCodigoDeMeta(appId: string, urlDeRedireccion: string,
       let parametros: URLSearchParams
       try {
         const analizada = new URL(url)
-        // Facebook puede devolver los datos en la query o en el fragmento según el flujo.
+        // La red puede devolver los datos en la query o en el fragmento según el flujo.
         parametros = new URLSearchParams(analizada.search || analizada.hash.replace(/^#/, ''))
       } catch {
-        terminar(new ErrorDeNegocio('Facebook devolvió una respuesta que no se pudo leer.'))
+        terminar(new ErrorDeNegocio(`${red} devolvió una respuesta que no se pudo leer.`))
         return
       }
 
       const errorDicho = parametros.get('error_description') || parametros.get('error')
       if (errorDicho) {
-        terminar(new ErrorDeNegocio(`Facebook no autorizó la vinculación: ${errorDicho}`))
+        terminar(new ErrorDeNegocio(`${red} no autorizó la vinculación: ${errorDicho}`))
         return
       }
       if (parametros.get('state') !== estadoEsperado) {
-        terminar(new ErrorDeNegocio('La respuesta de Facebook no coincide con el pedido. Por seguridad no se aceptó; probá de nuevo.'))
+        terminar(new ErrorDeNegocio(`La respuesta de ${red} no coincide con el pedido. Por seguridad no se aceptó; probá de nuevo.`))
         return
       }
       const codigo = parametros.get('code')
       if (!codigo) {
-        terminar(new ErrorDeNegocio('Facebook no devolvió el código para vincular la cuenta.'))
+        terminar(new ErrorDeNegocio(`${red} no devolvió el código para vincular la cuenta.`))
         return
       }
       terminar(null, codigo)
@@ -96,8 +121,8 @@ export async function pedirCodigoDeMeta(appId: string, urlDeRedireccion: string,
     // Cerrarla a mano es cancelar: no es un error del programa, es alguien que se arrepintió.
     ventana.on('closed', () => terminar(new ErrorDeNegocio('Se cerró la ventana antes de terminar de vincular la cuenta.')))
 
-    void ventana.loadURL(urlDeAutorizacion(appId, urlDeRedireccion, estadoEsperado)).catch(() => {
-      terminar(new ErrorDeNegocio('No se pudo abrir el ingreso de Facebook. Fijate si hay internet.'))
+    void ventana.loadURL(ingreso.urlDelIngreso(estadoEsperado)).catch(() => {
+      terminar(new ErrorDeNegocio(`No se pudo abrir el ingreso de ${red}. Fijate si hay internet.`))
     })
   })
 }
