@@ -487,6 +487,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
 
   const datos: DatosDeCotizacionEquidad = {
     usuario: c.usuario,
+    sistemaOrigen: cuenta.usuario,
     rama: c.rama,
     tipoPoliza,
     tomadorNombre: nombreDelTomador(solicitud.tomador) || 'A COTIZAR',
