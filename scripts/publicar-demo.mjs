@@ -5,7 +5,7 @@
 // Si se publica en el del programa (DEMO_REPO, desde Actions) es prerelease y nunca «Latest». La demo no se actualiza sola (no hay .yml que publicar), y de
 // cada demo anterior se borra el instalador después de subir el nuevo.
 import { execFileSync } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 const raiz = path.resolve(import.meta.dirname, '..')
@@ -50,8 +50,11 @@ const notas = [
   '',
   'Para entrar: usuario `test`, contraseña `admin` (en la pantalla de ingreso están también los demás usuarios de ejemplo, uno por rol).',
   '',
-  `Guía de la demo: ${GUIA}`,
-  ...(esElRepoDelPrograma ? ['', `Compilación de ${sha.slice(0, 7)}.`] : []),
+  // En el repositorio del programa la guía puede no estar todavía en la rama por defecto (llega con la
+  // promoción a master): va entera en las notas, así el enlace que se manda nunca lleva a una página rota.
+  ...(esElRepoDelPrograma
+    ? ['---', '', readFileSync(path.join(raiz, 'docs', 'GUIA-COBERTIA-DEMO.md'), 'utf8').replace(/^# .*\r?\n+/, '')]
+    : [`Guía de la demo: ${GUIA}`]),
 ].join('\n')
 
 let existe = true
