@@ -17,6 +17,21 @@ import { borrarArchivoDeAdjunto } from './carpetaDeAdjuntos'
  */
 export const PESTANA_APP = '(cargado en DM Gestión)'
 
+/**
+ * Cómo se MUESTRA esa pestaña en pantalla. El valor de arriba queda tal cual porque está guardado en la
+ * base de cada computadora (filas_crudas, bajas, pagos, la cola de cambios) y se compara por igualdad en
+ * todos lados: cambiarlo dejaría huérfano todo lo ya cargado. Lo que cambia es sólo el texto que lee la
+ * persona, que no tiene por qué nombrar al programa (la demo, por ejemplo, se llama de otra manera).
+ * La pantalla no puede importar este archivo (abre la base), así que Sincronizacion.tsx y Duplicados.tsx
+ * repiten esta misma traducción con los mismos dos textos.
+ */
+export const ETIQUETA_DE_PESTANA_APP = '(cargado en el programa)'
+
+/** La pestaña para mostrar: la de la aplicación con su etiqueta neutra, cualquier otra tal cual. */
+export function pestanaParaMostrar(pestana: string): string {
+  return pestana === PESTANA_APP ? ETIQUETA_DE_PESTANA_APP : pestana
+}
+
 export interface FilaNuevaDeLaApp {
   filaId: string
   pestana: string

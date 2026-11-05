@@ -27,6 +27,7 @@ import type {
 } from './miLink'
 import type { MatrizPermisos } from './permisos'
 import type {
+  EstadoDeApisDeAsegurados,
   FilaDeAsegurado,
   FilaDeComision,
   FilaDeCuota,
@@ -809,6 +810,13 @@ export interface Canales {
    * esta firma.
    */
   'listados:asegurados': (filtros: FiltrosDeAsegurados) => Resultado<FilaDeAsegurado[]>
+  /**
+   * Las APIs de las aseguradoras que confirman con quién está cada asegurado (servicios/aseguradorasPorApi.ts):
+   * su estado, y una pasada de consultas. La pasada sólo LEE de las APIs y guarda una caché en esta
+   * computadora; no escribe nada en el VPS.
+   */
+  'listados:apisDeAsegurados': () => Resultado<EstadoDeApisDeAsegurados>
+  'listados:consultarApisDeAsegurados': (opciones: { forzar?: boolean }) => Resultado<EstadoDeApisDeAsegurados>
   'listados:polizas': (filtros: FiltrosDePolizasListado) => Resultado<FilaDePolizaListado[]>
   'listados:siniestros': (filtros: FiltrosDeSiniestrosListado) => Resultado<FilaDeSiniestroListado[]>
   'listados:vencimientos': (filtros: FiltrosDeVencimientos) => Resultado<FilaDeVencimiento[]>

@@ -14,7 +14,14 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos } from './db/base'
 import { esDemo, nombreActual } from './canal'
 import { firmarPlantillasDeLaDemo } from './demo/identidad'
 import { arrancarServidorDeLaDemo, pararServidorDeLaDemo } from './demo/servidor'
-import { mostrarWhatsappDeLaDemo, whatsappDeLaDemo } from './demo/whatsapp'
+import {
+  abrirEnlaceDeLaDemo,
+  avisarEnlaceBloqueado,
+  blindarFetchDeLaDemo,
+  blindarSesionDeLaDemo,
+  blindarWebSocketDeLaDemo,
+  esDireccionLocal,
+} from './demo/enlaces'
 import { cerrarPantallaDeCarga, enfocarPantallaDeCarga, mostrarPantallaDeCarga } from './pantallaDeCarga'
 import { registrarIpc } from './ipc'
 import { arrancarCartero, apurarAlCartero, pararCartero } from './mensajeria/cartero'
@@ -51,6 +58,17 @@ const ESPERA_MAXIMA_DE_LA_PANTALLA_MS = 12_000
 
 app.setName(nombreActual())
 
+// Demo: la red de seguridad del proceso principal, antes que cualquier otra cosa pueda pedir algo. Cada
+// servicio ya corta solo en la demo (`if (esDemo())`); esto frena lo que se le escape a esos cortes:
+// `fetch` y `WebSocket` globales rechazan todo destino que no sea de esta computadora, y cada sesión de
+// Electron que se cree (la por omisión y las particiones, como la del ingreso a las redes) cancela los
+// pedidos de la pantalla a internet. Ver `demo/enlaces.ts`. Fuera de la demo no se toca nada.
+if (esDemo()) {
+  blindarFetchDeLaDemo()
+  blindarWebSocketDeLaDemo()
+  app.on('session-created', (sesion) => blindarSesionDeLaDemo(sesion))
+}
+
 // Antes que nada, porque lo que sigue ya puede fallar.
 vigilarErroresSueltos()
 try {
@@ -72,7 +90,8 @@ function crearVentana(): void {
     minHeight: 640,
     show: false,
     title: nombreActual(),
-    backgroundColor: '#0b1f3b',
+    // El fondo mientras la pantalla no dibujó nada: el azul de la marca, y en la demo el verde de la suya.
+    backgroundColor: esDemo() ? '#063b33' : '#0b1f3b',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -107,6 +126,8 @@ function crearVentana(): void {
     marcarArranqueTerminado()
   }
 
+  // La demo se llama distinto (Cobertia): el <title> del HTML no pisa el título de la ventana.
+  if (esDemo()) ventana.on('page-title-updated', (evento) => evento.preventDefault())
   ventana.once('ready-to-show', () => mostrar('ready-to-show'))
 
   // Si la pantalla no carga, el programa no sirve para nada: se dice qué pasó y se sale, en vez de
@@ -157,14 +178,19 @@ function crearVentana(): void {
   // Los enlaces externos se abren en el navegador; nunca en una ventana de la app.
   ventana.webContents.setWindowOpenHandler(({ url }) => {
     // Demo: un enlace de WhatsApp (los organizadores, por ejemplo) no abre un chat con un número de
-    // ejemplo que puede ser de alguien; muestra cómo llegaría el mensaje (ver `demo/whatsapp.ts`).
-    const whatsapp = esDemo() ? whatsappDeLaDemo(url) : null
-    if (whatsapp) void mostrarWhatsappDeLaDemo(whatsapp, ventana)
-    else if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    // ejemplo que puede ser de alguien, y ningún otro enlace sale a internet: sólo se abre lo local y lo
+    // demás muestra un aviso (ver `demo/enlaces.ts`).
+    if (esDemo()) {
+      if (/^https?:\/\//i.test(url)) void abrirEnlaceDeLaDemo(url, ventana)
+    } else if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
   ventana.webContents.on('will-navigate', (evento, url) => {
-    if (url !== ventana.webContents.getURL()) evento.preventDefault()
+    if (url === ventana.webContents.getURL()) return
+    evento.preventDefault()
+    // Demo: la navegación ya quedó cancelada (como siempre); si iba a internet se dice por qué no pasó
+    // nada, en vez de dejar un clic sin respuesta delante de quien mira la demostración.
+    if (esDemo() && !esDireccionLocal(url)) void avisarEnlaceBloqueado(url, ventana)
   })
 
   const cargar = URL_DESARROLLO
@@ -330,6 +356,9 @@ function engancharElCanal(): void {
  * `http://localhost:5173` en desarrollo, así que un origen no distingue nada; el `webContents`, sí.
  */
 function blindarLosPermisos(): void {
+  // Demo: la sesión por omisión ya pasó por `session-created`; esto es por si se creó antes de que el
+  // enganche estuviera puesto. Poner la red dos veces no hace nada (ver `blindarSesionDeLaDemo`).
+  if (esDemo()) blindarSesionDeLaDemo(session.defaultSession)
   const nuestraPantalla = (contenido: Electron.WebContents | null | undefined): boolean => {
     const ventana = ventanaPrincipal
     if (!ventana || ventana.isDestroyed() || !contenido) return false

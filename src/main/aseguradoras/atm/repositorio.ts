@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, w
 import path from 'node:path'
 import { Writable } from 'node:stream'
 import type { AmbienteAtm, EstadoDeTablasAtm, TablaDeAtmEnDisco } from '../../../shared/tipos'
+import { esDemo } from '../../canal'
 import { carpetaDatos } from '../../rutas'
 import { esFallaDeRed } from '../../servicios/red'
 import { ErrorDeAtm, type CuentaAtm } from './cliente'
@@ -426,6 +427,9 @@ function masNuevo(a: Candidato, b: Candidato): Candidato {
 
 /** Baja del FTP las tablas que reconozca (en la raíz o una carpeta adentro). */
 export async function bajarTablasPorFtp(cuenta: CuentaAtm): Promise<ArchivoSuelto[]> {
+  // Demo: el FTP abre un socket propio (no pasa por `fetch`, así que la red de seguridad de index.ts no
+  // lo frena). Las tablas de la demo las inventa `demo/apis.ts`; si algo llegara hasta acá, se corta.
+  if (esDemo()) throw new ErrorDeAtm('La versión de demostración no se conecta con el FTP de ATM.', false)
   let cliente: Client | null = null
   try {
     cliente = await conectar(cuenta)

@@ -11,10 +11,13 @@
 export const SECRETOS = [
   { archivo: 'src/main/servicios/config.ts', constante: 'VPS_TOKEN', reemplazo: '' },
   { archivo: 'src/main/servicios/config.ts', constante: 'VPS_URL_BASE', reemplazo: 'https://vps.invalid' },
-  { archivo: 'src/shared/miLink.ts', constante: 'URL_BASE_DE_MI_LINK', reemplazo: 'https://vps.invalid' },
   { archivo: 'src/main/servicios/config.ts', constante: 'MESH_URL', reemplazo: 'https://mesh.invalid' },
   { archivo: 'src/main/servicios/config.ts', constante: 'URL_DE_REDIRECCION_DE_META', reemplazo: 'https://vps.invalid/meta/vuelta' },
   { archivo: 'src/main/servicios/config.ts', constante: 'URL_DE_REDIRECCION_DE_TIKTOK', reemplazo: 'https://vps.invalid/tiktok/vuelta' },
+  // El dominio público de la agencia (Mi link): la demo usa uno de ejemplo. Lo compilan el proceso
+  // principal y la pantalla (vite.config.mts aplica el mismo reemplazo), y el servidor simulado.
+  { archivo: 'src/shared/miLink.ts', constante: 'URL_BASE_DE_MI_LINK', reemplazo: 'https://suagencia.com.ar' },
+  { archivo: 'scripts/vps-simulado.mjs', constante: 'URL_BASE_DE_MI_LINK', reemplazo: 'https://suagencia.com.ar' },
   { archivo: 'src/main/usuarios/github.ts', constante: 'TOKEN_DATOS', reemplazo: '' },
   { archivo: 'src/main/usuarios/github.ts', constante: 'TOKEN_DATOS_ANTERIOR', reemplazo: '' },
 ]

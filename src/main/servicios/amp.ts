@@ -19,7 +19,7 @@ import { booleano, enteroPositivo } from './validacion'
 
 const SIN_COLUMNA =
   'La pestaña AMP de la hoja no tiene una columna RESUELTO, así que el tilde queda guardado sólo en ' +
-  'DM Gestión (la lista de acá es la que vale). Si querés que se vea también en Google, agregale una ' +
+  'el programa (la lista de acá es la que vale). Si querés que se vea también en Google, agregale una ' +
   'columna con ese encabezado y volvé a importar.'
 
 interface HojaDeAmp {

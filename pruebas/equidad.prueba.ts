@@ -12,6 +12,7 @@ import test from 'node:test'
 import { claveDeVariante, claveDeVehiculo, leerLista, leerVehiculos, listaDe, numeroDeEquidad } from '../src/main/aseguradoras/equidad/catalogos'
 import {
   consultaOrdenada,
+  codigoDelJsonResult,
   crearClienteEquidad,
   ErrorDeEquidad,
   fechaCompacta,
@@ -243,6 +244,7 @@ test('Equidad: los importes vienen como vengan', () => {
 test('Equidad: el pedido de CotizarAutomotor lleva los nombres exactos del documento, errata incluida', () => {
   const pedido = armarPedidoDeCotizacion({
     usuario: 'GLM',
+    sistemaOrigen: 'DMARTINEZ',
     rama: '4',
     tipoPoliza: 'AU',
     tomadorNombre: 'A COTIZAR',
@@ -281,12 +283,14 @@ test('Equidad: el pedido de CotizarAutomotor lleva los nombres exactos del docum
     },
   })
   assert.equal(pedido.Usuario, 'GLM')
-  assert.equal(pedido.Rama, 4)
+  assert.equal(pedido.SistemaOrigen, 'DMARTINEZ', 'el usuario de ingreso, como pidió Equidad')
+  assert.equal(pedido.Rama, '4', 'como texto, igual que el ejemplo de Equidad')
   assert.equal(pedido.TomadorTipoPersona, '1')
   assert.equal(pedido.TomadoCategoriaIVACodigo, 'CF', 'sic: así lo nombra el documento')
+  assert.equal(pedido.TomadorCategoriaIVACodigo, 'CF', 'y bien escrito, como el ejemplo de Equidad')
   assert.equal(pedido.VigenciaDesde, '2026-10-20')
-  assert.equal(pedido.ProductorCodigo, 1234)
-  assert.equal(pedido.FormaPagoCodigo, 2)
+  assert.equal(pedido.ProductorCodigo, '1234')
+  assert.equal(pedido.FormaPagoCodigo, '2')
   assert.equal(pedido.PorcentajeBonificacion, 20)
   assert.equal(pedido.PorcenjateRecargoAdm, 10, 'sic: la errata es el nombre que la API espera')
   assert.equal('Solicitud' in pedido, false)
@@ -447,17 +451,18 @@ test('Equidad: cotiza eligiendo cada combo como la web (tipo de póliza, product
   const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
   const cuerpo = JSON.parse(post.cuerpo) as Record<string, unknown> & { RiesgoAUT: Record<string, unknown> }
   assert.equal(cuerpo.Usuario, 'GLM')
-  assert.equal(cuerpo.Rama, 4)
+  assert.equal(cuerpo.Rama, '4')
   assert.equal(cuerpo.TipoPolizaCodigo, 'AU', 'el tipo de póliza que nombra a los autos')
-  assert.equal(cuerpo.ProductorCodigo, 1234)
+  assert.equal(cuerpo.ProductorCodigo, '1234')
   assert.equal(cuerpo.MonedaCodigo, '1', 'pesos')
   assert.equal(cuerpo.PlanComercialCodigo, 'PL1')
   assert.equal(cuerpo.ModoFacturacionCodigo, 'ANU')
-  assert.equal(cuerpo.FormaPagoCodigo, 2, 'la forma de pago que corresponde a la tarjeta')
+  assert.equal(cuerpo.FormaPagoCodigo, '2', 'la forma de pago que corresponde a la tarjeta')
   assert.equal(cuerpo.CondicionPagoCodigo, 'C12', 'la condición por defecto de Equidad')
   assert.equal(cuerpo.TomadoCategoriaIVACodigo, 'CF')
   assert.equal(cuerpo.TomadorIIBBCodigo, 'NI')
   assert.equal(cuerpo.TomadorNombre, 'Juan Pérez')
+  assert.equal(cuerpo.SistemaOrigen, CUENTA.usuario)
   assert.equal(cuerpo.TomadorTipoPersona, '1')
   assert.equal('PorcentajeBonificacion' in cuerpo, false, 'sin elegir, Equidad aplica la suya')
   assert.equal(cuerpo.RiesgoAUT.CodigoPostal, '1870')
@@ -581,7 +586,68 @@ test('Equidad: lo que no es de la cotización (la cuenta rechazada, sin internet
   usarCuentaDeEquidadDePrueba(CUENTA)
   t.after(() => usarCuentaDeEquidadDePrueba(null))
   fetchFalso(t, () => json({ status: 401, Description: 'Falló la autenticación' }, 401))
-  await assert.rejects(equidad.cotizar(solicitud(), {}), /no aceptó las credenciales/)
+  await assert.rejects(equidad.cotizar(solicitud(), {}), /rechazó el usuario y la contraseña de aplicación \(401: Falló la autenticación/)
+})
+
+test('Equidad: si el login da 401 con el usuario de servicio, se prueba sin él (en AutenticarUsuario el Basic es opcional)', async (t) => {
+  const pedidos = fetchFalso(t, (pedido) => {
+    if (esServicio(pedido, 'autenticarUsuario')) {
+      return pedido.headers.authorization ? json({ status: 401, Description: 'Unauthorized', Detail: 'Falló la autenticación' }, 401) : json(SESION)
+    }
+    return json([{ Codigo: '1', Descripcion: 'PESOS' }])
+  })
+  const sesion = await crearClienteEquidad(CUENTA).sesion()
+  assert.equal(sesion.usuarioCodigo, SESION.UsuCod)
+  const logins = pedidos.filter((p) => esServicio(p, 'autenticarUsuario'))
+  assert.equal(logins.length, 2)
+  assert.match(logins[0]!.headers.authorization ?? '', /^Basic /)
+  assert.equal(logins[1]!.headers.authorization, undefined)
+})
+
+test('Equidad: si el login da 401 de las dos formas, el mensaje dice qué revisar', async (t) => {
+  fetchFalso(t, () => json({ status: 401, Description: 'Unauthorized', Detail: 'Falló la autenticación' }, 401))
+  await assert.rejects(crearClienteEquidad(CUENTA).sesion(), (error: Error) => {
+    assert.match(error.message, /401: Unauthorized: Falló la autenticación; se probó con el usuario de servicio, sin Basic, con el Basic del usuario de aplicación/)
+    assert.match(error.message, /mismo ambiente que la URL base/)
+    return true
+  })
+})
+
+test('Equidad: si el Basic pasa y AutenticarUsuario devuelve código 7, el mensaje dice que la que falla es la contraseña de aplicación', async (t) => {
+  // Lo que contestó producción el 05/11/2026: sin Basic o con uno malo, el genérico; con el Basic bueno,
+  // el JSON Error de AutenticarUsuario adentro de JsonResult.
+  const basicDeServicio = `Basic ${Buffer.from(`PORTAL:${CLAVE_SERVICIO}`).toString('base64')}`
+  fetchFalso(t, (pedido) =>
+    pedido.headers.authorization === basicDeServicio
+      ? json({ status: 401, Description: 'Unauthorized', detail: 'La contraseña ingresada no es válida', JsonResult: '{"Codigo":7,"Mensaje":"La contraseña ingresada no es válida"}' }, 401)
+      : json({ status: 401, Description: 'Unauthorized', detail: 'Falló la autenticación', JsonResult: '' }, 401),
+  )
+  await assert.rejects(crearClienteEquidad(CUENTA).sesion(), (error: Error) => {
+    assert.match(error.message, /aceptó el usuario de servicio \(con el usuario de servicio\) pero rechazó la contraseña de aplicación: Unauthorized: La contraseña ingresada no es válida \(código 7\)/)
+    assert.match(error.message, /web de productores/)
+    return true
+  })
+  assert.equal(codigoDelJsonResult('{"JsonResult":"{\\"Codigo\\":7}"}'), 7)
+  assert.equal(codigoDelJsonResult('{"JsonResult":""}'), null)
+  assert.equal(codigoDelJsonResult('no es json'), null)
+})
+
+test('Equidad: sin usuario de servicio, si el login da 401 sin Basic se prueba el Basic con el usuario de aplicación, y queda para los servicios', async (t) => {
+  const basicDeAplicacion = `Basic ${Buffer.from(`GLM:${CLAVE}`).toString('base64')}`
+  const pedidos = fetchFalso(t, (pedido) => {
+    if (pedido.headers.authorization !== basicDeAplicacion) return json({ status: 401, Description: 'Unauthorized', Detail: 'Falló la autenticación' }, 401)
+    if (esServicio(pedido, 'autenticarUsuario')) return json({ UsuCod: 'GLM', UsuNom: 'GLM' }) // sin Token
+    return json([{ Codigo: '1', Descripcion: 'PESOS' }])
+  })
+  const cliente = crearClienteEquidad({ ...CUENTA, usuarioDeServicio: '', claveDeServicio: '' })
+  await cliente.get<unknown>('listarMoneda', [['UsuCod', 'GLM']])
+  const logins = pedidos.filter((p) => esServicio(p, 'autenticarUsuario'))
+  assert.deepEqual(
+    logins.map((p) => p.headers.authorization ?? null),
+    [null, basicDeAplicacion],
+  )
+  const lista = pedidos.find((p) => esServicio(p, 'listarMoneda'))!
+  assert.equal(lista.headers.authorization, basicDeAplicacion, 'sin token, el servicio va con el Basic que anduvo')
 })
 
 test('Equidad: las decisiones por defecto, solas', () => {

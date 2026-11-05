@@ -1,4 +1,4 @@
-// Mi link: la página pública de cada persona de la agencia (dmartinezseguros.com/p/<dirección>), las
+// Mi link: la página pública de cada persona de la agencia (<dominio de Mi link>/p/<dirección>), las
 // solicitudes y denuncias que le llegan desde ahí y sus métricas.
 //
 // TODO VIVE EN EL VPS (`/api/dmg/mi-link`). Esta computadora no guarda nada: ni la página, ni las
@@ -23,6 +23,8 @@ import {
   RANGOS_DE_METRICAS,
   claveDeMiLinkDeSucursal,
   URL_BASE_DE_MI_LINK,
+  urlBaseDeMiLink,
+  urlDeMiLinkDelCanal,
   type ArchivoDeDenuncia,
   type CambiosDeMiLink,
   type DenunciaDeMiLink,
@@ -37,6 +39,7 @@ import {
 } from '../../shared/miLink'
 import { SUCURSALES, sucursalCanonica } from '../../shared/sucursales'
 import type { SesionUsuario } from '../../shared/tipos'
+import { esDemo } from '../canal'
 import { ErrorDelServidorVps, type ActorDeMiLinkVps, type FuenteVps } from '../vps/fuenteVps'
 import { ErrorDeNegocio, SinConexion } from './errores'
 import { credencialesDelPuente, crearFuenteVps } from './sincronizacion'
@@ -178,8 +181,27 @@ function cambiosDeSeguimiento<E extends string>(crudo: unknown, estados: readonl
 
 // --- La página ------------------------------------------------------------------------------------
 
+/**
+ * El dominio de Mi link de este programa: el de la agencia, o en la demo el de ejemplo
+ * (`suagencia.com.ar`), que es el que se le muestra a otra agencia.
+ */
+function urlBaseDeEstePrograma(): string {
+  return urlBaseDeMiLink(esDemo() ? 'demo' : 'estable')
+}
+
+/**
+ * La página con la URL escrita con el dominio de este programa. El servidor (también el simulado de la
+ * demo) la contesta siempre con el de la agencia; en la estable y la beta esto no cambia nada.
+ */
+function conElDominioDelCanal(link: MiLink): MiLink
+function conElDominioDelCanal(link: MiLink | null): MiLink | null
+function conElDominioDelCanal(link: MiLink | null): MiLink | null {
+  if (!link || !esDemo()) return link
+  return { ...link, url: urlDeMiLinkDelCanal(link.url, 'demo') }
+}
+
 export async function miLinkPropio(actor: SesionUsuario): Promise<MiLink | null> {
-  return conElServidor((vps) => vps.miLinkMia(actorDeMiLink(actor)))
+  return conElDominioDelCanal(await conElServidor((vps) => vps.miLinkMia(actorDeMiLink(actor))))
 }
 
 export async function direccionLibreDeMiLink(actor: SesionUsuario, direccion: unknown): Promise<{ libre: boolean; motivo: string | null }> {
@@ -194,7 +216,7 @@ export async function guardarMiLink(actor: SesionUsuario, crudo: unknown): Promi
     publicada: cambios.publicada === true,
     contenido: cambios.contenido as CambiosDeMiLink['contenido'],
   }
-  return conElServidor((vps) => vps.miLinkGuardar(actorDeMiLink(actor), limpios))
+  return conElDominioDelCanal(await conElServidor((vps) => vps.miLinkGuardar(actorDeMiLink(actor), limpios)))
 }
 
 // --- Solicitudes y denuncias ----------------------------------------------------------------------
@@ -298,7 +320,9 @@ export function direccionParaAbrir(url: unknown, urlDelServidor: string | null):
     return null
   }
   if (!RUTA_DE_PAGINA.test(pedida.pathname) || pedida.username || pedida.password) return null
-  const permitidos = new Set([new URL(URL_BASE_DE_MI_LINK).origin])
+  // El dominio de la agencia siempre (es el que contesta el servidor) y, en la demo, también el de
+  // ejemplo, que es el que la pantalla tiene escrito.
+  const permitidos = new Set([new URL(URL_BASE_DE_MI_LINK).origin, new URL(urlBaseDeEstePrograma()).origin])
   if (urlDelServidor) {
     try {
       permitidos.add(new URL(urlDelServidor).origin)
@@ -316,14 +340,21 @@ export async function abrirMiLinkEnElNavegador(url: unknown): Promise<void> {
   const servidor = credencialesDelPuente()?.urlBase ?? null
   let destino = direccionParaAbrir(url, servidor)
   if (!destino) throw new ErrorDeNegocio('Esa no es una dirección de Mi link.')
-  // El servidor contesta siempre la dirección pública (dmartinezseguros.com/p/…), también el de pruebas
-  // y el de la demo, que no la publican ahí: contra esos se abre la misma página en el servidor que la
-  // tiene, que es el único que la puede mostrar.
+  // El servidor contesta siempre la dirección pública (la del dominio de la agencia), también el de
+  // pruebas y el de la demo, que no la publican ahí: contra esos se abre la misma página en el servidor
+  // que la tiene, que es el único que la puede mostrar. En la demo la pantalla tiene escrita la del
+  // dominio de ejemplo: esa tampoco existe en internet y se abre igual, en el servidor simulado.
   if (servidor && !servidor.startsWith(URL_BASE_DE_MI_LINK)) {
     const pedida = new URL(destino)
-    if (pedida.origin === new URL(URL_BASE_DE_MI_LINK).origin) {
+    const publicos = new Set([new URL(URL_BASE_DE_MI_LINK).origin, new URL(urlBaseDeEstePrograma()).origin])
+    if (publicos.has(pedida.origin)) {
       destino = `${servidor.replace(/\/+$/, '')}${PREFIJO_DE_MI_LINK}${pedida.pathname.slice(PREFIJO_DE_MI_LINK.length)}${pedida.search}`
     }
+  }
+  // La demo nunca sale a internet: si no hay servidor simulado andando, la dirección sigue siendo la
+  // pública (que en la demo además es de ejemplo) y no se abre.
+  if (esDemo() && new URL(destino).origin !== new URL(servidor ?? 'http://127.0.0.1').origin) {
+    throw new ErrorDeNegocio('En la demo la página se abre desde el servidor de demostración, y no está andando.')
   }
   await shell.openExternal(destino)
 }
@@ -347,7 +378,10 @@ export async function sucursalesDeMiLink(actor: SesionUsuario): Promise<Sucursal
   const elegida = sucursalDeTrabajo(actor)
   if (!esSuperadministrador(actor)) return { elegida, puedeElegir: false, sucursales: [] }
   const sucursales = await Promise.all(
-    SUCURSALES.map(async (nombre) => ({ nombre, link: await conElServidor((vps) => vps.miLinkMia(actorDeSucursal(actor, nombre))) })),
+    SUCURSALES.map(async (nombre) => ({
+      nombre,
+      link: conElDominioDelCanal(await conElServidor((vps) => vps.miLinkMia(actorDeSucursal(actor, nombre)))),
+    })),
   )
   return { elegida, puedeElegir: true, sucursales }
 }

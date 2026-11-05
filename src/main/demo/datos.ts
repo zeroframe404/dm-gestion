@@ -323,7 +323,7 @@ const SUCURSALES_DEMO: SucursalDemo[] = [
     peso: 15,
     localidades: [L('AVELLANEDA', '1870'), L('BERNAL', '1876'), L('QUILMES', '1878'), L('LANUS OESTE', '1824'), L('GERLI', '1869')],
     usuarios: usuariosDe('Daniel'),
-    productor: 'DANIEL RUIZ',
+    productor: 'PABLO RUIZ',
   },
 ]
 

@@ -45,7 +45,12 @@ function cspEnProduccion(): Plugin {
   }
 }
 
-/** Con `DM_GESTION_DEMO=1` (armado de la demo) el renderer tampoco puede llevar la dirección de la agencia. */
+/**
+ * La demo (`DM_GESTION_DEMO=1`, ver `scripts/dist-demo.mjs`) tampoco puede llevar en la pantalla los datos
+ * de la agencia que la pantalla comparte con el proceso principal (el dominio de Mi link).
+ */
+const armandoLaDemo = process.env.DM_GESTION_DEMO === '1'
+
 function sinSecretosDeLaAgencia(): Plugin {
   return {
     name: 'dm-sin-secretos-de-la-agencia',
@@ -61,7 +66,7 @@ export default defineConfig({
   root: fileURLToPath(new URL('./src/renderer', import.meta.url)),
   // Rutas relativas: la app empaquetada carga el HTML desde el disco (file://).
   base: './',
-  plugins: [react(), tailwindcss(), cspEnProduccion(), ...(process.env.DM_GESTION_DEMO === '1' ? [sinSecretosDeLaAgencia()] : [])],
+  plugins: [react(), tailwindcss(), cspEnProduccion(), ...(armandoLaDemo ? [sinSecretosDeLaAgencia()] : [])],
   build: {
     outDir: fileURLToPath(new URL('./dist/renderer', import.meta.url)),
     emptyOutDir: true,

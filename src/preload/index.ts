@@ -354,6 +354,8 @@ const api: ApiDm = {
   },
   listados: {
     asegurados: (filtros) => invocar('listados:asegurados', filtros),
+    apisDeAsegurados: () => invocar('listados:apisDeAsegurados'),
+    consultarApisDeAsegurados: (opciones) => invocar('listados:consultarApisDeAsegurados', opciones),
     polizas: (filtros) => invocar('listados:polizas', filtros),
     siniestros: (filtros) => invocar('listados:siniestros', filtros),
     vencimientos: (filtros) => invocar('listados:vencimientos', filtros),

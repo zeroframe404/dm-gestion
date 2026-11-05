@@ -80,17 +80,12 @@ console.log(`[dist-demo] Armando el instalador de la demo ${version}`)
 correr([
   electronBuilder,
   '--win',
-  '--config', 'electron-builder.yml',
+  // Marca, ícono y archivos propios de la demo, sin `publish` (ver electron-builder.demo.yml).
+  '--config', 'electron-builder.demo.yml',
   '--publish', 'never',
   `-c.extraMetadata.version=${version}`,
-  '-c.appId=ar.com.dmartinezseguros.gestion.demo',
-  '-c.productName=DM Gestión (Demo)',
-  '-c.artifactName=DM-Gestion-Demo-Setup-${version}.${ext}',
-  '-c.nsis.shortcutName=DM Gestión (Demo)',
-  '-c.copyright=Copyright © 2026 DM Gestión',
-  // Sólo el programa: nada de lo que el banco de pruebas pueda haber dejado en dist/.
-  '-c.files=dist/main/**/*',
-  '-c.files=dist/preload/**/*',
-  '-c.files=dist/renderer/**/*',
-  '-c.files=package.json',
+  // El .exe y «Aplicaciones instaladas» toman de acá el editor y la descripción.
+  '-c.extraMetadata.author.name=Cobertia',
+  '-c.win.legalTrademarks=Cobertia',
+  '-c.extraMetadata.description=Cobertia (Demo): gestión para agencias de seguros',
 ])

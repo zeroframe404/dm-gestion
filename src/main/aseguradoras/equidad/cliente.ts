@@ -51,6 +51,8 @@ export const SERVICIOS_EQUIDAD = {
   obtenerCotizacion: `${PAQUETE_GLM}.cotizacion.awsobtenercotizacion`,
   imprimirCotizacion: `${PAQUETE_GLM}.cotizacion.awsimprimircotizacion`,
   listarCotizaciones: `${PAQUETE_GLM}.cotizacion.awslistarcotizaciones`,
+  /** Si una patente tiene póliza vigente y de quién (Cartera → Asegurados la usa para confirmar clientes). */
+  vehiculoVigente: `${PAQUETE_GLM}.emision.automotores.awsvehiculovigente`,
 } as const
 
 export type ServicioEquidad = keyof typeof SERVICIOS_EQUIDAD
@@ -254,9 +256,53 @@ const QUE: Partial<Record<ServicioEquidad, string>> = {
   cotizarConNuevosPorcentajes: 'el recálculo con otros porcentajes',
 }
 
+/**
+ * El 401 del login dice poco («Unauthorized: Falló la autenticación»): acá se dice qué se probó y qué
+ * revisar, en el orden en que suele fallar.
+ */
+export function mensajeDeLoginRechazado(texto: string, probado: string): string {
+  const datos = parseJsonSeguro(texto)
+  const d = datos && typeof datos === 'object' && !Array.isArray(datos) ? (datos as Record<string, unknown>) : {}
+  const detalle = [campo(d, ['Mensaje', 'Description', 'message']), campo(d, ['Detail', 'detalle'])].filter(Boolean).join(': ') || resumenDelCuerpo(texto)
+  // Con `JsonResult` lleno la puerta de entrada (el Basic) YA pasó y el que contesta es el propio
+  // AutenticarUsuario sobre el {Usuario, Password} del cuerpo (visto contra producción, 05/11/2026):
+  // el usuario de servicio está bien y la que falla es la contraseña de APLICACIÓN. Decirlo ahorra
+  // una vuelta entera con la compañía.
+  const codigo = codigoDelJsonResult(texto)
+  if (codigo !== null) {
+    return (
+      `Equidad aceptó el usuario de servicio (${probado}) pero rechazó la contraseña de aplicación: ${detalle} (código ${codigo}). ` +
+      'La contraseña de aplicación es la de «Contraseña» (la del usuario de la API), distinta de la del usuario de servicio: ' +
+      'probá con la de la web de productores y, si tampoco, pedile a Equidad que restablezca la del operador para AutenticarUsuario.'
+    )
+  }
+  return (
+    `Equidad rechazó el usuario y la contraseña de aplicación (401${detalle ? `: ${detalle}` : ''}; se probó ${probado}). ` +
+    'Revisá: 1) que el usuario y la contraseña sean los de la API (no los de la web de productores); ' +
+    '2) que sean del mismo ambiente que la URL base (las credenciales de prueba no sirven en producción ni al revés); ' +
+    '3) si Equidad dio un usuario de servicio, que esté cargado aparte; 4) preguntale a Equidad si el usuario ya está habilitado para la API ' +
+    'en ese ambiente y si la IP de la agencia tiene que estar dada de alta.'
+  )
+}
+
+/** El `Codigo` que AutenticarUsuario mete en `JsonResult` (un JSON dentro del JSON), o null si no vino. */
+export function codigoDelJsonResult(texto: string): number | null {
+  const datos = parseJsonSeguro(texto)
+  const d = datos && typeof datos === 'object' && !Array.isArray(datos) ? (datos as Record<string, unknown>) : {}
+  const crudo = d.JsonResult
+  const interno = typeof crudo === 'string' ? parseJsonSeguro(crudo) : crudo
+  if (!interno || typeof interno !== 'object' || Array.isArray(interno)) return null
+  const codigo = Number((interno as Record<string, unknown>).Codigo)
+  return Number.isFinite(codigo) ? codigo : null
+}
+
 export function crearClienteEquidad(cuenta: CuentaEquidad): ClienteEquidad {
   const clave = claveDeCuenta(cuenta)
   const tieneServicio = Boolean(cuenta.usuarioDeServicio)
+  const basicDeServicio = tieneServicio ? basic(cuenta.usuarioDeServicio, cuenta.claveDeServicio) : null
+  const basicDeAplicacion = basic(cuenta.usuario, cuenta.clave)
+  /** El Basic con que anduvo el login (si anduvo con alguno): es el que se usa si un servicio rechaza el Bearer. */
+  let basicQueAnduvo: string | null = basicDeServicio
 
   async function pedir(url: string, init: RequestInit, que: string): Promise<{ status: number; texto: string }> {
     // Demo: nunca sale a Equidad. La demo contesta antes (ver demo/); esto es por si algo se escapa.
@@ -275,15 +321,47 @@ export function crearClienteEquidad(cuenta: CuentaEquidad): ClienteEquidad {
   }
 
   async function autenticar(): Promise<SesionDeEquidad> {
-    const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json' }
-    if (tieneServicio) headers.authorization = basic(cuenta.usuarioDeServicio, cuenta.claveDeServicio)
-    const { status, texto } = await pedir(
-      urlDeServicio(cuenta.urlBase, 'autenticarUsuario'),
-      { method: 'POST', headers, body: JSON.stringify({ Usuario: cuenta.usuario, Password: cuenta.clave }) },
-      QUE.autenticarUsuario!,
-    )
+    const pedirSesion = (authorization: string | null) => {
+      const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json' }
+      if (authorization) headers.authorization = authorization
+      return pedir(
+        urlDeServicio(cuenta.urlBase, 'autenticarUsuario'),
+        { method: 'POST', headers, body: JSON.stringify({ Usuario: cuenta.usuario, Password: cuenta.clave }) },
+        QUE.autenticarUsuario!,
+      )
+    }
+    // Un 401 «Unauthorized: Falló la autenticación» con el JSON Error ({status, Description, Detail}) lo
+    // da la capa de seguridad del servlet, antes de mirar el Usuario/Password del cuerpo (un usuario mal
+    // escrito vuelve con el «Json ERROR» {Codigo, Mensaje}). Esa capa pide `Authorization: Basic`, y la
+    // documentación no dice con qué usuario. Se prueba en orden: el usuario de servicio (si está), sin
+    // Basic (en AutenticarUsuario es opcional) y el Basic con el mismo usuario de aplicación.
+    const intentos: Array<{ authorization: string | null; descripcion: string }> = [
+      ...(basicDeServicio ? [{ authorization: basicDeServicio, descripcion: 'con el usuario de servicio' }] : []),
+      { authorization: null, descripcion: 'sin Basic' },
+      { authorization: basicDeAplicacion, descripcion: 'con el Basic del usuario de aplicación' },
+    ]
+    let status = 0
+    let texto = ''
+    const probados: string[] = []
+    // El 401 que más dice: el que trae `JsonResult` (la puerta pasó; falló la contraseña de aplicación),
+    // con qué Basic se consiguió. Si ninguno lo trae, el último.
+    let rechazoConDetalle: { texto: string; probado: string } | null = null
+    for (const intento of intentos) {
+      ;({ status, texto } = await pedirSesion(intento.authorization))
+      probados.push(intento.descripcion)
+      if (status !== 401) {
+        if (intento.authorization) basicQueAnduvo = intento.authorization
+        if (probados.length > 1) console.warn(`[equidad] AutenticarUsuario anduvo ${intento.descripcion} (antes, 401 ${probados.slice(0, -1).join(' y ')}).`)
+        break
+      }
+      if (!rechazoConDetalle && codigoDelJsonResult(texto) !== null) rechazoConDetalle = { texto, probado: intento.descripcion }
+    }
     const datos = parseJsonSeguro(texto)
     if (status < 200 || status >= 300 || datos === undefined) {
+      if (status === 401) {
+        const { texto: cuerpo, probado } = rechazoConDetalle ?? { texto, probado: probados.join(', ') }
+        throw new ErrorDeEquidad(mensajeDeLoginRechazado(cuerpo, probado), false, status, mensajeDeError(status, cuerpo, QUE.autenticarUsuario!).codigo)
+      }
       const { mensaje, codigo } = mensajeDeError(status, texto, QUE.autenticarUsuario!)
       throw new ErrorDeEquidad(mensaje, false, status, codigo)
     }
@@ -321,21 +399,21 @@ export function crearClienteEquidad(cuenta: CuentaEquidad): ClienteEquidad {
 
   /**
    * Un pedido autenticado. Primero con el Bearer de la sesión; si Equidad contesta 401 se autentica
-   * de nuevo y reintenta una vez, y si sigue en 401 y hay usuario de servicio, prueba con el Basic
-   * (la documentación no dice cuál de los dos espera cada servicio).
+   * de nuevo y reintenta una vez, y si sigue en 401 prueba con el Basic con que anduvo el login (la
+   * documentación no dice cuál de los dos espera cada servicio).
    */
   async function autenticado<T>(servicio: ServicioEquidad, consulta: string, armar: (authorization: string | null) => RequestInit): Promise<T> {
     const que = QUE[servicio] ?? SERVICIOS_EQUIDAD[servicio].split('.').pop()!
     const url = `${urlDeServicio(cuenta.urlBase, servicio)}${consulta ? `?${consulta}` : ''}`
-    const conBearer = (s: SesionDeEquidad) => (s.token ? `Bearer ${s.token}` : tieneServicio ? basic(cuenta.usuarioDeServicio, cuenta.claveDeServicio) : null)
+    const conBearer = (s: SesionDeEquidad) => (s.token ? `Bearer ${s.token}` : basicQueAnduvo)
     const primera = await sesion()
     let respuesta = await pedir(url, armar(conBearer(primera)), que)
     if (respuesta.status === 401) {
       sesiones.delete(clave)
       const segunda = await sesion()
       respuesta = await pedir(url, armar(conBearer(segunda)), que)
-      if (respuesta.status === 401 && tieneServicio && segunda.token) {
-        respuesta = await pedir(url, armar(basic(cuenta.usuarioDeServicio, cuenta.claveDeServicio)), que)
+      if (respuesta.status === 401 && basicQueAnduvo && segunda.token) {
+        respuesta = await pedir(url, armar(basicQueAnduvo), que)
       }
     }
     return leerJson<T>(que, respuesta.status, respuesta.texto)

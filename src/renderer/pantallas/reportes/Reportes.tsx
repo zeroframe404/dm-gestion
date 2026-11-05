@@ -494,7 +494,7 @@ function PlanillaClasica({ catalogo }: { catalogo: CatalogoDeReportes }) {
       {aviso && <Alerta tono="exito">{aviso}</Alerta>}
 
       <Alerta tono="info">
-        Este archivo se genera a partir de lo que hay hoy en DM Gestión, que es lo mismo que hay en la base del VPS: los cambios que todavía no
+        Este archivo se genera a partir de lo que hay hoy en el programa, que es lo mismo que hay en la base del VPS: los cambios que todavía no
         se subieron ya están acá. No toca la base ni la hoja de Google: es una copia para imprimir o mandar.
       </Alerta>
     </div>

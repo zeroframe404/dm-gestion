@@ -12,7 +12,7 @@ export function Proximamente({ modulo }: { modulo: Modulo }) {
         <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-700">Próximamente</p>
         <h2 className="mt-1 font-display text-2xl font-extrabold tracking-tight text-slate-900">{modulo.nombre}</h2>
         <p className="mt-3 text-sm leading-relaxed text-slate-600">{modulo.descripcion}</p>
-        <p className="mt-4 text-xs text-slate-500">Este módulo todavía no está disponible en esta versión de DM Gestión.</p>
+        <p className="mt-4 text-xs text-slate-500">Este módulo todavía no está disponible en esta versión del programa.</p>
       </div>
     </div>
   )

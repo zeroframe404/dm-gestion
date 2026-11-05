@@ -35,6 +35,8 @@ import {
   esSeccionDeMiLink,
   filtrosVaciosDeMiLink,
   LIMITES_DE_MI_LINK,
+  urlBaseDeMiLink,
+  urlDeMiLinkDelCanal,
 } from '../src/shared/miLink'
 import type { SesionUsuario } from '../src/shared/tipos'
 
@@ -151,6 +153,16 @@ test('«Ver mi página» sólo abre páginas de Mi link, y siempre como dueño',
   ]) {
     assert.equal(direccionParaAbrir(mala, 'http://127.0.0.1:4000'), null, String(mala))
   }
+})
+
+test('el dominio de Mi link: el de la agencia en la estable y la beta, uno de ejemplo en la demo', () => {
+  assert.equal(urlBaseDeMiLink('estable'), 'https://dmartinezseguros.com')
+  assert.equal(urlBaseDeMiLink('beta'), 'https://dmartinezseguros.com')
+  assert.equal(urlBaseDeMiLink('demo'), 'https://suagencia.com.ar')
+  // Lo que contesta el servidor (siempre con el dominio de la agencia) se reescribe sólo en la demo.
+  assert.equal(urlDeMiLinkDelCanal('https://dmartinezseguros.com/p/daniel', 'demo'), 'https://suagencia.com.ar/p/daniel')
+  assert.equal(urlDeMiLinkDelCanal('https://dmartinezseguros.com/p/daniel', 'estable'), 'https://dmartinezseguros.com/p/daniel')
+  assert.equal(urlDeMiLinkDelCanal('http://127.0.0.1:5000/p/daniel', 'demo'), 'http://127.0.0.1:5000/p/daniel')
 })
 
 test('el nombre del adjunto en la temporal: con el id adelante y sin caracteres peligrosos', () => {

@@ -14,9 +14,18 @@
 // Con `?inline` la imagen queda embebida en el propio bundle como data URI, y además eso es lo que el
 // manual necesita de todos modos: el HTML se escribe en la carpeta de datos y se imprime desde ahí,
 // así que cualquier ruta relativa apuntaría a otro lado.
+//
+// Son dos logos: el de la agencia y el de la marca de la demo (Cobertia, en `recursos/demo/`). Se embeben
+// los dos y se elige según el canal: la demo no puede salir con el escudo de la agencia en la portada.
 import logoEmbebido from '../../../recursos/icon.png?inline'
+import logoDeLaDemoEmbebido from '../../../recursos/demo/icon.png?inline'
+import { canalSinEsperar } from '../agencia'
+
+function comoDataUri(valor: unknown): string {
+  return typeof valor === 'string' && valor.startsWith('data:') ? valor : ''
+}
 
 /** El logo como data URI. Vacío si el empaquetado no lo trajo; la portada se ve bien igual. */
 export function logoDelManual(): string {
-  return typeof logoEmbebido === 'string' && logoEmbebido.startsWith('data:') ? logoEmbebido : ''
+  return comoDataUri(canalSinEsperar() === 'demo' ? logoDeLaDemoEmbebido : logoEmbebido)
 }

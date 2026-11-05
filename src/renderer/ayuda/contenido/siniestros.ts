@@ -39,7 +39,7 @@ export const AYUDA_SINIESTROS: Record<string, ContenidoDeAyuda> = {
         parrafos: [
           'Debajo de los datos del siniestro está «Abogado»: un renglón libre para el estudio, el nombre y el teléfono de quien lleve lo legal, si hay alguien. Se corrige con doble clic, igual que el resto.',
           'Al lado, la tarjeta «El tercero» junta lo que hace falta para reclamarle al otro auto: su compañía, un teléfono y la patente. «Terceros lesionados» es un desplegable de tres posiciones —«Todavía no se sabe», «No hubo lesionados» y «Sí, hubo lesionados»— porque de eso depende que el legajo lleve constancia médica; cuando se marca que sí, aparece un renglón más para anotar quién se lesionó y a qué hospital fue.',
-          'Estos datos no tienen columna en la planilla de siempre, así que viven en DM Gestión: cada vez que se cambia uno queda su renglón en la línea de tiempo, que es lo que sí viaja a la columna OBSERVACIONES y llega a las demás computadoras.',
+          'Estos datos no tienen columna en la planilla de siempre, así que viven en el programa: cada vez que se cambia uno queda su renglón en la línea de tiempo, que es lo que sí viaja a la columna OBSERVACIONES y llega a las demás computadoras.',
         ],
       },
       {

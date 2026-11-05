@@ -14,9 +14,10 @@ export function ConexionGoogle() {
   // La MIRAN los administradores; la CARGA sólo el superadministrador, porque lo que se guarda acá
   // pisa la cuenta de las otras cuatro computadoras. Con Administración en «sólo ver», ni eso.
   const usuario = useUsuarioActual()
-  const puedeEditar = usePuedeEditar('administracion') && usuario.rol === 'SUPER_ADMIN'
-  // La demo no tiene una «versión 12» de la que acordarse: arrancó así.
+  // La demo no tiene una «versión 12» de la que acordarse: arrancó así. Y no se conecta con Google (el
+  // proceso principal rechaza el guardado): la pantalla se ve, explica qué hace, y no deja guardar.
   const esDemo = useEsDemo()
+  const puedeEditar = usePuedeEditar('administracion') && usuario.rol === 'SUPER_ADMIN' && !esDemo
   const [estado, setEstado] = useState<EstadoConexionGoogle | null>(null)
   const [rutaConfig, setRutaConfig] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -74,7 +75,16 @@ export function ConexionGoogle() {
           <Cargando />
         ) : (
           <form onSubmit={alGuardar} noValidate className="flex flex-col gap-5">
-            {estado?.configurado ? (
+            {esDemo ? (
+              <Alerta tono="info">
+                <strong className="font-semibold">En la demostración no se conecta con Google.</strong> En tu instalación,
+                acá se carga una cuenta de servicio de Google (un usuario técnico de tu agencia, no el correo de una
+                persona) y se usa para dos cosas: la migración inicial, que trae tu base de la planilla de cálculo al
+                servidor una sola vez; y las copias en Google Drive de los respaldos diarios y de los adjuntos de los
+                siniestros, para que quede una copia fuera de las computadoras de la agencia. Se carga una vez y la adoptan
+                solas todas las computadoras.
+              </Alerta>
+            ) : estado?.configurado ? (
               <Alerta tono="exito">
                 Configurado con la cuenta <strong className="font-semibold">{estado.clientEmail ?? '(sin client_email)'}</strong>
                 {estado.projectId && <> del proyecto <strong className="font-semibold">{estado.projectId}</strong></>}.

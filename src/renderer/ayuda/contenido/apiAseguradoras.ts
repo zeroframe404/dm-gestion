@@ -23,7 +23,7 @@ export const AYUDA_API_ASEGURADORAS: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'De fábrica ya funciona',
         parrafos: [
-          'DM Gestión trae cargada de fábrica la cuenta de producción de Galeno, con la IP del VPS ya autorizada, así que cotizar, emitir y consultar andan sin que nadie tenga que cargar nada acá. Esta pantalla sirve para cambiarla el día que haga falta —otro usuario, otro ambiente, o Galeno rotando la clave— y para volver a la de fábrica con «Sacarlas».',
+          'El programa trae cargada de fábrica la cuenta de producción de Galeno, con la IP del VPS ya autorizada, así que cotizar, emitir y consultar andan sin que nadie tenga que cargar nada acá. Esta pantalla sirve para cambiarla el día que haga falta —otro usuario, otro ambiente, o Galeno rotando la clave— y para volver a la de fábrica con «Sacarlas».',
         ],
       },
       {

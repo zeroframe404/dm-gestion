@@ -7,6 +7,7 @@
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { RespaldoGuardado } from '../../shared/tipos'
+import { esDemo } from '../canal'
 import { anotarEvento, guardarMarca, leerMarca } from './cola'
 
 export const CARPETA_EN_DRIVE = 'Respaldos DM'
@@ -145,6 +146,9 @@ export async function subirArchivoADrive(
   contenido: Buffer,
   tipo: string,
 ): Promise<string | null> {
+  // Demo: la última barrera antes de la llamada a Drive, para respaldos y adjuntos por igual. Si algún
+  // camino nuevo llegara hasta acá en la demo, falla con un motivo claro en vez de salir a internet.
+  if (esDemo()) throw new Error('En la demostración no se sube nada a Google Drive.')
   const carpeta = await carpetaEnDrive(token, nombreDeLaCarpeta)
   if (!carpeta) return null
 

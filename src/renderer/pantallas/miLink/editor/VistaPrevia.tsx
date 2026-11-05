@@ -16,6 +16,7 @@ import {
   type ContenidoDeMiLink,
 } from '../../../../shared/miLink'
 import { obtenerIniciales } from '../../../../shared/texto'
+import { useNombreDeLaAgencia } from '../../../canal'
 import { Icono } from '../../../componentes/Icono'
 import { cx } from '../../../componentes/ui'
 import { CSS_DE_LA_VISTA, TRAZOS_DE_LA_PAGINA, variablesDelColor } from './aspecto'
@@ -184,6 +185,9 @@ function BotonAgregar({ texto, alTocar, lleno, maximo }: { texto: string; alToca
 }
 
 export function VistaPrevia({ contenido, foto, edicion, className }: PropsVistaPrevia) {
+  // El pie de la página dice de qué agencia es: la de verdad, o la de ejemplo en la demo (que se le
+  // muestra a otras agencias y no puede firmar con el nombre de esta).
+  const nombreDeLaAgencia = useNombreDeLaAgencia()
   useHojaDeLaVista()
   const { diseno } = contenido
   const nombreVisible = contenido.nombre.trim() || 'Tu nombre'
@@ -433,7 +437,7 @@ export function VistaPrevia({ contenido, foto, edicion, className }: PropsVistaP
         )}
 
         <footer className="mlv-pie">
-          <strong>Seguros Daniel Martínez</strong> · Productor asesor
+          <strong>{nombreDeLaAgencia}</strong> · Productor asesor
         </footer>
       </div>
     </div>

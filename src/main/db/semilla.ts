@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3'
 import { hashSync } from 'bcryptjs'
 import { claveDeSucursal, sucursalCanonica, SUCURSALES } from '../../shared/sucursales'
 import { COSTO_BCRYPT } from '../servicios/claves'
+import { esDemo } from '../canal'
 
 export const SUCURSALES_INICIALES = SUCURSALES
 
@@ -80,19 +81,22 @@ export function sembrarDatosIniciales(db: Database): void {
   const { total } = db.prepare('SELECT COUNT(*) AS total FROM usuarios').get() as { total: number }
   if (total > 0) return
 
+  // La demo no lleva al dueño de la agencia: el usuario inicial es el «test» de la demo, así el espejo de
+  // la base de usuarios del servidor simulado lo engancha y no queda un «Daniel Martínez» suelto.
+  const inicial = esDemo() ? { nombre: 'Usuario de Prueba', usuario: 'test', clave: 'admin', rol: 'SUPER_ADMIN', sucursal: 'Dock Sud' } : USUARIO_INICIAL
   const sucursal = db
     .prepare('SELECT id FROM sucursales WHERE nombre = ?')
-    .get(USUARIO_INICIAL.sucursal) as { id: number }
+    .get(inicial.sucursal) as { id: number }
 
   db.prepare(
     `INSERT INTO usuarios (nombre, usuario, clave_hash, rol, sucursal_id, activo, debe_cambiar_clave)
      VALUES (?, ?, ?, ?, ?, 1, 1)`,
   ).run(
-    USUARIO_INICIAL.nombre,
-    USUARIO_INICIAL.usuario,
-    hashSync(USUARIO_INICIAL.clave, COSTO_BCRYPT),
-    USUARIO_INICIAL.rol,
+    inicial.nombre,
+    inicial.usuario,
+    hashSync(inicial.clave, COSTO_BCRYPT),
+    inicial.rol,
     sucursal.id,
   )
-  console.log('[db] Usuario inicial "' + USUARIO_INICIAL.usuario + '" creado. Debe cambiar la contraseña al ingresar.')
+  console.log('[db] Usuario inicial "' + inicial.usuario + '" creado. Debe cambiar la contraseña al ingresar.')
 }

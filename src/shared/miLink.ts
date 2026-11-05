@@ -8,6 +8,7 @@
 // campo acá, se agrega allá, y siempre opcional con un valor por defecto, porque una página guardada
 // con una versión vieja tiene que seguir abriendo.
 
+import type { Canal } from './canal'
 import { claveDeSucursal } from './sucursales'
 
 /** Las secciones de Mi link, una por renglón de su sublista en la barra lateral. */
@@ -47,6 +48,28 @@ export interface SucursalesDeMiLink {
 
 /** El dominio donde se publica. La dirección completa es `${URL_BASE_DE_MI_LINK}/p/<direccion>`. */
 export const URL_BASE_DE_MI_LINK = 'https://dmartinezseguros.com'
+/**
+ * El de la demo: un dominio de ejemplo, el de «su agencia». La demo se le muestra a otras agencias y no
+ * puede decir el dominio de esta; además nunca se publica en internet (la página la sirve el servidor
+ * simulado, en esta misma computadora).
+ */
+export const URL_BASE_DE_MI_LINK_DE_LA_DEMO = 'https://suagencia.com.ar'
+
+/** El dominio de Mi link según el canal: la estable y la beta publican en el de la agencia. */
+export function urlBaseDeMiLink(canal: Canal): string {
+  return canal === 'demo' ? URL_BASE_DE_MI_LINK_DE_LA_DEMO : URL_BASE_DE_MI_LINK
+}
+
+/**
+ * Una URL pública de Mi link escrita con el dominio del canal. El servidor (el real y el simulado de la
+ * demo) contesta siempre con el dominio de la agencia; en la demo se le cambia por el de ejemplo antes
+ * de mostrarlo. Lo que no empieza con el dominio de la agencia se devuelve tal cual.
+ */
+export function urlDeMiLinkDelCanal(url: string, canal: Canal): string {
+  const base = urlBaseDeMiLink(canal)
+  if (base === URL_BASE_DE_MI_LINK || !url.startsWith(URL_BASE_DE_MI_LINK)) return url
+  return base + url.slice(URL_BASE_DE_MI_LINK.length)
+}
 export const PREFIJO_DE_MI_LINK = '/p/'
 
 // ── El contenido de la página ──────────────────────────────────────────────────────────────────────
