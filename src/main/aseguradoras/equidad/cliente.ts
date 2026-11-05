@@ -264,6 +264,18 @@ export function mensajeDeLoginRechazado(texto: string, probado: string): string 
   const datos = parseJsonSeguro(texto)
   const d = datos && typeof datos === 'object' && !Array.isArray(datos) ? (datos as Record<string, unknown>) : {}
   const detalle = [campo(d, ['Mensaje', 'Description', 'message']), campo(d, ['Detail', 'detalle'])].filter(Boolean).join(': ') || resumenDelCuerpo(texto)
+  // Con `JsonResult` lleno la puerta de entrada (el Basic) YA pasó y el que contesta es el propio
+  // AutenticarUsuario sobre el {Usuario, Password} del cuerpo (visto contra producción, 05/11/2026):
+  // el usuario de servicio está bien y la que falla es la contraseña de APLICACIÓN. Decirlo ahorra
+  // una vuelta entera con la compañía.
+  const codigo = codigoDelJsonResult(texto)
+  if (codigo !== null) {
+    return (
+      `Equidad aceptó el usuario de servicio (${probado}) pero rechazó la contraseña de aplicación: ${detalle} (código ${codigo}). ` +
+      'La contraseña de aplicación es la de «Contraseña» (la del usuario de la API), distinta de la del usuario de servicio: ' +
+      'probá con la de la web de productores y, si tampoco, pedile a Equidad que restablezca la del operador para AutenticarUsuario.'
+    )
+  }
   return (
     `Equidad rechazó el usuario y la contraseña de aplicación (401${detalle ? `: ${detalle}` : ''}; se probó ${probado}). ` +
     'Revisá: 1) que el usuario y la contraseña sean los de la API (no los de la web de productores); ' +
@@ -271,6 +283,17 @@ export function mensajeDeLoginRechazado(texto: string, probado: string): string 
     '3) si Equidad dio un usuario de servicio, que esté cargado aparte; 4) preguntale a Equidad si el usuario ya está habilitado para la API ' +
     'en ese ambiente y si la IP de la agencia tiene que estar dada de alta.'
   )
+}
+
+/** El `Codigo` que AutenticarUsuario mete en `JsonResult` (un JSON dentro del JSON), o null si no vino. */
+export function codigoDelJsonResult(texto: string): number | null {
+  const datos = parseJsonSeguro(texto)
+  const d = datos && typeof datos === 'object' && !Array.isArray(datos) ? (datos as Record<string, unknown>) : {}
+  const crudo = d.JsonResult
+  const interno = typeof crudo === 'string' ? parseJsonSeguro(crudo) : crudo
+  if (!interno || typeof interno !== 'object' || Array.isArray(interno)) return null
+  const codigo = Number((interno as Record<string, unknown>).Codigo)
+  return Number.isFinite(codigo) ? codigo : null
 }
 
 export function crearClienteEquidad(cuenta: CuentaEquidad): ClienteEquidad {
@@ -320,6 +343,9 @@ export function crearClienteEquidad(cuenta: CuentaEquidad): ClienteEquidad {
     let status = 0
     let texto = ''
     const probados: string[] = []
+    // El 401 que más dice: el que trae `JsonResult` (la puerta pasó; falló la contraseña de aplicación),
+    // con qué Basic se consiguió. Si ninguno lo trae, el último.
+    let rechazoConDetalle: { texto: string; probado: string } | null = null
     for (const intento of intentos) {
       ;({ status, texto } = await pedirSesion(intento.authorization))
       probados.push(intento.descripcion)
@@ -328,10 +354,14 @@ export function crearClienteEquidad(cuenta: CuentaEquidad): ClienteEquidad {
         if (probados.length > 1) console.warn(`[equidad] AutenticarUsuario anduvo ${intento.descripcion} (antes, 401 ${probados.slice(0, -1).join(' y ')}).`)
         break
       }
+      if (!rechazoConDetalle && codigoDelJsonResult(texto) !== null) rechazoConDetalle = { texto, probado: intento.descripcion }
     }
     const datos = parseJsonSeguro(texto)
     if (status < 200 || status >= 300 || datos === undefined) {
-      if (status === 401) throw new ErrorDeEquidad(mensajeDeLoginRechazado(texto, probados.join(', ')), false, status, mensajeDeError(status, texto, QUE.autenticarUsuario!).codigo)
+      if (status === 401) {
+        const { texto: cuerpo, probado } = rechazoConDetalle ?? { texto, probado: probados.join(', ') }
+        throw new ErrorDeEquidad(mensajeDeLoginRechazado(cuerpo, probado), false, status, mensajeDeError(status, cuerpo, QUE.autenticarUsuario!).codigo)
+      }
       const { mensaje, codigo } = mensajeDeError(status, texto, QUE.autenticarUsuario!)
       throw new ErrorDeEquidad(mensaje, false, status, codigo)
     }
