@@ -65,23 +65,27 @@ function entero(valor: string): number {
 export function armarPedidoDeCotizacion(d: DatosDeCotizacionEquidad): Record<string, unknown> {
   const r = d.riesgo
   return {
+    // La forma sigue el ejemplo de pedido que mandó Equidad (05/11/2026): Rama, ProductorCodigo y
+    // FormaPagoCodigo como texto, «TomadorCategoriaIVACodigo» bien escrito y el IIBB en blanco como «" "».
     SistemaOrigen: '',
     Usuario: d.usuario,
-    Rama: entero(d.rama),
+    Rama: d.rama.trim(),
     ...(d.solicitud ? { Solicitud: entero(d.solicitud) } : {}),
     ...(d.instalacion ? { Instalacion: entero(d.instalacion) } : {}),
     TipoPolizaCodigo: d.tipoPoliza,
     TomadorNombre: d.tomadorNombre.slice(0, 60),
     TomadorCUIT: d.tomadorCuit.slice(0, 20),
     TomadorTipoPersona: d.tomadorTipoPersona,
-    // Sic: así (sin la «r») nombra el documento la categoría de IVA del tomador.
+    TomadorCategoriaIVACodigo: d.tomadorIva,
+    // Sic: así (sin la «r») lo nombra el .docx; el ejemplo de Equidad usa el nombre bien escrito. Van los
+    // dos, para que la API tome el que espere.
     TomadoCategoriaIVACodigo: d.tomadorIva,
-    TomadorIIBBCodigo: d.tomadorIibb,
+    TomadorIIBBCodigo: d.tomadorIibb || ' ',
     VigenciaDesde: d.vigenciaDesde,
-    ProductorCodigo: entero(d.productor),
+    ProductorCodigo: d.productor.trim(),
     MonedaCodigo: d.moneda,
     PlanComercialCodigo: d.planComercial,
-    FormaPagoCodigo: entero(d.formaDePago),
+    FormaPagoCodigo: d.formaDePago.trim(),
     ModoFacturacionCodigo: d.modoFacturacion,
     CondicionPagoCodigo: d.condicionDePago,
     VigenciaHasta: d.vigenciaHasta ?? '',

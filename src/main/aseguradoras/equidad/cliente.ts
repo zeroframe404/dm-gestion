@@ -256,6 +256,23 @@ const QUE: Partial<Record<ServicioEquidad, string>> = {
   cotizarConNuevosPorcentajes: 'el recálculo con otros porcentajes',
 }
 
+/**
+ * El 401 del login dice poco («Unauthorized: Falló la autenticación»): acá se dice qué se probó y qué
+ * revisar, en el orden en que suele fallar.
+ */
+export function mensajeDeLoginRechazado(texto: string, conUsuarioDeServicio: boolean): string {
+  const datos = parseJsonSeguro(texto)
+  const d = datos && typeof datos === 'object' && !Array.isArray(datos) ? (datos as Record<string, unknown>) : {}
+  const detalle = [campo(d, ['Mensaje', 'Description', 'message']), campo(d, ['Detail', 'detalle'])].filter(Boolean).join(': ') || resumenDelCuerpo(texto)
+  const probado = conUsuarioDeServicio ? 'con y sin el usuario de servicio' : 'sin usuario de servicio'
+  return (
+    `Equidad rechazó el usuario y la contraseña de aplicación (401${detalle ? `: ${detalle}` : ''}; se probó ${probado}). ` +
+    'Revisá: 1) que el usuario y la contraseña sean los de la API (no los de la web de productores); ' +
+    '2) que sean del mismo ambiente que la URL base (las credenciales de prueba no sirven en producción ni al revés); ' +
+    '3) si Equidad dio un usuario de servicio, que esté cargado aparte.'
+  )
+}
+
 export function crearClienteEquidad(cuenta: CuentaEquidad): ClienteEquidad {
   const clave = claveDeCuenta(cuenta)
   const tieneServicio = Boolean(cuenta.usuarioDeServicio)
@@ -277,15 +294,31 @@ export function crearClienteEquidad(cuenta: CuentaEquidad): ClienteEquidad {
   }
 
   async function autenticar(): Promise<SesionDeEquidad> {
-    const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json' }
-    if (tieneServicio) headers.authorization = basic(cuenta.usuarioDeServicio, cuenta.claveDeServicio)
-    const { status, texto } = await pedir(
-      urlDeServicio(cuenta.urlBase, 'autenticarUsuario'),
-      { method: 'POST', headers, body: JSON.stringify({ Usuario: cuenta.usuario, Password: cuenta.clave }) },
-      QUE.autenticarUsuario!,
-    )
+    const pedirSesion = (conBasic: boolean) => {
+      const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json' }
+      if (conBasic) headers.authorization = basic(cuenta.usuarioDeServicio, cuenta.claveDeServicio)
+      return pedir(
+        urlDeServicio(cuenta.urlBase, 'autenticarUsuario'),
+        { method: 'POST', headers, body: JSON.stringify({ Usuario: cuenta.usuario, Password: cuenta.clave }) },
+        QUE.autenticarUsuario!,
+      )
+    }
+    let { status, texto } = await pedirSesion(tieneServicio)
+    // En AutenticarUsuario el Basic es OPCIONAL («si se indica, el token también vale para el usuario de
+    // servicio»). Si con él da 401, se prueba sin él: un usuario de servicio mal cargado no tiene que
+    // tapar un usuario de aplicación que sí anda.
+    let sinBasicAnduvo = false
+    if (status === 401 && tieneServicio) {
+      const sinBasic = await pedirSesion(false)
+      if (sinBasic.status !== 401) {
+        ;({ status, texto } = sinBasic)
+        sinBasicAnduvo = status >= 200 && status < 300
+      }
+    }
+    if (sinBasicAnduvo) console.warn('[equidad] AutenticarUsuario rechazó el usuario de servicio (Basic) y aceptó el de aplicación solo.')
     const datos = parseJsonSeguro(texto)
     if (status < 200 || status >= 300 || datos === undefined) {
+      if (status === 401) throw new ErrorDeEquidad(mensajeDeLoginRechazado(texto, tieneServicio), false, status, mensajeDeError(status, texto, QUE.autenticarUsuario!).codigo)
       const { mensaje, codigo } = mensajeDeError(status, texto, QUE.autenticarUsuario!)
       throw new ErrorDeEquidad(mensaje, false, status, codigo)
     }
