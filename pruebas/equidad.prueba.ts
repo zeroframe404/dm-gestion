@@ -603,10 +603,28 @@ test('Equidad: si el login da 401 con el usuario de servicio, se prueba sin él 
 test('Equidad: si el login da 401 de las dos formas, el mensaje dice qué revisar', async (t) => {
   fetchFalso(t, () => json({ status: 401, Description: 'Unauthorized', Detail: 'Falló la autenticación' }, 401))
   await assert.rejects(crearClienteEquidad(CUENTA).sesion(), (error: Error) => {
-    assert.match(error.message, /401: Unauthorized: Falló la autenticación; se probó con y sin el usuario de servicio/)
+    assert.match(error.message, /401: Unauthorized: Falló la autenticación; se probó con el usuario de servicio, sin Basic, con el Basic del usuario de aplicación/)
     assert.match(error.message, /mismo ambiente que la URL base/)
     return true
   })
+})
+
+test('Equidad: sin usuario de servicio, si el login da 401 sin Basic se prueba el Basic con el usuario de aplicación, y queda para los servicios', async (t) => {
+  const basicDeAplicacion = `Basic ${Buffer.from(`GLM:${CLAVE}`).toString('base64')}`
+  const pedidos = fetchFalso(t, (pedido) => {
+    if (pedido.headers.authorization !== basicDeAplicacion) return json({ status: 401, Description: 'Unauthorized', Detail: 'Falló la autenticación' }, 401)
+    if (esServicio(pedido, 'autenticarUsuario')) return json({ UsuCod: 'GLM', UsuNom: 'GLM' }) // sin Token
+    return json([{ Codigo: '1', Descripcion: 'PESOS' }])
+  })
+  const cliente = crearClienteEquidad({ ...CUENTA, usuarioDeServicio: '', claveDeServicio: '' })
+  await cliente.get<unknown>('listarMoneda', [['UsuCod', 'GLM']])
+  const logins = pedidos.filter((p) => esServicio(p, 'autenticarUsuario'))
+  assert.deepEqual(
+    logins.map((p) => p.headers.authorization ?? null),
+    [null, basicDeAplicacion],
+  )
+  const lista = pedidos.find((p) => esServicio(p, 'listarMoneda'))!
+  assert.equal(lista.headers.authorization, basicDeAplicacion, 'sin token, el servicio va con el Basic que anduvo')
 })
 
 test('Equidad: las decisiones por defecto, solas', () => {
