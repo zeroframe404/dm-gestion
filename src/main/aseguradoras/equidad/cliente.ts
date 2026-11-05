@@ -51,6 +51,8 @@ export const SERVICIOS_EQUIDAD = {
   obtenerCotizacion: `${PAQUETE_GLM}.cotizacion.awsobtenercotizacion`,
   imprimirCotizacion: `${PAQUETE_GLM}.cotizacion.awsimprimircotizacion`,
   listarCotizaciones: `${PAQUETE_GLM}.cotizacion.awslistarcotizaciones`,
+  /** Si una patente tiene póliza vigente y de quién (Cartera → Asegurados la usa para confirmar clientes). */
+  vehiculoVigente: `${PAQUETE_GLM}.emision.automotores.awsvehiculovigente`,
 } as const
 
 export type ServicioEquidad = keyof typeof SERVICIOS_EQUIDAD

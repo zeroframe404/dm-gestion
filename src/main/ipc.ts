@@ -67,6 +67,7 @@ import {
 } from './servicios/reportes'
 import { xlsxGenerico } from './servicios/excelGenerico'
 import { listarAsegurados } from './servicios/listadoAsegurados'
+import { consultarApisDeAsegurados, estadoDeApisDeAsegurados } from './servicios/aseguradorasPorApi'
 import { listarComisionesDelListado, opcionesDeComisiones } from './servicios/listadoComisiones'
 import { listarVencimientosDeCuotas } from './servicios/listadoCuotas'
 import { listarPolizasDelListado } from './servicios/listadoPolizas'
@@ -1711,6 +1712,14 @@ export function registrarIpc(): void {
   manejar('listados:asegurados', (filtros) => {
     exigirVista('clientes')
     return exito(listarAsegurados(filtros))
+  })
+  manejar('listados:apisDeAsegurados', () => {
+    exigirVista('clientes')
+    return exito(estadoDeApisDeAsegurados())
+  })
+  manejar('listados:consultarApisDeAsegurados', async (opciones) => {
+    exigirVista('clientes')
+    return exito(await consultarApisDeAsegurados({ forzar: opciones?.forzar === true }))
   })
   manejar('listados:polizas', (filtros) => {
     exigirVista('polizas')

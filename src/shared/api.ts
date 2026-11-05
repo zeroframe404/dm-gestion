@@ -368,6 +368,8 @@ export interface ApiDm {
   /** Los listados de Cartera y de Cobranzas (shared/listados/index.ts) y su exportación genérica a Excel. */
   listados: {
     asegurados: Remota<'listados:asegurados'>
+    apisDeAsegurados: Remota<'listados:apisDeAsegurados'>
+    consultarApisDeAsegurados: Remota<'listados:consultarApisDeAsegurados'>
     polizas: Remota<'listados:polizas'>
     siniestros: Remota<'listados:siniestros'>
     vencimientos: Remota<'listados:vencimientos'>
