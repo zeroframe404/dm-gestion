@@ -38,6 +38,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
       { tipo: 'corregido', texto: 'Equidad: el ingreso a la API prueba también el usuario de servicio (Basic) con el usuario de la API, y el error dice qué revisar.' },
       { tipo: 'modificado', texto: 'Equidad: la cotización se manda con la forma del ejemplo que dio la compañía.' },
       { tipo: 'modificado', texto: 'Equidad: la cotización va con el usuario de la API como sistema de origen, como indicó la compañía.' },
+      { tipo: 'corregido', texto: 'Equidad: cuando el usuario de servicio pasa y la que falla es la contraseña de aplicación, el error lo dice así, con el código de Equidad.' },
       { tipo: 'corregido', texto: 'El cartel «Cambios recientes» vuelve a aparecer después de cada actualización, también en la beta.' },
     ],
   },

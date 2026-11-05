@@ -12,6 +12,7 @@ import test from 'node:test'
 import { claveDeVariante, claveDeVehiculo, leerLista, leerVehiculos, listaDe, numeroDeEquidad } from '../src/main/aseguradoras/equidad/catalogos'
 import {
   consultaOrdenada,
+  codigoDelJsonResult,
   crearClienteEquidad,
   ErrorDeEquidad,
   fechaCompacta,
@@ -610,6 +611,25 @@ test('Equidad: si el login da 401 de las dos formas, el mensaje dice qué revisa
     assert.match(error.message, /mismo ambiente que la URL base/)
     return true
   })
+})
+
+test('Equidad: si el Basic pasa y AutenticarUsuario devuelve código 7, el mensaje dice que la que falla es la contraseña de aplicación', async (t) => {
+  // Lo que contestó producción el 05/11/2026: sin Basic o con uno malo, el genérico; con el Basic bueno,
+  // el JSON Error de AutenticarUsuario adentro de JsonResult.
+  const basicDeServicio = `Basic ${Buffer.from(`PORTAL:${CLAVE_SERVICIO}`).toString('base64')}`
+  fetchFalso(t, (pedido) =>
+    pedido.headers.authorization === basicDeServicio
+      ? json({ status: 401, Description: 'Unauthorized', detail: 'La contraseña ingresada no es válida', JsonResult: '{"Codigo":7,"Mensaje":"La contraseña ingresada no es válida"}' }, 401)
+      : json({ status: 401, Description: 'Unauthorized', detail: 'Falló la autenticación', JsonResult: '' }, 401),
+  )
+  await assert.rejects(crearClienteEquidad(CUENTA).sesion(), (error: Error) => {
+    assert.match(error.message, /aceptó el usuario de servicio \(con el usuario de servicio\) pero rechazó la contraseña de aplicación: Unauthorized: La contraseña ingresada no es válida \(código 7\)/)
+    assert.match(error.message, /web de productores/)
+    return true
+  })
+  assert.equal(codigoDelJsonResult('{"JsonResult":"{\\"Codigo\\":7}"}'), 7)
+  assert.equal(codigoDelJsonResult('{"JsonResult":""}'), null)
+  assert.equal(codigoDelJsonResult('no es json'), null)
 })
 
 test('Equidad: sin usuario de servicio, si el login da 401 sin Basic se prueba el Basic con el usuario de aplicación, y queda para los servicios', async (t) => {
