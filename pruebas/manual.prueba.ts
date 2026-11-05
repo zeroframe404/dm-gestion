@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CONTENIDO_AYUDA } from '../src/renderer/ayuda/contenido'
-import { clavesDeAyudaDe, htmlDelManual, nombreDelManual } from '../src/renderer/ayuda/manual'
+import { clavesDeAyudaDe, htmlDelManual, identidadDelManual, nombreDelManual } from '../src/renderer/ayuda/manual'
 import { MODULOS, MODULO_ADMINISTRACION, MODULO_API_ASEGURADORAS } from '../src/renderer/modulos'
 
 const MANUAL = htmlDelManual({ version: '12.0.3', fecha: '29 de agosto de 2026', logo: '' })
@@ -86,4 +86,21 @@ test('lo que viene de la ayuda va escapado', () => {
   const conLogo = htmlDelManual({ version: '<script>', fecha: 'hoy', logo: '' })
   assert.ok(!conLogo.includes('Versión <script>'))
   assert.ok(conLogo.includes('&lt;script&gt;'))
+})
+
+test('el manual de la demo sale con la marca de la demo y sin la de la agencia', () => {
+  // La demo se le muestra a otras agencias: ni la portada, ni el encabezado de cada hoja, ni el título,
+  // ni la firma pueden decir «DM Gestión». La versión de la agencia, en cambio, no cambia.
+  const { marca, agencia } = identidadDelManual('demo')
+  assert.equal(marca, 'Cobertia')
+  const deLaDemo = htmlDelManual({ version: '17.0.0', fecha: 'hoy', logo: '', marca, agencia })
+  assert.ok(!deLaDemo.includes('DM Gestión'), 'en la demo no puede quedar ningún «DM Gestión»')
+  assert.ok(!deLaDemo.includes('DM&nbsp;Gestión'))
+  assert.ok(deLaDemo.includes('<title>Manual de Cobertia</title>'))
+  assert.ok(deLaDemo.includes('Cobertia · Manual'))
+  assert.equal(nombreDelManual('17.0.0', marca), 'Cobertia - Manual 17.0.0.pdf')
+
+  assert.deepEqual(identidadDelManual('estable').marca, 'DM Gestión')
+  assert.ok(MANUAL.includes('<h1>DM&nbsp;Gestión</h1>'), 'la portada de la agencia sigue igual')
+  assert.ok(MANUAL.includes('<title>Manual de DM Gestión</title>'))
 })

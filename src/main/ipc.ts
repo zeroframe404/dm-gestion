@@ -9,7 +9,7 @@ import type { FrescuraDeMetrica, InfoApp, PodioMensual, Resultado, SesionUsuario
 import { canalActual, esDemo } from './canal'
 import { probarVpsEnLaDemo } from './demo/conexion'
 import { estadoDeLaDemo } from './demo/servidor'
-import { mostrarWhatsappDeLaDemo, whatsappDeLaDemo } from './demo/whatsapp'
+import { abrirEnlaceDeLaDemo } from './demo/enlaces'
 import { carpetaDatos, rutaBaseDeDatos, rutaConfig } from './rutas'
 import { cambiarClave, ingresar, salir } from './servicios/auth'
 import { comprobarAcceso, conectarEmisor, estadoDeAcceso, estadoDeUsuarios, subirLocales } from './servicios/baseDeUsuarios'
@@ -2470,11 +2470,11 @@ export function registrarIpc(): void {
   manejar('sistema:abrirEnlace', async (url) => {
     exigirSesion()
     if (!/^https?:\/\//i.test(url)) throw new ErrorDeNegocio('Sólo se pueden abrir direcciones http o https.')
-    // Demo: los teléfonos de ejemplo parecen celulares de verdad; en vez de abrirle un chat a un
-    // desconocido, se muestra cómo le llegaría el mensaje al cliente (ver demo/whatsapp.ts).
-    const whatsapp = esDemo() ? whatsappDeLaDemo(url) : null
-    if (whatsapp) {
-      await mostrarWhatsappDeLaDemo(whatsapp, BrowserWindow.getFocusedWindow())
+    // Demo: los teléfonos de ejemplo parecen celulares de verdad, así que un WhatsApp muestra cómo le
+    // llegaría el mensaje al cliente en vez de abrirle un chat a un desconocido; y ningún otro enlace
+    // sale a internet: sólo se abre lo de esta computadora, lo demás avisa (ver demo/enlaces.ts).
+    if (esDemo()) {
+      await abrirEnlaceDeLaDemo(url, BrowserWindow.getFocusedWindow())
       return exito(null)
     }
     await shell.openExternal(url)

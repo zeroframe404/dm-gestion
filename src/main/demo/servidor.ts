@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto'
 import { hashSync } from 'bcryptjs'
 import { app } from 'electron'
 import { VpsSimulado } from '../../../scripts/vps-simulado.mjs'
-import { CLAVE_DE_LA_DEMO, EJEMPLO_URL_DEL_VPS, TOKEN_DE_LA_DEMO, USUARIOS_DE_LA_DEMO, type EstadoDeLaDemo, type UsuarioDeLaDemo } from '../../shared/demo'
+import { CLAVE_DE_LA_DEMO, EJEMPLO_URL_DEL_VPS, ENCABEZADOS_DE_TICKET_DE_LA_DEMO, TOKEN_DE_LA_DEMO, USUARIOS_DE_LA_DEMO, type EstadoDeLaDemo, type UsuarioDeLaDemo } from '../../shared/demo'
 import { permisosPorDefecto } from '../../shared/permisos'
 import { claveDeSucursal, sucursalCanonica, SUCURSALES } from '../../shared/sucursales'
 import { plantillaDeAvisoFirmada } from '../../shared/tipos'
@@ -219,13 +219,8 @@ function identidadDeSucursal(nombre: string): string {
 
 /** El encabezado del ticket de cada sucursal: direcciones y teléfonos inventados, en la forma de `valorCompartidoDelTicket`. */
 function ajusteDelTicket(): object {
-  const DIRECCIONES: Record<string, { direccion: string; telefono: string }> = {
-    'Dock Sud': { direccion: 'Av. Debenedetti 1450, Dock Sud', telefono: '11-4201-0000' },
-    Lanús: { direccion: 'Av. Hipólito Yrigoyen 4300, Lanús Oeste', telefono: '11-4241-0000' },
-    Sarandí: { direccion: 'Av. Mitre 3900, Sarandí', telefono: '11-4204-0000' },
-    Daniel: { direccion: 'Av. Belgrano 800, Avellaneda (atención con turno)', telefono: '11-5263-0000' },
-  }
-  const direcciones = SUCURSALES.map((sucursal) => ({ sucursal, ...DIRECCIONES[sucursal]! })).sort((a, b) =>
+  // Los mismos que las preferencias toman de fábrica en la demo (ver `shared/demo.ts`).
+  const direcciones = SUCURSALES.map((sucursal) => ({ sucursal, ...ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal] })).sort((a, b) =>
     identidadDeSucursal(a.sucursal).localeCompare(identidadDeSucursal(b.sucursal)),
   )
   return { direcciones }
@@ -414,14 +409,14 @@ const CONVERSACIONES: ConversacionDeEjemplo[] = [
   {
     id: 'demo-grupo-mostradores',
     titulo: 'Mostradores',
-    participantes: ['demo', 'admin', 'lucia', 'jorge', 'sofia', 'daniel'],
+    participantes: ['demo', 'test', 'admin', 'lucia', 'jorge', 'sofia', 'pablo'],
     mensajes: [
       { de: 'demo', texto: 'Buen día a todos. Hoy cierra la cobranza del mes: revisen la lista de deudores antes de las 18.', hace: 300 },
       { de: 'sofia', texto: 'En Lanús quedan 6 sin pagar, ya les mandé WhatsApp a todos.', hace: 285 },
       { de: 'lucia', texto: 'Sarandí al día salvo dos débitos rechazados: ya los cargué en Rechazos, así les salta el aviso.', hace: 270 },
       { de: 'jorge', texto: '¿Alguien tiene la lista de precios nueva de ATM? El multicotizador ya la trae, ¿no?', hace: 120 },
       { de: 'admin', texto: 'Sí, cotiza directo contra la API. No hace falta la planilla.', hace: 115 },
-      { de: 'daniel', texto: 'Mañana paso por Dock Sud a buscar las pólizas impresas.', hace: 25 },
+      { de: 'pablo', texto: 'Mañana paso por Dock Sud a buscar las pólizas impresas.', hace: 25 },
     ],
   },
   {
@@ -452,12 +447,23 @@ const CONVERSACIONES: ConversacionDeEjemplo[] = [
     ],
   },
   {
-    // Para que Daniel también entre con algo sin leer (ver `sembrarConversaciones`).
-    id: 'demo-directa-daniel-jorge',
+    // El acceso que se le pasa al cliente (test/admin) también entra con un mensaje sin leer, que de paso
+    // le cuenta qué está mirando.
+    id: 'demo-directa-demo-test',
     titulo: null,
-    participantes: ['daniel', 'jorge'],
+    participantes: ['demo', 'test'],
     mensajes: [
-      { de: 'daniel', texto: 'Jorge, ¿me separás las pólizas impresas de mis clientes de Quilmes?', hace: 70 },
+      { de: 'demo', texto: '¡Bienvenido a la demo de Cobertia! Todo lo que ves son datos de ejemplo: probá cargar un cobro, cotizar en el multicotizador o abrir un siniestro.', hace: 30 },
+      { de: 'demo', texto: 'En Administración → Servidor (VPS) está explicado cómo se conecta la versión real de tu agencia.', hace: 8 },
+    ],
+  },
+  {
+    // Para que Pablo también entre con algo sin leer (ver `sembrarConversaciones`).
+    id: 'demo-directa-pablo-jorge',
+    titulo: null,
+    participantes: ['pablo', 'jorge'],
+    mensajes: [
+      { de: 'pablo', texto: 'Jorge, ¿me separás las pólizas impresas de mis clientes de Quilmes?', hace: 70 },
       { de: 'jorge', texto: 'Sí, te las dejo en un sobre en el mostrador de Dock Sud.', hace: 20 },
     ],
   },
@@ -470,7 +476,7 @@ const CONVERSACIONES: ConversacionDeEjemplo[] = [
  *
  * Lo viejo queda entregado y leído. Lo ÚLTIMO de cada conversación queda sin entregar y sin leer para
  * TODOS sus destinatarios, no sólo para Martina: quien prueba la demo cambia de usuario para ver los
- * roles, y Carlos, Lucía o Daniel tienen que entrar con el contador de la campana y del chat encendido
+ * roles, y Carlos, Lucía o Pablo tienen que entrar con el contador de la campana y del chat encendido
  * igual que ella. (Cómo le llega al resto el historial, en `entregarLoUltimoAlEntrar`.)
  */
 function sembrarConversaciones(simulador: VpsSimulado, atenderMensajes: VpsSimulado['atenderMensajes'], hoy: Date): void {
@@ -540,7 +546,7 @@ function actorDe(clave: string): { clave: string; nombre: string; rol: string } 
  * leído y lo que escribió ella misma no bajan nunca, y la app lo trae recién al abrir la conversación
  * (`traerHistorial` en servicios/mensajeria.ts). En la agencia eso no se nota, porque cada computadora
  * fue juntando su historial desde el primer día. En la demo la carpeta local arranca vacía y quien entra
- * como Carlos, Lucía o Daniel veía la lista de conversaciones con «Sin mensajes» aunque tuvieran charla.
+ * como Carlos, Lucía o Pablo veía la lista de conversaciones con «Sin mensajes» aunque tuvieran charla.
  *
  * Por eso, sólo acá, la primera respuesta de novedades de cada persona lleva además el ÚLTIMO mensaje de
  * cada una de sus conversaciones, con sus acuses tal como están (lo leído llega leído y no enciende

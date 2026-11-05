@@ -22,8 +22,10 @@ import {
 } from '../modulos'
 import { barraLateralColapsada, guardarBarraLateralColapsada } from '../preferencias'
 import { Icono } from './Icono'
-import { useNombreDeLaAgencia } from '../canal'
+import { marcaDelPrograma } from '../../shared/canal'
+import { useCanal, useNombreDeLaAgencia } from '../canal'
 import { InsigniaBeta } from './InsigniaBeta'
+import { LogoDeLaMarca } from './LogoDeLaMarca'
 import { cx } from './ui'
 
 interface PropsBarraLateral {
@@ -38,6 +40,9 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
   // muestra la campana de la barra superior: los dos salen del mismo contexto.
   const { pendientes } = useAvisosDeTareas()
   const nombreDeLaAgencia = useNombreDeLaAgencia()
+  // La demo se presenta con su propia marca (logo y nombre); la agencia sigue con el escudo y «DM Gestión».
+  const canal = useCanal()
+  const esDemo = canal === 'demo'
   const [colapsada, setColapsada] = useState(barraLateralColapsada)
   // API Aseguradoras no es un área de permisos (no está en `puedeVer`/`AREAS`): son credenciales de un
   // tercero, no algo que necesite el mostrador, así que se esconde directamente por rol, igual que las
@@ -68,15 +73,19 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
           colapsada ? 'flex-col items-center gap-2 px-2 py-4' : 'items-center gap-3 px-5 py-5',
         )}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-cielo-200 ring-1 ring-white/15">
-          <Icono nombre="escudo" tamano={18} />
-        </div>
+        {esDemo ? (
+          <LogoDeLaMarca tamano={36} className="shrink-0" />
+        ) : (
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-cielo-200 ring-1 ring-white/15">
+            <Icono nombre="escudo" tamano={18} />
+          </div>
+        )}
         {!colapsada && (
           <div className="min-w-0">
             {/* Menos tracking que un rótulo normal: con más, el nombre no entra en el ancho de la barra. */}
             <p className="truncate text-[10px] font-bold uppercase tracking-[0.06em] text-cielo-200">{nombreDeLaAgencia}</p>
             <p className="font-display text-xl font-bold tracking-tight text-white">
-              DM Gestión <InsigniaBeta className="ml-1 align-middle" />
+              {marcaDelPrograma(canal)} <InsigniaBeta className="ml-1 align-middle" />
             </p>
           </div>
         )}

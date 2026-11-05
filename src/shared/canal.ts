@@ -10,7 +10,12 @@ export type Canal = 'estable' | 'beta' | 'demo'
 /** Cómo se llama el programa en cada canal: carteles, título de la ventana, accesos directos. */
 export const NOMBRE_ESTABLE = 'DM Gestión'
 export const NOMBRE_BETA = 'DM Gestión (Beta)'
-export const NOMBRE_DEMO = 'DM Gestión (Demo)'
+/**
+ * La demo se vende con marca propia: no es «DM Gestión» (el programa de una agencia concreta) sino un
+ * producto que cada agencia configura con su servidor. Logo en `recursos/demo/` y `renderer/componentes/LogoDeLaMarca.tsx`.
+ */
+export const MARCA_DEMO = 'Cobertia'
+export const NOMBRE_DEMO = `${MARCA_DEMO} (Demo)`
 
 /** `17.7.3-beta.12` es beta; `17.7.2` no. */
 export function esVersionBeta(version: string): boolean {
@@ -26,4 +31,13 @@ export function nombreDelPrograma(canal: Canal): string {
   if (canal === 'beta') return NOMBRE_BETA
   if (canal === 'demo') return NOMBRE_DEMO
   return NOMBRE_ESTABLE
+}
+
+/**
+ * La marca, sin el «(Beta)» ni el «(Demo)»: lo que va en el encabezado de la barra lateral, en «Acerca
+ * de», en la portada del manual y en la ayuda impresa. La demo se presenta como Cobertia; la estable y la
+ * beta siguen siendo DM Gestión (la beta se distingue con su insignia, no con el nombre).
+ */
+export function marcaDelPrograma(canal: Canal): string {
+  return canal === 'demo' ? MARCA_DEMO : NOMBRE_ESTABLE
 }

@@ -413,7 +413,7 @@ function DireccionesDelTicket() {
                   etiqueta="Teléfono"
                   value={fila.telefono}
                   onChange={(evento) => cambiar(indice, { telefono: evento.target.value })}
-                  placeholder="11 4083-0416"
+                  placeholder="11 5555-0000"
                   ayuda="El celular de este local. Sale después de «Pcia de Buenos Aires»."
                 />
               </div>

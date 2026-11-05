@@ -85,7 +85,7 @@ const PROXIMAMENTE_DE_CARTERA: Partial<Record<IdSeccionDeCartera, Modulo>> = {
     nombre: 'Flotas',
     icono: 'clientes',
     descripcion:
-      'Agrupar a los clientes que van juntos (una familia, una empresa y sus socios) para verlos y renovarlos en conjunto. Todavía no hay forma de cargar esos grupos en DM Gestión.',
+      'Agrupar a los clientes que van juntos (una familia, una empresa y sus socios) para verlos y renovarlos en conjunto. Todavía no hay forma de cargar esos grupos en el programa.',
     disponible: false,
   },
   indiceAumentos: {

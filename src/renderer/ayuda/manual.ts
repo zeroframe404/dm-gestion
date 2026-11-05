@@ -12,11 +12,12 @@
 // Este archivo es TypeScript puro: sin DOM, sin React y sin Electron. Lo importan tres lugares —la
 // pantalla, el banco de pruebas y el script de línea de comandos— y si se le mete un `document.` deja
 // de andar en dos de los tres.
+import { marcaDelPrograma, type Canal } from '../../shared/canal'
 import { AREAS, DESCRIPCION_AREA, NOMBRE_NIVEL, permisosPorDefecto } from '../../shared/permisos'
 import { SUCURSALES } from '../../shared/sucursales'
 import { NOMBRE_ROL } from '../../shared/tipos'
 import { MODULOS, MODULO_ADMINISTRACION, MODULO_API_ASEGURADORAS, type Modulo } from '../modulos'
-import { nombreDeLaAgencia } from '../agencia'
+import { canalSinEsperar, nombreDeLaAgencia } from '../agencia'
 import { CONTENIDO_AYUDA } from './contenido'
 import type { ContenidoDeAyuda } from './tipos'
 
@@ -29,6 +30,20 @@ export interface DatosDelManual {
   logo?: string
   /** A nombre de quién sale. Sin decir nada, el de la agencia (en la demo, la de demostración). */
   agencia?: string
+  /**
+   * Cómo se llama el programa: portada, encabezado de cada hoja, título y firma. Sin decir nada, el del
+   * canal (en la demo, «Cobertia»; en la agencia, «DM Gestión»). Se pasa acá y no se lee de la ventana
+   * porque este archivo también lo usan el banco de pruebas y `scripts/manual.mjs`, que no tienen canal.
+   */
+  marca?: string
+}
+
+/**
+ * La marca y la agencia de un canal, para quien no tiene la ventana a mano: `scripts/manual.mjs` las
+ * pide así para sacar el manual de la demo desde la línea de comandos (`npm run manual -- --demo`).
+ */
+export function identidadDelManual(canal: Canal): { marca: string; agencia: string } {
+  return { marca: marcaDelPrograma(canal), agencia: nombreDeLaAgencia(canal) }
 }
 
 /**
@@ -136,10 +151,10 @@ const CIERRE = [
 // El armado de las páginas
 // ---------------------------------------------------------------------------
 
-function hoja(numero: number, total: number, titulo: string, cuerpo: string, agencia: string): string {
+function hoja(numero: number, total: number, titulo: string, cuerpo: string, agencia: string, marca: string): string {
   return `<section class="hoja">
   <header class="cabecera">
-    <span class="marca">DM Gestión · Manual</span>
+    <span class="marca">${escapar(marca)} · Manual</span>
     <span class="titulo-hoja">${escapar(titulo)}</span>
   </header>
   <div class="cuerpo">${cuerpo}</div>
@@ -261,14 +276,15 @@ export function htmlDelManual(datos: DatosDelManual): string {
   let numero = 0
   const paginas: string[] = []
   const agencia = datos.agencia ?? nombreDeLaAgencia()
-  const pagina = (n: number, de: number, titulo: string, contenido: string) => hoja(n, de, titulo, contenido, agencia)
+  const marca = datos.marca ?? marcaDelPrograma(canalSinEsperar())
+  const pagina = (n: number, de: number, titulo: string, contenido: string) => hoja(n, de, titulo, contenido, agencia, marca)
 
   // --- 1. Portada ----------------------------------------------------------
   paginas.push(`<section class="hoja portada">
   <div class="portada-arriba">
     ${datos.logo ? `<img class="logo" src="${datos.logo}" alt="" />` : ''}
     <p class="portada-marca">${escapar(agencia)}</p>
-    <h1>DM&nbsp;Gestión</h1>
+    <h1>${escapar(marca).replace(/ /g, '&nbsp;')}</h1>
     <p class="portada-bajada">Manual para empezar a usar el programa</p>
   </div>
   <div class="portada-abajo">
@@ -283,9 +299,9 @@ export function htmlDelManual(datos: DatosDelManual): string {
     pagina(
       ++numero,
       total,
-      'Qué es DM Gestión',
+      `Qué es ${marca}`,
       `<h2>Es la planilla de siempre, con memoria</h2>
-      <p>Durante años la agencia trabajó sobre una hoja de cálculo: una fila por póliza, una pestaña por mes. DM Gestión hace lo mismo, pero además se acuerda: sabe que esa fila es de una persona que tiene otras dos pólizas, un siniestro abierto y una cuota que venció en marzo, y puede decírtelo cuando esa persona llama.</p>
+      <p>Durante años la agencia trabajó sobre una hoja de cálculo: una fila por póliza, una pestaña por mes. ${escapar(marca)} hace lo mismo, pero además se acuerda: sabe que esa fila es de una persona que tiene otras dos pólizas, un siniestro abierto y una cuota que venció en marzo, y puede decírtelo cuando esa persona llama.</p>
       <p>Lo que en la planilla eran pestañas, acá son módulos, y están en la barra azul de la izquierda. Se pasa de uno a otro con un clic y lo que se carga en uno aparece en los demás sin tener que copiarlo.</p>
 
       <h2>Lo que cargás acá, lo ven todos</h2>
@@ -398,12 +414,12 @@ export function htmlDelManual(datos: DatosDelManual): string {
         <p>Andá a <strong>Administración → Acerca de</strong> y anotá la versión que dice ahí. Con eso, y contando qué estabas haciendo cuando pasó, se resuelve mucho más rápido.</p>
         <p>Y si el problema es que algo que cargaron en otra sucursal no aparece, probá primero <strong>Administración → Sincronizar</strong>.</p>
       </div>
-      <p class="firma">${escapar(agencia)} · DM Gestión ${escapar(datos.version)}</p>`,
+      <p class="firma">${escapar(agencia)} · ${escapar(marca)} ${escapar(datos.version)}</p>`,
     ),
   )
 
   return `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><title>Manual de DM Gestión</title><style>
+<html lang="es"><head><meta charset="utf-8"><title>Manual de ${escapar(marca)}</title><style>
   /* Los márgenes van en cero y el margen real lo hace el padding de cada hoja: printToPDF ya manda
      los suyos en cero y sumarlos dos veces cortaría el pie de página. */
   @page { size: A4; margin: 0; }
@@ -479,7 +495,12 @@ ${paginas.join('\n')}
 </body></html>`
 }
 
-/** El nombre con el que se ofrece guardar. */
-export function nombreDelManual(version: string): string {
-  return `DM Gestion - Manual ${version}.pdf`
+/**
+ * El nombre con el que se ofrece guardar. Sin tildes («DM Gestion», no «DM Gestión»): el archivo viaja
+ * por mail y pendrives, y no todos los programas se llevan bien con un nombre acentuado. La marca, si no
+ * se dice, es la del canal (en la demo, «Cobertia - Manual …»).
+ */
+export function nombreDelManual(version: string, marca: string = marcaDelPrograma(canalSinEsperar())): string {
+  const sinTildes = marca.normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return `${sinTildes} - Manual ${version}.pdf`
 }

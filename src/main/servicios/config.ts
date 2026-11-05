@@ -416,6 +416,9 @@ export function borrarMeta(): EstadoDeMeta {
  * `credencialesGoogle` (la migración) sigue exigiendo las dos cosas.
  */
 export function credencialesParaDrive(): { cuentaServicio: Record<string, unknown>; urlHoja: string | null } | null {
+  // Demo: no hay Drive. Sin credenciales, respaldos y adjuntos se comportan como en una agencia que
+  // todavía no conectó Google (no intentan subir nada), aunque alguien haya escrito un config.json.
+  if (esDemo()) return null
   const google = leerConfig().google
   if (!google?.cuentaServicio) return null
   const cuenta = google.cuentaServicio as Record<string, unknown>
@@ -424,6 +427,8 @@ export function credencialesParaDrive(): { cuentaServicio: Record<string, unknow
 }
 
 export function credencialesGoogle(): { cuentaServicio: Record<string, unknown>; urlHoja: string } | null {
+  // Demo: la migración desde la planilla nunca habla con Google (ver `credencialesParaDrive`).
+  if (esDemo()) return null
   const google = leerConfig().google
   if (!google?.cuentaServicio || !google.urlHoja) return null
   return { cuentaServicio: google.cuentaServicio as Record<string, unknown>, urlHoja: google.urlHoja }
@@ -452,6 +457,9 @@ function validarCuentaServicio(contenido: string): CuentaServicio {
 }
 
 export function guardarGoogle(datos: unknown): EstadoConexionGoogle {
+  // Demo: no se guarda una cuenta de servicio que después nadie usaría (el programa no sale a internet).
+  // Se corta antes de validar, así el cartel es el mismo con datos buenos o malos.
+  if (esDemo()) throw new ErrorDeNegocio('En la demostración no se conecta con Google.')
   const d = objeto(datos, 'Los datos de conexión')
   const urlHoja = texto(d.urlHoja, 'La URL de la hoja de cálculo', 1, 2048)
   if (!FORMATO_URL_HOJA.test(urlHoja)) {

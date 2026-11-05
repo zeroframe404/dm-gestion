@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { PanelSincronizacion } from '../../../shared/tipos'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Cargando, Etiqueta, Tarjeta, cx } from '../../componentes/ui'
+import { useEsDemo } from '../../canal'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { RespaldosDelServidor } from './RespaldosDelServidor'
 
@@ -38,10 +39,22 @@ const NOMBRE_OPERACION: Record<string, string> = {
   borrar: 'Quitar fila',
 }
 
+/**
+ * Lo que nació en la aplicación y todavía no tiene pestaña en la hoja se guarda con la pestaña
+ * «(cargado en DM Gestión)» (`PESTANA_APP` en main/servicios/filas.ts). Ese valor no se toca porque está
+ * en la base; en pantalla se muestra con una etiqueta que no nombra al programa (ver
+ * `pestanaParaMostrar` en ese mismo archivo, que esta pantalla no puede importar).
+ */
+function pestanaParaMostrar(pestana: string): string {
+  return pestana === '(cargado en DM Gestión)' ? '(cargado en el programa)' : pestana
+}
+
 export function Sincronizacion() {
   // Sincronizar y forzar la bajada los usa todo el equipo desde la barra superior; reintentar la cola
   // y respaldar a mano sí piden «ver y editar» en Administración.
   const puedeEditar = usePuedeEditar('administracion')
+  // La demo no sale a internet: el respaldo se guarda en la computadora pero no se sube a ningún Drive.
+  const esDemo = useEsDemo()
   const [panel, setPanel] = useState<PanelSincronizacion | null>(null)
   const [cargando, setCargando] = useState(true)
   const [ocupado, setOcupado] = useState<string | null>(null)
@@ -179,7 +192,7 @@ export function Sincronizacion() {
                 <tr key={entrada.id} className="border-b border-slate-100 last:border-b-0">
                   <td className="px-3 py-2 whitespace-nowrap text-slate-600">{fecha(entrada.creadoEn)}</td>
                   <td className="px-3 py-2 text-slate-700">{NOMBRE_OPERACION[entrada.operacion] ?? entrada.operacion}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-slate-600">{entrada.pestana}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-slate-600">{pestanaParaMostrar(entrada.pestana)}</td>
                   <td className="px-3 py-2 text-xs text-slate-600">{entrada.campos.join(', ') || '—'}</td>
                   <td className="px-3 py-2 text-slate-600">{entrada.usuarioNombre ?? '—'}</td>
                   <td className="px-3 py-2">
@@ -228,7 +241,11 @@ export function Sincronizacion() {
 
       <Tarjeta
         titulo="Respaldos en esta computadora"
-        descripcion="Además de los del servidor, todos los días después de las 20:00 esta computadora guarda una copia de la base entera en formato Excel y, si la cuenta de Google sigue cargada, la sube a la carpeta «Respaldos DM» del Drive. Se conservan las últimas 30. Sirven para abrir en Excel y mirar; para volver atrás están los del servidor."
+        descripcion={
+          esDemo
+            ? 'Además de los del servidor, todos los días después de las 20:00 esta computadora guarda una copia de la base entera en formato Excel. En la demo no se sube nada a ningún lado: el programa no se conecta a internet y la copia queda sólo en esta computadora. Se conservan las últimas 30. Sirven para abrir en Excel y mirar; para volver atrás están los del servidor.'
+            : 'Además de los del servidor, todos los días después de las 20:00 esta computadora guarda una copia de la base entera en formato Excel y, si la cuenta de Google sigue cargada, la sube a la carpeta de respaldos del Drive. Se conservan las últimas 30. Sirven para abrir en Excel y mirar; para volver atrás están los del servidor.'
+        }
         acciones={
           <Boton
             icono="descargar"

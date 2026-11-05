@@ -1,0 +1,53 @@
+# Configuración de electron-builder para la DEMO (Cobertia). La usa sólo scripts/dist-demo.mjs.
+#
+# Es un archivo aparte, y no unos `-c.` sobre electron-builder.yml, porque la demo tiene que llevar OTRA
+# marca entera (nombre, appId, ícono, editor) y NINGUNA sección `publish`: la de la estable apunta al
+# repositorio de la agencia y quedaría escrita en el app-update.yml de adentro del instalador. Sin
+# `publish` electron-builder igual lo deduce del remoto de git (zeroframe404/dm-gestion), así que se fija
+# uno genérico a una dirección inválida. La demo no se actualiza sola (ver src/main/servicios/updater.ts).
+appId: com.cobertia.gestion.demo
+productName: Cobertia (Demo)
+copyright: Copyright © 2026 Cobertia
+artifactName: Cobertia-Demo-Setup-${version}.${ext}
+
+directories:
+  output: release
+  buildResources: recursos/demo
+
+# Sólo el programa: nada de lo que el banco de pruebas pueda haber dejado en dist/.
+files:
+  - dist/main/**/*
+  - dist/preload/**/*
+  - dist/renderer/**/*
+  - package.json
+
+publish:
+  - provider: generic
+    url: https://actualizaciones.invalid/
+    updaterCacheDirName: cobertia-demo-updater
+
+asarUnpack:
+  - "**/*.node"
+
+npmRebuild: false
+
+win:
+  icon: recursos/demo/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Cobertia (Demo)
+  installerIcon: recursos/demo/icon.ico
+  uninstallerIcon: recursos/demo/icon.ico
+  installerHeaderIcon: recursos/demo/icon.ico
+  installerLanguages:
+    - es_ES
+  language: "3082"

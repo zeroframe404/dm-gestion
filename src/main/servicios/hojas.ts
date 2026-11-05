@@ -55,7 +55,7 @@ export function buscarPestana(opciones: Opciones): PestanaDeLaHoja {
 
   const sinPestana =
     `La hoja de Google todavía no tiene una pestaña «${opciones.nombrePorDefecto}» importada con una fila por registro. ` +
-    `Armala con encabezados ${opciones.encabezadosEsperados} e importala; hasta entonces lo que se cargue acá queda sólo en DM Gestión.`
+    `Armala con encabezados ${opciones.encabezadosEsperados} e importala; hasta entonces lo que se cargue acá queda sólo en el programa.`
 
   if (!candidata) return { pestana: null, campos: new Set(), aviso: sinPestana }
 

@@ -279,17 +279,22 @@ export async function estadoDelMeshDemo(): Promise<EstadoDelMesh> {
   const desde = Date.now()
   await esperarComoLaApi(150, 450)
   return {
-    // La página del producto, no una consola de verdad: en la demo no hay computadoras que controlar.
-    url: 'https://meshcentral.com/',
+    // Sin dirección a propósito: en la demo no hay computadoras de una agencia que controlar y la demo no
+    // abre nada de internet. Con la url vacía, la pantalla de Control remoto muestra en su lugar qué se
+    // abriría en la instalación de verdad (ver ControlRemoto.tsx).
+    url: '',
     enLinea: true,
-    detalle: 'La consola está en línea. (En la demostración el botón abre la página de MeshCentral: no hay computadoras de una agencia que controlar.)',
+    detalle: 'La consola está en línea. (En la demostración no se abre: en tu instalación, acá se abre la consola de control remoto de tu VPS.)',
     tardanzaMs: Date.now() - desde,
   }
 }
 
-/** El reporte «queda anotado» con un número inventado: en la demo no se abre ningún issue. */
+/**
+ * El reporte «queda anotado» con un número inventado: en la demo no se abre ningún issue. Va sin
+ * dirección, así la pantalla no ofrece abrirlo en ningún lado y muestra sólo el número.
+ */
 export async function reporteDeErrorDemo(titulo: string, imagenes: number): Promise<ReporteCreado> {
   await esperarComoLaApi(800, 1800)
   const numero = 300 + (hashDe(`${titulo}:${Date.now()}`) % 700)
-  return { numero, url: `https://example.com/dm-gestion-demo/reportes/${numero}`, imagenesSubidas: imagenes }
+  return { numero, url: '', imagenesSubidas: imagenes }
 }

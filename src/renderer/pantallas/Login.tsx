@@ -1,11 +1,13 @@
 // Pantalla de inicio de sesión. Debajo del formulario dice, sin jerga, si hay conexión con la base de
 // usuarios compartida y quién puede entrar sin internet en esta computadora.
 import { useState, type FormEvent } from 'react'
+import { MARCA_DEMO } from '../../shared/canal'
 import { CLAVE_DE_LA_DEMO, USUARIOS_DE_LA_DEMO } from '../../shared/demo'
 import { NOMBRE_ROL, type EstadoDeAcceso } from '../../shared/tipos'
 import { useEsDemo } from '../canal'
 import { Icono } from '../componentes/Icono'
 import { InsigniaBeta } from '../componentes/InsigniaBeta'
+import { LogoDeLaMarca } from '../componentes/LogoDeLaMarca'
 import { Alerta, Boton, Campo, CampoClave, cx } from '../componentes/ui'
 import { useAcceso } from '../contexto/Acceso'
 import { useSesion } from '../contexto/Sesion'
@@ -42,17 +44,28 @@ export function Login() {
   const esperaRed = enviando && acceso?.configurada === true
 
   return (
-    <div className="flex h-full items-center justify-center bg-[linear-gradient(135deg,#12315d_0%,#163b6e_45%,#17437f_100%)] p-6">
-      <div className="w-full max-w-[420px]">
+    <div
+      className={cx(
+        // Sin items-center: si el contenido es más alto que la ventana (la lista de usuarios de la demo),
+        // un flex centrado lo recorta por arriba. `m-auto` en el hijo centra igual y deja hacer scroll.
+        'flex h-full overflow-y-auto p-6',
+        esDemo ? 'bg-[linear-gradient(135deg,#053d36_0%,#0b5c50_45%,#0f766e_100%)]' : 'bg-[linear-gradient(135deg,#12315d_0%,#163b6e_45%,#17437f_100%)]',
+      )}
+    >
+      <div className="m-auto w-full max-w-[420px]">
         <div className="mb-8 text-center text-white">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
-            <Icono nombre="escudo" tamano={28} className="text-cielo-200" />
-          </div>
+          {esDemo ? (
+            <LogoDeLaMarca tamano={56} className="mx-auto drop-shadow-lg" />
+          ) : (
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
+              <Icono nombre="escudo" tamano={28} className="text-cielo-200" />
+            </div>
+          )}
           <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-200">
             {esDemo ? 'Versión de demostración' : 'Seguros Daniel Martínez'}
           </p>
           <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight">
-            DM Gestión <InsigniaBeta className="ml-1 align-middle" />
+            {esDemo ? MARCA_DEMO : 'DM Gestión'} <InsigniaBeta className="ml-1 align-middle" />
           </h1>
         </div>
 
@@ -88,7 +101,11 @@ export function Login() {
 
         {esDemo && (
           <div className="mt-4 rounded-2xl bg-white/10 p-4 text-white ring-1 ring-white/20">
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-cielo-200">Entrar como…</p>
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-cielo-200">Acceso de prueba</p>
+            <p className="mt-1 text-sm text-white">
+              Usuario <span className="font-mono font-semibold">test</span> · contraseña <span className="font-mono font-semibold">{CLAVE_DE_LA_DEMO}</span>
+            </p>
+            <p className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-cielo-200">O entrar como…</p>
             <p className="mt-1 text-xs text-white/70">
               Cada usuario ve el programa según su rol. La contraseña de todos es <span className="font-mono font-semibold text-white">{CLAVE_DE_LA_DEMO}</span>.
             </p>
