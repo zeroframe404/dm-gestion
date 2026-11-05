@@ -94,4 +94,6 @@ export const HUELLAS_POR_VERSION: Record<number, string> = {
   37: '840b90de47a23d8d',
   38: '840b90de47a23d8d',
   39: 'ba369a6cc047f86f',
+  // La 40 crea la caché local de lo que confirman las APIs de las aseguradoras (Cartera → Asegurados).
+  40: 'c62883b4298dc0da',
 }
