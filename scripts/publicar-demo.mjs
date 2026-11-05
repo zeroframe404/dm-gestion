@@ -24,8 +24,18 @@ if (instaladores.length !== 1) {
 const instalador = instaladores[0]
 const version = instalador.replace('Cobertia-Demo-Setup-', '').replace(/\.exe$/, '')
 
-function gh(args, opciones = {}) {
-  return execFileSync('gh', args, { cwd: raiz, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...opciones })
+// La API de GitHub a veces contesta 500/502 en el momento de tocar el Release: se reintenta antes de
+// tirar la publicación, con el instalador ya armado.
+function gh(args, opciones = {}, intentos = 3) {
+  for (let intento = 1; ; intento++) {
+    try {
+      return execFileSync('gh', args, { cwd: raiz, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...opciones })
+    } catch (error) {
+      if (intento >= intentos) throw error
+      console.warn(`[gh] Falló «gh ${args.slice(0, 2).join(' ')}» (intento ${intento} de ${intentos}); se reintenta en ${5 * intento} s.`)
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000 * intento)
+    }
+  }
 }
 
 const sha = process.env.GITHUB_SHA || execFileSync('git', ['rev-parse', 'HEAD'], { cwd: raiz, encoding: 'utf8' }).trim()
@@ -59,7 +69,7 @@ const notas = [
 
 let existe = true
 try {
-  gh(['release', 'view', TAG, '-R', REPO, '--json', 'tagName'])
+  gh(['release', 'view', TAG, '-R', REPO, '--json', 'tagName'], {}, 1)
 } catch {
   existe = false
 }
