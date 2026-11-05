@@ -281,12 +281,13 @@ test('Equidad: el pedido de CotizarAutomotor lleva los nombres exactos del docum
     },
   })
   assert.equal(pedido.Usuario, 'GLM')
-  assert.equal(pedido.Rama, 4)
+  assert.equal(pedido.Rama, '4', 'como texto, igual que el ejemplo de Equidad')
   assert.equal(pedido.TomadorTipoPersona, '1')
   assert.equal(pedido.TomadoCategoriaIVACodigo, 'CF', 'sic: así lo nombra el documento')
+  assert.equal(pedido.TomadorCategoriaIVACodigo, 'CF', 'y bien escrito, como el ejemplo de Equidad')
   assert.equal(pedido.VigenciaDesde, '2026-10-20')
-  assert.equal(pedido.ProductorCodigo, 1234)
-  assert.equal(pedido.FormaPagoCodigo, 2)
+  assert.equal(pedido.ProductorCodigo, '1234')
+  assert.equal(pedido.FormaPagoCodigo, '2')
   assert.equal(pedido.PorcentajeBonificacion, 20)
   assert.equal(pedido.PorcenjateRecargoAdm, 10, 'sic: la errata es el nombre que la API espera')
   assert.equal('Solicitud' in pedido, false)
@@ -447,13 +448,13 @@ test('Equidad: cotiza eligiendo cada combo como la web (tipo de póliza, product
   const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
   const cuerpo = JSON.parse(post.cuerpo) as Record<string, unknown> & { RiesgoAUT: Record<string, unknown> }
   assert.equal(cuerpo.Usuario, 'GLM')
-  assert.equal(cuerpo.Rama, 4)
+  assert.equal(cuerpo.Rama, '4')
   assert.equal(cuerpo.TipoPolizaCodigo, 'AU', 'el tipo de póliza que nombra a los autos')
-  assert.equal(cuerpo.ProductorCodigo, 1234)
+  assert.equal(cuerpo.ProductorCodigo, '1234')
   assert.equal(cuerpo.MonedaCodigo, '1', 'pesos')
   assert.equal(cuerpo.PlanComercialCodigo, 'PL1')
   assert.equal(cuerpo.ModoFacturacionCodigo, 'ANU')
-  assert.equal(cuerpo.FormaPagoCodigo, 2, 'la forma de pago que corresponde a la tarjeta')
+  assert.equal(cuerpo.FormaPagoCodigo, '2', 'la forma de pago que corresponde a la tarjeta')
   assert.equal(cuerpo.CondicionPagoCodigo, 'C12', 'la condición por defecto de Equidad')
   assert.equal(cuerpo.TomadoCategoriaIVACodigo, 'CF')
   assert.equal(cuerpo.TomadorIIBBCodigo, 'NI')
@@ -581,7 +582,31 @@ test('Equidad: lo que no es de la cotización (la cuenta rechazada, sin internet
   usarCuentaDeEquidadDePrueba(CUENTA)
   t.after(() => usarCuentaDeEquidadDePrueba(null))
   fetchFalso(t, () => json({ status: 401, Description: 'Falló la autenticación' }, 401))
-  await assert.rejects(equidad.cotizar(solicitud(), {}), /no aceptó las credenciales/)
+  await assert.rejects(equidad.cotizar(solicitud(), {}), /rechazó el usuario y la contraseña de aplicación \(401: Falló la autenticación/)
+})
+
+test('Equidad: si el login da 401 con el usuario de servicio, se prueba sin él (en AutenticarUsuario el Basic es opcional)', async (t) => {
+  const pedidos = fetchFalso(t, (pedido) => {
+    if (esServicio(pedido, 'autenticarUsuario')) {
+      return pedido.headers.authorization ? json({ status: 401, Description: 'Unauthorized', Detail: 'Falló la autenticación' }, 401) : json(SESION)
+    }
+    return json([{ Codigo: '1', Descripcion: 'PESOS' }])
+  })
+  const sesion = await crearClienteEquidad(CUENTA).sesion()
+  assert.equal(sesion.usuarioCodigo, SESION.UsuCod)
+  const logins = pedidos.filter((p) => esServicio(p, 'autenticarUsuario'))
+  assert.equal(logins.length, 2)
+  assert.match(logins[0]!.headers.authorization ?? '', /^Basic /)
+  assert.equal(logins[1]!.headers.authorization, undefined)
+})
+
+test('Equidad: si el login da 401 de las dos formas, el mensaje dice qué revisar', async (t) => {
+  fetchFalso(t, () => json({ status: 401, Description: 'Unauthorized', Detail: 'Falló la autenticación' }, 401))
+  await assert.rejects(crearClienteEquidad(CUENTA).sesion(), (error: Error) => {
+    assert.match(error.message, /401: Unauthorized: Falló la autenticación; se probó con y sin el usuario de servicio/)
+    assert.match(error.message, /mismo ambiente que la URL base/)
+    return true
+  })
 })
 
 test('Equidad: las decisiones por defecto, solas', () => {
