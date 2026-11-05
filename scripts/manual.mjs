@@ -7,6 +7,7 @@
 //
 //   npm run manual              → release/DM Gestion - Manual <version>.pdf
 //   npm run manual -- salida.pdf
+//   npm run manual -- --demo    → release/Cobertia - Manual <version>.pdf (marca, agencia y logo de la demo)
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -22,18 +23,25 @@ if (!existsSync(empaquetado)) {
   process.exit(1)
 }
 
-const { htmlDelManual, nombreDelManual } = requerir(empaquetado)
+const { htmlDelManual, identidadDelManual, nombreDelManual } = requerir(empaquetado)
 const paquete = JSON.parse(readFileSync(path.join(raiz, 'package.json'), 'utf8'))
 
+// Acá no hay ventana que diga el canal, así que se dice con `--demo`. Sin él, el de la agencia, como
+// siempre. El resto de los argumentos (la ruta de salida) no cambia.
+const argumentos = process.argv.slice(2)
+const esDemo = argumentos.includes('--demo')
+const rutaPedida = argumentos.find((argumento) => argumento !== '--demo')
+const { marca, agencia } = identidadDelManual(esDemo ? 'demo' : 'estable')
+
 // El logo va embebido y no por ruta: la ventana que imprime carga el HTML desde otra carpeta y una
-// imagen que no carga sale peor que no ponerla.
-const rutaDelLogo = path.join(raiz, 'recursos/icon.png')
+// imagen que no carga sale peor que no ponerla. La demo lleva el suyo (`recursos/demo/icon.png`).
+const rutaDelLogo = path.join(raiz, esDemo ? 'recursos/demo/icon.png' : 'recursos/icon.png')
 const logo = existsSync(rutaDelLogo) ? `data:image/png;base64,${readFileSync(rutaDelLogo).toString('base64')}` : ''
 
 const fecha = new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })
-const html = htmlDelManual({ version: paquete.version, fecha, logo })
+const html = htmlDelManual({ version: paquete.version, fecha, logo, marca, agencia })
 
-const salida = process.argv[2] ?? path.join(raiz, 'release', nombreDelManual(paquete.version))
+const salida = rutaPedida ?? path.join(raiz, 'release', nombreDelManual(paquete.version, marca))
 mkdirSync(path.dirname(salida), { recursive: true })
 
 const temporal = path.join(raiz, 'dist/manual/manual.html')

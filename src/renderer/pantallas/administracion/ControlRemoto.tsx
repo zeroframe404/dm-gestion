@@ -12,6 +12,7 @@
 // su puerta aparte, y no quedar abierto porque alguien dejó DM Gestión iniciado.
 import { useCallback, useEffect, useState } from 'react'
 import type { EstadoDelMesh } from '../../../shared/tipos'
+import { useEsDemo } from '../../canal'
 import { Alerta, Boton, Cargando, Etiqueta, Tarjeta } from '../../componentes/ui'
 
 export function ControlRemoto() {
@@ -19,6 +20,11 @@ export function ControlRemoto() {
   const [midiendo, setMidiendo] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
+  // Demo: no hay consola de verdad que abrir ni la demo abre nada de internet (el proceso principal
+  // contesta la dirección vacía). En vez del botón y la dirección se explica qué pasa en la instalación.
+  // Una dirección vacía fuera de la demo se trata igual: no hay nada que abrir.
+  const esDemo = useEsDemo()
+  const sinConsola = esDemo || (estado !== null && !estado.url)
 
   const medir = useCallback(async () => {
     setMidiendo(true)
@@ -34,7 +40,7 @@ export function ControlRemoto() {
   }, [medir])
 
   const abrir = async () => {
-    if (!estado) return
+    if (!estado || sinConsola) return
     const resultado = await window.dm.sistema.abrirEnlace(estado.url)
     if (!resultado.ok) setError(resultado.error)
   }
@@ -64,9 +70,11 @@ export function ControlRemoto() {
             <Boton icono="refrescar" onClick={() => void medir()} cargando={midiendo}>
               Probar de nuevo
             </Boton>
-            <Boton variante="primario" icono="enlace" onClick={() => void abrir()} disabled={!estado}>
-              Abrir la consola
-            </Boton>
+            {!sinConsola && (
+              <Boton variante="primario" icono="enlace" onClick={() => void abrir()} disabled={!estado}>
+                Abrir la consola
+              </Boton>
+            )}
           </>
         }
       >
@@ -86,6 +94,7 @@ export function ControlRemoto() {
                 )}
               </div>
               <p className="mt-2 text-sm text-slate-700">{estado.detalle}</p>
+              {!sinConsola && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <code className="rounded-lg border border-slate-200 bg-white px-2 py-1 font-mono text-xs text-slate-800">
                   {estado.url}
@@ -98,7 +107,16 @@ export function ControlRemoto() {
                   {copiado ? 'Copiada' : 'Copiar la dirección'}
                 </button>
               </div>
+              )}
             </div>
+          )}
+
+          {sinConsola && (
+            <Alerta tono="info">
+              {esDemo
+                ? 'En tu instalación, acá se abre la consola de control remoto de tu VPS: la lista de las computadoras de tus sucursales, con un botón para tomar el control de cualquiera. En la demostración no hay computadoras que controlar, así que no se abre nada.'
+                : 'Esta instalación no tiene configurada la dirección de la consola de control remoto.'}
+            </Alerta>
           )}
 
           {estado && !estado.enLinea && (
@@ -110,7 +128,7 @@ export function ControlRemoto() {
           )}
 
           <Alerta tono="info">
-            La consola se abre en el navegador y pide su propio usuario y clave, que no son los de DM Gestión. Es a
+            La consola se abre en el navegador y pide su propio usuario y clave, que no son los del programa. Es a
             propósito: desde ahí se entra a todas las computadoras de la agencia.
           </Alerta>
 

@@ -31,6 +31,16 @@ import { Alerta, Boton, Cargando, cx, Dialogo, Etiqueta, Tarjeta } from '../../c
 import { usePermisos } from '../../contexto/Permisos'
 import { useNavegacion } from '../../contexto/Navegacion'
 
+/**
+ * Lo que nació en la aplicación y todavía no tiene pestaña en la hoja se guarda con la pestaña
+ * «(cargado en DM Gestión)» (`PESTANA_APP` en main/servicios/filas.ts). Ese valor no se toca porque está
+ * en la base; en pantalla se muestra con una etiqueta que no nombra al programa (ver
+ * `pestanaParaMostrar` en ese mismo archivo, que esta pantalla no puede importar).
+ */
+function pestanaParaMostrar(pestana: string): string {
+  return pestana === '(cargado en DM Gestión)' ? '(cargado en el programa)' : pestana
+}
+
 export function Duplicados() {
   const [informe, setInforme] = useState<InformeDeDuplicados | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -501,7 +511,7 @@ function SeccionCuotas({ grupos, puedeSacar, alSacar }: { grupos: GrupoDeCuotasR
                   <li key={c.cuotaId} className="flex flex-wrap items-center gap-2 text-slate-700">
                     <Icono nombre={c.sugeridaParaQuedar ? 'ok' : 'alerta'} tamano={14} className={c.sugeridaParaQuedar ? 'text-green-600' : 'text-amber-700'} />
                     <span>
-                      {c.pestana}, renglón {c.numeroFila || '?'} · cuota {c.cuota ?? '—'} · {c.pago ? `pago ${c.pago}` : 'sin pagar'}
+                      {pestanaParaMostrar(c.pestana)}, renglón {c.numeroFila || '?'} · cuota {c.cuota ?? '—'} · {c.pago ? `pago ${c.pago}` : 'sin pagar'}
                       {c.sucursal ? ` · ${c.sucursal}` : ''}
                     </span>
                     {c.sugeridaParaQuedar && <Etiqueta tono="exito">Queda</Etiqueta>}
@@ -610,7 +620,7 @@ function SeccionEnLosDosLados({ filas, puedeSacar, alSacar }: { filas: PolizaEnL
                 <div className="flex flex-wrap items-center gap-2">
                   <Icono nombre="tabla" tamano={14} className="text-slate-500" />
                   <span>
-                    En la planilla ({f.cuota.pestana}) · {f.cuota.pago ? `pago ${f.cuota.pago}` : 'sin pagar'}
+                    En la planilla ({pestanaParaMostrar(f.cuota.pestana)}) · {f.cuota.pago ? `pago ${f.cuota.pago}` : 'sin pagar'}
                   </span>
                   {puedeSacar && (
                     <Boton tamano="sm" variante="peligro" icono="basura" onClick={() => setSacando({ tipo: 'cuota', id: f.cuota.cuotaId, titulo: tituloDePoliza(f) })}>

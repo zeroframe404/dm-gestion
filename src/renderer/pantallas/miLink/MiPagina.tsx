@@ -36,7 +36,7 @@ import { usePermisos } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { DialogoCompartir } from './editor/DialogoCompartir'
 import { DialogoCobertura, DialogoContacto, DialogoLink, DialogoNuevaCobertura } from './editor/DialogosDeBloques'
-import { CampoDeDireccion, DialogoDireccion, PREFIJO_VISIBLE, chequeoPermiteGuardar, useChequeoDeDireccion } from './editor/Direccion'
+import { CampoDeDireccion, DialogoDireccion, chequeoPermiteGuardar, prefijoVisible, useChequeoDeDireccion } from './editor/Direccion'
 import { PanelDeDiseno } from './editor/PanelDeDiseno'
 import { borradorDe, idNuevo, problemaDelContenido, type Borrador } from './editor/reglas'
 import { VistaPrevia, type EdicionDeLaVista } from './editor/VistaPrevia'
@@ -613,7 +613,7 @@ function BarraSuperior({
         {editable && <IndicadorDeGuardado estado={estado} />}
         <ChipDeEstado tono={publicada ? 'verde' : 'gris'}>{publicada ? 'Publicada' : 'Sin publicar'}</ChipDeEstado>
         <span className="truncate text-xs text-slate-500" title={url}>
-          {url.replace(/^https?:\/\//, '') || PREFIJO_VISIBLE}
+          {url.replace(/^https?:\/\//, '') || prefijoVisible()}
         </span>
       </div>
 

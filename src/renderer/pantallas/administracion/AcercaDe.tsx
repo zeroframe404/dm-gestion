@@ -3,6 +3,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { EstadoActualizacion, EstadoDeAcceso, InfoApp } from '../../../shared/tipos'
 import { HISTORIAL_DE_CAMBIOS } from '../../../shared/cambios'
+import { MARCA_DEMO, NOMBRE_ESTABLE } from '../../../shared/canal'
+import { LogoDeLaMarca } from '../../componentes/LogoDeLaMarca'
 import { ListaDeCambios } from '../../componentes/ListaDeCambios'
 import { Icono } from '../../componentes/Icono'
 import { BotonManual } from '../../componentes/BotonManual'
@@ -96,12 +98,17 @@ export function AcercaDe() {
         {info ? (
           <>
             <div className="flex items-center gap-5">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-marino-950 text-cielo-200 shadow-marca">
-                <Icono nombre="escudo" tamano={30} />
-              </div>
+              {/* La demo lleva su propia marca (Cobertia); la agencia, el escudo de siempre. */}
+              {esDemo ? (
+                <LogoDeLaMarca tamano={64} className="shrink-0 drop-shadow-md" />
+              ) : (
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-marino-950 text-cielo-200 shadow-marca">
+                  <Icono nombre="escudo" tamano={30} />
+                </div>
+              )}
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-700">{nombreDeLaAgencia}</p>
-                <h2 className="font-display text-3xl font-extrabold tracking-tight text-slate-900">DM Gestión</h2>
+                <h2 className="font-display text-3xl font-extrabold tracking-tight text-slate-900">{esDemo ? MARCA_DEMO : NOMBRE_ESTABLE}</h2>
                 <p className="mt-0.5 text-sm font-medium text-slate-600">Versión {info.version}</p>
               </div>
               {/* El manual también acá: es donde se lo busca cuando ya se sabe que existe. */}
@@ -172,7 +179,7 @@ export function AcercaDe() {
               {vencimiento && <dd className="mt-2 text-xs font-semibold text-amber-700">{vencimiento}</dd>}
             </div>
 
-            <p className="mt-8 text-xs text-slate-500">© {new Date().getFullYear()} {esDemo ? 'DM Gestión. Versión de demostración con datos ficticios.' : 'Seguros Daniel Martínez. Software de uso interno.'}</p>
+            <p className="mt-8 text-xs text-slate-500">© {new Date().getFullYear()} {esDemo ? `${MARCA_DEMO}. Versión de demostración con datos ficticios.` : 'Seguros Daniel Martínez. Software de uso interno.'}</p>
           </>
         ) : (
           <Cargando />

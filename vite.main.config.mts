@@ -46,7 +46,9 @@ export default defineConfig({
     emptyOutDir: true,
     target: 'node22',
     minify: false,
-    sourcemap: true,
+    // La demo va sin mapas de fuentes: llevarían el código original entero (comentarios incluidos)
+    // adentro del instalador que se le entrega a otras empresas.
+    sourcemap: !armandoLaDemo,
     lib: {
       entry: 'src/main/index.ts',
       formats: ['cjs'],

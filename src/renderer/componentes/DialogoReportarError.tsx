@@ -9,6 +9,7 @@
 // de GitHub: eso vive en el servidor, y es a propósito (ver `servicios/soporte.ts`).
 import { useCallback, useEffect, useState } from 'react'
 import type { ImagenDeReporte, ReporteCreado, TipoDeReporte } from '../../shared/tipos'
+import { useEsDemo } from '../canal'
 import { Alerta, AreaTexto, Boton, Campo, Dialogo, cx } from './ui'
 import { Icono } from './Icono'
 
@@ -56,6 +57,9 @@ export function DialogoReportarError({ abierto, alCerrar, variante = 'error' }: 
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [creado, setCreado] = useState<ReporteCreado | null>(null)
+  // Demo: el reporte vuelve con un número inventado y sin dirección (no se abrió ningún issue), así que
+  // no hay nada que «Ver» y se aclara que fue simulado.
+  const esDemo = useEsDemo()
 
   // Al abrirlo de nuevo se arranca en blanco: el reporte anterior ya se mandó.
   useEffect(() => {
@@ -125,7 +129,7 @@ export function DialogoReportarError({ abierto, alCerrar, variante = 'error' }: 
   }
 
   const abrirEnGitHub = async () => {
-    if (!creado) return
+    if (!creado?.url) return
     await window.dm.sistema.abrirEnlace(creado.url)
   }
 
@@ -139,7 +143,7 @@ export function DialogoReportarError({ abierto, alCerrar, variante = 'error' }: 
       pie={
         creado ? (
           <>
-            <Boton onClick={() => void abrirEnGitHub()}>Verlo</Boton>
+            {creado.url && <Boton onClick={() => void abrirEnGitHub()}>Verlo</Boton>}
             <Boton variante="primario" onClick={alCerrar}>
               Listo
             </Boton>
@@ -163,6 +167,12 @@ export function DialogoReportarError({ abierto, alCerrar, variante = 'error' }: 
             {creado.imagenesSubidas > 0 && <>, con {creado.imagenesSubidas === 1 ? 'una captura' : `${creado.imagenesSubidas} capturas`}</>}.
           </Alerta>
           <p className="text-sm leading-relaxed text-slate-600">{textos.despues}</p>
+          {esDemo && (
+            <p className="text-xs leading-relaxed text-slate-500">
+              Es una demostración: el número es de ejemplo y el reporte no se envió a ningún lado. En tu instalación llega a
+              quien administra el programa.
+            </p>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-4">

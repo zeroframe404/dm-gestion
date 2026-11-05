@@ -1,14 +1,21 @@
-// La dirección de la página (lo que va después de dmartinezseguros.com/p/): el campo con el prefijo,
+// La dirección de la página (lo que va después de <dominio de Mi link>/p/): el campo con el prefijo,
 // el chequeo de si está libre mientras se escribe, y el diálogo «Dirección» del editor. El campo lo usa
 // también la bienvenida, para elegir la dirección antes de crear la página.
 import { useEffect, useId, useState, type FormEvent } from 'react'
-import { PREFIJO_DE_MI_LINK, URL_BASE_DE_MI_LINK } from '../../../../shared/miLink'
+import { PREFIJO_DE_MI_LINK, urlBaseDeMiLink } from '../../../../shared/miLink'
+import { canalSinEsperar } from '../../../canal'
 import { Icono } from '../../../componentes/Icono'
 import { Alerta, Boton, Dialogo, cx } from '../../../componentes/ui'
 import { direccionEscrita, motivoDeDireccion } from './reglas'
 
-/** «dmartinezseguros.com/p/»: lo que se ve fijo delante del campo. */
-export const PREFIJO_VISIBLE = `${URL_BASE_DE_MI_LINK.replace(/^https?:\/\//, '')}${PREFIJO_DE_MI_LINK}`
+/**
+ * «dmartinezseguros.com/p/» (en la demo, «suagencia.com.ar/p/»): lo que se ve fijo delante del campo.
+ * Es una función y no una constante porque depende del canal, y el canal se sabe recién cuando contesta
+ * el proceso principal: una constante se calcularía al importar el archivo, antes de eso.
+ */
+export function prefijoVisible(): string {
+  return `${urlBaseDeMiLink(canalSinEsperar()).replace(/^https?:\/\//, '')}${PREFIJO_DE_MI_LINK}`
+}
 
 /** Lo que espera el chequeo antes de preguntarle al servidor: no se pregunta por cada letra. */
 const DEMORA_DEL_CHEQUEO_MS = 450
@@ -88,7 +95,7 @@ export function CampoDeDireccion({
           mal ? 'border-red-300 focus-within:ring-red-500/25' : 'border-slate-300 focus-within:border-marino-500 focus-within:ring-marino-500/25',
         )}
       >
-        <span className="flex h-full shrink-0 items-center border-r border-slate-200 bg-slate-50 px-3 text-slate-500 select-none">{PREFIJO_VISIBLE}</span>
+        <span className="flex h-full shrink-0 items-center border-r border-slate-200 bg-slate-50 px-3 text-slate-500 select-none">{prefijoVisible()}</span>
         <input
           id={id}
           value={valor}
@@ -172,7 +179,7 @@ export function DialogoDireccion({
         {/* El link viejo deja de andar en el momento: quien lo tenga guardado ve «no disponible». */}
         {publicada && direccion !== actual && (
           <Alerta tono="aviso">
-            Si ya compartiste <strong>{PREFIJO_VISIBLE + actual}</strong>, ese link deja de funcionar apenas guardes la nueva.
+            Si ya compartiste <strong>{prefijoVisible() + actual}</strong>, ese link deja de funcionar apenas guardes la nueva.
           </Alerta>
         )}
         {error && <Alerta tono="error">{error}</Alerta>}

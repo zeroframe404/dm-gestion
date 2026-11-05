@@ -188,7 +188,7 @@ export function Imputados() {
                   {pago.importeMonto === null ? (pago.importe ?? '—') : pesos(pago.importeMonto)}
                 </td>
                 <td className="px-3 py-2 text-slate-700">{pago.medio ?? <span className="text-slate-400">—</span>}</td>
-                <td className="px-3 py-2 text-xs text-slate-500">{pago.hechoEnLaApp ? (pago.usuarioNombre ?? 'DM Gestión') : 'de la planilla'}</td>
+                <td className="px-3 py-2 text-xs text-slate-500">{pago.hechoEnLaApp ? (pago.usuarioNombre ?? 'el programa') : 'de la planilla'}</td>
                 <td className="px-3 py-2">
                   <EstadoDelCobro pago={pago} />
                 </td>

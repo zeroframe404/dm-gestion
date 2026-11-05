@@ -9,7 +9,7 @@ export const AYUDA_MI_LINK: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Qué es',
         parrafos: [
-          'Cada persona de la agencia tiene una página pública en dmartinezseguros.com/p/ y la dirección que elija. Ahí van su nombre, una línea sobre ella, sus contactos y links, y las coberturas que ofrece. El cliente puede pedir una cotización de auto o moto, pedir presupuesto de otro seguro o denunciar un siniestro con fotos, y todo eso llega acá.',
+          'Cada persona de la agencia tiene una página pública en el dominio de la agencia, con /p/ y la dirección que elija. Ahí van su nombre, una línea sobre ella, sus contactos y links, y las coberturas que ofrece. El cliente puede pedir una cotización de auto o moto, pedir presupuesto de otro seguro o denunciar un siniestro con fotos, y todo eso llega acá.',
         ],
       },
       {

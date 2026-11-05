@@ -485,7 +485,7 @@ export class VpsSimulado {
       // El token viaja en el saludo y nunca en la URL, igual que en el servidor real: la URL queda
       // escrita en los registros del nginx de la agencia.
       if (mensaje.token !== this.token) {
-        return this.rechazarLaConexion(conexion, 'token', 'Token del puente DM Gestión inválido.')
+        return this.rechazarLaConexion(conexion, 'token', 'Token del puente del programa inválido.')
       }
       const clave = String(mensaje.actor?.clave ?? '').trim().toLowerCase()
       if (!clave) return this.rechazarLaConexion(conexion, 'actor', 'Falta quién se conecta.')
@@ -864,7 +864,7 @@ export class VpsSimulado {
 
         const autorizacion = pedido.headers.authorization ?? ''
         if (autorizacion !== `Bearer ${this.token}`) {
-          return responder(401, { error: 'Token del puente DM Gestión inválido.' })
+          return responder(401, { error: 'Token del puente del programa inválido.' })
         }
 
         try {
@@ -895,7 +895,7 @@ export class VpsSimulado {
     if (this.inicializada) return true
     responder(409, {
       error:
-        'La base del GENERAL DE CLIENTES del VPS todavía no está inicializada. Hacé la migración desde DM Gestión (Administración → Base de datos).',
+        'La base del GENERAL DE CLIENTES del VPS todavía no está inicializada. Hacé la migración desde el programa (Administración → Base de datos).',
     })
     return false
   }
@@ -2092,7 +2092,7 @@ export class VpsSimulado {
       const clave = decodeURIComponent(ajuste[1])
       const cola = ajuste[2] ?? ''
       if (!CLAVES_DE_AJUSTE.has(clave)) {
-        return responder(404, { error: `El puente DM Gestión no conoce el ajuste «${clave}».` })
+        return responder(404, { error: `El puente del programa no conoce el ajuste «${clave}».` })
       }
       const guardado = this.ajustes.get(clave) ?? null
       if (metodo === 'GET' && cola === '') {
