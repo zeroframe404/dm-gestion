@@ -20,7 +20,7 @@ import { createHash } from 'node:crypto'
 import { USUARIOS_DE_LA_DEMO } from '../../shared/demo'
 import type { Rama } from '../../shared/ramas'
 import { esDebitoAutomatico } from '../../shared/semaforo'
-import { claveDeSucursal, type NombreDeSucursal } from '../../shared/sucursales'
+import { claveDeSucursal, SUCURSALES, type NombreDeSucursal } from '../../shared/sucursales'
 import { normalizarDocumento, normalizarNumeroPoliza, normalizarTexto } from '../importacion/normalizar'
 
 export interface PestanaDeLaDemo {
@@ -292,47 +292,34 @@ function usuariosDe(sucursal: NombreDeSucursal): string[] {
   return USUARIOS_DE_LA_DEMO.filter((u) => u.sucursal === sucursal).map((u) => u.nombre)
 }
 
-const SUCURSALES_DEMO: SucursalDemo[] = [
-  {
-    nombre: 'Dock Sud',
-    enLaPlanilla: 'DOCK SUD',
-    peso: 34,
-    localidades: [L('DOCK SUD', '1871'), L('AVELLANEDA', '1870'), L('WILDE', '1875'), L('VILLA DOMINICO', '1874')],
-    usuarios: usuariosDe('Dock Sud'),
-    productor: 'MARTINA DEMO',
-  },
-  {
-    nombre: 'Lanús',
-    enLaPlanilla: 'LANUS',
-    peso: 30,
-    localidades: [L('LANUS OESTE', '1824'), L('LANUS ESTE', '1824'), L('VALENTIN ALSINA', '1822'), L('REMEDIOS DE ESCALADA', '1826'), L('GERLI', '1869'), L('MONTE CHINGOLO', '1825')],
-    usuarios: usuariosDe('Lanús'),
-    productor: 'CARLOS FERREYRA',
-  },
-  {
-    nombre: 'Sarandí',
-    enLaPlanilla: 'SARANDI',
-    peso: 21,
-    localidades: [L('SARANDI', '1872'), L('VILLA DOMINICO', '1874'), L('WILDE', '1875'), L('AVELLANEDA', '1870')],
-    usuarios: usuariosDe('Sarandí'),
-    productor: 'LUCIA GOMEZ',
-  },
-  {
-    nombre: 'Daniel',
-    enLaPlanilla: 'DANIEL',
-    peso: 15,
-    localidades: [L('AVELLANEDA', '1870'), L('BERNAL', '1876'), L('QUILMES', '1878'), L('LANUS OESTE', '1824'), L('GERLI', '1869')],
-    usuarios: usuariosDe('Daniel'),
-    productor: 'PABLO RUIZ',
-  },
+/**
+ * Las sucursales de la demo van por POSICIÓN en SUCURSALES: la demo compila con las suyas (San Isidro,
+ * Morón, Pilar, Tigre; ver shared/sucursales.ts) y el banco de pruebas con las de la agencia, y en los
+ * dos casos los datos tienen que entrar limpios por el importador. Lo que no es el nombre (localidades,
+ * pesos, productor) es siempre el inventado de la demo: nada de la zona de los mostradores de verdad.
+ */
+const enLaPlanilla = (nombre: string) => nombre.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+const PERFILES_DE_SUCURSAL: Array<Omit<SucursalDemo, 'nombre' | 'enLaPlanilla' | 'usuarios'>> = [
+  { peso: 34, localidades: [L('SAN ISIDRO', '1642'), L('OLIVOS', '1636'), L('LA LUCILA', '1636'), L('SAN FERNANDO', '1646')], productor: 'VALENTINA OCAMPO' },
+  { peso: 30, localidades: [L('MORON', '1708'), L('CASTELAR', '1712'), L('ITUZAINGO', '1714'), L('RAMOS MEJIA', '1704'), L('SAN JUSTO', '1754')], productor: 'ESTEBAN QUINTANA' },
+  { peso: 21, localidades: [L('PILAR', '1629'), L('SAN MIGUEL', '1663'), L('MORENO', '1744')], productor: 'ROCIO ALBORNOZ' },
+  { peso: 15, localidades: [L('TIGRE', '1648'), L('SAN FERNANDO', '1646'), L('SAN ISIDRO', '1642'), L('OLIVOS', '1636')], productor: 'IGNACIO BERTOLOTTI' },
 ]
 
+const SUCURSALES_DEMO: SucursalDemo[] = SUCURSALES.map((nombre, i) => ({
+  ...PERFILES_DE_SUCURSAL[i]!,
+  nombre,
+  enLaPlanilla: enLaPlanilla(nombre),
+  usuarios: usuariosDe(nombre),
+}))
+
 const CALLES = [
-  'AV. MITRE', 'AV. BELGRANO', 'AV. PAVON', 'AV. HIPOLITO YRIGOYEN', 'AV. GALICIA', 'AMEGHINO', 'LAVALLE', 'SARMIENTO', 'ALSINA',
-  'LAS FLORES', 'ITALIA', 'COLON', '9 DE JULIO', '25 DE MAYO', 'RIVADAVIA', 'GÜEMES', 'PASCO', 'OYUELA', 'MINISTRO BRIN',
-  'DEBENEDETTI', 'ESTANISLAO DEL CAMPO', 'GRAL. PAZ', 'AV. ROSALES', 'AV. EVA PERON', 'MARGARITA WEILD', 'BUSTAMANTE', 'ITUZAINGO',
-  'TUCUMAN', 'CNEL. LYNCH', 'RAMON FRANCO', 'AV. SAN MARTIN', 'MOLINEDO', 'CONESA', 'SITIO DE MONTEVIDEO', 'AV. 25 DE MAYO',
-  'DONATO ALVAREZ', 'HUMBERTO PRIMO', 'CABRERA', 'CHILE', 'MEXICO', 'FLORIDA', 'ESPAÑA', 'MAZA', 'JUJUY', 'PIEDRAS',
+  'AV. DEL LIBERTADOR', 'AV. CENTENARIO', 'AV. RIVADAVIA', 'AV. GAONA', 'AV. SANTA FE', 'AV. MAIPU', 'BELGRANO', 'SARMIENTO',
+  'MITRE', 'ALSINA', 'LAVALLE', 'ITALIA', 'COLON', '9 DE JULIO', '25 DE MAYO', 'MORENO', 'URQUIZA', 'PELLEGRINI', 'BROWN',
+  'ALEM', 'PERU', 'CHACABUCO', 'LAS HERAS', 'PUEYRREDON', 'SUIPACHA', 'ESMERALDA', 'CORRIENTES', 'ENTRE RIOS', 'TUCUMAN',
+  'JUJUY', 'SALTA', 'MENDOZA', 'CORDOBA', 'AV. SAN MARTIN', 'AV. PRESIDENTE PERON', 'LOS AROMOS', 'LAS ACACIAS', 'LOS TILOS',
+  'GUEMES', 'ESPAÑA', 'CHILE', 'MEXICO', 'FLORIDA', 'RIOJA', 'CATAMARCA',
 ]
 
 const APELLIDOS = [
@@ -361,7 +348,7 @@ const NOMBRES_FEMENINOS = [
 ]
 
 const RUBROS = ['TRANSPORTES', 'DISTRIBUIDORA', 'FERRETERIA', 'CONSTRUCCIONES', 'LOGISTICA', 'CORRALON', 'FLETES', 'MUDANZAS', 'AUTOPARTES', 'REFRIGERACION', 'PANIFICADORA', 'SERVICIOS ELECTRICOS']
-const NOMBRES_DE_FANTASIA = ['DEL SUD', 'AVELLANEDA', 'LANUS', 'SARANDI', 'DOCK', 'RIACHUELO', 'WILDE', 'LA RIBERA', 'GERLI', 'ESCALADA', 'EL PUERTO', 'LOS ANDES', 'SAN JOSE', 'LA COSTA']
+const NOMBRES_DE_FANTASIA = ['DEL NORTE', 'DEL OESTE', 'EL DELTA', 'LAS LOMAS', 'LOS ROBLES', 'LA RIBERA', 'EL PUERTO', 'LOS ANDES', 'SAN JOSE', 'LA COSTA', 'LOS TILOS', 'EL MOLINO', 'LA ESTACION', 'DEL PARQUE']
 const TIPOS_SOCIETARIOS = ['S.R.L.', 'S.A.', 'SRL', 'S.A.S.']
 
 const DOMINIOS_DE_MAIL = ['gmail.com', 'gmail.com', 'gmail.com', 'hotmail.com', 'hotmail.com', 'yahoo.com.ar', 'outlook.com', 'live.com.ar']
@@ -795,7 +782,7 @@ class GeneradorDeLaDemo {
   /** El instante en que se arma la demo (ms), y la medianoche local de ese día: los comentarios de hoy se miden contra esto. */
   private readonly ahora: number
   private readonly inicioDelDia: number
-  /** El `_ID` del siniestro de la Hilux de Sarandí (ver `siniestroDeLaHilux`), o null si no se armó. */
+  /** El `_ID` del siniestro de la Hilux de la tercera sucursal (ver `siniestroDeLaHilux`), o null si no se armó. */
   private idDeLaHilux: string | null = null
   private filasDePagos: Array<{ fila: Fila; dia: number; sucursal: SucursalDemo; medio: string; importe: number; imputado: boolean }> = []
   private clientesSoloRiesgo: Cliente[] = []
@@ -1174,12 +1161,13 @@ class GeneradorDeLaDemo {
     }
     // Débitos rechazados: el del mes si ya se debitó, si no el del mes pasado. Se reparten POR SUCURSAL y
     // no al azar sobre toda la cartera: la campana y la pestaña Rechazos arrancan filtradas por el local
-    // de quien entra, y Martina (Dock Sud) o Lucía (Sarandí) no pueden abrirlas vacías. Sarandí lleva dos
+    // de quien entra, y Valentina (primera sucursal) o Rocío (tercera) no pueden abrirlas vacías. La tercera lleva dos
     // porque el chat de ejemplo lo dice (ver `CONVERSACIONES` en servidor.ts).
     const automaticas = azar.mezclar(vigentes.filter((p) => p.automatica && antiguas(p)))
-    const RECHAZOS_POR_SUCURSAL: Record<NombreDeSucursal, number> = { 'Dock Sud': 3, Lanús: 2, Sarandí: 2, Daniel: 1 }
+    const RECHAZOS_POR_POSICION = [3, 2, 2, 1]
+    const RECHAZOS_POR_SUCURSAL = new Map(SUCURSALES.map((nombre, i) => [nombre, RECHAZOS_POR_POSICION[i] ?? 1] as const))
     for (const sucursal of SUCURSALES_DEMO) {
-      for (const p of tomar(automaticas, RECHAZOS_POR_SUCURSAL[sucursal.nombre] ?? 1, (x) => x.cliente.sucursal === sucursal)) {
+      for (const p of tomar(automaticas, RECHAZOS_POR_SUCURSAL.get(sucursal.nombre) ?? 1, (x) => x.cliente.sucursal === sucursal)) {
         p.rechazoMes = vencimientoEn(this.mesActual, p.diaDeVencimiento) < this.hoy ? this.mesActual : this.mesActual - 1
       }
     }
@@ -1603,8 +1591,8 @@ class GeneradorDeLaDemo {
       })
     }
 
-    // El de la Hilux de Sarandí, que entró hoy: es del que habla el chat de ejemplo entre Lucía y Martina
-    // (servidor.ts), y del que cuelga la tarea que Lucía le dejó a Martina (`pestanaTareas`). Va aparte y
+    // El de la Hilux de la tercera sucursal, que entró hoy: es del que habla el chat de ejemplo entre Rocío y Valentina
+    // (servidor.ts), y del que cuelga la tarea que Rocío le dejó a Valentina (`pestanaTareas`). Va aparte y
     // con su propio azar para no correr los 32 de arriba.
     const hilux = this.siniestroDeLaHilux()
     if (hilux) filas.push(hilux)
@@ -1613,16 +1601,16 @@ class GeneradorDeLaDemo {
   }
 
   /**
-   * Un choque de una Hilux de Sarandí cargado hoy, todavía sin número de siniestro. Se prefiere una con
+   * Un choque de una Hilux de la tercera sucursal cargado hoy, todavía sin número de siniestro. Se prefiere una con
    * cobertura de daño propio (todo riesgo, y si no terceros completo): con una RC el perito de la tarea no
-   * tendría qué mirar. Si la cartera no tuviera una Hilux vigente en Sarandí (no pasa con la semilla de
+   * tendría qué mirar. Si la cartera no tuviera una Hilux vigente en la tercera sucursal (no pasa con la semilla de
    * hoy) se usa otra pick-up del local, y si tampoco hay, cualquier póliza del local: que falte el auto
    * exacto es mejor que una tarea suelta.
    */
   private siniestroDeLaHilux(): { dia: number; fila: Fila } | null {
     const azar = new Azar('siniestro-hilux')
     const libres = this.vigentes(
-      (p) => p.cliente.sucursal.nombre === 'Sarandí' && p.altaMes <= this.mesActual - 1 && !this.siniestros.some((s) => s.poliza === p),
+      (p) => p.cliente.sucursal.nombre === SUCURSALES[2] && p.altaMes <= this.mesActual - 1 && !this.siniestros.some((s) => s.poliza === p),
     )
     const hiluxes = libres.filter((x) => x.modelo.modelo === 'HILUX')
     const p =
@@ -1935,7 +1923,7 @@ class GeneradorDeLaDemo {
   private pestanaTareas(): PestanaDeLaDemo {
     const azar = new Azar('tareas')
     const usuarios = USUARIOS_DE_LA_DEMO.map((u) => u.nombre)
-    const sucursalDe = (nombre: string): NombreDeSucursal => (USUARIOS_DE_LA_DEMO.find((u) => u.nombre === nombre)?.sucursal ?? 'Dock Sud') as NombreDeSucursal
+    const sucursalDe = (nombre: string): NombreDeSucursal => (USUARIOS_DE_LA_DEMO.find((u) => u.nombre === nombre)?.sucursal ?? SUCURSALES[0]) as NombreDeSucursal
     type Pedido = { titulo: string; descripcion: string; responsable: string; vinculo: string; vinculoId: string; prioridad: string }
     const pedidos: Pedido[] = []
     const responsableDe = (sucursal: SucursalDemo) => azar.elegir(sucursal.usuarios)
@@ -1993,7 +1981,7 @@ class GeneradorDeLaDemo {
     }
     const SUELTAS: Array<[string, string]> = [
       ['Ordenar cupones de RIO URUGUAY', 'Separar los del mes y llamar a los que no pasaron'],
-      ['Mandar el resumen de caja de la semana', 'A Martina, por mail'],
+      ['Mandar el resumen de caja de la semana', 'A Valentina, por mail'],
       ['Rendición mensual con SANCOR', 'Controlar los imputados contra el listado de la compañía'],
       ['Reponer resmas y tóner', ''],
       ['Actualizar los precios de la vidriera', 'Con los valores nuevos de terceros completo'],
@@ -2017,7 +2005,7 @@ class GeneradorDeLaDemo {
       const vence =
         tipo === 0 ? this.hoy - azar.entero(1, 5) : tipo === 1 ? this.hoy : tipo === 2 ? this.hoy + 1 : this.hoy + azar.entero(1, 10)
       const estado = tipo === 5 || (tipo === 4 && azar.si(0.4)) ? 'Hecha' : tipo === 3 ? 'En curso' : 'Pendiente'
-      const creador = azar.si(0.5) ? 'Martina Demo' : azar.elegir(usuarios)
+      const creador = azar.si(0.5) ? 'Valentina Ocampo' : azar.elegir(usuarios)
       const id = this.ids.de('tarea', i, this.hoy)
       if (azar.si(0.35)) this.comentario('TAREA', id, Math.min(this.hoy, dia + azar.entero(0, 3)), pedido.responsable, azar.elegir(COMENTARIOS_DE_TAREA), `tarea|${i}`)
       return {
@@ -2036,7 +2024,7 @@ class GeneradorDeLaDemo {
       }
     })
 
-    // La que Lucía le dejó a Martina por el siniestro de la Hilux («te quedó en Tareas con vencimiento el
+    // La que Rocío le dejó a Valentina por el siniestro de la Hilux («te quedó en Tareas con vencimiento el
     // viernes», en el chat de ejemplo de servidor.ts). Fija y sin azar: si el chat la promete, tiene que estar.
     const hilux = this.siniestros.find((s) => s.id === this.idDeLaHilux)
     if (hilux) {
@@ -2045,14 +2033,14 @@ class GeneradorDeLaDemo {
       filas.push({
         FECHA: isoDe(this.hoy),
         TITULO: 'Seguir el siniestro de la Hilux con la compañía',
-        DESCRIPCION: `Lo cargó Lucía con las fotos que mandó el asegurado. Pedir el número de siniestro a ${hilux.poliza.compania.nombre} y el turno con el perito.`,
-        'ASIGNADO A': 'Martina Demo',
-        LOCAL: sucursalDe('Martina Demo'),
+        DESCRIPCION: `Lo cargó Rocío con las fotos que mandó el asegurado. Pedir el número de siniestro a ${hilux.poliza.compania.nombre} y el turno con el perito.`,
+        'ASIGNADO A': 'Valentina Ocampo',
+        LOCAL: sucursalDe('Valentina Ocampo'),
         VENCE: isoDe(viernes),
         PRIORIDAD: 'ALTA',
         ESTADO: 'Pendiente',
         VINCULO: `Siniestro ${hilux.poliza.patente} · ${hilux.poliza.cliente.nombre}`,
-        'CREADO POR': 'Lucía Gómez',
+        'CREADO POR': 'Rocío Albornoz',
         'VINCULO ID': `SINIESTRO:${hilux.id}`,
         _ID: this.ids.de('tarea', 'hilux', this.hoy),
       })
@@ -2096,7 +2084,7 @@ class GeneradorDeLaDemo {
     }
     this.siniestros.forEach((s, i) => {
       if (s === hilux) {
-        this.comentario('SINIESTRO', s.id, this.hoy, 'Lucía Gómez', 'Cargué la denuncia con las fotos que mandó el asegurado por WhatsApp. Le pasé el seguimiento a Martina.', 'siniestro|hilux', 0, 10)
+        this.comentario('SINIESTRO', s.id, this.hoy, 'Rocío Albornoz', 'Cargué la denuncia con las fotos que mandó el asegurado por WhatsApp. Le pasé el seguimiento a Valentina.', 'siniestro|hilux', 0, 10)
         return
       }
       const pasos = pasosDe(s)

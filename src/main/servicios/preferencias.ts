@@ -161,10 +161,15 @@ const CLAVE_DIRECCIONES = 'direcciones_ticket'
  * nombra de las dos maneras. Mientras estas direcciones se guardaban bajo la clave «AVELLANEDA», el
  * ticket de la sucursal «Dock Sud» salía sin dirección porque los dos nombres no se cruzaban.
  */
-const DIRECCIONES_INICIALES: Record<NombreDeSucursal, string> = {
-  'Dock Sud': 'Manuel Estévez N° 1234 Avellaneda',
-  Lanús: 'Centenario Uruguayo 1217',
-  Sarandí: 'Av. Bartolomé Mitre 2588',
+// Sueltas para que el armado de la demo las reemplace (scripts/secretos-de-la-agencia.mjs).
+const DIRECCION_DOCK_SUD = 'Manuel Estévez N° 1234 Avellaneda'
+const DIRECCION_LANUS = 'Centenario Uruguayo 1217'
+const DIRECCION_SARANDI = 'Av. Bartolomé Mitre 2588'
+
+const DIRECCIONES_INICIALES: Partial<Record<NombreDeSucursal, string>> = {
+  'Dock Sud': DIRECCION_DOCK_SUD,
+  Lanús: DIRECCION_LANUS,
+  Sarandí: DIRECCION_SARANDI,
   Daniel: '',
 }
 
@@ -175,7 +180,7 @@ const DIRECCIONES_INICIALES: Record<NombreDeSucursal, string> = {
  */
 const TELEFONO_INICIAL = '11 4083-0416'
 
-const TELEFONOS_INICIALES: Record<NombreDeSucursal, string> = {
+const TELEFONOS_INICIALES: Partial<Record<NombreDeSucursal, string>> = {
   'Dock Sud': TELEFONO_INICIAL,
   Lanús: TELEFONO_INICIAL,
   Sarandí: TELEFONO_INICIAL,
@@ -268,7 +273,7 @@ export function direccionInicial(nombre: string): string {
   if (!sucursal) return ''
   // La demo se le muestra a otras agencias: nada de las direcciones de los mostradores de verdad, sino
   // las inventadas que también publica su servidor simulado.
-  return esDemo() ? ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal].direccion : DIRECCIONES_INICIALES[sucursal]
+  return (esDemo() ? ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal]?.direccion : DIRECCIONES_INICIALES[sucursal]) ?? ''
 }
 
 /**
@@ -279,7 +284,7 @@ export function telefonoInicial(nombre: string): string {
   const sucursal = sucursalCanonica(nombre)
   if (!sucursal) return ''
   // Lo mismo que la dirección: en la demo, un teléfono 5555 que no es de nadie.
-  return esDemo() ? ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal].telefono : TELEFONOS_INICIALES[sucursal]
+  return (esDemo() ? ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal]?.telefono : TELEFONOS_INICIALES[sucursal]) ?? ''
 }
 
 /**

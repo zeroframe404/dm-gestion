@@ -83,10 +83,11 @@ export function sembrarDatosIniciales(db: Database): void {
 
   // La demo no lleva al dueño de la agencia: el usuario inicial es el «test» de la demo, así el espejo de
   // la base de usuarios del servidor simulado lo engancha y no queda un «Daniel Martínez» suelto.
-  const inicial = esDemo() ? { nombre: 'Usuario de Prueba', usuario: 'test', clave: 'admin', rol: 'SUPER_ADMIN', sucursal: 'Dock Sud' } : USUARIO_INICIAL
-  const sucursal = db
-    .prepare('SELECT id FROM sucursales WHERE nombre = ?')
-    .get(inicial.sucursal) as { id: number }
+  const inicial = esDemo() ? { nombre: 'Usuario de Prueba', usuario: 'test', clave: 'admin', rol: 'SUPER_ADMIN', sucursal: SUCURSALES[0] } : USUARIO_INICIAL
+  // Si la sucursal del usuario inicial no está en el catálogo (un programa compilado con otra lista de
+  // sucursales, como la demo), entra en la primera: sin sucursal no se puede crear.
+  const buscar = db.prepare('SELECT id FROM sucursales WHERE nombre = ?')
+  const sucursal = (buscar.get(inicial.sucursal) ?? buscar.get(SUCURSALES[0])) as { id: number }
 
   db.prepare(
     `INSERT INTO usuarios (nombre, usuario, clave_hash, rol, sucursal_id, activo, debe_cambiar_clave)

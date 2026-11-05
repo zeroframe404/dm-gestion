@@ -20,6 +20,9 @@ if (!archivo) {
 const externos = ['electron','better-sqlite3','bcryptjs','@googleapis/sheets','node:test','ws',...builtinModules,...builtinModules.map((m)=>'node:'+m)]
 await build({
   configFile: false, publicDir: false, logLevel: 'error',
+  // PRUEBA_SUCURSALES_DE_LA_DEMO=1 compila con las sucursales de la demo (shared/sucursales.ts), como el
+  // instalador de la demo: sirve para probar que los datos de ejemplo entran limpios también con ellas.
+  define: process.env.PRUEBA_SUCURSALES_DE_LA_DEMO === '1' ? { __SUCURSALES_DE_LA_DEMO__: 'true' } : {},
   build: { outDir, emptyOutDir: true, target: 'node22', minify: false, sourcemap: 'inline',
     lib: { entry: { solo: resolve(archivo) }, formats: ['cjs'], fileName: (_f, n) => n + '.js' },
     rolldownOptions: { external: externos } },

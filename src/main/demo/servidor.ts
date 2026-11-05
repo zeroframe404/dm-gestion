@@ -26,7 +26,7 @@ import { NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO } from './identidad'
 
 let servidor: VpsSimulado | null = null
 let armadaEn = ''
-/** Lucía y Jorge «con el programa abierto» (ver `CompaneroVirtual`). Se apagan con el servidor. */
+/** Rocío y Tobías «con el programa abierto» (ver `CompaneroVirtual`). Se apagan con el servidor. */
 let companeros: CompanerosVirtuales | null = null
 
 /** La dirección y el token del servidor de la demo, o null si todavía no arrancó. */
@@ -173,7 +173,7 @@ function sembrarAjustes(simulador: VpsSimulado, hoy: Date): void {
       valor,
       huella: createHash('sha256').update(JSON.stringify(valor)).digest('hex'),
       actualizadoEn: hoy.toISOString(),
-      actualizadoPor: 'Martina Demo',
+      actualizadoPor: 'Valentina Ocampo',
     })
   }
 }
@@ -256,10 +256,10 @@ function ajusteDeReferencias(hoy: Date): object {
   const vigenteDesde = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`
   const organizadores = porClave(
     [
-      { nombre: 'Organización Del Sur', companias: 'SANCOR, ZURICH, SAN CRISTOBAL', telefono: '11-4222-0000', email: 'cotizaciones@ejemplo.com.ar', horario: 'Lunes a viernes de 9 a 18', observaciones: 'Contesta rápido por WhatsApp', orden: 1, activo: 1 },
-      { nombre: 'Broker Riachuelo', companias: 'RIVADAVIA, FEDERACION PATRONAL, MERCANTIL ANDINA', telefono: '11-4209-0000', email: 'riachuelo@ejemplo.com.ar', horario: 'Lunes a viernes de 10 a 17', observaciones: null, orden: 2, activo: 1 },
-      { nombre: 'Productores Asociados Avellaneda', companias: 'ATM, EQUIDAD, RIO URUGUAY', telefono: '11-4203-0000', email: 'pasav@ejemplo.com.ar', horario: 'Lunes a sábado de 9 a 13', observaciones: 'Para motos, el mejor precio', orden: 3, activo: 1 },
-      { nombre: 'Gestoría Wilde', companias: 'AGROSALTA, METROPOL', telefono: '11-4206-0000', email: null, horario: 'Mañanas', observaciones: 'Sólo renovaciones manuales', orden: 4, activo: 1 },
+      { nombre: 'Organización Del Norte', companias: 'SANCOR, ZURICH, SAN CRISTOBAL', telefono: '11-5555-0101', email: 'cotizaciones@ejemplo.com.ar', horario: 'Lunes a viernes de 9 a 18', observaciones: 'Contesta rápido por WhatsApp', orden: 1, activo: 1 },
+      { nombre: 'Broker El Delta', companias: 'RIVADAVIA, FEDERACION PATRONAL, MERCANTIL ANDINA', telefono: '11-5555-0102', email: 'eldelta@ejemplo.com.ar', horario: 'Lunes a viernes de 10 a 17', observaciones: null, orden: 2, activo: 1 },
+      { nombre: 'Productores Asociados del Oeste', companias: 'ATM, EQUIDAD, RIO URUGUAY', telefono: '11-5555-0103', email: 'pasoeste@ejemplo.com.ar', horario: 'Lunes a sábado de 9 a 13', observaciones: 'Para motos, el mejor precio', orden: 3, activo: 1 },
+      { nombre: 'Gestoría Los Tilos', companias: 'AGROSALTA, METROPOL', telefono: '11-5555-0104', email: null, horario: 'Mañanas', observaciones: 'Sólo renovaciones manuales', orden: 4, activo: 1 },
     ],
     (fila) => claveDeReferencia(fila.nombre),
   )
@@ -316,16 +316,16 @@ function versionAnterior(version: string): string {
 
 /**
  * Qué versión tiene cada sucursal (`estadoDeActualizaciones.ts`), para que la columna «Versión del
- * programa» de Usuarios no diga «Sin datos todavía». Tres al día y la de Daniel una atrás, con la
+ * programa» de Usuarios no diga «Sin datos todavía». Tres al día y la cuarta una atrás, con la
  * actualización dejada para después: es lo que esa columna está para mostrar.
  */
 function ajusteDeActualizaciones(hoy: Date): object {
   const version = versionDelPrograma()
   const hace = (minutos: number) => new Date(hoy.getTime() - minutos * 60_000).toISOString()
   const sucursales = SUCURSALES.map((sucursal) =>
-    sucursal === 'Daniel'
+    sucursal === SUCURSALES[3]
       ? { sucursal, version: versionAnterior(version), reportadoEn: hace(95), rechazoVersion: version, rechazadoEn: hace(26 * 60) }
-      : { sucursal, version, reportadoEn: hace(sucursal === 'Dock Sud' ? 5 : sucursal === 'Lanús' ? 40 : 12), rechazoVersion: null, rechazadoEn: null },
+      : { sucursal, version, reportadoEn: hace(sucursal === SUCURSALES[0] ? 5 : sucursal === SUCURSALES[1] ? 40 : 12), rechazoVersion: null, rechazadoEn: null },
   ).sort((a, b) => a.sucursal.localeCompare(b.sucursal))
   return { sucursales }
 }
@@ -409,33 +409,33 @@ const CONVERSACIONES: ConversacionDeEjemplo[] = [
   {
     id: 'demo-grupo-mostradores',
     titulo: 'Mostradores',
-    participantes: ['demo', 'test', 'admin', 'lucia', 'jorge', 'sofia', 'pablo'],
+    participantes: ['demo', 'test', 'admin', 'rocio', 'tobias', 'camila', 'ignacio'],
     mensajes: [
       { de: 'demo', texto: 'Buen día a todos. Hoy cierra la cobranza del mes: revisen la lista de deudores antes de las 18.', hace: 300 },
-      { de: 'sofia', texto: 'En Lanús quedan 6 sin pagar, ya les mandé WhatsApp a todos.', hace: 285 },
-      { de: 'lucia', texto: 'Sarandí al día salvo dos débitos rechazados: ya los cargué en Rechazos, así les salta el aviso.', hace: 270 },
-      { de: 'jorge', texto: '¿Alguien tiene la lista de precios nueva de ATM? El multicotizador ya la trae, ¿no?', hace: 120 },
+      { de: 'camila', texto: `En ${SUCURSALES[1]} quedan 6 sin pagar, ya les mandé WhatsApp a todos.`, hace: 285 },
+      { de: 'rocio', texto: `${SUCURSALES[2]} al día salvo dos débitos rechazados: ya los cargué en Rechazos, así les salta el aviso.`, hace: 270 },
+      { de: 'tobias', texto: '¿Alguien tiene la lista de precios nueva de ATM? El multicotizador ya la trae, ¿no?', hace: 120 },
       { de: 'admin', texto: 'Sí, cotiza directo contra la API. No hace falta la planilla.', hace: 115 },
-      { de: 'pablo', texto: 'Mañana paso por Dock Sud a buscar las pólizas impresas.', hace: 25 },
+      { de: 'ignacio', texto: `Mañana paso por ${SUCURSALES[0]} a buscar las pólizas impresas.`, hace: 25 },
     ],
   },
   {
-    id: 'demo-directa-demo-lucia',
+    id: 'demo-directa-demo-rocio',
     titulo: null,
-    participantes: ['demo', 'lucia'],
+    participantes: ['demo', 'rocio'],
     mensajes: [
-      { de: 'lucia', texto: 'Martina, entró un siniestro de una Hilux en Sarandí. Ya lo cargué con las fotos.', hace: 95 },
+      { de: 'rocio', texto: `Valentina, entró un siniestro de una Hilux en ${SUCURSALES[2]}. Ya lo cargué con las fotos.`, hace: 95 },
       { de: 'demo', texto: 'Perfecto, asignámelo como tarea así lo sigo con la compañía.', hace: 90 },
-      { de: 'lucia', texto: 'Listo, te quedó en Tareas con vencimiento el viernes.', hace: 12 },
+      { de: 'rocio', texto: 'Listo, te quedó en Tareas con vencimiento el viernes.', hace: 12 },
     ],
   },
   {
-    id: 'demo-directa-admin-sofia',
+    id: 'demo-directa-admin-camila',
     titulo: null,
-    participantes: ['admin', 'sofia'],
+    participantes: ['admin', 'camila'],
     mensajes: [
-      { de: 'admin', texto: 'Sofi, ¿pudiste hacer el arqueo de caja de ayer?', hace: 1500 },
-      { de: 'sofia', texto: 'Sí, cerró justo. Lo dejé cargado en Caja.', hace: 1490 },
+      { de: 'admin', texto: 'Cami, ¿pudiste hacer el arqueo de caja de ayer?', hace: 1500 },
+      { de: 'camila', texto: 'Sí, cerró justo. Lo dejé cargado en Caja.', hace: 1490 },
     ],
   },
   {
@@ -458,13 +458,13 @@ const CONVERSACIONES: ConversacionDeEjemplo[] = [
     ],
   },
   {
-    // Para que Pablo también entre con algo sin leer (ver `sembrarConversaciones`).
-    id: 'demo-directa-pablo-jorge',
+    // Para que Ignacio también entre con algo sin leer (ver `sembrarConversaciones`).
+    id: 'demo-directa-ignacio-tobias',
     titulo: null,
-    participantes: ['pablo', 'jorge'],
+    participantes: ['ignacio', 'tobias'],
     mensajes: [
-      { de: 'pablo', texto: 'Jorge, ¿me separás las pólizas impresas de mis clientes de Quilmes?', hace: 70 },
-      { de: 'jorge', texto: 'Sí, te las dejo en un sobre en el mostrador de Dock Sud.', hace: 20 },
+      { de: 'ignacio', texto: 'Tobías, ¿me separás las pólizas impresas de mis clientes de San Fernando?', hace: 70 },
+      { de: 'tobias', texto: `Sí, te las dejo en un sobre en el mostrador de ${SUCURSALES[0]}.`, hace: 20 },
     ],
   },
 ]
@@ -475,8 +475,8 @@ const CONVERSACIONES: ConversacionDeEjemplo[] = [
  * la fecha hacia atrás.
  *
  * Lo viejo queda entregado y leído. Lo ÚLTIMO de cada conversación queda sin entregar y sin leer para
- * TODOS sus destinatarios, no sólo para Martina: quien prueba la demo cambia de usuario para ver los
- * roles, y Carlos, Lucía o Pablo tienen que entrar con el contador de la campana y del chat encendido
+ * TODOS sus destinatarios, no sólo para Valentina: quien prueba la demo cambia de usuario para ver los
+ * roles, y Esteban, Rocío o Ignacio tienen que entrar con el contador de la campana y del chat encendido
  * igual que ella. (Cómo le llega al resto el historial, en `entregarLoUltimoAlEntrar`.)
  */
 function sembrarConversaciones(simulador: VpsSimulado, atenderMensajes: VpsSimulado['atenderMensajes'], hoy: Date): void {
@@ -546,7 +546,7 @@ function actorDe(clave: string): { clave: string; nombre: string; rol: string } 
  * leído y lo que escribió ella misma no bajan nunca, y la app lo trae recién al abrir la conversación
  * (`traerHistorial` en servicios/mensajeria.ts). En la agencia eso no se nota, porque cada computadora
  * fue juntando su historial desde el primer día. En la demo la carpeta local arranca vacía y quien entra
- * como Carlos, Lucía o Pablo veía la lista de conversaciones con «Sin mensajes» aunque tuvieran charla.
+ * como Esteban, Rocío o Ignacio veía la lista de conversaciones con «Sin mensajes» aunque tuvieran charla.
  *
  * Por eso, sólo acá, la primera respuesta de novedades de cada persona lleva además el ÚLTIMO mensaje de
  * cada una de sus conversaciones, con sus acuses tal como están (lo leído llega leído y no enciende
@@ -607,7 +607,7 @@ function entregarLoUltimoAlEntrar(simulador: VpsSimulado, atenderMensajes: VpsSi
 // podían mostrar: el teléfono gris («no tiene el programa abierto»), nadie en línea en «Escribirle a
 // alguien» y los mensajes en «leído por 0» para siempre.
 //
-// Lucía y Jorge se conectan de verdad: un WebSocket desde este proceso contra el canal del simulador, con
+// Rocío y Tobías se conectan de verdad: un WebSocket desde este proceso contra el canal del simulador, con
 // el mismo saludo que manda la app (`vivo/canal.ts`). No se tocan las tripas del simulador para fingir
 // presencia: si mañana cambia el protocolo, esto se rompe igual que se rompería la app, y se ve.
 //
@@ -616,7 +616,7 @@ function entregarLoUltimoAlEntrar(simulador: VpsSimulado, atenderMensajes: VpsSi
 // audio va por WebRTC entre dos computadoras, y acá no hay otra). La mensajería la atienden llamando al
 // manejador del simulador en el mismo proceso: es lo mismo que pedirlo por HTTP, sin el viaje.
 //
-// Si quien prueba la demo entra COMO Lucía o como Jorge, ese compañero se desconecta para no aparecer
+// Si quien prueba la demo entra COMO Rocío o como Tobías, ese compañero se desconecta para no aparecer
 // dos veces ni contestarle los mensajes a la persona real, y vuelve cuando ésta cierra sesión.
 
 /** Lo que estos compañeros usan de un WebSocket: el global de Node 22 / Electron (ver `vivo/canal.ts`). */
@@ -630,15 +630,15 @@ interface SocketDelCompanero {
   onerror: (() => void) | null
 }
 
-/** Quiénes, y qué contestan. Lucía es la del chat de ejemplo con Martina; Jorge, el otro mostrador de Dock Sud. */
+/** Quiénes, y qué contestan. Rocío es la del chat de ejemplo con Valentina; Tobías, el otro mostrador de la primera sucursal. */
 const COMPANEROS: Array<{ clave: string; respuestas: string[]; ocupado: string }> = [
   {
-    clave: 'lucia',
+    clave: 'rocio',
     respuestas: ['¡Dale! Ahora lo miro.', 'Perfecto, ya lo anoto.', 'Sí, en un rato te confirmo.', 'Listo, quedó cargado 👍'],
     ocupado: 'Perdón, estoy atendiendo a un cliente en el mostrador. ¿Me escribís por acá?',
   },
   {
-    clave: 'jorge',
+    clave: 'tobias',
     respuestas: ['Dale, lo veo y te aviso.', 'Ok, ya me fijo.', 'Recibido, gracias.', 'Ahí lo reviso 👍'],
     ocupado: 'Ahora no puedo atender, tengo gente en el mostrador. Escribime y te contesto.',
   },

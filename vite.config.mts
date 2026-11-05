@@ -67,6 +67,9 @@ export default defineConfig({
   // Rutas relativas: la app empaquetada carga el HTML desde el disco (file://).
   base: './',
   plugins: [react(), tailwindcss(), cspEnProduccion(), ...(armandoLaDemo ? [sinSecretosDeLaAgencia()] : [])],
+  // La demo compila con sus propias sucursales (shared/sucursales.ts): ni el proceso principal ni la
+  // pantalla pueden traer los mostradores de la agencia.
+  define: { __SUCURSALES_DE_LA_DEMO__: JSON.stringify(armandoLaDemo) },
   build: {
     outDir: fileURLToPath(new URL('./dist/renderer', import.meta.url)),
     emptyOutDir: true,

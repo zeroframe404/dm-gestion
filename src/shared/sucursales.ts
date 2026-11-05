@@ -7,10 +7,29 @@
 // llegara de la hoja de Google o del usuarios.json de GitHub podía crear una sucursal más; así aparecían
 // «AVELLANEDA» y «Dock Sud» como dos locales distintos cuando son el mismo mostrador.
 
-/** Las únicas sucursales que existen, en el orden en que se ofrecen. */
-export const SUCURSALES = ['Dock Sud', 'Lanús', 'Sarandí', 'Daniel'] as const
+/**
+ * La versión de demostración (Cobertia) se le entrega a otras empresas y no puede mostrar los
+ * mostradores de la agencia: tiene los suyos, inventados. Se elige AL COMPILAR, no al arrancar, porque
+ * la lista la leen las dos puntas desde el primer import (mucho antes de que la pantalla sepa el canal):
+ * `scripts/dist-demo.mjs` y `npm run dev:demo` compilan con `DM_GESTION_DEMO=1`, y las configuraciones de
+ * Vite del proceso principal y de la pantalla definen esta constante. En todo lo demás (la estable, la
+ * beta, el banco de pruebas, tsc) no está definida y queda la lista de la agencia.
+ */
+declare const __SUCURSALES_DE_LA_DEMO__: boolean | undefined
+const ES_LA_DEMO = typeof __SUCURSALES_DE_LA_DEMO__ !== 'undefined' && __SUCURSALES_DE_LA_DEMO__ === true
 
-export type NombreDeSucursal = (typeof SUCURSALES)[number]
+/** Los mostradores de la agencia, en el orden en que se ofrecen. */
+export const SUCURSALES_DE_LA_AGENCIA = ['Dock Sud', 'Lanús', 'Sarandí', 'Daniel'] as const
+/**
+ * Los de la demo, en el mismo orden de papeles: los tres primeros son mostradores y el cuarto es la
+ * cartera de un productor. Localidades del conurbano que el cotizador simulado conoce por código postal.
+ */
+export const SUCURSALES_DE_LA_DEMO = ['San Isidro', 'Morón', 'Pilar', 'Tigre'] as const
+
+/** Las únicas sucursales que existen, en el orden en que se ofrecen. */
+export const SUCURSALES: readonly NombreDeSucursal[] = ES_LA_DEMO ? SUCURSALES_DE_LA_DEMO : SUCURSALES_DE_LA_AGENCIA
+
+export type NombreDeSucursal = (typeof SUCURSALES_DE_LA_AGENCIA)[number] | (typeof SUCURSALES_DE_LA_DEMO)[number]
 
 /**
  * Forma para comparar: mayúsculas, sin tildes, sin puntuación ni espacios. «dock sud», «DOCKSUD» y
@@ -32,9 +51,7 @@ export function claveDeSucursal(valor: unknown): string {
  * el mostrador de Dock Sud está en Avellaneda y la agencia lo nombra de las dos maneras, así que la
  * planilla y los usuarios viejos traen cualquiera de las dos.
  */
-const SINONIMOS: Record<string, NombreDeSucursal> = {
-  AVELLANEDA: 'Dock Sud',
-}
+const SINONIMOS: Record<string, NombreDeSucursal> = ES_LA_DEMO ? {} : { AVELLANEDA: 'Dock Sud' }
 
 const POR_CLAVE = new Map<string, NombreDeSucursal>([
   ...SUCURSALES.map((nombre) => [claveDeSucursal(nombre), nombre] as const),

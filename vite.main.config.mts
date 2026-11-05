@@ -41,6 +41,9 @@ export default defineConfig({
   publicDir: false,
   resolve: { alias: { ws: wsDeNode } },
   plugins: armandoLaDemo ? [sinSecretosDeLaAgencia()] : [],
+  // La demo compila con sus propias sucursales (shared/sucursales.ts): ni el proceso principal ni la
+  // pantalla pueden traer los mostradores de la agencia.
+  define: { __SUCURSALES_DE_LA_DEMO__: JSON.stringify(armandoLaDemo) },
   build: {
     outDir: 'dist/main',
     emptyOutDir: true,

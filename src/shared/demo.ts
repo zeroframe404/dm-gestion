@@ -1,7 +1,7 @@
 // La versión de demostración (canal «demo», ver `shared/canal.ts` y `main/demo/`): lo que tienen que
 // saber las dos puntas. El proceso principal crea estos usuarios en el servidor simulado y la pantalla
 // de ingreso los ofrece para entrar con un click, así quien prueba la demo no tiene que adivinar nada.
-import type { NombreDeSucursal } from './sucursales'
+import { SUCURSALES, type NombreDeSucursal } from './sucursales'
 
 /** Cómo se llama la agencia en la demo: arriba del nombre del programa, en los mensajes y en los PDF. */
 export const NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO = 'Seguros Demo'
@@ -18,16 +18,20 @@ export interface UsuarioDeLaDemo {
   descripcion: string
 }
 
-/** Uno por rol y por sucursal, para poder ver cómo cambia el programa según quién entra. */
+/**
+ * Uno por rol y por sucursal, para poder ver cómo cambia el programa según quién entra. Nombres
+ * inventados: ninguno es de la gente de la agencia. La sucursal va por posición en SUCURSALES (la demo
+ * compila con sus propias sucursales, ver shared/sucursales.ts; el banco de pruebas, con las de la agencia).
+ */
 export const USUARIOS_DE_LA_DEMO: readonly UsuarioDeLaDemo[] = [
   // El acceso que se le pasa al cliente: usuario «test», contraseña «admin». Ve y configura todo.
-  { usuario: 'test', nombre: 'Usuario de Prueba', rol: 'SUPER_ADMIN', sucursal: 'Dock Sud', descripcion: 'Acceso de prueba: ve y configura todo.' },
-  { usuario: 'demo', nombre: 'Martina Demo', rol: 'SUPER_ADMIN', sucursal: 'Dock Sud', descripcion: 'Dueña de la agencia: ve y configura todo.' },
-  { usuario: 'admin', nombre: 'Carlos Ferreyra', rol: 'ADMIN', sucursal: 'Lanús', descripcion: 'Encargado: administra su sucursal y la base.' },
-  { usuario: 'lucia', nombre: 'Lucía Gómez', rol: 'EMPLEADO', sucursal: 'Sarandí', descripcion: 'Mostrador: cobra, carga y atiende.' },
-  { usuario: 'jorge', nombre: 'Jorge Paz', rol: 'EMPLEADO', sucursal: 'Dock Sud', descripcion: 'Mostrador de Dock Sud.' },
-  { usuario: 'sofia', nombre: 'Sofía Benítez', rol: 'EMPLEADO', sucursal: 'Lanús', descripcion: 'Mostrador de Lanús.' },
-  { usuario: 'pablo', nombre: 'Pablo Ruiz', rol: 'EMPLEADO', sucursal: 'Daniel', descripcion: 'Productor con cartera propia.' },
+  { usuario: 'test', nombre: 'Usuario de Prueba', rol: 'SUPER_ADMIN', sucursal: SUCURSALES[0], descripcion: 'Acceso de prueba: ve y configura todo.' },
+  { usuario: 'demo', nombre: 'Valentina Ocampo', rol: 'SUPER_ADMIN', sucursal: SUCURSALES[0], descripcion: 'Dueña de la agencia: ve y configura todo.' },
+  { usuario: 'admin', nombre: 'Esteban Quintana', rol: 'ADMIN', sucursal: SUCURSALES[1], descripcion: 'Encargado: administra su sucursal y la base.' },
+  { usuario: 'rocio', nombre: 'Rocío Albornoz', rol: 'EMPLEADO', sucursal: SUCURSALES[2], descripcion: 'Mostrador: cobra, carga y atiende.' },
+  { usuario: 'tobias', nombre: 'Tobías Lescano', rol: 'EMPLEADO', sucursal: SUCURSALES[0], descripcion: `Mostrador de ${SUCURSALES[0]}.` },
+  { usuario: 'camila', nombre: 'Camila Arce', rol: 'EMPLEADO', sucursal: SUCURSALES[1], descripcion: `Mostrador de ${SUCURSALES[1]}.` },
+  { usuario: 'ignacio', nombre: 'Ignacio Bertolotti', rol: 'EMPLEADO', sucursal: SUCURSALES[3], descripcion: 'Productor con cartera propia.' },
 ]
 
 /**
@@ -36,14 +40,21 @@ export const USUARIOS_DE_LA_DEMO: readonly UsuarioDeLaDemo[] = [
  * llevar los datos de los mostradores de verdad. Lo usan las dos puntas del proceso principal: el
  * servidor simulado lo publica como ajuste compartido (`demo/servidor.ts`) y las preferencias lo toman
  * como valor de fábrica mientras ese ajuste no llegó (`servicios/preferencias.ts`), así el ticket sale
- * igual desde el primer arranque.
+ * igual desde el primer arranque. Las localidades salen de la sucursal, así no quedan nombres de otra lista.
  */
-export const ENCABEZADOS_DE_TICKET_DE_LA_DEMO: Readonly<Record<NombreDeSucursal, { direccion: string; telefono: string }>> = {
-  'Dock Sud': { direccion: 'Av. Siempreviva 742, Dock Sud', telefono: '11 5555-0001' },
-  Lanús: { direccion: 'Calle Falsa 123, Lanús Oeste', telefono: '11 5555-0002' },
-  Sarandí: { direccion: 'Av. de los Ejemplos 500, Sarandí', telefono: '11 5555-0003' },
-  Daniel: { direccion: 'Pasaje Inventado 45, Avellaneda (atención con turno)', telefono: '11 5555-0000' },
-}
+const DATOS_INVENTADOS_DEL_TICKET = [
+  { calle: 'Av. Siempreviva 742', telefono: '11 5555-0001' },
+  { calle: 'Calle Falsa 123', telefono: '11 5555-0002' },
+  { calle: 'Av. de los Ejemplos 500', telefono: '11 5555-0003' },
+  { calle: 'Pasaje Inventado 45', telefono: '11 5555-0000', nota: ' (atención con turno)' },
+] as const
+
+export const ENCABEZADOS_DE_TICKET_DE_LA_DEMO: Readonly<Partial<Record<NombreDeSucursal, { direccion: string; telefono: string }>>> = Object.fromEntries(
+  SUCURSALES.map((sucursal, i) => {
+    const dato = DATOS_INVENTADOS_DEL_TICKET[i] ?? DATOS_INVENTADOS_DEL_TICKET[0]
+    return [sucursal, { direccion: `${dato.calle}, ${sucursal}${'nota' in dato ? dato.nota : ''}`, telefono: dato.telefono }]
+  }),
+)
 
 /** El token del servidor de demostración. No es secreto: el servidor sólo escucha en esta computadora. */
 export const TOKEN_DE_LA_DEMO = 'demo-local'

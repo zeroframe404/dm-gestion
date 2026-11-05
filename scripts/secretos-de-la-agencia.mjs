@@ -18,6 +18,13 @@ export const SECRETOS = [
   // principal y la pantalla (vite.config.mts aplica el mismo reemplazo), y el servidor simulado.
   { archivo: 'src/shared/miLink.ts', constante: 'URL_BASE_DE_MI_LINK', reemplazo: 'https://suagencia.com.ar' },
   { archivo: 'scripts/vps-simulado.mjs', constante: 'URL_BASE_DE_MI_LINK', reemplazo: 'https://suagencia.com.ar' },
+  // Los datos de los mostradores y fiscales de la agencia (ticket): la demo usa los suyos, inventados.
+  { archivo: 'src/main/servicios/preferencias.ts', constante: 'TELEFONO_INICIAL', reemplazo: '' },
+  { archivo: 'src/main/servicios/preferencias.ts', constante: 'DIRECCION_DOCK_SUD', reemplazo: '' },
+  { archivo: 'src/main/servicios/preferencias.ts', constante: 'DIRECCION_LANUS', reemplazo: '' },
+  { archivo: 'src/main/servicios/preferencias.ts', constante: 'DIRECCION_SARANDI', reemplazo: '' },
+  { archivo: 'src/main/servicios/ticket.ts', constante: 'CUIT_DE_LA_AGENCIA', reemplazo: '' },
+  { archivo: 'src/main/servicios/ticket.ts', constante: 'INICIO_DE_ACTIVIDADES_DE_LA_AGENCIA', reemplazo: '' },
   { archivo: 'src/main/usuarios/github.ts', constante: 'TOKEN_DATOS', reemplazo: '' },
   { archivo: 'src/main/usuarios/github.ts', constante: 'TOKEN_DATOS_ANTERIOR', reemplazo: '' },
 ]

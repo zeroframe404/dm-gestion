@@ -68,10 +68,15 @@ let trabajosImpresos = 0
  * pago a otro. La dirección y el teléfono sí cambian por sucursal —cada local atiende por su propio
  * celular— y se cargan en Administración → Impresora.
  */
+// Sueltos (y no adentro del objeto) para que el armado de la demo los pueda reemplazar y comprobar que no
+// viajan en el instalador: ver scripts/secretos-de-la-agencia.mjs.
+const CUIT_DE_LA_AGENCIA = 'C.U.I.T  30-70839042-5'
+const INICIO_DE_ACTIVIDADES_DE_LA_AGENCIA = 'Inicio de actividades 08-2005 N 0000015865'
+
 const AGENCIA = {
   provincia: 'Pcia de Buenos Aires',
-  cuit: 'C.U.I.T  30-70839042-5',
-  inicioDeActividades: 'Inicio de actividades 08-2005 N 0000015865',
+  cuit: CUIT_DE_LA_AGENCIA,
+  inicioDeActividades: INICIO_DE_ACTIVIDADES_DE_LA_AGENCIA,
   // La agencia trabaja automotor: no hay ramo cargado por póliza, así que la línea es fija.
   seccionYRamo: 'Sección/Ramo: 04 – AUTOMOTOR',
   leyenda: 'ESTE COMPROBANTE SERÁ VÁLIDO SI TODOS LOS DATOS SE CORRESPONDEN CON LOS DE LA PÓLIZA.',

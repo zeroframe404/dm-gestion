@@ -237,9 +237,9 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'El encabezado del ticket',
         parrafos: [
-          'El comprobante encabeza con la dirección y el teléfono de la sucursal donde se cobró; el resto del encabezado (provincia, CUIT e inicio de actividades) es el mismo para toda la agencia. Se cargan en la tarjeta «Encabezado del ticket», una fila por sucursal, y vienen puestas las tres direcciones de siempre —la de Dock Sud (Avellaneda), la de Sarandí y la de Lanús— con el teléfono de la agencia. Si un local atiende por otro número, se cambia ahí y sus comprobantes salen con ese.',
+          'El comprobante encabeza con la dirección y el teléfono de la sucursal donde se cobró; el resto del encabezado (provincia, CUIT e inicio de actividades) es el mismo para toda la agencia. Se cargan en la tarjeta «Encabezado del ticket», una fila por sucursal, y vienen puestas las direcciones de cada sucursal con el teléfono de la agencia. Si un local atiende por otro número, se cambia ahí y sus comprobantes salen con ese.',
           'Si mañana abre una sucursal nueva, se escribe su nombre en «Agregar una sucursal», se le cargan la dirección y el teléfono y se guarda: desde el próximo ticket salen los suyos, sin tocar el programa.',
-          'Cada uno ve y cambia el encabezado de la sucursal en la que está asignado y ninguna otra: la impresora que tiene delante imprime esa dirección y ninguna más, y poder tocar la de Lanús desde Dock Sud sólo sirve para romper el ticket de un mostrador en el que uno no está. Vale igual para un administrador; el superadministrador es la única excepción y las ve todas.',
+          'Cada uno ve y cambia el encabezado de la sucursal en la que está asignado y ninguna otra: la impresora que tiene delante imprime esa dirección y ninguna más, y poder tocar la de otra sucursal desde la tuya sólo sirve para romper el ticket de un mostrador en el que uno no está. Vale igual para un administrador; el superadministrador es la única excepción y las ve todas.',
           'Lo que se guarda acá vale para TODAS las computadoras de la agencia. Antes el encabezado era de cada máquina, así que cambiar el teléfono de un local significaba cargarlo en cada una de sus computadoras, y con que una quedara vieja salían comprobantes con un número que ya no atiende nadie. Ahora se corrige una vez y el resto lo adopta al abrir el programa. Al guardar sólo viaja el renglón de tu sucursal: el de las otras queda como lo dejaron ellas.',
         ],
       },
@@ -556,7 +556,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Para qué es',
         parrafos: [
-          'Es el jueves a la mañana, en Sarandí no anda la impresora de tickets y hay gente esperando. Desde esta consola se ve qué computadoras de la agencia están prendidas y se puede tomar el control de cualquiera de ellas para resolverlo en el momento, sin viajar y sin explicarle a nadie por teléfono dónde hacer clic.',
+          'Es el jueves a la mañana, en una sucursal no anda la impresora de tickets y hay gente esperando. Desde esta consola se ve qué computadoras de la agencia están prendidas y se puede tomar el control de cualquiera de ellas para resolverlo en el momento, sin viajar y sin explicarle a nadie por teléfono dónde hacer clic.',
           'La pantalla prueba la consola apenas se abre y dice si está en línea. Eso es la mitad de lo que sirve: si está caída, se sabe acá en dos segundos y no después de tres minutos mirando una pestaña del navegador en blanco.',
         ],
       },

@@ -8,7 +8,7 @@
 //   pantalla abría con el cartel amarillo de «desactualizada» aunque nadie hubiera tocado nada.
 // - Cada usuario entra con algo sin leer, y la primera vuelta del reparto le trae el último mensaje de
 //   CADA conversación (si no, la lista decía «Sin mensajes»).
-// - Lucía y Jorge aparecen en línea, leen, contestan y rechazan una llamada; y se apartan si quien prueba
+// - Rocío y Tobías aparecen en línea, leen, contestan y rechazan una llamada; y se apartan si quien prueba
 //   la demo entra como ellos.
 // - «Leer las APIs ahora» devuelve una lectura.
 import assert from 'node:assert/strict'
@@ -185,7 +185,7 @@ test('demo: cada uno entra con algo sin leer y con la vista previa de todas sus 
   }
 })
 
-test('demo: Lucía y Jorge están en línea, leen, contestan, rechazan la llamada y se apartan si entran como ellos', async (t) => {
+test('demo: Rocío y Tobías están en línea, leen, contestan, rechazan la llamada y se apartan si entran como ellos', async (t) => {
   const fetchPuesto = globalThis.fetch
   globalThis.fetch = fetchDeVerdad
   const registrar = console.log
@@ -204,44 +204,44 @@ test('demo: Lucía y Jorge están en línea, leen, contestan, rechazan la llamad
   const { urlBase, token } = credencialesDeLaDemo()!
   const puente = new PuenteDeMensajes({ urlBase, token })
 
-  const martina = conectarAlCanal(urlBase, token, 'demo')
-  sockets.push(martina.socket)
-  await esperar('Lucía y Jorge en la presencia', () => {
-    const claves = martina.presentes().map((p) => p.clave)
-    return claves.includes('lucia') && claves.includes('jorge') && claves.includes('demo')
+  const valentina = conectarAlCanal(urlBase, token, 'demo')
+  sockets.push(valentina.socket)
+  await esperar('Rocío y Tobías en la presencia', () => {
+    const claves = valentina.presentes().map((p) => p.clave)
+    return claves.includes('rocio') && claves.includes('tobias') && claves.includes('demo')
   })
 
-  // Un mensaje a Lucía y una llamada, a la vez.
+  // Un mensaje a Rocío y una llamada, a la vez.
   const yo = actor('demo')
-  const directa = (await puente.conversaciones(yo)).find((c) => c.tipo === 'DIRECTA' && c.participantes.some((p) => p.clave === 'lucia'))!
+  const directa = (await puente.conversaciones(yo)).find((c) => c.tipo === 'DIRECTA' && c.participantes.some((p) => p.clave === 'rocio'))!
   await puente.novedades(yo, { desdeAcuses: null, esperaSegundos: 0 })
-  const { mensaje } = await puente.enviar(yo, { id: 'prueba-a-lucia', conversacionId: directa.id, cuerpo: '¿Me pasás el número del siniestro?', enviadoEn: new Date().toISOString(), adjuntos: [] })
-  martina.socket.send(JSON.stringify({ t: 'llamada', evento: { tipo: 'invitar', llamadaId: 'llamada-prueba', para: 'lucia', conversacionId: directa.id } }))
+  const { mensaje } = await puente.enviar(yo, { id: 'prueba-a-rocio', conversacionId: directa.id, cuerpo: '¿Me pasás el número del siniestro?', enviadoEn: new Date().toISOString(), adjuntos: [] })
+  valentina.socket.send(JSON.stringify({ t: 'llamada', evento: { tipo: 'invitar', llamadaId: 'llamada-prueba', para: 'rocio', conversacionId: directa.id } }))
 
-  await esperar('Lucía lee el mensaje', async () => {
+  await esperar('Rocío lee el mensaje', async () => {
     const { mensajes } = await puente.historial(yo, { conversacion: directa.id })
-    return Boolean(mensajes.find((m) => m.id === mensaje.id)?.acuses.some((a) => a.usuarioClave === 'lucia' && a.leidoEn))
+    return Boolean(mensajes.find((m) => m.id === mensaje.id)?.acuses.some((a) => a.usuarioClave === 'rocio' && a.leidoEn))
   })
-  await esperar('Lucía rechaza la llamada', () =>
-    martina.frames.some((f) => f.t === 'llamada' && (f.evento as { tipo?: string; llamadaId?: string }).tipo === 'rechazar' && (f.evento as { llamadaId?: string }).llamadaId === 'llamada-prueba'),
+  await esperar('Rocío rechaza la llamada', () =>
+    valentina.frames.some((f) => f.t === 'llamada' && (f.evento as { tipo?: string; llamadaId?: string }).tipo === 'rechazar' && (f.evento as { llamadaId?: string }).llamadaId === 'llamada-prueba'),
   )
-  await esperar('Lucía contesta', async () => {
+  await esperar('Rocío contesta', async () => {
     const { mensajes } = await puente.historial(yo, { conversacion: directa.id })
-    return mensajes.filter((m) => m.autorClave === 'lucia' && m.tipo !== 'LLAMADA' && new Date(m.creadoEn).getTime() > Date.now() - 60_000).length >= 1
+    return mensajes.filter((m) => m.autorClave === 'rocio' && m.tipo !== 'LLAMADA' && new Date(m.creadoEn).getTime() > Date.now() - 60_000).length >= 1
   })
 
-  // Quien prueba la demo entra como Lucía: la virtual se aparta y queda una sola Lucía en línea.
-  const luciaDeVerdad = conectarAlCanal(urlBase, token, 'lucia')
-  sockets.push(luciaDeVerdad.socket)
-  await esperar('una sola Lucía', () => {
-    const lucias = martina.presentes().filter((p) => p.clave === 'lucia')
-    return lucias.length === 1 && luciaDeVerdad.frames.some((f) => f.t === 'bienvenida' && lucias[0]!.conexionId === f.conexionId)
+  // Quien prueba la demo entra como Rocío: la virtual se aparta y queda una sola Rocío en línea.
+  const rocioDeVerdad = conectarAlCanal(urlBase, token, 'rocio')
+  sockets.push(rocioDeVerdad.socket)
+  await esperar('una sola Rocío', () => {
+    const lucias = valentina.presentes().filter((p) => p.clave === 'rocio')
+    return lucias.length === 1 && rocioDeVerdad.frames.some((f) => f.t === 'bienvenida' && lucias[0]!.conexionId === f.conexionId)
   })
   // Y cuando se va, la virtual vuelve.
-  luciaDeVerdad.socket.close()
-  await esperar('vuelve la Lucía virtual', () => {
-    const lucias = martina.presentes().filter((p) => p.clave === 'lucia')
-    const deVerdad = luciaDeVerdad.frames.find((f) => f.t === 'bienvenida')?.conexionId
+  rocioDeVerdad.socket.close()
+  await esperar('vuelve la Rocío virtual', () => {
+    const lucias = valentina.presentes().filter((p) => p.clave === 'rocio')
+    const deVerdad = rocioDeVerdad.frames.find((f) => f.t === 'bienvenida')?.conexionId
     return lucias.length === 1 && lucias[0]!.conexionId !== deVerdad
   })
 })
@@ -257,18 +257,19 @@ test('datos de la demo: rechazos en cada sucursal, la tarea de la Hilux y observ
     for (const sucursal of SUCURSALES) {
       assert.ok(rechazos.some((r) => r.LOCAL === sucursal && r.ESTADO === 'PENDIENTE'), `${sucursal}: un rechazo pendiente`)
     }
-    assert.equal(rechazos.filter((r) => r.LOCAL === 'Sarandí').length, 2, 'los dos de Sarandí del chat')
+    assert.equal(rechazos.filter((r) => r.LOCAL === SUCURSALES[2]).length, 2, 'los dos de la tercera sucursal (los del chat)')
 
     const siniestros = tabla('SINIESTROS')
     const tarea = tabla('APP TAREAS').find((f) => /Hilux/.test(f.TITULO!))
     assert.ok(tarea, 'la tarea de la Hilux')
-    assert.equal(tarea['ASIGNADO A'], 'Martina Demo')
-    assert.equal(tarea['CREADO POR'], 'Lucía Gómez')
+    assert.equal(tarea['ASIGNADO A'], 'Valentina Ocampo')
+    assert.equal(tarea['CREADO POR'], 'Rocío Albornoz')
     assert.equal(tarea.ESTADO, 'Pendiente')
     assert.equal(new Date(`${tarea.VENCE}T12:00:00Z`).getUTCDay(), 5, 'vence un viernes')
     const siniestro = siniestros.find((s) => `SINIESTRO:${s._ID}` === tarea['VINCULO ID'])
     assert.ok(siniestro, 'la tarea cuelga de un siniestro que existe')
-    assert.equal(siniestro.LOCAL, 'SARANDI')
+    // Como lo escribe la planilla: la tercera sucursal en mayúsculas y sin tildes (SARANDI, PILAR).
+    assert.equal(siniestro.LOCAL, SUCURSALES[2]!.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, ''))
     assert.equal(siniestro.MODELO!.startsWith('HILUX'), true)
     // Con RC no hay daño propio ni perito: la Hilux tiene una cobertura que sí los cubre.
     assert.notEqual(siniestro.COBERTURA, 'RC', 'la Hilux no es una RC')

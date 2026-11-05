@@ -33,7 +33,7 @@ const AYUDA_DE_CONTACTO: Record<TipoDeContacto, { ejemplo: string; ayuda: string
   facebook: { ejemplo: 'tu.pagina', ayuda: 'Tu usuario o el link de tu página.' },
   tiktok: { ejemplo: '@tuusuario', ayuda: 'Tu usuario o el link de tu perfil.' },
   web: { ejemplo: 'tusitio.com.ar', ayuda: 'La dirección de tu sitio.' },
-  direccion: { ejemplo: 'Av. Mitre 1234, Avellaneda', ayuda: 'Al tocarla, abre el mapa con esa dirección.' },
+  direccion: { ejemplo: 'Av. Mitre 1234, Ciudad', ayuda: 'Al tocarla, abre el mapa con esa dirección.' },
 }
 
 /** Una grilla de opciones con ícono, para elegir el tipo de un contacto o de una cobertura. */

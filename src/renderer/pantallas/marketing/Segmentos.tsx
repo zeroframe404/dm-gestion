@@ -464,7 +464,7 @@ function DialogoDeGuardado({ abierto, datos, alCerrar, alGuardar }: PropsGuardad
           etiqueta="Nombre"
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
-          placeholder="Cuponera que vence esta semana - Lanús"
+          placeholder="Cuponera que vence esta semana - Centro"
           maxLength={60}
         />
         <Campo

@@ -10,6 +10,10 @@ const require = createRequire(import.meta.url)
 /** El paquete `electron` exporta la ruta al ejecutable. */
 const rutaElectron = require('electron')
 
+// `--demo` compila como el instalador de la demo (sus sucursales, sin los datos de la agencia; ver
+// vite.main.config.mts y shared/sucursales.ts). Tiene que estar antes de que Vite lea las configuraciones.
+if (process.argv.includes('--demo')) process.env.DM_GESTION_DEMO = '1'
+
 let procesoElectron = null
 let servidor = null
 let cerrando = false

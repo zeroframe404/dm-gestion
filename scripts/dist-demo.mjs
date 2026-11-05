@@ -14,7 +14,7 @@
 // Uso: `npm run dist:demo` (en Windows). `-- --sin-instalador` compila y revisa sin llamar a
 // electron-builder (para comprobarlo en cualquier sistema). N sale de GITHUB_RUN_NUMBER o de `-- --numero 5`.
 import { execFileSync } from 'node:child_process'
-import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { valoresSecretos } from './secretos-de-la-agencia.mjs'
 
@@ -42,7 +42,9 @@ const correr = (args, env = {}) => execFileSync(process.execPath, args, { cwd: r
 
 // Lo que compila el banco de pruebas (dist/pruebas, dist/solo) se arma SIN quitar los secretos, y
 // electron-builder empaqueta dist/**: se borra antes, y además el instalador lleva sólo lo del programa.
-for (const carpeta of ['dist/pruebas', 'dist/solo', 'dist/manual']) rmSync(path.join(raiz, carpeta), { recursive: true, force: true })
+// `prueba:sola` con PRUEBA_OUTDIR deja carpetas dist/solo-<algo>: se borran todas las dist/solo*.
+const carpetasDePrueba = existsSync(path.join(raiz, 'dist')) ? readdirSync(path.join(raiz, 'dist')).filter((n) => n.startsWith('solo')).map((n) => `dist/${n}`) : []
+for (const carpeta of ['dist/pruebas', 'dist/manual', ...carpetasDePrueba]) rmSync(path.join(raiz, carpeta), { recursive: true, force: true })
 
 console.log(`[dist-demo] Compilando la demo ${version} sin los datos de la agencia…`)
 execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'typecheck'], { cwd: raiz, stdio: 'inherit', shell: process.platform === 'win32' })

@@ -19,7 +19,7 @@ export const AYUDA_POLIZAS: Record<string, ContenidoDeAyuda> = {
         titulo: 'Fotos y documentos de la póliza',
         parrafos: [
           'Abajo a la derecha del formulario, en «Fotos y documentos», se le adjuntan a la póliza las fotos del auto o la moto, el frente de la póliza, la cédula, lo que haga falta: se arrastran a la ventana, se pegan con Ctrl+V o se eligen con «Elegir archivos». Sin límite de cantidad. Las fotos se achican solas antes de subir (una de 6 MB queda en menos de 1 MB) sin que se note la diferencia; los PDF y documentos van tal cual.',
-          'Todo sube al servidor de la agencia y se ve desde cualquier computadora: una foto cargada en Lanús se abre en Dock Sud con un clic (la primera vez se baja del servidor). Las fotos se muestran como miniaturas y se abren con el visor de Windows. Borrar un archivo es definitivo y queda para administradores.',
+          'Todo sube al servidor de la agencia y se ve desde cualquier computadora: una foto cargada en una sucursal se abre en otra con un clic (la primera vez se baja del servidor). Las fotos se muestran como miniaturas y se abren con el visor de Windows. Borrar un archivo es definitivo y queda para administradores.',
         ],
       },
       {
