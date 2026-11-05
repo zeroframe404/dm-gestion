@@ -10,6 +10,8 @@ import { listaDe, numeroDeEquidad } from './catalogos'
 export interface DatosDeCotizacionEquidad {
   /** `Usuario`: el código de usuario de aplicación. */
   usuario: string
+  /** `SistemaOrigen`: el usuario con que se ingresa a la API (Equidad, 05/11/2026: «igual que el usuario»). */
+  sistemaOrigen: string
   rama: string
   /** Para recotizar: la solicitud e instalación de la cotización a recalcular. */
   solicitud?: string
@@ -67,7 +69,7 @@ export function armarPedidoDeCotizacion(d: DatosDeCotizacionEquidad): Record<str
   return {
     // La forma sigue el ejemplo de pedido que mandó Equidad (05/11/2026): Rama, ProductorCodigo y
     // FormaPagoCodigo como texto, «TomadorCategoriaIVACodigo» bien escrito y el IIBB en blanco como «" "».
-    SistemaOrigen: '',
+    SistemaOrigen: d.sistemaOrigen,
     Usuario: d.usuario,
     Rama: d.rama.trim(),
     ...(d.solicitud ? { Solicitud: entero(d.solicitud) } : {}),

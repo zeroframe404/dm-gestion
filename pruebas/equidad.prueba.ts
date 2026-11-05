@@ -243,6 +243,7 @@ test('Equidad: los importes vienen como vengan', () => {
 test('Equidad: el pedido de CotizarAutomotor lleva los nombres exactos del documento, errata incluida', () => {
   const pedido = armarPedidoDeCotizacion({
     usuario: 'GLM',
+    sistemaOrigen: 'DMARTINEZ',
     rama: '4',
     tipoPoliza: 'AU',
     tomadorNombre: 'A COTIZAR',
@@ -281,6 +282,7 @@ test('Equidad: el pedido de CotizarAutomotor lleva los nombres exactos del docum
     },
   })
   assert.equal(pedido.Usuario, 'GLM')
+  assert.equal(pedido.SistemaOrigen, 'DMARTINEZ', 'el usuario de ingreso, como pidió Equidad')
   assert.equal(pedido.Rama, '4', 'como texto, igual que el ejemplo de Equidad')
   assert.equal(pedido.TomadorTipoPersona, '1')
   assert.equal(pedido.TomadoCategoriaIVACodigo, 'CF', 'sic: así lo nombra el documento')
@@ -459,6 +461,7 @@ test('Equidad: cotiza eligiendo cada combo como la web (tipo de póliza, product
   assert.equal(cuerpo.TomadoCategoriaIVACodigo, 'CF')
   assert.equal(cuerpo.TomadorIIBBCodigo, 'NI')
   assert.equal(cuerpo.TomadorNombre, 'Juan Pérez')
+  assert.equal(cuerpo.SistemaOrigen, CUENTA.usuario)
   assert.equal(cuerpo.TomadorTipoPersona, '1')
   assert.equal('PorcentajeBonificacion' in cuerpo, false, 'sin elegir, Equidad aplica la suya')
   assert.equal(cuerpo.RiesgoAUT.CodigoPostal, '1870')

@@ -37,6 +37,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
       { tipo: 'modificado', texto: 'Asegurados: diseño nuevo con tarjetas de resumen, estado de cada API, barra rápida de aseguradoras y una tabla más clara.' },
       { tipo: 'corregido', texto: 'Equidad: el ingreso a la API prueba también el usuario de servicio (Basic) con el usuario de la API, y el error dice qué revisar.' },
       { tipo: 'modificado', texto: 'Equidad: la cotización se manda con la forma del ejemplo que dio la compañía.' },
+      { tipo: 'modificado', texto: 'Equidad: la cotización va con el usuario de la API como sistema de origen, como indicó la compañía.' },
       { tipo: 'corregido', texto: 'El cartel «Cambios recientes» vuelve a aparecer después de cada actualización, también en la beta.' },
     ],
   },
