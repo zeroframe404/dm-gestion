@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.9.1',
     fecha: '2026-11-05',
     cambios: [
+      { tipo: 'corregido', texto: 'Equidad: si la compañía no informa el código de la moneda, el cotizador prueba los códigos corrientes hasta que le devuelva los modos de facturación (vigencia), formas de pago y cuotas, y lo avisa en la tarjeta.' },
       { tipo: 'corregido', texto: 'Equidad: si una lista de la compañía (moneda, vigencia, forma de pago o cuotas) llega vacía, el formulario ya no queda trabado: prueba con la otra moneda y, si igual no hay opciones, dice qué contestó Equidad.' },
       { tipo: 'modificado', texto: 'Multicotizador: el comparativo ahora muestra una tarjeta por cotización, separadas por tipo de cobertura y ordenadas de la más barata (a la izquierda) a la más cara, con desplazamiento horizontal.' },
       { tipo: 'agregado', texto: 'Asegurados: filtro por aseguradora y por origen del dato. Cada aseguradora dice si la confirmó su API (Galeno, ATM, Equidad) o si sale de la cartera (VPS).' },
