@@ -262,7 +262,15 @@ function ImpresionGaleno({ legajoSugerido }: { legajoSugerido: string }) {
             className="w-32"
           />
           <Campo etiqueta="Legajo" value={legajo} onChange={(evento) => setLegajo(evento.target.value)} className="w-28" />
-          <Campo etiqueta="Riesgo (opcional)" value={idRiesgo} onChange={(evento) => setIdRiesgo(evento.target.value)} className="w-28" />
+          <Campo
+            etiqueta="N.º de riesgo (opcional)"
+            value={idRiesgo}
+            onChange={(evento) => setIdRiesgo(evento.target.value.replace(/\D/g, ''))}
+            inputMode="numeric"
+            placeholder="Ej.: 1"
+            ayuda="Sólo el número del vehículo dentro de la póliza. Vacío, imprime todos."
+            className="w-36"
+          />
           <Boton variante="primario" icono="impresora" onClick={() => void imprimir()} cargando={imprimiendo} disabled={!poliza.trim() || !legajo.trim()}>
             Imprimir
           </Boton>
