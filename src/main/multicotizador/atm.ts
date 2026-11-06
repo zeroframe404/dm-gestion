@@ -360,6 +360,19 @@ export function textoParaBuscar(modelo: string, version: string): string {
 }
 
 /**
+ * La versión del catálogo escrita igual en ATM (mismas palabras) y única. En las motos el catálogo trae
+ * como modelo una categoría («CALLE MAS DE 600 CC») y la versión es el nombre real («TNT 752S»): esas
+ * palabras de más acercaban a «TNT 600 GT» y la exacta quedaba como dudosa. Buscando sólo por la versión
+ * no hay duda.
+ */
+export function versionExacta(version: string, versiones: VehiculoAtm[]): VehiculoAtm | null {
+  const buscada = palabras(version).sort().join(' ')
+  if (!buscada) return null
+  const iguales = versiones.filter((candidata) => palabras(candidata.modelo).sort().join(' ') === buscada)
+  return iguales.length === 1 ? iguales[0]! : null
+}
+
+/**
  * La más parecida cuando no hay una sin dudas: del mismo modelo, dada de alta y no rechazada. Mejor
  * cotizar la más parecida avisando que no cotizar: la persona la corrige con un clic y queda recordada.
  */
@@ -409,6 +422,7 @@ function vehiculoEnAtm(
   const sinDudasNiGuardada =
     (solicitud.codigoInfoAuto ? versiones.find((version) => version.codigoInfoAuto === solicitud.codigoInfoAuto) : undefined) ??
     sinDudas(ranking, 0.5, 0.1) ??
+    versionExacta(v.version, versiones) ??
     (versiones.length === 1 ? versiones[0]! : null)
   const conDudas = aMano || deLaEquivalencia || sinDudasNiGuardada ? null : masParecida(v.modelo, ranking, esRechazada)
   let elegida = aMano ?? deLaEquivalencia ?? sinDudasNiGuardada ?? conDudas
