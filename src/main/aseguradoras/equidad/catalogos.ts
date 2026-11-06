@@ -103,8 +103,25 @@ export async function categoriasIbEquidad(cliente: ClienteEquidad): Promise<Opci
   return leerLista(await cliente.get('listarCategoriaIB', []), 'las categorías de ingresos brutos')
 }
 
+/** Las monedas del usuario. Equidad las devuelve con `Codigo` VACÍO (`{"Codigo":"","Descripcion":"PESOS"}`, visto en producción el 06/11/2026): ese vacío es el código que hay que mandar, no un dato que falte, así que se conserva en vez de descartar la fila. */
 export async function monedasEquidad(cliente: ClienteEquidad, c: ContextoEquidad): Promise<OpcionEquidad[]> {
-  return leerLista(await cliente.get('listarMoneda', [['UsuCod', c.usuario]]), 'las monedas', { codigo: ['MonCod', 'MonedaCodigo', 'MonedaCod'], descripcion: ['MonDes', 'MonedaDescripcion', 'MonedaDes'] })
+  const respuesta = await cliente.get('listarMoneda', [['UsuCod', c.usuario]])
+  const lista = filas(respuesta, 'las monedas')
+  const monedas = lista.flatMap((f) => {
+    const entradaCodigo = Object.entries(f).find(([nombre]) => ['codigo', 'moncod', 'monedacodigo', 'monedacod', 'code', 'id'].includes(nombre.toLowerCase()))
+    const descripcion = campo(f, ['Descripcion', 'MonDes', 'MonedaDescripcion', 'MonedaDes', 'Nombre', 'Desc'])
+    if (entradaCodigo) {
+      const codigo = textoDe(entradaCodigo[1])
+      return descripcion || codigo ? [{ codigo, descripcion: descripcion || codigo }] : []
+    }
+    const valores = Object.values(f).map(textoDe).filter(Boolean)
+    return valores[0] ? [{ codigo: valores[0], descripcion: valores[1] ?? valores[0] }] : []
+  })
+  const sinNombres = lista.length > 0 && lista.every((f) => !Object.keys(f).some((nombre) => ['codigo', 'moncod', 'monedacodigo', 'monedacod', 'code', 'id'].includes(nombre.toLowerCase())))
+  if (lista.length === 0) diagnosticos.set('las monedas', 'Equidad contestó una lista vacía')
+  else if (monedas.some((m) => m.codigo === '')) diagnosticos.set('las monedas', `Equidad devolvió la moneda con el código vacío (primera fila: ${JSON.stringify(lista[0]).slice(0, 160)})`)
+  else anotar('las monedas', lista, monedas.length, sinNombres)
+  return monedas
 }
 
 export async function planesComercialesEquidad(cliente: ClienteEquidad, c: ContextoEquidad, tipoPoliza: string, productor: string, vigenciaDesde: string): Promise<OpcionEquidad[]> {
