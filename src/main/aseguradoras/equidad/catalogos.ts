@@ -74,8 +74,19 @@ export async function categoriasIbEquidad(cliente: ClienteEquidad): Promise<Opci
   return leerLista(await cliente.get('listarCategoriaIB', []), 'las categorías de ingresos brutos')
 }
 
+/** Las monedas que Equidad le habilita al usuario. Si las filas no traen `Codigo`/`Descripcion` (otro nombre de campo), se toma el primer valor como código y el siguiente como descripción: sin moneda no hay modo de facturación, forma de pago ni cuotas. */
 export async function monedasEquidad(cliente: ClienteEquidad, c: ContextoEquidad): Promise<OpcionEquidad[]> {
-  return leerLista(await cliente.get('listarMoneda', [['UsuCod', c.usuario]]), 'las monedas')
+  const respuesta = await cliente.get('listarMoneda', [['UsuCod', c.usuario]])
+  const conNombres = leerLista(respuesta, 'las monedas', { codigo: ['MonCod', 'MonedaCodigo', 'MonedaCod'], descripcion: ['MonDes', 'MonedaDescripcion', 'MonedaDes'] })
+  if (conNombres.length > 0) return conNombres
+  return filas(respuesta, 'las monedas').flatMap((fila) => {
+    const valores = Object.values(fila).map((valor) => textoDe(valor)).filter(Boolean)
+    return valores[0] ? [{ codigo: valores[0], descripcion: valores[1] ?? valores[0] }] : []
+  })
+}
+
+function textoDe(valor: unknown): string {
+  return typeof valor === 'string' || typeof valor === 'number' ? String(valor).trim() : ''
 }
 
 export async function planesComercialesEquidad(cliente: ClienteEquidad, c: ContextoEquidad, tipoPoliza: string, productor: string, vigenciaDesde: string): Promise<OpcionEquidad[]> {

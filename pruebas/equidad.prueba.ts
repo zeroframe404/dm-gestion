@@ -407,7 +407,7 @@ const VEHICULOS = [
 ]
 
 /** La API entera, con lo que contesta cada servicio; `cotizar` decide la respuesta al POST. */
-function apiFalsa(t: Prueba, cotizar: (cuerpo: Record<string, unknown>) => Response = () => json(COTIZACION), vehiculos: unknown = VEHICULOS): PedidoHttp[] {
+function apiFalsa(t: Prueba, cotizar: (cuerpo: Record<string, unknown>) => Response = () => json(COTIZACION), vehiculos: unknown = VEHICULOS, monedas: unknown = [{ Codigo: '2', Descripcion: 'DOLARES' }, { Codigo: '1', Descripcion: 'PESOS' }]): PedidoHttp[] {
   usarCuentaDeEquidadDePrueba(CUENTA)
   t.after(() => usarCuentaDeEquidadDePrueba(null))
   return fetchFalso(t, (pedido) => {
@@ -417,7 +417,7 @@ function apiFalsa(t: Prueba, cotizar: (cuerpo: Record<string, unknown>) => Respo
     if (esServicio(pedido, 'listarCategoriaIVA')) return json([{ Codigo: 'RI', Descripcion: 'RESPONSABLE INSCRIPTO' }, { Codigo: 'CF', Descripcion: 'CONSUMIDOR FINAL' }])
     if (esServicio(pedido, 'listarCategoriaIB')) return json([{ Codigo: 'IN', Descripcion: 'INSCRIPTO' }, { Codigo: 'NI', Descripcion: 'NO INSCRIPTO' }])
     if (esServicio(pedido, 'listarPlanComercial')) return json([{ Rama: 4, Codigo: 'PL1', Descripcion: 'PLAN PRODUCTORES' }])
-    if (esServicio(pedido, 'listarMoneda')) return json([{ Codigo: '2', Descripcion: 'DOLARES' }, { Codigo: '1', Descripcion: 'PESOS' }])
+    if (esServicio(pedido, 'listarMoneda')) return json(monedas)
     if (esServicio(pedido, 'listarModoDeFacturacion')) return json([{ Codigo: 'ANU', Descripcion: 'ANUAL' }, { Codigo: 'SEM', Descripcion: 'SEMESTRAL' }])
     if (esServicio(pedido, 'listarFormaDePago')) return json([{ Codigo: 1, Descripcion: 'EFECTIVO' }, { Codigo: 2, Descripcion: 'TARJETA DE CREDITO' }, { Codigo: 3, Descripcion: 'DEBITO CBU' }])
     if (esServicio(pedido, 'listarCondicionDePago')) return json([{ Rama: 4, Codigo: 'C01', Descripcion: 'CONTADO', PorDefecto: false }, { Rama: 4, Codigo: 'C12', Descripcion: '12 CUOTAS', PorDefecto: true }])
@@ -677,4 +677,28 @@ test('Equidad: sin cuenta cargada no está disponible, sólo cotiza autos y no e
 test('Equidad: las localidades de un código postal salen de BuscarCodigoPostal', async (t) => {
   apiFalsa(t)
   assert.deepEqual(await equidad.localidades!('AUTO', '1870'), ['AVELLANEDA', 'PIÑEYRO'])
+})
+
+test('Equidad: si las monedas vienen con otros nombres de campo, se leen igual y la cadena comercial se completa', async (t) => {
+  apiFalsa(t, undefined, undefined, [{ MonCod: '1', MonDes: 'PESOS' }])
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  const moneda = resultado.ajustes.find((a) => a.campo === 'moneda')!
+  assert.deepEqual(moneda.opciones, [{ valor: '1', texto: 'PESOS' }])
+  assert.equal(moneda.valor, '1')
+})
+
+test('Equidad: si Equidad no devuelve monedas, se ofrecen Pesos y Dólares y los campos de abajo no quedan vacíos', async (t) => {
+  const pedidos = apiFalsa(t, undefined, undefined, [])
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  const moneda = resultado.ajustes.find((a) => a.campo === 'moneda')!
+  assert.deepEqual(moneda.opciones.map((o) => o.valor), ['1', '2'])
+  assert.equal(moneda.valor, '1')
+  for (const campo of ['modoFacturacion', 'formaDePago', 'condicionDePago']) {
+    assert.ok(resultado.ajustes.find((a) => a.campo === campo)!.opciones.length > 0, campo)
+  }
+  assert.ok(resultado.avisos.some((aviso) => /monedas/.test(aviso)))
+  const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
+  assert.equal((JSON.parse(post.cuerpo) as Record<string, unknown>).MonedaCodigo, '1')
 })
