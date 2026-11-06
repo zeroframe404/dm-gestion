@@ -6,6 +6,7 @@
 // para cargar su dirección y su token con una prueba de conexión. La prueba es simulada: la demo no sale
 // a internet (ver `main/demo/conexion.ts`).
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { MARCA_DEMO } from '../../../shared/canal'
 import { EJEMPLO_URL_DEL_VPS, type EstadoDeLaDemo, type PasoDePruebaDeVps } from '../../../shared/demo'
 import { Icono } from '../../componentes/Icono'
 import { Alerta, Boton, Campo, Cargando, Etiqueta, Tarjeta, cx, haceCuanto } from '../../componentes/ui'
@@ -100,7 +101,7 @@ const PASOS: Array<{ titulo: string; detalle: string }> = [
     detalle: 'Cualquier proveedor sirve (Hostinger, DigitalOcean, Contabo…). Alcanza con Ubuntu 22.04 o 24.04, 2 núcleos, 4 GB de memoria y 40 GB de disco SSD para una agencia con varias sucursales.',
   },
   {
-    titulo: 'Instalar el servidor de DM Gestión',
+    titulo: `Instalar el servidor de ${MARCA_DEMO}`,
     detalle: 'Va en contenedores (Docker Compose): la base PostgreSQL, el servicio del programa y nginx adelante. Se instala y se actualiza con un solo comando, y deja respaldos diarios automáticos.',
   },
   {
@@ -129,7 +130,8 @@ const PASOS: Array<{ titulo: string; detalle: string }> = [
 function Arquitectura() {
   return (
     <div className="grid items-center gap-3 md:grid-cols-[1fr_auto_1.3fr_auto_1fr]">
-      <Caja titulo="Computadoras de las sucursales" icono="sucursal" items={['Dock Sud', 'Lanús', 'Sarandí', 'Productores']} />
+      {/* Sucursales de ejemplo, genéricas: esta pantalla es sólo de la demo y no muestra las de la agencia. */}
+      <Caja titulo="Computadoras de las sucursales" icono="sucursal" items={['Casa central', 'Sucursal Norte', 'Sucursal Sur', 'Productores']} />
       <Flecha texto="https + canal en vivo" />
       <Caja
         titulo="Servidor de la agencia (VPS)"
@@ -282,7 +284,7 @@ function FormularioDeConexion() {
         </div>
         <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">{configJson}</pre>
         <p className="mt-2 text-xs text-slate-500">
-          Va en la carpeta de datos del programa (%APPDATA%\dm-gestion\config.json). Si el instalador se arma con la dirección y el token de
+          Va en la carpeta de datos del programa (el config.json de la carpeta de datos). Si el instalador se arma con la dirección y el token de
           la agencia, no hace falta tocarlo en ninguna computadora.
         </p>
       </div>

@@ -23,6 +23,7 @@ import { claveDeSucursal, sucursalCanonica } from '../../shared/sucursales'
 import type { ConfigImpresora, DatosDeImpresora, DireccionDeSucursal, PedidoDeTicket, TipoDeImpresora } from '../../shared/tipos'
 import { fechaDeVencimiento, periodoSiguiente } from '../../shared/semaforo'
 import { db } from '../db/base'
+import { esDemo } from '../canal'
 import { carpetaDatos } from '../rutas'
 import {
   anotarErrorDeImpresion,
@@ -32,6 +33,8 @@ import {
   establecerProximoNumeroDeTicket,
   guardarDirecciones,
   guardarImpresora,
+  guardarImpresoraDeDocumentos,
+  impresoraDeDocumentos,
   impresoraGuardada,
   proximoNumeroDeTicket,
   telefonoDeSucursal,
@@ -76,6 +79,26 @@ const AGENCIA = {
   leyenda: 'ESTE COMPROBANTE SERÁ VÁLIDO SI TODOS LOS DATOS SE CORRESPONDEN CON LOS DE LA PÓLIZA.',
   cuidado: 'NO EXPONER A LA LUZ Y AL CALOR',
 } as const
+
+/** La forma de esos datos fijos, sin atarla a los valores literales de la agencia. */
+type DatosFijosDeLaAgencia = { readonly [K in keyof typeof AGENCIA]: string }
+
+/**
+ * Lo mismo para la versión de demostración: se le muestra a otras agencias, así que no puede llevar el
+ * CUIT ni la inscripción de la agencia de verdad. Los números son ficticios (un CUIT de ceros no existe)
+ * pero tienen el MISMO largo que los reales, así el encabezado se compone con la misma letra que en la
+ * agencia y la demo muestra el ticket tal cual sale.
+ */
+const AGENCIA_DEMO: DatosFijosDeLaAgencia = {
+  ...AGENCIA,
+  cuit: 'C.U.I.T  30-00000000-0',
+  inicioDeActividades: 'Inicio de actividades 01-2020 N 0000000000',
+}
+
+/** Los datos fijos que encabezan el ticket según el canal: los de la agencia o los inventados de la demo. */
+function datosDeLaAgencia(): DatosFijosDeLaAgencia {
+  return esDemo() ? AGENCIA_DEMO : AGENCIA
+}
 
 /** Lo variable del comprobante: sale del pago, del cliente, de la póliza y de la sucursal que cobró. */
 export interface DatosDeTicket {
@@ -144,6 +167,7 @@ export async function configuracionDeImpresora(): Promise<ConfigImpresora> {
     impresora: guardada.impresora,
     anchoMm: guardada.anchoMm,
     copias: guardada.copias,
+    impresoraDeDocumentos: impresoraDeDocumentos(),
     proximoNumeroDeTicket: proximoNumeroDeTicket(),
     disponibles: nombres,
     predeterminada,
@@ -154,6 +178,11 @@ export async function configuracionDeImpresora(): Promise<ConfigImpresora> {
 /** Corrige el correlativo desde Administración → Impresora (por ejemplo, después de cambiar el rollo). */
 export async function establecerNumeroDeTicket(numero: number): Promise<ConfigImpresora> {
   establecerProximoNumeroDeTicket(numero)
+  return configuracionDeImpresora()
+}
+
+export async function guardarConfiguracionDeImpresoraDeDocumentos(impresora: string): Promise<ConfigImpresora> {
+  guardarImpresoraDeDocumentos(impresora)
   return configuracionDeImpresora()
 }
 
@@ -392,15 +421,16 @@ export function puntosDelEncabezado(utilMm: number, caracteresDeLaLineaMasLarga:
 export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number, tipo: TipoDeImpresora = 'termica'): string {
   const util = anchoUtilDelTicket(anchoMm, tipo)
   const comun = tipo === 'comun'
+  const agencia = datosDeLaAgencia()
   // El teléfono va en un bloque que no se parte: si la línea no entra, baja entero al renglón
   // siguiente. Medio número de teléfono impreso es peor que ninguno.
-  const provinciaYTelefono = datos.telefono ? `${AGENCIA.provincia} - Tel: ${datos.telefono}` : AGENCIA.provincia
+  const provinciaYTelefono = datos.telefono ? `${agencia.provincia} - Tel: ${datos.telefono}` : agencia.provincia
   const provinciaYTelefonoHtml = datos.telefono
-    ? `${escapar(AGENCIA.provincia)} - <span class="junto">Tel: ${escapar(datos.telefono)}</span>`
-    : escapar(AGENCIA.provincia)
+    ? `${escapar(agencia.provincia)} - <span class="junto">Tel: ${escapar(datos.telefono)}</span>`
+    : escapar(agencia.provincia)
   const puntosDeAgencia = puntosDelEncabezado(
     util,
-    Math.max(provinciaYTelefono.length, AGENCIA.cuit.length, AGENCIA.inicioDeActividades.length),
+    Math.max(provinciaYTelefono.length, agencia.cuit.length, agencia.inicioDeActividades.length),
   )
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Comprobante</title><style>
@@ -426,8 +456,8 @@ export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number, tipo: TipoD
   <div class="encabezado">
     ${datos.direccion ? `<p class="direccion">${escapar(datos.direccion)}</p>` : ''}
     <p>${provinciaYTelefonoHtml}</p>
-    <p>${escapar(AGENCIA.cuit)}</p>
-    <p>${escapar(AGENCIA.inicioDeActividades)}</p>
+    <p>${escapar(agencia.cuit)}</p>
+    <p>${escapar(agencia.inicioDeActividades)}</p>
   </div>
   <p class="numero">${escapar(datos.numero)}</p>
   <hr>
@@ -441,11 +471,11 @@ export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number, tipo: TipoD
   ${linea('Patente', datos.patente)}
   ${linea('Póliza', datos.poliza)}
   ${linea('Cobertura', datos.cobertura)}
-  <p class="dato">${escapar(AGENCIA.seccionYRamo)}</p>
+  <p class="dato">${escapar(agencia.seccionYRamo)}</p>
   ${datos.proximoVencimiento ? `<p class="vencimiento">PRÓXIMO VENCIMIENTO ${escapar(datos.proximoVencimiento)}</p>` : ''}
   <div class="pie">
-    <p>${escapar(AGENCIA.leyenda)}</p>
-    <p class="cuidado">${escapar(AGENCIA.cuidado)}</p>
+    <p>${escapar(agencia.leyenda)}</p>
+    <p class="cuidado">${escapar(agencia.cuidado)}</p>
   </div>
 </body></html>`
 }

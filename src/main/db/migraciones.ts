@@ -2084,6 +2084,37 @@ export const MIGRACIONES: Migracion[] = [
       );
     `,
   },
+  {
+    version: 40,
+    descripcion: 'Asegurados: caché local de lo que confirman las APIs de las aseguradoras (Galeno, ATM, Equidad)',
+    // Es sólo una caché de ESTA computadora: nada de esto viaja al VPS (la beta y la normal comparten el
+    // servidor). Si se borra, la próxima consulta a las APIs la vuelve a llenar.
+    //  - api_aseguradoras_confirmados: cada cliente (por documento) que una API dijo que tiene una póliza
+    //    vigente, con la clave de la consulta que lo trajo ('*' = la cartera entera de Galeno, un DNI en
+    //    ATM, una patente en Equidad) para poder reemplazar justo eso al volver a preguntar.
+    //  - api_aseguradoras_consultas: cuándo se preguntó cada cosa y qué falló. La clave '' es la pasada
+    //    entera de esa aseguradora (lo que muestra la pantalla).
+    sql: `
+      CREATE TABLE api_aseguradoras_confirmados (
+        aseguradora TEXT NOT NULL,
+        documento TEXT NOT NULL,
+        poliza TEXT NOT NULL DEFAULT '',
+        nombre TEXT,
+        clave_consulta TEXT NOT NULL,
+        consultado_en TEXT NOT NULL,
+        PRIMARY KEY (aseguradora, documento, poliza)
+      );
+      CREATE INDEX idx_api_aseguradoras_confirmados_consulta ON api_aseguradoras_confirmados (aseguradora, clave_consulta);
+      CREATE TABLE api_aseguradoras_consultas (
+        aseguradora TEXT NOT NULL,
+        clave TEXT NOT NULL,
+        consultado_en TEXT NOT NULL,
+        error TEXT,
+        encontrados INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (aseguradora, clave)
+      );
+    `,
+  },
 ]
 
 export function ejecutarMigraciones(db: Database): void {

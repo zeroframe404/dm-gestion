@@ -13,6 +13,17 @@ import { emitirATodas as emitir } from './avisos'
 
 const QUINCE_MINUTOS_MS = 15 * 60 * 1000
 
+/**
+ * Lo que queda dicho si en la demo alguien aprieta «Buscar actualizaciones» o «Actualizar ahora». La
+ * demo se reparte como un instalador suelto: no tiene canal de novedades y no sale a GitHub.
+ */
+const SIN_ACTUALIZACIONES_EN_LA_DEMO = 'La demostración no busca actualizaciones: se reparte como un instalador aparte y no se conecta a internet.'
+
+/** Demo: deja el estado «deshabilitada» con el motivo, sin tocar electron-updater. */
+function avisarQueLaDemoNoSeActualiza(): void {
+  cambiarEstado({ situacion: 'deshabilitada', canal: 'demo', version: null, porcentaje: null, ultimoError: SIN_ACTUALIZACIONES_EN_LA_DEMO })
+}
+
 let estado: EstadoActualizacion = {
   situacion: 'deshabilitada',
   version: null,
@@ -122,6 +133,12 @@ export function detenerActualizaciones(): void {
 
 /** El chequeo liviano: sólo pregunta si hay una versión nueva, nunca la baja. */
 export function buscarActualizaciones(): void {
+  // Demo: ni el chequeo ni el reporte de la versión (que en la agencia va al superadministrador).
+  // Sin este corte, electron-updater leería el app-update.yml del instalador y saldría a GitHub.
+  if (canalActual() === 'demo') {
+    avisarQueLaDemoNoSeActualiza()
+    return
+  }
   if (!app.isPackaged) return
   reportarVersionPropia()
   autoUpdater.checkForUpdates().catch((error: unknown) => {
@@ -131,6 +148,10 @@ export function buscarActualizaciones(): void {
 
 /** El «Actualizar ahora» del cartel: recién acá se baja el instalador. */
 export function actualizarAhora(): void {
+  if (canalActual() === 'demo') {
+    avisarQueLaDemoNoSeActualiza()
+    return
+  }
   instalarSolaAlTerminar = true
   cambiarEstado({ situacion: 'descargando', porcentaje: 0 })
   autoUpdater.downloadUpdate().catch((error: unknown) => {
@@ -146,6 +167,8 @@ export function posponerActualizacion(version: string): void {
 }
 
 export function instalarActualizacion(): void {
+  // Demo: no hay nada bajado que instalar (ver `buscarActualizaciones`).
+  if (canalActual() === 'demo') return
   autoUpdater.quitAndInstall()
 }
 

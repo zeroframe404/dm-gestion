@@ -1,8 +1,10 @@
 // Preferencias de la aplicación que viven en la base (no son credenciales): hoy, la ticketeadora de
 // Cobranzas y las direcciones que encabezan su comprobante. Las plantillas de los mensajes se mudaron
 // a plantillas.ts en la Fase 9, que es cuando dejaron de ser una sola.
+import { ENCABEZADOS_DE_TICKET_DE_LA_DEMO } from '../../shared/demo'
 import { claveDeSucursal, mismaSucursal, sucursalCanonica, type NombreDeSucursal } from '../../shared/sucursales'
 import type { DatosDeImpresora, TipoDeImpresora } from '../../shared/tipos'
+import { esDemo } from '../canal'
 import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import { ErrorDeNegocio } from './errores'
@@ -111,6 +113,35 @@ export function guardarImpresora(datos: DatosDeImpresora): ImpresoraGuardada {
   }
   guardar(CLAVE_IMPRESORA, JSON.stringify(nueva))
   return nueva
+}
+
+// ---------------------------------------------------------------------------
+// Impresora de documentos grandes
+// ---------------------------------------------------------------------------
+
+const CLAVE_IMPRESORA_DOCUMENTOS = 'impresora_documentos'
+
+/**
+ * La impresora común (hojas A4) para lo que no es un comprobante: presupuestos, listas de
+ * cotizaciones. Es independiente de la del comprobante: una PC puede tener la ticketeadora para los
+ * recibos y ésta para lo grande, las dos a la vez. null = sin elegir: se abre el diálogo de Windows.
+ */
+export function impresoraDeDocumentos(): string | null {
+  const crudo = leer(CLAVE_IMPRESORA_DOCUMENTOS)
+  if (!crudo) return null
+  try {
+    const datos = JSON.parse(crudo) as { impresora?: unknown }
+    return typeof datos.impresora === 'string' && datos.impresora.trim() ? datos.impresora.trim() : null
+  } catch {
+    return null
+  }
+}
+
+/** Vacío deja de usar una impresora fija: los documentos vuelven a preguntar en el diálogo de Windows. */
+export function guardarImpresoraDeDocumentos(nombre: string): string | null {
+  const impresora = typeof nombre === 'string' ? nombre.trim() : ''
+  guardar(CLAVE_IMPRESORA_DOCUMENTOS, JSON.stringify({ impresora: impresora || null }))
+  return impresora || null
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +294,10 @@ export function telefonoDeSucursal(nombre: string | null | undefined): string {
 /** La inicial de fábrica de una sucursal, para no perderla al listar las que nadie tocó. */
 export function direccionInicial(nombre: string): string {
   const sucursal = sucursalCanonica(nombre)
-  return sucursal ? DIRECCIONES_INICIALES[sucursal] : ''
+  if (!sucursal) return ''
+  // La demo se le muestra a otras agencias: nada de las direcciones de los mostradores de verdad, sino
+  // las inventadas que también publica su servidor simulado.
+  return esDemo() ? ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal].direccion : DIRECCIONES_INICIALES[sucursal]
 }
 
 /**
@@ -272,7 +306,9 @@ export function direccionInicial(nombre: string): string {
  */
 export function telefonoInicial(nombre: string): string {
   const sucursal = sucursalCanonica(nombre)
-  return sucursal ? TELEFONOS_INICIALES[sucursal] : ''
+  if (!sucursal) return ''
+  // Lo mismo que la dirección: en la demo, un teléfono 5555 que no es de nadie.
+  return esDemo() ? ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal].telefono : TELEFONOS_INICIALES[sucursal]
 }
 
 /**

@@ -3,6 +3,7 @@
 // (catálogos, cotizar, emitir, consultas, cuenta corriente, ART, imprimir) lo usa sin enterarse, así que
 // en la demo andan igual API Aseguradoras → Galeno, «Cotizar con Galeno» de Presupuestos y la emisión
 // desde el multicotizador. Ver `cliente()` en servicios/galeno.ts, que es donde se enchufa.
+import { NOMBRE_DEMO } from '../../shared/canal'
 import { RAMA_GALENO_DE_TIPO, type TipoDeVehiculo } from '../../shared/tipos'
 import type { MedioDePago, UsoDelVehiculo } from '../../shared/multicotizador'
 import type { ClienteGaleno } from '../aseguradoras/galeno/cliente'
@@ -625,7 +626,7 @@ function pdfDePoliza(cuerpo: Cuerpo): string {
   ])
   renglones.push(
     { texto: 'DOCUMENTO DE DEMOSTRACIÓN', x: 56, y: 110, tamano: 10, negrita: true, gris: 0.2 },
-    { texto: 'Lo generó la versión de demostración de DM Gestión con datos inventados: no es una póliza real', x: 56, y: 94, tamano: 9, gris: 0.3 },
+    { texto: `Lo generó ${NOMBRE_DEMO} con datos inventados: no es una póliza real`, x: 56, y: 94, tamano: 9, gris: 0.3 },
     { texto: 'ni tiene validez ante Galeno Seguros ni ante ninguna otra compañía.', x: 56, y: 81, tamano: 9, gris: 0.3 },
     { texto: `Impreso el ${f(fechaIso(new Date()))}.`, x: 56, y: 62, tamano: 8, gris: 0.45 },
   )

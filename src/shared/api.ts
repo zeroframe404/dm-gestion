@@ -112,6 +112,7 @@ export interface ApiDm {
     estado: Remota<'impresora:estado'>
     guardar: Remota<'impresora:guardar'>
     prueba: Remota<'impresora:prueba'>
+    guardarDocumentos: Remota<'impresora:guardarDocumentos'>
     imprimirPago: Remota<'impresora:imprimirPago'>
     establecerNumeroDeTicket: Remota<'impresora:establecerNumeroDeTicket'>
     direcciones: Remota<'impresora:direcciones'>
@@ -368,6 +369,8 @@ export interface ApiDm {
   /** Los listados de Cartera y de Cobranzas (shared/listados/index.ts) y su exportación genérica a Excel. */
   listados: {
     asegurados: Remota<'listados:asegurados'>
+    apisDeAsegurados: Remota<'listados:apisDeAsegurados'>
+    consultarApisDeAsegurados: Remota<'listados:consultarApisDeAsegurados'>
     polizas: Remota<'listados:polizas'>
     siniestros: Remota<'listados:siniestros'>
     vencimientos: Remota<'listados:vencimientos'>

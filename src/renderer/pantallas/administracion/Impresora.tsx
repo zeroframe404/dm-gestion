@@ -1,6 +1,7 @@
-// Impresora: la ticketeadora térmica de 80 mm (POS-80) del mostrador, o una impresora común de hojas
-// A4 si el mostrador no tiene ticketeadora. Es opcional; si no está
-// configurada, cobrar funciona igual y no se imprime nada.
+// Impresora: la ticketeadora térmica de 80 mm (POS-80) del mostrador para los comprobantes, y aparte
+// una impresora común de hojas A4 para los documentos grandes (presupuestos, listas). No son
+// excluyentes: cada una sirve a un tipo de documento y pueden estar configuradas las dos a la vez. Es
+// opcional; si no está configurada, cobrar funciona igual y no se imprime nada.
 //
 // La pantalla la abre cualquiera, con el rol que sea: la impresora es la que tiene esta PC delante y
 // quien cobra es quien necesita apagarla, cambiarla o dejar de gastar papel sin esperar a nadie.
@@ -14,6 +15,7 @@ export function Impresora() {
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [probando, setProbando] = useState(false)
+  const [guardandoDocumentos, setGuardandoDocumentos] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
 
@@ -23,6 +25,7 @@ export function Impresora() {
   const [impresora, setImpresora] = useState('')
   const [anchoMm, setAnchoMm] = useState('80')
   const [copias, setCopias] = useState(1)
+  const [documentos, setDocumentos] = useState('')
 
   const aplicar = useCallback((config: ConfigImpresora) => {
     setEstado(config)
@@ -32,6 +35,7 @@ export function Impresora() {
     setImpresora(config.impresora ?? config.predeterminada ?? '')
     setAnchoMm(String(config.anchoMm))
     setCopias(config.copias)
+    setDocumentos(config.impresoraDeDocumentos ?? '')
   }, [])
 
   const cargar = useCallback(async () => {
@@ -57,6 +61,26 @@ export function Impresora() {
       if (!habilitada) setAviso('El ticket quedó desactivado.')
       else if (preguntar) setAviso('Listo: cada pago va a preguntar si imprimir el comprobante.')
       else setAviso('Listo: cada pago que registres va a imprimir su comprobante.')
+    } else {
+      setError(resultado.error)
+    }
+  }
+
+  /** La impresora de documentos se guarda sola, aparte del comprobante: no comparte el botón «Guardar». */
+  const guardarDocumentos = async () => {
+    setGuardandoDocumentos(true)
+    setError(null)
+    setAviso(null)
+    const resultado = await window.dm.impresora.guardarDocumentos(documentos)
+    setGuardandoDocumentos(false)
+    if (resultado.ok) {
+      setEstado((anterior) => (anterior ? { ...anterior, impresoraDeDocumentos: resultado.datos.impresoraDeDocumentos } : resultado.datos))
+      setDocumentos(resultado.datos.impresoraDeDocumentos ?? '')
+      setAviso(
+        resultado.datos.impresoraDeDocumentos
+          ? 'Listo: los documentos grandes salen directo por esa impresora.'
+          : 'Listo: los documentos grandes vuelven a preguntar la impresora al imprimir.',
+      )
     } else {
       setError(resultado.error)
     }
@@ -103,7 +127,7 @@ export function Impresora() {
 
       <Tarjeta
         titulo="Impresora del comprobante"
-        descripcion="Si esta PC tiene una ticketeadora térmica de 80 mm o una impresora común, al registrar un pago puede salir el comprobante. Es opcional: sin configurar, cobrar funciona igual."
+        descripcion="Si esta PC tiene una ticketeadora térmica de 80 mm, al registrar un pago puede salir el comprobante. Es opcional: sin configurar, cobrar funciona igual. Los documentos grandes tienen su propia impresora, más abajo."
         acciones={
           <>
             <Boton
@@ -156,7 +180,7 @@ export function Impresora() {
           </label>
 
           <div>
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">Tipo de impresora</span>
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">Tipo de impresora del comprobante</span>
             <div className="flex max-w-md gap-2">
               {([['termica', 'Ticketeadora térmica'], ['comun', 'Impresora común (hoja A4)']] as const).map(([valor, texto]) => (
                 <button
@@ -174,7 +198,7 @@ export function Impresora() {
             </div>
             <p className="mt-1.5 text-xs text-slate-500">
               {tipo === 'comun'
-                ? 'El comprobante sale en una hoja A4, arriba a la izquierda, con el mismo contenido y ancho que el ticket.'
+                ? 'Para una PC sin ticketeadora: el comprobante sale en una hoja A4, arriba a la izquierda, con el mismo contenido y ancho que el ticket.'
                 : 'El comprobante sale en el rollo angosto y la ticketeadora corta el papel.'}
             </p>
           </div>
@@ -235,6 +259,43 @@ export function Impresora() {
             </p>
           </div>
         </div>
+      </Tarjeta>
+
+      <Tarjeta
+        titulo="Impresora para documentos grandes"
+        descripcion="Presupuestos y listas de cotizaciones salen en una impresora común de hojas A4, aunque el comprobante siga saliendo por la ticketeadora. Es independiente de la de arriba: pueden estar las dos configuradas a la vez."
+        acciones={
+          <Boton
+            variante="primario"
+            icono="ok"
+            onClick={() => void guardarDocumentos()}
+            cargando={guardandoDocumentos}
+            disabled={documentos === (estado.impresoraDeDocumentos ?? '')}
+          >
+            Guardar
+          </Boton>
+        }
+      >
+        {sinImpresoras ? (
+          <Campo
+            etiqueta="Impresora de documentos"
+            value={documentos}
+            onChange={(evento) => setDocumentos(evento.target.value)}
+            placeholder="HP LaserJet"
+            ayuda="Windows no devolvió ninguna impresora instalada. Escribí el nombre exacto, o dejalo vacío para elegirla en cada impresión."
+          />
+        ) : (
+          <Selector
+            etiqueta="Impresora de documentos"
+            value={documentos}
+            onChange={(evento) => setDocumentos(evento.target.value)}
+            opciones={[
+              { valor: '', texto: '(preguntar cada vez)' },
+              ...estado.disponibles.map((nombre) => ({ valor: nombre, texto: nombre })),
+            ]}
+            ayuda="Con una elegida, imprimir un presupuesto sale directo por ahí. Sin elegir, se abre el diálogo de Windows para escoger impresora, bandeja y copias."
+          />
+        )}
       </Tarjeta>
 
       <NumeracionDeTickets proximoNumero={estado.proximoNumeroDeTicket} alGuardar={(config) => setEstado(config)} />
@@ -413,7 +474,7 @@ function DireccionesDelTicket() {
                   etiqueta="Teléfono"
                   value={fila.telefono}
                   onChange={(evento) => cambiar(indice, { telefono: evento.target.value })}
-                  placeholder="11 4083-0416"
+                  placeholder="11 5555-0000"
                   ayuda="El celular de este local. Sale después de «Pcia de Buenos Aires»."
                 />
               </div>

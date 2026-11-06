@@ -2,6 +2,7 @@
 // completa en la base del VPS y corre una reimportación para que la copia local quede alineada
 // con la fuente nueva. Mismo espíritu que «Subir usuarios» de la base de usuarios compartida.
 import type { EstadoMigracionVps, ResumenMigracionVps } from '../../shared/tipos'
+import { esDemo } from '../canal'
 import { db } from '../db/base'
 import { ejecutarImportacion } from '../importacion/importador'
 import { ahoraIso } from '../importacion/normalizar'
@@ -36,6 +37,9 @@ export async function estadoDeLaBaseVps(): Promise<EstadoMigracionVps> {
 }
 
 export async function migrarAlVps(): Promise<ResumenMigracionVps> {
+  // Demo: la migración lee la hoja de Google de la agencia, y la demostración no sale a internet. La base
+  // de la demo ya viene «migrada» en su servidor interno.
+  if (esDemo()) throw new ErrorDeNegocio('En la demostración la base ya está en el servidor: no hay nada que migrar desde Google.')
   exigirQueNoSeaLaBetaContraProduccion('migrar la base al VPS')
   const google = fuenteGoogleDirecta()
   if (!google) {

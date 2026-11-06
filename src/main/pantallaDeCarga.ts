@@ -9,8 +9,13 @@
 // posible: HTML en una URL `data:`, sin preload, sin React, sin archivos que leer del disco. Se va sola
 // en cuanto la ventana principal está dibujada (ver `cerrarPantallaDeCarga` en index.ts).
 import { BrowserWindow } from 'electron'
-import { nombreActual } from './canal'
-import icono from '../../recursos/icon.png?inline'
+import { esDemo, nombreActual } from './canal'
+import iconoDeLaAgencia from '../../recursos/icon.png?inline'
+import iconoDeLaDemo from '../../recursos/demo/icon.png?inline'
+
+/** La demo tiene marca propia (Cobertia): ni el logo ni los colores de la agencia. */
+const icono = esDemo() ? iconoDeLaDemo : iconoDeLaAgencia
+const fondo = esDemo() ? '#063b33' : '#0b1f3b'
 
 /**
  * Si la ventanita no da señales en este tiempo, el arranque sigue igual. Nunca puede frenar al
@@ -23,7 +28,7 @@ let ventana: BrowserWindow | null = null
 const HTML = `<!doctype html>
 <html lang="es-AR"><head><meta charset="UTF-8"><title>${nombreActual()}</title>
 <style>
-  html,body{margin:0;height:100%;background:#0b1f3b;color:#dceafc;overflow:hidden;
+  html,body{margin:0;height:100%;background:${fondo};color:#dceafc;overflow:hidden;
     font-family:"Segoe UI",system-ui,sans-serif;user-select:none;-webkit-app-region:drag}
   body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
   img{width:88px;height:88px}

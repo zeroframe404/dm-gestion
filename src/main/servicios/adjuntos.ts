@@ -13,6 +13,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import type { SesionUsuario } from '../../shared/tipos'
+import { esDemo } from '../canal'
 import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import {
@@ -866,7 +867,9 @@ export async function subirAdjuntoADriveComo(
 ): Promise<ResultadoDeDrive> {
   // Hasta la 12.5 esto devolvía error null y el adjunto quedaba «sólo local» sin decir por qué: parecía
   // que había subido. Ahora se dice, y `subirAdjuntosPendientes` lo reintenta si Google aparece.
-  if (!dameToken) return { driveId: null, error: MENSAJE_SIN_DRIVE }
+  // Demo: no hay Drive (ver `credencialesParaDrive`). Se contesta como una agencia sin Google, así el
+  // adjunto queda «sólo local» con el mismo motivo de siempre y nadie intenta pedir un token.
+  if (!dameToken || esDemo()) return { driveId: null, error: MENSAJE_SIN_DRIVE }
   try {
     const token = await dameToken()
     const contenido = readFileSync(rutaDeAdjunto(copia.archivo))

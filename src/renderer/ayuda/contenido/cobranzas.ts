@@ -177,7 +177,7 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
       },
       {
         termino: 'De la planilla / de la app',
-        explicacion: 'Marca de origen del pago: si vino cargado en la planilla de la agencia («de la planilla») o se registró desde DM Gestión («de la app», con el nombre de quien lo cobró).',
+        explicacion: 'Marca de origen del pago: si vino cargado en la planilla de la agencia («de la planilla») o se registró desde el programa («de la app», con el nombre de quien lo cobró).',
       },
     ],
   },

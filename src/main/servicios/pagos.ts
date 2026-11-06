@@ -175,7 +175,7 @@ export function hojaDeImputados(): HojaDeImputados {
     aviso: tieneColumnaResultado
       ? null
       : `La pestaña «${candidata.pestana}» de la hoja no tiene columna RESULTADO. Agregale una con ese ` +
-        'encabezado y volvé a importar; hasta entonces el resultado queda guardado sólo en DM Gestión.',
+        'encabezado y volvé a importar; hasta entonces el resultado queda guardado sólo en el programa.',
   }
 }
 

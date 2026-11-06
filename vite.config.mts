@@ -3,6 +3,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { quitarSecretos } from './scripts/secretos-de-la-agencia.mjs'
 
 const raiz = fileURLToPath(new URL('.', import.meta.url))
 
@@ -44,11 +45,28 @@ function cspEnProduccion(): Plugin {
   }
 }
 
+/**
+ * La demo (`DM_GESTION_DEMO=1`, ver `scripts/dist-demo.mjs`) tampoco puede llevar en la pantalla los datos
+ * de la agencia que la pantalla comparte con el proceso principal (el dominio de Mi link).
+ */
+const armandoLaDemo = process.env.DM_GESTION_DEMO === '1'
+
+function sinSecretosDeLaAgencia(): Plugin {
+  return {
+    name: 'dm-sin-secretos-de-la-agencia',
+    enforce: 'pre',
+    transform(codigo, id) {
+      const limpio = quitarSecretos(id, codigo)
+      return limpio === null ? null : { code: limpio, map: null }
+    },
+  }
+}
+
 export default defineConfig({
   root: fileURLToPath(new URL('./src/renderer', import.meta.url)),
   // Rutas relativas: la app empaquetada carga el HTML desde el disco (file://).
   base: './',
-  plugins: [react(), tailwindcss(), cspEnProduccion()],
+  plugins: [react(), tailwindcss(), cspEnProduccion(), ...(armandoLaDemo ? [sinSecretosDeLaAgencia()] : [])],
   build: {
     outDir: fileURLToPath(new URL('./dist/renderer', import.meta.url)),
     emptyOutDir: true,

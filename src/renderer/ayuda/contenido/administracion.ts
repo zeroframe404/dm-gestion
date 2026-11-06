@@ -4,7 +4,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.usuarios': {
     clave: 'administracion.usuarios',
     titulo: 'Administración → Usuarios',
-    resumen: 'Quién puede entrar a DM Gestión, con qué rol y en qué sucursal. Sólo la ve un superadministrador.',
+    resumen: 'Quién puede entrar al programa, con qué rol y en qué sucursal. Sólo la ve un superadministrador.',
     secciones: [
       {
         titulo: 'Qué se hace acá',
@@ -210,7 +210,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Para qué sirve',
         parrafos: [
-          'Si el mostrador de una sucursal tiene una impresora térmica de las que usan rollo angosto (80 mm, las típicas de los comercios), esta pantalla la configura para que, al registrar un pago en Cobranzas, salga el comprobante. Si en ese mostrador no hay ticketeadora, se puede elegir «Impresora común (hoja A4)» en «Tipo de impresora»: el comprobante sale igual, arriba a la izquierda de una hoja A4, sin que la impresora lo corte. Es completamente opcional: sin configurar nada, cobrar y registrar pagos funciona exactamente igual, simplemente no sale ningún papel.',
+          'Si el mostrador de una sucursal tiene una impresora térmica de las que usan rollo angosto (80 mm, las típicas de los comercios), esta pantalla la configura para que, al registrar un pago en Cobranzas, salga el comprobante. Si en ese mostrador no hay ticketeadora, se puede elegir «Impresora común (hoja A4)» en «Tipo de impresora»: el comprobante sale igual, arriba a la izquierda de una hoja A4, sin que la impresora lo corte. Es completamente opcional: sin configurar nada, cobrar y registrar pagos funciona exactamente igual, simplemente no sale ningún papel. La ticketeadora y la impresora común no son excluyentes: la tarjeta «Impresora para documentos grandes» elige una impresora de hojas A4 para los presupuestos y las listas, y puede estar configurada a la vez que la ticketeadora (el comprobante sale por la ticketeadora, lo grande por la A4). Si no se elige ninguna, imprimir un presupuesto abre el diálogo de Windows como siempre.',
           'La pantalla la ve y la usa cualquier persona con sesión abierta, sea EMPLEADO, ADMIN o SUPER_ADMIN: la impresora es la que tiene esa computadora delante, y quien cobra es quien se da cuenta de que hay que cambiarla, apagarla o dejar de gastar papel, sin tener que esperar a un administrador.',
         ],
       },
@@ -303,7 +303,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Los dos datos que se cargan',
         parrafos: [
-          'El primer campo es el contenido del archivo de credenciales que entrega Google al crear el acceso técnico; se pega tal cual, completo. El segundo es la dirección (URL) de la hoja de cálculo de la agencia (sólo se usó para la migración inicial). Para los respaldos hace falta que la carpeta «Respaldos DM» del Drive esté compartida como editor con el correo de la credencial; para los adjuntos, lo mismo con la carpeta «Adjuntos DM».',
+          'El primer campo es el contenido del archivo de credenciales que entrega Google al crear el acceso técnico; se pega tal cual, completo. El segundo es la dirección (URL) de la hoja de cálculo de la agencia (sólo se usó para la migración inicial). Para los respaldos hace falta que la carpeta de respaldos que usa el programa en el Drive esté compartida como editor con el correo de la credencial; para los adjuntos, lo mismo con la carpeta de adjuntos.',
         ],
       },
       {
@@ -364,14 +364,14 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Cómo funciona',
         parrafos: [
-          'Cualquier cambio que se hace en DM Gestión (un pago, una baja, un dato editado) se sube solo a la base del VPS cada pocos segundos, y lo que cargaron las otras computadoras se trae de vuelta cada algunos minutos. No hace falta hacer nada manual para que esto funcione: pasa solo, todo el tiempo, mientras haya conexión.',
+          'Cualquier cambio que se hace en el programa (un pago, una baja, un dato editado) se sube solo a la base del VPS cada pocos segundos, y lo que cargaron las otras computadoras se trae de vuelta cada algunos minutos. No hace falta hacer nada manual para que esto funcione: pasa solo, todo el tiempo, mientras haya conexión.',
           '«Sincronizar ahora» fuerza un ciclo inmediato en lugar de esperar al próximo automático. «Forzar bajada completa» vuelve a traer la base entera desde cero, útil si algo quedó desactualizado y se quiere estar seguro de que todo coincide.',
         ],
       },
       {
         titulo: 'La cola de subida',
         parrafos: [
-          'Es la lista de cambios hechos en DM Gestión que todavía no llegaron a la base del VPS, por ejemplo porque se cortó internet. No se pierde nada: apenas vuelve la conexión, la cola se vacía sola. Si algún cambio no se pudo subir por un problema puntual, queda marcado «No se pudo» y el botón «Volver a intentar los que fallaron» lo reintenta.',
+          'Es la lista de cambios hechos en el programa que todavía no llegaron a la base del VPS, por ejemplo porque se cortó internet. No se pierde nada: apenas vuelve la conexión, la cola se vacía sola. Si algún cambio no se pudo subir por un problema puntual, queda marcado «No se pudo» y el botón «Volver a intentar los que fallaron» lo reintenta.',
         ],
       },
       {
@@ -396,7 +396,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
       {
         termino: 'Cola de subida',
-        explicacion: 'Los cambios hechos en DM Gestión que todavía no llegaron a la base del VPS, normalmente porque se está esperando conexión.',
+        explicacion: 'Los cambios hechos en el programa que todavía no llegaron a la base del VPS, normalmente porque se está esperando conexión.',
       },
       {
         termino: 'Respaldo',
@@ -416,7 +416,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Para qué está',
         parrafos: [
-          'DM Gestión sincroniza solo cada tanto: sube lo que cargaste y baja lo que cargaron en las otras sucursales. El 99 % de los días nadie tiene que hacer nada. Esta pantalla es para el otro 1 %: tenés gente en el mostrador, alguien pregunta por una cuota que se cargó ayer en otra sucursal y acá no aparece, o cargaste un pago y ves que quedó «esperando para subir».',
+          'El programa sincroniza solo cada tanto: sube lo que cargaste y baja lo que cargaron en las otras sucursales. El 99 % de los días nadie tiene que hacer nada. Esta pantalla es para el otro 1 %: tenés gente en el mostrador, alguien pregunta por una cuota que se cargó ayer en otra sucursal y acá no aparece, o cargaste un pago y ves que quedó «esperando para subir».',
           'El botón «Sincronizar todo» fuerza una vuelta completa: sube todo lo que estaba en la cola y vuelve a bajar los datos de la hoja. No configura nada ni cambia nada de las otras computadoras, sólo apura lo que la aplicación iba a hacer sola. Por eso lo puede tocar cualquiera, con el rol que sea.',
         ],
       },
@@ -563,7 +563,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Cómo se entra',
         parrafos: [
-          'El botón «Abrir la consola» la abre en el navegador, no dentro de DM Gestión, y ahí pide su propio usuario y clave, que NO son los del programa. Es a propósito: desde esa consola se entra a todas las computadoras de la agencia, y ese acceso conviene que tenga su puerta aparte en vez de quedar abierto porque alguien dejó DM Gestión iniciado.',
+          'El botón «Abrir la consola» la abre en el navegador, no dentro del programa, y ahí pide su propio usuario y clave, que NO son los con los que se entra al programa. Es a propósito: desde esa consola se entra a todas las computadoras de la agencia, y ese acceso conviene que tenga su puerta aparte en vez de quedar abierto porque alguien dejó el programa iniciado.',
           '«Copiar la dirección» sirve para mandársela a alguien por mensaje, o para abrirla desde un celular.',
         ],
       },
@@ -597,7 +597,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Qué es el servidor',
         parrafos: [
-          'DM Gestión trabaja contra un servidor propio de la agencia (un VPS): ahí viven la base de clientes y pólizas, los usuarios, los ajustes que se cargan una sola vez, el chat interno, los archivos adjuntos y los respaldos diarios. Cada computadora tiene una copia local para trabajar rápido y se sincroniza sola en el momento.',
+          'El programa trabaja contra un servidor propio de la agencia (un VPS): ahí viven la base de clientes y pólizas, los usuarios, los ajustes que se cargan una sola vez, el chat interno, los archivos adjuntos y los respaldos diarios. Cada computadora tiene una copia local para trabajar rápido y se sincroniza sola en el momento.',
           'En la demo ese servidor está simulado adentro del propio programa, con datos inventados, y se vuelve a armar cada vez que se abre.',
         ],
       },
@@ -619,7 +619,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Versión y actualizaciones',
         parrafos: [
-          'DM Gestión se actualiza sola: busca versiones nuevas al abrirse y cada cuatro horas mientras está en uso, y cuando encuentra una la descarga sin interrumpir el trabajo. Cuando está lista, aparece una barra arriba de la pantalla avisando que hay una versión nueva, con un botón «Reiniciar ahora» para instalarla en el momento (si no se toca, se instala sola la próxima vez que se cierra el programa). Desde esta pantalla, el botón «Buscar actualizaciones» chequea a mano en cualquier momento, sin esperar al chequeo automático.',
+          'El programa se actualiza solo: busca versiones nuevas al abrirse y cada cuatro horas mientras está en uso, y cuando encuentra una la descarga sin interrumpir el trabajo. Cuando está lista, aparece una barra arriba de la pantalla avisando que hay una versión nueva, con un botón «Reiniciar ahora» para instalarla en el momento (si no se toca, se instala sola la próxima vez que se cierra el programa). Desde esta pantalla, el botón «Buscar actualizaciones» chequea a mano en cualquier momento, sin esperar al chequeo automático.',
         ],
       },
       {
@@ -638,7 +638,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
     conceptos: [
       {
         termino: 'Actualización automática',
-        explicacion: 'DM Gestión revisa sola si hay una versión nueva y la instala con un aviso y un botón, sin necesidad de descargar nada a mano.',
+        explicacion: 'El programa revisa solo si hay una versión nueva y la instala con un aviso y un botón, sin necesidad de descargar nada a mano.',
       },
     ],
   },

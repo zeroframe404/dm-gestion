@@ -4,11 +4,12 @@
 // El mecanismo es el mismo de siempre en Electron: se escribe el HTML en la carpeta de datos, se lo
 // carga en una ventana oculta y se le pide a Chromium el PDF o el diálogo de impresión. La ventana
 // va sin JavaScript: es un papel, no una aplicación.
-import { BrowserWindow, dialog } from 'electron'
+import { BrowserWindow, dialog, type WebContentsPrintOptions } from 'electron'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { carpetaDatos } from '../rutas'
 import { ErrorDeNegocio } from './errores'
+import { impresoraDeDocumentos } from './preferencias'
 
 /** Un trabajo colgado no puede dejar una ventana oculta viva para siempre. */
 const ESPERA_MAXIMA_MS = 30_000
@@ -81,8 +82,10 @@ export async function guardarHtmlComoPdf(
 }
 
 /**
- * Manda el HTML a la impresora que elija el usuario (el diálogo de Windows). No es silencioso a
- * propósito: acá la persona quiere elegir impresora, bandeja y cantidad de copias.
+ * Manda el HTML a imprimir. Si en Administración → Impresora se eligió la impresora de documentos
+ * (la común, de hojas A4), sale directo por ahí, sin diálogo: la ticketeadora queda para los
+ * comprobantes y esto, que es grande, va a la otra. Sin impresora elegida se abre el diálogo de
+ * Windows para que la persona elija impresora, bandeja y cantidad de copias.
  */
 export async function imprimirHtmlConDialogo(html: string): Promise<boolean> {
   return conVentanaDelHtml(
@@ -103,7 +106,11 @@ export async function imprimirHtmlConDialogo(html: string): Promise<boolean> {
         const reloj = setTimeout(() => terminar(new Error('La impresora no respondió a tiempo.')), ESPERA_MAXIMA_MS)
         reloj.unref?.()
         try {
-          ventana.webContents.print({ silent: false, printBackground: true }, (exito, motivo) => {
+          const fija = impresoraDeDocumentos()
+          const opciones: WebContentsPrintOptions = fija
+            ? { silent: true, deviceName: fija, printBackground: true, pageSize: 'A4' }
+            : { silent: false, printBackground: true }
+          ventana.webContents.print(opciones, (exito, motivo) => {
             // Cancelar el diálogo no es un error: la persona se arrepintió y ya está.
             if (!exito && /cancel/i.test(motivo ?? '')) return terminar(undefined, false)
             if (!exito) return terminar(new Error(motivo || 'La impresora rechazó el trabajo.'))

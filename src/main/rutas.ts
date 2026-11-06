@@ -14,7 +14,7 @@ export const NOMBRE_CARPETA_DATOS = 'dm-gestion'
 export const NOMBRE_CARPETA_DATOS_BETA = 'dm-gestion-beta'
 
 /** La demo también tiene la suya, y es la única que se vacía sola: ver `limpiarDatosDeLaDemo`. */
-export const NOMBRE_CARPETA_DATOS_DEMO = 'dm-gestion-demo'
+export const NOMBRE_CARPETA_DATOS_DEMO = 'cobertia-demo'
 
 /**
  * Lo que la demo deja en su carpeta y se borra en cada arranque: la base local, la credencial del
@@ -40,7 +40,7 @@ const QUE_SE_LIMPIA_EN_LA_DEMO = [
 ]
 
 /**
- * Fija la carpeta de datos en %APPDATA%/dm-gestion (%APPDATA%/dm-gestion-beta en la beta). Tiene que ejecutarse antes del evento
+ * Fija la carpeta de datos en %APPDATA%/dm-gestion (%APPDATA%/dm-gestion-beta en la beta, %APPDATA%/cobertia-demo en la demo). Tiene que ejecutarse antes del evento
  * `ready`, porque Electron resuelve `userData` en cuanto arranca.
  */
 export function configurarCarpetaDatos(): void {

@@ -9,9 +9,10 @@
 // revisar, y que ninguna contraseña se filtre.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { claveDeVariante, claveDeVehiculo, leerLista, leerVehiculos, listaDe, numeroDeEquidad } from '../src/main/aseguradoras/equidad/catalogos'
+import { claveDeVariante, claveDeVehiculo, diagnosticoDeLista, leerLista, leerVehiculos, listaDe, numeroDeEquidad } from '../src/main/aseguradoras/equidad/catalogos'
 import {
   consultaOrdenada,
+  codigoDelJsonResult,
   crearClienteEquidad,
   ErrorDeEquidad,
   fechaCompacta,
@@ -26,6 +27,9 @@ import {
 import { armarPedidoDeCotizacion, leerRespuestaDeCotizacion } from '../src/main/aseguradoras/equidad/cotizacion'
 import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
 import {
+  codigoDeMonedaParaEquidad,
+  codigosAProbar,
+  MONEDA_CON_CODIGO_VACIO,
   consejoParaElRechazo,
   equidad,
   ID_EQUIDAD,
@@ -108,6 +112,10 @@ test('Equidad: la URL de cada servicio es la base más su nombre de clase, como 
   assert.equal(normalizarUrlBase('  '), '')
   assert.equal(urlDeServicio('http://10.0.8.2/ATM_COM_PRUE/servlet', 'autenticarUsuario'), 'http://10.0.8.2/ATM_COM_PRUE/servlet/ar.com.glmsa.seguros.comercial.apiglm.seguridad.awsautenticarusuario')
   assert.equal(SERVICIOS_EQUIDAD.cotizarAutomotor, 'ar.com.glmsa.seguros.comercial.apiglm.emision.automotores.awscotizarautomotor', 'sin el espacio que tiene la errata del documento')
+  // Verificados contra producción (06/11/2026): con el paquete `comun` estos dos dan 404.
+  assert.equal(SERVICIOS_EQUIDAD.listarProductoresDeUsuario, 'ar.com.glmsa.seguros.comercial.apiglm.cotizacion.awslistarproductoresdeusuario')
+  assert.equal(SERVICIOS_EQUIDAD.listarMoneda, 'ar.com.glmsa.seguros.comercial.apiglm.cotizacion.awslistarmonedausuario')
+  assert.equal(SERVICIOS_EQUIDAD.listarCategoriaIVA, 'ar.com.glmsa.seguros.comercial.apiglm.cotizacion.awslistarcategoriaiva', 'la de rama y tipo de póliza, no la de la persona')
 })
 
 test('Equidad: los query params van en el orden dado y los vacíos también, y las fechas AAAAMMDD', () => {
@@ -243,6 +251,7 @@ test('Equidad: los importes vienen como vengan', () => {
 test('Equidad: el pedido de CotizarAutomotor lleva los nombres exactos del documento, errata incluida', () => {
   const pedido = armarPedidoDeCotizacion({
     usuario: 'GLM',
+    sistemaOrigen: 'DMARTINEZ',
     rama: '4',
     tipoPoliza: 'AU',
     tomadorNombre: 'A COTIZAR',
@@ -281,12 +290,14 @@ test('Equidad: el pedido de CotizarAutomotor lleva los nombres exactos del docum
     },
   })
   assert.equal(pedido.Usuario, 'GLM')
-  assert.equal(pedido.Rama, 4)
+  assert.equal(pedido.SistemaOrigen, 'DMARTINEZ', 'el usuario de ingreso, como pidió Equidad')
+  assert.equal(pedido.Rama, '4', 'como texto, igual que el ejemplo de Equidad')
   assert.equal(pedido.TomadorTipoPersona, '1')
   assert.equal(pedido.TomadoCategoriaIVACodigo, 'CF', 'sic: así lo nombra el documento')
+  assert.equal(pedido.TomadorCategoriaIVACodigo, 'CF', 'y bien escrito, como el ejemplo de Equidad')
   assert.equal(pedido.VigenciaDesde, '2026-10-20')
-  assert.equal(pedido.ProductorCodigo, 1234)
-  assert.equal(pedido.FormaPagoCodigo, 2)
+  assert.equal(pedido.ProductorCodigo, '1234')
+  assert.equal(pedido.FormaPagoCodigo, '2')
   assert.equal(pedido.PorcentajeBonificacion, 20)
   assert.equal(pedido.PorcenjateRecargoAdm, 10, 'sic: la errata es el nombre que la API espera')
   assert.equal('Solicitud' in pedido, false)
@@ -399,7 +410,7 @@ const VEHICULOS = [
 ]
 
 /** La API entera, con lo que contesta cada servicio; `cotizar` decide la respuesta al POST. */
-function apiFalsa(t: Prueba, cotizar: (cuerpo: Record<string, unknown>) => Response = () => json(COTIZACION), vehiculos: unknown = VEHICULOS): PedidoHttp[] {
+function apiFalsa(t: Prueba, cotizar: (cuerpo: Record<string, unknown>) => Response = () => json(COTIZACION), vehiculos: unknown = VEHICULOS, monedas: unknown = [{ Codigo: '2', Descripcion: 'DOLARES' }, { Codigo: '1', Descripcion: 'PESOS' }], modos: (moneda: string | null) => unknown = () => [{ Codigo: 'ANU', Descripcion: 'ANUAL' }, { Codigo: 'SEM', Descripcion: 'SEMESTRAL' }]): PedidoHttp[] {
   usarCuentaDeEquidadDePrueba(CUENTA)
   t.after(() => usarCuentaDeEquidadDePrueba(null))
   return fetchFalso(t, (pedido) => {
@@ -409,8 +420,8 @@ function apiFalsa(t: Prueba, cotizar: (cuerpo: Record<string, unknown>) => Respo
     if (esServicio(pedido, 'listarCategoriaIVA')) return json([{ Codigo: 'RI', Descripcion: 'RESPONSABLE INSCRIPTO' }, { Codigo: 'CF', Descripcion: 'CONSUMIDOR FINAL' }])
     if (esServicio(pedido, 'listarCategoriaIB')) return json([{ Codigo: 'IN', Descripcion: 'INSCRIPTO' }, { Codigo: 'NI', Descripcion: 'NO INSCRIPTO' }])
     if (esServicio(pedido, 'listarPlanComercial')) return json([{ Rama: 4, Codigo: 'PL1', Descripcion: 'PLAN PRODUCTORES' }])
-    if (esServicio(pedido, 'listarMoneda')) return json([{ Codigo: '2', Descripcion: 'DOLARES' }, { Codigo: '1', Descripcion: 'PESOS' }])
-    if (esServicio(pedido, 'listarModoDeFacturacion')) return json([{ Codigo: 'ANU', Descripcion: 'ANUAL' }, { Codigo: 'SEM', Descripcion: 'SEMESTRAL' }])
+    if (esServicio(pedido, 'listarMoneda')) return json(monedas)
+    if (esServicio(pedido, 'listarModoDeFacturacion')) return json(modos(new URL(pedido.url).searchParams.get('MonCod')))
     if (esServicio(pedido, 'listarFormaDePago')) return json([{ Codigo: 1, Descripcion: 'EFECTIVO' }, { Codigo: 2, Descripcion: 'TARJETA DE CREDITO' }, { Codigo: 3, Descripcion: 'DEBITO CBU' }])
     if (esServicio(pedido, 'listarCondicionDePago')) return json([{ Rama: 4, Codigo: 'C01', Descripcion: 'CONTADO', PorDefecto: false }, { Rama: 4, Codigo: 'C12', Descripcion: '12 CUOTAS', PorDefecto: true }])
     if (esServicio(pedido, 'buscarCodigoPostal')) return json([{ Codigo: '1870', SubCodigo: 1, Localidad: 'AVELLANEDA', Descripcion: '1870 AVELLANEDA', ProvinciaCodigo: 'B', ProvinciaDescripcion: 'BUENOS AIRES' }, { Codigo: '1870', SubCodigo: 2, Localidad: 'PIÑEYRO', ProvinciaDescripcion: 'BUENOS AIRES' }])
@@ -447,17 +458,18 @@ test('Equidad: cotiza eligiendo cada combo como la web (tipo de póliza, product
   const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
   const cuerpo = JSON.parse(post.cuerpo) as Record<string, unknown> & { RiesgoAUT: Record<string, unknown> }
   assert.equal(cuerpo.Usuario, 'GLM')
-  assert.equal(cuerpo.Rama, 4)
+  assert.equal(cuerpo.Rama, '4')
   assert.equal(cuerpo.TipoPolizaCodigo, 'AU', 'el tipo de póliza que nombra a los autos')
-  assert.equal(cuerpo.ProductorCodigo, 1234)
+  assert.equal(cuerpo.ProductorCodigo, '1234')
   assert.equal(cuerpo.MonedaCodigo, '1', 'pesos')
   assert.equal(cuerpo.PlanComercialCodigo, 'PL1')
   assert.equal(cuerpo.ModoFacturacionCodigo, 'ANU')
-  assert.equal(cuerpo.FormaPagoCodigo, 2, 'la forma de pago que corresponde a la tarjeta')
+  assert.equal(cuerpo.FormaPagoCodigo, '2', 'la forma de pago que corresponde a la tarjeta')
   assert.equal(cuerpo.CondicionPagoCodigo, 'C12', 'la condición por defecto de Equidad')
   assert.equal(cuerpo.TomadoCategoriaIVACodigo, 'CF')
   assert.equal(cuerpo.TomadorIIBBCodigo, 'NI')
   assert.equal(cuerpo.TomadorNombre, 'Juan Pérez')
+  assert.equal(cuerpo.SistemaOrigen, CUENTA.usuario)
   assert.equal(cuerpo.TomadorTipoPersona, '1')
   assert.equal('PorcentajeBonificacion' in cuerpo, false, 'sin elegir, Equidad aplica la suya')
   assert.equal(cuerpo.RiesgoAUT.CodigoPostal, '1870')
@@ -581,7 +593,68 @@ test('Equidad: lo que no es de la cotización (la cuenta rechazada, sin internet
   usarCuentaDeEquidadDePrueba(CUENTA)
   t.after(() => usarCuentaDeEquidadDePrueba(null))
   fetchFalso(t, () => json({ status: 401, Description: 'Falló la autenticación' }, 401))
-  await assert.rejects(equidad.cotizar(solicitud(), {}), /no aceptó las credenciales/)
+  await assert.rejects(equidad.cotizar(solicitud(), {}), /rechazó el usuario y la contraseña de aplicación \(401: Falló la autenticación/)
+})
+
+test('Equidad: si el login da 401 con el usuario de servicio, se prueba sin él (en AutenticarUsuario el Basic es opcional)', async (t) => {
+  const pedidos = fetchFalso(t, (pedido) => {
+    if (esServicio(pedido, 'autenticarUsuario')) {
+      return pedido.headers.authorization ? json({ status: 401, Description: 'Unauthorized', Detail: 'Falló la autenticación' }, 401) : json(SESION)
+    }
+    return json([{ Codigo: '1', Descripcion: 'PESOS' }])
+  })
+  const sesion = await crearClienteEquidad(CUENTA).sesion()
+  assert.equal(sesion.usuarioCodigo, SESION.UsuCod)
+  const logins = pedidos.filter((p) => esServicio(p, 'autenticarUsuario'))
+  assert.equal(logins.length, 2)
+  assert.match(logins[0]!.headers.authorization ?? '', /^Basic /)
+  assert.equal(logins[1]!.headers.authorization, undefined)
+})
+
+test('Equidad: si el login da 401 de las dos formas, el mensaje dice qué revisar', async (t) => {
+  fetchFalso(t, () => json({ status: 401, Description: 'Unauthorized', Detail: 'Falló la autenticación' }, 401))
+  await assert.rejects(crearClienteEquidad(CUENTA).sesion(), (error: Error) => {
+    assert.match(error.message, /401: Unauthorized: Falló la autenticación; se probó con el usuario de servicio, sin Basic, con el Basic del usuario de aplicación/)
+    assert.match(error.message, /mismo ambiente que la URL base/)
+    return true
+  })
+})
+
+test('Equidad: si el Basic pasa y AutenticarUsuario devuelve código 7, el mensaje dice que la que falla es la contraseña de aplicación', async (t) => {
+  // Lo que contestó producción el 05/11/2026: sin Basic o con uno malo, el genérico; con el Basic bueno,
+  // el JSON Error de AutenticarUsuario adentro de JsonResult.
+  const basicDeServicio = `Basic ${Buffer.from(`PORTAL:${CLAVE_SERVICIO}`).toString('base64')}`
+  fetchFalso(t, (pedido) =>
+    pedido.headers.authorization === basicDeServicio
+      ? json({ status: 401, Description: 'Unauthorized', detail: 'La contraseña ingresada no es válida', JsonResult: '{"Codigo":7,"Mensaje":"La contraseña ingresada no es válida"}' }, 401)
+      : json({ status: 401, Description: 'Unauthorized', detail: 'Falló la autenticación', JsonResult: '' }, 401),
+  )
+  await assert.rejects(crearClienteEquidad(CUENTA).sesion(), (error: Error) => {
+    assert.match(error.message, /aceptó el usuario de servicio \(con el usuario de servicio\) pero rechazó la contraseña de aplicación: Unauthorized: La contraseña ingresada no es válida \(código 7\)/)
+    assert.match(error.message, /web de productores/)
+    return true
+  })
+  assert.equal(codigoDelJsonResult('{"JsonResult":"{\\"Codigo\\":7}"}'), 7)
+  assert.equal(codigoDelJsonResult('{"JsonResult":""}'), null)
+  assert.equal(codigoDelJsonResult('no es json'), null)
+})
+
+test('Equidad: sin usuario de servicio, si el login da 401 sin Basic se prueba el Basic con el usuario de aplicación, y queda para los servicios', async (t) => {
+  const basicDeAplicacion = `Basic ${Buffer.from(`GLM:${CLAVE}`).toString('base64')}`
+  const pedidos = fetchFalso(t, (pedido) => {
+    if (pedido.headers.authorization !== basicDeAplicacion) return json({ status: 401, Description: 'Unauthorized', Detail: 'Falló la autenticación' }, 401)
+    if (esServicio(pedido, 'autenticarUsuario')) return json({ UsuCod: 'GLM', UsuNom: 'GLM' }) // sin Token
+    return json([{ Codigo: '1', Descripcion: 'PESOS' }])
+  })
+  const cliente = crearClienteEquidad({ ...CUENTA, usuarioDeServicio: '', claveDeServicio: '' })
+  await cliente.get<unknown>('listarMoneda', [['UsuCod', 'GLM']])
+  const logins = pedidos.filter((p) => esServicio(p, 'autenticarUsuario'))
+  assert.deepEqual(
+    logins.map((p) => p.headers.authorization ?? null),
+    [null, basicDeAplicacion],
+  )
+  const lista = pedidos.find((p) => esServicio(p, 'listarMoneda'))!
+  assert.equal(lista.headers.authorization, basicDeAplicacion, 'sin token, el servicio va con el Basic que anduvo')
 })
 
 test('Equidad: las decisiones por defecto, solas', () => {
@@ -607,4 +680,115 @@ test('Equidad: sin cuenta cargada no está disponible, sólo cotiza autos y no e
 test('Equidad: las localidades de un código postal salen de BuscarCodigoPostal', async (t) => {
   apiFalsa(t)
   assert.deepEqual(await equidad.localidades!('AUTO', '1870'), ['AVELLANEDA', 'PIÑEYRO'])
+})
+
+test('Equidad: si las monedas vienen con otros nombres de campo, se leen igual y la cadena comercial se completa', async (t) => {
+  apiFalsa(t, undefined, undefined, [{ MonCod: '1', MonDes: 'PESOS' }])
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  const moneda = resultado.ajustes.find((a) => a.campo === 'moneda')!
+  assert.deepEqual(moneda.opciones, [{ valor: '1', texto: 'PESOS' }])
+  assert.equal(moneda.valor, '1')
+})
+
+test('Equidad: si Equidad no devuelve monedas, se ofrecen Pesos y Dólares y los campos de abajo no quedan vacíos', async (t) => {
+  const pedidos = apiFalsa(t, undefined, undefined, [])
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  const moneda = resultado.ajustes.find((a) => a.campo === 'moneda')!
+  assert.deepEqual(moneda.opciones.map((o) => o.valor), ['1', '2'])
+  assert.equal(moneda.valor, '1')
+  for (const campo of ['modoFacturacion', 'formaDePago', 'condicionDePago']) {
+    assert.ok(resultado.ajustes.find((a) => a.campo === campo)!.opciones.length > 0, campo)
+  }
+  assert.ok(resultado.avisos.some((aviso) => /monedas/.test(aviso)))
+  const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
+  assert.equal((JSON.parse(post.cuerpo) as Record<string, unknown>).MonedaCodigo, '1')
+})
+
+test('Equidad: una lista con otros nombres de campo no queda vacía y dice qué contestó Equidad', () => {
+  const opciones = leerLista([{ ModCod: 'ANU', ModDes: 'ANUAL' }, { ModCod: 'SEM', ModDes: 'SEMESTRAL' }], 'los modos de facturación')
+  assert.deepEqual(opciones, [{ codigo: 'ANU', descripcion: 'ANUAL' }, { codigo: 'SEM', descripcion: 'SEMESTRAL' }])
+  assert.match(diagnosticoDeLista('los modos de facturación') ?? '', /primer valor de cada fila \(campos: ModCod, ModDes; primera fila: \{\"ModCod\":\"ANU\"/)
+  assert.deepEqual(leerLista([], 'los modos de facturación'), [])
+  assert.match(diagnosticoDeLista('los modos de facturación') ?? '', /lista vacía/)
+  leerLista([{ Codigo: 'ANU' }], 'los modos de facturación')
+  assert.equal(diagnosticoDeLista('los modos de facturación'), null)
+})
+
+test('Equidad: si la moneda que se toma sola no tiene modos de facturación, se prueba con la otra', async (t) => {
+  apiFalsa(t, undefined, undefined, undefined, (moneda) => (moneda === '2' ? [{ Codigo: 'ANU', Descripcion: 'ANUAL' }] : []))
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  assert.equal(resultado.ajustes.find((a) => a.campo === 'moneda')!.valor, '2')
+  assert.ok(resultado.avisos.some((aviso) => /DOLARES/.test(aviso)))
+})
+
+test('Equidad: si ninguna moneda tiene modos, el campo vacío dice qué pasó y no se recuerda la lista vacía', async (t) => {
+  const pedidos = apiFalsa(t, undefined, undefined, undefined, () => [])
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'FALTAN_DATOS')
+  const modo = resultado.ajustes.find((a) => a.campo === 'modoFacturacion')!
+  assert.equal(modo.opciones.length, 0)
+  assert.match(modo.ayuda ?? '', /no devolvió modos de facturación para el plan PL1 y la moneda PESOS \(se probó con el código «1», «2»\).*lista vacía/)
+  const antes = pedidos.filter((p) => esServicio(p, 'listarModoDeFacturacion')).length
+  await equidad.cotizar(solicitud(), {})
+  assert.ok(pedidos.filter((p) => esServicio(p, 'listarModoDeFacturacion')).length > antes, 'se vuelve a preguntar')
+})
+
+test('Equidad: si las monedas vienen sin código, se prueban los códigos corrientes hasta que Equidad devuelve modos de facturación', async (t) => {
+  const monedasPedidas: Array<string | null> = []
+  const pedidos = apiFalsa(t, undefined, undefined, [{ Descripcion: 'PESOS' }, { Descripcion: 'DOLARES' }], (moneda) => {
+    monedasPedidas.push(moneda)
+    return moneda === '1' ? [{ Codigo: 'ANU', Descripcion: 'ANUAL' }] : []
+  })
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  assert.deepEqual(monedasPedidas, ['PESOS', '', '1'], 'primero lo leído, después el vacío y los códigos corrientes de pesos')
+  const moneda = resultado.ajustes.find((a) => a.campo === 'moneda')!
+  assert.equal(moneda.valor, '1')
+  assert.deepEqual(moneda.opciones.map((o) => o.valor), ['1', 'DOLARES'])
+  assert.ok(resultado.avisos.some((aviso) => /no confirmó el código de PESOS/.test(aviso) && /«1»/.test(aviso)))
+  const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
+  assert.equal((JSON.parse(post.cuerpo) as Record<string, unknown>).MonedaCodigo, '1')
+})
+
+test('Equidad: los códigos de moneda a probar sólo se amplían cuando Equidad no los informó', () => {
+  assert.deepEqual(codigosAProbar({ codigo: '1', descripcion: 'PESOS' }, false), ['1'])
+  assert.deepEqual(codigosAProbar({ codigo: 'PESOS', descripcion: 'PESOS' }, true), ['PESOS', '', '1', 'P', '0', ' '])
+  assert.deepEqual(codigosAProbar({ codigo: MONEDA_CON_CODIGO_VACIO, descripcion: 'PESOS' }, true), ['', '1', 'P', '0', ' '], 'el vacío de Equidad, tal cual, primero')
+  assert.deepEqual(codigosAProbar({ codigo: 'DOLARES', descripcion: 'DOLARES' }, true), ['DOLARES', '', '2', 'D', 'U', ' '])
+  assert.deepEqual(codigosAProbar({ codigo: 'X', descripcion: 'OTRA' }, true), ['X', ''])
+})
+
+test('Equidad: la moneda con «Codigo» vacío (como la devuelve en producción) se manda vacía y toda la cadena se completa', async (t) => {
+  const monedasPedidas: Array<string | null> = []
+  const pedidos = apiFalsa(t, undefined, undefined, [{ Codigo: '', Descripcion: 'PESOS' }], (moneda) => {
+    monedasPedidas.push(moneda)
+    return moneda === '' ? [{ Codigo: 'ANU', Descripcion: 'ANUAL' }] : []
+  })
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  assert.deepEqual(monedasPedidas, [''], 'el vacío de Equidad va primero y alcanza')
+  const moneda = resultado.ajustes.find((a) => a.campo === 'moneda')!
+  assert.equal(moneda.valor, MONEDA_CON_CODIGO_VACIO, 'el combo necesita un valor distinto de «sin elegir»')
+  assert.deepEqual(moneda.opciones, [{ valor: MONEDA_CON_CODIGO_VACIO, texto: 'PESOS' }])
+  assert.match(moneda.ayuda ?? '', /código vacío/)
+  assert.ok(!resultado.avisos.some((aviso) => /no confirmó el código/.test(aviso)), 'no se cambió de código: no hay nada que avisar')
+  for (const servicio of ['listarFormaDePago', 'listarCondicionDePago'] as const) {
+    const pedido = pedidos.find((p) => esServicio(p, servicio))!
+    assert.equal(new URL(pedido.url).searchParams.get('MonCod'), '', servicio)
+  }
+  const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
+  assert.equal((JSON.parse(post.cuerpo) as Record<string, unknown>).MonedaCodigo, '')
+})
+
+test('Equidad: la moneda con código vacío elegida a mano se respeta, y si ningún código sirve el campo dice cuáles probó', async (t) => {
+  apiFalsa(t, undefined, undefined, [{ Codigo: '', Descripcion: 'PESOS' }], () => [])
+  const resultado = await equidad.cotizar(solicitud(), { moneda: MONEDA_CON_CODIGO_VACIO })
+  assert.equal(resultado.estado, 'FALTAN_DATOS')
+  const modo = resultado.ajustes.find((a) => a.campo === 'modoFacturacion')!
+  assert.match(modo.ayuda ?? '', /la moneda PESOS \(se probó con el código \(vacío\), «1», «P», «0», « »\)/)
+  assert.equal(codigoDeMonedaParaEquidad(MONEDA_CON_CODIGO_VACIO), '')
+  assert.equal(codigoDeMonedaParaEquidad('1'), '1')
 })

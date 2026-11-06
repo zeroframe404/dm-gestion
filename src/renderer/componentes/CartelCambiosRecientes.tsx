@@ -33,6 +33,9 @@ export function CartelCambiosRecientes() {
     let vigente = true
     void window.dm.app.info().then((resultado) => {
       if (!vigente || !resultado.ok) return
+      // La demo no se actualiza ni tiene «versión anterior» para quien la prueba: el cartel aparecería
+      // en el primer ingreso de cada visita con cambios que no le dicen nada. No se muestra.
+      if (resultado.datos.canal === 'demo') return
       const actual = resultado.datos.version
       const lista = cambiosPendientes(actual, leer(usuario.id))
       setVersion(actual)

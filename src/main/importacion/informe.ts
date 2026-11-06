@@ -1,6 +1,7 @@
 // Versión legible (texto plano) del informe de importación, pensada para abrirse con el Bloc de notas.
 import { SUCURSALES } from '../../shared/sucursales'
 import { NOMBRE_TIPO_PESTANA, type InformeImportacion } from '../../shared/tipos'
+import { nombreActual } from '../canal'
 
 const ESTADOS: Record<InformeImportacion['estado'], string> = {
   EN_CURSO: 'En curso',
@@ -50,7 +51,7 @@ export function generarTextoDeInforme(informe: InformeImportacion): string {
   const t = informe.totales
   const salida: string[] = []
 
-  salida.push(linea(), 'INFORME DE IMPORTACIÓN — DM Gestión', linea())
+  salida.push(linea(), `INFORME DE IMPORTACIÓN — ${nombreActual()}`, linea())
   salida.push(`Hoja:            ${informe.hojaTitulo} (ID ${informe.hojaId})`)
   salida.push(`Importación Nº:  ${informe.id}`)
   salida.push(`Inicio:          ${fecha(informe.iniciadaEn)}`)

@@ -479,14 +479,14 @@ export const NOMBRE_TIPO_PESTANA: Record<TipoPestana, string> = {
   CONTADOR: 'Contador (sólo crudo)',
   SEGUROS_ACT: 'Seguros act. (sólo crudo)',
   AMP: 'AMP (ampliaciones)',
-  APP_LEADS: 'Leads (la escribe DM Gestión)',
-  APP_PRESUPUESTOS: 'Presupuestos (la escribe DM Gestión)',
-  APP_TAREAS: 'Tareas (la escribe DM Gestión)',
-  APP_RECHAZOS: 'Rechazos de débito (la escribe DM Gestión)',
-  APP_ADJUNTOS: 'Adjuntos (la escribe DM Gestión)',
-  APP_COMENTARIOS: 'Comentarios y observaciones (la escribe DM Gestión)',
-  APP_CAJA: 'Caja chica (la escribe DM Gestión)',
-  APP_CLIENTES: 'Clientes (la escribe DM Gestión)',
+  APP_LEADS: 'Leads (la escribe el programa)',
+  APP_PRESUPUESTOS: 'Presupuestos (la escribe el programa)',
+  APP_TAREAS: 'Tareas (la escribe el programa)',
+  APP_RECHAZOS: 'Rechazos de débito (la escribe el programa)',
+  APP_ADJUNTOS: 'Adjuntos (la escribe el programa)',
+  APP_COMENTARIOS: 'Comentarios y observaciones (la escribe el programa)',
+  APP_CAJA: 'Caja chica (la escribe el programa)',
+  APP_CLIENTES: 'Clientes (la escribe el programa)',
   OTRA: 'Sin clasificar (sólo crudo)',
 }
 
@@ -2496,6 +2496,11 @@ export interface ConfigImpresora {
   copias: number
   /** El número que va a llevar el próximo ticket que se imprima. Sube solo; se puede corregir a mano. */
   proximoNumeroDeTicket: number
+  /**
+   * Impresora común (hojas A4) para documentos grandes —presupuestos, listas—. Es aparte de la del
+   * comprobante: las dos pueden estar configuradas a la vez. null = se elige en el diálogo de Windows.
+   */
+  impresoraDeDocumentos: string | null
   /** Impresoras que ve el sistema. Vacío si no se pudieron leer. */
   disponibles: string[]
   predeterminada: string | null
@@ -5606,8 +5611,12 @@ export const NOMBRE_AMBIENTE_EQUIDAD: Record<AmbienteEquidad, string> = {
   prueba: 'Prueba / test (con el usuario de test que manda Equidad)',
 }
 
-/** La rama de automotores en la API GLM si Equidad no indica otra (la tabla Ramas la da la compañía). */
-export const RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO = '4'
+/**
+ * La rama de automotores en la API GLM si Equidad no indica otra. Es la 1: así viene en el pedido de
+ * ejemplo que mandó Equidad (05/11/2026, `"Rama": "1"` con `"TipoPolizaCodigo": "AUT01"`); con la 4 la
+ * cuenta de la agencia no tiene tipos de póliza.
+ */
+export const RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO = '1'
 /** El código de empresa (`EmpCod`) si Equidad no indica otro. */
 export const EMPRESA_EQUIDAD_POR_DEFECTO = '1'
 

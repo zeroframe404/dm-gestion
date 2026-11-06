@@ -46,15 +46,44 @@ function filas(respuesta: unknown, que: string): Record<string, unknown>[] {
   return lista.filter((fila): fila is Record<string, unknown> => Boolean(fila) && typeof fila === 'object' && !Array.isArray(fila))
 }
 
-/** Una lista de opciones `{Codigo, Descripcion}` como la dan casi todos los «Listar…» de la API GLM. */
+const diagnosticos = new Map<string, string>()
+
+/** Por qué la última lectura de esa lista no dio opciones (vacía, o filas con otros nombres de campo); `null` si dio opciones. Es lo que el formulario muestra para saber qué contestó Equidad. */
+export function diagnosticoDeLista(que: string): string | null {
+  return diagnosticos.get(que) ?? null
+}
+
+function anotar(que: string, filasLeidas: Record<string, unknown>[], opciones: number, sinNombres: boolean): void {
+  if (filasLeidas.length === 0) diagnosticos.set(que, 'Equidad contestó una lista vacía')
+  else if (opciones === 0) diagnosticos.set(que, `Equidad contestó ${filasLeidas.length} fila(s) pero ninguna con un código legible (campos: ${Object.keys(filasLeidas[0]!).join(', ')})`)
+  else if (sinNombres) diagnosticos.set(que, `Equidad no usó «Codigo»: se tomó el primer valor de cada fila (campos: ${Object.keys(filasLeidas[0]!).join(', ')}; primera fila: ${JSON.stringify(filasLeidas[0]).slice(0, 160)})`)
+  else diagnosticos.delete(que)
+}
+
+function textoDe(valor: unknown): string {
+  return typeof valor === 'string' || typeof valor === 'number' ? String(valor).trim() : ''
+}
+
+/** Una lista de opciones `{Codigo, Descripcion}` como la dan casi todos los «Listar…» de la API GLM. Si ninguna fila trae `Codigo`, se toma el primer valor de cada fila como código y el siguiente como descripción: una lista con otros nombres de campo no puede dejar el combo vacío y bloqueado. */
 export function leerLista(respuesta: unknown, que: string, claves: { codigo?: string[]; descripcion?: string[] } = {}): OpcionEquidad[] {
   const deCodigo = [...(claves.codigo ?? []), 'Codigo', 'Code', 'Id']
   const deDescripcion = [...(claves.descripcion ?? []), 'Descripcion', 'Nombre', 'Desc']
-  return filas(respuesta, que).flatMap((f) => {
+  const lista = filas(respuesta, que)
+  const conNombres = lista.flatMap((f) => {
     const codigo = campo(f, deCodigo)
     const descripcion = campo(f, deDescripcion) || codigo
     return codigo ? [{ codigo, descripcion }] : []
   })
+  if (conNombres.length > 0 || lista.length === 0) {
+    anotar(que, lista, conNombres.length, false)
+    return conNombres
+  }
+  const porPosicion = lista.flatMap((f) => {
+    const valores = Object.values(f).map(textoDe).filter(Boolean)
+    return valores[0] ? [{ codigo: valores[0], descripcion: valores[1] ?? valores[0] }] : []
+  })
+  anotar(que, lista, porPosicion.length, true)
+  return porPosicion
 }
 
 export async function tiposDePolizaEquidad(cliente: ClienteEquidad, c: ContextoEquidad): Promise<OpcionEquidad[]> {
@@ -74,8 +103,25 @@ export async function categoriasIbEquidad(cliente: ClienteEquidad): Promise<Opci
   return leerLista(await cliente.get('listarCategoriaIB', []), 'las categorías de ingresos brutos')
 }
 
+/** Las monedas del usuario. Equidad las devuelve con `Codigo` VACÍO (`{"Codigo":"","Descripcion":"PESOS"}`, visto en producción el 06/11/2026): ese vacío es el código que hay que mandar, no un dato que falte, así que se conserva en vez de descartar la fila. */
 export async function monedasEquidad(cliente: ClienteEquidad, c: ContextoEquidad): Promise<OpcionEquidad[]> {
-  return leerLista(await cliente.get('listarMoneda', [['UsuCod', c.usuario]]), 'las monedas')
+  const respuesta = await cliente.get('listarMoneda', [['UsuCod', c.usuario]])
+  const lista = filas(respuesta, 'las monedas')
+  const monedas = lista.flatMap((f) => {
+    const entradaCodigo = Object.entries(f).find(([nombre]) => ['codigo', 'moncod', 'monedacodigo', 'monedacod', 'code', 'id'].includes(nombre.toLowerCase()))
+    const descripcion = campo(f, ['Descripcion', 'MonDes', 'MonedaDescripcion', 'MonedaDes', 'Nombre', 'Desc'])
+    if (entradaCodigo) {
+      const codigo = textoDe(entradaCodigo[1])
+      return descripcion || codigo ? [{ codigo, descripcion: descripcion || codigo }] : []
+    }
+    const valores = Object.values(f).map(textoDe).filter(Boolean)
+    return valores[0] ? [{ codigo: valores[0], descripcion: valores[1] ?? valores[0] }] : []
+  })
+  const sinNombres = lista.length > 0 && lista.every((f) => !Object.keys(f).some((nombre) => ['codigo', 'moncod', 'monedacodigo', 'monedacod', 'code', 'id'].includes(nombre.toLowerCase())))
+  if (lista.length === 0) diagnosticos.set('las monedas', 'Equidad contestó una lista vacía')
+  else if (monedas.some((m) => m.codigo === '')) diagnosticos.set('las monedas', `Equidad devolvió la moneda con el código vacío (primera fila: ${JSON.stringify(lista[0]).slice(0, 160)})`)
+  else anotar('las monedas', lista, monedas.length, sinNombres)
+  return monedas
 }
 
 export async function planesComercialesEquidad(cliente: ClienteEquidad, c: ContextoEquidad, tipoPoliza: string, productor: string, vigenciaDesde: string): Promise<OpcionEquidad[]> {
@@ -147,12 +193,15 @@ export async function condicionesDePagoEquidad(
     ['RamTipPolCod', datos.tipoPoliza],
     ['ForPagCod', datos.formaDePago],
   ])
-  return filas(respuesta, 'las condiciones de pago').flatMap((f) => {
+  const lista = filas(respuesta, 'las condiciones de pago')
+  const condiciones = lista.flatMap((f) => {
     const codigo = campo(f, ['Codigo'])
     if (!codigo) return []
     const porDefecto = Object.entries(f).find(([nombre]) => nombre.toLowerCase() === 'pordefecto')?.[1]
     return [{ codigo, descripcion: campo(f, ['Descripcion']) || codigo, porDefecto: porDefecto === true || porDefecto === 'true' || porDefecto === 'S' }]
   })
+  anotar('las condiciones de pago', lista, condiciones.length, false)
+  return condiciones
 }
 
 // --- Código postal -------------------------------------------------------------------------------

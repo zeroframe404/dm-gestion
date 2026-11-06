@@ -133,6 +133,7 @@ const api: ApiDm = {
     estado: () => invocar('impresora:estado'),
     guardar: (datos) => invocar('impresora:guardar', datos),
     prueba: () => invocar('impresora:prueba'),
+    guardarDocumentos: (impresora) => invocar('impresora:guardarDocumentos', impresora),
     imprimirPago: (pagoId, copias) => invocar('impresora:imprimirPago', pagoId, copias),
     establecerNumeroDeTicket: (numero) => invocar('impresora:establecerNumeroDeTicket', numero),
     direcciones: () => invocar('impresora:direcciones'),
@@ -354,6 +355,8 @@ const api: ApiDm = {
   },
   listados: {
     asegurados: (filtros) => invocar('listados:asegurados', filtros),
+    apisDeAsegurados: () => invocar('listados:apisDeAsegurados'),
+    consultarApisDeAsegurados: (opciones) => invocar('listados:consultarApisDeAsegurados', opciones),
     polizas: (filtros) => invocar('listados:polizas', filtros),
     siniestros: (filtros) => invocar('listados:siniestros', filtros),
     vencimientos: (filtros) => invocar('listados:vencimientos', filtros),
