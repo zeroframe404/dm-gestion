@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.9.1',
     fecha: '2026-11-05',
     cambios: [
+      { tipo: 'modificado', texto: 'Multicotizador: el comparativo ahora muestra una tarjeta por cotización, separadas por tipo de cobertura y ordenadas de la más barata (a la izquierda) a la más cara, con desplazamiento horizontal.' },
       { tipo: 'agregado', texto: 'Asegurados: filtro por aseguradora y por origen del dato. Cada aseguradora dice si la confirmó su API (Galeno, ATM, Equidad) o si sale de la cartera (VPS).' },
       { tipo: 'modificado', texto: 'Asegurados: diseño nuevo con tarjetas de resumen, estado de cada API, barra rápida de aseguradoras y una tabla más clara.' },
       { tipo: 'corregido', texto: 'Equidad: el ingreso a la API prueba también el usuario de servicio (Basic) con el usuario de la API, y el error dice qué revisar.' },

@@ -235,15 +235,14 @@ function Comparativo({
 
   const presentes = CATEGORIAS_DE_COBERTURA.filter((categoria) => ordenadas.some((c) => c.categoria === categoria))
   const visibles = filtro === 'TODAS' ? presentes : presentes.filter((categoria) => categoria === filtro)
-  const columnas = veComision ? 8 : 7
 
   return (
     <Tarjeta
       titulo="Comparativo"
       descripcion={
         companias > 1
-          ? `${ordenadas.length} coberturas de ${companias} compañías, agrupadas por lo que cubren y de la más barata a la más cara.`
-          : `${ordenadas.length} coberturas, agrupadas por lo que cubren y de la más barata a la más cara. Con más compañías cargadas, acá se comparan todas juntas.`
+          ? `${ordenadas.length} coberturas de ${companias} compañías, agrupadas por lo que cubren y de la más barata (izquierda) a la más cara.`
+          : `${ordenadas.length} coberturas, agrupadas por lo que cubren y de la más barata (izquierda) a la más cara. Con más compañías cargadas, acá se comparan todas juntas.`
       }
       alRas
     >
@@ -294,84 +293,94 @@ function Comparativo({
         })}
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[56rem] text-left text-sm">
-          <thead className="bg-slate-50 text-xs text-slate-500">
-            <tr>
-              <th className="w-10 px-4 py-2" aria-label="Elegir" />
-              <th className="px-3 py-2 font-semibold">Compañía</th>
-              <th className="px-3 py-2 font-semibold">Cobertura</th>
-              <th className="px-3 py-2 font-semibold">Franquicia y adicionales</th>
-              <th className="px-3 py-2 text-right font-semibold">Cuota</th>
-              <th className="px-3 py-2 text-right font-semibold">Premio total</th>
-              {veComision && <th className="px-3 py-2 text-right font-semibold">Comisión</th>}
-              <th className="px-4 py-2" aria-label="Acciones" />
-            </tr>
-          </thead>
-          <tbody>
-            {visibles.map((categoria) => {
-              const deLaCategoria = ordenadas.filter((c) => c.categoria === categoria)
-              const mejor = mejores.get(categoria)
-              return [
-                <tr key={`titulo-${categoria}`} className="border-t border-slate-200 bg-slate-50/60">
-                  <td colSpan={columnas} className="px-4 py-2">
-                    <span className="font-semibold text-slate-800">{NOMBRE_CATEGORIA_DE_COBERTURA[categoria]}</span>
-                    <span className="ml-2 text-xs text-slate-500">{DETALLE_CATEGORIA_DE_COBERTURA[categoria]}</span>
-                  </td>
-                </tr>,
-                ...deLaCategoria.map((cobertura) => {
+      {/* Una sección por tipo de cobertura; dentro, las tarjetas de la más barata (izquierda) a la más cara, con scroll horizontal. */}
+      <div className="flex flex-col gap-4 border-t border-slate-100 bg-slate-50/60 p-4">
+        {visibles.map((categoria) => {
+          const deLaCategoria = ordenadas.filter((c) => c.categoria === categoria)
+          const mejor = mejores.get(categoria)
+          return (
+            <section key={categoria} className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="flex items-center gap-2 font-display text-sm font-bold text-slate-900" title={DETALLE_CATEGORIA_DE_COBERTURA[categoria]}>
+                <span className="h-2 w-2 rounded-full bg-slate-900" aria-hidden />
+                {NOMBRE_CATEGORIA_DE_COBERTURA[categoria]}
+                <span className="text-xs font-semibold text-slate-400">({deLaCategoria.length})</span>
+              </h3>
+              <div className="mt-3 flex gap-3 overflow-x-auto pb-3" role="list">
+                {deLaCategoria.map((cobertura) => {
                   const clave = claveDeCobertura(cobertura)
                   const elegida = seleccionadas.has(clave)
                   const esLaMejor = mejor !== undefined && claveDeCobertura(mejor) === clave
+                  const conPrecio = cobertura.premio > 0
+                  const importe = cobertura.cuota !== null && cobertura.cuota > 0 ? cobertura.cuota : cobertura.premio
+                  const detalles = [...(cobertura.franquicia ? [`Franquicia: ${cobertura.franquicia}`] : []), ...cobertura.adicionales]
                   return (
-                    <tr key={clave} className={cx('border-t border-slate-100', elegida && 'bg-marino-50/40')}>
-                      <td className="px-4 py-2.5">
-                        <input type="checkbox" checked={elegida} onChange={() => alAlternar(clave)} aria-label={`Elegir ${cobertura.nombre} de ${cobertura.nombreAseguradora}`} />
-                      </td>
-                      <td className="px-3 py-2.5 font-medium text-slate-800">{cobertura.nombreAseguradora}</td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-slate-900">{cobertura.nombre}</span>
-                          {esLaMejor && <Etiqueta tono="exito">Más barata</Etiqueta>}
-                        </div>
-                        <span className="text-xs text-slate-400">
-                          {cobertura.codigo}
-                          {/* Las dos columnas que la web de Galeno muestra al lado de cada precio: con eso se compara fila por fila. */}
-                          {typeof cobertura.bonificacionPorcentaje === 'number' && ` · Bonif. ${enPorcentaje(cobertura.bonificacionPorcentaje)}`}
-                          {typeof cobertura.recargoAdministrativoPorcentaje === 'number' && ` · RA ${enPorcentaje(cobertura.recargoAdministrativoPorcentaje)}`}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-slate-600">
-                        {cobertura.franquicia && <div>Franquicia: {cobertura.franquicia}</div>}
-                        {cobertura.adicionales.length > 0 && <div>{cobertura.adicionales.join(' · ')}</div>}
-                        {!cobertura.franquicia && cobertura.adicionales.length === 0 && <span className="text-slate-400">—</span>}
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
-                        {cobertura.cuota !== null ? enPesos(cobertura.cuota) : '—'}
-                        {cobertura.primeraCuota !== null && cobertura.primeraCuota !== cobertura.cuota && (
-                          <div className="whitespace-nowrap text-xs text-slate-400">1ª: {enPesos(cobertura.primeraCuota)}</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-slate-900">
-                        {cobertura.premio > 0 ? enPesos(cobertura.premio) : <span className="font-normal text-slate-400">Sin precio</span>}
-                      </td>
-                      {veComision && (
-                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">{cobertura.comision !== null ? enPesos(cobertura.comision) : '—'}</td>
+                    <article
+                      key={clave}
+                      role="listitem"
+                      className={cx(
+                        'flex w-56 shrink-0 flex-col overflow-hidden rounded-xl border-2 bg-white shadow-sm',
+                        elegida ? 'border-marino-500' : 'border-slate-200',
                       )}
-                      <td className="px-4 py-2.5 text-right">
-                        {puedeEmitir && cobertura.emision && (
-                          <Boton tamano="sm" onClick={() => alEmitir(cobertura)}>
-                            Emitir…
-                          </Boton>
+                    >
+                      <div className="bg-slate-900 px-4 pb-3 pt-3 text-white">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="truncate text-xs font-bold uppercase tracking-wide text-slate-300" title={cobertura.nombre}>
+                            {cobertura.nombre}
+                          </span>
+                          {esLaMejor && <span className="shrink-0 rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">Más barata</span>}
+                        </div>
+                        <div className="mt-1 font-display text-2xl font-extrabold tabular-nums">{conPrecio ? enPesos(importe) : 'Sin precio'}</div>
+                        {conPrecio && (
+                          <div className="text-xs font-semibold text-slate-300">
+                            {cobertura.cuota !== null && cobertura.cuota > 0 ? 'por cuota' : 'premio total'}
+                          </div>
                         )}
-                      </td>
-                    </tr>
+                      </div>
+                      <div className="flex flex-1 flex-col gap-2 px-4 py-3">
+                        <div className="border-b border-slate-100 pb-2">
+                          <div className="truncate text-sm font-bold text-slate-800">{cobertura.nombreAseguradora}</div>
+                          <div className="text-xs text-slate-500">
+                            {cobertura.codigo}
+                            {typeof cobertura.bonificacionPorcentaje === 'number' && ` · Bonif. ${enPorcentaje(cobertura.bonificacionPorcentaje)}`}
+                            {typeof cobertura.recargoAdministrativoPorcentaje === 'number' && ` · RA ${enPorcentaje(cobertura.recargoAdministrativoPorcentaje)}`}
+                          </div>
+                        </div>
+                        <ul className="flex-1 space-y-1 text-xs text-slate-700">
+                          {detalles.slice(0, 4).map((detalle) => (
+                            <li key={detalle} className="flex items-start gap-1.5">
+                              <span className="mt-0.5 text-emerald-600" aria-hidden>
+                                ✓
+                              </span>
+                              <span>{detalle}</span>
+                            </li>
+                          ))}
+                          {detalles.length > 4 && <li className="text-slate-400">+{detalles.length - 4} más</li>}
+                          {detalles.length === 0 && <li className="text-slate-400">—</li>}
+                        </ul>
+                        <div className="text-xs text-slate-500">
+                          {conPrecio && <div>Premio total: <span className="font-semibold text-slate-800">{enPesos(cobertura.premio)}</span></div>}
+                          {cobertura.primeraCuota !== null && cobertura.primeraCuota !== cobertura.cuota && <div>1ª cuota: {enPesos(cobertura.primeraCuota)}</div>}
+                          {veComision && cobertura.comision !== null && <div>Comisión: {enPesos(cobertura.comision)}</div>}
+                        </div>
+                        <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                            <input type="checkbox" checked={elegida} onChange={() => alAlternar(clave)} aria-label={`Comparar ${cobertura.nombre} de ${cobertura.nombreAseguradora}`} />
+                            Comparar
+                          </label>
+                          {puedeEmitir && cobertura.emision && (
+                            <Boton tamano="sm" onClick={() => alEmitir(cobertura)}>
+                              Emitir…
+                            </Boton>
+                          )}
+                        </div>
+                      </div>
+                    </article>
                   )
-                }),
-              ]
-            })}
-          </tbody>
-        </table>
+                })}
+              </div>
+            </section>
+          )
+        })}
       </div>
     </Tarjeta>
   )
