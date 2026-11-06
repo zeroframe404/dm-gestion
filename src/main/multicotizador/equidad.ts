@@ -164,6 +164,12 @@ const MONEDAS_DE_RESPALDO: OpcionEquidad[] = [
   { codigo: '2', descripcion: 'DOLARES' },
 ]
 
+/** Los códigos que se prueban para una moneda cuyo código Equidad no informó: el que se leyó y los corrientes de esa moneda. */
+export function codigosAProbar(moneda: OpcionEquidad, sinConfirmar: boolean): string[] {
+  const corrientes = !sinConfirmar ? [] : /PESO|ARS/i.test(moneda.descripcion) ? ['1', 'P', '0'] : /DOLAR|USD|U\$S/i.test(moneda.descripcion) ? ['2', 'D', 'U'] : []
+  return [moneda.codigo, ...corrientes].filter((codigo, i, todos) => todos.indexOf(codigo) === i)
+}
+
 /** La moneda: pesos. */
 export function monedaPorDefecto(monedas: OpcionEquidad[]): string {
   return porPalabrasClave(monedas, ['PESO', 'ARS', 'NACIONAL'])?.codigo ?? monedas[0]?.codigo ?? ''
@@ -298,11 +304,17 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   // Sin moneda no hay modo de facturación, forma de pago ni cuotas y el formulario queda trabado: si
   // Equidad no devuelve la lista, se ofrecen sus dos monedas de siempre y se avisa.
   const monedas = monedasDeEquidad.length > 0 ? monedasDeEquidad : MONEDAS_DE_RESPALDO
+  const codigosDeMonedaSinConfirmar = monedasDeEquidad.length > 0 && /^Equidad no usó/.test(diagnosticoDeLista('las monedas') ?? '')
   let moneda = valido(elegidos.moneda, monedas) ?? monedaPorDefecto(monedas)
   const ajusteMoneda: AjusteDeAseguradora = {
     campo: 'moneda',
     titulo: 'Moneda',
-    ayuda: monedasDeEquidad.length === 0 ? 'Equidad no devolvió las monedas del usuario: se ofrecen Pesos y Dólares (códigos 1 y 2).' : undefined,
+    ayuda:
+      monedasDeEquidad.length === 0
+        ? 'Equidad no devolvió las monedas del usuario: se ofrecen Pesos y Dólares (códigos 1 y 2).'
+        : codigosDeMonedaSinConfirmar
+          ? `${diagnosticoDeLista('las monedas')}.`
+          : undefined,
     opciones: opcionesDe(monedas),
     valor: moneda,
     obligatorio: true,
@@ -327,18 +339,27 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     enMemoria(`modos:${c.rama}:${tipoPoliza}:${productor}:${vigencia}:${planComercial}:${codigoDeMoneda}`, () =>
       modosDeFacturacionEquidad(cliente, c, { tipoPoliza, productor, vigenciaDesde: vigencia, planComercial, moneda: codigoDeMoneda }),
     )
-  let modos = planComercial && moneda ? await modosDe(moneda) : []
-  // Si Equidad no tiene modos de facturación para la moneda que se tomó sola (el plan puede estar
-  // habilitado sólo en otra), se prueba con las demás; la elegida a mano no se toca.
-  if (planComercial && modos.length === 0 && !valido(elegidos.moneda, monedas)) {
-    for (const otra of monedas.filter((m) => m.codigo !== moneda)) {
-      const deOtra = await modosDe(otra.codigo)
-      if (deOtra.length === 0) continue
-      moneda = otra.codigo
-      ajusteMoneda.valor = moneda
-      modos = deOtra
-      avisos.push(`Equidad no tiene modos de facturación en ${monedas.find((m) => m.codigo === moneda)?.descripcion ?? moneda} para el plan elegido con la moneda anterior: se usó ${otra.descripcion}.`)
-      break
+  // Los modos de facturación dependen del código de moneda. Si Equidad no lo informó en la lista (sólo
+  // la descripción), el que se tomó sería la palabra «PESOS» y la lista de modos vendría vacía: se
+  // prueban los códigos corrientes de esa moneda hasta que Equidad conteste, y se dice cuál sirvió.
+  let modos: OpcionEquidad[] = []
+  if (planComercial && moneda) {
+    const actual = monedas.find((m) => m.codigo === moneda)
+    const aMano = Boolean(valido(elegidos.moneda, monedas))
+    // La moneda que se tomó sola puede no estar habilitada para el plan: se prueban también las demás.
+    const aProbar = aMano || !actual ? [actual].filter((m): m is OpcionEquidad => Boolean(m)) : [actual, ...monedas.filter((m) => m !== actual)]
+    buscando: for (const opcion of aProbar) {
+      for (const codigo of codigosAProbar(opcion, codigosDeMonedaSinConfirmar)) {
+        const hallados = await modosDe(codigo)
+        if (hallados.length === 0) continue
+        modos = hallados
+        if (opcion !== actual) avisos.push(`Equidad no tiene modos de facturación en ${actual?.descripcion ?? 'la moneda anterior'} para el plan elegido: se usó ${opcion.descripcion}.`)
+        if (codigo !== opcion.codigo) avisos.push(`Equidad no informó el código de ${opcion.descripcion}: con «${codigo}» devolvió modos de facturación y se usó ese.`)
+        moneda = codigo
+        ajusteMoneda.valor = codigo
+        ajusteMoneda.opciones = ajusteMoneda.opciones.map((o) => (o.valor === opcion.codigo ? { ...o, valor: codigo } : o))
+        break buscando
+      }
     }
   }
   const sinLista = (que: string, de: string): string => {

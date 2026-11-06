@@ -56,7 +56,7 @@ export function diagnosticoDeLista(que: string): string | null {
 function anotar(que: string, filasLeidas: Record<string, unknown>[], opciones: number, sinNombres: boolean): void {
   if (filasLeidas.length === 0) diagnosticos.set(que, 'Equidad contestó una lista vacía')
   else if (opciones === 0) diagnosticos.set(que, `Equidad contestó ${filasLeidas.length} fila(s) pero ninguna con un código legible (campos: ${Object.keys(filasLeidas[0]!).join(', ')})`)
-  else if (sinNombres) diagnosticos.set(que, `Equidad no usó «Codigo»: se tomó el primer valor de cada fila (campos: ${Object.keys(filasLeidas[0]!).join(', ')})`)
+  else if (sinNombres) diagnosticos.set(que, `Equidad no usó «Codigo»: se tomó el primer valor de cada fila (campos: ${Object.keys(filasLeidas[0]!).join(', ')}; primera fila: ${JSON.stringify(filasLeidas[0]).slice(0, 160)})`)
   else diagnosticos.delete(que)
 }
 

@@ -27,6 +27,7 @@ import {
 import { armarPedidoDeCotizacion, leerRespuestaDeCotizacion } from '../src/main/aseguradoras/equidad/cotizacion'
 import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
 import {
+  codigosAProbar,
   consejoParaElRechazo,
   equidad,
   ID_EQUIDAD,
@@ -706,7 +707,7 @@ test('Equidad: si Equidad no devuelve monedas, se ofrecen Pesos y Dólares y los
 test('Equidad: una lista con otros nombres de campo no queda vacía y dice qué contestó Equidad', () => {
   const opciones = leerLista([{ ModCod: 'ANU', ModDes: 'ANUAL' }, { ModCod: 'SEM', ModDes: 'SEMESTRAL' }], 'los modos de facturación')
   assert.deepEqual(opciones, [{ codigo: 'ANU', descripcion: 'ANUAL' }, { codigo: 'SEM', descripcion: 'SEMESTRAL' }])
-  assert.match(diagnosticoDeLista('los modos de facturación') ?? '', /primer valor de cada fila \(campos: ModCod, ModDes\)/)
+  assert.match(diagnosticoDeLista('los modos de facturación') ?? '', /primer valor de cada fila \(campos: ModCod, ModDes; primera fila: \{\"ModCod\":\"ANU\"/)
   assert.deepEqual(leerLista([], 'los modos de facturación'), [])
   assert.match(diagnosticoDeLista('los modos de facturación') ?? '', /lista vacía/)
   leerLista([{ Codigo: 'ANU' }], 'los modos de facturación')
@@ -731,4 +732,28 @@ test('Equidad: si ninguna moneda tiene modos, el campo vacío dice qué pasó y 
   const antes = pedidos.filter((p) => esServicio(p, 'listarModoDeFacturacion')).length
   await equidad.cotizar(solicitud(), {})
   assert.ok(pedidos.filter((p) => esServicio(p, 'listarModoDeFacturacion')).length > antes, 'se vuelve a preguntar')
+})
+
+test('Equidad: si las monedas vienen sin código, se prueban los códigos corrientes hasta que Equidad devuelve modos de facturación', async (t) => {
+  const monedasPedidas: Array<string | null> = []
+  const pedidos = apiFalsa(t, undefined, undefined, [{ Descripcion: 'PESOS' }, { Descripcion: 'DOLARES' }], (moneda) => {
+    monedasPedidas.push(moneda)
+    return moneda === '1' ? [{ Codigo: 'ANU', Descripcion: 'ANUAL' }] : []
+  })
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  assert.deepEqual(monedasPedidas, ['PESOS', '1'], 'primero lo leído, después los códigos corrientes de pesos')
+  const moneda = resultado.ajustes.find((a) => a.campo === 'moneda')!
+  assert.equal(moneda.valor, '1')
+  assert.deepEqual(moneda.opciones.map((o) => o.valor), ['1', 'DOLARES'])
+  assert.ok(resultado.avisos.some((aviso) => /no informó el código de PESOS/.test(aviso) && /«1»/.test(aviso)))
+  const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
+  assert.equal((JSON.parse(post.cuerpo) as Record<string, unknown>).MonedaCodigo, '1')
+})
+
+test('Equidad: los códigos de moneda a probar sólo se amplían cuando Equidad no los informó', () => {
+  assert.deepEqual(codigosAProbar({ codigo: '1', descripcion: 'PESOS' }, false), ['1'])
+  assert.deepEqual(codigosAProbar({ codigo: 'PESOS', descripcion: 'PESOS' }, true), ['PESOS', '1', 'P', '0'])
+  assert.deepEqual(codigosAProbar({ codigo: 'DOLARES', descripcion: 'DOLARES' }, true), ['DOLARES', '2', 'D', 'U'])
+  assert.deepEqual(codigosAProbar({ codigo: 'X', descripcion: 'OTRA' }, true), ['X'])
 })
