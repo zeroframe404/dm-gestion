@@ -19,6 +19,8 @@ import {
   establecerProximoNumeroDeTicket,
   guardarDirecciones,
   guardarImpresora,
+  guardarImpresoraDeDocumentos,
+  impresoraDeDocumentos,
   impresoraGuardada,
   proximoNumeroDeTicket,
   telefonoDeSucursal,
@@ -318,6 +320,23 @@ test('una configuración vieja sin tipo sigue siendo térmica y se puede pasar a
   // Sin mandar el tipo se conserva el que había.
   guardarImpresora({ habilitada: true, preguntar: true, impresora: 'HP LaserJet', anchoMm: 80, copias: 1 })
   assert.equal(impresoraGuardada().tipo, 'comun')
+  cerrarBaseDeDatos()
+})
+
+test('la impresora de documentos es independiente de la del comprobante', () => {
+  baseDePrueba()
+  assert.equal(impresoraDeDocumentos(), null)
+  guardarImpresora({ habilitada: true, tipo: 'termica', preguntar: true, impresora: 'POS-80', anchoMm: 80, copias: 1 })
+  guardarImpresoraDeDocumentos('  HP LaserJet  ')
+  // Las dos conviven: tocar una no pisa la otra.
+  assert.equal(impresoraDeDocumentos(), 'HP LaserJet')
+  assert.equal(impresoraGuardada().impresora, 'POS-80')
+  assert.equal(impresoraGuardada().tipo, 'termica')
+  guardarImpresora({ habilitada: true, tipo: 'termica', preguntar: true, impresora: 'POS-58', anchoMm: 80, copias: 1 })
+  assert.equal(impresoraDeDocumentos(), 'HP LaserJet')
+  // Vacío vuelve a preguntar en el diálogo.
+  guardarImpresoraDeDocumentos('')
+  assert.equal(impresoraDeDocumentos(), null)
   cerrarBaseDeDatos()
 })
 

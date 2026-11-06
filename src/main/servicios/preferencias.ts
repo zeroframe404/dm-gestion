@@ -116,6 +116,35 @@ export function guardarImpresora(datos: DatosDeImpresora): ImpresoraGuardada {
 }
 
 // ---------------------------------------------------------------------------
+// Impresora de documentos grandes
+// ---------------------------------------------------------------------------
+
+const CLAVE_IMPRESORA_DOCUMENTOS = 'impresora_documentos'
+
+/**
+ * La impresora común (hojas A4) para lo que no es un comprobante: presupuestos, listas de
+ * cotizaciones. Es independiente de la del comprobante: una PC puede tener la ticketeadora para los
+ * recibos y ésta para lo grande, las dos a la vez. null = sin elegir: se abre el diálogo de Windows.
+ */
+export function impresoraDeDocumentos(): string | null {
+  const crudo = leer(CLAVE_IMPRESORA_DOCUMENTOS)
+  if (!crudo) return null
+  try {
+    const datos = JSON.parse(crudo) as { impresora?: unknown }
+    return typeof datos.impresora === 'string' && datos.impresora.trim() ? datos.impresora.trim() : null
+  } catch {
+    return null
+  }
+}
+
+/** Vacío deja de usar una impresora fija: los documentos vuelven a preguntar en el diálogo de Windows. */
+export function guardarImpresoraDeDocumentos(nombre: string): string | null {
+  const impresora = typeof nombre === 'string' ? nombre.trim() : ''
+  guardar(CLAVE_IMPRESORA_DOCUMENTOS, JSON.stringify({ impresora: impresora || null }))
+  return impresora || null
+}
+
+// ---------------------------------------------------------------------------
 // Numeración de los tickets
 // ---------------------------------------------------------------------------
 
