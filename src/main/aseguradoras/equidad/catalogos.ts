@@ -46,15 +46,44 @@ function filas(respuesta: unknown, que: string): Record<string, unknown>[] {
   return lista.filter((fila): fila is Record<string, unknown> => Boolean(fila) && typeof fila === 'object' && !Array.isArray(fila))
 }
 
-/** Una lista de opciones `{Codigo, Descripcion}` como la dan casi todos los «Listar…» de la API GLM. */
+const diagnosticos = new Map<string, string>()
+
+/** Por qué la última lectura de esa lista no dio opciones (vacía, o filas con otros nombres de campo); `null` si dio opciones. Es lo que el formulario muestra para saber qué contestó Equidad. */
+export function diagnosticoDeLista(que: string): string | null {
+  return diagnosticos.get(que) ?? null
+}
+
+function anotar(que: string, filasLeidas: Record<string, unknown>[], opciones: number, sinNombres: boolean): void {
+  if (filasLeidas.length === 0) diagnosticos.set(que, 'Equidad contestó una lista vacía')
+  else if (opciones === 0) diagnosticos.set(que, `Equidad contestó ${filasLeidas.length} fila(s) pero ninguna con un código legible (campos: ${Object.keys(filasLeidas[0]!).join(', ')})`)
+  else if (sinNombres) diagnosticos.set(que, `Equidad no usó «Codigo»: se tomó el primer valor de cada fila (campos: ${Object.keys(filasLeidas[0]!).join(', ')})`)
+  else diagnosticos.delete(que)
+}
+
+function textoDe(valor: unknown): string {
+  return typeof valor === 'string' || typeof valor === 'number' ? String(valor).trim() : ''
+}
+
+/** Una lista de opciones `{Codigo, Descripcion}` como la dan casi todos los «Listar…» de la API GLM. Si ninguna fila trae `Codigo`, se toma el primer valor de cada fila como código y el siguiente como descripción: una lista con otros nombres de campo no puede dejar el combo vacío y bloqueado. */
 export function leerLista(respuesta: unknown, que: string, claves: { codigo?: string[]; descripcion?: string[] } = {}): OpcionEquidad[] {
   const deCodigo = [...(claves.codigo ?? []), 'Codigo', 'Code', 'Id']
   const deDescripcion = [...(claves.descripcion ?? []), 'Descripcion', 'Nombre', 'Desc']
-  return filas(respuesta, que).flatMap((f) => {
+  const lista = filas(respuesta, que)
+  const conNombres = lista.flatMap((f) => {
     const codigo = campo(f, deCodigo)
     const descripcion = campo(f, deDescripcion) || codigo
     return codigo ? [{ codigo, descripcion }] : []
   })
+  if (conNombres.length > 0 || lista.length === 0) {
+    anotar(que, lista, conNombres.length, false)
+    return conNombres
+  }
+  const porPosicion = lista.flatMap((f) => {
+    const valores = Object.values(f).map(textoDe).filter(Boolean)
+    return valores[0] ? [{ codigo: valores[0], descripcion: valores[1] ?? valores[0] }] : []
+  })
+  anotar(que, lista, porPosicion.length, true)
+  return porPosicion
 }
 
 export async function tiposDePolizaEquidad(cliente: ClienteEquidad, c: ContextoEquidad): Promise<OpcionEquidad[]> {
@@ -74,19 +103,8 @@ export async function categoriasIbEquidad(cliente: ClienteEquidad): Promise<Opci
   return leerLista(await cliente.get('listarCategoriaIB', []), 'las categorías de ingresos brutos')
 }
 
-/** Las monedas que Equidad le habilita al usuario. Si las filas no traen `Codigo`/`Descripcion` (otro nombre de campo), se toma el primer valor como código y el siguiente como descripción: sin moneda no hay modo de facturación, forma de pago ni cuotas. */
 export async function monedasEquidad(cliente: ClienteEquidad, c: ContextoEquidad): Promise<OpcionEquidad[]> {
-  const respuesta = await cliente.get('listarMoneda', [['UsuCod', c.usuario]])
-  const conNombres = leerLista(respuesta, 'las monedas', { codigo: ['MonCod', 'MonedaCodigo', 'MonedaCod'], descripcion: ['MonDes', 'MonedaDescripcion', 'MonedaDes'] })
-  if (conNombres.length > 0) return conNombres
-  return filas(respuesta, 'las monedas').flatMap((fila) => {
-    const valores = Object.values(fila).map((valor) => textoDe(valor)).filter(Boolean)
-    return valores[0] ? [{ codigo: valores[0], descripcion: valores[1] ?? valores[0] }] : []
-  })
-}
-
-function textoDe(valor: unknown): string {
-  return typeof valor === 'string' || typeof valor === 'number' ? String(valor).trim() : ''
+  return leerLista(await cliente.get('listarMoneda', [['UsuCod', c.usuario]]), 'las monedas', { codigo: ['MonCod', 'MonedaCodigo', 'MonedaCod'], descripcion: ['MonDes', 'MonedaDescripcion', 'MonedaDes'] })
 }
 
 export async function planesComercialesEquidad(cliente: ClienteEquidad, c: ContextoEquidad, tipoPoliza: string, productor: string, vigenciaDesde: string): Promise<OpcionEquidad[]> {
@@ -158,12 +176,15 @@ export async function condicionesDePagoEquidad(
     ['RamTipPolCod', datos.tipoPoliza],
     ['ForPagCod', datos.formaDePago],
   ])
-  return filas(respuesta, 'las condiciones de pago').flatMap((f) => {
+  const lista = filas(respuesta, 'las condiciones de pago')
+  const condiciones = lista.flatMap((f) => {
     const codigo = campo(f, ['Codigo'])
     if (!codigo) return []
     const porDefecto = Object.entries(f).find(([nombre]) => nombre.toLowerCase() === 'pordefecto')?.[1]
     return [{ codigo, descripcion: campo(f, ['Descripcion']) || codigo, porDefecto: porDefecto === true || porDefecto === 'true' || porDefecto === 'S' }]
   })
+  anotar('las condiciones de pago', lista, condiciones.length, false)
+  return condiciones
 }
 
 // --- Código postal -------------------------------------------------------------------------------

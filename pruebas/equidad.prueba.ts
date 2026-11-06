@@ -9,7 +9,7 @@
 // revisar, y que ninguna contraseña se filtre.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { claveDeVariante, claveDeVehiculo, leerLista, leerVehiculos, listaDe, numeroDeEquidad } from '../src/main/aseguradoras/equidad/catalogos'
+import { claveDeVariante, claveDeVehiculo, diagnosticoDeLista, leerLista, leerVehiculos, listaDe, numeroDeEquidad } from '../src/main/aseguradoras/equidad/catalogos'
 import {
   consultaOrdenada,
   codigoDelJsonResult,
@@ -407,7 +407,7 @@ const VEHICULOS = [
 ]
 
 /** La API entera, con lo que contesta cada servicio; `cotizar` decide la respuesta al POST. */
-function apiFalsa(t: Prueba, cotizar: (cuerpo: Record<string, unknown>) => Response = () => json(COTIZACION), vehiculos: unknown = VEHICULOS, monedas: unknown = [{ Codigo: '2', Descripcion: 'DOLARES' }, { Codigo: '1', Descripcion: 'PESOS' }]): PedidoHttp[] {
+function apiFalsa(t: Prueba, cotizar: (cuerpo: Record<string, unknown>) => Response = () => json(COTIZACION), vehiculos: unknown = VEHICULOS, monedas: unknown = [{ Codigo: '2', Descripcion: 'DOLARES' }, { Codigo: '1', Descripcion: 'PESOS' }], modos: (moneda: string | null) => unknown = () => [{ Codigo: 'ANU', Descripcion: 'ANUAL' }, { Codigo: 'SEM', Descripcion: 'SEMESTRAL' }]): PedidoHttp[] {
   usarCuentaDeEquidadDePrueba(CUENTA)
   t.after(() => usarCuentaDeEquidadDePrueba(null))
   return fetchFalso(t, (pedido) => {
@@ -418,7 +418,7 @@ function apiFalsa(t: Prueba, cotizar: (cuerpo: Record<string, unknown>) => Respo
     if (esServicio(pedido, 'listarCategoriaIB')) return json([{ Codigo: 'IN', Descripcion: 'INSCRIPTO' }, { Codigo: 'NI', Descripcion: 'NO INSCRIPTO' }])
     if (esServicio(pedido, 'listarPlanComercial')) return json([{ Rama: 4, Codigo: 'PL1', Descripcion: 'PLAN PRODUCTORES' }])
     if (esServicio(pedido, 'listarMoneda')) return json(monedas)
-    if (esServicio(pedido, 'listarModoDeFacturacion')) return json([{ Codigo: 'ANU', Descripcion: 'ANUAL' }, { Codigo: 'SEM', Descripcion: 'SEMESTRAL' }])
+    if (esServicio(pedido, 'listarModoDeFacturacion')) return json(modos(new URL(pedido.url).searchParams.get('MonCod')))
     if (esServicio(pedido, 'listarFormaDePago')) return json([{ Codigo: 1, Descripcion: 'EFECTIVO' }, { Codigo: 2, Descripcion: 'TARJETA DE CREDITO' }, { Codigo: 3, Descripcion: 'DEBITO CBU' }])
     if (esServicio(pedido, 'listarCondicionDePago')) return json([{ Rama: 4, Codigo: 'C01', Descripcion: 'CONTADO', PorDefecto: false }, { Rama: 4, Codigo: 'C12', Descripcion: '12 CUOTAS', PorDefecto: true }])
     if (esServicio(pedido, 'buscarCodigoPostal')) return json([{ Codigo: '1870', SubCodigo: 1, Localidad: 'AVELLANEDA', Descripcion: '1870 AVELLANEDA', ProvinciaCodigo: 'B', ProvinciaDescripcion: 'BUENOS AIRES' }, { Codigo: '1870', SubCodigo: 2, Localidad: 'PIÑEYRO', ProvinciaDescripcion: 'BUENOS AIRES' }])
@@ -701,4 +701,34 @@ test('Equidad: si Equidad no devuelve monedas, se ofrecen Pesos y Dólares y los
   assert.ok(resultado.avisos.some((aviso) => /monedas/.test(aviso)))
   const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
   assert.equal((JSON.parse(post.cuerpo) as Record<string, unknown>).MonedaCodigo, '1')
+})
+
+test('Equidad: una lista con otros nombres de campo no queda vacía y dice qué contestó Equidad', () => {
+  const opciones = leerLista([{ ModCod: 'ANU', ModDes: 'ANUAL' }, { ModCod: 'SEM', ModDes: 'SEMESTRAL' }], 'los modos de facturación')
+  assert.deepEqual(opciones, [{ codigo: 'ANU', descripcion: 'ANUAL' }, { codigo: 'SEM', descripcion: 'SEMESTRAL' }])
+  assert.match(diagnosticoDeLista('los modos de facturación') ?? '', /primer valor de cada fila \(campos: ModCod, ModDes\)/)
+  assert.deepEqual(leerLista([], 'los modos de facturación'), [])
+  assert.match(diagnosticoDeLista('los modos de facturación') ?? '', /lista vacía/)
+  leerLista([{ Codigo: 'ANU' }], 'los modos de facturación')
+  assert.equal(diagnosticoDeLista('los modos de facturación'), null)
+})
+
+test('Equidad: si la moneda que se toma sola no tiene modos de facturación, se prueba con la otra', async (t) => {
+  apiFalsa(t, undefined, undefined, undefined, (moneda) => (moneda === '2' ? [{ Codigo: 'ANU', Descripcion: 'ANUAL' }] : []))
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  assert.equal(resultado.ajustes.find((a) => a.campo === 'moneda')!.valor, '2')
+  assert.ok(resultado.avisos.some((aviso) => /DOLARES/.test(aviso)))
+})
+
+test('Equidad: si ninguna moneda tiene modos, el campo vacío dice qué pasó y no se recuerda la lista vacía', async (t) => {
+  const pedidos = apiFalsa(t, undefined, undefined, undefined, () => [])
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'FALTAN_DATOS')
+  const modo = resultado.ajustes.find((a) => a.campo === 'modoFacturacion')!
+  assert.equal(modo.opciones.length, 0)
+  assert.match(modo.ayuda ?? '', /no devolvió modos de facturación para el plan PL1 y la moneda 1.*lista vacía/)
+  const antes = pedidos.filter((p) => esServicio(p, 'listarModoDeFacturacion')).length
+  await equidad.cotizar(solicitud(), {})
+  assert.ok(pedidos.filter((p) => esServicio(p, 'listarModoDeFacturacion')).length > antes, 'se vuelve a preguntar')
 })
