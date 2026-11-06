@@ -129,6 +129,22 @@ export function textoParaBuscar(solicitud: SolicitudResuelta): string {
   return `${v.modelo} ${v.version}`.trim()
 }
 
+/**
+ * Los (hasta) tres modelos de la lista de Mercantil que más se parecen al de la agencia. Se compara el
+ * NOMBRE del modelo, no «modelo + versión»: con el texto largo («SPIN SPIN 1.8 PREMIER 7 AS AUT L/24») un
+ * modelo de una sola palabra («SPIN») sacaba un puntaje bajísimo y no se reconocía aunque fuera idéntico.
+ * Sólo si por el nombre no aparece ninguno se prueba con el texto completo.
+ */
+export function modelosCandidatos(solicitud: SolicitudResuelta, modelos: OpcionMercantil[]): OpcionMercantil[] {
+  const masParecidos = (texto: string): OpcionMercantil[] =>
+    rankear(texto, modelos, (modelo) => modelo.descripcion)
+      .filter((candidato) => candidato.puntaje >= 0.3)
+      .slice(0, 3)
+      .map((candidato) => candidato.opcion)
+  const porNombre = masParecidos(solicitud.vehiculo.modelo)
+  return porNombre.length > 0 ? porNombre : masParecidos(textoParaBuscar(solicitud))
+}
+
 interface VehiculoElegido {
   marca: OpcionMercantil | null
   modelo: OpcionMercantil | null
@@ -167,10 +183,7 @@ async function vehiculoEnMercantil(
   // modelo en varios («COROLLA», «COROLLA CROSS») y la versión buscada puede estar en cualquiera.
   const candidatos = modeloElegido
     ? modelos.filter((modelo) => modelo.codigo === modeloElegido)
-    : rankear(textoParaBuscar(solicitud), modelos, (modelo) => modelo.descripcion)
-        .filter((candidato) => candidato.puntaje >= 0.3)
-        .slice(0, 3)
-        .map((candidato) => candidato.opcion)
+    : modelosCandidatos(solicitud, modelos)
 
   interface Version {
     modelo: OpcionMercantil

@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.10.1',
     fecha: '2026-11-06',
     cambios: [
+      { tipo: 'corregido', texto: 'Mercantil Andina: ahora reconoce solo el modelo cuando se llama igual en su lista (por ejemplo SPIN), en vez de pedir que se lo elija a mano.' },
       { tipo: 'corregido', texto: 'Multicotizador: si el asegurado es persona jurídica, ya no se piden Sexo ni Fecha de nacimiento.' },
     ],
   },

@@ -23,7 +23,7 @@ import {
 } from '../src/main/aseguradoras/mercantil/cliente'
 import { armarPedidoDeCotizacion, leerRespuestaDeCotizacion, listaDeCoberturas, numeroDeMercantil, RUTA_COTIZACION } from '../src/main/aseguradoras/mercantil/cotizacion'
 import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
-import { consejoParaElRechazo, cuotasPorDefecto, ID_MERCANTIL, mercantil, olvidarListasDeMercantil, usarCuentaDeMercantilDePrueba } from '../src/main/multicotizador/mercantil'
+import { consejoParaElRechazo, cuotasPorDefecto, ID_MERCANTIL, mercantil, modelosCandidatos, olvidarListasDeMercantil, usarCuentaDeMercantilDePrueba } from '../src/main/multicotizador/mercantil'
 import type { CuotasDeseadas } from '../src/shared/multicotizador'
 
 type Prueba = { after: (fn: () => void) => void }
@@ -450,6 +450,18 @@ test('Mercantil: cotiza buscando el vehículo por marca, modelos del año y vers
   assert.ok(!detalle.includes(CLAVE) && !detalle.includes(SUSCRIPCION) && !detalle.includes('tok-123'), 'ni los secretos ni el token se filtran')
   assert.match(detalle, /POST cotizaciones\/v2\/auto"/)
   assert.ok(!JSON.stringify(pedidos.map((p) => p.url)).includes(SUSCRIPCION), 'la clave de suscripción va en el encabezado, nunca en la URL')
+})
+
+test('Mercantil: un modelo que se llama igual en su lista se reconoce aunque la versión sea larga', () => {
+  const lista = [
+    { codigo: '1', descripcion: 'ONIX' },
+    { codigo: '2', descripcion: 'SPIN' },
+    { codigo: '3', descripcion: 'SPIN ACTIV' },
+  ]
+  const spin = solicitud({ marca: 'Chevrolet', modelo: 'SPIN', version: 'SPIN 1.8 PREMIER 7 AS AUT L/24' })
+  assert.deepEqual(modelosCandidatos(spin, lista).map((m) => m.codigo), ['2', '3'], 'el idéntico primero')
+  const sinNombre = solicitud({ modelo: '', version: 'SPIN 1.8 PREMIER' })
+  assert.equal(modelosCandidatos(sinNombre, lista)[0]?.codigo, '2', 'sin nombre de modelo, se busca con el texto completo')
 })
 
 test('Mercantil: con dos versiones igual de parecidas se pregunta en vez de adivinar, y lo elegido a mano manda', async (t) => {
