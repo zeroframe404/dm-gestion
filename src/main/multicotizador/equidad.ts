@@ -42,6 +42,7 @@ import {
   localidadesEquidad,
   marcasEquidad,
   modosDeFacturacionEquidad,
+  diagnosticoDeLista,
   monedasEquidad,
   planesComercialesEquidad,
   productoresEquidad,
@@ -97,6 +98,8 @@ function enMemoria<T>(clave: string, traer: () => Promise<T>): Promise<T> {
   const valor = traer()
   listas.set(clave, { vence: Date.now() + DURACION_MS, valor })
   valor.catch(() => listas.delete(clave))
+  // Una lista vacía no se recuerda: «Volver a cotizar» tiene que volver a preguntarle a Equidad.
+  valor.then((v) => { if (Array.isArray(v) && v.length === 0) listas.delete(clave) }, () => undefined)
   return valor
 }
 
@@ -295,15 +298,16 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   // Sin moneda no hay modo de facturación, forma de pago ni cuotas y el formulario queda trabado: si
   // Equidad no devuelve la lista, se ofrecen sus dos monedas de siempre y se avisa.
   const monedas = monedasDeEquidad.length > 0 ? monedasDeEquidad : MONEDAS_DE_RESPALDO
-  const moneda = valido(elegidos.moneda, monedas) ?? monedaPorDefecto(monedas)
-  ajustes.push({
+  let moneda = valido(elegidos.moneda, monedas) ?? monedaPorDefecto(monedas)
+  const ajusteMoneda: AjusteDeAseguradora = {
     campo: 'moneda',
     titulo: 'Moneda',
     ayuda: monedasDeEquidad.length === 0 ? 'Equidad no devolvió las monedas del usuario: se ofrecen Pesos y Dólares (códigos 1 y 2).' : undefined,
     opciones: opcionesDe(monedas),
     valor: moneda,
     obligatorio: true,
-  })
+  }
+  ajustes.push(ajusteMoneda)
   if (monedasDeEquidad.length === 0) avisos.push('Equidad no devolvió la lista de monedas: se usó Pesos (código 1). Si el precio no coincide con su web, revisá la moneda.')
 
   // 2. Lo comercial, en cadena y a la vista: plan → modo de facturación → forma de pago → condición de pago.
@@ -319,16 +323,34 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     dependeDe: 'productor',
     destacado: true,
   })
-  const modos =
-    planComercial && moneda
-      ? await enMemoria(`modos:${c.rama}:${tipoPoliza}:${productor}:${vigencia}:${planComercial}:${moneda}`, () => modosDeFacturacionEquidad(cliente, c, { tipoPoliza, productor, vigenciaDesde: vigencia, planComercial, moneda }))
-      : []
+  const modosDe = (codigoDeMoneda: string) =>
+    enMemoria(`modos:${c.rama}:${tipoPoliza}:${productor}:${vigencia}:${planComercial}:${codigoDeMoneda}`, () =>
+      modosDeFacturacionEquidad(cliente, c, { tipoPoliza, productor, vigenciaDesde: vigencia, planComercial, moneda: codigoDeMoneda }),
+    )
+  let modos = planComercial && moneda ? await modosDe(moneda) : []
+  // Si Equidad no tiene modos de facturación para la moneda que se tomó sola (el plan puede estar
+  // habilitado sólo en otra), se prueba con las demás; la elegida a mano no se toca.
+  if (planComercial && modos.length === 0 && !valido(elegidos.moneda, monedas)) {
+    for (const otra of monedas.filter((m) => m.codigo !== moneda)) {
+      const deOtra = await modosDe(otra.codigo)
+      if (deOtra.length === 0) continue
+      moneda = otra.codigo
+      ajusteMoneda.valor = moneda
+      modos = deOtra
+      avisos.push(`Equidad no tiene modos de facturación en ${monedas.find((m) => m.codigo === moneda)?.descripcion ?? moneda} para el plan elegido con la moneda anterior: se usó ${otra.descripcion}.`)
+      break
+    }
+  }
+  const sinLista = (que: string, de: string): string => {
+    const motivo = diagnosticoDeLista(que)
+    return `Equidad no devolvió ${que.replace(/^(los|las) /, '')} para ${de}${motivo ? ` (${motivo})` : ''}.`
+  }
   const { facturacion, cuotas, clausulaAjuste: clausulaPedida } = solicitud.condiciones
   const modoFacturacion = valido(elegidoBajo(elegidos.modoFacturacion, facturacion), modos) ?? porFacturacion(modos, facturacion)?.codigo ?? modos[0]?.codigo ?? ''
   ajustes.push(bajoElFormulario(facturacion, {
     campo: 'modoFacturacion',
     titulo: 'Vigencia / modo de facturación',
-    ayuda: 'La «Vigencia» de la web de Equidad (anual, semestral, mensual…). Cambia las cuotas disponibles y el precio.',
+    ayuda: modos.length === 0 && planComercial ? sinLista('los modos de facturación', `el plan ${planComercial} y la moneda ${moneda || '(ninguna)'}: probá otra moneda en «Más ajustes»`) : 'La «Vigencia» de la web de Equidad (anual, semestral, mensual…). Cambia las cuotas disponibles y el precio.',
     opciones: opcionesDe(modos),
     valor: modoFacturacion,
     obligatorio: true,
@@ -344,7 +366,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   ajustes.push(bajoElFormulario(solicitud.medioDePago, {
     campo: 'formaDePago',
     titulo: 'Forma de pago',
-    ayuda: 'Arranca en la que corresponde a la forma de pago del formulario. Cada una lleva su propio recargo financiero.',
+    ayuda: formas.length === 0 && modoFacturacion ? sinLista('las formas de pago', `el modo ${modoFacturacion}`) : 'Arranca en la que corresponde a la forma de pago del formulario. Cada una lleva su propio recargo financiero.',
     opciones: opcionesDe(formas),
     valor: formaDePago,
     obligatorio: true,
@@ -365,7 +387,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   ajustes.push(bajoElFormulario(claveDeCuotas(cuotas), {
     campo: 'condicionDePago',
     titulo: 'Cuotas / condición de pago',
-    ayuda: 'Las «Cuotas» de la web de Equidad. Arranca en las del formulario; si Equidad no tiene esa cantidad, en la que marca por defecto para esta forma de pago.',
+    ayuda: condiciones.length === 0 && formaDePago ? sinLista('las condiciones de pago', `la forma de pago ${formaDePago}`) : 'Las «Cuotas» de la web de Equidad. Arranca en las del formulario; si Equidad no tiene esa cantidad, en la que marca por defecto para esta forma de pago.',
     opciones: opcionesDe(condiciones),
     valor: condicionDePago,
     obligatorio: true,
