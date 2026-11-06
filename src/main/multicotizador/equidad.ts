@@ -76,6 +76,7 @@ import {
   porUso,
   rankear,
   sinDudas,
+  textoDeVehiculo,
   type OpcionDeLista,
 } from './equivalencias'
 import { equivalenciaGuardada, guardarEquivalencia, olvidarEquivalencia } from './equivalenciasGuardadas'
@@ -144,7 +145,7 @@ function opcionesDe(lista: OpcionDeLista[]): Array<{ valor: string; texto: strin
 /** El texto con que se busca el vehículo: modelo y versión del catálogo de la agencia. */
 export function textoParaBuscar(solicitud: SolicitudResuelta): string {
   const v = solicitud.vehiculo
-  return `${v.modelo} ${v.version}`.trim()
+  return textoDeVehiculo(v.modelo, v.version)
 }
 
 /** El tipo de póliza con que se arranca: el que nombre a los autos; si ninguno, el primero. */

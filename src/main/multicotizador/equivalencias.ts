@@ -66,6 +66,17 @@ export function similitud(a: string, b: string): number {
   return (2 * comunes) / (pa.length + pb.length)
 }
 
+/**
+ * El texto con que se busca un vehículo: modelo y versión del catálogo de la agencia, sin repetir el modelo
+ * si la versión ya lo trae («TIGGO» + «TIGGO 2 1.5 4X2 PRO CONFORT»): la palabra repetida bajaba el parecido
+ * con la versión exacta y la hacía parecer dudosa.
+ */
+export function textoDeVehiculo(modelo: string, version: string): string {
+  const deLaVersion = new Set(palabras(version))
+  const faltan = palabras(modelo).filter((palabra) => !deLaVersion.has(palabra))
+  return [faltan.join(' '), version].filter(Boolean).join(' ').trim()
+}
+
 export interface Candidato<T> {
   opcion: T
   puntaje: number
@@ -79,6 +90,8 @@ export function rankear<T>(texto: string, opciones: T[], describir: (opcion: T) 
     .sort((a, b) => b.puntaje - a.puntaje)
 }
 
+const PARECIDO_EXACTO = 0.999
+
 /**
  * La opción que corresponde sin dudas, o null. «Sin dudas» es: se parece lo suficiente y le saca
  * ventaja a la segunda. Elegir mal una versión es cotizar otro vehículo —otra suma asegurada, otra
@@ -87,6 +100,9 @@ export function rankear<T>(texto: string, opciones: T[], describir: (opcion: T) 
 export function sinDudas<T>(candidatos: Candidato<T>[], minimo = 0.5, ventaja = 0.1): T | null {
   const [primero, segundo] = candidatos
   if (!primero || primero.puntaje < minimo) return null
+  // Con las mismas palabras que lo buscado (y ninguna otra igual de buena) no hay duda: «PRO CONFORT» es
+  // la versión exacta aunque exista «PRO CONFORT CVT», que por tener una palabra más sólo la alcanza de cerca.
+  if (primero.puntaje >= PARECIDO_EXACTO && (!segundo || segundo.puntaje < PARECIDO_EXACTO)) return primero.opcion
   if (segundo && primero.puntaje - segundo.puntaje < ventaja) return null
   return primero.opcion
 }
