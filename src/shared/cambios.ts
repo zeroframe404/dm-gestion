@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.9.1',
     fecha: '2026-11-05',
     cambios: [
+      { tipo: 'corregido', texto: 'Equidad: la compañía devuelve su moneda con el código vacío y ahora se le manda así, tal cual, con lo que vuelven a aparecer la vigencia, la forma de pago y las cuotas. Si igual no contesta, el campo dice con qué códigos se probó.' },
       { tipo: 'corregido', texto: 'Equidad: si la compañía no informa el código de la moneda, el cotizador prueba los códigos corrientes hasta que le devuelva los modos de facturación (vigencia), formas de pago y cuotas, y lo avisa en la tarjeta.' },
       { tipo: 'agregado', texto: 'Impresora: ahora se puede configurar una impresora común (hojas A4) para los documentos grandes, como los presupuestos, a la vez que la ticketeadora de los comprobantes. Se elige en Administración → Impresora; sin elegirla, imprimir sigue abriendo el diálogo de Windows.' },
       { tipo: 'corregido', texto: 'Equidad: si una lista de la compañía (moneda, vigencia, forma de pago o cuotas) llega vacía, el formulario ya no queda trabado: prueba con la otra moneda y, si igual no hay opciones, dice qué contestó Equidad.' },

@@ -27,7 +27,9 @@ import {
 import { armarPedidoDeCotizacion, leerRespuestaDeCotizacion } from '../src/main/aseguradoras/equidad/cotizacion'
 import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
 import {
+  codigoDeMonedaParaEquidad,
   codigosAProbar,
+  MONEDA_CON_CODIGO_VACIO,
   consejoParaElRechazo,
   equidad,
   ID_EQUIDAD,
@@ -728,7 +730,7 @@ test('Equidad: si ninguna moneda tiene modos, el campo vacío dice qué pasó y 
   assert.equal(resultado.estado, 'FALTAN_DATOS')
   const modo = resultado.ajustes.find((a) => a.campo === 'modoFacturacion')!
   assert.equal(modo.opciones.length, 0)
-  assert.match(modo.ayuda ?? '', /no devolvió modos de facturación para el plan PL1 y la moneda 1.*lista vacía/)
+  assert.match(modo.ayuda ?? '', /no devolvió modos de facturación para el plan PL1 y la moneda PESOS \(se probó con el código «1», «2»\).*lista vacía/)
   const antes = pedidos.filter((p) => esServicio(p, 'listarModoDeFacturacion')).length
   await equidad.cotizar(solicitud(), {})
   assert.ok(pedidos.filter((p) => esServicio(p, 'listarModoDeFacturacion')).length > antes, 'se vuelve a preguntar')
@@ -742,18 +744,51 @@ test('Equidad: si las monedas vienen sin código, se prueban los códigos corrie
   })
   const resultado = await equidad.cotizar(solicitud(), {})
   assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
-  assert.deepEqual(monedasPedidas, ['PESOS', '1'], 'primero lo leído, después los códigos corrientes de pesos')
+  assert.deepEqual(monedasPedidas, ['PESOS', '', '1'], 'primero lo leído, después el vacío y los códigos corrientes de pesos')
   const moneda = resultado.ajustes.find((a) => a.campo === 'moneda')!
   assert.equal(moneda.valor, '1')
   assert.deepEqual(moneda.opciones.map((o) => o.valor), ['1', 'DOLARES'])
-  assert.ok(resultado.avisos.some((aviso) => /no informó el código de PESOS/.test(aviso) && /«1»/.test(aviso)))
+  assert.ok(resultado.avisos.some((aviso) => /no confirmó el código de PESOS/.test(aviso) && /«1»/.test(aviso)))
   const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
   assert.equal((JSON.parse(post.cuerpo) as Record<string, unknown>).MonedaCodigo, '1')
 })
 
 test('Equidad: los códigos de moneda a probar sólo se amplían cuando Equidad no los informó', () => {
   assert.deepEqual(codigosAProbar({ codigo: '1', descripcion: 'PESOS' }, false), ['1'])
-  assert.deepEqual(codigosAProbar({ codigo: 'PESOS', descripcion: 'PESOS' }, true), ['PESOS', '1', 'P', '0'])
-  assert.deepEqual(codigosAProbar({ codigo: 'DOLARES', descripcion: 'DOLARES' }, true), ['DOLARES', '2', 'D', 'U'])
-  assert.deepEqual(codigosAProbar({ codigo: 'X', descripcion: 'OTRA' }, true), ['X'])
+  assert.deepEqual(codigosAProbar({ codigo: 'PESOS', descripcion: 'PESOS' }, true), ['PESOS', '', '1', 'P', '0', ' '])
+  assert.deepEqual(codigosAProbar({ codigo: MONEDA_CON_CODIGO_VACIO, descripcion: 'PESOS' }, true), ['', '1', 'P', '0', ' '], 'el vacío de Equidad, tal cual, primero')
+  assert.deepEqual(codigosAProbar({ codigo: 'DOLARES', descripcion: 'DOLARES' }, true), ['DOLARES', '', '2', 'D', 'U', ' '])
+  assert.deepEqual(codigosAProbar({ codigo: 'X', descripcion: 'OTRA' }, true), ['X', ''])
+})
+
+test('Equidad: la moneda con «Codigo» vacío (como la devuelve en producción) se manda vacía y toda la cadena se completa', async (t) => {
+  const monedasPedidas: Array<string | null> = []
+  const pedidos = apiFalsa(t, undefined, undefined, [{ Codigo: '', Descripcion: 'PESOS' }], (moneda) => {
+    monedasPedidas.push(moneda)
+    return moneda === '' ? [{ Codigo: 'ANU', Descripcion: 'ANUAL' }] : []
+  })
+  const resultado = await equidad.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  assert.deepEqual(monedasPedidas, [''], 'el vacío de Equidad va primero y alcanza')
+  const moneda = resultado.ajustes.find((a) => a.campo === 'moneda')!
+  assert.equal(moneda.valor, MONEDA_CON_CODIGO_VACIO, 'el combo necesita un valor distinto de «sin elegir»')
+  assert.deepEqual(moneda.opciones, [{ valor: MONEDA_CON_CODIGO_VACIO, texto: 'PESOS' }])
+  assert.match(moneda.ayuda ?? '', /código vacío/)
+  assert.ok(!resultado.avisos.some((aviso) => /no confirmó el código/.test(aviso)), 'no se cambió de código: no hay nada que avisar')
+  for (const servicio of ['listarFormaDePago', 'listarCondicionDePago'] as const) {
+    const pedido = pedidos.find((p) => esServicio(p, servicio))!
+    assert.equal(new URL(pedido.url).searchParams.get('MonCod'), '', servicio)
+  }
+  const post = pedidos.find((p) => esServicio(p, 'cotizarAutomotor'))!
+  assert.equal((JSON.parse(post.cuerpo) as Record<string, unknown>).MonedaCodigo, '')
+})
+
+test('Equidad: la moneda con código vacío elegida a mano se respeta, y si ningún código sirve el campo dice cuáles probó', async (t) => {
+  apiFalsa(t, undefined, undefined, [{ Codigo: '', Descripcion: 'PESOS' }], () => [])
+  const resultado = await equidad.cotizar(solicitud(), { moneda: MONEDA_CON_CODIGO_VACIO })
+  assert.equal(resultado.estado, 'FALTAN_DATOS')
+  const modo = resultado.ajustes.find((a) => a.campo === 'modoFacturacion')!
+  assert.match(modo.ayuda ?? '', /la moneda PESOS \(se probó con el código \(vacío\), «1», «P», «0», « »\)/)
+  assert.equal(codigoDeMonedaParaEquidad(MONEDA_CON_CODIGO_VACIO), '')
+  assert.equal(codigoDeMonedaParaEquidad('1'), '1')
 })

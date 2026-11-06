@@ -164,10 +164,27 @@ const MONEDAS_DE_RESPALDO: OpcionEquidad[] = [
   { codigo: '2', descripcion: 'DOLARES' },
 ]
 
-/** Los códigos que se prueban para una moneda cuyo código Equidad no informó: el que se leyó y los corrientes de esa moneda. */
+/**
+ * El valor con que el combo muestra una moneda cuyo código en Equidad es VACÍO: el combo usa '' para
+ * «sin elegir», así que el vacío de Equidad necesita otro nombre. `codigoDeMonedaParaEquidad` lo
+ * vuelve a '' al armar cada pedido.
+ */
+export const MONEDA_CON_CODIGO_VACIO = 'codigo-vacio'
+
+export function codigoDeMonedaParaEquidad(moneda: string): string {
+  return moneda === MONEDA_CON_CODIGO_VACIO ? '' : moneda
+}
+
+/** Las monedas como las muestra el combo: el código vacío de Equidad va con su nombre propio. */
+export function monedasParaElCombo(monedas: OpcionEquidad[]): OpcionEquidad[] {
+  return monedas.map((m) => (m.codigo === '' ? { ...m, codigo: MONEDA_CON_CODIGO_VACIO } : m))
+}
+
+/** Los códigos que se prueban para una moneda cuyo código Equidad no confirmó: el que se leyó (el vacío, tal cual) y los corrientes de esa moneda. */
 export function codigosAProbar(moneda: OpcionEquidad, sinConfirmar: boolean): string[] {
-  const corrientes = !sinConfirmar ? [] : /PESO|ARS/i.test(moneda.descripcion) ? ['1', 'P', '0'] : /DOLAR|USD|U\$S/i.test(moneda.descripcion) ? ['2', 'D', 'U'] : []
-  return [moneda.codigo, ...corrientes].filter((codigo, i, todos) => todos.indexOf(codigo) === i)
+  const leido = codigoDeMonedaParaEquidad(moneda.codigo)
+  const corrientes = !sinConfirmar ? [] : /PESO|ARS/i.test(moneda.descripcion) ? ['', '1', 'P', '0', ' '] : /DOLAR|USD|U\$S/i.test(moneda.descripcion) ? ['', '2', 'D', 'U', ' '] : ['']
+  return [leido, ...corrientes].filter((codigo, i, todos) => todos.indexOf(codigo) === i)
 }
 
 /** La moneda: pesos. */
@@ -303,8 +320,8 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   })
   // Sin moneda no hay modo de facturación, forma de pago ni cuotas y el formulario queda trabado: si
   // Equidad no devuelve la lista, se ofrecen sus dos monedas de siempre y se avisa.
-  const monedas = monedasDeEquidad.length > 0 ? monedasDeEquidad : MONEDAS_DE_RESPALDO
-  const codigosDeMonedaSinConfirmar = monedasDeEquidad.length > 0 && /^Equidad no usó/.test(diagnosticoDeLista('las monedas') ?? '')
+  const monedas = monedasParaElCombo(monedasDeEquidad.length > 0 ? monedasDeEquidad : MONEDAS_DE_RESPALDO)
+  const codigosDeMonedaSinConfirmar = monedasDeEquidad.length > 0 && /^Equidad (no usó|devolvió la moneda con el código vacío)/.test(diagnosticoDeLista('las monedas') ?? '')
   let moneda = valido(elegidos.moneda, monedas) ?? monedaPorDefecto(monedas)
   const ajusteMoneda: AjusteDeAseguradora = {
     campo: 'moneda',
@@ -335,14 +352,16 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     dependeDe: 'productor',
     destacado: true,
   })
+  // Cada pedido lleva el código de moneda tal como lo dio Equidad: vacío si vino vacío.
   const modosDe = (codigoDeMoneda: string) =>
-    enMemoria(`modos:${c.rama}:${tipoPoliza}:${productor}:${vigencia}:${planComercial}:${codigoDeMoneda}`, () =>
+    enMemoria(`modos:${c.rama}:${tipoPoliza}:${productor}:${vigencia}:${planComercial}:[${codigoDeMoneda}]`, () =>
       modosDeFacturacionEquidad(cliente, c, { tipoPoliza, productor, vigenciaDesde: vigencia, planComercial, moneda: codigoDeMoneda }),
     )
-  // Los modos de facturación dependen del código de moneda. Si Equidad no lo informó en la lista (sólo
-  // la descripción), el que se tomó sería la palabra «PESOS» y la lista de modos vendría vacía: se
-  // prueban los códigos corrientes de esa moneda hasta que Equidad conteste, y se dice cuál sirvió.
+  // Los modos de facturación dependen del código de moneda. Equidad lo devuelve vacío en la lista de
+  // monedas, así que primero se manda vacío, tal cual; si con eso tampoco contesta, se prueban los
+  // códigos corrientes de esa moneda, y se dice cuál sirvió.
   let modos: OpcionEquidad[] = []
+  const codigosProbados: string[] = []
   if (planComercial && moneda) {
     const actual = monedas.find((m) => m.codigo === moneda)
     const aMano = Boolean(valido(elegidos.moneda, monedas))
@@ -350,14 +369,16 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     const aProbar = aMano || !actual ? [actual].filter((m): m is OpcionEquidad => Boolean(m)) : [actual, ...monedas.filter((m) => m !== actual)]
     buscando: for (const opcion of aProbar) {
       for (const codigo of codigosAProbar(opcion, codigosDeMonedaSinConfirmar)) {
+        codigosProbados.push(codigo === '' ? '(vacío)' : `«${codigo}»`)
         const hallados = await modosDe(codigo)
         if (hallados.length === 0) continue
         modos = hallados
         if (opcion !== actual) avisos.push(`Equidad no tiene modos de facturación en ${actual?.descripcion ?? 'la moneda anterior'} para el plan elegido: se usó ${opcion.descripcion}.`)
-        if (codigo !== opcion.codigo) avisos.push(`Equidad no informó el código de ${opcion.descripcion}: con «${codigo}» devolvió modos de facturación y se usó ese.`)
-        moneda = codigo
-        ajusteMoneda.valor = codigo
-        ajusteMoneda.opciones = ajusteMoneda.opciones.map((o) => (o.valor === opcion.codigo ? { ...o, valor: codigo } : o))
+        const enElCombo = codigo === '' ? MONEDA_CON_CODIGO_VACIO : codigo
+        if (enElCombo !== opcion.codigo) avisos.push(`Equidad no confirmó el código de ${opcion.descripcion}: con ${codigo === '' ? 'el código vacío' : `«${codigo}»`} devolvió modos de facturación y se usó ese.`)
+        moneda = enElCombo
+        ajusteMoneda.valor = enElCombo
+        ajusteMoneda.opciones = ajusteMoneda.opciones.map((o) => (o.valor === opcion.codigo ? { ...o, valor: enElCombo } : o))
         break buscando
       }
     }
@@ -371,14 +392,15 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   ajustes.push(bajoElFormulario(facturacion, {
     campo: 'modoFacturacion',
     titulo: 'Vigencia / modo de facturación',
-    ayuda: modos.length === 0 && planComercial ? sinLista('los modos de facturación', `el plan ${planComercial} y la moneda ${moneda || '(ninguna)'}: probá otra moneda en «Más ajustes»`) : 'La «Vigencia» de la web de Equidad (anual, semestral, mensual…). Cambia las cuotas disponibles y el precio.',
+    ayuda: modos.length === 0 && planComercial ? sinLista('los modos de facturación', `el plan ${planComercial} y la moneda ${monedas.find((m) => m.codigo === moneda)?.descripcion ?? moneda ?? '(ninguna)'}${codigosProbados.length > 0 ? ` (se probó con el código ${codigosProbados.join(', ')})` : ''}: probá otra moneda en «Más ajustes»`) : 'La «Vigencia» de la web de Equidad (anual, semestral, mensual…). Cambia las cuotas disponibles y el precio.',
     opciones: opcionesDe(modos),
     valor: modoFacturacion,
     obligatorio: true,
     dependeDe: 'planComercial',
     destacado: true,
   }))
-  const formas = modoFacturacion ? await enMemoria(`formas:${c.rama}:${planComercial}:${modoFacturacion}:${moneda}`, () => formasDePagoEquidad(cliente, c, { planComercial, modoFacturacion, moneda })) : []
+  const monedaParaEquidad = codigoDeMonedaParaEquidad(moneda)
+  const formas = modoFacturacion ? await enMemoria(`formas:${c.rama}:${planComercial}:${modoFacturacion}:[${monedaParaEquidad}]`, () => formasDePagoEquidad(cliente, c, { planComercial, modoFacturacion, moneda: monedaParaEquidad })) : []
   const formaDePago =
     valido(elegidoBajo(elegidos.formaDePago, solicitud.medioDePago), formas) ??
     porPalabrasClave(formas, CLAVES_MEDIO_DE_PAGO[solicitud.medioDePago])?.codigo ??
@@ -395,8 +417,8 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     destacado: true,
   }))
   const condiciones = formaDePago
-    ? await enMemoria(`condiciones:${c.rama}:${tipoPoliza}:${productor}:${vigencia}:${planComercial}:${modoFacturacion}:${moneda}:${formaDePago}`, () =>
-        condicionesDePagoEquidad(cliente, c, { vigenciaDesde: vigencia, productor, planComercial, modoFacturacion, moneda, tipoPoliza, formaDePago }),
+    ? await enMemoria(`condiciones:${c.rama}:${tipoPoliza}:${productor}:${vigencia}:${planComercial}:${modoFacturacion}:[${monedaParaEquidad}]:${formaDePago}`, () =>
+        condicionesDePagoEquidad(cliente, c, { vigenciaDesde: vigencia, productor, planComercial, modoFacturacion, moneda: monedaParaEquidad, tipoPoliza, formaDePago }),
       )
     : []
   const condicionDePago =
@@ -529,8 +551,8 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   // 5. La suma asegurada: la del formulario o la que Equidad da por defecto para el vehículo.
   let sumaAsegurada = v.sumaAsegurada
   if (sumaAsegurada === null) {
-    sumaAsegurada = await enMemoria(`suma:${moneda}:${claveDeLocalidad(localidad)}:${productor}:${claveDeVehiculo(vehiculo)}:${v.anio}:${v.ceroKm}`, () =>
-      sumaAseguradaEquidad(cliente, c, { moneda, codigoPostal: localidad.codigoPostal, subCodigoPostal: localidad.subCodigo, productor, vehiculo, anio: v.anio, ceroKm: v.ceroKm }),
+    sumaAsegurada = await enMemoria(`suma:[${monedaParaEquidad}]:${claveDeLocalidad(localidad)}:${productor}:${claveDeVehiculo(vehiculo)}:${v.anio}:${v.ceroKm}`, () =>
+      sumaAseguradaEquidad(cliente, c, { moneda: monedaParaEquidad, codigoPostal: localidad.codigoPostal, subCodigoPostal: localidad.subCodigo, productor, vehiculo, anio: v.anio, ceroKm: v.ceroKm }),
     ).catch(() => null)
     if (sumaAsegurada === null) {
       return {
@@ -557,7 +579,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     tomadorIibb: iibb,
     vigenciaDesde: vigencia,
     productor,
-    moneda,
+    moneda: monedaParaEquidad,
     planComercial,
     formaDePago,
     modoFacturacion,
