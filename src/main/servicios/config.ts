@@ -818,7 +818,7 @@ export function guardarEquidad(datos: unknown): void {
   const productor = typeof d.productor === 'string' ? d.productor.replace(/\s/g, '') : ''
   if (productor && !/^\d{1,7}$/.test(productor)) throw new ErrorDeNegocio('El código de productor de Equidad es numérico (hasta 7 números). Dejalo vacío para usar el que lista la API.')
   const rama = typeof d.rama === 'string' ? d.rama.replace(/\s/g, '') : ''
-  if (rama && !/^\d{1,2}$/.test(rama)) throw new ErrorDeNegocio('El código de rama de Equidad es numérico (hasta 2 números). Dejalo vacío para usar 4 (automotores).')
+  if (rama && !/^\d{1,2}$/.test(rama)) throw new ErrorDeNegocio(`El código de rama de Equidad es numérico (hasta 2 números). Dejalo vacío para usar ${RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO} (automotores).`)
   const empresa = typeof d.empresa === 'string' ? d.empresa.replace(/\s/g, '') : ''
   if (empresa && !/^\d{1,2}$/.test(empresa)) throw new ErrorDeNegocio('El código de empresa de Equidad es numérico (hasta 2 números). Dejalo vacío para usar 1.')
   if (typeof d.ambiente !== 'string' || !(AMBIENTES_EQUIDAD as readonly string[]).includes(d.ambiente)) {

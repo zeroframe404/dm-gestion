@@ -109,6 +109,10 @@ test('Equidad: la URL de cada servicio es la base más su nombre de clase, como 
   assert.equal(normalizarUrlBase('  '), '')
   assert.equal(urlDeServicio('http://10.0.8.2/ATM_COM_PRUE/servlet', 'autenticarUsuario'), 'http://10.0.8.2/ATM_COM_PRUE/servlet/ar.com.glmsa.seguros.comercial.apiglm.seguridad.awsautenticarusuario')
   assert.equal(SERVICIOS_EQUIDAD.cotizarAutomotor, 'ar.com.glmsa.seguros.comercial.apiglm.emision.automotores.awscotizarautomotor', 'sin el espacio que tiene la errata del documento')
+  // Verificados contra producción (06/11/2026): con el paquete `comun` estos dos dan 404.
+  assert.equal(SERVICIOS_EQUIDAD.listarProductoresDeUsuario, 'ar.com.glmsa.seguros.comercial.apiglm.cotizacion.awslistarproductoresdeusuario')
+  assert.equal(SERVICIOS_EQUIDAD.listarMoneda, 'ar.com.glmsa.seguros.comercial.apiglm.cotizacion.awslistarmonedausuario')
+  assert.equal(SERVICIOS_EQUIDAD.listarCategoriaIVA, 'ar.com.glmsa.seguros.comercial.apiglm.cotizacion.awslistarcategoriaiva', 'la de rama y tipo de póliza, no la de la persona')
 })
 
 test('Equidad: los query params van en el orden dado y los vacíos también, y las fechas AAAAMMDD', () => {
