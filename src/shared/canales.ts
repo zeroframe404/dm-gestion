@@ -455,6 +455,8 @@ export interface Canales {
   'almacenamiento:guardarTotal': (gigabytes: number) => Resultado<EstadoDeAlmacenamiento>
   'impresora:guardar': (datos: DatosDeImpresora) => Resultado<ConfigImpresora>
   'impresora:prueba': () => Resultado<null>
+  /** La impresora de documentos grandes (hojas A4). Vacío = preguntar en el diálogo de Windows. */
+  'impresora:guardarDocumentos': (impresora: string) => Resultado<ConfigImpresora>
   /** Las direcciones que encabezan el ticket, una por sucursal. */
   'impresora:direcciones': () => Resultado<DireccionDeSucursal[]>
   'impresora:guardarDirecciones': (direcciones: DireccionDeSucursal[]) => Resultado<DireccionDeSucursal[]>
