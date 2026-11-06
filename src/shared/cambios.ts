@@ -30,6 +30,13 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
+    version: '17.10.1',
+    fecha: '2026-11-06',
+    cambios: [
+      { tipo: 'corregido', texto: 'Multicotizador: si el asegurado es persona jurídica, ya no se piden Sexo ni Fecha de nacimiento.' },
+    ],
+  },
+  {
     version: '17.10.0',
     fecha: '2026-11-06',
     cambios: [

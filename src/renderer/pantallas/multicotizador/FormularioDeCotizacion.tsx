@@ -309,8 +309,9 @@ export function solicitudDe(f: FormularioMulticotizador): SolicitudDeCotizacion 
       tipoPersona: f.tipoPersona,
       condicionIva: f.condicionIva,
       ingresosBrutos: f.ingresosBrutos,
-      sexo: f.sexo || null,
-      fechaNacimiento: f.fechaNacimiento,
+      // Una persona jurídica no tiene sexo ni fecha de nacimiento.
+      sexo: f.tipoPersona === 'JURIDICA' ? null : f.sexo || null,
+      fechaNacimiento: f.tipoPersona === 'JURIDICA' ? '' : f.fechaNacimiento,
     },
     provincia: f.provincia,
     codigoPostal: soloNumeros(f.codigoPostal),
@@ -607,13 +608,17 @@ export function FormularioDeCotizacion({ valor: f, alCambiar, aseguradoras, coti
                   onChange={(e) => alCambiar({ ingresosBrutos: e.target.value as CondicionIibb })}
                   opciones={CONDICIONES_IIBB.map((condicion) => ({ valor: condicion, texto: NOMBRE_CONDICION_IIBB[condicion] }))}
                 />
-                <Selector
-                  etiqueta="Sexo"
-                  value={f.sexo}
-                  onChange={(e) => alCambiar({ sexo: e.target.value as Sexo | '' })}
-                  opciones={conVacio(SEXOS, (sexo) => NOMBRE_SEXO[sexo], '—')}
-                />
-                <Campo etiqueta="Fecha de nacimiento" type="date" max={hoyIso()} value={f.fechaNacimiento} onChange={(e) => alCambiar({ fechaNacimiento: e.target.value })} />
+                {f.tipoPersona !== 'JURIDICA' && (
+                  <>
+                    <Selector
+                      etiqueta="Sexo"
+                      value={f.sexo}
+                      onChange={(e) => alCambiar({ sexo: e.target.value as Sexo | '' })}
+                      opciones={conVacio(SEXOS, (sexo) => NOMBRE_SEXO[sexo], '—')}
+                    />
+                    <Campo etiqueta="Fecha de nacimiento" type="date" max={hoyIso()} value={f.fechaNacimiento} onChange={(e) => alCambiar({ fechaNacimiento: e.target.value })} />
+                  </>
+                )}
               </div>
             </div>
           </Bloque>
