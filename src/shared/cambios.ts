@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.10.1',
     fecha: '2026-11-06',
     cambios: [
+      { tipo: 'corregido', texto: 'ATM (motos): si la versión de la moto existe igual en ATM (por ejemplo TNT 752S de Benelli) se elige sola, aunque el modelo del catálogo sea una categoría como «CALLE MAS DE 600 CC». Antes había que cargarla a mano.' },
       { tipo: 'corregido', texto: 'Equidad y Mercantil Andina: si la versión del vehículo existe tal cual en la compañía (por ejemplo TIGGO 2 1.5 4X2 PRO CONFORT) se elige sola, aunque haya otra parecida con una palabra más (CVT). Antes pedía elegirla a mano.' },
       { tipo: 'corregido', texto: 'Mercantil Andina: ahora reconoce solo el modelo cuando se llama igual en su lista (por ejemplo SPIN), en vez de pedir que se lo elija a mano.' },
       { tipo: 'corregido', texto: 'Multicotizador: si el asegurado es persona jurídica, ya no se piden Sexo ni Fecha de nacimiento.' },
