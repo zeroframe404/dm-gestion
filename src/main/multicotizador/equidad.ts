@@ -155,6 +155,12 @@ export function productorPorDefecto(configurado: string, productores: OpcionDeLi
   return productores[0]?.codigo ?? configurado
 }
 
+/** Las monedas de Equidad (tabla MonEmi) para cuando su servicio no las devuelve. */
+const MONEDAS_DE_RESPALDO: OpcionEquidad[] = [
+  { codigo: '1', descripcion: 'PESOS' },
+  { codigo: '2', descripcion: 'DOLARES' },
+]
+
 /** La moneda: pesos. */
 export function monedaPorDefecto(monedas: OpcionEquidad[]): string {
   return porPalabrasClave(monedas, ['PESO', 'ARS', 'NACIONAL'])?.codigo ?? monedas[0]?.codigo ?? ''
@@ -256,10 +262,10 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   const vigencia = solicitud.vigenciaDesde
 
   // Lo que no depende de nada, todo a la vez.
-  const [tipos, productores, monedas, iibbs, clausulas, alarmas, localidades] = await Promise.all([
+  const [tipos, productores, monedasDeEquidad, iibbs, clausulas, alarmas, localidades] = await Promise.all([
     enMemoria(`tipos:${c.rama}`, () => tiposDePolizaEquidad(cliente, c)),
     enMemoria(`productores:${c.empresa}`, () => productoresEquidad(cliente, c)).catch(() => []),
-    enMemoria('monedas', () => monedasEquidad(cliente, c)),
+    enMemoria('monedas', () => monedasEquidad(cliente, c)).catch(() => [] as OpcionEquidad[]),
     enMemoria('iibb', () => categoriasIbEquidad(cliente)).catch(() => [] as OpcionEquidad[]),
     enMemoria(`clausulas:${v.anio}:${v.ceroKm}`, () => clausulasDeAjusteEquidad(cliente, c, v.anio, v.ceroKm)).catch(() => [] as OpcionEquidad[]),
     tieneRastreador(v) ? enMemoria('alarmas', () => alarmasSatelitalesEquidad(cliente, c)).catch(() => [] as OpcionEquidad[]) : Promise.resolve([] as OpcionEquidad[]),
@@ -286,8 +292,19 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
     valor: productor,
     obligatorio: true,
   })
+  // Sin moneda no hay modo de facturación, forma de pago ni cuotas y el formulario queda trabado: si
+  // Equidad no devuelve la lista, se ofrecen sus dos monedas de siempre y se avisa.
+  const monedas = monedasDeEquidad.length > 0 ? monedasDeEquidad : MONEDAS_DE_RESPALDO
   const moneda = valido(elegidos.moneda, monedas) ?? monedaPorDefecto(monedas)
-  ajustes.push({ campo: 'moneda', titulo: 'Moneda', opciones: opcionesDe(monedas), valor: moneda, obligatorio: true })
+  ajustes.push({
+    campo: 'moneda',
+    titulo: 'Moneda',
+    ayuda: monedasDeEquidad.length === 0 ? 'Equidad no devolvió las monedas del usuario: se ofrecen Pesos y Dólares (códigos 1 y 2).' : undefined,
+    opciones: opcionesDe(monedas),
+    valor: moneda,
+    obligatorio: true,
+  })
+  if (monedasDeEquidad.length === 0) avisos.push('Equidad no devolvió la lista de monedas: se usó Pesos (código 1). Si el precio no coincide con su web, revisá la moneda.')
 
   // 2. Lo comercial, en cadena y a la vista: plan → modo de facturación → forma de pago → condición de pago.
   const planes = tipoPoliza && productor ? await enMemoria(`planes:${c.rama}:${tipoPoliza}:${productor}:${vigencia}`, () => planesComercialesEquidad(cliente, c, tipoPoliza, productor, vigencia)) : []
