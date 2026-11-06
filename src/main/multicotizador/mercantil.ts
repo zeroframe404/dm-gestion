@@ -26,7 +26,7 @@ import { crearClienteMercantil, ErrorDeMercantil, type ClienteMercantil, type Cu
 import { cotizarMercantil, RUTA_COTIZACION, type DatosDeCotizacionMercantil } from '../aseguradoras/mercantil/cotizacion'
 import { credencialesMercantil } from '../servicios/config'
 import type { CotizacionDeAseguradora, CotizadorDeAseguradora, SolicitudResuelta } from './aseguradora'
-import { bajoElFormulario, buscarMarca, claveDeCuotas, elegidoBajo, porCuotas, porUso, rankear, sinDudas, type OpcionDeLista } from './equivalencias'
+import { bajoElFormulario, buscarMarca, claveDeCuotas, elegidoBajo, porCuotas, porUso, rankear, sinDudas, textoDeVehiculo, type OpcionDeLista } from './equivalencias'
 import { equivalenciaGuardada, guardarEquivalencia, olvidarEquivalencia } from './equivalenciasGuardadas'
 
 export const ID_MERCANTIL = 'MERCANTIL'
@@ -126,7 +126,7 @@ function opcionesDe(lista: OpcionDeLista[]): Array<{ valor: string; texto: strin
 /** El texto con que se busca la versión: modelo y versión del catálogo de la agencia. */
 export function textoParaBuscar(solicitud: SolicitudResuelta): string {
   const v = solicitud.vehiculo
-  return `${v.modelo} ${v.version}`.trim()
+  return textoDeVehiculo(v.modelo, v.version)
 }
 
 /**
