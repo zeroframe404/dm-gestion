@@ -163,6 +163,7 @@ import {
   direccionesDeTicket,
   establecerNumeroDeTicket,
   guardarConfiguracionDeImpresora,
+  guardarConfiguracionDeImpresoraDeDocumentos,
   guardarDireccionesDeTicket,
   imprimirTicketDePago,
   imprimirTicketDePrueba,
@@ -906,6 +907,10 @@ export function registrarIpc(): void {
   manejar('impresora:guardar', async (datos) => {
     exigirSesion()
     return exito(await guardarConfiguracionDeImpresora(datos))
+  })
+  manejar('impresora:guardarDocumentos', async (impresora) => {
+    exigirSesion()
+    return exito(await guardarConfiguracionDeImpresoraDeDocumentos(impresora))
   })
   manejar('impresora:prueba', async () => {
     const actor = exigirSesion()

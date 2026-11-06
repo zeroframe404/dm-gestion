@@ -33,6 +33,8 @@ import {
   establecerProximoNumeroDeTicket,
   guardarDirecciones,
   guardarImpresora,
+  guardarImpresoraDeDocumentos,
+  impresoraDeDocumentos,
   impresoraGuardada,
   proximoNumeroDeTicket,
   telefonoDeSucursal,
@@ -165,6 +167,7 @@ export async function configuracionDeImpresora(): Promise<ConfigImpresora> {
     impresora: guardada.impresora,
     anchoMm: guardada.anchoMm,
     copias: guardada.copias,
+    impresoraDeDocumentos: impresoraDeDocumentos(),
     proximoNumeroDeTicket: proximoNumeroDeTicket(),
     disponibles: nombres,
     predeterminada,
@@ -175,6 +178,11 @@ export async function configuracionDeImpresora(): Promise<ConfigImpresora> {
 /** Corrige el correlativo desde Administración → Impresora (por ejemplo, después de cambiar el rollo). */
 export async function establecerNumeroDeTicket(numero: number): Promise<ConfigImpresora> {
   establecerProximoNumeroDeTicket(numero)
+  return configuracionDeImpresora()
+}
+
+export async function guardarConfiguracionDeImpresoraDeDocumentos(impresora: string): Promise<ConfigImpresora> {
+  guardarImpresoraDeDocumentos(impresora)
   return configuracionDeImpresora()
 }
 

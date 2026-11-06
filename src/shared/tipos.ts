@@ -2496,6 +2496,11 @@ export interface ConfigImpresora {
   copias: number
   /** El número que va a llevar el próximo ticket que se imprima. Sube solo; se puede corregir a mano. */
   proximoNumeroDeTicket: number
+  /**
+   * Impresora común (hojas A4) para documentos grandes —presupuestos, listas—. Es aparte de la del
+   * comprobante: las dos pueden estar configuradas a la vez. null = se elige en el diálogo de Windows.
+   */
+  impresoraDeDocumentos: string | null
   /** Impresoras que ve el sistema. Vacío si no se pudieron leer. */
   disponibles: string[]
   predeterminada: string | null
