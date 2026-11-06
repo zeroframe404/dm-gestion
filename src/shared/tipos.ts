@@ -5606,8 +5606,12 @@ export const NOMBRE_AMBIENTE_EQUIDAD: Record<AmbienteEquidad, string> = {
   prueba: 'Prueba / test (con el usuario de test que manda Equidad)',
 }
 
-/** La rama de automotores en la API GLM si Equidad no indica otra (la tabla Ramas la da la compañía). */
-export const RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO = '4'
+/**
+ * La rama de automotores en la API GLM si Equidad no indica otra. Es la 1: así viene en el pedido de
+ * ejemplo que mandó Equidad (05/11/2026, `"Rama": "1"` con `"TipoPolizaCodigo": "AUT01"`); con la 4 la
+ * cuenta de la agencia no tiene tipos de póliza.
+ */
+export const RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO = '1'
 /** El código de empresa (`EmpCod`) si Equidad no indica otro. */
 export const EMPRESA_EQUIDAD_POR_DEFECTO = '1'
 

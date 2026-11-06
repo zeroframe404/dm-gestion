@@ -28,11 +28,13 @@ export const PAQUETE_GLM = 'ar.com.glmsa.seguros.comercial.apiglm'
 export const SERVICIOS_EQUIDAD = {
   autenticarUsuario: `${PAQUETE_GLM}.seguridad.awsautenticarusuario`,
   listarTipoDePoliza: `${PAQUETE_GLM}.cotizacion.awslistartipodepoliza`,
-  listarProductoresDeUsuario: `${PAQUETE_GLM}.comun.awslistarproductoresdeusuario`,
-  listarCategoriaIVA: `${PAQUETE_GLM}.comun.awslistarcategoriaiva`,
+  listarProductoresDeUsuario: `${PAQUETE_GLM}.cotizacion.awslistarproductoresdeusuario`,
+  // La de IVA por rama y tipo de póliza (RamCod, RamTipPolCod) es la de cotización; la de `comun` es la de
+  // la persona (ListarCategoriaIVAPersona) y pide otros parámetros.
+  listarCategoriaIVA: `${PAQUETE_GLM}.cotizacion.awslistarcategoriaiva`,
   listarCategoriaIB: `${PAQUETE_GLM}.comun.awslistarcategoriaib`,
   listarPlanComercial: `${PAQUETE_GLM}.cotizacion.awslistarplancomercial`,
-  listarMoneda: `${PAQUETE_GLM}.comun.awslistarmoneda`,
+  listarMoneda: `${PAQUETE_GLM}.cotizacion.awslistarmonedausuario`,
   listarModoDeFacturacion: `${PAQUETE_GLM}.cotizacion.awslistarmododefacturacion`,
   listarFormaDePago: `${PAQUETE_GLM}.cotizacion.awslistarformadepago`,
   listarCondicionDePago: `${PAQUETE_GLM}.cotizacion.awslistarcondiciondepago`,
