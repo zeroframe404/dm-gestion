@@ -360,8 +360,8 @@ function linea(etiqueta: string, valor: string): string {
 
 /**
  * Una térmica no imprime todo el ancho del rollo: en una POS-80 el papel mide 80 mm pero el cabezal
- * cubre unos 72, y lo que se dibuje más allá no sale. Se reservan 10 —los 8 que el cabezal no alcanza
- * más 2 de resguardo, porque cada driver corre el margen a su gusto— y esa reserva queda del lado
+ * cubre unos 72, y lo que se dibuje más allá no sale. Se reservan 14 —los 8 que el cabezal no alcanza
+ * más 6 de resguardo (con 10 todavía se cortaban palabras en el borde derecho de una XP-80), porque cada driver corre el margen a su gusto— y esa reserva queda del lado
  * derecho. El texto arranca donde el driver lo deja (ver `margenIzquierdoDelTicket`); si en una
  * impresora queda corrido, se compensa con el ajuste de Administración → Impresora.
  *
@@ -369,7 +369,7 @@ function linea(etiqueta: string, valor: string): string {
  * borde que se recorta. Eso es lo que en Lanús dejaba la hora sin los minutos y el teléfono cortado a
  * la mitad.
  */
-const RESERVA_DEL_CABEZAL_MM = 10
+const RESERVA_DEL_CABEZAL_MM = 14
 
 /** Lo que el texto se despega del borde izquierdo, que tampoco imprime desde el punto cero. */
 export const SANGRIA_DEL_TICKET_MM = 1.5
@@ -450,7 +450,7 @@ export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number, tipo: TipoD
   @page { margin: 0; }
   /* Sin centrar y con sangría a la izquierda: la reserva del cabezal queda toda del lado que se recorta.
      En una hoja A4 el comprobante va arriba a la izquierda, con margen normal de hoja. */
-  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-weight: ${comun ? 'normal' : 'bold'}; font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
+  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
   p { margin: 0; }
   /* Los datos de la agencia van más chicos que el resto: cuánto, lo decide el ancho del papel. */
   .encabezado { font-size: ${puntosDeAgencia}pt; }
@@ -525,8 +525,6 @@ async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anc
           deviceName,
           printBackground: false,
           margins: { marginType: 'none' },
-          // Las térmicas son de 203 dpi: pedirlo así evita que Chromium reescale el texto y lo deje borroso.
-          ...(tipo === 'comun' ? {} : { dpi: { horizontal: 203, vertical: 203 } }),
           pageSize: tipo === 'comun' ? 'A4' : { width: Math.round(anchoMm * 1000), height: altoEnMicrones() },
           copies: 1,
         },
@@ -890,7 +888,7 @@ export function htmlDelResumenDePagos(
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Pagos del cliente</title><style>
   @page { margin: 0; }
-  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-weight: ${comun ? 'normal' : 'bold'}; font-size: 9.5pt; line-height: 1.3; color: #000; overflow-wrap: anywhere; }
+  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-size: 9.5pt; line-height: 1.3; color: #000; overflow-wrap: anywhere; }
   p { margin: 0; }
   hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
   .titulo { font-weight: bold; text-align: center; }
