@@ -29,7 +29,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
           'En la columna «Acciones» hay cinco botones chiquitos para cada fila: avisar por WhatsApp, marcar como avisado, registrar un pago, avisar un rechazo del débito y dar de baja.',
           '«Avisar» (el globito) abre WhatsApp con un mensaje ya armado para ese cliente y deja la fila marcada como avisada. «Avisado» (el tilde) hace lo mismo con la planilla —deja la columna «OB. avisos» en ENVIADO seguido del día de hoy (por ejemplo «ENVIADO 11») y suma la fila a «Avisados hoy»— pero sin abrir WhatsApp: es para cuando ya se le avisó por otro lado, por teléfono, en el mostrador o desde el celular. No hace falta que el cliente tenga teléfono cargado.',
           '«Registrar pago» abre un formulario para cargar cómo y cuándo se pagó esa cuota, sin salir de la planilla. «Avisar rechazo del débito» (el triángulo) le manda un aviso a la sucursal que atiende al cliente para que lo llame y lo cobre a mano: es para cuando la compañía rebota el CBU o la tarjeta. «Dar de baja» saca la póliza de la cartera activa y la manda a Cartera → Bajas, pidiendo el motivo.',
-          'Las cinco acciones quedan deshabilitadas en un mes cerrado (sólo lectura). En la fila que tiene un pago adelantado esperando aparece un sexto botón (el calendario): «Imputar el pago adelantado» deja la cuota paga con la fecha en que se cobró.',
+          'En un mes cerrado (sólo lectura) queda habilitado sólo «Registrar pago», para cobrar una cuota atrasada de ese mes; las demás acciones se deshabilitan. En la fila que tiene un pago adelantado esperando aparece un sexto botón (el calendario): «Imputar el pago adelantado» deja la cuota paga con la fecha en que se cobró.',
         ],
       },
       {

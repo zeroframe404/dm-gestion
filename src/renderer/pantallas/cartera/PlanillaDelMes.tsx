@@ -559,7 +559,9 @@ export function PlanillaDelMes() {
               disabled={soloLectura}
               onClick={() => void marcarAvisado(fila)}
             />
-            <BotonAccion titulo="Registrar pago" icono="billete" disabled={soloLectura} onClick={() => setPagoDe(fila)} />
+            {/* Cobrar una cuota de un mes cerrado se puede igual (el cliente que viene a pagar atrasado):
+                el servidor no lo traba, sólo pide permiso de edición. */}
+            <BotonAccion titulo="Registrar pago" icono="billete" disabled={!puedeEditarCartera} onClick={() => setPagoDe(fila)} />
             {/* Sin póliza enlazada no hay a qué colgarle el aviso: la fila es de la hoja y nada más. */}
             <BotonAccion
               titulo={
@@ -641,7 +643,7 @@ export function PlanillaDelMes() {
         {soloLectura && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
             <Icono nombre="candado" tamano={13} />
-            {puedeEditarCartera ? 'Mes cerrado · sólo lectura' : 'Tenés Cartera en sólo lectura'}
+            {puedeEditarCartera ? 'Mes cerrado · sólo se pueden registrar pagos' : 'Tenés Cartera en sólo lectura'}
           </span>
         )}
 
