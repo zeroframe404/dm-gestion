@@ -12,6 +12,8 @@ import {
   htmlDelTicket,
   puntosDelEncabezado,
   SANGRIA_DEL_TICKET_MM,
+  ALTO_DEL_RESUMEN_MM,
+  ALTO_DEL_TICKET_MM,
   cssDelTexto,
   margenIzquierdoDelTicket,
   type DatosDeTicket,
@@ -456,4 +458,14 @@ test('la tipografía y la intensidad del ticket se eligen desde el programa y ll
   assert.ok(html.includes('Consolas') && html.includes('-webkit-text-stroke: 0.6px'))
   // Sin elegir nada sale como siempre.
   assert.ok(htmlDelTicket(ticketDeEjemplo(), 80).includes('font-family: "Courier New", monospace;'))
+})
+
+test('la página del ticket es más alta que el ticket más largo: no se parte en dos ni se corta el pie', () => {
+  // Peor caso razonable: todos los renglones, dos de ellos largos que bajan de renglón, más el margen
+  // para el corte. Con 140 mm de página, el comprobante real se partía y la guillotina cortaba el pie.
+  const MM_POR_RENGLON = 10 * (25.4 / 72) * 1.35
+  const renglones = 30
+  assert.ok(renglones * MM_POR_RENGLON + 3 + 12 < ALTO_DEL_TICKET_MM, 'el alto no alcanza para el ticket')
+  assert.ok(ALTO_DEL_TICKET_MM > 140)
+  assert.ok(ALTO_DEL_RESUMEN_MM >= ALTO_DEL_TICKET_MM)
 })
