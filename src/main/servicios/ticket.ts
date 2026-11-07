@@ -480,7 +480,7 @@ export function htmlDelTicket(
   @page { margin: 0; }
   /* Sin centrar y con sangría a la izquierda: la reserva del cabezal queda toda del lado que se recorta.
      En una hoja A4 el comprobante va arriba a la izquierda, con margen normal de hoja. */
-  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; ${cssDelTexto(estilo)} font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
+  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 12mm'}; ${cssDelTexto(estilo)} font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
   p { margin: 0; }
   /* Los datos de la agencia van más chicos que el resto: cuánto, lo decide el ancho del papel. */
   .encabezado { font-size: ${puntosDeAgencia}pt; }
@@ -524,8 +524,18 @@ export function htmlDelTicket(
 }
 
 /** Alto estimado del papel: el contenido es corto y fijo, pero el driver necesita una medida. */
-function altoEnMicrones(): number {
-  return 140_000
+/**
+ * Alto de la página que se le manda a la impresora, en mm. Tiene que ser MAYOR que el ticket más largo:
+ * con 140 mm el comprobante (que con un nombre largo o una dirección que baja de renglón pasa de eso) se
+ * partía en dos páginas y la guillotina cortaba en el medio del pie. Lo que sobra no gasta papel: el
+ * driver recorta el blanco del final («ahorro de papel»), y la guillotina corta recién después de la
+ * última línea más el avance configurado en el driver.
+ */
+export const ALTO_DEL_TICKET_MM = 230
+/** El resumen de pagos es largo: se parte en páginas de este alto, nunca en el medio de un pago. */
+export const ALTO_DEL_RESUMEN_MM = 280
+function altoEnMicrones(altoMm: number): number {
+  return Math.round(altoMm * 1000)
 }
 
 /**
@@ -533,7 +543,7 @@ function altoEnMicrones(): number {
  * corta el papel cuando termina el trabajo, así que pedirle dos copias devuelve los dos tickets
  * pegados. Dos tickets = dos llamadas a esta función, y entre una y otra la guillotina corta.
  */
-async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anchoMm: number, tipo: TipoDeImpresora): Promise<void> {
+async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anchoMm: number, tipo: TipoDeImpresora, altoMm: number): Promise<void> {
   await new Promise<void>((resolver, rechazar) => {
     // `print` puede fallar de tres maneras: llamar al callback con error, tirar en el acto (un
     // nombre de impresora que no existe) o no volver nunca. Las tres tienen que terminar acá, y una
@@ -555,7 +565,7 @@ async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anc
           deviceName,
           printBackground: false,
           margins: { marginType: 'none' },
-          pageSize: tipo === 'comun' ? 'A4' : { width: Math.round(anchoMm * 1000), height: altoEnMicrones() },
+          pageSize: tipo === 'comun' ? 'A4' : { width: Math.round(anchoMm * 1000), height: altoEnMicrones(altoMm) },
           copies: 1,
         },
         (exito, motivo) => terminar(exito ? undefined : new Error(motivo || 'La impresora rechazó el trabajo.')),
@@ -572,7 +582,14 @@ async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anc
  * ya salió y el mostrador tiene que enterarse de que el duplicado no—, y la ventana oculta se cierra
  * siempre.
  */
-async function imprimirHtml(html: string, deviceName: string, anchoMm: number, copias: number, tipo: TipoDeImpresora): Promise<void> {
+async function imprimirHtml(
+  html: string,
+  deviceName: string,
+  anchoMm: number,
+  copias: number,
+  tipo: TipoDeImpresora,
+  altoMm = ALTO_DEL_TICKET_MM,
+): Promise<void> {
   const carpeta = path.join(carpetaDatos(), 'tickets')
   mkdirSync(carpeta, { recursive: true })
   // Un nombre por impresión: dos cobros seguidos pueden estar imprimiendo a la vez y el segundo no
@@ -592,7 +609,7 @@ async function imprimirHtml(html: string, deviceName: string, anchoMm: number, c
       // Entre un ticket y el siguiente se espera: sin la pausa el spooler puede juntar los dos
       // trabajos y volveríamos a la tira sin corte del medio.
       if (copia > 1) await esperar(PAUSA_ENTRE_TICKETS_MS)
-      await imprimirUnTrabajo(ventana, deviceName, anchoMm, tipo)
+      await imprimirUnTrabajo(ventana, deviceName, anchoMm, tipo, altoMm)
     }
   } finally {
     if (!ventana.isDestroyed()) ventana.destroy()
@@ -874,7 +891,7 @@ export async function imprimirResumenDePagos(clienteId: number): Promise<boolean
 
   const html = htmlDelResumenDePagos(cliente, pagos.slice(0, PAGOS_POR_RESUMEN), pagos.length > PAGOS_POR_RESUMEN, config.anchoMm, config.tipo, config.ajusteMm, estiloDe(config))
   try {
-    await imprimirHtml(html, config.impresora, config.anchoMm, 1, config.tipo)
+    await imprimirHtml(html, config.impresora, config.anchoMm, 1, config.tipo, ALTO_DEL_RESUMEN_MM)
     anotarErrorDeImpresion(null)
     return true
   } catch (error) {
@@ -919,7 +936,7 @@ export function htmlDelResumenDePagos(
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Pagos del cliente</title><style>
   @page { margin: 0; }
-  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; ${cssDelTexto(estilo)} font-size: 9.5pt; line-height: 1.3; color: #000; overflow-wrap: anywhere; }
+  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 12mm'}; ${cssDelTexto(estilo)} font-size: 9.5pt; line-height: 1.3; color: #000; overflow-wrap: anywhere; }
   p { margin: 0; }
   hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
   .titulo { font-weight: bold; text-align: center; }
