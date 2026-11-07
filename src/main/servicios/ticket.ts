@@ -764,6 +764,125 @@ export async function imprimirTicketDePago(pagoId: number, copias?: number): Pro
   )
 }
 
+// ---------------------------------------------------------------------------
+// Resumen de pagos de un cliente (botón de la ficha del cliente → Pagos)
+// ---------------------------------------------------------------------------
+
+/** Cuántos pagos entran en un resumen: más largo que esto ya no es un ticket sino un rollo entero. */
+const PAGOS_POR_RESUMEN = 40
+
+interface PagoParaResumen {
+  fecha_iso: string | null
+  fecha: string | null
+  creado_en: string
+  importe: string | null
+  medio: string | null
+  compania: string | null
+  numero_poliza: string | null
+  patente: string | null
+  periodo: string | null
+  periodo_texto: string | null
+  sucursal: string | null
+  usuario_nombre: string | null
+  numero_ticket: string | null
+  observaciones: string | null
+  estado_cobro: string | null
+}
+
+/**
+ * El resumen de los pagos de un cliente para la ticketeadora, con todo lo que el programa sabe de cada
+ * uno (día, importe, medio, compañía, póliza, patente, período, sucursal, quién lo cobró, N.º de
+ * ticket y observaciones). No gasta número de ticket: no es un comprobante de cobro, es una consulta
+ * en papel. Si la impresora no está lista avisa por qué, porque acá la persona lo pidió a mano.
+ */
+export async function imprimirResumenDePagos(clienteId: number): Promise<boolean> {
+  const id = enteroPositivo(clienteId, 'El cliente')
+  const config = impresoraGuardada()
+  if (!config.habilitada || !config.impresora) {
+    throw new ErrorDeNegocio('La ticketeadora no está activa. Elegila en Administración → Impresora y probá de nuevo.')
+  }
+  const cliente = db().prepare(`SELECT nombre, documento, telefono FROM clientes WHERE id = ?`).get(id) as
+    | { nombre: string | null; documento: string | null; telefono: string | null }
+    | undefined
+  if (!cliente) throw new ErrorDeNegocio('No se encontró al cliente. Actualizá la pantalla y probá de nuevo.')
+  const pagos = db()
+    .prepare(
+      `SELECT fecha_iso, fecha, creado_en, importe, medio, compania, numero_poliza, patente, periodo, periodo_texto,
+              COALESCE(sucursal_cobro, sucursal_texto) AS sucursal, usuario_nombre, numero_ticket, observaciones, estado_cobro
+       FROM pagos
+       WHERE cliente_id = @cliente OR poliza_id IN (SELECT id FROM polizas WHERE cliente_id = @cliente)
+       ORDER BY COALESCE(fecha_iso, substr(creado_en, 1, 10)) DESC, id DESC
+       LIMIT ${PAGOS_POR_RESUMEN + 1}`,
+    )
+    .all({ cliente: id }) as PagoParaResumen[]
+  if (pagos.length === 0) throw new ErrorDeNegocio('Este cliente todavía no tiene pagos registrados para imprimir.')
+
+  const html = htmlDelResumenDePagos(cliente, pagos.slice(0, PAGOS_POR_RESUMEN), pagos.length > PAGOS_POR_RESUMEN, config.anchoMm, config.tipo)
+  try {
+    await imprimirHtml(html, config.impresora, config.anchoMm, 1, config.tipo)
+    anotarErrorDeImpresion(null)
+    return true
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : String(error)
+    console.error('[ticket] No se pudo imprimir el resumen de pagos:', mensaje)
+    anotarErrorDeImpresion(mensaje)
+    throw new ErrorDeNegocio(`No se pudo imprimir: ${mensaje}`)
+  }
+}
+
+export function htmlDelResumenDePagos(
+  cliente: { nombre: string | null; documento: string | null; telefono: string | null },
+  pagos: PagoParaResumen[],
+  hayMas: boolean,
+  anchoMm: number,
+  tipo: TipoDeImpresora = 'termica',
+): string {
+  const util = anchoUtilDelTicket(anchoMm, tipo)
+  const comun = tipo === 'comun'
+  const bloques = pagos
+    .map((p) => {
+      const dia = (p.fecha_iso ?? '').trim() || p.creado_en.slice(0, 10)
+      const importe = (p.importe ?? '').trim() ? `$ ${(p.importe ?? '').trim().replace(/^\$\s*/, '')}` : ''
+      return `<div class="pago">
+    ${linea('Fecha', comoFechaCorta(dia))}
+    ${linea('Importe', importe)}
+    ${linea('Medio', (p.medio ?? '').trim())}
+    ${linea('Periodo', comoPeriodo(p.periodo, p.periodo_texto))}
+    ${linea('Compañía', (p.compania ?? '').trim())}
+    ${linea('Póliza', (p.numero_poliza ?? '').trim())}
+    ${linea('Patente', (p.patente ?? '').trim())}
+    ${linea('Sucursal', (p.sucursal ?? '').trim())}
+    ${linea('Cobró', (p.usuario_nombre ?? '').trim())}
+    ${linea('Ticket', (p.numero_ticket ?? '').trim())}
+    ${(p.estado_cobro ?? 'PAGO') !== 'PAGO' ? linea('Estado', String(p.estado_cobro).toLowerCase()) : ''}
+    ${linea('Obs', (p.observaciones ?? '').trim())}
+  </div>`
+    })
+    .join('<hr>')
+  return `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Pagos del cliente</title><style>
+  @page { margin: 0; }
+  body { width: ${util}mm; margin: 0 0 0 ${comun ? MARGEN_HOJA_COMUN_MM : SANGRIA_DEL_TICKET_MM}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-size: 9.5pt; line-height: 1.3; color: #000; overflow-wrap: anywhere; }
+  p { margin: 0; }
+  hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
+  .titulo { font-weight: bold; text-align: center; }
+  .dato { padding: .2mm 0; }
+  .pago { break-inside: avoid; }
+  .pie { margin-top: 3mm; font-size: 7.5pt; }
+</style></head><body>
+  <p class="titulo">RESUMEN DE PAGOS</p>
+  <hr>
+  ${linea('Cliente', (cliente.nombre ?? '').trim())}
+  ${linea('DNI/CUIT', (cliente.documento ?? '').trim())}
+  ${linea('Teléfono', (cliente.telefono ?? '').trim())}
+  ${linea('Impreso', `${comoFechaCorta(new Date().toISOString().slice(0, 10))} ${horaDeRegistro(new Date().toISOString())}`)}
+  <hr>
+  ${bloques}
+  ${hayMas ? `<hr><p class="dato">Se muestran los ${PAGOS_POR_RESUMEN} pagos más recientes.</p>` : ''}
+  <div class="pie"><p>Resumen informativo: no es un comprobante de pago.</p></div>
+</body></html>`
+}
+
 /** El botón «Imprimir una prueba» de Administración → Impresora. */
 export async function imprimirTicketDePrueba(sucursal: string): Promise<void> {
   const config = impresoraGuardada()

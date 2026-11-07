@@ -761,6 +761,15 @@ function rangoDeVigencia(poliza: PolizaDeCliente): string {
 // ---------------------------------------------------------------------------
 
 function PestanaPagos({ ficha }: { ficha: FichaCliente }) {
+  const [imprimiendo, setImprimiendo] = useState(false)
+  const [aviso, setAviso] = useState<{ texto: string; error: boolean } | null>(null)
+  const imprimir = async () => {
+    setImprimiendo(true)
+    setAviso(null)
+    const resultado = await window.dm.impresora.imprimirPagosDeCliente(ficha.id)
+    setImprimiendo(false)
+    setAviso(resultado.ok ? { texto: 'Se mandó a la ticketeadora.', error: false } : { texto: resultado.error, error: true })
+  }
   if (ficha.pagos.length === 0) {
     return (
       <Vacio titulo="Todavía no hay pagos registrados de este cliente.">
@@ -770,6 +779,13 @@ function PestanaPagos({ ficha }: { ficha: FichaCliente }) {
   }
 
   return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {aviso && <span className={cx('text-sm', aviso.error ? 'text-red-600' : 'text-emerald-600')}>{aviso.texto}</span>}
+        <Boton icono="impresora" cargando={imprimiendo} onClick={() => void imprimir()} title="Imprime en la ticketeadora todos los pagos de este cliente, con todos sus datos">
+          Imprimir pagos (ticketeadora)
+        </Boton>
+      </div>
     <Caja>
       <table className="w-full text-sm">
         <thead className="bg-slate-50">
@@ -796,6 +812,7 @@ function PestanaPagos({ ficha }: { ficha: FichaCliente }) {
         </tbody>
       </table>
     </Caja>
+    </div>
   )
 }
 

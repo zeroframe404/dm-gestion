@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.10.1',
     fecha: '2026-11-06',
     cambios: [
+      { tipo: 'agregado', texto: 'Clientes → Pagos: botón «Imprimir pagos (ticketeadora)». Saca en la ticketeadora el resumen de los pagos del cliente con todos sus datos: fecha, importe, medio, período, compañía, póliza, patente, sucursal, quién cobró, número de ticket y observaciones. No gasta número de ticket ni es un comprobante de pago.' },
       { tipo: 'agregado', texto: 'Pólizas: al abrir una póliza hay dos botones nuevos, «Imprimir» y «PDF». Sacan una hoja A4 prolija con todos los datos: el asegurado, la póliza, la vigencia, el riesgo (vehículo, motor, chasis…), observaciones, pagos y siniestros. Imprime en la impresora de documentos elegida en Administración → Impresora, nunca en la ticketeadora. Sale lo que está guardado: si cambiaste algo, guardá antes.' },
       { tipo: 'agregado', texto: 'Planilla del mes: en el detalle de cada fila (el panel de la derecha) hay un botón «Ver ficha del cliente» que abre directo la ficha con sus pólizas, pagos, siniestros y demás.' },
       { tipo: 'modificado', texto: 'Planilla del mes: en un mes ya cerrado ahora también los empleados pueden usar «Registrar pago», para cobrar la cuota atrasada de ese mes (por ejemplo, la de octubre ya cerrado). El resto del mes cerrado sigue siendo sólo para consultar.' },

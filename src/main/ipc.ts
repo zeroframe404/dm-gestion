@@ -166,6 +166,7 @@ import {
   guardarConfiguracionDeImpresora,
   guardarConfiguracionDeImpresoraDeDocumentos,
   guardarDireccionesDeTicket,
+  imprimirResumenDePagos,
   imprimirTicketDePago,
   imprimirTicketDePrueba,
   pedidoDeTicket,
@@ -947,6 +948,10 @@ export function registrarIpc(): void {
   manejar('impresora:imprimirPago', async (pagoId, copias) => {
     exigirEdicion('cartera', 'clientes', 'cobranzas')
     return exito(await imprimirTicketDePago(enteroPositivo(pagoId, 'El pago'), copias))
+  })
+  manejar('impresora:imprimirPagosDeCliente', async (clienteId) => {
+    exigirVista('clientes')
+    return exito(await imprimirResumenDePagos(enteroPositivo(clienteId, 'El cliente')))
   })
   // Corregir el correlativo lo puede hacer cualquiera con sesión, igual que el resto de esta pantalla:
   // es la numeración del papel que tiene esta PC delante.
