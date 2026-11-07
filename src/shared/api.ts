@@ -170,6 +170,8 @@ export interface ApiDm {
     crear: Remota<'polizas:crear'>
     editar: Remota<'polizas:editar'>
     darDeBaja: Remota<'polizas:darDeBaja'>
+    guardarPdf: Remota<'polizas:guardarPdf'>
+    imprimir: Remota<'polizas:imprimir'>
     adjuntos: Remota<'polizas:adjuntos'>
     adjuntarArchivos: Remota<'polizas:adjuntarArchivos'>
     adjuntar: Remota<'polizas:adjuntar'>

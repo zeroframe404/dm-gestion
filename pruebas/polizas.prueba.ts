@@ -17,6 +17,7 @@ import {
   vehiculosDeCliente,
   verPoliza,
 } from '../src/main/servicios/polizas'
+import { polizaParaImprimir } from '../src/main/servicios/imprimirPoliza'
 import { editarRegla, matrizDeCobertura, crearRegla } from '../src/main/servicios/reglas'
 import { cuantasPendientes } from '../src/main/sincronizacion/cola'
 import { MotorDeSincronizacion } from '../src/main/sincronizacion/motor'
@@ -718,4 +719,17 @@ test('los filtros encuentran aunque el catálogo tenga tildes y la hoja no', asy
     const cantidad = listarPolizas({ ...SIN_FILTROS, companias: [compania] }).filas.length
     assert.ok(cantidad > 0, `el filtro de compañía «${compania}» no encontró ninguna póliza`)
   }
+})
+
+test('la póliza se arma para imprimir con todos sus datos y sin escapar mal el texto', async () => {
+  await carteraDePrueba()
+  const activa = listarPolizas(TODOS_LOS_ESTADOS).filas.find((f) => f.estado === 'ACTIVA')!
+  const papel = polizaParaImprimir(activa.id)
+
+  assert.match(papel.html, /<!doctype html>/)
+  assert.ok(papel.html.includes('@page { size: A4'), 'es una hoja A4, no un ticket')
+  assert.ok(papel.html.includes(activa.numero ?? '¿?'), 'lleva el número de póliza')
+  assert.ok(papel.html.includes(activa.clienteNombre ?? '¿?'.replace(/&/g, '&amp;')), 'lleva el asegurado')
+  assert.match(papel.nombreDeArchivo, /^Póliza .+\.pdf$/)
+  assert.doesNotMatch(papel.nombreDeArchivo, /[<>:"/\\|?*]/)
 })

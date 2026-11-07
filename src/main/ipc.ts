@@ -51,6 +51,7 @@ import {
 } from './servicios/cobranzas'
 import { cajaConCache, comisionesConCache, imputadosConCache } from './servicios/cobranzasDesdeCache'
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
+import { polizaParaImprimir } from './servicios/imprimirPoliza'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
 import { leerSnapshotDeMetrica } from './servicios/metricasCache'
 import { estadoDeAlmacenamiento, guardarTotalDeAlmacenamiento } from './servicios/almacenamiento'
@@ -1240,6 +1241,16 @@ export function registrarIpc(): void {
   manejar('polizas:ver', (polizaId) => {
     exigirVista('polizas')
     return exito(verPoliza(enteroPositivo(polizaId, 'La póliza')))
+  })
+  manejar('polizas:guardarPdf', async (polizaId) => {
+    exigirVista('polizas')
+    const papel = polizaParaImprimir(enteroPositivo(polizaId, 'La póliza'))
+    return exito(await guardarHtmlComoPdf(papel.html, papel.nombreDeArchivo, ventanaActual(), 'Guardar la póliza en PDF'))
+  })
+  manejar('polizas:imprimir', async (polizaId) => {
+    exigirVista('polizas')
+    const papel = polizaParaImprimir(enteroPositivo(polizaId, 'La póliza'))
+    return exito(await imprimirHtmlConDialogo(papel.html))
   })
   manejar('polizas:deCliente', (clienteId) => {
     exigirVista('polizas', 'clientes', 'renovaciones')

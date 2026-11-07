@@ -366,6 +366,19 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
   const hayProblema = avisoCobertura?.hayProblema === true
   const bloqueadoPorAviso = hayProblema && !confirmado
 
+  // La póliza completa en papel: sale lo que está guardado, no lo que se está tipeando. Por eso, con
+  // cambios sin guardar, no se ofrece sin avisar: se imprime igual lo guardado y se aclara.
+  const imprimir = async (id: number) => {
+    setError(null)
+    const resultado = await window.dm.polizas.imprimir(id)
+    if (!resultado.ok) setError(resultado.error)
+  }
+  const guardarPdf = async (id: number) => {
+    setError(null)
+    const resultado = await window.dm.polizas.guardarPdf(id)
+    if (!resultado.ok) setError(resultado.error)
+  }
+
   const guardar = async (confirmadoPatenteDeBaja = false) => {
     if (!cliente) {
       setError('Elegí primero el cliente al que le vas a cargar la póliza.')
@@ -449,6 +462,16 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
             <Boton icono="alerta" onClick={() => setRechazoAbierto(true)} disabled={guardando || !puedeAvisarRechazo}>
               Avisar rechazo del débito
             </Boton>
+          )}
+          {enEdicion && polizaId !== null && (
+            <>
+              <Boton icono="descargar" onClick={() => void guardarPdf(polizaId)} disabled={guardando} title="Guarda la póliza con todos sus datos en un PDF">
+                PDF
+              </Boton>
+              <Boton icono="impresora" onClick={() => void imprimir(polizaId)} disabled={guardando} title="Imprime la póliza completa en la impresora de documentos">
+                Imprimir
+              </Boton>
+            </>
           )}
           {enEdicion && poliza?.estado !== 'BAJA' && (
             <Boton variante="peligro" icono="cerrar" onClick={() => setBajaAbierta(true)} disabled={guardando || !puedeEditar}>
