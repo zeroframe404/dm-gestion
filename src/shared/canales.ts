@@ -621,6 +621,10 @@ export interface Canales {
   'polizas:editar': (polizaId: number, datos: DatosDePoliza) => Resultado<PolizaDeCliente>
   'polizas:darDeBaja': (polizaId: number, datos: DatosDeBaja) => Resultado<null>
   /** Fotos y documentos de la póliza (12.6): viven en el VPS y se ven desde cualquier computadora. */
+  /** Abre el diálogo «Guardar como» con la póliza completa en PDF. Devuelve la ruta o null si se canceló. */
+  'polizas:guardarPdf': (polizaId: number) => Resultado<{ ruta: string | null }>
+  /** Manda la póliza completa a la impresora de documentos (A4), nunca a la ticketeadora. */
+  'polizas:imprimir': (polizaId: number) => Resultado<boolean>
   'polizas:adjuntos': (polizaId: number) => Resultado<AdjuntoDePoliza[]>
   'polizas:adjuntarArchivos': (polizaId: number, archivos: ArchivoParaAdjuntar[]) => Resultado<AdjuntoDePoliza[]>
   /** Con rutas del disco (el explorador de archivos, o la prueba de humo); `null` abre el explorador. */

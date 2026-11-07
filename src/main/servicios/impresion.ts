@@ -56,9 +56,10 @@ export async function guardarHtmlComoPdf(
   html: string,
   nombreSugerido: string,
   ventanaPadre: BrowserWindow | null,
+  titulo = 'Guardar el presupuesto en PDF',
 ): Promise<{ ruta: string | null }> {
   const opciones = {
-    title: 'Guardar el presupuesto en PDF',
+    title: titulo,
     defaultPath: nombreSugerido,
     filters: [
       { name: 'PDF', extensions: ['pdf'] },
