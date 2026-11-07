@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.10.1',
     fecha: '2026-11-06',
     cambios: [
+      { tipo: 'agregado', texto: 'Administración → Impresora: «Tipografía del ticket» (Courier New, Lucida Console o Consolas) e «Intensidad del texto» (Normal a Máxima), para que las letras chicas del ticket salgan más oscuras y parejas sin tocar el driver de Windows. Se prueba con «Imprimir una prueba».' },
       { tipo: 'agregado', texto: 'Clientes → Pagos: cada pago tiene su botón «Imprimir», que saca en la ticketeadora el comprobante de ese pago con el mismo número de ticket que ya tenía (no gasta uno nuevo).' },
       { tipo: 'corregido', texto: 'Ticketeadora: el ticket ya no sale corrido hacia la derecha ni se cortan los nombres. Si en tu impresora todavía queda movido, en Administración → Impresora hay un «Ajuste horizontal del texto (mm)» para centrarlo.' },
       { tipo: 'corregido', texto: 'Ticketeadora: el texto del ticket ocupa un poco menos de ancho, para que no se corten las palabras en el borde derecho del papel.' },

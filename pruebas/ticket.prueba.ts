@@ -12,6 +12,7 @@ import {
   htmlDelTicket,
   puntosDelEncabezado,
   SANGRIA_DEL_TICKET_MM,
+  cssDelTexto,
   margenIzquierdoDelTicket,
   type DatosDeTicket,
 } from '../src/main/servicios/ticket'
@@ -443,4 +444,16 @@ test('el ticket arranca pegado al margen del driver y el ajuste lo corre a mano'
   assert.equal(margenIzquierdoDelTicket('comun', -3), 15, 'en la hoja A4 el ajuste de la térmica no cuenta')
   const html = htmlDelTicket(ticketDeEjemplo(), 80, 'termica', -2.5)
   assert.ok(html.includes('margin: 0 0 0 -2.5mm'), 'el ajuste llega al papel')
+})
+
+test('la tipografía y la intensidad del ticket se eligen desde el programa y llegan al papel', () => {
+  assert.equal(cssDelTexto({ fuente: 'courier', intensidad: 0 }), 'font-family: "Courier New", monospace;')
+  assert.ok(cssDelTexto({ fuente: 'lucida', intensidad: 2 }).includes('"Lucida Console"'))
+  assert.ok(cssDelTexto({ fuente: 'lucida', intensidad: 2 }).includes('-webkit-text-stroke: 0.4px'))
+  // Un valor fuera de rango no rompe el CSS.
+  assert.ok(!cssDelTexto({ fuente: 'courier', intensidad: 99 }).includes('NaN'))
+  const html = htmlDelTicket(ticketDeEjemplo(), 80, 'termica', 0, { fuente: 'consolas', intensidad: 3 })
+  assert.ok(html.includes('Consolas') && html.includes('-webkit-text-stroke: 0.6px'))
+  // Sin elegir nada sale como siempre.
+  assert.ok(htmlDelTicket(ticketDeEjemplo(), 80).includes('font-family: "Courier New", monospace;'))
 })

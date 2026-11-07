@@ -2494,6 +2494,9 @@ export interface ConfigImpresora {
   anchoMm: number
   /** Corrimiento horizontal del texto en mm (+ derecha, − izquierda); 0 por defecto. */
   ajusteMm: number
+  fuente: FuenteDelTicket
+  /** Qué tan grueso sale el trazo del texto (0 a 3): compensa una densidad baja del driver. */
+  intensidad: number
   /** Cuántas copias del ticket salen por pago (1 o 2). Con «preguntar» activado se puede elegir en el momento. */
   copias: number
   /** El número que va a llevar el próximo ticket que se imprima. Sube solo; se puede corregir a mano. */
@@ -2510,6 +2513,16 @@ export interface ConfigImpresora {
   ultimoError: string | null
 }
 
+/** Tipografía del ticket. Todas son monoespaciadas de Windows; Lucida Console y Consolas tienen trazos más gruesos que Courier New. */
+export type FuenteDelTicket = 'courier' | 'lucida' | 'consolas'
+export const FUENTES_DEL_TICKET: ReadonlyArray<{ id: FuenteDelTicket; nombre: string }> = [
+  { id: 'courier', nombre: 'Courier New (la de siempre)' },
+  { id: 'lucida', nombre: 'Lucida Console (trazo más grueso)' },
+  { id: 'consolas', nombre: 'Consolas (trazo grueso, más angosta)' },
+]
+/** Cuánto se engrosa el trazo del texto: 0 = normal, 3 = lo máximo. */
+export const INTENSIDAD_MAXIMA_DEL_TICKET = 3
+
 export interface DatosDeImpresora {
   habilitada: boolean
   /** Sin mandarlo se conserva lo guardado (térmica si nunca se eligió). */
@@ -2519,6 +2532,10 @@ export interface DatosDeImpresora {
   anchoMm: number
   /** Sin mandarlo se conserva lo guardado. */
   ajusteMm?: number
+  /** Sin mandarlo se conserva lo guardado. */
+  fuente?: FuenteDelTicket
+  /** Sin mandarlo se conserva lo guardado. 0 a INTENSIDAD_MAXIMA_DEL_TICKET. */
+  intensidad?: number
   copias: number
 }
 
