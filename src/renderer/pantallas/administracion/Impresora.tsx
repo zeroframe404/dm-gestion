@@ -24,6 +24,7 @@ export function Impresora() {
   const [preguntar, setPreguntar] = useState(true)
   const [impresora, setImpresora] = useState('')
   const [anchoMm, setAnchoMm] = useState('80')
+  const [ajusteMm, setAjusteMm] = useState('0')
   const [copias, setCopias] = useState(1)
   const [documentos, setDocumentos] = useState('')
 
@@ -34,6 +35,7 @@ export function Impresora() {
     setPreguntar(config.preguntar)
     setImpresora(config.impresora ?? config.predeterminada ?? '')
     setAnchoMm(String(config.anchoMm))
+    setAjusteMm(String(config.ajusteMm))
     setCopias(config.copias)
     setDocumentos(config.impresoraDeDocumentos ?? '')
   }, [])
@@ -54,7 +56,7 @@ export function Impresora() {
     setGuardando(true)
     setError(null)
     setAviso(null)
-    const resultado = await window.dm.impresora.guardar({ habilitada, tipo, preguntar, impresora, anchoMm: Number(anchoMm), copias })
+    const resultado = await window.dm.impresora.guardar({ habilitada, tipo, preguntar, impresora, anchoMm: Number(anchoMm), ajusteMm: Number(ajusteMm), copias })
     setGuardando(false)
     if (resultado.ok) {
       aplicar(resultado.datos)
@@ -113,6 +115,7 @@ export function Impresora() {
     preguntar !== estado.preguntar ||
     impresora !== (estado.impresora ?? '') ||
     Number(anchoMm) !== estado.anchoMm ||
+    Number(ajusteMm) !== estado.ajusteMm ||
     copias !== estado.copias
 
   return (
@@ -235,6 +238,20 @@ export function Impresora() {
             }
             className="max-w-40"
           />
+
+          {tipo === 'termica' && (
+            <Campo
+              etiqueta="Ajuste horizontal del texto (mm)"
+              type="number"
+              min={-15}
+              max={15}
+              step={0.5}
+              value={ajusteMm}
+              onChange={(evento) => setAjusteMm(evento.target.value)}
+              ayuda="Si el ticket sale corrido hacia la derecha o se cortan los nombres, probá con un número negativo (−2, −3…); si sale pegado al borde izquierdo, uno positivo. Imprimí una prueba después de cada cambio."
+              className="max-w-40"
+            />
+          )}
 
           <div>
             <span className="mb-1.5 block text-sm font-medium text-slate-700">Cantidad de comprobantes por pago</span>

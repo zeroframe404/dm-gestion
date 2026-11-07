@@ -33,6 +33,9 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.10.1',
     fecha: '2026-11-06',
     cambios: [
+      { tipo: 'agregado', texto: 'Clientes → Pagos: cada pago tiene su botón «Imprimir», que saca en la ticketeadora el comprobante de ese pago con el mismo número de ticket que ya tenía (no gasta uno nuevo).' },
+      { tipo: 'corregido', texto: 'Ticketeadora: el ticket ya no sale corrido hacia la derecha ni se cortan los nombres. Si en tu impresora todavía queda movido, en Administración → Impresora hay un «Ajuste horizontal del texto (mm)» para centrarlo.' },
+      { tipo: 'modificado', texto: 'Ticketeadora: el texto sale más oscuro y a la resolución propia de la térmica (203 dpi), para que se lea más nítido.' },
       { tipo: 'agregado', texto: 'Clientes → Pagos: botón «Imprimir pagos (ticketeadora)». Saca en la ticketeadora el resumen de los pagos del cliente con todos sus datos: fecha, importe, medio, período, compañía, póliza, patente, sucursal, quién cobró, número de ticket y observaciones. No gasta número de ticket ni es un comprobante de pago.' },
       { tipo: 'agregado', texto: 'Pólizas: al abrir una póliza hay dos botones nuevos, «Imprimir» y «PDF». Sacan una hoja A4 prolija con todos los datos: el asegurado, la póliza, la vigencia, el riesgo (vehículo, motor, chasis…), observaciones, pagos y siniestros. Imprime en la impresora de documentos elegida en Administración → Impresora, nunca en la ticketeadora. Sale lo que está guardado: si cambiaste algo, guardá antes.' },
       { tipo: 'agregado', texto: 'Planilla del mes: en el detalle de cada fila (el panel de la derecha) hay un botón «Ver ficha del cliente» que abre directo la ficha con sus pólizas, pagos, siniestros y demás.' },
