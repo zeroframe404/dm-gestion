@@ -20,7 +20,7 @@ import { BrowserWindow } from 'electron'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { claveDeSucursal, sucursalCanonica } from '../../shared/sucursales'
-import type { ConfigImpresora, DatosDeImpresora, DireccionDeSucursal, PedidoDeTicket, TipoDeImpresora } from '../../shared/tipos'
+import type { FuenteDelTicket, ConfigImpresora, DatosDeImpresora, DireccionDeSucursal, PedidoDeTicket, TipoDeImpresora } from '../../shared/tipos'
 import { fechaDeVencimiento, periodoSiguiente } from '../../shared/semaforo'
 import { db } from '../db/base'
 import { esDemo } from '../canal'
@@ -167,6 +167,8 @@ export async function configuracionDeImpresora(): Promise<ConfigImpresora> {
     impresora: guardada.impresora,
     anchoMm: guardada.anchoMm,
     ajusteMm: guardada.ajusteMm,
+    fuente: guardada.fuente,
+    intensidad: guardada.intensidad,
     copias: guardada.copias,
     impresoraDeDocumentos: impresoraDeDocumentos(),
     proximoNumeroDeTicket: proximoNumeroDeTicket(),
@@ -392,6 +394,28 @@ export function margenIzquierdoDelTicket(tipo: TipoDeImpresora, ajusteMm = 0): n
   return ajusteMm
 }
 
+/** Cómo se dibuja el texto: tipografía y cuánto se engrosa el trazo. Es lo único de la «calidad» que controla el programa. */
+export interface EstiloDelTexto {
+  fuente: FuenteDelTicket
+  intensidad: number
+}
+const ESTILO_NORMAL: EstiloDelTexto = { fuente: 'courier', intensidad: 0 }
+const FAMILIAS: Record<FuenteDelTicket, string> = {
+  courier: '"Courier New", monospace',
+  lucida: '"Lucida Console", "Courier New", monospace',
+  consolas: 'Consolas, "Courier New", monospace',
+}
+/** Grosor extra del trazo, en px, por nivel de intensidad: engrosa cada letra sin tocar su ancho ni el de las líneas. */
+const GROSOR_POR_INTENSIDAD = [0, 0.2, 0.4, 0.6]
+export function cssDelTexto(estilo: EstiloDelTexto): string {
+  const grosor = GROSOR_POR_INTENSIDAD[Math.min(Math.max(Math.trunc(estilo.intensidad) || 0, 0), GROSOR_POR_INTENSIDAD.length - 1)] ?? 0
+  const trazo = grosor > 0 ? ` -webkit-text-stroke: ${grosor}px #000;` : ''
+  return `font-family: ${FAMILIAS[estilo.fuente] ?? FAMILIAS.courier};${trazo}`
+}
+function estiloDe(config: { fuente: FuenteDelTicket; intensidad: number }): EstiloDelTexto {
+  return { fuente: config.fuente, intensidad: config.intensidad }
+}
+
 /** Margen de la hoja A4 donde se apoya el comprobante cuando se imprime en una impresora común. */
 const MARGEN_HOJA_COMUN_MM = 15
 
@@ -431,7 +455,13 @@ export function puntosDelEncabezado(utilMm: number, caracteresDeLaLineaMasLarga:
  * Nada queda pegado al borde derecho y nada se sale del ancho útil: lo que no entra baja de renglón,
  * que en un ticket se lee igual, mientras que lo que se pasa del cabezal directamente no existe.
  */
-export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number, tipo: TipoDeImpresora = 'termica', ajusteMm = 0): string {
+export function htmlDelTicket(
+  datos: DatosDeTicket,
+  anchoMm: number,
+  tipo: TipoDeImpresora = 'termica',
+  ajusteMm = 0,
+  estilo: EstiloDelTexto = ESTILO_NORMAL,
+): string {
   const util = anchoUtilDelTicket(anchoMm, tipo)
   const comun = tipo === 'comun'
   const agencia = datosDeLaAgencia()
@@ -450,7 +480,7 @@ export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number, tipo: TipoD
   @page { margin: 0; }
   /* Sin centrar y con sangría a la izquierda: la reserva del cabezal queda toda del lado que se recorta.
      En una hoja A4 el comprobante va arriba a la izquierda, con margen normal de hoja. */
-  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
+  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; ${cssDelTexto(estilo)} font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
   p { margin: 0; }
   /* Los datos de la agencia van más chicos que el resto: cuánto, lo decide el ancho del papel. */
   .encabezado { font-size: ${puntosDeAgencia}pt; }
@@ -587,7 +617,7 @@ export async function imprimirTicketSiCorresponde(datos: DatosDeTicket, copias?:
   if (!config.habilitada || !config.impresora) return false
   const cantidad = comoCantidadDeCopias(copias, config.copias)
   try {
-    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo, config.ajusteMm), config.impresora, config.anchoMm, cantidad, config.tipo)
+    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo, config.ajusteMm, estiloDe(config)), config.impresora, config.anchoMm, cantidad, config.tipo)
     anotarErrorDeImpresion(null)
     return true
   } catch (error) {
@@ -842,7 +872,7 @@ export async function imprimirResumenDePagos(clienteId: number): Promise<boolean
     .all({ cliente: id }) as PagoParaResumen[]
   if (pagos.length === 0) throw new ErrorDeNegocio('Este cliente todavía no tiene pagos registrados para imprimir.')
 
-  const html = htmlDelResumenDePagos(cliente, pagos.slice(0, PAGOS_POR_RESUMEN), pagos.length > PAGOS_POR_RESUMEN, config.anchoMm, config.tipo, config.ajusteMm)
+  const html = htmlDelResumenDePagos(cliente, pagos.slice(0, PAGOS_POR_RESUMEN), pagos.length > PAGOS_POR_RESUMEN, config.anchoMm, config.tipo, config.ajusteMm, estiloDe(config))
   try {
     await imprimirHtml(html, config.impresora, config.anchoMm, 1, config.tipo)
     anotarErrorDeImpresion(null)
@@ -862,6 +892,7 @@ export function htmlDelResumenDePagos(
   anchoMm: number,
   tipo: TipoDeImpresora = 'termica',
   ajusteMm = 0,
+  estilo: EstiloDelTexto = ESTILO_NORMAL,
 ): string {
   const util = anchoUtilDelTicket(anchoMm, tipo)
   const comun = tipo === 'comun'
@@ -888,7 +919,7 @@ export function htmlDelResumenDePagos(
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Pagos del cliente</title><style>
   @page { margin: 0; }
-  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-size: 9.5pt; line-height: 1.3; color: #000; overflow-wrap: anywhere; }
+  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; ${cssDelTexto(estilo)} font-size: 9.5pt; line-height: 1.3; color: #000; overflow-wrap: anywhere; }
   p { margin: 0; }
   hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
   .titulo { font-weight: bold; text-align: center; }
@@ -935,7 +966,7 @@ export async function imprimirTicketDePrueba(sucursal: string): Promise<void> {
     proximoVencimiento: comoFechaLarga(fechaDeVencimiento(periodoSiguiente(hoy.slice(0, 7)), ahora.getDate()) ?? ''),
   }
   try {
-    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo, config.ajusteMm), config.impresora, config.anchoMm, 1, config.tipo)
+    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo, config.ajusteMm, estiloDe(config)), config.impresora, config.anchoMm, 1, config.tipo)
     anotarErrorDeImpresion(null)
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : String(error)

@@ -6,7 +6,7 @@
 // La pantalla la abre cualquiera, con el rol que sea: la impresora es la que tiene esta PC delante y
 // quien cobra es quien necesita apagarla, cambiarla o dejar de gastar papel sin esperar a nadie.
 import { useCallback, useEffect, useState } from 'react'
-import type { ConfigImpresora, DireccionDeSucursal, TipoDeImpresora } from '../../../shared/tipos'
+import { FUENTES_DEL_TICKET, type ConfigImpresora, type DireccionDeSucursal, type FuenteDelTicket, type TipoDeImpresora } from '../../../shared/tipos'
 import { Alerta, Boton, Campo, Cargando, Selector, Tarjeta, cx } from '../../componentes/ui'
 import { useUsuarioActual } from '../../contexto/Sesion'
 
@@ -25,6 +25,8 @@ export function Impresora() {
   const [impresora, setImpresora] = useState('')
   const [anchoMm, setAnchoMm] = useState('80')
   const [ajusteMm, setAjusteMm] = useState('0')
+  const [fuente, setFuente] = useState<FuenteDelTicket>('courier')
+  const [intensidad, setIntensidad] = useState(0)
   const [copias, setCopias] = useState(1)
   const [documentos, setDocumentos] = useState('')
 
@@ -36,6 +38,8 @@ export function Impresora() {
     setImpresora(config.impresora ?? config.predeterminada ?? '')
     setAnchoMm(String(config.anchoMm))
     setAjusteMm(String(config.ajusteMm))
+    setFuente(config.fuente)
+    setIntensidad(config.intensidad)
     setCopias(config.copias)
     setDocumentos(config.impresoraDeDocumentos ?? '')
   }, [])
@@ -56,7 +60,7 @@ export function Impresora() {
     setGuardando(true)
     setError(null)
     setAviso(null)
-    const resultado = await window.dm.impresora.guardar({ habilitada, tipo, preguntar, impresora, anchoMm: Number(anchoMm), ajusteMm: Number(ajusteMm), copias })
+    const resultado = await window.dm.impresora.guardar({ habilitada, tipo, preguntar, impresora, anchoMm: Number(anchoMm), ajusteMm: Number(ajusteMm), fuente, intensidad, copias })
     setGuardando(false)
     if (resultado.ok) {
       aplicar(resultado.datos)
@@ -116,6 +120,8 @@ export function Impresora() {
     impresora !== (estado.impresora ?? '') ||
     Number(anchoMm) !== estado.anchoMm ||
     Number(ajusteMm) !== estado.ajusteMm ||
+    fuente !== estado.fuente ||
+    intensidad !== estado.intensidad ||
     copias !== estado.copias
 
   return (
@@ -252,6 +258,48 @@ export function Impresora() {
               className="max-w-40"
             />
           )}
+
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
+              Tipografía del ticket
+              <select
+                value={fuente}
+                onChange={(evento) => setFuente(evento.target.value as FuenteDelTicket)}
+                className="max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900"
+              >
+                {FUENTES_DEL_TICKET.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nombre}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-normal text-slate-500">
+                Si las letras chicas salen con huecos o desparejas, probá Lucida Console: tiene el trazo más grueso.
+              </span>
+            </label>
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-slate-700">Intensidad del texto</span>
+              <div className="flex flex-wrap gap-2">
+                {[0, 1, 2, 3].map((nivel) => (
+                  <button
+                    key={nivel}
+                    type="button"
+                    onClick={() => setIntensidad(nivel)}
+                    className={cx(
+                      'rounded-lg border px-4 py-2 text-sm font-semibold',
+                      intensidad === nivel ? 'border-marino-500 bg-marino-50 text-marino-900 ring-2 ring-marino-500/20' : 'border-slate-200 text-slate-700 hover:bg-slate-50',
+                    )}
+                  >
+                    {nivel === 0 ? 'Normal' : nivel === 1 ? 'Media' : nivel === 2 ? 'Alta' : 'Máxima'}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500">
+                Engrosa el trazo de las letras para que se vea más oscuro sin tocar el driver. Subila de a un nivel e imprimí una prueba; si se empasta, bajala.
+                La densidad y la velocidad propias de la impresora se cambian en las Preferencias de impresión de Windows: el programa no las puede tocar.
+              </p>
+            </div>
+          </div>
 
           <div>
             <span className="mb-1.5 block text-sm font-medium text-slate-700">Cantidad de comprobantes por pago</span>

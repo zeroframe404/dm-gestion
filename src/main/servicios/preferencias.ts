@@ -3,7 +3,7 @@
 // a plantillas.ts en la Fase 9, que es cuando dejaron de ser una sola.
 import { ENCABEZADOS_DE_TICKET_DE_LA_DEMO } from '../../shared/demo'
 import { claveDeSucursal, mismaSucursal, sucursalCanonica, type NombreDeSucursal } from '../../shared/sucursales'
-import type { DatosDeImpresora, TipoDeImpresora } from '../../shared/tipos'
+import { INTENSIDAD_MAXIMA_DEL_TICKET, type DatosDeImpresora, type FuenteDelTicket, type TipoDeImpresora } from '../../shared/tipos'
 import { esDemo } from '../canal'
 import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
@@ -48,6 +48,8 @@ export interface ImpresoraGuardada {
   anchoMm: number
   /** Cuánto se corre el texto del ticket hacia la derecha (+) o la izquierda (−), en mm. Compensa el margen propio del driver. */
   ajusteMm: number
+  fuente: FuenteDelTicket
+  intensidad: number
   /** Entre 1 y COPIAS_MAXIMAS. */
   copias: number
 }
@@ -59,6 +61,8 @@ const SIN_IMPRESORA: ImpresoraGuardada = {
   impresora: null,
   anchoMm: ANCHO_TICKET_POR_DEFECTO,
   ajusteMm: 0,
+  fuente: 'courier',
+  intensidad: 0,
   copias: COPIAS_POR_DEFECTO,
 }
 
@@ -68,6 +72,14 @@ function comoAjuste(valor: unknown): number {
   const numero = Number(valor)
   if (!Number.isFinite(numero) || Math.abs(numero) > AJUSTE_MAXIMO_MM) return 0
   return Math.round(numero * 2) / 2
+}
+
+function comoFuente(valor: unknown): FuenteDelTicket {
+  return valor === 'lucida' || valor === 'consolas' ? valor : 'courier'
+}
+function comoIntensidad(valor: unknown): number {
+  const numero = Math.trunc(Number(valor))
+  return Number.isFinite(numero) && numero >= 0 && numero <= INTENSIDAD_MAXIMA_DEL_TICKET ? numero : 0
 }
 
 function comoCantidadDeCopias(valor: unknown): number {
@@ -90,6 +102,8 @@ export function impresoraGuardada(): ImpresoraGuardada {
       impresora: typeof datos.impresora === 'string' && datos.impresora ? datos.impresora : null,
       anchoMm: typeof datos.anchoMm === 'number' && datos.anchoMm >= 40 && datos.anchoMm <= 120 ? datos.anchoMm : ANCHO_TICKET_POR_DEFECTO,
       ajusteMm: comoAjuste(datos.ajusteMm),
+      fuente: comoFuente(datos.fuente),
+      intensidad: comoIntensidad(datos.intensidad),
       // Configuraciones anteriores a que existieran las copias no traen la clave: una copia, como
       // siempre salió.
       copias: comoCantidadDeCopias(datos.copias),
@@ -122,6 +136,8 @@ export function guardarImpresora(datos: DatosDeImpresora): ImpresoraGuardada {
     impresora: impresora || null,
     anchoMm: ancho,
     ajusteMm: datos.ajusteMm === undefined ? impresoraGuardada().ajusteMm : comoAjuste(datos.ajusteMm),
+    fuente: datos.fuente === undefined ? impresoraGuardada().fuente : comoFuente(datos.fuente),
+    intensidad: datos.intensidad === undefined ? impresoraGuardada().intensidad : comoIntensidad(datos.intensidad),
     copias,
   }
   guardar(CLAVE_IMPRESORA, JSON.stringify(nueva))
