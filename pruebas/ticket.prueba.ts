@@ -12,6 +12,7 @@ import {
   htmlDelTicket,
   puntosDelEncabezado,
   SANGRIA_DEL_TICKET_MM,
+  margenIzquierdoDelTicket,
   type DatosDeTicket,
 } from '../src/main/servicios/ticket'
 import {
@@ -433,4 +434,13 @@ test('el resumen de pagos para la ticketeadora lleva todos los datos del pago y 
   }
   assert.ok(html.includes('PÉREZ &amp; HIJOS &lt;SA&gt;'), 'el nombre se escapa')
   assert.ok(html.includes('pagos más recientes'), 'avisa cuando hay más de los que entran')
+})
+
+test('el ticket arranca pegado al margen del driver y el ajuste lo corre a mano', () => {
+  // Sin ajuste no se suma nada propio: el driver ya agrega su margen izquierdo.
+  assert.equal(margenIzquierdoDelTicket('termica'), 0)
+  assert.equal(margenIzquierdoDelTicket('termica', -3), -3)
+  assert.equal(margenIzquierdoDelTicket('comun', -3), 15, 'en la hoja A4 el ajuste de la térmica no cuenta')
+  const html = htmlDelTicket(ticketDeEjemplo(), 80, 'termica', -2.5)
+  assert.ok(html.includes('margin: 0 0 0 -2.5mm'), 'el ajuste llega al papel')
 })

@@ -770,6 +770,17 @@ function PestanaPagos({ ficha }: { ficha: FichaCliente }) {
     setImprimiendo(false)
     setAviso(resultado.ok ? { texto: 'Se mandó a la ticketeadora.', error: false } : { texto: resultado.error, error: true })
   }
+  // El comprobante de UN pago, con el mismo número de ticket que ya tenía (es un duplicado, no un cobro nuevo).
+  const [imprimiendoPago, setImprimiendoPago] = useState<number | null>(null)
+  const imprimirPago = async (pagoId: number) => {
+    setImprimiendoPago(pagoId)
+    setAviso(null)
+    const resultado = await window.dm.impresora.imprimirPago(pagoId, 1)
+    setImprimiendoPago(null)
+    if (!resultado.ok) setAviso({ texto: resultado.error, error: true })
+    else if (!resultado.datos) setAviso({ texto: 'No se imprimió: revisá que la ticketeadora esté activa en Administración → Impresora.', error: true })
+    else setAviso({ texto: 'Se mandó el comprobante a la ticketeadora.', error: false })
+  }
   if (ficha.pagos.length === 0) {
     return (
       <Vacio titulo="Todavía no hay pagos registrados de este cliente.">
@@ -796,6 +807,7 @@ function PestanaPagos({ ficha }: { ficha: FichaCliente }) {
             <th className={TH}>Compañía</th>
             <th className={TH}>Póliza</th>
             <th className={TH}>Período</th>
+            <th className={TH}>Comprobante</th>
           </tr>
         </thead>
         <tbody>
@@ -807,6 +819,18 @@ function PestanaPagos({ ficha }: { ficha: FichaCliente }) {
               <td className={TD}>{pago.compania ?? '—'}</td>
               <td className={cx(TD, 'font-mono text-xs')}>{pago.numeroPoliza ?? '—'}</td>
               <td className={cx(TD, 'tabular-nums')}>{pago.periodo ?? '—'}</td>
+              <td className={TD}>
+                <Boton
+                  tamano="sm"
+                  variante="fantasma"
+                  icono="impresora"
+                  cargando={imprimiendoPago === pago.id}
+                  onClick={() => void imprimirPago(pago.id)}
+                  title="Imprime el comprobante de este pago en la ticketeadora"
+                >
+                  Imprimir
+                </Boton>
+              </td>
             </tr>
           ))}
         </tbody>

@@ -166,6 +166,7 @@ export async function configuracionDeImpresora(): Promise<ConfigImpresora> {
     preguntar: guardada.preguntar,
     impresora: guardada.impresora,
     anchoMm: guardada.anchoMm,
+    ajusteMm: guardada.ajusteMm,
     copias: guardada.copias,
     impresoraDeDocumentos: impresoraDeDocumentos(),
     proximoNumeroDeTicket: proximoNumeroDeTicket(),
@@ -360,8 +361,9 @@ function linea(etiqueta: string, valor: string): string {
 /**
  * Una térmica no imprime todo el ancho del rollo: en una POS-80 el papel mide 80 mm pero el cabezal
  * cubre unos 72, y lo que se dibuje más allá no sale. Se reservan 10 —los 8 que el cabezal no alcanza
- * más 2 de resguardo, porque cada driver corre el margen a su gusto— y toda esa reserva queda del lado
- * derecho: el texto arranca pegado a la izquierda en vez de ir centrado.
+ * más 2 de resguardo, porque cada driver corre el margen a su gusto— y esa reserva queda del lado
+ * derecho. El texto arranca donde el driver lo deja (ver `margenIzquierdoDelTicket`); si en una
+ * impresora queda corrido, se compensa con el ajuste de Administración → Impresora.
  *
  * Centrado, la reserva se repartía entre los dos lados y el final de cada línea caía justo sobre el
  * borde que se recorta. Eso es lo que en Lanús dejaba la hora sin los minutos y el teléfono cortado a
@@ -377,6 +379,17 @@ export function anchoUtilDelTicket(anchoMm: number, tipo: TipoDeImpresora = 'ter
   // En una impresora común no hay cabezal que recorte el borde: el comprobante ocupa su ancho entero.
   if (tipo === 'comun') return Math.max(anchoMm, 30)
   return Math.max(anchoMm - RESERVA_DEL_CABEZAL_MM - SANGRIA_DEL_TICKET_MM, 30)
+}
+
+/**
+ * Dónde arranca el texto, contado desde el borde izquierdo del papel. En térmica es CERO más el ajuste
+ * que se cargue en Administración → Impresora: cada driver agrega su propio margen izquierdo (los
+ * 1,5 mm fijos de antes se sumaban a ése y corrían todo el ticket hacia la derecha, hasta cortar lo que
+ * quedaba contra el borde derecho). Con un ajuste negativo el texto se corre a la izquierda.
+ */
+export function margenIzquierdoDelTicket(tipo: TipoDeImpresora, ajusteMm = 0): number {
+  if (tipo === 'comun') return MARGEN_HOJA_COMUN_MM
+  return ajusteMm
 }
 
 /** Margen de la hoja A4 donde se apoya el comprobante cuando se imprime en una impresora común. */
@@ -418,7 +431,7 @@ export function puntosDelEncabezado(utilMm: number, caracteresDeLaLineaMasLarga:
  * Nada queda pegado al borde derecho y nada se sale del ancho útil: lo que no entra baja de renglón,
  * que en un ticket se lee igual, mientras que lo que se pasa del cabezal directamente no existe.
  */
-export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number, tipo: TipoDeImpresora = 'termica'): string {
+export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number, tipo: TipoDeImpresora = 'termica', ajusteMm = 0): string {
   const util = anchoUtilDelTicket(anchoMm, tipo)
   const comun = tipo === 'comun'
   const agencia = datosDeLaAgencia()
@@ -437,7 +450,7 @@ export function htmlDelTicket(datos: DatosDeTicket, anchoMm: number, tipo: TipoD
   @page { margin: 0; }
   /* Sin centrar y con sangría a la izquierda: la reserva del cabezal queda toda del lado que se recorta.
      En una hoja A4 el comprobante va arriba a la izquierda, con margen normal de hoja. */
-  body { width: ${util}mm; margin: 0 0 0 ${comun ? MARGEN_HOJA_COMUN_MM : SANGRIA_DEL_TICKET_MM}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
+  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-weight: ${comun ? 'normal' : 'bold'}; font-size: 10pt; line-height: 1.35; color: #000; overflow-wrap: anywhere; }
   p { margin: 0; }
   /* Los datos de la agencia van más chicos que el resto: cuánto, lo decide el ancho del papel. */
   .encabezado { font-size: ${puntosDeAgencia}pt; }
@@ -512,6 +525,8 @@ async function imprimirUnTrabajo(ventana: BrowserWindow, deviceName: string, anc
           deviceName,
           printBackground: false,
           margins: { marginType: 'none' },
+          // Las térmicas son de 203 dpi: pedirlo así evita que Chromium reescale el texto y lo deje borroso.
+          ...(tipo === 'comun' ? {} : { dpi: { horizontal: 203, vertical: 203 } }),
           pageSize: tipo === 'comun' ? 'A4' : { width: Math.round(anchoMm * 1000), height: altoEnMicrones() },
           copies: 1,
         },
@@ -574,7 +589,7 @@ export async function imprimirTicketSiCorresponde(datos: DatosDeTicket, copias?:
   if (!config.habilitada || !config.impresora) return false
   const cantidad = comoCantidadDeCopias(copias, config.copias)
   try {
-    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo), config.impresora, config.anchoMm, cantidad, config.tipo)
+    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo, config.ajusteMm), config.impresora, config.anchoMm, cantidad, config.tipo)
     anotarErrorDeImpresion(null)
     return true
   } catch (error) {
@@ -603,6 +618,8 @@ interface PagoParaTicket {
   cobertura: string | null
   /** Día del mes en que vence la cuota, tal como está en la planilla. */
   dia_vencimiento: string | null
+  /** El correlativo ya impreso, si este pago ya tuvo su comprobante: una reimpresión lo conserva. */
+  numero_ticket: string | null
 }
 
 const MESES = [
@@ -687,7 +704,8 @@ function leerPago(pagoId: number): PagoParaTicket | undefined {
               COALESCE(p.sucursal_cobro, p.sucursal_texto) AS sucursal,
               c.direccion AS direccion,
               po.cobertura AS cobertura,
-              cm.dia_vencimiento AS dia_vencimiento
+              cm.dia_vencimiento AS dia_vencimiento,
+              p.numero_ticket AS numero_ticket
        FROM pagos p
        LEFT JOIN clientes c ON c.id = p.cliente_id
        LEFT JOIN polizas po ON po.id = p.poliza_id
@@ -740,12 +758,21 @@ export async function imprimirTicketDePago(pagoId: number, copias?: number): Pro
   // El correlativo se toma acá y se guarda en el pago en el mismo movimiento: el número que salió en
   // el papel es el que va en la columna NRO TICKET de la planilla de caja, y así nadie lo copia a mano.
   // Se guarda aunque después la impresión falle: el número ya se gastó y ese ticket es de este cobro.
-  const numero = tomarNumeroDeTicket()
-  guardarNumeroDeTicket(pagoId, numeroDeTicketPelado(numero), null)
+  // Si el pago ya tuvo comprobante (reimpresión desde la ficha del cliente) sale con el MISMO número:
+  // es el duplicado del mismo cobro, no un cobro nuevo, y no se gasta otro correlativo.
+  const yaImpreso = (pago.numero_ticket ?? '').trim()
+  let numeroEnPapel: string
+  if (/^\d+$/.test(yaImpreso)) {
+    numeroEnPapel = formatearNumeroDeTicket(Number(yaImpreso))
+  } else {
+    const numero = tomarNumeroDeTicket()
+    guardarNumeroDeTicket(pagoId, numeroDeTicketPelado(numero), null)
+    numeroEnPapel = formatearNumeroDeTicket(numero)
+  }
 
   return imprimirTicketSiCorresponde(
     {
-      numero: formatearNumeroDeTicket(numero),
+      numero: numeroEnPapel,
       direccion: direccionDeSucursal(pago.sucursal),
       telefono: telefonoDeSucursal(pago.sucursal),
       fecha: comoFechaCorta(diaDelPago(pago)),
@@ -817,7 +844,7 @@ export async function imprimirResumenDePagos(clienteId: number): Promise<boolean
     .all({ cliente: id }) as PagoParaResumen[]
   if (pagos.length === 0) throw new ErrorDeNegocio('Este cliente todavía no tiene pagos registrados para imprimir.')
 
-  const html = htmlDelResumenDePagos(cliente, pagos.slice(0, PAGOS_POR_RESUMEN), pagos.length > PAGOS_POR_RESUMEN, config.anchoMm, config.tipo)
+  const html = htmlDelResumenDePagos(cliente, pagos.slice(0, PAGOS_POR_RESUMEN), pagos.length > PAGOS_POR_RESUMEN, config.anchoMm, config.tipo, config.ajusteMm)
   try {
     await imprimirHtml(html, config.impresora, config.anchoMm, 1, config.tipo)
     anotarErrorDeImpresion(null)
@@ -836,6 +863,7 @@ export function htmlDelResumenDePagos(
   hayMas: boolean,
   anchoMm: number,
   tipo: TipoDeImpresora = 'termica',
+  ajusteMm = 0,
 ): string {
   const util = anchoUtilDelTicket(anchoMm, tipo)
   const comun = tipo === 'comun'
@@ -862,7 +890,7 @@ export function htmlDelResumenDePagos(
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Pagos del cliente</title><style>
   @page { margin: 0; }
-  body { width: ${util}mm; margin: 0 0 0 ${comun ? MARGEN_HOJA_COMUN_MM : SANGRIA_DEL_TICKET_MM}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-size: 9.5pt; line-height: 1.3; color: #000; overflow-wrap: anywhere; }
+  body { width: ${util}mm; margin: 0 0 0 ${margenIzquierdoDelTicket(tipo, ajusteMm)}mm; padding: ${comun ? `${MARGEN_HOJA_COMUN_MM}mm 0 0` : '3mm 0 6mm'}; font-family: "Courier New", monospace; font-weight: ${comun ? 'normal' : 'bold'}; font-size: 9.5pt; line-height: 1.3; color: #000; overflow-wrap: anywhere; }
   p { margin: 0; }
   hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
   .titulo { font-weight: bold; text-align: center; }
@@ -909,7 +937,7 @@ export async function imprimirTicketDePrueba(sucursal: string): Promise<void> {
     proximoVencimiento: comoFechaLarga(fechaDeVencimiento(periodoSiguiente(hoy.slice(0, 7)), ahora.getDate()) ?? ''),
   }
   try {
-    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo), config.impresora, config.anchoMm, 1, config.tipo)
+    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo, config.ajusteMm), config.impresora, config.anchoMm, 1, config.tipo)
     anotarErrorDeImpresion(null)
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : String(error)

@@ -46,6 +46,8 @@ export interface ImpresoraGuardada {
   preguntar: boolean
   impresora: string | null
   anchoMm: number
+  /** Cuánto se corre el texto del ticket hacia la derecha (+) o la izquierda (−), en mm. Compensa el margen propio del driver. */
+  ajusteMm: number
   /** Entre 1 y COPIAS_MAXIMAS. */
   copias: number
 }
@@ -56,7 +58,16 @@ const SIN_IMPRESORA: ImpresoraGuardada = {
   preguntar: true,
   impresora: null,
   anchoMm: ANCHO_TICKET_POR_DEFECTO,
+  ajusteMm: 0,
   copias: COPIAS_POR_DEFECTO,
+}
+
+/** El ajuste horizontal del ticket: entre -15 y 15 mm; cualquier otra cosa es 0. */
+export const AJUSTE_MAXIMO_MM = 15
+function comoAjuste(valor: unknown): number {
+  const numero = Number(valor)
+  if (!Number.isFinite(numero) || Math.abs(numero) > AJUSTE_MAXIMO_MM) return 0
+  return Math.round(numero * 2) / 2
 }
 
 function comoCantidadDeCopias(valor: unknown): number {
@@ -78,6 +89,7 @@ export function impresoraGuardada(): ImpresoraGuardada {
       preguntar: datos.preguntar !== false,
       impresora: typeof datos.impresora === 'string' && datos.impresora ? datos.impresora : null,
       anchoMm: typeof datos.anchoMm === 'number' && datos.anchoMm >= 40 && datos.anchoMm <= 120 ? datos.anchoMm : ANCHO_TICKET_POR_DEFECTO,
+      ajusteMm: comoAjuste(datos.ajusteMm),
       // Configuraciones anteriores a que existieran las copias no traen la clave: una copia, como
       // siempre salió.
       copias: comoCantidadDeCopias(datos.copias),
@@ -109,6 +121,7 @@ export function guardarImpresora(datos: DatosDeImpresora): ImpresoraGuardada {
     preguntar: datos.preguntar === true,
     impresora: impresora || null,
     anchoMm: ancho,
+    ajusteMm: datos.ajusteMm === undefined ? impresoraGuardada().ajusteMm : comoAjuste(datos.ajusteMm),
     copias,
   }
   guardar(CLAVE_IMPRESORA, JSON.stringify(nueva))
