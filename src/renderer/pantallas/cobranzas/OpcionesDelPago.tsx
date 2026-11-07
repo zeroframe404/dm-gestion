@@ -61,7 +61,8 @@ export function OpcionesDelPago({ fila, opciones, alCambiar, disabled, conAnteri
   const mes = fila ? nombreDePeriodo(fila.periodo) : ''
   const mesQueViene = fila ? nombreDePeriodo(periodoSiguiente(fila.periodo)) : ''
   const mesAnterior = fila ? nombreDePeriodo(periodoAnteriorA(fila.periodo)) : ''
-  const conAdelanto = fila !== null && opciones.alcance !== 'MES'
+  // Sólo «las dos» y «la del mes que viene» adelantan una cuota. La vencida del mes anterior no.
+  const conAdelanto = fila !== null && (opciones.alcance === 'AMBAS' || opciones.alcance === 'ADELANTADO')
 
   return (
     <div className="flex flex-col gap-3">
