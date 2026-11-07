@@ -3512,6 +3512,33 @@ export interface PodioMensual {
   frescura: FrescuraDeMetrica
 }
 
+/**
+ * Los gráficos de UNA sucursal, para la tarjeta del podio de Inicio. Es el tablero de Métricas filtrado
+ * por esa sucursal, pero sólo con lo que se puede mostrar sin permiso de área, igual que el podio: cantidades de
+ * pólizas, altas, bajas, cuotas y siniestros. No trae nada de lo que cobra la agencia, ni siquiera en null:
+ * el campo no existe, así que no hay un `if` en la pantalla del que depender.
+ */
+export interface PanelDeSucursal {
+  periodo: string
+  sucursal: string
+  /** false si no hay mes anterior cargado: sin él las altas no se pueden deducir (van en null). */
+  hayMesAnterior: boolean
+  activos: number
+  altas: number | null
+  bajas: number
+  porRama?: MetricasPorRama
+  activosPorCompania: PorcionMetrica[]
+  bajasPorMotivo: BajaPorMotivo[]
+  /** Hasta doce meses hacia atrás, sin la cobranza de cada mes. */
+  evolucion: Array<Omit<MesDeEvolucion, 'cobrado'>>
+  /** La cantidad de cuotas del mes: pagas y por cobrar. Con eso se ve la morosidad sin mirar un importe. */
+  cuotasCobradas: number
+  cuotasPendientes: number
+  siniestrosAbiertos: number
+  siniestrosPorCompania: PorcionMetrica[]
+  hoy: string
+}
+
 /** El podio de un mes cualquiera, con la lista de meses entre los que se puede elegir (el más nuevo primero). */
 export interface PodioHistorico {
   periodos: string[]

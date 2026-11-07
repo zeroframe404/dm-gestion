@@ -54,7 +54,7 @@ import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportac
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
 import { leerSnapshotDeMetrica } from './servicios/metricasCache'
 import { estadoDeAlmacenamiento, guardarTotalDeAlmacenamiento } from './servicios/almacenamiento'
-import { altasConCache, estadisticasConCache, podioHistorico, tableroConCache } from './servicios/metricasDesdeCache'
+import { altasConCache, estadisticasConCache, panelDeSucursal, podioHistorico, tableroConCache } from './servicios/metricasDesdeCache'
 import {
   areasDelReporte,
   catalogoDeExcel,
@@ -1673,6 +1673,13 @@ export function registrarIpc(): void {
   manejar('metricas:podioHistorico', (periodo) => {
     exigirSesion()
     return exito(podioHistorico(periodo))
+  })
+  // Los gráficos de una sucursal desde su tarjeta del podio: mismo criterio que el podio (sin permiso de
+  // área) y por eso sin plata: `panelDeSucursal` pide el tablero sin números de la agencia y ni siquiera
+  // arma el campo de cobranza.
+  manejar('metricas:panelDeSucursal', (periodo, sucursal) => {
+    exigirSesion()
+    return exito(panelDeSucursal(periodo, sucursal))
   })
   // El detalle del podio —qué pólizas son esas altas— pide Cartera, que es de donde sale el dato. El
   // podio se ve sin permiso porque es un número de una carrera; una lista con el nombre de cada cliente

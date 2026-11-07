@@ -30,6 +30,7 @@ import { MODULOS, moduloVisible, type IdModulo } from '../modulos'
 import { nombreDePeriodo } from '../../shared/semaforo'
 import { momento } from './cobranzas/formato'
 import { mesCorto, numero } from './metricas/graficos'
+import { GraficosDeSucursal } from './metricas/GraficosDeSucursal'
 
 export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
   const usuario = useUsuarioActual()
@@ -221,6 +222,8 @@ function PodioDeSucursales() {
   // Qué tarjeta se está mirando por dentro. Guarda la fila entera y no el nombre: el cuadro muestra el
   // número que decía la tarjeta al lado de la lista, que es lo único que permite ver si cierran.
   const [mirando, setMirando] = useState<FilaEstadistica | null>(null)
+  // De qué sucursal se están mirando los gráficos. Es del podio y no pide permiso: sólo cantidades.
+  const [conGraficos, setConGraficos] = useState<string | null>(null)
   // El detalle es el listado de Cartera con otro nombre, así que se ofrece sólo a quien puede verlo.
   const { puedeVer } = usePermisos()
   const seVeElDetalle = puedeVer('cartera')
@@ -300,6 +303,7 @@ function PodioDeSucursales() {
         value={elegido ?? podio.periodo}
         onChange={(evento) => {
           setMirando(null)
+          setConGraficos(null)
           setElegido(evento.target.value)
         }}
         className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal text-slate-900"
@@ -396,37 +400,45 @@ function PodioDeSucursales() {
             </>
           )
           const aspecto = cx(
-            'rounded-xl border px-4 py-3 text-left shadow-suave',
+            'flex flex-col rounded-xl border px-4 py-3 text-left shadow-suave',
             indice === 0 ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white',
           )
-          // Sin permiso de Cartera la tarjeta es la de siempre: un div, sin botón que prometa un
-          // detalle que después va a decir que no.
-          if (!seVeElDetalle) {
-            return (
-              <div key={fila.etiqueta} className={aspecto}>
-                {cuerpo}
-              </div>
-            )
-          }
+          const accion =
+            'text-[11px] font-semibold text-marino-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40 rounded'
+          // Los gráficos los ve cualquiera. El detalle de las altas, en cambio, es el listado de Cartera: sin
+          // ese permiso no se ofrece el botón que prometa algo que después va a decir que no.
           return (
-            <button
-              key={fila.etiqueta}
-              type="button"
-              onClick={() => setMirando(fila)}
-              title={`Ver qué pólizas son las altas de ${fila.etiqueta}`}
-              className={cx(
-                aspecto,
-                'transition hover:border-marino-300 hover:shadow-media focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40',
-              )}
-            >
+            <div key={fila.etiqueta} className={aspecto}>
               {cuerpo}
-              <p className="mt-2 text-[11px] font-semibold text-marino-600">Ver el detalle</p>
-            </button>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                <button
+                  type="button"
+                  onClick={() => setConGraficos(fila.etiqueta)}
+                  title={`Ver los gráficos de ${fila.etiqueta}`}
+                  className={accion}
+                >
+                  Ver gráficos
+                </button>
+                {seVeElDetalle && (
+                  <button
+                    type="button"
+                    onClick={() => setMirando(fila)}
+                    title={`Ver qué pólizas son las altas de ${fila.etiqueta}`}
+                    className={accion}
+                  >
+                    Ver el detalle
+                  </button>
+                )}
+              </div>
+            </div>
           )
         })}
       </div>
 
       <DetalleDelPodio periodo={mostrado.periodo} fila={mirando} alCerrar={() => setMirando(null)} />
+      {conGraficos !== null && (
+        <GraficosDeSucursal periodo={mostrado.periodo} sucursal={conGraficos} alCerrar={() => setConGraficos(null)} />
+      )}
     </section>
   )
 }
