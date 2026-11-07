@@ -135,6 +135,7 @@ const api: ApiDm = {
     prueba: () => invocar('impresora:prueba'),
     guardarDocumentos: (impresora) => invocar('impresora:guardarDocumentos', impresora),
     imprimirPago: (pagoId, copias) => invocar('impresora:imprimirPago', pagoId, copias),
+    imprimirPagosDeCliente: (clienteId) => invocar('impresora:imprimirPagosDeCliente', clienteId),
     establecerNumeroDeTicket: (numero) => invocar('impresora:establecerNumeroDeTicket', numero),
     direcciones: () => invocar('impresora:direcciones'),
     guardarDirecciones: (direcciones) => invocar('impresora:guardarDirecciones', direcciones),

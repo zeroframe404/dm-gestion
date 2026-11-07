@@ -114,6 +114,7 @@ export interface ApiDm {
     prueba: Remota<'impresora:prueba'>
     guardarDocumentos: Remota<'impresora:guardarDocumentos'>
     imprimirPago: Remota<'impresora:imprimirPago'>
+    imprimirPagosDeCliente: Remota<'impresora:imprimirPagosDeCliente'>
     establecerNumeroDeTicket: Remota<'impresora:establecerNumeroDeTicket'>
     direcciones: Remota<'impresora:direcciones'>
     guardarDirecciones: Remota<'impresora:guardarDirecciones'>

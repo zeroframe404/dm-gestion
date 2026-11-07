@@ -8,6 +8,7 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos, db } from '../src/main/db/base'
 import {
   anchoDeLineaMm,
   anchoUtilDelTicket,
+  htmlDelResumenDePagos,
   htmlDelTicket,
   puntosDelEncabezado,
   SANGRIA_DEL_TICKET_MM,
@@ -412,4 +413,24 @@ test('un dato largo baja de renglón en vez de salirse del papel', () => {
   const html = htmlDelTicket(ticketDeEjemplo({ titular: 'MARIA DE LOS ANGELES RODRIGUEZ DE FERNANDEZ' }), 80)
   assert.ok(html.includes('overflow-wrap: anywhere'))
   assert.ok(html.includes('MARIA DE LOS ANGELES RODRIGUEZ DE FERNANDEZ'))
+})
+
+test('el resumen de pagos para la ticketeadora lleva todos los datos del pago y escapa el texto', () => {
+  const html = htmlDelResumenDePagos(
+    { nombre: 'PÉREZ & HIJOS <SA>', documento: '20123456789', telefono: '11 5555-0000' },
+    [
+      {
+        fecha_iso: '2026-10-22', fecha: null, creado_en: '2026-10-22T14:05:00.000Z', importe: '48100', medio: 'CUPONERA',
+        compania: 'AGROSALTA', numero_poliza: '8589509', patente: 'AB123CD', periodo: '2026-10', periodo_texto: null,
+        sucursal: 'Daniel', usuario_nombre: 'Thomas', numero_ticket: '000123', observaciones: 'debe una', estado_cobro: 'PAGO',
+      },
+    ],
+    true,
+    80,
+  )
+  for (const dato of ['RESUMEN DE PAGOS', '22/10/2026', '48100', 'CUPONERA', 'OCTUBRE', 'AGROSALTA', '8589509', 'AB123CD', 'Daniel', 'Thomas', '000123', 'debe una', '20123456789']) {
+    assert.ok(html.includes(dato), `falta ${dato}`)
+  }
+  assert.ok(html.includes('PÉREZ &amp; HIJOS &lt;SA&gt;'), 'el nombre se escapa')
+  assert.ok(html.includes('pagos más recientes'), 'avisa cuando hay más de los que entran')
 })

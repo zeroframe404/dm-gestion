@@ -468,6 +468,8 @@ export interface Canales {
    * en Administración → Impresora).
    */
   'impresora:imprimirPago': (pagoId: number, copias?: number) => Resultado<boolean>
+  /** Imprime en la ticketeadora el resumen de todos los pagos de un cliente, con todos sus datos. */
+  'impresora:imprimirPagosDeCliente': (clienteId: number) => Resultado<boolean>
   /** Corrige el número del próximo ticket, por ejemplo después de cambiar el rollo. */
   'impresora:establecerNumeroDeTicket': (numero: number) => Resultado<ConfigImpresora>
 
