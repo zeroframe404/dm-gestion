@@ -12,6 +12,7 @@ import {
   altasDesdeCache,
   estadisticasConCache,
   estadisticasDesdeCache,
+  panelDeSucursal,
   tableroConCache,
   tableroDesdeCache,
   type AltasPayloadCache,
@@ -189,6 +190,22 @@ test('tableroConCache: con un cálculo del servidor para el período pedido, lo 
     assert.equal(tablero.activos, 5)
     assert.equal(tablero.calculadoEn, '2026-09-09T12:00:00.000Z')
     assert.equal(tablero.frescura, 'AL_DIA')
+  })
+})
+
+test('panelDeSucursal: trae las cifras de esa sucursal y ningún campo de plata', () => {
+  conBase(() => {
+    guardarSnapshotDeMetrica('metricas', { version: 1, calculadoEn: '2026-09-09T12:00:00.000Z', payload: payloadDePrueba() })
+    const panel = panelDeSucursal('2026-09', 'Dock Sud')
+    const filtrado = tableroConCache({ periodo: '2026-09', sucursales: ['Dock Sud'] }, false)
+    assert.equal(panel.sucursal, 'Dock Sud')
+    assert.equal(panel.activos, filtrado.activos)
+    assert.equal(panel.altas, filtrado.altas)
+    assert.equal(panel.bajas, filtrado.bajas)
+    assert.equal(panel.cuotasCobradas, filtrado.cobranza.cuotasCobradas)
+    assert.equal(panel.cuotasPendientes, filtrado.cobranza.cuotasPendientes)
+    const texto = JSON.stringify(panel)
+    for (const campo of ['cobrado', 'pendiente', 'porMedio', 'cobranza']) assert.ok(!texto.includes(`"${campo}"`), `no debería viajar «${campo}»`)
   })
 })
 

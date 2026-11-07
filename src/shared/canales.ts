@@ -247,6 +247,7 @@ import type {
   OpcionesPlanillaClasica,
   PedidoDeReporte,
   PlantillaDeMensaje,
+  PanelDeSucursal,
   PodioHistorico,
   PodioMensual,
   ResultadoDeSegmento,
@@ -786,6 +787,7 @@ export interface Canales {
   'metricas:podio': () => Resultado<PodioMensual | null>
   /** El podio de cualquier mes cargado (null = el último) y los meses disponibles. Sin permiso de área, como el podio. */
   'metricas:podioHistorico': (periodo: string | null) => Resultado<PodioHistorico>
+  'metricas:panelDeSucursal': (periodo: string, sucursal: string) => Resultado<PanelDeSucursal>
   /**
    * Qué pólizas son esas altas, una por una. A diferencia del podio, esto SÍ pide el permiso de
    * Cartera: el cartel muestra un número y esto muestra los nombres de los clientes, que es el dato de

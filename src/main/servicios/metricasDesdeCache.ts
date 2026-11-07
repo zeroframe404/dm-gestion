@@ -34,6 +34,7 @@ import {
   type FiltrosMetricas,
   type MesDeEvolucion,
   type MetricasPorRama,
+  type PanelDeSucursal,
   type PodioHistorico,
   type PorcionMetrica,
   type RamaDeMetrica,
@@ -510,6 +511,33 @@ export function podioHistorico(periodoPedido: string | null): PodioHistorico {
       recibidoEnEstaComputadora: estadisticas.recibidoEnEstaComputadora ?? ahora,
       frescura: estadisticas.frescura ?? 'AL_DIA',
     },
+  }
+}
+
+/**
+ * `metricas:panelDeSucursal`: los gráficos de una sola sucursal para su tarjeta del podio. Sale del mismo
+ * tablero de Métricas (servidor si lo tiene, cálculo local si no) pedido SIN los números de la agencia,
+ * y se copia campo por campo: lo que no se nombra acá no llega a la pantalla, aunque algún día el
+ * tablero sume un campo nuevo.
+ */
+export function panelDeSucursal(periodo: string, sucursal: string): PanelDeSucursal {
+  const tablero = tableroConCache({ periodo, sucursales: [sucursal] }, false)
+  return {
+    periodo: tablero.periodo,
+    sucursal,
+    hayMesAnterior: tablero.hayMesAnterior,
+    activos: tablero.activos,
+    altas: tablero.altas,
+    bajas: tablero.bajas,
+    porRama: tablero.porRama,
+    activosPorCompania: tablero.activosPorCompania,
+    bajasPorMotivo: tablero.bajasPorMotivo,
+    evolucion: tablero.evolucion.map(({ periodo: mes, activos, altas, bajas, porRama }) => ({ periodo: mes, activos, altas, bajas, porRama })),
+    cuotasCobradas: tablero.cobranza.cuotasCobradas,
+    cuotasPendientes: tablero.cobranza.cuotasPendientes,
+    siniestrosAbiertos: tablero.siniestrosAbiertos,
+    siniestrosPorCompania: tablero.siniestrosPorCompania,
+    hoy: tablero.hoy,
   }
 }
 

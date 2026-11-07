@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.10.1',
     fecha: '2026-11-06',
     cambios: [
+      { tipo: 'agregado', texto: 'Podio de altas (Inicio): cada sucursal tiene ahora el botón «Ver gráficos» con los de su propia cartera: evolución de seguros activos, altas y bajas mes a mes, seguros por compañía, bajas por motivo, morosidad de las cuotas y siniestros abiertos. Lo ve cualquiera que ve el podio.' },
       { tipo: 'corregido', texto: 'Galeno (imprimir un documento): el campo «Riesgo» sólo acepta el número del vehículo en la póliza. Si se escribía texto (como «todo riesgo») salía el error «For input string»; ahora no deja escribirlo y, si llega igual, avisa qué poner.' },
       { tipo: 'corregido', texto: 'ATM (motos): si la versión de la moto existe igual en ATM (por ejemplo TNT 752S de Benelli) se elige sola, aunque el modelo del catálogo sea una categoría como «CALLE MAS DE 600 CC». Antes había que cargarla a mano.' },
       { tipo: 'corregido', texto: 'Equidad y Mercantil Andina: si la versión del vehículo existe tal cual en la compañía (por ejemplo TIGGO 2 1.5 4X2 PRO CONFORT) se elige sola, aunque haya otra parecida con una palabra más (CVT). Antes pedía elegirla a mano.' },
