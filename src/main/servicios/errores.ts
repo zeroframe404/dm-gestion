@@ -26,7 +26,7 @@ export class SinConexion extends ErrorDeNegocio {
 }
 
 /**
- * Quiso ingresar fuera de su horario de trabajo (Administración → Uso laboral). Es un `ErrorDeNegocio`
+ * Quiso ingresar fuera de su horario de trabajo (Administración → Ciberseguridad → Control de horarios). Es un `ErrorDeNegocio`
  * como cualquier otro —el mensaje se muestra tal cual— pero viaja marcado (`codigo: 'fuera-de-horario'`,
  * ver ipc.ts): el Login no muestra sólo el cartel rojo, ofrece «Pedir excepción al superadministrador».
  */

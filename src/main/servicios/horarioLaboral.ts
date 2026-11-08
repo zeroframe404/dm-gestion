@@ -1,4 +1,4 @@
-// Uso laboral: hace cumplir el horario de trabajo de cada rol (Administración → Uso laboral).
+// Uso laboral: hace cumplir el horario de trabajo de cada rol (Administración → Ciberseguridad → Control de horarios).
 //
 // QUÉ HACE ESTE ARCHIVO
 //   1. No deja ABRIR sesión fuera de horario (`verificarIngreso`, antes de armar nada: ni canal en vivo
@@ -22,11 +22,11 @@
 // NADA DE ESTO PUEDE ROMPER EL PROGRAMA: si el VPS no contesta, se sigue con lo guardado y se anota.
 import {
   evaluarHorario,
-  HORARIO_POR_OMISION,
   MINUTOS_DE_AVISO,
   MINUTOS_DE_EXCEPCION,
   mensajeFueraDeHorario,
   motivoDeConfiguracionInvalida,
+  normalizarConfiguracion,
   type ConfiguracionDeHorario,
   type EstadoDelHorarioEnElVps,
   type EstadoDelPedido,
@@ -75,7 +75,8 @@ function leerDeLaBase(): UltimoEstado | null {
     const guardado = JSON.parse(fila.valor) as Partial<UltimoEstado>
     if (!guardado.config || typeof guardado.desfaseMs !== 'number') return null
     return {
-      config: guardado.config,
+      // Lo guardado por una versión anterior (un solo horario para todos) se lleva al formato por sucursal.
+      config: normalizarConfiguracion(guardado.config),
       version: guardado.version ?? 0,
       desfaseMs: guardado.desfaseMs,
       excepcionHastaMs: typeof guardado.excepcionHastaMs === 'number' ? guardado.excepcionHastaMs : null,
@@ -108,7 +109,7 @@ function recordado(): UltimoEstado | null {
 
 function recordar(estado: EstadoDelHorarioEnElVps, ahoraLocalMs: number): UltimoEstado {
   const actual: UltimoEstado = {
-    config: estado.config,
+    config: normalizarConfiguracion(estado.config),
     version: estado.version,
     desfaseMs: Date.parse(estado.ahora) - ahoraLocalMs,
     excepcionHastaMs: estado.excepcionHasta ? Date.parse(estado.excepcionHasta) : null,
@@ -191,7 +192,7 @@ export async function verificarIngreso(candidata: SesionUsuario): Promise<void> 
   const actor = actorDe(candidata)
   const estado = (await leerDelServidor(actor)) ?? recordado()
   if (!estado) return
-  const veredicto = evaluarHorario(estado.config, candidata.rol, Date.now() + estado.desfaseMs, estado.excepcionHastaMs)
+  const veredicto = evaluarHorario(estado.config, candidata.rol, candidata.sucursal.nombre, Date.now() + estado.desfaseMs, estado.excepcionHastaMs)
   if (veredicto.tipo !== 'fuera') return
   bloqueado = { actor, sucursal: candidata.sucursal.nombre }
   throw new FueraDeHorario(mensajeFueraDeHorario(veredicto))
@@ -272,7 +273,7 @@ function controlarElTurno(actual: SesionUsuario): void {
   const estado = recordado()
   if (!estado) return
   const ahora = Date.now() + estado.desfaseMs
-  const veredicto = evaluarHorario(estado.config, actual.rol, ahora, estado.excepcionHastaMs)
+  const veredicto = evaluarHorario(estado.config, actual.rol, actual.sucursal.nombre, ahora, estado.excepcionHastaMs)
   if (veredicto.tipo === 'libre') return
   if (veredicto.tipo === 'fuera') {
     cerrarSesionPorHorario(
@@ -381,7 +382,7 @@ export async function resolverPedido(
 }
 
 // ---------------------------------------------------------------------------
-// La pestaña «Uso laboral»
+// La pantalla «Control de horarios»
 // ---------------------------------------------------------------------------
 
 function exigirSuper(actual: SesionUsuario): void {
@@ -391,31 +392,21 @@ function exigirSuper(actual: SesionUsuario): void {
 export async function estadoDeUsoLaboral(actual: SesionUsuario): Promise<EstadoDeUsoLaboral> {
   exigirSuper(actual)
   const estado = await conElServidor((vps) => vps.horarioEstado(actorDe(actual)))
-  return { config: estado.config ?? HORARIO_POR_OMISION, version: estado.version }
+  return { config: normalizarConfiguracion(estado.config), version: estado.version }
 }
 
 export async function guardarUsoLaboral(actual: SesionUsuario, config: unknown): Promise<EstadoDeUsoLaboral> {
   exigirSuper(actual)
   const valida = configuracionDe(config)
   const estado = await conElServidor((vps) => vps.horarioGuardar(actorDe(actual), valida))
-  return { config: estado.config, version: estado.version }
+  return { config: normalizarConfiguracion(estado.config), version: estado.version }
 }
 
 function configuracionDe(valor: unknown): ConfiguracionDeHorario {
   const crudo = (typeof valor === 'object' && valor !== null ? valor : {}) as Record<string, unknown>
-  const regla = (v: unknown, nombre: string) => {
-    const r = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>
-    if (typeof r.activo !== 'boolean' || typeof r.desde !== 'string' || typeof r.hasta !== 'string') {
-      throw new ErrorDeNegocio(`El horario de ${nombre} está incompleto.`)
-    }
-    return { activo: r.activo, desde: r.desde, hasta: r.hasta }
-  }
   if (typeof crudo.habilitado !== 'boolean') throw new ErrorDeNegocio('Falta el interruptor general del horario.')
-  const config: ConfiguracionDeHorario = {
-    habilitado: crudo.habilitado,
-    ADMIN: regla(crudo.ADMIN, 'los administradores'),
-    EMPLEADO: regla(crudo.EMPLEADO, 'los usuarios'),
-  }
+  // Se reconstruye con lo que el programa conoce: las cuatro sucursales, sólo los campos válidos.
+  const config = normalizarConfiguracion(valor)
   const motivo = motivoDeConfiguracionInvalida(config)
   if (motivo) throw new ErrorDeNegocio(motivo)
   return config

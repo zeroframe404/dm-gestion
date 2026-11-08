@@ -1,4 +1,4 @@
-// El aviso de «se acaba el tiempo laboral» (Administración → Uso laboral).
+// El aviso de «se acaba el tiempo laboral» (Administración → Ciberseguridad → Control de horarios).
 //
 // Llega estando en cualquier pantalla, por eso vive en el marco y no en un módulo. El proceso principal
 // ya sacudió la ventana (es el único que la puede mover); acá suena el zumbido —con el interruptor de

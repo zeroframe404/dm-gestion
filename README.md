@@ -3088,11 +3088,15 @@ APIs que haya. Ninguna computadora recorre las APIs por su cuenta:
   con él el multicotizador cotiza en Galeno la versión exacta.
 
 
-## Uso laboral (Administración → Uso laboral)
+## Ciberseguridad → Control de horarios (uso laboral)
 
-**Opcional y apagado de fábrica.** El superadministrador define de qué hora a qué hora puede trabajar cada
-rol (Administradores y Usuarios por separado, en hora de Argentina). El superadministrador **no tiene horario**
-y es el único rol al que no se le puede poner.
+**Opcional y apagado de fábrica.** Está en Administración → **Ciberseguridad** (pestaña sólo del superadministrador),
+tarjeta «Control de horarios». El superadministrador define, **por sucursal**, de qué hora a qué hora puede trabajar
+cada rol (Administradores y Usuarios por separado, en hora de Argentina), **qué días de la semana** y los **feriados**
+(fechas puntuales sin trabajo). El superadministrador **no tiene horario** y es el único rol al que no se le puede poner.
+La configuración es `{ habilitado, sucursales: { <sucursal>: { ADMIN, EMPLEADO, feriados } } }` (`shared/horario.ts`);
+`normalizarConfiguracion` lleva a esta forma lo que venga del servidor o de la base local, incluido el formato anterior
+(un horario único, que pasa a ser el mismo en las cuatro sucursales y todos los días).
 
 - **Ingresar fuera de horario** (`servicios/horarioLaboral.ts`, `verificarIngreso`): se comprueba DESPUÉS de
   verificar la contraseña y ANTES de abrir la sesión (`permitirIngreso`, en `servicios/sesion.ts`, llamado desde

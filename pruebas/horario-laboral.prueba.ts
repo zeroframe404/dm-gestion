@@ -18,16 +18,18 @@ import {
 } from '../src/main/servicios/horarioLaboral'
 import { FueraDeHorario } from '../src/main/servicios/errores'
 import { establecerSesion, sesion } from '../src/main/servicios/sesion'
-import type { ConfiguracionDeHorario, SolicitudDeHorario } from '../src/shared/horario'
+import { horarioPorOmision, type ConfiguracionDeHorario, type SolicitudDeHorario } from '../src/shared/horario'
 import type { SesionUsuario } from '../src/shared/tipos'
 import type { FuenteVps } from '../src/main/vps/fuenteVps'
 
-const config: ConfiguracionDeHorario = {
-  habilitado: true,
-  ADMIN: { activo: true, desde: '09:00', hasta: '21:00' },
-  EMPLEADO: { activo: true, desde: '10:00', hasta: '20:00' },
+/** Dock Sud: usuarios de 10 a 20 y administradores de 9 a 21, de lunes a sábado (los días de las pruebas son lunes 9 de noviembre de 2026). */
+const config: ConfiguracionDeHorario = { ...horarioPorOmision(), habilitado: true }
+config.sucursales['Dock Sud'] = {
+  ADMIN: { activo: true, desde: '09:00', hasta: '21:00', dias: [1, 2, 3, 4, 5, 6] },
+  EMPLEADO: { activo: true, desde: '10:00', hasta: '20:00', dias: [1, 2, 3, 4, 5, 6] },
+  feriados: [],
 }
-const aLas = (hora: string): string => new Date(Date.parse(`2026-11-08T${hora}:00-03:00`)).toISOString()
+const aLas = (hora: string): string => new Date(Date.parse(`2026-11-09T${hora}:00-03:00`)).toISOString()
 
 const persona = (usuario: string, rol: SesionUsuario['rol']): SesionUsuario => ({
   id: 1,
@@ -59,18 +61,19 @@ interface Doble {
   consulta: SolicitudDeHorario
   resueltos: Array<{ id: string; aprobada: boolean; minutos: number | null }>
   guardados: ConfiguracionDeHorario[]
+  config: ConfiguracionDeHorario
 }
 
 function prepararElServidor(estado: Partial<Doble> = {}): Doble {
   const doble: Doble = {
     ahora: aLas('21:00'), excepcionHasta: null, caido: false, lecturas: 0, pedidos: [], pendientes: [],
-    consulta: solicitud(), resueltos: [], guardados: [], ...estado,
+    consulta: solicitud(), resueltos: [], guardados: [], config, ...estado,
   }
   const fuente = {
     horarioEstado: async () => {
       doble.lecturas++
       if (doble.caido) throw new Error('sin internet')
-      return { config, version: 1, ahora: doble.ahora, excepcionHasta: doble.excepcionHasta }
+      return { config: doble.config, version: 1, ahora: doble.ahora, excepcionHasta: doble.excepcionHasta }
     },
     horarioGuardar: async (_actor: unknown, nueva: ConfiguracionDeHorario) => {
       doble.guardados.push(nueva)
@@ -222,16 +225,36 @@ test('el superadministrador se entera de cada pedido nuevo una sola vez y puede 
   terminar()
 })
 
-test('sólo el superadministrador guarda el horario y se rechaza una configuración incoherente', async () => {
+test('sólo el superadministrador guarda el horario; se rechaza una configuración incoherente y se guarda completa', async () => {
   preparar()
   const servidor = prepararElServidor()
   await assert.rejects(guardarUsoLaboral(LUCIA, config), /superadministrador/)
-  await assert.rejects(
-    guardarUsoLaboral(DANIEL, { ...config, EMPLEADO: { activo: true, desde: '20:00', hasta: '10:00' } }),
-    /posterior/,
-  )
+  const incoherente = structuredClone(config)
+  incoherente.sucursales['Dock Sud'].EMPLEADO = { activo: true, desde: '20:00', hasta: '10:00', dias: [1] }
+  await assert.rejects(guardarUsoLaboral(DANIEL, incoherente), /posterior/)
+  const sinDias = structuredClone(config)
+  sinDias.sucursales['Dock Sud'].ADMIN = { activo: true, desde: '09:00', hasta: '21:00', dias: [] }
+  await assert.rejects(guardarUsoLaboral(DANIEL, sinDias), /al menos un día/)
   const guardado = await guardarUsoLaboral(DANIEL, config)
   assert.equal(guardado.version, 2)
+  // Al servidor viaja la configuración entera: las cuatro sucursales, los días y los feriados.
   assert.deepEqual(servidor.guardados, [config])
+  assert.deepEqual(Object.keys(servidor.guardados[0].sucursales), ['Dock Sud', 'Lanús', 'Sarandí', 'Daniel'])
+  terminar()
+})
+
+test('un feriado de la sucursal cierra la sesión abierta y deja el aviso del motivo en el ingreso', async () => {
+  preparar()
+  const conFeriado = structuredClone(config)
+  conFeriado.sucursales['Dock Sud'].feriados = [{ fecha: '2026-11-09', motivo: 'Día de la prueba' }]
+  const servidor = prepararElServidor({ ahora: aLas('12:00') })
+  servidor.config = conFeriado
+  await assert.rejects(verificarIngreso(LUCIA), (error: unknown) => error instanceof FueraDeHorario && /día no laborable \(Día de la prueba\)/.test(error.message))
+  servidor.config = config
+  await verificarIngreso(LUCIA) // sin feriado, a las 12:00 del lunes sí entra
+  servidor.config = conFeriado
+  establecerSesion(LUCIA)
+  await vuelta()
+  assert.equal(sesion(), null, 'si pusieron feriado mientras trabajaba, se cierra en la próxima vuelta')
   terminar()
 })
