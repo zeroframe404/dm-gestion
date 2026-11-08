@@ -33,6 +33,9 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.11.1',
     fecha: '2026-11-08',
     cambios: [
+      { tipo: 'agregado', texto: 'Administración → Uso laboral (sólo superadministrador, opcional): se define de qué hora a qué hora puede trabajar cada rol (Administradores y Usuarios por separado). Fuera de horario no se puede ingresar y aparece «Pedir excepción al super-administrador».' },
+      { tipo: 'agregado', texto: 'Aviso de fin de turno: 30 minutos antes de que termine el horario, el programa hace un zumbido y muestra una ventana amarilla con «Aceptar» o «Pedir excepción al super-administrador». Al llegar la hora, la sesión se cierra sola y se corta la conexión con el servidor.' },
+      { tipo: 'agregado', texto: 'El superadministrador recibe cada pedido de excepción con la persona, la hora, la dirección IP y la localidad, y decide si aprobar (30 minutos, 1, 2 o 4 horas) o rechazar. Todos los pedidos quedan en un registro, se aprueben o no.' },
       { tipo: 'modificado', texto: 'El rol «Empleado» pasó a llamarse «Usuario» en todo el programa (permisos, ayuda y listas). Sus permisos y las cuentas existentes no cambian.' },
     ],
   },

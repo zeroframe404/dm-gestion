@@ -7,13 +7,14 @@ import { NOMBRE_ROL, type EstadoDeAcceso } from '../../shared/tipos'
 import { useEsDemo } from '../canal'
 import { Icono } from '../componentes/Icono'
 import { InsigniaBeta } from '../componentes/InsigniaBeta'
+import { PedidoDeExcepcionAlIngresar } from '../componentes/PedidoDeExcepcionAlIngresar'
 import { LogoDeLaMarca } from '../componentes/LogoDeLaMarca'
 import { Alerta, Boton, Campo, CampoClave, cx } from '../componentes/ui'
 import { useAcceso } from '../contexto/Acceso'
 import { useSesion } from '../contexto/Sesion'
 
 export function Login() {
-  const { ingresar, motivoCierre } = useSesion()
+  const { ingresar, motivoCierre, fueraDeHorario } = useSesion()
   const { acceso, comprobando } = useAcceso(true)
   const esDemo = useEsDemo()
   const [usuario, setUsuario] = useState('')
@@ -93,6 +94,7 @@ export function Login() {
               autoComplete="current-password"
             />
             {error && <Alerta tono="error">{error}</Alerta>}
+            {error && fueraDeHorario && <PedidoDeExcepcionAlIngresar />}
             <Boton type="submit" variante="primario" cargando={enviando} className="mt-2 w-full">
               {esperaRed ? 'Conectando con la base de usuarios…' : 'Ingresar'}
             </Boton>
