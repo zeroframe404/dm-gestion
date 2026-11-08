@@ -295,26 +295,56 @@ function PodioDeSucursales() {
   if (!podio || !podio.hayMesAnterior || podio.ranking.length === 0) return null
   const mostrado = mirandoElActual ? podio : pasado
 
-  // Para ver el podio de un mes anterior. Va arriba a la derecha del título, para cualquier rol.
+  // Para ver el podio de un mes anterior. Va arriba a la derecha del título, para cualquier rol. Son dos
+  // listas: el mes (con los meses que hay en ese año) y el año (con los años que tienen datos).
+  const periodoActual = elegido ?? podio.periodo
+  const anioActual = periodoActual.slice(0, 4)
+  const mesActual = periodoActual.slice(5, 7)
+  const anios = [...new Set(periodos.map((periodo) => periodo.slice(0, 4)))].sort((x, y) => y.localeCompare(x))
+  const mesesDelAnio = periodos
+    .filter((periodo) => periodo.startsWith(`${anioActual}-`))
+    .map((periodo) => periodo.slice(5, 7))
+    .sort((x, y) => x.localeCompare(y))
+  const elegirPeriodo = (periodo: string) => {
+    setMirando(null)
+    setConGraficos(null)
+    setElegido(periodo)
+  }
+  const claseDeLista = 'rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal text-slate-900'
   const selectorDeMes = periodos.length > 1 && (
-    <label className="mb-1 ml-auto flex items-center gap-2 text-xs font-semibold text-slate-600">
-      Mes
-      <select
-        value={elegido ?? podio.periodo}
-        onChange={(evento) => {
-          setMirando(null)
-          setConGraficos(null)
-          setElegido(evento.target.value)
-        }}
-        className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal text-slate-900"
-      >
-        {periodos.map((periodo) => (
-          <option key={periodo} value={periodo}>
-            {nombreDePeriodo(periodo)}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="mb-1 ml-auto flex items-center gap-3 text-xs font-semibold text-slate-600">
+      <label className="flex items-center gap-2">
+        Mes
+        <select value={mesActual} onChange={(evento) => elegirPeriodo(`${anioActual}-${evento.target.value}`)} className={claseDeLista}>
+          {mesesDelAnio.map((mes) => (
+            <option key={mes} value={mes}>
+              {nombreDePeriodo(`${anioActual}-${mes}`).replace(/\s\d{4}$/, '')}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-2">
+        Año
+        <select
+          value={anioActual}
+          onChange={(evento) => {
+            const anio = evento.target.value
+            // Se queda en el mismo mes si ese año lo tiene; si no, en el más nuevo que haya.
+            const delAnio = periodos.filter((periodo) => periodo.startsWith(`${anio}-`))
+            const mismoMes = delAnio.find((periodo) => periodo.slice(5, 7) === mesActual)
+            const elegidoDelAnio = mismoMes ?? [...delAnio].sort((x, y) => y.localeCompare(x))[0]
+            if (elegidoDelAnio) elegirPeriodo(elegidoDelAnio)
+          }}
+          className={claseDeLista}
+        >
+          {anios.map((anio) => (
+            <option key={anio} value={anio}>
+              {anio}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
   )
 
   if (!mostrado || !mostrado.hayMesAnterior || mostrado.ranking.length === 0) {
