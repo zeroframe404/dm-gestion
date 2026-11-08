@@ -33,7 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.10.1',
     fecha: '2026-11-06',
     cambios: [
-      { tipo: 'modificado', texto: 'Inicio → Podio de altas: ahora se elige el mes y el año en dos listas separadas (Mes y Año), en vez de una sola lista con todos los meses juntos.' },
+      { tipo: 'modificado', texto: 'Inicio → Podio de altas: ahora se elige el año y el mes en dos listas separadas (primero Año y después Mes), en vez de una sola lista con todos los meses juntos.' },
       { tipo: 'corregido', texto: 'Ticketeadora: el ticket ya no se parte en dos hojas, así que la guillotina no corta más en el medio del pie («…CON LOS DE LA / PÓLIZA.»). Además queda más papel al final para que el corte caiga después de la última línea.' },
       { tipo: 'agregado', texto: 'Administración → Impresora: «Tipografía del ticket» (Courier New, Lucida Console o Consolas) e «Intensidad del texto» (Normal a Máxima), para que las letras chicas del ticket salgan más oscuras y parejas sin tocar el driver de Windows. Se prueba con «Imprimir una prueba».' },
       { tipo: 'agregado', texto: 'Clientes → Pagos: cada pago tiene su botón «Imprimir», que saca en la ticketeadora el comprobante de ese pago con el mismo número de ticket que ya tenía (no gasta uno nuevo).' },
