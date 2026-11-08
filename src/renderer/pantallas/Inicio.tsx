@@ -30,6 +30,7 @@ import { MODULOS, moduloVisible, type IdModulo } from '../modulos'
 import { nombreDePeriodo } from '../../shared/semaforo'
 import { momento } from './cobranzas/formato'
 import { mesCorto, numero } from './metricas/graficos'
+import { GraficosDeSucursal } from './metricas/GraficosDeSucursal'
 
 export function Inicio({ alNavegar }: { alNavegar: (id: IdModulo) => void }) {
   const usuario = useUsuarioActual()
@@ -221,6 +222,8 @@ function PodioDeSucursales() {
   // Qué tarjeta se está mirando por dentro. Guarda la fila entera y no el nombre: el cuadro muestra el
   // número que decía la tarjeta al lado de la lista, que es lo único que permite ver si cierran.
   const [mirando, setMirando] = useState<FilaEstadistica | null>(null)
+  // De qué sucursal se están mirando los gráficos. Es del podio y no pide permiso: sólo cantidades.
+  const [conGraficos, setConGraficos] = useState<string | null>(null)
   // El detalle es el listado de Cartera con otro nombre, así que se ofrece sólo a quien puede verlo.
   const { puedeVer } = usePermisos()
   const seVeElDetalle = puedeVer('cartera')
@@ -292,25 +295,56 @@ function PodioDeSucursales() {
   if (!podio || !podio.hayMesAnterior || podio.ranking.length === 0) return null
   const mostrado = mirandoElActual ? podio : pasado
 
-  // Para ver el podio de un mes anterior. Va arriba a la derecha del título, para cualquier rol.
+  // Para ver el podio de un mes anterior. Va arriba a la derecha del título, para cualquier rol. Son dos
+  // listas: el mes (con los meses que hay en ese año) y el año (con los años que tienen datos).
+  const periodoActual = elegido ?? podio.periodo
+  const anioActual = periodoActual.slice(0, 4)
+  const mesActual = periodoActual.slice(5, 7)
+  const anios = [...new Set(periodos.map((periodo) => periodo.slice(0, 4)))].sort((x, y) => y.localeCompare(x))
+  const mesesDelAnio = periodos
+    .filter((periodo) => periodo.startsWith(`${anioActual}-`))
+    .map((periodo) => periodo.slice(5, 7))
+    .sort((x, y) => x.localeCompare(y))
+  const elegirPeriodo = (periodo: string) => {
+    setMirando(null)
+    setConGraficos(null)
+    setElegido(periodo)
+  }
+  const claseDeLista = 'rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal text-slate-900'
   const selectorDeMes = periodos.length > 1 && (
-    <label className="mb-1 ml-auto flex items-center gap-2 text-xs font-semibold text-slate-600">
-      Mes
-      <select
-        value={elegido ?? podio.periodo}
-        onChange={(evento) => {
-          setMirando(null)
-          setElegido(evento.target.value)
-        }}
-        className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-normal text-slate-900"
-      >
-        {periodos.map((periodo) => (
-          <option key={periodo} value={periodo}>
-            {nombreDePeriodo(periodo)}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="mb-1 ml-auto flex items-center gap-3 text-xs font-semibold text-slate-600">
+      <label className="flex items-center gap-2">
+        Año
+        <select
+          value={anioActual}
+          onChange={(evento) => {
+            const anio = evento.target.value
+            // Se queda en el mismo mes si ese año lo tiene; si no, en el más nuevo que haya.
+            const delAnio = periodos.filter((periodo) => periodo.startsWith(`${anio}-`))
+            const mismoMes = delAnio.find((periodo) => periodo.slice(5, 7) === mesActual)
+            const elegidoDelAnio = mismoMes ?? [...delAnio].sort((x, y) => y.localeCompare(x))[0]
+            if (elegidoDelAnio) elegirPeriodo(elegidoDelAnio)
+          }}
+          className={claseDeLista}
+        >
+          {anios.map((anio) => (
+            <option key={anio} value={anio}>
+              {anio}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-2">
+        Mes
+        <select value={mesActual} onChange={(evento) => elegirPeriodo(`${anioActual}-${evento.target.value}`)} className={claseDeLista}>
+          {mesesDelAnio.map((mes) => (
+            <option key={mes} value={mes}>
+              {nombreDePeriodo(`${anioActual}-${mes}`).replace(/\s\d{4}$/, '')}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
   )
 
   if (!mostrado || !mostrado.hayMesAnterior || mostrado.ranking.length === 0) {
@@ -396,37 +430,45 @@ function PodioDeSucursales() {
             </>
           )
           const aspecto = cx(
-            'rounded-xl border px-4 py-3 text-left shadow-suave',
+            'flex flex-col rounded-xl border px-4 py-3 text-left shadow-suave',
             indice === 0 ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white',
           )
-          // Sin permiso de Cartera la tarjeta es la de siempre: un div, sin botón que prometa un
-          // detalle que después va a decir que no.
-          if (!seVeElDetalle) {
-            return (
-              <div key={fila.etiqueta} className={aspecto}>
-                {cuerpo}
-              </div>
-            )
-          }
+          const accion =
+            'text-[11px] font-semibold text-marino-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40 rounded'
+          // Los gráficos los ve cualquiera. El detalle de las altas, en cambio, es el listado de Cartera: sin
+          // ese permiso no se ofrece el botón que prometa algo que después va a decir que no.
           return (
-            <button
-              key={fila.etiqueta}
-              type="button"
-              onClick={() => setMirando(fila)}
-              title={`Ver qué pólizas son las altas de ${fila.etiqueta}`}
-              className={cx(
-                aspecto,
-                'transition hover:border-marino-300 hover:shadow-media focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marino-500/40',
-              )}
-            >
+            <div key={fila.etiqueta} className={aspecto}>
               {cuerpo}
-              <p className="mt-2 text-[11px] font-semibold text-marino-600">Ver el detalle</p>
-            </button>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                <button
+                  type="button"
+                  onClick={() => setConGraficos(fila.etiqueta)}
+                  title={`Ver los gráficos de ${fila.etiqueta}`}
+                  className={accion}
+                >
+                  Ver gráficos
+                </button>
+                {seVeElDetalle && (
+                  <button
+                    type="button"
+                    onClick={() => setMirando(fila)}
+                    title={`Ver qué pólizas son las altas de ${fila.etiqueta}`}
+                    className={accion}
+                  >
+                    Ver el detalle
+                  </button>
+                )}
+              </div>
+            </div>
           )
         })}
       </div>
 
       <DetalleDelPodio periodo={mostrado.periodo} fila={mirando} alCerrar={() => setMirando(null)} />
+      {conGraficos !== null && (
+        <GraficosDeSucursal periodo={mostrado.periodo} sucursal={conGraficos} alCerrar={() => setConGraficos(null)} />
+      )}
     </section>
   )
 }

@@ -8,9 +8,14 @@ import { abrirBaseDeDatos, cerrarBaseDeDatos, db } from '../src/main/db/base'
 import {
   anchoDeLineaMm,
   anchoUtilDelTicket,
+  htmlDelResumenDePagos,
   htmlDelTicket,
   puntosDelEncabezado,
   SANGRIA_DEL_TICKET_MM,
+  ALTO_DEL_RESUMEN_MM,
+  ALTO_DEL_TICKET_MM,
+  cssDelTexto,
+  margenIzquierdoDelTicket,
   type DatosDeTicket,
 } from '../src/main/servicios/ticket'
 import {
@@ -412,4 +417,55 @@ test('un dato largo baja de renglón en vez de salirse del papel', () => {
   const html = htmlDelTicket(ticketDeEjemplo({ titular: 'MARIA DE LOS ANGELES RODRIGUEZ DE FERNANDEZ' }), 80)
   assert.ok(html.includes('overflow-wrap: anywhere'))
   assert.ok(html.includes('MARIA DE LOS ANGELES RODRIGUEZ DE FERNANDEZ'))
+})
+
+test('el resumen de pagos para la ticketeadora lleva todos los datos del pago y escapa el texto', () => {
+  const html = htmlDelResumenDePagos(
+    { nombre: 'PÉREZ & HIJOS <SA>', documento: '20123456789', telefono: '11 5555-0000' },
+    [
+      {
+        fecha_iso: '2026-10-22', fecha: null, creado_en: '2026-10-22T14:05:00.000Z', importe: '48100', medio: 'CUPONERA',
+        compania: 'AGROSALTA', numero_poliza: '8589509', patente: 'AB123CD', periodo: '2026-10', periodo_texto: null,
+        sucursal: 'Daniel', usuario_nombre: 'Thomas', numero_ticket: '000123', observaciones: 'debe una', estado_cobro: 'PAGO',
+      },
+    ],
+    true,
+    80,
+  )
+  for (const dato of ['RESUMEN DE PAGOS', '22/10/2026', '48100', 'CUPONERA', 'OCTUBRE', 'AGROSALTA', '8589509', 'AB123CD', 'Daniel', 'Thomas', '000123', 'debe una', '20123456789']) {
+    assert.ok(html.includes(dato), `falta ${dato}`)
+  }
+  assert.ok(html.includes('PÉREZ &amp; HIJOS &lt;SA&gt;'), 'el nombre se escapa')
+  assert.ok(html.includes('pagos más recientes'), 'avisa cuando hay más de los que entran')
+})
+
+test('el ticket arranca pegado al margen del driver y el ajuste lo corre a mano', () => {
+  // Sin ajuste no se suma nada propio: el driver ya agrega su margen izquierdo.
+  assert.equal(margenIzquierdoDelTicket('termica'), 0)
+  assert.equal(margenIzquierdoDelTicket('termica', -3), -3)
+  assert.equal(margenIzquierdoDelTicket('comun', -3), 15, 'en la hoja A4 el ajuste de la térmica no cuenta')
+  const html = htmlDelTicket(ticketDeEjemplo(), 80, 'termica', -2.5)
+  assert.ok(html.includes('margin: 0 0 0 -2.5mm'), 'el ajuste llega al papel')
+})
+
+test('la tipografía y la intensidad del ticket se eligen desde el programa y llegan al papel', () => {
+  assert.equal(cssDelTexto({ fuente: 'courier', intensidad: 0 }), 'font-family: "Courier New", monospace;')
+  assert.ok(cssDelTexto({ fuente: 'lucida', intensidad: 2 }).includes('"Lucida Console"'))
+  assert.ok(cssDelTexto({ fuente: 'lucida', intensidad: 2 }).includes('-webkit-text-stroke: 0.4px'))
+  // Un valor fuera de rango no rompe el CSS.
+  assert.ok(!cssDelTexto({ fuente: 'courier', intensidad: 99 }).includes('NaN'))
+  const html = htmlDelTicket(ticketDeEjemplo(), 80, 'termica', 0, { fuente: 'consolas', intensidad: 3 })
+  assert.ok(html.includes('Consolas') && html.includes('-webkit-text-stroke: 0.6px'))
+  // Sin elegir nada sale como siempre.
+  assert.ok(htmlDelTicket(ticketDeEjemplo(), 80).includes('font-family: "Courier New", monospace;'))
+})
+
+test('la página del ticket es más alta que el ticket más largo: no se parte en dos ni se corta el pie', () => {
+  // Peor caso razonable: todos los renglones, dos de ellos largos que bajan de renglón, más el margen
+  // para el corte. Con 140 mm de página, el comprobante real se partía y la guillotina cortaba el pie.
+  const MM_POR_RENGLON = 10 * (25.4 / 72) * 1.35
+  const renglones = 30
+  assert.ok(renglones * MM_POR_RENGLON + 3 + 12 < ALTO_DEL_TICKET_MM, 'el alto no alcanza para el ticket')
+  assert.ok(ALTO_DEL_TICKET_MM > 140)
+  assert.ok(ALTO_DEL_RESUMEN_MM >= ALTO_DEL_TICKET_MM)
 })

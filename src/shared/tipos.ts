@@ -2492,6 +2492,11 @@ export interface ConfigImpresora {
   impresora: string | null
   /** Ancho del papel en milímetros (80 en las POS-80). */
   anchoMm: number
+  /** Corrimiento horizontal del texto en mm (+ derecha, − izquierda); 0 por defecto. */
+  ajusteMm: number
+  fuente: FuenteDelTicket
+  /** Qué tan grueso sale el trazo del texto (0 a 3): compensa una densidad baja del driver. */
+  intensidad: number
   /** Cuántas copias del ticket salen por pago (1 o 2). Con «preguntar» activado se puede elegir en el momento. */
   copias: number
   /** El número que va a llevar el próximo ticket que se imprima. Sube solo; se puede corregir a mano. */
@@ -2508,6 +2513,16 @@ export interface ConfigImpresora {
   ultimoError: string | null
 }
 
+/** Tipografía del ticket. Todas son monoespaciadas de Windows; Lucida Console y Consolas tienen trazos más gruesos que Courier New. */
+export type FuenteDelTicket = 'courier' | 'lucida' | 'consolas'
+export const FUENTES_DEL_TICKET: ReadonlyArray<{ id: FuenteDelTicket; nombre: string }> = [
+  { id: 'courier', nombre: 'Courier New (la de siempre)' },
+  { id: 'lucida', nombre: 'Lucida Console (trazo más grueso)' },
+  { id: 'consolas', nombre: 'Consolas (trazo grueso, más angosta)' },
+]
+/** Cuánto se engrosa el trazo del texto: 0 = normal, 3 = lo máximo. */
+export const INTENSIDAD_MAXIMA_DEL_TICKET = 3
+
 export interface DatosDeImpresora {
   habilitada: boolean
   /** Sin mandarlo se conserva lo guardado (térmica si nunca se eligió). */
@@ -2515,6 +2530,12 @@ export interface DatosDeImpresora {
   preguntar: boolean
   impresora: string
   anchoMm: number
+  /** Sin mandarlo se conserva lo guardado. */
+  ajusteMm?: number
+  /** Sin mandarlo se conserva lo guardado. */
+  fuente?: FuenteDelTicket
+  /** Sin mandarlo se conserva lo guardado. 0 a INTENSIDAD_MAXIMA_DEL_TICKET. */
+  intensidad?: number
   copias: number
 }
 
@@ -3510,6 +3531,33 @@ export interface PodioMensual {
   /** Cuándo esta computadora recibió este resultado del servidor (ISO con hora). */
   recibidoEnEstaComputadora: string
   frescura: FrescuraDeMetrica
+}
+
+/**
+ * Los gráficos de UNA sucursal, para la tarjeta del podio de Inicio. Es el tablero de Métricas filtrado
+ * por esa sucursal, pero sólo con lo que se puede mostrar sin permiso de área, igual que el podio: cantidades de
+ * pólizas, altas, bajas, cuotas y siniestros. No trae nada de lo que cobra la agencia, ni siquiera en null:
+ * el campo no existe, así que no hay un `if` en la pantalla del que depender.
+ */
+export interface PanelDeSucursal {
+  periodo: string
+  sucursal: string
+  /** false si no hay mes anterior cargado: sin él las altas no se pueden deducir (van en null). */
+  hayMesAnterior: boolean
+  activos: number
+  altas: number | null
+  bajas: number
+  porRama?: MetricasPorRama
+  activosPorCompania: PorcionMetrica[]
+  bajasPorMotivo: BajaPorMotivo[]
+  /** Hasta doce meses hacia atrás, sin la cobranza de cada mes. */
+  evolucion: Array<Omit<MesDeEvolucion, 'cobrado'>>
+  /** La cantidad de cuotas del mes: pagas y por cobrar. Con eso se ve la morosidad sin mirar un importe. */
+  cuotasCobradas: number
+  cuotasPendientes: number
+  siniestrosAbiertos: number
+  siniestrosPorCompania: PorcionMetrica[]
+  hoy: string
 }
 
 /** El podio de un mes cualquiera, con la lista de meses entre los que se puede elegir (el más nuevo primero). */

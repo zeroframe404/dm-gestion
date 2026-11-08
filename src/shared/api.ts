@@ -114,6 +114,7 @@ export interface ApiDm {
     prueba: Remota<'impresora:prueba'>
     guardarDocumentos: Remota<'impresora:guardarDocumentos'>
     imprimirPago: Remota<'impresora:imprimirPago'>
+    imprimirPagosDeCliente: Remota<'impresora:imprimirPagosDeCliente'>
     establecerNumeroDeTicket: Remota<'impresora:establecerNumeroDeTicket'>
     direcciones: Remota<'impresora:direcciones'>
     guardarDirecciones: Remota<'impresora:guardarDirecciones'>
@@ -170,6 +171,8 @@ export interface ApiDm {
     crear: Remota<'polizas:crear'>
     editar: Remota<'polizas:editar'>
     darDeBaja: Remota<'polizas:darDeBaja'>
+    guardarPdf: Remota<'polizas:guardarPdf'>
+    imprimir: Remota<'polizas:imprimir'>
     adjuntos: Remota<'polizas:adjuntos'>
     adjuntarArchivos: Remota<'polizas:adjuntarArchivos'>
     adjuntar: Remota<'polizas:adjuntar'>
@@ -351,6 +354,7 @@ export interface ApiDm {
     estadisticas: Remota<'metricas:estadisticas'>
     podio: Remota<'metricas:podio'>
     podioHistorico: Remota<'metricas:podioHistorico'>
+    panelDeSucursal: Remota<'metricas:panelDeSucursal'>
     altas: Remota<'metricas:altas'>
     /** El servidor recalculó una métrica y ya se guardó acá: qué claves cambiaron. */
     alActualizar: Suscripcion<'metricas:actualizaron'>

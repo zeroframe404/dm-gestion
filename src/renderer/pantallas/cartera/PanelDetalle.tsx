@@ -7,7 +7,8 @@ import { AVISAR_VTO_APAGADO, avisarVtoActivo } from '../../../shared/semaforo'
 import { Icono } from '../../componentes/Icono'
 import { Glow, InsigniaDePresencia, motivoDelBloqueo, useCursorAdentro } from '../../componentes/Presencia'
 import { seGuardaAlSalir } from '../../componentes/presencia-reglas'
-import { cx } from '../../componentes/ui'
+import { Boton, cx } from '../../componentes/ui'
+import { useNavegacion } from '../../contexto/Navegacion'
 import { useBloqueoDe, useFocoDeObjeto } from '../../contexto/Presencia'
 import { BotonEliminar, usePuedeEliminar } from '../../componentes/BotonEliminar'
 
@@ -351,11 +352,23 @@ function AlertaDeAviso({
 }
 
 function PieDeBorrado({ fila, alBorrar }: { fila: FilaCartera; alBorrar: Props['alBorrar'] }) {
-  if (!usePuedeEliminar('cuota')) return null
+  const { ir } = useNavegacion()
+  const puedeEliminar = usePuedeEliminar('cuota')
+  const clienteId = fila.clienteId
+  if (!puedeEliminar && clienteId === null) return null
   return (
-    <footer className="flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-3">
-      <p className="text-xs text-slate-500">Borra esta fila del mes, no la póliza.</p>
-      <BotonEliminar tipo="cuota" id={fila.cuotaId} alBorrar={alBorrar} />
+    <footer className="flex flex-col gap-2 border-t border-slate-200 px-4 py-3">
+      {clienteId !== null && (
+        <Boton variante="secundario" icono="clientes" onClick={() => ir('clientes', { clienteId })} title="Abre la ficha del cliente: sus pólizas, pagos, siniestros y más">
+          Ver ficha del cliente
+        </Boton>
+      )}
+      {puedeEliminar && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-slate-500">Borra esta fila del mes, no la póliza.</p>
+          <BotonEliminar tipo="cuota" id={fila.cuotaId} alBorrar={alBorrar} />
+        </div>
+      )}
     </footer>
   )
 }

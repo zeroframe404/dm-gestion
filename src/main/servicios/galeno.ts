@@ -477,6 +477,14 @@ export async function detalleDeLiquidacionesGaleno(filtros: FiltrosDeReporteGale
 
 // --- Impresión -----------------------------------------------------------
 
+/** Galeno espera el número de riesgo; si llega texto (p. ej. «todo riesgo») su servidor falla con un error técnico. */
+function idDeRiesgo(valor: unknown): string | undefined {
+  if (typeof valor !== 'string' || !valor.trim()) return undefined
+  const limpio = valor.trim()
+  if (!/^\d{1,6}$/.test(limpio)) throw new ErrorDeNegocio('El riesgo tiene que ser un número (el del vehículo dentro de la póliza). Dejalo vacío para imprimir todos.')
+  return limpio
+}
+
 export async function imprimirGaleno(pedido: unknown): Promise<ImpresionGaleno> {
   const d = objeto(pedido, 'El pedido de impresión')
   const tipoImpresion = d.tipoImpresion === 'C' || d.tipoImpresion === 'M' ? d.tipoImpresion : 'P'
@@ -485,7 +493,7 @@ export async function imprimirGaleno(pedido: unknown): Promise<ImpresionGaleno> 
     poliza: texto(d.poliza, 'La póliza', 1, 20),
     rama: enteroPositivoOCero(d.rama, 'La rama'),
     legajo: texto(d.legajo, 'El legajo', 1, 20),
-    idRiesgo: typeof d.idRiesgo === 'string' ? d.idRiesgo : undefined,
+    idRiesgo: idDeRiesgo(d.idRiesgo),
     nroEndoso: typeof d.nroEndoso === 'number' ? d.nroEndoso : undefined,
   }
   return conCliente((cli) => impresion.imprimir(cli, datos))

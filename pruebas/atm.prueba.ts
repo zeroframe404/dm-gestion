@@ -69,6 +69,7 @@ import {
   atm,
   masParecida,
   textoParaBuscar,
+  versionExacta,
   avisoDeOtraVersion,
   consejoParaElRechazo,
   cuotasDe,
@@ -85,7 +86,7 @@ import {
   usoPorDefecto,
   intentosDeCotizacion,
 } from '../src/main/multicotizador/atm'
-import { rankear } from '../src/main/multicotizador/equivalencias'
+import { rankear, sinDudas } from '../src/main/multicotizador/equivalencias'
 import { equivalenciaGuardada } from '../src/main/multicotizador/equivalenciasGuardadas'
 import { abrirBaseDeDatos, cerrarBaseDeDatos } from '../src/main/db/base'
 import { validarDatosDeEmisionAtm } from '../src/main/servicios/atm'
@@ -1936,6 +1937,13 @@ test('ATM: las versiones que se prueban cuando ATM no tiene la elegida son del m
   const deRanger = rankear(textoParaBuscar('Ranger', 'RANGER XLT 3.2 TDCI 4X4 C/D AT'), ranger, (v) => v.modelo)
   assert.equal(masParecida('Ranger', deRanger, () => false)?.codigoInfoAuto, '1')
   assert.equal(masParecida('Ranger', deRanger, (v) => v.codigoInfoAuto === '1')?.codigoInfoAuto, '2', 'salteando la rechazada')
+  // Moto: el modelo del catálogo es una categoría y la versión, el nombre real; la exacta gana sola.
+  const motos = [version('11', 'TNT 752S'), version('12', 'TNT 600 GT'), version('13', 'TNT 600 I'), version('14', 'TOURISM TNT 600GT')]
+  assert.equal(sinDudas(rankear(textoParaBuscar('CALLE MAS DE 600 CC', 'TNT 752S'), motos, (v) => v.modelo), 0.5, 0.1), null, 'por el texto entero queda con dudas')
+  assert.equal(versionExacta('TNT 752S', motos)?.codigoInfoAuto, '11')
+  assert.equal(versionExacta('TNT 752', motos), null, 'si no está tal cual no se adivina')
+  assert.equal(versionExacta('TNT 600 GT', [...motos, version('15', 'TNT 600 GT')]), null, 'dos iguales siguen siendo duda')
+  assert.equal(versionExacta('', motos), null)
   assert.equal(masParecida('Focus', rankear('Focus 2.0 Titanium', [ranger[0]!, ranger[1]!], (v) => v.modelo), () => false), null)
   assert.equal(
     avisoDeOtraVersion(manual, automatica),

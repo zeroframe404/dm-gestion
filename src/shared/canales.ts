@@ -247,6 +247,7 @@ import type {
   OpcionesPlanillaClasica,
   PedidoDeReporte,
   PlantillaDeMensaje,
+  PanelDeSucursal,
   PodioHistorico,
   PodioMensual,
   ResultadoDeSegmento,
@@ -467,6 +468,8 @@ export interface Canales {
    * en Administración → Impresora).
    */
   'impresora:imprimirPago': (pagoId: number, copias?: number) => Resultado<boolean>
+  /** Imprime en la ticketeadora el resumen de todos los pagos de un cliente, con todos sus datos. */
+  'impresora:imprimirPagosDeCliente': (clienteId: number) => Resultado<boolean>
   /** Corrige el número del próximo ticket, por ejemplo después de cambiar el rollo. */
   'impresora:establecerNumeroDeTicket': (numero: number) => Resultado<ConfigImpresora>
 
@@ -620,6 +623,10 @@ export interface Canales {
   'polizas:editar': (polizaId: number, datos: DatosDePoliza) => Resultado<PolizaDeCliente>
   'polizas:darDeBaja': (polizaId: number, datos: DatosDeBaja) => Resultado<null>
   /** Fotos y documentos de la póliza (12.6): viven en el VPS y se ven desde cualquier computadora. */
+  /** Abre el diálogo «Guardar como» con la póliza completa en PDF. Devuelve la ruta o null si se canceló. */
+  'polizas:guardarPdf': (polizaId: number) => Resultado<{ ruta: string | null }>
+  /** Manda la póliza completa a la impresora de documentos (A4), nunca a la ticketeadora. */
+  'polizas:imprimir': (polizaId: number) => Resultado<boolean>
   'polizas:adjuntos': (polizaId: number) => Resultado<AdjuntoDePoliza[]>
   'polizas:adjuntarArchivos': (polizaId: number, archivos: ArchivoParaAdjuntar[]) => Resultado<AdjuntoDePoliza[]>
   /** Con rutas del disco (el explorador de archivos, o la prueba de humo); `null` abre el explorador. */
@@ -786,6 +793,7 @@ export interface Canales {
   'metricas:podio': () => Resultado<PodioMensual | null>
   /** El podio de cualquier mes cargado (null = el último) y los meses disponibles. Sin permiso de área, como el podio. */
   'metricas:podioHistorico': (periodo: string | null) => Resultado<PodioHistorico>
+  'metricas:panelDeSucursal': (periodo: string, sucursal: string) => Resultado<PanelDeSucursal>
   /**
    * Qué pólizas son esas altas, una por una. A diferencia del podio, esto SÍ pide el permiso de
    * Cartera: el cartel muestra un número y esto muestra los nombres de los clientes, que es el dato de

@@ -761,6 +761,26 @@ function rangoDeVigencia(poliza: PolizaDeCliente): string {
 // ---------------------------------------------------------------------------
 
 function PestanaPagos({ ficha }: { ficha: FichaCliente }) {
+  const [imprimiendo, setImprimiendo] = useState(false)
+  const [aviso, setAviso] = useState<{ texto: string; error: boolean } | null>(null)
+  const imprimir = async () => {
+    setImprimiendo(true)
+    setAviso(null)
+    const resultado = await window.dm.impresora.imprimirPagosDeCliente(ficha.id)
+    setImprimiendo(false)
+    setAviso(resultado.ok ? { texto: 'Se mandó a la ticketeadora.', error: false } : { texto: resultado.error, error: true })
+  }
+  // El comprobante de UN pago, con el mismo número de ticket que ya tenía (es un duplicado, no un cobro nuevo).
+  const [imprimiendoPago, setImprimiendoPago] = useState<number | null>(null)
+  const imprimirPago = async (pagoId: number) => {
+    setImprimiendoPago(pagoId)
+    setAviso(null)
+    const resultado = await window.dm.impresora.imprimirPago(pagoId, 1)
+    setImprimiendoPago(null)
+    if (!resultado.ok) setAviso({ texto: resultado.error, error: true })
+    else if (!resultado.datos) setAviso({ texto: 'No se imprimió: revisá que la ticketeadora esté activa en Administración → Impresora.', error: true })
+    else setAviso({ texto: 'Se mandó el comprobante a la ticketeadora.', error: false })
+  }
   if (ficha.pagos.length === 0) {
     return (
       <Vacio titulo="Todavía no hay pagos registrados de este cliente.">
@@ -770,6 +790,13 @@ function PestanaPagos({ ficha }: { ficha: FichaCliente }) {
   }
 
   return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {aviso && <span className={cx('text-sm', aviso.error ? 'text-red-600' : 'text-emerald-600')}>{aviso.texto}</span>}
+        <Boton icono="impresora" cargando={imprimiendo} onClick={() => void imprimir()} title="Imprime en la ticketeadora todos los pagos de este cliente, con todos sus datos">
+          Imprimir pagos (ticketeadora)
+        </Boton>
+      </div>
     <Caja>
       <table className="w-full text-sm">
         <thead className="bg-slate-50">
@@ -780,6 +807,7 @@ function PestanaPagos({ ficha }: { ficha: FichaCliente }) {
             <th className={TH}>Compañía</th>
             <th className={TH}>Póliza</th>
             <th className={TH}>Período</th>
+            <th className={TH}>Comprobante</th>
           </tr>
         </thead>
         <tbody>
@@ -791,11 +819,24 @@ function PestanaPagos({ ficha }: { ficha: FichaCliente }) {
               <td className={TD}>{pago.compania ?? '—'}</td>
               <td className={cx(TD, 'font-mono text-xs')}>{pago.numeroPoliza ?? '—'}</td>
               <td className={cx(TD, 'tabular-nums')}>{pago.periodo ?? '—'}</td>
+              <td className={TD}>
+                <Boton
+                  tamano="sm"
+                  variante="fantasma"
+                  icono="impresora"
+                  cargando={imprimiendoPago === pago.id}
+                  onClick={() => void imprimirPago(pago.id)}
+                  title="Imprime el comprobante de este pago en la ticketeadora"
+                >
+                  Imprimir
+                </Boton>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
     </Caja>
+    </div>
   )
 }
 

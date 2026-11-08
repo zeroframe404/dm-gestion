@@ -27,6 +27,7 @@ import {
   rankear,
   similitud,
   sinDudas,
+  textoDeVehiculo,
 } from '../src/main/multicotizador/equivalencias'
 import { formasDePago, olvidarCuerpoDeFormasDePago } from '../src/main/aseguradoras/galeno/catalogos'
 import { crearClienteGaleno } from '../src/main/aseguradoras/galeno/cliente'
@@ -205,6 +206,18 @@ test('multicotizador: las versiones se comparan por palabras, sin importar el or
   assert.equal(sinDudas(rankear('1.8 XEI CVT', versiones, (v) => v)), 'COROLLA 1.8 XEI CVT')
   // Dos versiones igual de parecidas: ante la duda, pregunta.
   assert.equal(sinDudas(rankear('COROLLA 1.8 XEI', versiones, (v) => v)), null)
+})
+
+test('multicotizador: la versión exacta gana aunque exista otra igual con una palabra más', () => {
+  const tiggo = ['TIGGO 2 1.5 4X2 PRO CONFORT', 'TIGGO 2 1.5 4X2 PRO CONFORT CVT', 'TIGGO 2 1.5 4X2 PRO LUXURY', 'TIGGO 4 1.5 4X2 PRO CONFORT']
+  // El modelo «TIGGO» ya está en la versión: no se repite al buscar.
+  assert.equal(textoDeVehiculo('TIGGO', 'TIGGO 2 1.5 4X2 PRO CONFORT'), 'TIGGO 2 1.5 4X2 PRO CONFORT')
+  assert.equal(textoDeVehiculo('Ranger', 'XLT 3.2'), 'RANGER XLT 3.2')
+  const texto = textoDeVehiculo('TIGGO', 'TIGGO 2 1.5 4X2 PRO CONFORT')
+  assert.equal(sinDudas(rankear(texto, tiggo, (v) => v)), 'TIGGO 2 1.5 4X2 PRO CONFORT')
+  // Con la CVT pedida, gana la CVT; y dos exactas iguales siguen siendo duda.
+  assert.equal(sinDudas(rankear('TIGGO 2 1.5 4X2 PRO CONFORT CVT', tiggo, (v) => v)), 'TIGGO 2 1.5 4X2 PRO CONFORT CVT')
+  assert.equal(sinDudas(rankear('TIGGO 2 1.5 4X2 PRO CONFORT', ['TIGGO 2 1.5 4X2 PRO CONFORT', 'TIGGO 2 1,5 4X2 PRO CONFORT'], (v) => v)), null)
 })
 
 test('multicotizador: un vehículo del catálogo con código de Galeno se cotiza en Galeno con esos códigos', () => {

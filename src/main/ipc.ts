@@ -51,10 +51,11 @@ import {
 } from './servicios/cobranzas'
 import { cajaConCache, comisionesConCache, imputadosConCache } from './servicios/cobranzasDesdeCache'
 import { guardarBinarioComo, guardarComo, guardarEn } from './servicios/exportacion'
+import { polizaParaImprimir } from './servicios/imprimirPoliza'
 import { guardarHtmlComoPdf, imprimirHtmlConDialogo, pdfDelHtml } from './servicios/impresion'
 import { leerSnapshotDeMetrica } from './servicios/metricasCache'
 import { estadoDeAlmacenamiento, guardarTotalDeAlmacenamiento } from './servicios/almacenamiento'
-import { altasConCache, estadisticasConCache, podioHistorico, tableroConCache } from './servicios/metricasDesdeCache'
+import { altasConCache, estadisticasConCache, panelDeSucursal, podioHistorico, tableroConCache } from './servicios/metricasDesdeCache'
 import {
   areasDelReporte,
   catalogoDeExcel,
@@ -165,6 +166,7 @@ import {
   guardarConfiguracionDeImpresora,
   guardarConfiguracionDeImpresoraDeDocumentos,
   guardarDireccionesDeTicket,
+  imprimirResumenDePagos,
   imprimirTicketDePago,
   imprimirTicketDePrueba,
   pedidoDeTicket,
@@ -947,6 +949,10 @@ export function registrarIpc(): void {
     exigirEdicion('cartera', 'clientes', 'cobranzas')
     return exito(await imprimirTicketDePago(enteroPositivo(pagoId, 'El pago'), copias))
   })
+  manejar('impresora:imprimirPagosDeCliente', async (clienteId) => {
+    exigirVista('clientes')
+    return exito(await imprimirResumenDePagos(enteroPositivo(clienteId, 'El cliente')))
+  })
   // Corregir el correlativo lo puede hacer cualquiera con sesión, igual que el resto de esta pantalla:
   // es la numeración del papel que tiene esta PC delante.
   manejar('impresora:establecerNumeroDeTicket', async (numero) => {
@@ -1240,6 +1246,16 @@ export function registrarIpc(): void {
   manejar('polizas:ver', (polizaId) => {
     exigirVista('polizas')
     return exito(verPoliza(enteroPositivo(polizaId, 'La póliza')))
+  })
+  manejar('polizas:guardarPdf', async (polizaId) => {
+    exigirVista('polizas')
+    const papel = polizaParaImprimir(enteroPositivo(polizaId, 'La póliza'))
+    return exito(await guardarHtmlComoPdf(papel.html, papel.nombreDeArchivo, ventanaActual(), 'Guardar la póliza en PDF'))
+  })
+  manejar('polizas:imprimir', async (polizaId) => {
+    exigirVista('polizas')
+    const papel = polizaParaImprimir(enteroPositivo(polizaId, 'La póliza'))
+    return exito(await imprimirHtmlConDialogo(papel.html))
   })
   manejar('polizas:deCliente', (clienteId) => {
     exigirVista('polizas', 'clientes', 'renovaciones')
@@ -1673,6 +1689,13 @@ export function registrarIpc(): void {
   manejar('metricas:podioHistorico', (periodo) => {
     exigirSesion()
     return exito(podioHistorico(periodo))
+  })
+  // Los gráficos de una sucursal desde su tarjeta del podio: mismo criterio que el podio (sin permiso de
+  // área) y por eso sin plata: `panelDeSucursal` pide el tablero sin números de la agencia y ni siquiera
+  // arma el campo de cobranza.
+  manejar('metricas:panelDeSucursal', (periodo, sucursal) => {
+    exigirSesion()
+    return exito(panelDeSucursal(periodo, sucursal))
   })
   // El detalle del podio —qué pólizas son esas altas— pide Cartera, que es de donde sale el dato. El
   // podio se ve sin permiso porque es un número de una carrera; una lista con el nombre de cada cliente
