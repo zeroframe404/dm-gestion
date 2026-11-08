@@ -76,29 +76,35 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
-  'administracion.usolaboral': {
-    clave: 'administracion.usolaboral',
-    titulo: 'Administración → Uso laboral',
-    resumen: 'Opcional. De qué hora a qué hora puede trabajar cada rol, y el registro de las excepciones que se pidieron. Sólo la ve y la cambia un superadministrador.',
+  'administracion.ciberseguridad': {
+    clave: 'administracion.ciberseguridad',
+    titulo: 'Administración → Ciberseguridad',
+    resumen: 'Herramientas para cuidar quién entra al programa y cuándo. Hoy tiene el «Control de horarios». Sólo la ve y la cambia un superadministrador.',
     secciones: [
       {
-        titulo: 'Cómo se configura',
+        titulo: 'Control de horarios (opcional)',
         parrafos: [
-          'Se activa con «Activar el control de horario». Después, para cada rol (Administradores y Usuarios por separado) se tilda «Limitar el horario» y se elige la hora de entrada y la de salida, en hora de Argentina; por ejemplo, de 10:00 a 20:00. Un rol sin tildar trabaja a cualquier hora. Mientras el control esté apagado, nadie tiene horario.',
-          'El superadministrador no tiene horario ni renglón en esta pantalla: es el único rol que puede ingresar a cualquier hora.',
+          'Se entra desde la tarjeta «Control de horarios». Se activa con «Activar el control de horario»; mientras esté apagado, nadie tiene horario. Después se elige la sucursal y, para cada rol (Administradores y Usuarios por separado), se tilda «Limitar el horario», se eligen la hora de entrada y la de salida —en hora de Argentina, por ejemplo de 10:00 a 20:00— y los días de la semana en que se trabaja.',
+          'Cada sucursal tiene su propio horario. «Copiar a todas las sucursales» repite el de la que estás mirando en las demás (queda sin guardar hasta tocar «Guardar horario»). Un rol sin tildar trabaja a cualquier hora y cualquier día. El superadministrador no tiene horario ni renglón: es el único rol que puede ingresar siempre.',
+        ],
+      },
+      {
+        titulo: 'Feriados',
+        parrafos: [
+          'En «Feriados» de cada sucursal se cargan los días puntuales en que no se trabaja (feriados, puentes) con la fecha y, si querés, el motivo. Ese día, quien tiene el horario limitado no puede ingresar aunque la hora sea buena, salvo con una excepción. Se guardan junto con el horario.',
         ],
       },
       {
         titulo: 'Qué pasa fuera de horario',
         parrafos: [
-          'Quien intenta ingresar fuera de su horario no entra: ve una advertencia con el botón «Pedir excepción al super-administrador». Mientras tanto el programa no se conecta con el servidor de la agencia, salvo para comprobar el usuario y la contraseña.',
-          'Quien está trabajando recibe, 30 minutos antes del cierre, un zumbido y una ventana amarilla que dice que se acaba el tiempo laboral, con «Aceptar» o «Pedir excepción al super-administrador». Si no se pide nada (o no se aprueba), al llegar la hora la sesión se cierra sola y se corta la conexión con el servidor.',
+          'Quien intenta ingresar fuera de su horario, en un día que no se trabaja o en un feriado, no entra: ve una advertencia con el botón «Pedir excepción al super-administrador». Mientras tanto el programa no se conecta con el servidor de la agencia, salvo para comprobar el usuario y la contraseña.',
+          'Quien está trabajando recibe, 30 minutos antes del cierre, un zumbido y una ventana amarilla que dice que se acaba el tiempo laboral, con «Aceptar» o «Pedir excepción al super-administrador» (y un segundo aviso a los 5 minutos). Si no se pide nada, o no se aprueba, al llegar la hora la sesión se cierra sola y se corta la conexión con el servidor.',
         ],
       },
       {
         titulo: 'Los pedidos de excepción',
         parrafos: [
-          'Al superadministrador le salta un aviso en cualquier pantalla con quién pide, a qué hora, desde qué dirección IP y desde qué localidad. Puede aprobar por 30 minutos, 1, 2 o 4 horas, o rechazar. Los pedidos pendientes también se ven en esta pestaña.',
+          'Al superadministrador le salta un aviso en cualquier pantalla con quién pide, desde qué sucursal, a qué hora, desde qué dirección IP y desde qué localidad. Puede aprobar por 30 minutos, 1, 2 o 4 horas, o rechazar. Los pedidos pendientes también se ven en la pantalla del Control de horarios.',
           'Todos los pedidos quedan en el registro, se aprueben o no, y no se pueden borrar. La IP y la localidad las ve el servidor, no la computadora de quien pide.',
         ],
       },
@@ -106,13 +112,13 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         titulo: 'Lo que hay que saber',
         parrafos: [
           'La hora de referencia es la del servidor, no la de la computadora: cambiarle la hora a Windows no corre el turno. Sin internet, el programa sigue con el último horario que conoció.',
-          'El horario lo hace cumplir el programa de cada computadora; el servidor guarda las reglas y el registro. Un cambio de horario llega a cada computadora en un par de minutos.',
+          'El horario lo hace cumplir el programa de cada computadora; el servidor guarda las reglas y el registro. Un cambio llega a cada computadora en un par de minutos.',
         ],
       },
     ],
     conceptos: [
-      { termino: 'Excepción', explicacion: 'Un permiso de tiempo extra que da el superadministrador a una persona, por 30 minutos, 1, 2 o 4 horas, para trabajar fuera de su horario.' },
-      { termino: 'Registro', explicacion: 'La lista de todos los pedidos de excepción, con fecha, persona, IP, localidad y resultado. No se borra.' },
+      { termino: 'Excepción', explicacion: 'Un permiso de tiempo extra que da el superadministrador a una persona, por 30 minutos, 1, 2 o 4 horas, para trabajar fuera de su horario, en un día sin trabajo o en un feriado.' },
+      { termino: 'Registro', explicacion: 'La lista de todos los pedidos de excepción, con fecha, persona, sucursal, IP, localidad y resultado. No se borra.' },
     ],
   },
   'administracion.permisos': {

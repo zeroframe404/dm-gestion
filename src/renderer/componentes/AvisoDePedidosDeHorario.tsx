@@ -3,7 +3,7 @@
 // minutos, 1, 2 o 4 horas) o «Rechazar». Se decida lo que se decida queda grabado en el registro del servidor.
 //
 // Cerrar la ventana sin contestar no pierde nada: los pedidos siguen pendientes y se ven en
-// Administración → Uso laboral. Sólo se monta para el superadministrador (los demás roles no tienen nada
+// Administración → Ciberseguridad → Control de horarios. Sólo se monta para el superadministrador (los demás roles no tienen nada
 // que decidir, y el proceso principal tampoco les manda el evento).
 import { useCallback, useEffect, useState } from 'react'
 import { MINUTOS_DE_EXCEPCION, type SolicitudDeHorario } from '../../shared/horario'
