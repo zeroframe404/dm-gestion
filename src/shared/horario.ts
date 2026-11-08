@@ -73,6 +73,17 @@ export function minutosDeArgentina(instanteMs: number): number {
   return ar.getUTCHours() * 60 + ar.getUTCMinutes() + ar.getUTCSeconds() / 60
 }
 
+/**
+ * El instante (ms) en que es `minutosDelDia` de HOY en Argentina. Se calcula desde la medianoche de allá y no
+ * sumándole a la hora actual lo que falta: así da SIEMPRE el mismo valor durante todo el día. Con la suma, el
+ * resultado se corría unos milisegundos en cada consulta y el programa no podía reconocer que ya había avisado
+ * de este mismo cierre (el aviso se repetía en cada vuelta del reloj).
+ */
+export function instanteDelDiaEnArgentina(ahoraMs: number, minutosDelDia: number): number {
+  const medianoche = Math.floor((ahoraMs - MS_DE_ARGENTINA) / 86_400_000) * 86_400_000 + MS_DE_ARGENTINA
+  return medianoche + minutosDelDia * 60_000
+}
+
 /** «HH:MM» en hora de Argentina. */
 export function horaDeArgentina(instanteMs: number): string {
   const ar = new Date(instanteMs - MS_DE_ARGENTINA)
@@ -108,7 +119,7 @@ export function evaluarHorario(
   const dentroDelTurno = minutos >= desde && minutos < hasta
 
   if (dentroDelTurno) {
-    const finDelTurnoMs = ahoraMs + (hasta - minutos) * 60_000
+    const finDelTurnoMs = instanteDelDiaEnArgentina(ahoraMs, hasta)
     const cierraEnMs = hayExcepcion ? Math.max(finDelTurnoMs, excepcionHastaMs) : finDelTurnoMs
     return { tipo: 'dentro', cierraEnMs, cierraA: horaDeArgentina(cierraEnMs) }
   }

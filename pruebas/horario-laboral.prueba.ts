@@ -163,6 +163,8 @@ test('con la sesión abierta avisa a los 30 y a los 5 minutos, una sola vez cada
   await vuelta()
   assert.equal(avisos.filter((a) => a.evento === 'horario:aviso').length, 1)
   assert.deepEqual(avisos[0].datos, { minutosRestantes: 25, cierraA: '20:00' })
+  // Pasa un rato entre vueltas, como en el programa de verdad: el cierre no puede correrse unos milisegundos.
+  await new Promise((resolver) => setTimeout(resolver, 25))
   await vuelta()
   assert.equal(avisos.length, 1, 'no repite el mismo aviso')
   assert.ok(sesion(), 'todavía no se cerró')
