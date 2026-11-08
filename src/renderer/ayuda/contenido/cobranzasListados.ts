@@ -96,7 +96,7 @@ export const AYUDA_COBRANZAS_LISTADOS: Record<string, ContenidoDeAyuda> = {
       },
       {
         titulo: 'Quién la ve',
-        parrafos: ['Sólo los roles que no son Empleado: es información de la agencia, no del mostrador, igual que la pestaña Comisiones del panel.'],
+        parrafos: ['Sólo los roles que no son Usuario: es información de la agencia, no del mostrador, igual que la pestaña Comisiones del panel.'],
       },
     ],
   },

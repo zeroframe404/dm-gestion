@@ -124,7 +124,7 @@ export const AYUDA_COBRANZAS: Record<string, ContenidoDeAyuda> = {
       },
       {
         titulo: 'Quién la ve',
-        parrafos: ['Esta pestaña sólo aparece para los roles que no son Empleado: es información de la agencia, no del mostrador.'],
+        parrafos: ['Esta pestaña sólo aparece para los roles que no son Usuario: es información de la agencia, no del mostrador.'],
       },
     ],
     conceptos: [

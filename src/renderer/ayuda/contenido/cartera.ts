@@ -82,7 +82,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Cerrar el mes',
         parrafos: [
-          'El botón «Cerrar mes» (visible para todos menos el rol Empleado) abre el mes siguiente con las pólizas que correspondan, y deja el mes actual como archivo de sólo lectura. Es una acción de fin de mes, no algo que se toque todos los días.',
+          'El botón «Cerrar mes» (visible para todos menos el rol Usuario) abre el mes siguiente con las pólizas que correspondan, y deja el mes actual como archivo de sólo lectura. Es una acción de fin de mes, no algo que se toque todos los días.',
         ],
       },
     ],
@@ -143,7 +143,7 @@ export const AYUDA_CARTERA: Record<string, ContenidoDeAyuda> = {
           'Es el caso del cliente que se dio de baja en julio y en septiembre vuelve: no hay que cargarlo de nuevo. Con el botón «Poner vigente» la póliza vuelve a estar activa y se le arma su fila en la planilla del mes abierto con los últimos datos que tenía; la baja sale de esta lista y también de la pestaña BAJAS de la base.',
           'Lo que haya cambiado —la cuota, la compañía, el vehículo— se corrige después en la planilla o en la póliza, con doble clic, como cualquier otro dato.',
           'Funciona también con las bajas que venían de la hoja, siempre que la baja esté enlazada a una póliza conocida. Si el cliente se fue hace tanto que ya no queda ninguna póliza suya cargada, el botón no aparece: en ese caso hay que darla de alta desde Pólizas → Nueva póliza.',
-          'Sólo lo pueden hacer los roles con más permisos (no el Empleado), porque mueve la planilla que están mirando todos.',
+          'Sólo lo pueden hacer los roles con más permisos (no el Usuario), porque mueve la planilla que están mirando todos.',
         ],
       },
       {
