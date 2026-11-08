@@ -30,7 +30,7 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
-    version: '17.11.0',
+    version: '17.10.1',
     fecha: '2026-11-06',
     cambios: [
       { tipo: 'modificado', texto: 'Inicio → Podio de altas: ahora se elige el año y el mes en dos listas separadas (primero Año y después Mes), en vez de una sola lista con todos los meses juntos.' },
