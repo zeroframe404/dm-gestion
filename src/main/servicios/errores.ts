@@ -24,3 +24,15 @@ export class SinConexion extends ErrorDeNegocio {
     this.name = 'SinConexion'
   }
 }
+
+/**
+ * Quiso ingresar fuera de su horario de trabajo (Administración → Uso laboral). Es un `ErrorDeNegocio`
+ * como cualquier otro —el mensaje se muestra tal cual— pero viaja marcado (`codigo: 'fuera-de-horario'`,
+ * ver ipc.ts): el Login no muestra sólo el cartel rojo, ofrece «Pedir excepción al superadministrador».
+ */
+export class FueraDeHorario extends ErrorDeNegocio {
+  constructor(mensaje: string) {
+    super(mensaje)
+    this.name = 'FueraDeHorario'
+  }
+}

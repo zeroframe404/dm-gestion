@@ -8,6 +8,8 @@ import { CartelActualizacionDisponible } from './componentes/CartelActualizacion
 import { CartelCambiosRecientes } from './componentes/CartelCambiosRecientes'
 import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
 import { AvisoDeZumbido } from './componentes/AvisoDeZumbido'
+import { AvisoDeFinDeTurno } from './componentes/AvisoDeFinDeTurno'
+import { AvisoDePedidosDeHorario } from './componentes/AvisoDePedidosDeHorario'
 import { AvisoDeLlamadaEntrante } from './componentes/AvisoDeLlamadaEntrante'
 import { BarraDeLlamada } from './componentes/BarraDeLlamada'
 import { BarraLateral } from './componentes/BarraLateral'
@@ -336,6 +338,10 @@ function Marco({
       <AvisoDeTareaHecha />
       {/* Un zumbido llega estando en cualquier pantalla: por eso el sonido y el cartel viven acá. */}
       <AvisoDeZumbido />
+      {/* Uso laboral: a los 30 minutos del cierre del turno (con zumbido), y para el superadministrador, los
+          pedidos de excepción que llegan. Ambos saltan en cualquier pantalla. */}
+      <AvisoDeFinDeTurno />
+      <AvisoDePedidosDeHorario />
       {/* Ídem la llamada que entra (14.0): el tono y la cara de quien llama, con atender y rechazar. */}
       <AvisoDeLlamadaEntrante />
       {/* Ídem: el rechazo por «ya lo cambió otro» (14.0) lo trae el ciclo de subida, esté abierta la

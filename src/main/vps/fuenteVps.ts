@@ -24,6 +24,13 @@ import {
   type TramoDeColumna,
 } from '../importacion/fuente'
 import type {
+  ConfiguracionDeHorario,
+  EstadoDelHorarioEnElVps,
+  EstadoDelPedido,
+  MomentoDelPedido,
+  SolicitudDeHorario,
+} from '../../shared/horario'
+import type {
   CambiosDeMiLink,
   DenunciaDeMiLink,
   EstadoDeDenuncia,
@@ -1333,5 +1340,67 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
       { reintentarSinRespuesta: false },
     )) as { metricas: MetricasDeMiLink }
     return datos.metricas
+  }
+
+  // --- Uso laboral -------------------------------------------------------------
+  //
+  // El horario de cada rol y los pedidos de excepción (`/api/dmg/horario`). Ninguno se reintenta solo:
+  // el que mira es el ingreso (alguien esperando) o un reloj que vuelve a preguntar en un rato. Crear un
+  // pedido tampoco: si el POST llegó y se cortó la respuesta, repetirlo devolvería el mismo pedido
+  // pendiente (el servidor no duplica), pero no vale la espera.
+
+  async horarioEstado(actor: ActorDeMiLinkVps): Promise<EstadoDelHorarioEnElVps> {
+    return (await this.pedir('leer el horario laboral', 'GET', `/api/dmg/horario?${consultaDeMiLink(actor)}`, undefined, {
+      reintentarSinRespuesta: false,
+    })) as EstadoDelHorarioEnElVps
+  }
+
+  async horarioGuardar(actor: ActorDeMiLinkVps, config: ConfiguracionDeHorario): Promise<EstadoDelHorarioEnElVps> {
+    return (await this.pedir('guardar el horario laboral', 'PUT', `/api/dmg/horario?${consultaDeMiLink(actor)}`, { config }, {
+      reintentarSinRespuesta: false,
+    })) as EstadoDelHorarioEnElVps
+  }
+
+  async horarioSolicitudes(actor: ActorDeMiLinkVps, estado?: EstadoDelPedido): Promise<SolicitudDeHorario[]> {
+    const datos = (await this.pedir(
+      'leer los pedidos de excepción',
+      'GET',
+      `/api/dmg/horario/solicitudes?${consultaDeMiLink(actor, estado ? { estado } : {})}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { solicitudes: SolicitudDeHorario[] }
+    return datos?.solicitudes ?? []
+  }
+
+  async horarioPedirExcepcion(
+    actor: ActorDeMiLinkVps,
+    pedido: { momento: MomentoDelPedido; sucursal: string; motivo: string },
+  ): Promise<SolicitudDeHorario> {
+    const datos = (await this.pedir('pedir una excepción de horario', 'POST', `/api/dmg/horario/solicitudes?${consultaDeMiLink(actor)}`, pedido, {
+      reintentarSinRespuesta: false,
+    })) as { solicitud: SolicitudDeHorario }
+    return datos.solicitud
+  }
+
+  async horarioSolicitud(actor: ActorDeMiLinkVps, id: string): Promise<SolicitudDeHorario> {
+    const datos = (await this.pedir(
+      'consultar un pedido de excepción',
+      'GET',
+      `/api/dmg/horario/solicitudes/${encodeURIComponent(id)}?${consultaDeMiLink(actor)}`,
+      undefined,
+      { reintentarSinRespuesta: false },
+    )) as { solicitud: SolicitudDeHorario }
+    return datos.solicitud
+  }
+
+  async horarioResolver(actor: ActorDeMiLinkVps, id: string, aprobada: boolean, minutos: number | null): Promise<SolicitudDeHorario> {
+    const datos = (await this.pedir(
+      'resolver un pedido de excepción',
+      'POST',
+      `/api/dmg/horario/solicitudes/${encodeURIComponent(id)}/resolver?${consultaDeMiLink(actor)}`,
+      { aprobada, minutos },
+      { reintentarSinRespuesta: false },
+    )) as { solicitud: SolicitudDeHorario }
+    return datos.solicitud
   }
 }

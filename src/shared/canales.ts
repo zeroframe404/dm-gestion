@@ -13,6 +13,14 @@ import type {
 } from './multicotizador'
 import type { EstadoDeLaDemo, PasoDePruebaDeVps } from './demo'
 import type {
+  AvisoDeFinDeTurno,
+  ConfiguracionDeHorario,
+  EstadoDelPedido,
+  EstadoDeUsoLaboral,
+  RespuestaDeExcepcion,
+  SolicitudDeHorario,
+} from './horario'
+import type {
   ArchivoDeDenuncia,
   CambiosDeMiLink,
   DenunciaDeMiLink,
@@ -1020,6 +1028,26 @@ export interface Canales {
   /** El superadministrador abre otra sucursal: de ahí en más la página, las solicitudes y las métricas son de ella. */
   'miLink:elegirSucursal': (nombre: string) => Resultado<SucursalesDeMiLink>
 
+  // Uso laboral: el horario de cada rol y los pedidos de excepción (ver servicios/horarioLaboral.ts).
+  // Las que llevan «Alingresar» se usan SIN sesión, desde el Login, y sólo valen para quien acaba de ser
+  // rechazado por estar fuera de horario (el proceso principal se acuerda de quién fue).
+  /** La configuración del horario. Sólo SUPER_ADMIN. */
+  'horario:estado': () => Resultado<EstadoDeUsoLaboral>
+  /** Guarda la configuración del horario. Sólo SUPER_ADMIN; la valida el servidor también. */
+  'horario:guardar': (config: ConfiguracionDeHorario) => Resultado<EstadoDeUsoLaboral>
+  /** El registro de pedidos de excepción (con IP y localidad), aprobados o no. Sólo SUPER_ADMIN. */
+  'horario:registro': (estado?: EstadoDelPedido) => Resultado<SolicitudDeHorario[]>
+  /** Los pedidos que esperan respuesta. Sólo SUPER_ADMIN. */
+  'horario:pendientes': () => Resultado<SolicitudDeHorario[]>
+  /** Aprueba (por 30, 60, 120 o 240 minutos) o rechaza un pedido. Sólo SUPER_ADMIN. */
+  'horario:resolver': (id: string, aprobada: boolean, minutos: number | null) => Resultado<SolicitudDeHorario>
+  /** Pide una excepción trabajando (el aviso de «se acaba el tiempo»). */
+  'horario:pedirEnSesion': (motivo: string) => Resultado<SolicitudDeHorario>
+  /** Pide una excepción al ser rechazado por estar fuera de horario (sin sesión). */
+  'horario:pedirAlIngresar': (motivo: string) => Resultado<SolicitudDeHorario>
+  /** Cómo viene el pedido hecho al ingresar (null si no se hizo ninguno). Sin sesión. */
+  'horario:estadoDelPedidoAlIngresar': () => Resultado<SolicitudDeHorario | null>
+
   // Cartera → Galeno NOVEDADES (15.4). Distinto canal y distinto nombre que el bloque de arriba a
   // propósito: esto NO es la API REST de Galeno (cotización/emisión), es la sincronización con el
   // portal de Galeno que corre en el VPS —está siempre encendido y tiene una sola credencial—; esta
@@ -1166,6 +1194,12 @@ export interface Eventos {
    * quién fue. Va aparte de `mensajes:llegaron` porque suena OTRO sonido: el zumbido no es la campana.
    */
   'mensajes:zumbido': { autor: string }
+  /** Al turno le quedan 30 minutos (o 5): la pantalla muestra el aviso amarillo. La ventana ya se sacudió. */
+  'horario:aviso': AvisoDeFinDeTurno
+  /** El superadministrador contestó el pedido de excepción que hizo esta persona trabajando. */
+  'horario:respuesta': RespuestaDeExcepcion
+  /** Llegaron pedidos de excepción nuevos (sólo al superadministrador): la lista de los pendientes. */
+  'horario:pedidos': { pendientes: SolicitudDeHorario[] }
   /**
    * La sincronización bajó tareas nuevas o cambiadas de otra computadora. No lleva datos: es un «volvé
    * a preguntar» para la campana, el contador de la barra lateral y el listado, que si no tendrían que

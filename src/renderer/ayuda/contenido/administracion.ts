@@ -76,6 +76,45 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.usolaboral': {
+    clave: 'administracion.usolaboral',
+    titulo: 'Administración → Uso laboral',
+    resumen: 'Opcional. De qué hora a qué hora puede trabajar cada rol, y el registro de las excepciones que se pidieron. Sólo la ve y la cambia un superadministrador.',
+    secciones: [
+      {
+        titulo: 'Cómo se configura',
+        parrafos: [
+          'Se activa con «Activar el control de horario». Después, para cada rol (Administradores y Usuarios por separado) se tilda «Limitar el horario» y se elige la hora de entrada y la de salida, en hora de Argentina; por ejemplo, de 10:00 a 20:00. Un rol sin tildar trabaja a cualquier hora. Mientras el control esté apagado, nadie tiene horario.',
+          'El superadministrador no tiene horario ni renglón en esta pantalla: es el único rol que puede ingresar a cualquier hora.',
+        ],
+      },
+      {
+        titulo: 'Qué pasa fuera de horario',
+        parrafos: [
+          'Quien intenta ingresar fuera de su horario no entra: ve una advertencia con el botón «Pedir excepción al super-administrador». Mientras tanto el programa no se conecta con el servidor de la agencia, salvo para comprobar el usuario y la contraseña.',
+          'Quien está trabajando recibe, 30 minutos antes del cierre, un zumbido y una ventana amarilla que dice que se acaba el tiempo laboral, con «Aceptar» o «Pedir excepción al super-administrador». Si no se pide nada (o no se aprueba), al llegar la hora la sesión se cierra sola y se corta la conexión con el servidor.',
+        ],
+      },
+      {
+        titulo: 'Los pedidos de excepción',
+        parrafos: [
+          'Al superadministrador le salta un aviso en cualquier pantalla con quién pide, a qué hora, desde qué dirección IP y desde qué localidad. Puede aprobar por 30 minutos, 1, 2 o 4 horas, o rechazar. Los pedidos pendientes también se ven en esta pestaña.',
+          'Todos los pedidos quedan en el registro, se aprueben o no, y no se pueden borrar. La IP y la localidad las ve el servidor, no la computadora de quien pide.',
+        ],
+      },
+      {
+        titulo: 'Lo que hay que saber',
+        parrafos: [
+          'La hora de referencia es la del servidor, no la de la computadora: cambiarle la hora a Windows no corre el turno. Sin internet, el programa sigue con el último horario que conoció.',
+          'El horario lo hace cumplir el programa de cada computadora; el servidor guarda las reglas y el registro. Un cambio de horario llega a cada computadora en un par de minutos.',
+        ],
+      },
+    ],
+    conceptos: [
+      { termino: 'Excepción', explicacion: 'Un permiso de tiempo extra que da el superadministrador a una persona, por 30 minutos, 1, 2 o 4 horas, para trabajar fuera de su horario.' },
+      { termino: 'Registro', explicacion: 'La lista de todos los pedidos de excepción, con fecha, persona, IP, localidad y resultado. No se borra.' },
+    ],
+  },
   'administracion.permisos': {
     clave: 'administracion.permisos',
     titulo: 'Administración → Permisos',
