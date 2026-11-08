@@ -18,7 +18,7 @@ export type Rol = (typeof ROLES)[number]
 export const NOMBRE_ROL: Record<Rol, string> = {
   SUPER_ADMIN: 'Superadministrador',
   ADMIN: 'Administrador',
-  EMPLEADO: 'Empleado',
+  EMPLEADO: 'Usuario',
 }
 
 export interface Sucursal {

@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.11.0',
     fecha: '2026-11-06',
     cambios: [
+      { tipo: 'modificado', texto: 'El rol «Empleado» pasó a llamarse «Usuario» en todo el programa (permisos, ayuda y listas). Sus permisos y las cuentas existentes no cambian.' },
       { tipo: 'modificado', texto: 'Inicio → Podio de altas: ahora se elige el año y el mes en dos listas separadas (primero Año y después Mes), en vez de una sola lista con todos los meses juntos.' },
       { tipo: 'corregido', texto: 'Ticketeadora: el ticket ya no se parte en dos hojas, así que la guillotina no corta más en el medio del pie («…CON LOS DE LA / PÓLIZA.»). Además queda más papel al final para que el corte caiga después de la última línea.' },
       { tipo: 'agregado', texto: 'Administración → Impresora: «Tipografía del ticket» (Courier New, Lucida Console o Consolas) e «Intensidad del texto» (Normal a Máxima), para que las letras chicas del ticket salgan más oscuras y parejas sin tocar el driver de Windows. Se prueba con «Imprimir una prueba».' },
