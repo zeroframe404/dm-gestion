@@ -9,7 +9,7 @@ import { AHORA_SQL, buscarFilaPorId, buscarFilaPorUsuario, filaASesion } from '.
 import * as compartida from './baseDeUsuarios'
 import { hashearClave, hashSenuelo, validarClave, verificarClave } from './claves'
 import { ErrorDeNegocio } from './errores'
-import { establecerSesion } from './sesion'
+import { establecerSesion, permitirIngreso } from './sesion'
 import { objeto, texto } from './validacion'
 
 export { filaASesion }
@@ -37,6 +37,7 @@ async function ingresarLocal(usuario: string, clave: string): Promise<SesionUsua
   if (fila.activo !== 1) throw new ErrorDeNegocio('Tu usuario está desactivado. Consultá con un administrador.')
 
   const nuevaSesion = filaASesion(fila)
+  await permitirIngreso(nuevaSesion)
   establecerSesion(nuevaSesion)
   compartida.anotarIngresoLocal()
   return nuevaSesion

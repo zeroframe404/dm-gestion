@@ -44,7 +44,7 @@ import { hashearClave, hashSenuelo, verificarClave } from './claves'
 import { guardarCopiaLocal, leerCopiaLocal, olvidarCopiaEnMemoria } from './copiaDePermisos'
 import { ErrorDeNegocio } from './errores'
 import { esFallaDeRed } from './red'
-import { establecerSesion, sesion } from './sesion'
+import { establecerSesion, permitirIngreso, sesion } from './sesion'
 import { obtenerSucursal } from './sucursales'
 
 // ---------------------------------------------------------------------------
@@ -456,8 +456,10 @@ export async function ingresar(usuario: string, clave: string): Promise<SesionUs
       )
     }
 
-    identidad = { remotoId: remoto.id, modo: 'en-linea', claveHash: remoto.claveHash }
     const nueva = sesionDesdeRemoto(remoto, fila)
+    // El horario laboral, antes de dejar rastros: fuera de turno no se abre sesión ni se toca el VPS.
+    await permitirIngreso(nueva)
+    identidad = { remotoId: remoto.id, modo: 'en-linea', claveHash: remoto.claveHash }
     establecerSesion(nueva)
     // La credencial se guarda recién cuando la contraseña es propia: con una temporal de otro, no.
     if (remoto.debeCambiarClave) borrarCredencialDe(remoto.usuario)
@@ -506,7 +508,6 @@ export async function ingresar(usuario: string, clave: string): Promise<SesionUs
     throw new ErrorDeNegocio('Un administrador reseteó tu contraseña: tenés que ingresar con internet para elegir la nueva.')
   }
 
-  identidad = { remotoId: guardada.remotoId, modo, claveHash: guardada.claveHash }
   const nueva: SesionUsuario = {
     id: localId,
     nombre: guardada.nombre,
@@ -515,6 +516,8 @@ export async function ingresar(usuario: string, clave: string): Promise<SesionUs
     sucursal: { id: idDeSucursal(db(), guardada.sucursal), nombre: fila?.sucursal_nombre ?? guardada.sucursal },
     debeCambiarClave: false,
   }
+  await permitirIngreso(nueva)
+  identidad = { remotoId: guardada.remotoId, modo, claveHash: guardada.claveHash }
   establecerSesion(nueva)
   cambiarEstado({ sesionSinConfirmar: true })
   iniciarRevalidacion(REVALIDAR_SIN_CONFIRMAR_MS)
@@ -532,6 +535,16 @@ export function cerrarSesion(): void {
   identidad = null
   detenerRevalidacion()
   cambiarEstado({ sesionSinConfirmar: false })
+}
+
+/**
+ * Se acabó el turno: cierra la sesión por cuenta del programa y avisa a la pantalla con el motivo. A
+ * diferencia de `cerrarSesionDesdeAfuera`, NO borra la credencial guardada: la contraseña sigue siendo
+ * buena, lo que cambió es la hora.
+ */
+export function cerrarSesionPorHorario(motivo: string): void {
+  cerrarSesion()
+  emisor?.sesionCerrada(motivo)
 }
 
 /**

@@ -492,6 +492,20 @@ export interface ApiDm {
     sucursales: Remota<'miLink:sucursales'>
     elegirSucursal: Remota<'miLink:elegirSucursal'>
   }
+  /** Uso laboral: el horario de cada rol y los pedidos de excepción. Ver canales.ts. */
+  horario: {
+    estado: Remota<'horario:estado'>
+    guardar: Remota<'horario:guardar'>
+    registro: Remota<'horario:registro'>
+    pendientes: Remota<'horario:pendientes'>
+    resolver: Remota<'horario:resolver'>
+    pedirEnSesion: Remota<'horario:pedirEnSesion'>
+    pedirAlIngresar: Remota<'horario:pedirAlIngresar'>
+    estadoDelPedidoAlIngresar: Remota<'horario:estadoDelPedidoAlIngresar'>
+    alAvisarFinDeTurno: Suscripcion<'horario:aviso'>
+    alResponderUnPedido: Suscripcion<'horario:respuesta'>
+    alLlegarPedidos: Suscripcion<'horario:pedidos'>
+  }
   /** Cartera → Galeno: las novedades del portal (distinto de `galeno`, la API REST). Ver canales.ts. */
   galenoNovedades: {
     estado: Remota<'galenoNovedades:estado'>
