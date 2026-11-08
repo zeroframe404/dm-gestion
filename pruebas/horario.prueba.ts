@@ -36,6 +36,18 @@ test('dentro del turno dice a qué hora cierra; el borde de salida ya es fuera',
   assert.equal(evaluarHorario(config, 'EMPLEADO', aLas('09:59')).tipo, 'fuera')
 })
 
+test('el instante de cierre es el mismo en cada consulta del día (si no, el aviso se repetiría)', () => {
+  const a = evaluarHorario(config, 'EMPLEADO', aLas('19:35') + 123)
+  const b = evaluarHorario(config, 'EMPLEADO', aLas('19:35') + 20_457)
+  const c = evaluarHorario(config, 'EMPLEADO', aLas('19:50') + 999)
+  assert.ok(a.tipo === 'dentro' && b.tipo === 'dentro' && c.tipo === 'dentro')
+  if (a.tipo === 'dentro' && b.tipo === 'dentro' && c.tipo === 'dentro') {
+    assert.equal(a.cierraEnMs, aLas('20:00'))
+    assert.equal(b.cierraEnMs, a.cierraEnMs)
+    assert.equal(c.cierraEnMs, a.cierraEnMs)
+  }
+})
+
 test('administradores y usuarios tienen horarios separados', () => {
   assert.equal(evaluarHorario(config, 'ADMIN', aLas('20:30')).tipo, 'dentro')
   assert.equal(evaluarHorario(config, 'EMPLEADO', aLas('20:30')).tipo, 'fuera')
