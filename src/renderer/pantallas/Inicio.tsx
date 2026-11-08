@@ -314,16 +314,6 @@ function PodioDeSucursales() {
   const selectorDeMes = periodos.length > 1 && (
     <div className="mb-1 ml-auto flex items-center gap-3 text-xs font-semibold text-slate-600">
       <label className="flex items-center gap-2">
-        Mes
-        <select value={mesActual} onChange={(evento) => elegirPeriodo(`${anioActual}-${evento.target.value}`)} className={claseDeLista}>
-          {mesesDelAnio.map((mes) => (
-            <option key={mes} value={mes}>
-              {nombreDePeriodo(`${anioActual}-${mes}`).replace(/\s\d{4}$/, '')}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex items-center gap-2">
         Año
         <select
           value={anioActual}
@@ -340,6 +330,16 @@ function PodioDeSucursales() {
           {anios.map((anio) => (
             <option key={anio} value={anio}>
               {anio}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-2">
+        Mes
+        <select value={mesActual} onChange={(evento) => elegirPeriodo(`${anioActual}-${evento.target.value}`)} className={claseDeLista}>
+          {mesesDelAnio.map((mes) => (
+            <option key={mes} value={mes}>
+              {nombreDePeriodo(`${anioActual}-${mes}`).replace(/\s\d{4}$/, '')}
             </option>
           ))}
         </select>
