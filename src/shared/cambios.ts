@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '17.11.1',
     fecha: '2026-11-08',
     cambios: [
+      { tipo: 'agregado', texto: 'Cartera → Flotas: las empresas con 6 o más pólizas de autos con el mismo nombre aparecen solas como flota. Se busca por nombre y, al desplegar, se ven todos los autos. No hay nada que cargar.' },
       { tipo: 'agregado', texto: 'Administración → Ciberseguridad → Control de horarios (sólo superadministrador, opcional): se define en qué horario puede trabajar cada rol (Administradores y Usuarios por separado), sucursal por sucursal. Fuera de horario no se puede ingresar y aparece «Pedir excepción al super-administrador».' },
       { tipo: 'agregado', texto: 'Control de horarios: además de la hora, se eligen los días de trabajo de cada rol (por ejemplo, lunes a sábado) y se cargan los feriados de cada sucursal; en un feriado o en un día sin trabajo tampoco se puede ingresar, salvo con una excepción. «Copiar a todas las sucursales» repite un horario en las demás.' },
       { tipo: 'agregado', texto: 'Aviso de fin de turno: 30 minutos antes de que termine el horario, el programa hace un zumbido y muestra una ventana amarilla con «Aceptar» o «Pedir excepción al super-administrador». Al llegar la hora, la sesión se cierra sola y se corta la conexión con el servidor.' },
