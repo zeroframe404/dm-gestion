@@ -50,6 +50,9 @@ const api: ApiDm = {
     vistaPrevia: (tipo, id) => invocar('eliminacion:vistaPrevia', tipo, id),
     borrar: (tipo, id) => invocar('eliminacion:borrar', tipo, id),
   },
+  flotas: {
+    listar: () => invocar('flotas:listar'),
+  },
   duplicados: {
     listar: () => invocar('duplicados:listar'),
     fusionarClientes: (sobrevivienteId, duplicadoId) => invocar('duplicados:fusionarClientes', sobrevivienteId, duplicadoId),

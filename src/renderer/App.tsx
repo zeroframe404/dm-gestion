@@ -73,6 +73,7 @@ const PolizasListado = lazy(() => import('./pantallas/cartera/listados/PolizasLi
 const SiniestrosListado = lazy(() => import('./pantallas/cartera/listados/SiniestrosListado'))
 const VencimientosListado = lazy(() => import('./pantallas/cartera/listados/VencimientosListado'))
 // Los listados de Cobranzas (Vencimientos Cuotas, Rechazos, Comisiones): ídem, con el componente por defecto.
+const FlotasListado = lazy(() => import('./pantallas/cartera/listados/FlotasListado'))
 const VencimientosCuotasListado = lazy(() => import('./pantallas/cobranzas/listados/VencimientosCuotasListado'))
 const RechazosListado = lazy(() => import('./pantallas/cobranzas/listados/RechazosListado'))
 const ComisionesListado = lazy(() => import('./pantallas/cobranzas/listados/ComisionesListado'))
@@ -82,14 +83,6 @@ const ComisionesListado = lazy(() => import('./pantallas/cobranzas/listados/Comi
  * descripción. Faltan datos o especificación, no ganas: no se simula nada.
  */
 const PROXIMAMENTE_DE_CARTERA: Partial<Record<IdSeccionDeCartera, Modulo>> = {
-  grupos: {
-    id: 'cartera',
-    nombre: 'Flotas',
-    icono: 'clientes',
-    descripcion:
-      'Agrupar a los clientes que van juntos (una familia, una empresa y sus socios) para verlos y renovarlos en conjunto. Todavía no hay forma de cargar esos grupos en el programa.',
-    disponible: false,
-  },
   indiceAumentos: {
     id: 'cartera',
     nombre: 'Índice de Aumentos',
@@ -112,6 +105,7 @@ const PROXIMAMENTE_DE_CARTERA: Partial<Record<IdSeccionDeCartera, Modulo>> = {
 function contenidoDeCartera(seccion: string | null) {
   const id = seccionDeCartera(seccion)
   if (id === 'asegurados') return <AseguradosListado />
+  if (id === 'grupos') return <FlotasListado />
   if (id === 'polizas') return <PolizasListado />
   if (id === 'siniestros') return <SiniestrosListado />
   if (id === 'vencimientos') return <VencimientosListado />

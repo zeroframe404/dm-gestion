@@ -40,6 +40,9 @@ export interface ApiDm {
     vistaPrevia: Remota<'eliminacion:vistaPrevia'>
     borrar: Remota<'eliminacion:borrar'>
   }
+  flotas: {
+    listar: Remota<'flotas:listar'>
+  }
   duplicados: {
     listar: Remota<'duplicados:listar'>
     fusionarClientes: Remota<'duplicados:fusionarClientes'>
