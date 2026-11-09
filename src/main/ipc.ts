@@ -380,6 +380,7 @@ import {
   vistaPreviaDeSacarBaja,
   vistaPreviaDeSacarCuota,
 } from './servicios/duplicados'
+import { listarFlotas } from './servicios/flotas'
 import { eliminarRegistro, vistaPreviaDeEliminacion } from './servicios/eliminacion'
 import { ErrorDeNegocio, FueraDeHorario, SinConexion } from './servicios/errores'
 import { estadoDelMesh } from './servicios/mesh'
@@ -647,6 +648,10 @@ export function registrarIpc(): void {
   // Cartera → Duplicados (12.6). Cualquier rol que edite la cartera (o Clientes, para las fichas)
   // puede juntar o sacar lo repetido: la agencia pidió no depender del superadministrador para sacar
   // una ficha cargada dos veces. Lo que acota es el detector: el servicio sólo toca lo que señaló.
+  manejar('flotas:listar', () => {
+    exigirVista('cartera', 'clientes')
+    return exito(listarFlotas())
+  })
   manejar('duplicados:listar', () => {
     exigirVista('cartera', 'clientes')
     return exito(detectarDuplicados())

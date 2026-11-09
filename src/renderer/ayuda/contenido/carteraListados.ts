@@ -29,13 +29,13 @@ export const AYUDA_CARTERA_LISTADOS: Record<string, ContenidoDeAyuda> = {
   'cartera.grupos': {
     clave: 'cartera.grupos',
     titulo: 'Cartera → Flotas',
-    resumen: 'Agrupar clientes que van juntos (una familia, una empresa y sus socios). Todavía no está disponible.',
+    resumen: 'Empresas con muchos autos: aparecen solas cuando tienen 6 o más pólizas con el mismo nombre.',
     secciones: [
       {
-        titulo: 'Por qué dice «Próximamente»',
+        titulo: 'Cómo se arma',
         parrafos: [
-          'La idea es poder armar grupos de clientes para verlos y renovarlos en conjunto. Para eso primero hay que definir cómo se arman esos grupos y cargarlos, y hoy el programa no tiene dónde guardarlos.',
-          'Mientras tanto, cada cliente se sigue trabajando por separado desde Clientes. Cuando esté lista, esta entrada del menú se va a abrir sola, sin que tengas que hacer nada.',
+          'No hay que cargar nada: cuando una empresa (o persona) tiene 6 o más pólizas vigentes de autos con el mismo nombre de titular, la flota aparece sola.',
+          'Buscá por nombre de empresa y tocá «Ver los autos» para desplegar todos los vehículos, con patente, compañía, póliza y vencimiento. Tocando un auto se abre su póliza.',
         ],
       },
     ],

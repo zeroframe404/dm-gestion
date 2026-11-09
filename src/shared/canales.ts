@@ -1,5 +1,6 @@
 // Contrato tipado de los canales IPC: cada canal declara sus argumentos y su respuesta.
 // El proceso principal implementa exactamente estas firmas y la precarga las expone.
+import type { Flota } from './flotas'
 import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion } from './eliminacion'
 import type {
   AseguradoraDelMulticotizador,
@@ -345,6 +346,8 @@ export interface Canales {
   // Clientes; juntar dos fichas o sacar un renglón repetido pide editar, y lo puede hacer cualquier
   // rol —lo pidió la agencia—, SÓLO sobre lo que el detector señaló (el servicio lo vuelve a mirar).
   'duplicados:listar': () => Resultado<InformeDeDuplicados>
+  // Cartera → Flotas: empresas con 6 o más pólizas vigentes con el mismo nombre. Sólo mirar.
+  'flotas:listar': () => Resultado<Flota[]>
   'duplicados:fusionarClientes': (sobrevivienteId: number, duplicadoId: number) => Resultado<ResultadoDeFusion>
   'duplicados:fusionarPolizas': (sobrevivienteId: number, duplicadaId: number) => Resultado<ResultadoDeFusionDePolizas>
   'duplicados:vistaPreviaCuota': (cuotaId: number) => Resultado<VistaPreviaDeEliminacion>
