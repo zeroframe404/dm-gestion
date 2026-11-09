@@ -3087,3 +3087,35 @@ APIs que haya. Ninguna computadora recorre las APIs por su cuenta:
   guardada en `vehiculos.catalogo_codigo` es el código de la aseguradora (`GALENO:<rama>:<marca>:<modelo>:<versión>`);
   con él el multicotizador cotiza en Galeno la versión exacta.
 
+
+## Ciberseguridad → Control de horarios (uso laboral)
+
+**Opcional y apagado de fábrica.** Está en Administración → **Ciberseguridad** (pestaña sólo del superadministrador),
+tarjeta «Control de horarios». El superadministrador define, **por sucursal**, de qué hora a qué hora puede trabajar
+cada rol (Administradores y Usuarios por separado, en hora de Argentina), **qué días de la semana** y los **feriados**
+(fechas puntuales sin trabajo). El superadministrador **no tiene horario** y es el único rol al que no se le puede poner.
+La configuración es `{ habilitado, sucursales: { <sucursal>: { ADMIN, EMPLEADO, feriados } } }` (`shared/horario.ts`);
+`normalizarConfiguracion` lleva a esta forma lo que venga del servidor o de la base local, incluido el formato anterior
+(un horario único, que pasa a ser el mismo en las cuatro sucursales y todos los días).
+
+- **Ingresar fuera de horario** (`servicios/horarioLaboral.ts`, `verificarIngreso`): se comprueba DESPUÉS de
+  verificar la contraseña y ANTES de abrir la sesión (`permitirIngreso`, en `servicios/sesion.ts`, llamado desde
+  los tres caminos de ingreso). No se arma ni el canal en vivo ni la sincronización. El Login muestra la
+  advertencia con «Pedir excepción al super-administrador».
+- **Con la sesión abierta** un reloj (cada 20 s) calcula el cierre: a los 30 minutos (y de nuevo a los 5)
+  sacude la ventana y emite `horario:aviso`, que muestra la ventana amarilla con «Aceptar» o «Pedir excepción».
+  Al llegar la hora cierra la sesión (`cerrarSesionPorHorario`), lo que para el canal, el cartero y la
+  sincronización. No borra la credencial guardada para ingresar sin internet.
+- **La hora es la del servidor**, no la de la PC: cada lectura guarda el desfase y lo último que se supo vive en
+  la tabla `configuracion` (`horario_cache`), así que ni cambiar la hora de Windows ni apagar internet ni
+  reiniciar el programa dejan trabajar fuera de horario. Sólo la primera vez, sin nada guardado y sin servidor,
+  se deja pasar (no se deja a la agencia afuera por una caída).
+- **Pedidos de excepción**: viven en el VPS (`/api/dmg/horario`, servidor `modules/dmg/horario.*`). El servidor
+  graba cada pedido con la IP y la localidad que ÉL ve, se apruebe o no, y nada lo borra. El superadministrador
+  recibe el aviso en cualquier pantalla (sondeo cada 20 s) y aprueba por 30, 60, 120 o 240 minutos o rechaza. La
+  excepción aprobada queda vigente en el servidor: vale también para volver a ingresar en otra PC.
+- **Límite conocido**: el VPS no sabe quién es cada PC (un token compartido), así que no corta por usuario: el
+  horario lo hace cumplir este programa y el servidor guarda reglas y registro. La versión normal no conoce esta
+  función (no la hace cumplir); sólo la beta. Las tablas y rutas del servidor son nuevas y aditivas.
+- **Para probar sin VPS**: las pruebas (`pruebas/horario*.prueba.ts`) usan un doble del servidor
+  (`usarFuenteDeHorario`); el simulador local (`scripts/vps-simulado.mjs`) todavía no atiende estas rutas.

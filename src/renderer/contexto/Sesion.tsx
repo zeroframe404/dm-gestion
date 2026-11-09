@@ -16,6 +16,11 @@ interface ContextoSesion {
    * cambiada desde otra computadora). El Login lo muestra y se limpia al volver a ingresar.
    */
   motivoCierre: string | null
+  /**
+   * El último intento de ingreso fue rechazado por estar fuera del horario de trabajo (Uso laboral): el
+   * Login ofrece pedirle una excepción al superadministrador. Se apaga con el próximo intento.
+   */
+  fueraDeHorario: boolean
 }
 
 const Contexto = createContext<ContextoSesion | null>(null)
@@ -24,6 +29,7 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<SesionUsuario | null>(null)
   const [cargando, setCargando] = useState(true)
   const [motivoCierre, setMotivoCierre] = useState<string | null>(null)
+  const [fueraDeHorario, setFueraDeHorario] = useState(false)
 
   useEffect(() => {
     let vigente = true
@@ -53,6 +59,7 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
 
   const ingresar = useCallback(async (datos: CredencialesIngreso) => {
     const resultado = await window.dm.auth.ingresar(datos)
+    setFueraDeHorario(!resultado.ok && resultado.codigo === 'fuera-de-horario')
     if (!resultado.ok) return resultado.error
     setMotivoCierre(null)
     setUsuario(resultado.datos)
@@ -68,8 +75,8 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
   const actualizar = useCallback((sesion: SesionUsuario) => setUsuario(sesion), [])
 
   const valor = useMemo<ContextoSesion>(
-    () => ({ usuario, cargando, ingresar, salir, actualizar, motivoCierre }),
-    [usuario, cargando, ingresar, salir, actualizar, motivoCierre],
+    () => ({ usuario, cargando, ingresar, salir, actualizar, motivoCierre, fueraDeHorario }),
+    [usuario, cargando, ingresar, salir, actualizar, motivoCierre, fueraDeHorario],
   )
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>

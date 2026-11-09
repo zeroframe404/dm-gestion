@@ -1,6 +1,6 @@
 // Administración → Permisos: qué puede ver y qué puede tocar cada rol, módulo por módulo.
 //
-// Una fila por módulo y una columna por rol configurable (Administrador y Empleado). El
+// Una fila por módulo y una columna por rol configurable (Administrador y Usuario). El
 // superadministrador no tiene columna a propósito: siempre tiene todo, y poder sacarse permisos a sí
 // mismo dejaría a la agencia sin nadie que pueda devolvérselos.
 import { useCallback, useEffect, useMemo, useState } from 'react'

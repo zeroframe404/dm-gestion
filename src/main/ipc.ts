@@ -339,6 +339,16 @@ import {
   solicitudesDeMiLink,
 } from './servicios/miLink'
 import {
+  estadoDelPedidoAlIngresar,
+  estadoDeUsoLaboral,
+  guardarUsoLaboral,
+  pedidosPendientes,
+  pedirExcepcionAlIngresar,
+  pedirExcepcionEnSesion,
+  registroDeExcepciones,
+  resolverPedido,
+} from './servicios/horarioLaboral'
+import {
   borrarMetaDelVps,
   estadoCompartidoDeGoogle,
   estadoCompartidoDeMeta,
@@ -371,7 +381,7 @@ import {
   vistaPreviaDeSacarCuota,
 } from './servicios/duplicados'
 import { eliminarRegistro, vistaPreviaDeEliminacion } from './servicios/eliminacion'
-import { ErrorDeNegocio, SinConexion } from './servicios/errores'
+import { ErrorDeNegocio, FueraDeHorario, SinConexion } from './servicios/errores'
 import { estadoDelMesh } from './servicios/mesh'
 import { elegirImagenesDelReporte, enviarReporteDeError, imagenDelPortapapeles } from './servicios/soporte'
 import { estadoDeLaBaseVps, migrarAlVps } from './servicios/migracionVps'
@@ -444,6 +454,10 @@ function manejar<C extends NombreCanal>(canal: C, manejador: Manejador<C>): void
       // cartel, vuelve a cargar lo último (ver servicios/miLink.ts).
       if (error instanceof PaginaDesactualizada) {
         return { ok: false, error: error.message, codigo: 'version-vieja' } satisfies Resultado<never>
+      }
+      // Fuera de su horario de trabajo: el Login ofrece pedir una excepción (ver servicios/horarioLaboral.ts).
+      if (error instanceof FueraDeHorario) {
+        return { ok: false, error: error.message, codigo: 'fuera-de-horario' } satisfies Resultado<never>
       }
       if (error instanceof ErrorDeNegocio) {
         return { ok: false, error: error.message } satisfies Resultado<never>
@@ -2262,6 +2276,18 @@ export function registrarIpc(): void {
   // solicitud o una denuncia es editarlo, y como eso escribe en el servidor pide además el canal en
   // vivo. Lo de otras personas no se decide acá: el rol viaja en cada pedido y el que dice que no es el
   // servidor (sólo ADMIN y SUPER_ADMIN ven lo de los demás).
+  // Uso laboral. El horario y los pedidos son del superadministrador (el servicio lo vuelve a controlar);
+  // pedir una excepción es de quien está trabajando o acaba de ser rechazado, y no escribe en la grilla,
+  // así que no lleva el candado del canal en vivo (`exigirEdicion`): al servidor le llega igual por HTTP.
+  manejar('horario:estado', async () => exito(await estadoDeUsoLaboral(exigirSesion())))
+  manejar('horario:guardar', async (config) => exito(await guardarUsoLaboral(exigirSesion(), config)))
+  manejar('horario:registro', async (estado) => exito(await registroDeExcepciones(exigirSesion(), estado)))
+  manejar('horario:pendientes', async () => exito(await pedidosPendientes(exigirSesion())))
+  manejar('horario:resolver', async (id, aprobada, minutos) => exito(await resolverPedido(exigirSesion(), id, aprobada, minutos)))
+  manejar('horario:pedirEnSesion', async (motivo) => exito(await pedirExcepcionEnSesion(exigirSesion(), motivo)))
+  manejar('horario:pedirAlIngresar', async (motivo) => exito(await pedirExcepcionAlIngresar(motivo)))
+  manejar('horario:estadoDelPedidoAlIngresar', async () => exito(await estadoDelPedidoAlIngresar()))
+
   manejar('miLink:mia', async () => exito(await miLinkPropio(exigirVista('miLink'))))
   manejar('miLink:direccionLibre', async (direccion) => exito(await direccionLibreDeMiLink(exigirVista('miLink'), direccion)))
   manejar('miLink:guardar', async (cambios) => exito(await guardarMiLink(exigirEdicion('miLink'), cambios)))

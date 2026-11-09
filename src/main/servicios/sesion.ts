@@ -19,6 +19,22 @@ export function alCambiarLaSesion(avisar: ((sesion: SesionUsuario | null) => voi
   avisarCambioDeSesion = avisar
 }
 
+/**
+ * Quién puede decir que esta persona NO puede abrir sesión todavía (el horario laboral), y lo dice
+ * lanzando un error. Se consulta ANTES de `establecerSesion`: al ser `async` no cabe adentro de ella, y
+ * hacerlo antes evita que se arme el canal en vivo o la sincronización para alguien que no va a entrar.
+ * Lo registra `index.ts` al arrancar, por la misma razón que `alCambiarLaSesion`.
+ */
+let verificarIngreso: ((candidata: SesionUsuario) => Promise<void>) | null = null
+
+export function alVerificarElIngreso(verificar: ((candidata: SesionUsuario) => Promise<void>) | null): void {
+  verificarIngreso = verificar
+}
+
+export async function permitirIngreso(candidata: SesionUsuario): Promise<void> {
+  await verificarIngreso?.(candidata)
+}
+
 export function sesion(): SesionUsuario | null {
   return sesionActual
 }

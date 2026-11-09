@@ -76,6 +76,51 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.ciberseguridad': {
+    clave: 'administracion.ciberseguridad',
+    titulo: 'Administración → Ciberseguridad',
+    resumen: 'Herramientas para cuidar quién entra al programa y cuándo. Hoy tiene el «Control de horarios». Sólo la ve y la cambia un superadministrador.',
+    secciones: [
+      {
+        titulo: 'Control de horarios (opcional)',
+        parrafos: [
+          'Se entra desde la tarjeta «Control de horarios». Se activa con «Activar el control de horario»; mientras esté apagado, nadie tiene horario. Después se elige la sucursal y, para cada rol (Administradores y Usuarios por separado), se tilda «Limitar el horario», se eligen la hora de entrada y la de salida —en hora de Argentina, por ejemplo de 10:00 a 20:00— y los días de la semana en que se trabaja.',
+          'Cada sucursal tiene su propio horario. «Copiar a todas las sucursales» repite el de la que estás mirando en las demás (queda sin guardar hasta tocar «Guardar horario»). Un rol sin tildar trabaja a cualquier hora y cualquier día. El superadministrador no tiene horario ni renglón: es el único rol que puede ingresar siempre.',
+        ],
+      },
+      {
+        titulo: 'Feriados',
+        parrafos: [
+          'En «Feriados» de cada sucursal se cargan los días puntuales en que no se trabaja (feriados, puentes) con la fecha y, si querés, el motivo. Ese día, quien tiene el horario limitado no puede ingresar aunque la hora sea buena, salvo con una excepción. Se guardan junto con el horario.',
+        ],
+      },
+      {
+        titulo: 'Qué pasa fuera de horario',
+        parrafos: [
+          'Quien intenta ingresar fuera de su horario, en un día que no se trabaja o en un feriado, no entra: ve una advertencia con el botón «Pedir excepción al super-administrador». Mientras tanto el programa no se conecta con el servidor de la agencia, salvo para comprobar el usuario y la contraseña.',
+          'Quien está trabajando recibe, 30 minutos antes del cierre, un zumbido y una ventana amarilla que dice que se acaba el tiempo laboral, con «Aceptar» o «Pedir excepción al super-administrador» (y un segundo aviso a los 5 minutos). Si no se pide nada, o no se aprueba, al llegar la hora la sesión se cierra sola y se corta la conexión con el servidor.',
+        ],
+      },
+      {
+        titulo: 'Los pedidos de excepción',
+        parrafos: [
+          'Al superadministrador le salta un aviso en cualquier pantalla con quién pide, desde qué sucursal, a qué hora, desde qué dirección IP y desde qué localidad. Puede aprobar por 30 minutos, 1, 2 o 4 horas, o rechazar. Los pedidos pendientes también se ven en la pantalla del Control de horarios.',
+          'Todos los pedidos quedan en el registro, se aprueben o no, y no se pueden borrar. La IP y la localidad las ve el servidor, no la computadora de quien pide.',
+        ],
+      },
+      {
+        titulo: 'Lo que hay que saber',
+        parrafos: [
+          'La hora de referencia es la del servidor, no la de la computadora: cambiarle la hora a Windows no corre el turno. Sin internet, el programa sigue con el último horario que conoció.',
+          'El horario lo hace cumplir el programa de cada computadora; el servidor guarda las reglas y el registro. Un cambio llega a cada computadora en un par de minutos.',
+        ],
+      },
+    ],
+    conceptos: [
+      { termino: 'Excepción', explicacion: 'Un permiso de tiempo extra que da el superadministrador a una persona, por 30 minutos, 1, 2 o 4 horas, para trabajar fuera de su horario, en un día sin trabajo o en un feriado.' },
+      { termino: 'Registro', explicacion: 'La lista de todos los pedidos de excepción, con fecha, persona, sucursal, IP, localidad y resultado. No se borra.' },
+    ],
+  },
   'administracion.permisos': {
     clave: 'administracion.permisos',
     titulo: 'Administración → Permisos',
@@ -84,7 +129,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         titulo: 'Cómo se lee la tabla',
         parrafos: [
-          'Hay una fila por cada módulo de la barra lateral y una columna por rol: Administrador y Empleado. En cada cruce se elige una de tres opciones. «Sin acceso» hace que ese módulo directamente no aparezca en la barra lateral de esa persona (y si intenta entrar igual, no se le abre). «Sólo ver» le deja abrir el módulo y mirar todo, pero los botones que cambian algo quedan apagados. «Ver y editar» es lo de siempre: trabaja el módulo como hasta ahora.',
+          'Hay una fila por cada módulo de la barra lateral y una columna por rol: Administrador y Usuario. En cada cruce se elige una de tres opciones. «Sin acceso» hace que ese módulo directamente no aparezca en la barra lateral de esa persona (y si intenta entrar igual, no se le abre). «Sólo ver» le deja abrir el módulo y mirar todo, pero los botones que cambian algo quedan apagados. «Ver y editar» es lo de siempre: trabaja el módulo como hasta ahora.',
           'El superadministrador no tiene columna porque siempre tiene acceso completo a todo. Es a propósito: si pudiera sacarse permisos a sí mismo, la agencia se quedaría sin nadie que pueda devolvérselos.',
         ],
       },

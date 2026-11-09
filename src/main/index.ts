@@ -35,7 +35,8 @@ import { alSubirUnAdjunto } from './servicios/adjuntos'
 import { reportarVersionPropia } from './servicios/estadoDeActualizaciones'
 import { detenerSincronizacion, usarSituacionDelCanal } from './servicios/sincronizacion'
 import { canal } from './vivo/canal'
-import { alCambiarLaSesion } from './servicios/sesion'
+import { alCambiarLaSesion, alVerificarElIngreso } from './servicios/sesion'
+import { alCambiarLaSesionDeHorario, verificarIngreso } from './servicios/horarioLaboral'
 import { detenerActualizaciones, iniciarActualizaciones } from './servicios/updater'
 import { anotarEvento } from './sincronizacion/cola'
 import { AlmacenDeCredencial } from './usuarios/credencial'
@@ -309,7 +310,10 @@ function engancharElCanal(): void {
     anotarEvento('conexion', motivo, { conError: true })
   }
   usarSituacionDelCanal(() => canal().estado().situacion)
+  // El horario laboral: no deja abrir sesión fuera de turno y, abierta, cuenta el tiempo hasta el cierre.
+  alVerificarElIngreso(verificarIngreso)
   alCambiarLaSesion((quien) => {
+    alCambiarLaSesionDeHorario(quien)
     if (quien) {
       canal().arrancar(quien)
       arrancarCartero(quien)
