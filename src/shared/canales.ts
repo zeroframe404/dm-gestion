@@ -36,6 +36,7 @@ import type {
   SucursalesDeMiLink,
 } from './miLink'
 import type { MatrizPermisos } from './permisos'
+import type { EstadoDelAsistente, PreguntaAlAsistente, RespuestaDelAsistente } from './asistente'
 import type {
   EstadoDeApisDeAsegurados,
   FilaDeAsegurado,
@@ -1170,6 +1171,14 @@ export interface Canales {
 
   /** El PDF (A4) de una pantalla de ayuda. Abre el diálogo «Guardar como»; null si se canceló. */
   'ayuda:guardarPdf': (pedido: { html: string; nombreDeArchivo: string }) => Resultado<{ ruta: string | null }>
+
+  // El asistente con IA (el círculo de abajo a la derecha). Sólo lectura: ver servicios/asistente.ts.
+  /** Si está listo. Lo pide cualquiera con sesión; sin ningún secreto adentro. */
+  'asistente:estado': () => Resultado<EstadoDelAsistente>
+  'asistente:preguntar': (pregunta: PreguntaAlAsistente) => Resultado<RespuestaDelAsistente>
+  /** Sólo el superadministrador: carga la clave de Anthropic y la manda al VPS para las demás computadoras. */
+  'asistente:guardarClave': (claveApi: string) => Resultado<EstadoDelAsistente>
+  'asistente:borrarClave': () => Resultado<EstadoDelAsistente>
 }
 
 /** Avisos main → renderer (push, sin respuesta). */

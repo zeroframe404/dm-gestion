@@ -454,6 +454,19 @@ const TRAZOS = {
   ),
   // La flechita de un desplegable. La gira 180° el que la usa cuando el panel está abierto.
   desplegar: <path d="m6 9 6 6 6-6" />,
+  // El asistente con IA (el círculo de abajo a la derecha).
+  chispa: (
+    <>
+      <path d="M9.94 14.06 8 20l-1.94-5.94L0 12l6.06-1.94L8 4l1.94 6.06L16 12z" transform="translate(2 0) scale(0.9)" />
+      <path d="M19 3v4M17 5h4M20 15v4M18 17h4" />
+    </>
+  ),
+  enviar: (
+    <>
+      <path d="m22 2-7 20-4-9-9-4z" />
+      <path d="M22 2 11 13" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>
 
 export type NombreIcono = keyof typeof TRAZOS

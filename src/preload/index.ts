@@ -581,6 +581,12 @@ const api: ApiDm = {
   ayuda: {
     guardarPdf: (pedido) => invocar('ayuda:guardarPdf', pedido),
   },
+  asistente: {
+    estado: () => invocar('asistente:estado'),
+    preguntar: (pregunta) => invocar('asistente:preguntar', pregunta),
+    guardarClave: (claveApi) => invocar('asistente:guardarClave', claveApi),
+    borrarClave: () => invocar('asistente:borrarClave'),
+  },
 }
 
 contextBridge.exposeInMainWorld('dm', api)
