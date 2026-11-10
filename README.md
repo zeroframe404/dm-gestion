@@ -3119,3 +3119,29 @@ La configuración es `{ habilitado, sucursales: { <sucursal>: { ADMIN, EMPLEADO,
   función (no la hace cumplir); sólo la beta. Las tablas y rutas del servidor son nuevas y aditivas.
 - **Para probar sin VPS**: las pruebas (`pruebas/horario*.prueba.ts`) usan un doble del servidor
   (`usarFuenteDeHorario`); el simulador local (`scripts/vps-simulado.mjs`) todavía no atiende estas rutas.
+
+## Ciberseguridad → Autorizaciones de IP
+
+**Opcional y apagado de fábrica.** Administración → **Ciberseguridad** → tarjeta «Autorizaciones de IP» (sólo
+superadministrador). Con el control prendido, el **servidor** sólo atiende a las computadoras de la lista: todo
+`/api/dmg/*` (incluida la base de usuarios con la que se ingresa) y el canal en vivo. Así, quien se lleva el programa
+con un usuario y su contraseña, o le saca el token con ingeniería inversa, no entra desde otra computadora o red.
+
+- **Qué manda cada PC** (`main/vps/equipo.ts`): las IPv4 de sus placas de red (con las 169.254.x.x, sin loopback)
+  en la cabecera `x-dmg-ips-locales` de cada pedido al VPS, y en el campo `ips` del `hola` del canal en vivo (el
+  WebSocket no deja mandar cabeceras). La IP pública no se manda: la ve el servidor.
+- **Cómo decide el servidor** (repo web, `server/src/modules/dmg/ips.*`): una IP **privada** de la lista se compara
+  contra las locales que declara la PC; una **pública**, sólo contra la que ve el servidor. El rechazo es un 403 con
+  `codigo: EQUIPO_NO_AUTORIZADO` (y el canal se corta con 4401, código `equipo`).
+- **Qué hace el programa con el rechazo** (`servicios/baseDeUsuarios.ts`, lectura `no-autorizado`): no deja ingresar
+  —tampoco con la credencial guardada, porque es justamente el caso de un programa copiado o llevado a otra red— y
+  cierra la sesión abierta en la próxima revalidación. La pantalla (`pantallas/administracion/AutorizacionesDeIp.tsx`)
+  maneja la lista con buscador, el alta con nombre, «Desautorizar» y el recuadro «Esta computadora».
+- **Para no quedarse afuera**: el servidor no deja prender el control desde una PC que no está en la lista, ni sacar
+  (prendido) la IP que deja entrar a la PC desde la que se trabaja. Salida de emergencia: `DMG_IP_CONTROL_APAGADO=1`
+  en el `.env` del VPS (ver DEPLOY.md del repo web).
+- **Límites conocidos**: las IP internas (192.168.1.x) se repiten de una casa a otra y la cabecera la arma el
+  programa, así que contra alguien que la falsifique sólo protege la IP pública de la sucursal. Y **la versión normal
+  no manda `x-dmg-ips-locales`**: prender el control mientras haya PCs con una versión anterior las deja afuera,
+  salvo que esté autorizada la IP pública de su sucursal. La migración del servidor arranca con la lista de las PCs
+  de la agencia ya cargada.

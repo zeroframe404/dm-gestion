@@ -42,6 +42,17 @@ export class ErrorDelAlmacen extends Error {
   }
 }
 
+/**
+ * El servidor no atiende a esta computadora (Autorizaciones de IP, Administración → Ciberseguridad). No es
+ * «sin internet»: con esto no se ingresa ni con la credencial guardada, y una sesión abierta se cierra.
+ */
+export class EquipoNoAutorizado extends ErrorDelAlmacen {
+  constructor(mensaje: string) {
+    super(mensaje, 403)
+    this.name = 'EquipoNoAutorizado'
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Sólo para las pruebas
 // ---------------------------------------------------------------------------

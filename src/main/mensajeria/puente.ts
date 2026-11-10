@@ -18,6 +18,7 @@ import { credencialesDelPuente } from '../servicios/sincronizacion'
 // El mismo tipo que viaja por el canal en vivo (14.0): una reacción llega por los dos caminos —en el
 // mensaje que baja el cartero y en el frame `{t:'reaccion'}`— y tiene que significar lo mismo en los dos.
 import type { ReaccionRemota } from '../vivo/protocolo'
+import { encabezadosDelEquipo } from '../vps/equipo'
 
 /** Un pedido normal: si el servidor tarda más que esto, algo está mal. */
 const TIEMPO_MAXIMO_MS = 30_000
@@ -164,6 +165,7 @@ export class PuenteDeMensajes {
       method: metodo,
       headers: {
         authorization: `Bearer ${this.token}`,
+        ...encabezadosDelEquipo(),
         ...(opciones.cuerpo === undefined ? {} : { 'content-type': 'application/json' }),
       },
       body: opciones.cuerpo === undefined ? undefined : JSON.stringify(opciones.cuerpo),

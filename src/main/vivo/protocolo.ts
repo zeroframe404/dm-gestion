@@ -100,6 +100,8 @@ export type DelCliente =
       /** Lo que esta computadora ya tiene: el servidor no lo usa, el cliente lo compara contra `bienvenida`. */
       versiones: Record<string, number>
       generacion: number | null
+      /** Las IP locales de esta computadora (Autorizaciones de IP): el WebSocket no deja mandar cabeceras. */
+      ips?: string[]
     }
   | { t: 'foco'; foco: Foco | null }
   | { t: 'latido' }
@@ -132,7 +134,7 @@ export type DelServidor =
   | { t: 'llamada'; evento: EventoDeLlamada }
   | { t: 'latido' }
   /** Después de un error el servidor cierra con 4401 (token/actor) o 4400 (protocolo). */
-  | { t: 'error'; codigo: 'token' | 'actor' | 'protocolo'; mensaje: string }
+  | { t: 'error'; codigo: 'token' | 'actor' | 'protocolo' | 'equipo'; mensaje: string }
 
 /** La ruta del canal, relativa a la base del puente. */
 export const RUTA_DEL_CANAL = '/api/dmg/vivo'

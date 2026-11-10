@@ -39,6 +39,8 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
       { tipo: 'agregado', texto: 'Aviso de fin de turno: 30 minutos antes de que termine el horario, el programa hace un zumbido y muestra una ventana amarilla con «Aceptar» o «Pedir excepción al super-administrador». Al llegar la hora, la sesión se cierra sola y se corta la conexión con el servidor.' },
       { tipo: 'agregado', texto: 'El superadministrador recibe cada pedido de excepción con la persona, la hora, la dirección IP y la localidad, y decide si aprobar (30 minutos, 1, 2 o 4 horas) o rechazar. Todos los pedidos quedan en un registro, se aprueben o no.' },
       { tipo: 'modificado', texto: 'El rol «Empleado» pasó a llamarse «Usuario» en todo el programa (permisos, ayuda y listas). Sus permisos y las cuentas existentes no cambian.' },
+      { tipo: 'agregado', texto: 'Administración → Ciberseguridad → Autorizaciones de IP (sólo superadministrador, opcional): se elige qué computadoras pueden usar el programa. Con el control activado, una computadora que no está en la lista no puede ingresar ni conectarse al servidor, aunque tenga usuario y contraseña. Viene apagado y con las computadoras de la agencia ya cargadas.' },
+      { tipo: 'agregado', texto: 'Autorizaciones de IP: lista de IP autorizadas con buscador, botón «Desautorizar» y un formulario para autorizar una IP nueva con un nombre para reconocerla. Muestra también las IP de la computadora en la que estás, para autorizarla con un clic.' },
     ],
   },
   {

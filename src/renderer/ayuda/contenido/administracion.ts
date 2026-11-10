@@ -79,8 +79,17 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.ciberseguridad': {
     clave: 'administracion.ciberseguridad',
     titulo: 'Administración → Ciberseguridad',
-    resumen: 'Herramientas para cuidar quién entra al programa y cuándo. Hoy tiene el «Control de horarios». Sólo la ve y la cambia un superadministrador.',
+    resumen: 'Herramientas para cuidar quién entra al programa, desde qué computadora y cuándo: el «Control de horarios» y las «Autorizaciones de IP». Sólo la ve y la cambia un superadministrador.',
     secciones: [
+      {
+        titulo: 'Autorizaciones de IP (opcional)',
+        parrafos: [
+          'Se entra desde la tarjeta «Autorizaciones de IP». Con «Activar», el servidor de la agencia sólo atiende a las computadoras de la lista: una que no esté no puede ingresar —ni siquiera con el usuario guardado— ni conectarse, y si tenía la sesión abierta se le cierra. Sirve para que nadie pueda usar el programa desde otra computadora aunque se lleve un usuario y su contraseña.',
+          'Para autorizar una computadora se escribe su dirección IP y un nombre para reconocerla («PC de caja · Avellaneda») y se toca «Autorizar». La IP se ve en Windows con «ipconfig» (Dirección IPv4) o, entrando desde esa computadora, en el recuadro «Esta computadora», que tiene botones para usarla directo. «Desautorizar» la saca de la lista; el buscador filtra por IP o por nombre.',
+          'Las IP internas (192.168…, 169.254…, 10…) se comparan con las de cada computadora; una IP pública (la de la sucursal) deja entrar a todas las computadoras de esa red. Para que nadie se quede afuera por error, no se puede activar desde una computadora que no está en la lista, ni sacar la IP de la computadora en la que estás trabajando mientras el control está activado.',
+          'Antes de activarlo, todas las computadoras tienen que estar actualizadas a esta versión: las anteriores no le dicen al servidor su IP interna. Si una computadora cambia de IP (por ejemplo, al cambiar el router), hay que volver a autorizarla.',
+        ],
+      },
       {
         titulo: 'Control de horarios (opcional)',
         parrafos: [

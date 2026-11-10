@@ -479,6 +479,12 @@ const api: ApiDm = {
     alResponderUnPedido: (escuchar) => suscribir('horario:respuesta', escuchar),
     alLlegarPedidos: (escuchar) => suscribir('horario:pedidos', escuchar),
   },
+  ips: {
+    estado: () => invocar('ips:estado'),
+    cambiarControl: (activa) => invocar('ips:cambiarControl', activa),
+    autorizar: (ip, nombre) => invocar('ips:autorizar', ip, nombre),
+    desautorizar: (id) => invocar('ips:desautorizar', id),
+  },
   miLink: {
     mia: () => invocar('miLink:mia'),
     direccionLibre: (direccion) => invocar('miLink:direccionLibre', direccion),

@@ -21,6 +21,7 @@ import type {
   RespuestaDeExcepcion,
   SolicitudDeHorario,
 } from './horario'
+import type { AutorizacionesIp } from './autorizacionIp'
 import type {
   ArchivoDeDenuncia,
   CambiosDeMiLink,
@@ -1050,6 +1051,17 @@ export interface Canales {
   'horario:pedirAlIngresar': (motivo: string) => Resultado<SolicitudDeHorario>
   /** Cómo viene el pedido hecho al ingresar (null si no se hizo ninguno). Sin sesión. */
   'horario:estadoDelPedidoAlIngresar': () => Resultado<SolicitudDeHorario | null>
+
+  // Autorizaciones de IP: qué computadoras puede atender el VPS (ver servicios/autorizacionesIp.ts). Todo es
+  // del SUPER_ADMIN; el servidor lo vuelve a controlar.
+  /** La lista, el interruptor y cómo ve el servidor a esta computadora. */
+  'ips:estado': () => Resultado<AutorizacionesIp>
+  /** Prende o apaga el control. El servidor no deja prenderlo desde una PC que no está en la lista. */
+  'ips:cambiarControl': (activa: boolean) => Resultado<AutorizacionesIp>
+  /** Autoriza una IP nueva con un nombre para reconocerla. */
+  'ips:autorizar': (ip: string, nombre: string) => Resultado<AutorizacionesIp>
+  /** Saca una IP de la lista. */
+  'ips:desautorizar': (id: string) => Resultado<AutorizacionesIp>
 
   // Cartera → Galeno NOVEDADES (15.4). Distinto canal y distinto nombre que el bloque de arriba a
   // propósito: esto NO es la API REST de Galeno (cotización/emisión), es la sincronización con el

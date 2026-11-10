@@ -1,15 +1,16 @@
 // Administración → Ciberseguridad: lo que protege el acceso a DM Gestión. Es del superadministrador y de nadie más
 // (la pestaña sólo se arma para SUPER_ADMIN; cada pantalla de adentro vuelve a pedir el rol al proceso principal).
 //
-// Hoy tiene una sola herramienta, el «Control de horarios»; se entra desde una tarjeta para que las próximas
-// (por ejemplo, restringir por dirección IP) tengan dónde sumarse sin llenar la barra de pestañas.
+// Tiene el «Control de horarios» y las «Autorizaciones de IP»; se entra desde una tarjeta para que las próximas
+// herramientas tengan dónde sumarse sin llenar la barra de pestañas.
 import { useState } from 'react'
 import { Icono, type NombreIcono } from '../../componentes/Icono'
 import { Boton } from '../../componentes/ui'
+import { AutorizacionesDeIp } from './AutorizacionesDeIp'
 import { UsoLaboral } from './UsoLaboral'
 
 interface Herramienta {
-  id: 'horarios'
+  id: 'horarios' | 'ips'
   nombre: string
   descripcion: string
   icono: NombreIcono
@@ -23,12 +24,19 @@ const HERRAMIENTAS: Herramienta[] = [
       'Define en qué horario, qué días y en qué sucursal puede trabajar cada rol, con feriados, y mirá los pedidos de excepción.',
     icono: 'reloj',
   },
+  {
+    id: 'ips',
+    nombre: 'Autorizaciones de IP',
+    descripcion:
+      'Elegí qué computadoras pueden usar el programa: con el control activado, el servidor no atiende a ninguna IP que no esté en la lista.',
+    icono: 'escudo',
+  },
 ]
 
 export function Ciberseguridad() {
   const [abierta, setAbierta] = useState<Herramienta['id'] | null>(null)
 
-  if (abierta === 'horarios') {
+  if (abierta) {
     return (
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
         <div>
@@ -36,7 +44,7 @@ export function Ciberseguridad() {
             ← Volver a Ciberseguridad
           </Boton>
         </div>
-        <UsoLaboral />
+        {abierta === 'horarios' ? <UsoLaboral /> : <AutorizacionesDeIp />}
       </div>
     )
   }
