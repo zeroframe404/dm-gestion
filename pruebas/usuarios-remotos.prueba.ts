@@ -15,7 +15,7 @@ import { ErrorDeNegocio } from '../src/main/servicios/errores'
 import { sesion } from '../src/main/servicios/sesion'
 import { cambiarActivo, crearUsuario, editarUsuario, listarUsuarios, resetearClave } from '../src/main/servicios/usuarios'
 import { AlmacenDeCredencial, cifradorDePrueba } from '../src/main/usuarios/credencial'
-import { AlmacenEnMemoria, ErrorDelAlmacen } from '../src/main/usuarios/almacen'
+import { AlmacenEnMemoria, EquipoNoAutorizado, ErrorDelAlmacen } from '../src/main/usuarios/almacen'
 import { escribirDocumento, leerDocumento } from '../src/main/usuarios/documento'
 import { permisosPorDefecto } from '../src/shared/permisos'
 import type { EstadoDeAcceso, SesionUsuario } from '../src/shared/tipos'
@@ -265,6 +265,36 @@ test('sin credencial guardada no se puede ingresar sin internet, y la credencial
   pc.almacen.falla = tokenVencido
   await rechaza(ingresar({ usuario: 'maria', clave: 'Temporal-123' }), /no pudo acceder a la base de usuarios/)
   assert.equal(base.estadoDeAcceso().usuarioGuardado, null)
+})
+
+test('una computadora que el servidor no autoriza (por IP) no entra ni con la credencial guardada, y su sesión se cierra', async () => {
+  const principal = await conMaria()
+  const pc = await computadoraDeMaria(principal.almacen)
+  const noAutorizada = () => new EquipoNoAutorizado('Esta computadora no está autorizada para conectarse al servidor de la agencia.')
+
+  // Con la sesión abierta, prenden el control (o desautorizan la IP): en la próxima revalidación se cierra.
+  pc.almacen.falla = noAutorizada
+  await base.revalidarAhora()
+  assert.equal(sesion(), null)
+  assert.match(pc.cerradas[0] ?? '', /no está autorizada/)
+
+  // Y no hay credencial que valga: no es «sin internet».
+  await rechaza(ingresar({ usuario: 'maria', clave: 'Maria-Segura-1' }), /no está autorizada/)
+  assert.equal(sesion(), null)
+
+  // Autorizada de nuevo, entra normal.
+  pc.almacen.falla = null
+  await ingresar({ usuario: 'maria', clave: 'Maria-Segura-1' })
+  assert.equal(actor().usuario, 'maria')
+  salir()
+
+  // Una instalación nueva (el programa copiado a otra PC): tampoco entra por la tabla local de fábrica.
+  baseNueva()
+  const copiada = computadora(principal.almacen)
+  copiada.almacen.falla = noAutorizada
+  await rechaza(ingresar({ usuario: 'daniel', clave: 'cambiar123' }), /no está autorizada/)
+  assert.equal(sesion(), null)
+  copiada.almacen.falla = null
 })
 
 test('sin internet no se administra; una sesión nacida sin conexión recién administra cuando se confirma', async () => {

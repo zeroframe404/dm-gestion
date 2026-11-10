@@ -348,6 +348,7 @@ import {
   registroDeExcepciones,
   resolverPedido,
 } from './servicios/horarioLaboral'
+import { autorizarIp, cambiarControlDeIp, desautorizarIp, leerAutorizacionesIp } from './servicios/autorizacionesIp'
 import {
   borrarMetaDelVps,
   estadoCompartidoDeGoogle,
@@ -2292,6 +2293,12 @@ export function registrarIpc(): void {
   manejar('horario:pedirEnSesion', async (motivo) => exito(await pedirExcepcionEnSesion(exigirSesion(), motivo)))
   manejar('horario:pedirAlIngresar', async (motivo) => exito(await pedirExcepcionAlIngresar(motivo)))
   manejar('horario:estadoDelPedidoAlIngresar', async () => exito(await estadoDelPedidoAlIngresar()))
+
+  // Autorizaciones de IP: sólo el superadministrador (el servicio y el servidor lo vuelven a controlar).
+  manejar('ips:estado', async () => exito(await leerAutorizacionesIp(exigirSesion())))
+  manejar('ips:cambiarControl', async (activa) => exito(await cambiarControlDeIp(exigirSesion(), activa)))
+  manejar('ips:autorizar', async (ip, nombre) => exito(await autorizarIp(exigirSesion(), ip, nombre)))
+  manejar('ips:desautorizar', async (id) => exito(await desautorizarIp(exigirSesion(), id)))
 
   manejar('miLink:mia', async () => exito(await miLinkPropio(exigirVista('miLink'))))
   manejar('miLink:direccionLibre', async (direccion) => exito(await direccionLibreDeMiLink(exigirVista('miLink'), direccion)))

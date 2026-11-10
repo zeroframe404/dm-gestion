@@ -19,6 +19,7 @@
 // VPS. Esta computadora no la necesita ni la ve.
 import { esDemo } from '../../canal'
 import { esFallaDeRed } from '../../servicios/red'
+import { encabezadosDelEquipo } from '../../vps/equipo'
 
 const ESPERA_MAXIMA_MS = 45_000
 
@@ -119,6 +120,7 @@ export function crearClienteGaleno(vps: CredencialesVps): ClienteGaleno {
     const cuerpo = opciones.body !== undefined ? JSON.stringify(opciones.body) : undefined
     const headers: Record<string, string> = {
       authorization: `Bearer ${vps.token}`,
+      ...encabezadosDelEquipo(),
       'x-galeno-ruta': ruta,
       'x-galeno-metodo': metodo,
     }

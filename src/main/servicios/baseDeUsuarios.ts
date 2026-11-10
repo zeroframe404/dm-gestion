@@ -20,7 +20,7 @@ import os from 'node:os'
 import type { MatrizPermisos } from '../../shared/permisos'
 import type { EstadoDeAcceso, EstadoDeUsuarios, ModoDeAcceso, Rol, SesionUsuario, Usuario } from '../../shared/tipos'
 import { db } from '../db/base'
-import { ErrorDeConflicto, ErrorDelAlmacen, type AlmacenRemoto } from '../usuarios/almacen'
+import { EquipoNoAutorizado, ErrorDeConflicto, ErrorDelAlmacen, type AlmacenRemoto } from '../usuarios/almacen'
 import { estaVencida, type AlmacenDeCredencial } from '../usuarios/credencial'
 import {
   agregarExistentes,
@@ -87,6 +87,8 @@ type Lectura =
   | { tipo: 'sin-archivo' }
   | { tipo: 'sin-internet'; error: string }
   | { tipo: 'error-remoto'; error: string }
+  /** Autorizaciones de IP: el servidor no atiende a esta computadora. No se entra ni con la credencial. */
+  | { tipo: 'no-autorizado'; error: string }
 
 const CLAVE_MODO = 'usuarios_modo'
 const CLAVE_ULTIMA_LECTURA = 'usuarios_ultima_lectura'
@@ -272,6 +274,11 @@ async function leerRemoto(): Promise<Lectura> {
       cambiarEstado({ ultimaComprobacion: comprobadoEn, ultimaLecturaBuena: comprobadoEn, ultimoError: null, cantidad: documento.usuarios.length })
       return { tipo: 'documento', documento, sha: lectura.sha }
     } catch (error) {
+      if (error instanceof EquipoNoAutorizado) {
+        console.error('[usuarios] El servidor no atiende a esta computadora (Autorizaciones de IP):', error.message)
+        cambiarEstado({ ultimaComprobacion: comprobadoEn, ultimoError: error.message })
+        return { tipo: 'no-autorizado', error: error.message }
+      }
       const temporal = error instanceof ErrorDelAlmacen && error.temporal
       if (esFallaDeRed(error) || temporal) {
         sinInternetHasta = Date.now() + memoriaSinInternetMs
@@ -329,6 +336,10 @@ export async function comprobarAcceso(): Promise<EstadoDeAcceso> {
     cambiarEstado({ modo: reflejado ? 'en-linea' : 'error-remoto' })
   } else if (lectura.tipo === 'sin-archivo') {
     cambiarEstado({ modo: modoPersistido() === 'github' ? 'error-remoto' : 'sin-inicializar', ultimoError: modoPersistido() === 'github' ? mensajeDeDocumentoQueYaNoEsta() : null })
+  } else if (lectura.tipo === 'no-autorizado') {
+    // Desautorizaron esta computadora (o prendieron el control) con la sesión abierta: se cierra.
+    cambiarEstado({ modo: 'error-remoto' })
+    if (sesion()) cerrarSesionDesdeAfuera(lectura.error)
   } else {
     cambiarEstado({ modo: lectura.tipo })
   }
@@ -469,6 +480,13 @@ export async function ingresar(usuario: string, clave: string): Promise<SesionUs
     return nueva
   }
 
+  // Autorizaciones de IP: el servidor dijo que esta computadora no está en la lista. La credencial guardada
+  // no es una salida: es justamente el caso de un programa copiado a otra PC o llevado a otra red.
+  if (lectura.tipo === 'no-autorizado') {
+    cambiarEstado({ modo: 'error-remoto' })
+    throw new ErrorDeNegocio(lectura.error)
+  }
+
   // GitHub no está disponible (sin internet, o respondió con error): la credencial guardada.
   const modo: ModoDeAcceso = lectura.tipo === 'sin-internet' ? 'sin-internet' : 'error-remoto'
   const detalle = lectura.tipo === 'sin-archivo' ? mensajeDeDocumentoQueYaNoEsta() : lectura.error
@@ -559,6 +577,12 @@ export async function prepararIngreso(): Promise<'compartida' | 'local'> {
     const reflejado = reflejar(lectura.documento)
     cambiarEstado({ modo: reflejado ? 'en-linea' : 'error-remoto' })
     return reflejado ? 'compartida' : 'local'
+  }
+  // El servidor no atiende a esta computadora (Autorizaciones de IP): el ingreso va por la base compartida, que
+  // es la que lo rechaza con el motivo. Por la tabla local (una instalación nueva) se entraría sin decir nada.
+  if (lectura.tipo === 'no-autorizado') {
+    cambiarEstado({ modo: 'error-remoto' })
+    return 'compartida'
   }
   cambiarEstado({ modo: lectura.tipo === 'sin-archivo' ? 'sin-inicializar' : lectura.tipo })
   // Sin llegar a GitHub: si hay una credencial guardada, esta computadora ya sincronizó alguna vez
@@ -654,6 +678,7 @@ async function mutarRemoto(mutacion: Mutacion): Promise<DocumentoUsuarios> {
     const lectura = await leerRemoto()
     if (lectura.tipo === 'sin-internet') throw new ErrorDeNegocio(MENSAJE_SIN_INTERNET_PARA_ADMINISTRAR)
     if (lectura.tipo === 'error-remoto') throw new ErrorDeNegocio(`No se pudo acceder a la base de usuarios: ${lectura.error}`)
+    if (lectura.tipo === 'no-autorizado') throw new ErrorDeNegocio(lectura.error)
     if (lectura.tipo === 'sin-archivo') throw new ErrorDeNegocio(mensajeDeDocumentoQueYaNoEsta())
 
     const actorRemoto = buscarPorId(lectura.documento, actorRemotoId)
