@@ -53,6 +53,7 @@ import {
   type DelServidor,
   type FotoDeLaGrilla,
 } from './protocolo'
+import { ipsLocalesDelEquipo } from '../vps/equipo'
 
 /** El `readyState` de un socket abierto. Es 1 en todas las implementaciones (WebSocket.OPEN). */
 const ABIERTO = 1
@@ -341,6 +342,7 @@ export class CanalEnVivo {
       // pueda comparar contra algo y la reconciliación empiece con la primera respuesta.
       versiones: versionesConocidas(),
       generacion: generacionConocida(),
+      ips: ipsLocalesDelEquipo(),
     })
     this.arrancarElLatido()
   }

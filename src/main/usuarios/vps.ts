@@ -17,7 +17,9 @@
 // propósito: pedirle a alguien que apriete un botón de migración es pedirle que se acuerde de hacerlo
 // antes de que alguien más intente ingresar.
 import { esFallaDeRed } from '../servicios/red'
-import { ErrorDeConflicto, ErrorDelAlmacen, type AlmacenRemoto, type LecturaRemota } from './almacen'
+import { EquipoNoAutorizado, ErrorDeConflicto, ErrorDelAlmacen, type AlmacenRemoto, type LecturaRemota } from './almacen'
+import { encabezadosDelEquipo } from '../vps/equipo'
+import { esRechazoDeEquipo } from '../../shared/autorizacionIp'
 
 /** Un ingreso no puede quedarse colgado: pasado este tiempo se considera que no hay internet. */
 export const TIEMPO_MAXIMO_LECTURA_MS = 8_000
@@ -86,6 +88,7 @@ export class AlmacenVps implements AlmacenRemoto {
       method: metodo,
       headers: {
         authorization: `Bearer ${this.token}`,
+        ...encabezadosDelEquipo(),
         ...(cuerpo === undefined ? {} : { 'content-type': 'application/json' }),
       },
       body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
@@ -117,6 +120,7 @@ export class AlmacenVps implements AlmacenRemoto {
         401,
       )
     }
+    if (respuesta.status === 403 && esRechazoDeEquipo(respuesta.json)) return new EquipoNoAutorizado(detalle)
     if (respuesta.status === 503) {
       // Falta DMG_SYNC_TOKEN en el servidor. No es temporal: reintentar no lo arregla, y tratarlo como
       // «sin internet» escondería el único mensaje que dice qué hay que hacer.

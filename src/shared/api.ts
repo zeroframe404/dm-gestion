@@ -509,6 +509,13 @@ export interface ApiDm {
     alResponderUnPedido: Suscripcion<'horario:respuesta'>
     alLlegarPedidos: Suscripcion<'horario:pedidos'>
   }
+  /** Autorizaciones de IP (Ciberseguridad). Ver canales.ts. */
+  ips: {
+    estado: Remota<'ips:estado'>
+    cambiarControl: Remota<'ips:cambiarControl'>
+    autorizar: Remota<'ips:autorizar'>
+    desautorizar: Remota<'ips:desautorizar'>
+  }
   /** Cartera → Galeno: las novedades del portal (distinto de `galeno`, la API REST). Ver canales.ts. */
   galenoNovedades: {
     estado: Remota<'galenoNovedades:estado'>

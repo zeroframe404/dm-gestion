@@ -44,6 +44,8 @@ import type {
 import type { AlmacenDeAdjuntos, ArchivoBajado, FichaEnElAlmacen, FichaParaElAlmacen } from '../servicios/adjuntos'
 import { ErrorDeNegocio } from '../servicios/errores'
 import { adoptarVersionPropia } from '../sincronizacion/versiones'
+import { encabezadosDelEquipo } from './equipo'
+import { esRechazoDeEquipo, type EstadoDeAutorizacionesIp } from '../../shared/autorizacionIp'
 
 /** Tiempo máximo por pedido; sin esto una conexión colgada bloquea la importación. */
 const TIEMPO_MAXIMO_MS = 90_000
@@ -423,7 +425,7 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
    */
   private async pedir(
     descripcion: string,
-    metodo: 'GET' | 'POST' | 'PUT' | 'PATCH',
+    metodo: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     ruta: string,
     cuerpo?: unknown,
     opciones: { reintentarSinRespuesta?: boolean } = {},
@@ -437,6 +439,7 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
           method: metodo,
           headers: {
             authorization: `Bearer ${this.token}`,
+            ...encabezadosDelEquipo(),
             ...(cuerpo === undefined ? {} : { 'content-type': 'application/json' }),
           },
           body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
@@ -495,6 +498,9 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
       )
     }
     if (respuesta.status === 503) return new ErrorDelServidorVps(detalle, 503, detalle)
+    // Autorizaciones de IP: el servidor no atiende a esta computadora. El mensaje del servidor ya dice qué
+    // hacer (y con qué IP la vio), así que va tal cual, sin el «rechazó la operación (…)».
+    if (respuesta.status === 403 && esRechazoDeEquipo(respuesta.json)) return new ErrorDelServidorVps(detalle, 403, detalle)
     if (respuesta.status === 409) return new ErrorDelServidorVps(detalle, 409, detalle)
     if (respuesta.status >= 400 && respuesta.status < 500) {
       return new ErrorDelServidorVps(`El servidor del VPS rechazó la operación (${descripcion}): ${detalle}`, respuesta.status, detalle)
@@ -520,6 +526,7 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
       method: metodo,
       headers: {
         authorization: `Bearer ${this.token}`,
+        ...encabezadosDelEquipo(),
         ...(opciones.cuerpo ? { 'content-type': 'application/octet-stream' } : {}),
         ...(opciones.encabezados ?? {}),
       },
@@ -1402,5 +1409,34 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
       { reintentarSinRespuesta: false },
     )) as { solicitud: SolicitudDeHorario }
     return datos.solicitud
+  }
+
+  // --- Autorizaciones de IP ----------------------------------------------------
+  //
+  // La lista de computadoras que pueden usar el puente y el interruptor (`/api/dmg/ips`). Sólo el
+  // superadministrador (lo controla el servidor). Ninguno se reintenta solo: alguien está mirando la pantalla.
+
+  async ipsEstado(actor: ActorDeMiLinkVps): Promise<EstadoDeAutorizacionesIp> {
+    return (await this.pedir('leer las autorizaciones de IP', 'GET', `/api/dmg/ips?${consultaDeMiLink(actor)}`, undefined, {
+      reintentarSinRespuesta: false,
+    })) as EstadoDeAutorizacionesIp
+  }
+
+  async ipsCambiarControl(actor: ActorDeMiLinkVps, activa: boolean): Promise<EstadoDeAutorizacionesIp> {
+    return (await this.pedir('cambiar el control de IP', 'PUT', `/api/dmg/ips?${consultaDeMiLink(actor)}`, { activa }, {
+      reintentarSinRespuesta: false,
+    })) as EstadoDeAutorizacionesIp
+  }
+
+  async ipsAutorizar(actor: ActorDeMiLinkVps, ip: string, nombre: string): Promise<EstadoDeAutorizacionesIp> {
+    return (await this.pedir('autorizar una IP', 'POST', `/api/dmg/ips?${consultaDeMiLink(actor)}`, { ip, nombre }, {
+      reintentarSinRespuesta: false,
+    })) as EstadoDeAutorizacionesIp
+  }
+
+  async ipsDesautorizar(actor: ActorDeMiLinkVps, id: string): Promise<EstadoDeAutorizacionesIp> {
+    return (await this.pedir('desautorizar una IP', 'DELETE', `/api/dmg/ips/${encodeURIComponent(id)}?${consultaDeMiLink(actor)}`, undefined, {
+      reintentarSinRespuesta: false,
+    })) as EstadoDeAutorizacionesIp
   }
 }
