@@ -38,7 +38,7 @@ export function AvisoDeTareaHecha() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed bottom-6 right-6 z-50 flex max-w-sm items-start gap-3 rounded-xl border border-green-200 bg-white px-4 py-3 shadow-media"
+      className="pointer-events-none fixed bottom-24 right-6 z-50 flex max-w-sm items-start gap-3 rounded-xl border border-green-200 bg-white px-4 py-3 shadow-media"
     >
       <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
         <Icono nombre="ok" tamano={16} />

@@ -8,6 +8,7 @@ import { CartelActualizacionDisponible } from './componentes/CartelActualizacion
 import { CartelCambiosRecientes } from './componentes/CartelCambiosRecientes'
 import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
 import { AvisoDeZumbido } from './componentes/AvisoDeZumbido'
+import { AsistenteIA } from './componentes/AsistenteIA'
 import { AvisoDeFinDeTurno } from './componentes/AvisoDeFinDeTurno'
 import { AvisoDePedidosDeHorario } from './componentes/AvisoDePedidosDeHorario'
 import { AvisoDeLlamadaEntrante } from './componentes/AvisoDeLlamadaEntrante'
@@ -343,6 +344,8 @@ function Marco({
       <AvisoDePisado />
       {/* Igual que el resto de estos avisos: vive acá para saltar sin importar en qué pantalla se esté. */}
       <CartelActualizacionDisponible />
+      {/* El asistente con IA (sólo consulta): el círculo de abajo a la derecha, en cualquier pantalla. */}
+      <AsistenteIA />
       {/* Después de actualizar: qué cambió desde la última versión que vio esta persona. */}
       <CartelCambiosRecientes />
     </div>

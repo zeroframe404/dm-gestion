@@ -131,6 +131,16 @@ interface ConfigEquidad {
   actualizadoEn: string
 }
 
+/**
+ * La clave de Anthropic del asistente con IA. La carga el superadministrador una vez y viaja al resto de
+ * las computadoras como el ajuste compartido `iaAnthropic` (cifrado en el VPS), igual que la app de Meta.
+ * No sale nunca del proceso principal: la pantalla sólo ve si está y sus últimos 4 caracteres.
+ */
+interface ConfigAsistente {
+  claveApi: string
+  actualizadoEn: string
+}
+
 interface Config {
   google?: ConfigGoogle
   vps?: ConfigVps
@@ -140,6 +150,7 @@ interface Config {
   atm?: ConfigAtm
   mercantil?: ConfigMercantil
   equidad?: ConfigEquidad
+  asistente?: ConfigAsistente
 }
 
 /**
@@ -869,5 +880,49 @@ export function adoptarEquidad(valor: unknown): boolean {
   const config = leerConfig()
   config.equidad = { ...e, actualizadoEn: new Date().toISOString() }
   escribirConfig(config)
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// El asistente con IA (Anthropic)
+// ---------------------------------------------------------------------------
+
+/** La clave completa, sólo para el proceso principal (servicios/asistente.ts). */
+export function claveDelAsistente(): string | null {
+  if (esDemo()) return null
+  const clave = leerConfig().asistente?.claveApi?.trim()
+  return clave || null
+}
+
+export function datosDelAsistente(): { finDeLaClave: string; actualizadoEn: string | null } | null {
+  const asistente = leerConfig().asistente
+  if (!asistente?.claveApi) return null
+  return { finDeLaClave: asistente.claveApi.slice(-4), actualizadoEn: asistente.actualizadoEn ?? null }
+}
+
+export function guardarClaveDelAsistente(claveApi: string): void {
+  const config = leerConfig()
+  config.asistente = { claveApi, actualizadoEn: new Date().toISOString() }
+  escribirConfig(config)
+}
+
+export function borrarClaveDelAsistente(): void {
+  const config = leerConfig()
+  delete config.asistente
+  escribirConfig(config)
+}
+
+/** Lo que viaja al VPS. El orden de las claves no se toca (ver la nota de arriba sobre la huella). */
+export function valorCompartidoDelAsistente(): { claveApi: string } | null {
+  const asistente = leerConfig().asistente
+  if (!asistente?.claveApi) return null
+  return { claveApi: asistente.claveApi }
+}
+
+export function adoptarAsistente(valor: unknown): boolean {
+  if (!valor || typeof valor !== 'object') return false
+  const claveApi = typeof (valor as { claveApi?: unknown }).claveApi === 'string' ? (valor as { claveApi: string }).claveApi.trim() : ''
+  if (!claveApi) return false
+  guardarClaveDelAsistente(claveApi)
   return true
 }

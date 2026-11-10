@@ -24,6 +24,7 @@
 //                  aplicación, usuario de servicio, productor, rama y empresa)
 //   companias      días de cobertura, comisión, renovación y plantilla         administrador o superadmin
 //   ticket         dirección y teléfono del encabezado de cada sucursal        cualquiera, la de SU sucursal
+//   iaAnthropic    la clave de Anthropic del asistente con IA                  superadministrador
 //   referencias    las listas del módulo Compañías (ver referenciasCompartidas.ts)
 //
 // La cuenta de Galeno (`galenoApi`) también vive en el servidor, pero NO está en esta lista: Galeno sólo
@@ -47,12 +48,14 @@ import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import { adoptarCompanias, valorCompartidoDeCompanias } from './companias'
 import {
+  adoptarAsistente,
   adoptarAtm,
   adoptarEquidad,
   adoptarGoogle,
   adoptarMercantil,
   adoptarMeta,
   valorCompartidoDeAtm,
+  valorCompartidoDelAsistente,
   valorCompartidoDeEquidad,
   valorCompartidoDeGoogle,
   valorCompartidoDeMercantil,
@@ -131,8 +134,15 @@ const TICKET: AjusteCompartido = {
   adoptar: adoptarEncabezadoDelTicket,
 }
 
+const ASISTENTE: AjusteCompartido = {
+  clave: 'iaAnthropic',
+  nombre: 'la clave del asistente con IA',
+  valorLocal: valorCompartidoDelAsistente,
+  adoptar: adoptarAsistente,
+}
+
 /** Los que se adoptan solos al arrancar, en el orden en que se piden. */
-const TODOS = [GOOGLE, META, ATM, MERCANTIL, EQUIDAD, COMPANIAS, TICKET]
+const TODOS = [GOOGLE, META, ATM, MERCANTIL, EQUIDAD, COMPANIAS, TICKET, ASISTENTE]
 
 /** Lo que se devuelve cuando ni siquiera hay puente: en desarrollo, o sin VPS configurado. */
 const SIN_SERVIDOR: EstadoDeAjusteCompartido = {
@@ -350,6 +360,10 @@ export const borrarEquidadDelVps = (): Promise<void> => borrarDelVps(EQUIDAD)
 /** Lo mismo para API Aseguradoras → Equidad. */
 export const traerEquidadDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(EQUIDAD, { pisarLoLocal: true })
 
+export const borrarAsistenteDelVps = (): Promise<void> => borrarDelVps(ASISTENTE)
+/** El botón «Traer del servidor» del asistente: lo apretó alguien, así que sí pisa lo local. */
+export const traerAsistenteDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(ASISTENTE, { pisarLoLocal: true })
+
 export const estadoCompartidoDeCompanias = (): Promise<EstadoDeAjusteCompartido> => estadoDe(COMPANIAS)
 export const publicarCompaniasEnElVps = (quien: string | null): Promise<EstadoDeAjusteCompartido> => publicar(COMPANIAS, quien)
 export const adoptarCompaniasDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(COMPANIAS)
@@ -435,10 +449,18 @@ function identidadDeSucursal(nombre: string): string {
  * motivo vuelve igual, para la pantalla que quiera mostrarlo.
  */
 export async function publicarSinRomper(
-  cual: 'companias' | 'google' | 'meta' | 'atmApi' | 'mercantilApi' | 'equidadApi',
+  cual: 'companias' | 'google' | 'meta' | 'atmApi' | 'mercantilApi' | 'equidadApi' | 'iaAnthropic',
   quien: string | null,
 ): Promise<EstadoDeAjusteCompartido> {
-  const ajuste = { companias: COMPANIAS, google: GOOGLE, meta: META, atmApi: ATM, mercantilApi: MERCANTIL, equidadApi: EQUIDAD }[cual]
+  const ajuste = {
+    companias: COMPANIAS,
+    google: GOOGLE,
+    meta: META,
+    atmApi: ATM,
+    mercantilApi: MERCANTIL,
+    equidadApi: EQUIDAD,
+    iaAnthropic: ASISTENTE,
+  }[cual]
   try {
     return await publicar(ajuste, quien)
   } catch (error) {

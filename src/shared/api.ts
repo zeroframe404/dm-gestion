@@ -610,4 +610,10 @@ export interface ApiDm {
   ayuda: {
     guardarPdf: Remota<'ayuda:guardarPdf'>
   }
+  asistente: {
+    estado: Remota<'asistente:estado'>
+    preguntar: Remota<'asistente:preguntar'>
+    guardarClave: Remota<'asistente:guardarClave'>
+    borrarClave: Remota<'asistente:borrarClave'>
+  }
 }
