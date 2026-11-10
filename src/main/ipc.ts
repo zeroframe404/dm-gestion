@@ -12,6 +12,8 @@ import { estadoDeLaDemo } from './demo/servidor'
 import { abrirEnlaceDeLaDemo } from './demo/enlaces'
 import { carpetaDatos, rutaBaseDeDatos, rutaConfig } from './rutas'
 import { cambiarClave, ingresar, salir } from './servicios/auth'
+import { estadoDelAsistente, olvidarConversaciones, preguntarAlAsistente } from './servicios/asistente'
+import { pareceClaveDeAnthropic } from '../shared/asistente'
 import { comprobarAcceso, conectarEmisor, estadoDeAcceso, estadoDeUsuarios, subirLocales } from './servicios/baseDeUsuarios'
 import {
   bajasDelMes,
@@ -257,6 +259,8 @@ import {
   estadoMeta,
   guardarGoogle,
   guardarMeta,
+  borrarClaveDelAsistente,
+  guardarClaveDelAsistente,
 } from './servicios/config'
 import {
   aniosDeLaLinea,
@@ -357,6 +361,7 @@ import {
   publicarSinRomper,
   publicarTicketSinRomper,
   traerGoogleDelVps,
+  borrarAsistenteDelVps,
 } from './servicios/ajustesCompartidos'
 import { crearRespaldoEnElVps, listarRespaldosDelVps, restaurarRespaldoDelVps } from './servicios/respaldosVps'
 import { guardarPlantillaDeAviso, plantillaDeAviso } from './servicios/plantillas'
@@ -548,6 +553,7 @@ export function registrarIpc(): void {
     return exito(sesion)
   })
   manejar('auth:salir', () => {
+    olvidarConversaciones()
     salir()
     detenerSincronizacion()
     return exito(null)
@@ -2582,5 +2588,29 @@ export function registrarIpc(): void {
   manejar('ayuda:guardarPdf', async (pedido) => {
     exigirSesion()
     return exito(await guardarHtmlComoPdf(pedido.html, pedido.nombreDeArchivo, ventanaActual()))
+  })
+
+  // El asistente con IA. Preguntar lo puede cualquiera con sesión: lo que la IA llega a ver lo recorta
+  // servicios/asistente.ts con los mismos permisos de cada pantalla. La clave la carga sólo el
+  // superadministrador y viaja cifrada al VPS para el resto de las computadoras (ajuste `iaAnthropic`).
+  manejar('asistente:estado', () => exito(estadoDelAsistente(exigirSesion())))
+  manejar('asistente:preguntar', async (pregunta) => exito(await preguntarAlAsistente(pregunta, exigirSesion())))
+  manejar('asistente:guardarClave', async (claveApi) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    if (esDemo()) throw new ErrorDeNegocio('En la demo el asistente con IA no se configura.')
+    const limpia = typeof claveApi === 'string' ? claveApi.trim() : ''
+    if (!pareceClaveDeAnthropic(limpia)) {
+      throw new ErrorDeNegocio('Eso no parece una clave de Anthropic: empieza con «sk-ant-». Copiala de console.anthropic.com.')
+    }
+    guardarClaveDelAsistente(limpia)
+    // Si el servidor no está, la clave igual quedó en esta computadora: no se devuelve un error rojo.
+    await publicarSinRomper('iaAnthropic', actor.nombre)
+    return exito(estadoDelAsistente(actor))
+  })
+  manejar('asistente:borrarClave', async () => {
+    const actor = exigirRol('SUPER_ADMIN')
+    borrarClaveDelAsistente()
+    await borrarAsistenteDelVps().catch((error) => console.error('[asistente] No se pudo borrar la clave del VPS:', error))
+    return exito(estadoDelAsistente(actor))
   })
 }
