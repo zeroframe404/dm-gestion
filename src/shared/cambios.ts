@@ -30,8 +30,8 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
-    version: '17.11.1',
-    fecha: '2026-11-08',
+    version: '18.0.0',
+    fecha: '2026-11-10',
     cambios: [
       { tipo: 'agregado', texto: 'Cartera → Flotas: las empresas con 6 o más pólizas de autos con el mismo nombre aparecen solas como flota. Se busca por nombre y, al desplegar, se ven todos los autos. No hay nada que cargar.' },
       { tipo: 'agregado', texto: 'Administración → Ciberseguridad → Control de horarios (sólo superadministrador, opcional): se define en qué horario puede trabajar cada rol (Administradores y Usuarios por separado), sucursal por sucursal. Fuera de horario no se puede ingresar y aparece «Pedir excepción al super-administrador».' },
