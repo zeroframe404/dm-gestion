@@ -73,10 +73,10 @@ export const SECCIONES_MULTICOTIZADOR: Array<SeccionDeModulo & { id: SeccionDelM
  * el permiso del módulo; qué se ve de los demás (las solicitudes de todos) lo decide el rol en el VPS.
  */
 export const SECCIONES_MI_LINK: Array<SeccionDeModulo & { id: SeccionDeMiLink }> = [
-  { id: 'pagina', nombre: 'Mi página', icono: 'lapiz' },
-  { id: 'solicitudes', nombre: 'Solicitudes', icono: 'bandeja' },
-  { id: 'siniestros', nombre: 'Siniestros', icono: 'siniestros' },
-  { id: 'metricas', nombre: 'Métricas', icono: 'metricas' },
+  { id: 'pagina', nombre: 'Presentación', icono: 'lapiz' },
+  { id: 'solicitudes', nombre: 'Pedidos', icono: 'bandeja' },
+  { id: 'siniestros', nombre: 'Denuncias', icono: 'siniestros' },
+  { id: 'metricas', nombre: 'Indicadores', icono: 'metricas' },
 ]
 
 export type IdSeccionDeCartera =
@@ -175,7 +175,7 @@ export const MODULOS: Modulo[] = [
   },
   {
     id: 'miLink',
-    nombre: 'Mi link',
+    nombre: 'Mi tienda',
     icono: 'enlace',
     descripcion: 'Tu página pública con tus contactos y coberturas, y las cotizaciones y denuncias que te llegan por ahí.',
     disponible: true,
