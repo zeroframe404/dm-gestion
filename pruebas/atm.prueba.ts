@@ -614,12 +614,16 @@ test('ATM: los REST arman la consulta, mandan JSON y un error que no es JSON dic
   assert.equal(pedidos[0]!.url, 'https://atm.ejemplo/api/v1/get_plans?usa=MARTINEZAD&seccion=3&vendedor=0956102698')
   assert.equal(pedidos[0]!.metodo, 'GET')
   assert.equal(pedidos[0]!.headers.accept, 'application/json')
+  // policiesByDni contesta 401 sin el Basic con la cuenta: va en todos los REST.
+  const basic = `Basic ${Buffer.from(`MARTINEZAD:${CLAVE}`, 'utf8').toString('base64')}`
+  assert.equal(pedidos[0]!.headers.authorization, basic)
 
   contestar = () => respuestaJson(VENDEDORES)
   assert.deepEqual(await cliente.post('ws_vendedores', { usuario: 'MARTINEZAD', password: CLAVE }), VENDEDORES)
   assert.equal(pedidos[1]!.url, 'https://atm.ejemplo/api/v1/ws_vendedores')
   assert.equal(pedidos[1]!.metodo, 'POST')
   assert.equal(pedidos[1]!.headers['content-type'], 'application/json')
+  assert.equal(pedidos[1]!.headers.authorization, basic)
   assert.deepEqual(JSON.parse(pedidos[1]!.cuerpo), { usuario: 'MARTINEZAD', password: CLAVE })
 
   contestar = () => new Response('<html><body><h1>405 Method Not Allowed</h1></body></html>', { status: 405, headers: { 'content-type': 'text/html' } })
