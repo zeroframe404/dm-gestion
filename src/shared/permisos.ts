@@ -64,7 +64,7 @@ export const DESCRIPCION_AREA: Record<Area, { nombre: string; detalle: string }>
       'Cotizar un auto o una moto en todas las compañías con API a la vez y comparar. Armar el presupuesto y emitir desde ahí piden además editar Presupuestos.',
   },
   miLink: {
-    nombre: 'Mi link',
+    nombre: 'Mi tienda',
     detalle:
       'La página pública de cada uno (en el dominio de la agencia, con /p/…), las solicitudes y denuncias que llegan por ahí y sus métricas. Cada uno ve lo suyo; ver lo de los demás es sólo de administradores.',
   },
