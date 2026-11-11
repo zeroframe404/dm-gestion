@@ -35,6 +35,7 @@ import type {
   SolicitudDeMiLink,
   SucursalesDeMiLink,
 } from './miLink'
+import type { DatosDePedido, DatosDeResolucion, EstadoDeAutorizaciones } from './autorizaciones'
 import type { MatrizPermisos } from './permisos'
 import type { EstadoDelAsistente, PreguntaAlAsistente, RespuestaDelAsistente } from './asistente'
 import type {
@@ -337,6 +338,15 @@ export interface Canales {
   'permisos:mios': () => Resultado<MisPermisos>
   'permisos:matriz': () => Resultado<MatrizDePermisos>
   'permisos:guardar': (permisos: MatrizPermisos) => Resultado<MatrizDePermisos>
+
+  // Autorizaciones puntuales (la campana de la barra superior). Cualquiera con sesión puede mirar las
+  // suyas; pedir y resolver dependen de lo que tenga tildado su rol (Administración → Permisos).
+  /** Mis pedidos y, si puedo decidir, los de los demás. `true` vuelve a leer GitHub primero. */
+  'autorizaciones:estado': (actualizar: boolean) => Resultado<EstadoDeAutorizaciones>
+  'autorizaciones:pedir': (datos: DatosDePedido) => Resultado<EstadoDeAutorizaciones>
+  'autorizaciones:resolver': (datos: DatosDeResolucion) => Resultado<EstadoDeAutorizaciones>
+  /** Marca como vistas las respuestas que recibí. */
+  'autorizaciones:marcarVistas': () => Resultado<EstadoDeAutorizaciones>
 
   // Borrado definitivo y puntual de un registro (el botón de la papelera). Sólo el SUPER_ADMIN: lo
   // exige ipc.ts, y shared/eliminacion.ts explica por qué no es un permiso configurable.

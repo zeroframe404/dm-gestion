@@ -3,7 +3,8 @@
 // Todo acá es puro: ni base de datos, ni red, ni Electron. Cada mutación recibe un documento y
 // devuelve otro nuevo, así el servicio puede releer el archivo y volver a aplicar el mismo cambio
 // cuando otra computadora escribió en el medio (el candado optimista del `sha` de GitHub).
-import { normalizarMatriz, permisosPorDefecto, type MatrizPermisos } from '../../shared/permisos'
+import { asignarRolEnMatriz, normalizarMatriz, permisosPorDefecto, resolverGuardado, type MatrizPermisos } from '../../shared/permisos'
+import { normalizarSolicitudes, type SolicitudDeAutorizacion } from '../../shared/autorizaciones'
 import { sucursalCanonica, sucursalesEnTexto, type NombreDeSucursal } from '../../shared/sucursales'
 import { ROLES, type Rol } from '../../shared/tipos'
 import { ErrorDeNegocio } from '../servicios/errores'
@@ -42,10 +43,16 @@ export interface DocumentoUsuarios {
    * defecto y hay que volver a guardarla desde una PC al día (ver README).
    */
   permisos: MatrizPermisos
+  /**
+   * Los pedidos de autorización puntual y lo que se resolvió (ver shared/autorizaciones.ts). Van acá
+   * por lo mismo que los permisos: tienen que verse desde todas las computadoras. Un archivo sin el
+   * campo se lee como lista vacía, y una versión anterior del programa que escribe el archivo los pierde.
+   */
+  autorizaciones: SolicitudDeAutorizacion[]
 }
 
 export function documentoVacio(): DocumentoUsuarios {
-  return { formato: FORMATO_ACTUAL, siguienteId: 1, usuarios: [], permisos: permisosPorDefecto() }
+  return { formato: FORMATO_ACTUAL, siguienteId: 1, usuarios: [], permisos: permisosPorDefecto(), autorizaciones: [] }
 }
 
 function igualSinMayusculas(a: string, b: string): boolean {
@@ -149,7 +156,7 @@ export function leerDocumento(texto: string): DocumentoUsuarios {
   const siguienteId = typeof d.siguienteId === 'number' && d.siguienteId > mayorId ? d.siguienteId : mayorId + 1
   // Los permisos no invalidan el archivo: lo que falte o no se entienda queda en el valor por defecto.
   // Un archivo escrito por una versión anterior (sin el campo) tiene que poder abrirse igual.
-  return { formato: FORMATO_ACTUAL, siguienteId, usuarios, permisos: normalizarMatriz(d.permisos) }
+  return { formato: FORMATO_ACTUAL, siguienteId, usuarios, permisos: normalizarMatriz(d.permisos), autorizaciones: normalizarSolicitudes(d.autorizaciones) }
 }
 
 /** Texto estable (ordenado por id, indentado) para que los diffs del repositorio se lean. */
@@ -159,6 +166,7 @@ export function escribirDocumento(documento: DocumentoUsuarios): string {
     siguienteId: documento.siguienteId,
     usuarios: [...documento.usuarios].sort((a, b) => a.id - b.id),
     permisos: normalizarMatriz(documento.permisos),
+    autorizaciones: normalizarSolicitudes(documento.autorizaciones),
   }
   return JSON.stringify(ordenado, null, 2) + '\n'
 }
@@ -293,7 +301,21 @@ export function cambiarActivo(documento: DocumentoUsuarios, id: number, activo: 
  * son cosas distintas y se editan en pantallas distintas.
  */
 export function guardarPermisos(documento: DocumentoUsuarios, permisos: MatrizPermisos): DocumentoUsuarios {
-  return { ...documento, permisos: normalizarMatriz(permisos) }
+  const resultado = resolverGuardado(normalizarMatriz(documento.permisos), permisos)
+  if ('error' in resultado) throw new ErrorDeNegocio(resultado.error)
+  return { ...documento, permisos: resultado.matriz }
+}
+
+/** Le pone (o le saca) un rol personalizado a un usuario. Lee la matriz del documento recién leído. */
+export function asignarRolPersonalizado(documento: DocumentoUsuarios, usuario: string, rolId: string | null, anterior?: string): DocumentoUsuarios {
+  const actual = normalizarMatriz(documento.permisos)
+  if (rolId && !actual.personalizados.some((rol) => rol.id === rolId)) throw new ErrorDeNegocio('Ese rol ya no existe. Actualizá la pantalla.')
+  return { ...documento, permisos: asignarRolEnMatriz(actual, usuario, rolId, anterior) }
+}
+
+/** Reemplaza la lista de pedidos de autorización. */
+export function guardarAutorizaciones(documento: DocumentoUsuarios, autorizaciones: SolicitudDeAutorizacion[]): DocumentoUsuarios {
+  return { ...documento, autorizaciones }
 }
 
 export function cambiarClaveHash(

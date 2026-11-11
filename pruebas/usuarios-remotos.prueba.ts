@@ -487,7 +487,7 @@ test('leer y escribir el documento: validación estricta y salida estable', asyn
   assert.equal(leido.usuarios[0]!.usuario, 'ana')
   assert.equal(leido.usuarios[0]!.sucursal, 'Lanús')
   assert.equal(leido.usuarios[0]!.activo, true)
-  const texto = escribirDocumento({ formato: 1, siguienteId: 9, usuarios: [leido.usuarios[0]!, { ...leido.usuarios[0]!, id: 3, usuario: 'b' }], permisos: permisosPorDefecto() })
+  const texto = escribirDocumento({ formato: 1, siguienteId: 9, usuarios: [leido.usuarios[0]!, { ...leido.usuarios[0]!, id: 3, usuario: 'b' }], permisos: permisosPorDefecto(), autorizaciones: [] })
   assert.ok(texto.endsWith('\n'))
   assert.ok(texto.indexOf('"usuario": "b"') < texto.indexOf('"usuario": "ana"'), 'ordenado por id')
 })
@@ -539,6 +539,7 @@ test('una sesión abierta con la tabla local se cierra cuando otra computadora i
       siguienteId: 2,
       usuarios: [{ id: 1, nombre: 'Daniel Martínez', usuario: 'daniel', claveHash: hashSync('Clave-Otra-PC', 4), rol: 'SUPER_ADMIN', sucursal: 'Daniel', activo: true, debeCambiarClave: false, creadoEn: '', actualizadoEn: '' }],
       permisos: permisosPorDefecto(),
+      autorizaciones: [],
     })
     almacen.escribirDirecto(texto)
     return almacen

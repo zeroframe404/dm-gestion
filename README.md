@@ -2831,6 +2831,23 @@ Código: `src/shared/permisos.ts` (áreas, niveles y valores por defecto; puro y
 `src/main/servicios/copiaDePermisos.ts` (la copia en `configuracion`) y
 `src/renderer/contexto/Permisos.tsx` (lo que usa la interfaz para mostrar u ocultar).
 
+### Roles propios y autorizaciones puntuales
+
+- **Roles propios.** Además de ADMIN y EMPLEADO la agencia crea los que quiera (Permisos → «Nuevo rol»). Un rol
+  propio tiene nombre, una `base` (ADMIN o EMPLEADO, fija) y su propia fila de niveles. La `base` es el `rol`
+  que se guarda en el usuario: de ella salen todos los controles que **no** son la matriz (cerrar el mes,
+  comisiones, sucursal propia). La asignación usuario → rol propio vive en `permisos.asignaciones` del mismo
+  `usuarios.json` (no en el registro del usuario, que está en cuatro lugares) y se edita desde Usuarios.
+  `resolverGuardado` (shared) impide pisar asignaciones con una pantalla vieja y borrar un rol con gente.
+- **Niveles.** `Permitido` (lectura y escritura), `Solo lectura` y `Sin permiso` (`editar`/`ver`/`ninguno`).
+- **Autorizaciones puntuales** (`shared/autorizaciones.ts`, `servicios/autorizaciones.ts`). Cada rol tiene
+  `opciones.puedeSolicitar` y `opciones.puedeResolver`. Los pedidos y su resolución (con mensaje, vencimiento y
+  «visto») viven en `autorizaciones` del `usuarios.json`; sin base compartida, en `configuracion`
+  (`autorizaciones_puntuales`). La concesión vigente se **suma** al nivel del rol en `nivelEfectivo`
+  (`servicios/permisos.ts`): nunca resta, y quien resuelve no puede dar más de lo que él tiene. La campana
+  (`CampanaDeAutorizaciones.tsx`) consulta cada minuto, porque la base de usuarios no tiene canal en vivo.
+  Lo resuelto hace más de 30 días se poda al escribir.
+
 > **Al actualizar las PCs:** el formato del archivo sigue siendo el 1 a propósito, así una versión
 > anterior del programa lo sigue leyendo. Lo que una versión anterior **no** puede es conservar el campo
 > `permisos` cuando escribe: si una PC sin actualizar da de alta o edita un usuario, la matriz vuelve a

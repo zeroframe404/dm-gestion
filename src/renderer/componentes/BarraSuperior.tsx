@@ -9,6 +9,7 @@ import { Avatar } from './Avatar'
 import { DialogoMiPerfil } from './DialogoMiPerfil'
 import { BotonDeSonido } from './BotonDeSonido'
 import { BotonDeTema } from './BotonDeTema'
+import { CampanaDeAutorizaciones } from './CampanaDeAutorizaciones'
 import { CampanaDeRechazos } from './CampanaDeRechazos'
 import { CampanaDeMensajes } from './CampanaDeMensajes'
 import { CampanaDeTareas } from './CampanaDeTareas'
@@ -57,6 +58,14 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
       <div className="ml-auto flex shrink-0 items-center gap-4">
         <IndicadorSync />
         {(usuario.rol === 'SUPER_ADMIN' || usuario.rol === 'ADMIN') && <AnilloDeAlmacenamiento />}
+        {/* Sólo para quien puede pedir o resolver autorizaciones puntuales (o ya tiene pedidos): ver el botón
+            a quien no puede pedir nada sería una puerta que no abre. */}
+        {(permisos.permisos?.puedeSolicitar || permisos.permisos?.puedeResolver) && (
+          <>
+            <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
+            <CampanaDeAutorizaciones />
+          </>
+        )}
         {verRechazos && (
           <>
             <span className="h-6 w-px bg-slate-200" aria-hidden="true" />
@@ -97,7 +106,7 @@ export function BarraSuperior({ titulo }: { titulo: string }) {
           <div className="leading-tight">
             <p className="text-sm font-semibold text-slate-900">{usuario.nombre}</p>
             <p className="text-xs text-slate-500">
-              {NOMBRE_ROL[usuario.rol]} · Sucursal {usuario.sucursal.nombre}
+              {permisos.permisos?.rolNombre ?? NOMBRE_ROL[usuario.rol]} · Sucursal {usuario.sucursal.nombre}
             </p>
             {avisoDeAcceso && (
               <p className={`text-[11px] font-semibold ${avisoDeAcceso.clase}`} title={avisoDeAcceso.detalle}>
