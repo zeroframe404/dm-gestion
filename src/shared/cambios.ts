@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '18.0.1',
     fecha: '2026-11-10',
     cambios: [
+      { tipo: 'modificado', texto: 'En el menú, «Mi link» ahora se llama «Mi tienda», y sus renglones pasaron a «Presentación», «Pedidos», «Denuncias» e «Indicadores». Funciona igual.' },
       { tipo: 'agregado', texto: 'Asistente con IA: el círculo de abajo a la derecha, en cualquier pantalla. Se le pregunta en palabras comunes («¿qué pólizas vencen esta semana?», «¿cómo viene la mora?») y contesta con los datos del programa y sugerencias. Sólo consulta: no puede cargar, cambiar ni borrar nada.' },
       { tipo: 'agregado', texto: 'El asistente ve lo mismo que la persona que pregunta, según su rol y sus permisos: nunca muestra claves, usuarios ni configuración, y a los usuarios no les muestra la plata de la agencia (sólo la caja, la mora y las métricas de su sucursal).' },
       { tipo: 'agregado', texto: 'Lo activa el superadministrador cargando la clave de Anthropic desde el mismo asistente (botón de la llave). Se carga una sola vez y llega a todas las computadoras. El esfuerzo (bajo, medio o alto) se elige solo según la consulta.' },
