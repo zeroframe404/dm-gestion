@@ -17,7 +17,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         titulo: 'Los tres roles',
         parrafos: [
           'EMPLEADO ve y usa el día a día de la agencia (cartera, clientes, cobranzas, siniestros, etcétera) y de Administración entra a «Compañías», «Impresora», «Sincronizar» y «Acerca de», que las ve todo el mundo. Lo que no ve un empleado son los números agregados de la agencia: lo recaudado del mes, el porcentaje de comisión de cada compañía y la estimación de comisiones. Sí ve todo lo que necesita para trabajar: la caja de su sucursal, la mora que tiene que cobrar y la cuota de la persona que tiene delante. ADMIN ve además Base de datos, Sincronización, Reimportar la base y Google Drive, y sí ve los números de la agencia. SUPER_ADMIN tiene todo lo anterior más esta pantalla, Usuarios, y es el único que puede resolver un problema serio con la lista compartida de usuarios si llegara a aparecer.',
-          'Eso es lo que trae cada rol de fábrica, y se puede recortar módulo por módulo en Administración → Permisos: por ejemplo, dejar a los empleados con Cobranzas en «sólo ver» o sin Marketing. Lo que ahí se configura vale para todas las computadoras de la agencia.',
+          'Eso es lo que trae cada rol de fábrica, y se puede recortar módulo por módulo en Administración → Permisos: por ejemplo, dejar a los empleados con Cobranzas en «solo lectura» o sin Marketing. Lo que ahí se configura vale para todas las computadoras de la agencia.',
         ],
       },
       {
@@ -133,13 +133,27 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
   'administracion.permisos': {
     clave: 'administracion.permisos',
     titulo: 'Administración → Permisos',
-    resumen: 'Qué módulos ve y cuáles puede modificar cada rol. Sólo la ve y la cambia un superadministrador.',
+    resumen: 'Qué módulos ve y cuáles puede modificar cada rol, los roles propios de la agencia y las autorizaciones puntuales. Sólo la ve y la cambia un superadministrador.',
     secciones: [
       {
-        titulo: 'Cómo se lee la tabla',
+        titulo: 'Cómo se lee la pantalla',
         parrafos: [
-          'Hay una fila por cada módulo de la barra lateral y una columna por rol: Administrador y Usuario. En cada cruce se elige una de tres opciones. «Sin acceso» hace que ese módulo directamente no aparezca en la barra lateral de esa persona (y si intenta entrar igual, no se le abre). «Sólo ver» le deja abrir el módulo y mirar todo, pero los botones que cambian algo quedan apagados. «Ver y editar» es lo de siempre: trabaja el módulo como hasta ahora.',
+          'Arriba hay una lista para elegir el rol: Administrador, Usuario y los que haya armado la agencia. Al elegir uno aparece la fila de cada módulo de la barra lateral con tres opciones. «Sin permiso» hace que ese módulo directamente no aparezca en la barra lateral de esa persona (y si intenta entrar igual, no se le abre). «Solo lectura» le deja abrir el módulo y mirar todo, pero los botones que cambian algo quedan apagados. «Permitido» es lo de siempre: lee y escribe, trabaja el módulo como hasta ahora.',
           'El superadministrador no tiene columna porque siempre tiene acceso completo a todo. Es a propósito: si pudiera sacarse permisos a sí mismo, la agencia se quedaría sin nadie que pueda devolvérselos.',
+        ],
+      },
+      {
+        titulo: 'Crear un rol nuevo',
+        parrafos: [
+          'Además de Administrador y Usuario se pueden crear todos los roles que haga falta (por ejemplo «Caja» o «Siniestros»): con el botón «Nuevo rol» se elige el nombre y de cuál de los dos se parte. Ese rol de partida define lo que no es la tabla: un rol que parte de Usuario ve sólo su sucursal y no ve los números de la agencia, y uno que parte de Administrador conserva los controles de administrador (cerrar el mes, ver comisiones). Después se ajusta módulo por módulo, se puede cambiar el nombre y se borra cuando ya no lo tiene nadie.',
+          'El rol se le asigna a cada persona en Administración → Usuarios, en el desplegable «Rol», que ahora lista los roles propios de la agencia.',
+        ],
+      },
+      {
+        titulo: 'Autorizaciones puntuales',
+        parrafos: [
+          'Cada rol tiene dos casilleros. «Puede solicitar autorizaciones puntuales» le da a esa persona, en la campana de la barra superior, un botón para pedir acceso a un módulo que no tiene: elige el módulo, si necesita sólo leer o leer y escribir, y puede explicar para qué. «Puede resolver autorizaciones puntuales» hace que vea esos pedidos y decida. El superadministrador siempre puede resolver.',
+          'Quien resuelve elige entre «Permitido» (lectura y escritura), «Solo lectura» o «Sin permiso» (denegar), cuánto dura (una hora, cuatro, hasta el final del día o siete días) y puede dejar un mensaje. La respuesta, con el mensaje, le llega a quien pidió en su campana. Cuando vence, el acceso se apaga solo. Nadie puede dar más de lo que él mismo tiene en ese módulo.',
         ],
       },
       {
@@ -153,7 +167,7 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
         titulo: 'El botón de eliminar',
         parrafos: [
           'Hay un botón rojo con una papelera que borra un registro de la base para siempre: un cliente, una póliza, una fila de la planilla, una baja, un aviso de rechazo, un lead, un presupuesto, un siniestro, un riesgo vario, una ampliación o una tarea. Quién puede borrar qué depende de cuál sea: EL CLIENTE lo borran los tres roles —superadministrador, administradores y empleados—, y TODO LO DEMÁS sigue siendo únicamente del superadministrador. Para quien no puede borrar ese tipo, el botón no existe: no aparece apagado ni con un cartel, directamente no está.',
-          'El cliente se abrió porque el caso de todos los días es el alta cargada dos veces o el DNI mal tipeado, y esperar a otra persona para sacar una fila que nadie quería la dejaba apareciendo en la planilla, en la mora y en los avisos de WhatsApp. Además hace falta poder EDITAR el módulo de donde sale el registro: a quien tiene Clientes en «sólo ver» tampoco se le abre la papelera de un cliente.',
+          'El cliente se abrió porque el caso de todos los días es el alta cargada dos veces o el DNI mal tipeado, y esperar a otra persona para sacar una fila que nadie quería la dejaba apareciendo en la planilla, en la mora y en los avisos de WhatsApp. Además hace falta poder EDITAR el módulo de donde sale el registro: a quien tiene Clientes en «solo lectura» tampoco se le abre la papelera de un cliente.',
           'El resto no se puede dar por esta pantalla ni por ninguna otra, y es a propósito. Una póliza, una baja o una fila de la planilla son piezas de la cartera: se dan de baja, se deshacen, se ponen vigentes o se corrigen, y todo eso un administrador ya lo tiene. Borrarlas es otra cosa y no se revierte.',
           'Antes de borrar, la aplicación abre un cartel que dice exactamente qué se lleva puesto («3 pólizas, 42 cuotas del mes, 12 pagos»), qué renglones se sacan de la hoja de Google y qué conviene saber antes. El botón de confirmar arranca apagado y se enciende recién a los cinco segundos, con la cuenta a la vista: es el rato que se tarda en leer esa lista. Todo borrado queda anotado en el historial con quién lo hizo, cuándo y qué decía el registro.',
         ],
@@ -168,16 +182,16 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
     ],
     conceptos: [
       {
-        termino: 'Sin acceso',
+        termino: 'Sin permiso',
         explicacion: 'El módulo no aparece en la barra lateral de ese rol y no se puede abrir.',
       },
       {
-        termino: 'Sólo ver',
+        termino: 'Solo lectura',
         explicacion: 'Puede abrir el módulo y consultarlo, pero no cargar, editar ni borrar nada ahí adentro.',
       },
       {
-        termino: 'Ver y editar',
-        explicacion: 'Trabaja el módulo con normalidad, siempre dentro de lo que ya permitía su rol.',
+        termino: 'Permitido',
+        explicacion: 'Lectura y escritura: trabaja el módulo con normalidad, siempre dentro de lo que ya permitía su rol.',
       },
       {
         termino: 'Eliminar',

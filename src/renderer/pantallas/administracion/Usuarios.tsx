@@ -1,6 +1,7 @@
 // Administración de usuarios: crear, editar, desactivar, resetear contraseñas, asignar rol y sucursal.
 // Sólo la ve un SUPER_ADMIN; el proceso principal rechaza cualquier otro rol.
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import type { RolPersonalizado } from '../../../shared/permisos'
 import {
   LARGO_MINIMO_CLAVE,
   NOMBRE_ROL,
@@ -32,6 +33,8 @@ export function Usuarios() {
   const { actualizar } = useSesion()
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [sucursales, setSucursales] = useState<Sucursal[]>([])
+  // Los roles que armó la agencia (Administración → Permisos), para el desplegable «Rol» y la tabla.
+  const [rolesPropios, setRolesPropios] = useState<RolPersonalizado[]>([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -55,6 +58,8 @@ export function Usuarios() {
     else setError(resultadoUsuarios.error)
     if (resultadoSucursales.ok) setSucursales(resultadoSucursales.datos)
     else if (resultadoUsuarios.ok) setError(resultadoSucursales.error)
+    const resultadoRoles = await window.dm.permisos.matriz()
+    if (resultadoRoles.ok) setRolesPropios(resultadoRoles.datos.permisos.personalizados)
     // Quién tiene el programa al día: no puede frenar la pantalla ni mostrar error, es sólo una columna
     // más de información. Con el servidor caído la tabla se ve igual, sin esas dos columnas.
     const [resultadoInfo, resultadoActualizaciones] = await Promise.all([
@@ -156,6 +161,7 @@ export function Usuarios() {
           <Cargando texto="Cargando usuarios…" />
         ) : (
           <TablaUsuarios
+            rolesPropios={rolesPropios}
             usuarios={usuarios}
             idActual={actual.id}
             bloqueado={bloqueado}
@@ -171,6 +177,7 @@ export function Usuarios() {
       {dialogo?.tipo === 'crear' && (
         <DialogoFormulario
           sucursales={sucursales}
+          rolesPropios={rolesPropios}
           alCerrar={cerrarDialogo}
           alGuardado={(usuario) => {
             setUsuarios((lista) => [...lista, usuario])
@@ -188,6 +195,7 @@ export function Usuarios() {
         <DialogoFormulario
           usuario={dialogo.usuario}
           sucursales={sucursales}
+          rolesPropios={rolesPropios}
           alCerrar={cerrarDialogo}
           alGuardado={(usuario) => {
             reemplazar(usuario)
@@ -307,6 +315,7 @@ function BannerDeEstado({ estado, subiendo, alSubir, alReintentar }: PropsBanner
 // ---------------------------------------------------------------------------
 interface PropsTabla {
   usuarios: Usuario[]
+  rolesPropios: RolPersonalizado[]
   idActual: number
   /** Motivo por el que las acciones están deshabilitadas, o null. */
   bloqueado: string | null
@@ -336,6 +345,7 @@ function TablaUsuarios({
   bloqueado,
   versionPropia,
   actualizacionesPorSucursal,
+  rolesPropios,
   alEditar,
   alResetear,
   alCambiarActivo,
@@ -376,7 +386,9 @@ function TablaUsuarios({
                   <p className="font-mono text-xs text-slate-500">{usuario.usuario}</p>
                 </td>
                 <td className="px-4 py-3">
-                  <Etiqueta tono={TONO_ROL[usuario.rol]}>{NOMBRE_ROL[usuario.rol]}</Etiqueta>
+                  <Etiqueta tono={TONO_ROL[usuario.rol]}>
+                    {rolesPropios.find((rol) => rol.id === usuario.rolPersonalizadoId)?.nombre ?? NOMBRE_ROL[usuario.rol]}
+                  </Etiqueta>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">{usuario.sucursalNombre}</td>
                 <td className="px-4 py-3">
@@ -469,16 +481,20 @@ interface PropsFormulario {
   /** Si viene, el diálogo edita; si no, crea. */
   usuario?: Usuario
   sucursales: Sucursal[]
+  rolesPropios: RolPersonalizado[]
   alCerrar: () => void
   alGuardado: (usuario: Usuario) => void
 }
 
-function DialogoFormulario({ usuario, sucursales, alCerrar, alGuardado }: PropsFormulario) {
+/** Lo que se elige en el desplegable «Rol»: un rol integrado, o `propio:<id>` para uno de la agencia. */
+const PREFIJO_PROPIO = 'propio:'
+
+function DialogoFormulario({ usuario, sucursales, rolesPropios, alCerrar, alGuardado }: PropsFormulario) {
   const editando = Boolean(usuario)
   const [nombre, setNombre] = useState(usuario?.nombre ?? '')
   const [nombreDeUsuario, setNombreDeUsuario] = useState(usuario?.usuario ?? '')
   const [clave, setClave] = useState('')
-  const [rol, setRol] = useState<Rol>(usuario?.rol ?? 'EMPLEADO')
+  const [rol, setRol] = useState<string>(usuario?.rolPersonalizadoId ? `${PREFIJO_PROPIO}${usuario.rolPersonalizadoId}` : (usuario?.rol ?? 'EMPLEADO'))
   const [sucursalId, setSucursalId] = useState<number>(usuario?.sucursalId ?? sucursales[0]?.id ?? 0)
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
@@ -497,7 +513,9 @@ function DialogoFormulario({ usuario, sucursales, alCerrar, alGuardado }: PropsF
     const comunes: DatosEdicionUsuario = {
       nombre: nombre.trim(),
       usuario: nombreDeUsuario.trim().toLowerCase(),
-      rol,
+      // Con un rol de la agencia, el servidor guarda además el rol del que parte (ver shared/permisos.ts).
+      rol: rol.startsWith(PREFIJO_PROPIO) ? (rolesPropios.find((r) => r.id === rol.slice(PREFIJO_PROPIO.length))?.base ?? 'EMPLEADO') : (rol as Rol),
+      rolPersonalizadoId: rol.startsWith(PREFIJO_PROPIO) ? rol.slice(PREFIJO_PROPIO.length) : null,
       sucursalId,
     }
     const resultado = usuario
@@ -567,8 +585,11 @@ function DialogoFormulario({ usuario, sucursales, alCerrar, alGuardado }: PropsF
             etiqueta="Rol"
             name="rol"
             value={rol}
-            onChange={(evento) => setRol(evento.target.value as Rol)}
-            opciones={ROLES.map((valor) => ({ valor, texto: NOMBRE_ROL[valor] }))}
+            onChange={(evento) => setRol(evento.target.value)}
+            opciones={[
+              ...ROLES.map((valor) => ({ valor: valor as string, texto: NOMBRE_ROL[valor] })),
+              ...rolesPropios.map((propio) => ({ valor: `${PREFIJO_PROPIO}${propio.id}`, texto: propio.nombre })),
+            ]}
           />
           <Selector
             etiqueta="Sucursal"
