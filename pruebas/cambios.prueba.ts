@@ -32,8 +32,15 @@ test('cada beta nueva del mismo número vuelve a mostrar la entrada de su versi�
 
 test('el historial tiene la entrada de la versión del package.json y está ordenado de la más nueva a la más vieja', () => {
   const { version } = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as { version: string }
+  // Una beta (18.1.1-beta.N) recién sincronizada con master todavía no tiene renglones propios: su
+  // entrada aparece con el primer cambio. Que eso no tire la publicación de la beta; lo que SÍ se exige
+  // es que el historial no tenga entradas más nuevas que la beta. La versión normal (sin sufijo) tiene
+  // que tener su entrada sí o sí, y `Publicar` frena antes con scripts/ajustar-cambios.mjs.
+  const esBeta = version.includes('-')
+  const primera = HISTORIAL_DE_CAMBIOS[0]!.version
   assert.ok(
-    HISTORIAL_DE_CAMBIOS.some((entrada) => compararVersiones(entrada.version, version) === 0),
+    HISTORIAL_DE_CAMBIOS.some((entrada) => compararVersiones(entrada.version, version) === 0) ||
+      (esBeta && compararVersiones(primera, version) < 0),
     `Falta la entrada '${version}' en src/shared/cambios.ts: sin ella el cartel «Cambios recientes» no muestra nada al actualizar.`,
   )
   for (let i = 1; i < HISTORIAL_DE_CAMBIOS.length; i++) {
