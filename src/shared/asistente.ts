@@ -51,6 +51,75 @@ export interface RespuestaDelAsistente {
 export const LARGO_MAXIMO_DE_LA_PREGUNTA = 2000
 
 // ---------------------------------------------------------------------------
+// Las dos respuestas fijas
+// ---------------------------------------------------------------------------
+
+/** Lo que contesta, palabra por palabra, cuando la consulta no tiene nada que ver con el programa. */
+export const RESPUESTA_FUERA_DE_TEMA = 'No puedo responder eso porque no tiene que ver con el software.'
+
+/** Lo que contesta, palabra por palabra, cuando la consulta va contra las políticas de uso de Claude. */
+export const RESPUESTA_CONTRA_LOS_TERMINOS = 'Esa pregunta viola los términos y condiciones de Claude.'
+
+function sinPuntuacion(texto: string): string {
+  return sinTildes(texto)
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Si la IA usó una de las dos respuestas fijas, la pantalla muestra SÓLO esa frase, tal cual: aunque la
+ * IA le haya agregado una explicación, la haya escrito sin tilde o con otro signo al final. Así nunca
+ * pasa que diga «eso no tiene que ver con el programa» y después lo conteste igual.
+ */
+export function normalizarRespuesta(texto: string): string {
+  const limpio = sinPuntuacion(texto)
+  for (const fija of [RESPUESTA_CONTRA_LOS_TERMINOS, RESPUESTA_FUERA_DE_TEMA]) {
+    if (limpio.includes(sinPuntuacion(fija))) return fija
+  }
+  return texto
+}
+
+// ---------------------------------------------------------------------------
+// El análisis de los reportes de error
+// ---------------------------------------------------------------------------
+
+/**
+ * Al mandar un reporte de error (o una sugerencia), Sonnet lo lee con las capturas y deja en el issue qué
+ * puede estar pasando y qué conviene revisar. Es más que una consulta de mostrador, por eso no es Haiku.
+ */
+export const MODELO_DEL_ANALISIS_DE_REPORTES = 'claude-sonnet-5-5'
+export const ESFUERZO_DEL_ANALISIS_DE_REPORTES: EsfuerzoDelAsistente = 'medium'
+
+/** El servidor corta el cuerpo del issue en 20.000 caracteres: el análisis tiene que entrar con lo demás. */
+export const LARGO_MAXIMO_DEL_CUERPO = 19_500
+
+/**
+ * Lo que escribió la persona, y abajo el análisis bien separado: quien lee el issue tiene que distinguir
+ * de un vistazo qué contó el mostrador y qué supuso la IA. Si no entra todo, se recorta el análisis,
+ * nunca lo que escribió la persona.
+ */
+export function cuerpoConAnalisis(cuerpo: string, analisis: string | null): string {
+  if (!analisis) return cuerpo
+  // Línea en blanco antes del «---»: pegado al texto, Markdown lo convierte en título.
+  const encabezado = [
+    '',
+    '',
+    '---',
+    '',
+    '### 🤖 Análisis automático (IA)',
+    '',
+    '_Lo escribió Claude Sonnet al mandar el reporte, sólo con lo de arriba y las capturas. Es una pista para empezar a mirar, no un diagnóstico._',
+    '',
+    '',
+  ].join('\n')
+  const base = cuerpo.trim() || '_(sin descripción)_'
+  const lugar = LARGO_MAXIMO_DEL_CUERPO - base.length - encabezado.length
+  if (lugar < 200) return cuerpo
+  return `${base}${encabezado}${analisis.length > lugar ? `${analisis.slice(0, lugar - 1)}…` : analisis}`
+}
+
+// ---------------------------------------------------------------------------
 // Esfuerzo automático
 // ---------------------------------------------------------------------------
 

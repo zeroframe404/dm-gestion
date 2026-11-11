@@ -33,6 +33,9 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '18.1.1',
     fecha: '2026-11-11',
     cambios: [
+      { tipo: 'modificado', texto: 'Asistente con IA: si se le pregunta algo que no tiene que ver con el programa, contesta «No puedo responder eso porque no tiene que ver con el software.» y no lo responde.' },
+      { tipo: 'modificado', texto: 'Asistente con IA: si se le pide algo que va contra las reglas de uso de Claude, contesta «Esa pregunta viola los términos y condiciones de Claude.»' },
+      { tipo: 'agregado', texto: 'Reportar error y Sugerir mejora: al apretar «Enviar», la IA lee el reporte y las capturas y agrega al pedido qué puede estar pasando y qué conviene revisar, para que se resuelva más rápido. Tarda unos segundos más; si la IA no está disponible, el reporte sale igual.' },
       { tipo: 'corregido', texto: 'Cartera: ATM volvía a fallar al confirmar cliente por cliente («ATM respondió 401 a policiesByDni»). Ya se conecta con la cuenta de ATM cargada y confirma las pólizas.' },
     ],
   },
