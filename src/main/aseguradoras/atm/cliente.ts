@@ -11,6 +11,9 @@
 //   `<statusSuccess>FALSE</statusSuccess>` con un `<msg>` por motivo.
 // - `ws_vendedores` es POST con JSON (`usuario`, `password`); un usuario mal da 200 con `error: true`.
 // - `get_plans` es GET con `usa`, `seccion` y `vendedor` en minúscula y no pide autenticación.
+// - `policiesByDni` sí la pide, por HTTP Basic con el usuario y la clave de la cuenta: sin el
+//   encabezado contesta 401 «user and password required via basic auth». Por eso todos los REST
+//   llevan el `Authorization: Basic` (a los que no lo piden no les molesta).
 import type { AmbienteAtm } from '../../../shared/tipos'
 import { esDemo } from '../../canal'
 import { esFallaDeRed } from '../../servicios/red'
@@ -113,6 +116,7 @@ export interface OpcionesDeCliente {
 
 export function crearClienteAtm(cuenta: CuentaAtm, opciones: OpcionesDeCliente = {}): ClienteAtm {
   const base = (opciones.urlBase ?? URL_BASE_ATM[cuenta.ambiente]).replace(/\/+$/, '')
+  const autorizacion = `Basic ${Buffer.from(`${cuenta.usuario}:${cuenta.clave}`, 'utf8').toString('base64')}`
 
   async function pedir(url: string, init: RequestInit, espera: number, que: string): Promise<{ status: number; texto: string }> {
     // Demo: nunca sale a ATM. La demo contesta antes (ver demo/); esto es por si algo se escapa.
@@ -169,13 +173,13 @@ export function crearClienteAtm(cuenta: CuentaAtm, opciones: OpcionesDeCliente =
     },
     async get(ruta, parametros) {
       const consulta = new URLSearchParams(parametros).toString()
-      const { status, texto } = await pedir(`${base}/api/v1/${ruta}?${consulta}`, { headers: { accept: 'application/json' } }, ESPERA_REST_MS, ruta)
+      const { status, texto } = await pedir(`${base}/api/v1/${ruta}?${consulta}`, { headers: { accept: 'application/json', authorization: autorizacion } }, ESPERA_REST_MS, ruta)
       return json(ruta, status, texto)
     },
     async post(ruta, cuerpo) {
       const { status, texto } = await pedir(
         `${base}/api/v1/${ruta}`,
-        { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(cuerpo) },
+        { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json', authorization: autorizacion }, body: JSON.stringify(cuerpo) },
         ESPERA_REST_MS,
         ruta,
       )

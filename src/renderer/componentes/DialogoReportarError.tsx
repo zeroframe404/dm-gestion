@@ -154,7 +154,7 @@ export function DialogoReportarError({ abierto, alCerrar, variante = 'error' }: 
               Cancelar
             </Boton>
             <Boton variante="primario" icono="ok" onClick={() => void enviar()} cargando={enviando} disabled={!titulo.trim()}>
-              Enviar
+              {enviando ? 'Analizando y enviando…' : 'Enviar'}
             </Boton>
           </>
         )
