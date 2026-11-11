@@ -30,6 +30,13 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
+    version: '18.1.1',
+    fecha: '2026-11-11',
+    cambios: [
+      { tipo: 'corregido', texto: 'Cartera: ATM volvía a fallar al confirmar cliente por cliente («ATM respondió 401 a policiesByDni»). Ya se conecta con la cuenta de ATM cargada y confirma las pólizas.' },
+    ],
+  },
+  {
     version: '18.1.0',
     fecha: '2026-11-11',
     cambios: [
