@@ -23,6 +23,7 @@ import path from 'node:path'
 import type { ImagenDeReporte, ReporteCreado, ReporteDeError } from '../../shared/tipos'
 import { esDemo } from '../canal'
 import { reporteDeErrorDemo } from '../demo/apis'
+import { analizarReporte, cuerpoConAnalisis } from './analisisDeReporte'
 import { carpetaDatos } from '../rutas'
 import { credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
@@ -145,6 +146,18 @@ export async function enviarReporteDeError(reporte: ReporteDeError, contexto: { 
   // Demo: el servidor de la demo no abre issues; el reporte «queda anotado» con un número inventado.
   if (esDemo()) return reporteDeErrorDemo(titulo, imagenes.length)
 
+  const sistema = `${process.platform} ${process.getSystemVersion?.() ?? ''}`.trim()
+  // Antes de abrir el issue, Sonnet lo lee y deja una pista de qué puede ser. Si no se puede, sale igual.
+  const analisis = await analizarReporte({
+    tipo,
+    titulo,
+    cuerpo: reporte.cuerpo ?? '',
+    imagenes,
+    version: contexto.version,
+    sucursal: contexto.sucursal,
+    sistema,
+  })
+
   const { urlBase, token } = credencialesVps()
   let respuesta: Response
   try {
@@ -154,12 +167,12 @@ export async function enviarReporteDeError(reporte: ReporteDeError, contexto: { 
       body: JSON.stringify({
         titulo,
         tipo,
-        cuerpo: reporte.cuerpo ?? '',
+        cuerpo: cuerpoConAnalisis(reporte.cuerpo ?? '', analisis),
         imagenes,
         reportadoPor: contexto.quien,
         sucursal: contexto.sucursal,
         version: contexto.version,
-        sistema: `${process.platform} ${process.getSystemVersion?.() ?? ''}`.trim(),
+        sistema,
       }),
       // Con cuatro capturas de varios megas, subir por una conexión de mostrador lleva su tiempo.
       signal: AbortSignal.timeout(120_000),

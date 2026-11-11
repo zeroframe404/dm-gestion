@@ -1,7 +1,16 @@
 // El asistente con IA: la elección del esfuerzo y el filtro de lo que nunca le llega a la IA.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ESFUERZOS, esfuerzoParaLaConsulta, filtrarParaLaIa, pareceClaveDeAnthropic, tacharSecretos } from '../src/shared/asistente'
+import {
+  ESFUERZOS,
+  esfuerzoParaLaConsulta,
+  filtrarParaLaIa,
+  normalizarRespuesta,
+  pareceClaveDeAnthropic,
+  RESPUESTA_CONTRA_LOS_TERMINOS,
+  RESPUESTA_FUERA_DE_TEMA,
+  tacharSecretos,
+} from '../src/shared/asistente'
 
 test('el esfuerzo se elige según la consulta y nunca pasa de alto', () => {
   assert.equal(esfuerzoParaLaConsulta('hola'), 'low')
@@ -33,4 +42,14 @@ test('tacharSecretos y la forma de la clave', () => {
   assert.equal(tacharSecretos('servidor 192.168.0.10'), 'servidor [IP oculta]')
   assert.ok(pareceClaveDeAnthropic('sk-ant-api03-abcdefghijklmnopqrstuvwxyz'))
   assert.ok(!pareceClaveDeAnthropic('hola'))
+})
+
+test('las dos respuestas fijas salen tal cual, aunque la IA les agregue algo', () => {
+  assert.equal(normalizarRespuesta('No puedo responder eso porque no tiene que ver con el software'), RESPUESTA_FUERA_DE_TEMA)
+  assert.equal(
+    normalizarRespuesta('No puedo responder eso porque no tiene que ver con el software. Igual te cuento: un puntero es…'),
+    RESPUESTA_FUERA_DE_TEMA,
+  )
+  assert.equal(normalizarRespuesta('**Esa pregunta viola los terminos y condiciones de Claude**'), RESPUESTA_CONTRA_LOS_TERMINOS)
+  assert.equal(normalizarRespuesta('Hay **3 pólizas** que vencen esta semana.'), 'Hay **3 pólizas** que vencen esta semana.')
 })
