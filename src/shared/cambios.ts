@@ -30,8 +30,8 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
-    version: '18.0.1',
-    fecha: '2026-11-10',
+    version: '18.1.0',
+    fecha: '2026-11-11',
     cambios: [
       { tipo: 'modificado', texto: 'En el menú, «Mi link» ahora se llama «Mi tienda», y sus renglones pasaron a «Presentación», «Pedidos», «Denuncias» e «Indicadores». Funciona igual.' },
       { tipo: 'agregado', texto: 'Asistente con IA: el círculo de abajo a la derecha, en cualquier pantalla. Se le pregunta en palabras comunes («¿qué pólizas vencen esta semana?», «¿cómo viene la mora?») y contesta con los datos del programa y sugerencias. Sólo consulta: no puede cargar, cambiar ni borrar nada.' },

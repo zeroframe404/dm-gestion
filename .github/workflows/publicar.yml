@@ -7,10 +7,10 @@
 #
 #   git tag v1.0.4 && git push origin v1.0.4
 #
-# También se puede correr a mano desde la pestaña Actions (Run workflow), eligiendo el tag. Y si lo que
-# hace falta es subir la versión (no sólo repetir la que ya está en el package.json), el input
-# `subir_version` hace ese paso también acá: elegí `patch`/`minor`/`major`, y el workflow sube la
-# versión, la commitea, crea el tag y sigue con el instalador y el Release — sin tocar ninguna PC.
+# Lo normal es correrlo a mano desde la pestaña Actions (Run workflow) dejando `subir_version` en
+# «automatica»: si la versión del package.json ya tiene Release, sube un parche; si todavía no salió,
+# publica esa. `minor`/`major` suben más; `republicar-la-misma` vuelve a subir los archivos de una
+# versión ya publicada (no actualiza ninguna computadora: es sólo para reparar un Release).
 name: Publicar
 
 on:
@@ -20,14 +20,15 @@ on:
   workflow_dispatch:
     inputs:
       subir_version:
-        description: 'Subir la versión antes de publicar (dejar en blanco para publicar la que ya está en el package.json)'
+        description: 'Versión a publicar. «automatica»: si la versión del package.json ya está publicada sube un parche; si no, publica esa.'
         type: choice
         options:
-          - ''
+          - automatica
           - patch
           - minor
           - major
-        default: ''
+          - republicar-la-misma
+        default: automatica
 
 # `scripts/publicar.mjs` crea el Release con `gh`: necesita permiso de escritura sobre el contenido.
 permissions:
@@ -57,17 +58,52 @@ jobs:
           node-version: '22'
           cache: npm
 
-      # Sólo corre al lanzar a mano con un tipo de versión elegido. `npm version` corre el
-      # preversion/postversion de package.json: verifica que esta copia esté al día con `master` y,
-      # si lo está, sube el número de versión, commitea y empuja el commit y el tag a `master` (el
-      # push va a `master` explícito porque el checkout de este workflow queda en HEAD despegado).
+      # Al lanzar a mano, decide qué versión sale. Antes, dejar el campo en blanco volvía a subir la
+      # MISMA versión que ya estaba publicada (pasó tres veces seguidas con la 18.0.0): el Release se
+      # pisaba y ninguna computadora veía nada nuevo, porque para el actualizador era la misma versión.
+      # Ahora «automatica» sube un parche si esa versión ya tiene Release, y sólo publica la del
+      # package.json tal cual si todavía no salió (por ejemplo, después de una publicación caída).
+      #
+      # La subida se hace acá SIN empujar: el commit y el tag se empujan recién en «Empujar la versión»,
+      # con las pruebas pasadas y el instalador armado. Antes `npm version` empujaba de entrada y, si
+      # las pruebas fallaban, quedaba el número quemado en master sin Release (la 18.1.0).
+      #
+      # `ajustar-cambios.mjs` renombra la entrada pendiente de «Cambios recientes» (en beta se escribe
+      # en el próximo parche) a la versión que sale de verdad, así `minor` y `major` no rompen el cartel.
       - name: Subir la versión
-        if: github.event_name == 'workflow_dispatch' && inputs.subir_version != ''
+        id: version
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          npm version "${{ inputs.subir_version }}"
+          tipo="${{ inputs.subir_version }}"
+          actual="$(node -p "require('./package.json').version")"
+          if [ "$tipo" = "automatica" ] || [ -z "$tipo" ]; then
+            if gh release view "v$actual" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              tipo=patch
+              echo "La $actual ya está publicada: sale un parche."
+            else
+              tipo=republicar-la-misma
+              echo "La $actual todavía no tiene Release: se publica esa."
+            fi
+          fi
+          if [ "$tipo" = "republicar-la-misma" ]; then
+            echo "Publicando $actual sin subir la versión."
+            exit 0
+          fi
+          node scripts/verificar-al-dia.mjs
+          npm version "$tipo" --no-git-tag-version --ignore-scripts
+          node scripts/ajustar-cambios.mjs "$actual"
+          nueva="$(node -p "require('./package.json').version")"
+          git add package.json package-lock.json src/shared/cambios.ts
+          git commit -m "$nueva"
+          git tag -a "v$nueva" -m "$nueva"
+          echo "nueva=$nueva" >> "$GITHUB_OUTPUT"
+          echo "### Sale la $nueva (antes $actual)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Instalar dependencias
         run: npm ci
@@ -90,6 +126,14 @@ jobs:
 
       - name: Armar el instalador
         run: npm run dist
+
+      # Recién acá, con las pruebas pasadas y el instalador armado, la versión nueva llega a master.
+      - name: Empujar la versión
+        if: steps.version.outputs.nueva != ''
+        shell: bash
+        run: |
+          git push origin HEAD:master
+          git push origin "v${{ steps.version.outputs.nueva }}"
 
       - name: Publicar el Release
         run: node scripts/publicar.mjs

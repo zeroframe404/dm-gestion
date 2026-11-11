@@ -1,7 +1,7 @@
 {
   "name": "dm-gestion",
   "productName": "DM Gestión",
-  "version": "18.0.0",
+  "version": "18.1.0",
   "description": "Sistema de gestión de Seguros Daniel Martínez",
   "author": "Seguros Daniel Martínez",
   "license": "UNLICENSED",
@@ -22,6 +22,7 @@
     "publicar": "npm run dist && node scripts/publicar.mjs",
     "publicar:parche": "npm version patch && npm run publicar",
     "preversion": "node scripts/verificar-al-dia.mjs",
+    "version": "node scripts/ajustar-cambios.mjs",
     "postversion": "git push origin HEAD:master && git push origin --tags",
     "prueba": "vite build -c vite.pruebas.config.mts && node dist/pruebas/todas.js",
     "prueba:sola": "node scripts/prueba-sola.mjs",
