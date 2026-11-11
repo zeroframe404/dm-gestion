@@ -46,6 +46,12 @@ const api: ApiDm = {
     guardar: (permisos) => invocar('permisos:guardar', permisos),
     alCambiar: (escuchar) => suscribir('permisos:cambiaron', escuchar),
   },
+  autorizaciones: {
+    estado: (actualizar) => invocar('autorizaciones:estado', actualizar),
+    pedir: (datos) => invocar('autorizaciones:pedir', datos),
+    resolver: (datos) => invocar('autorizaciones:resolver', datos),
+    marcarVistas: () => invocar('autorizaciones:marcarVistas'),
+  },
   eliminacion: {
     vistaPrevia: (tipo, id) => invocar('eliminacion:vistaPrevia', tipo, id),
     borrar: (tipo, id) => invocar('eliminacion:borrar', tipo, id),

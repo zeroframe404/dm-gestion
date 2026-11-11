@@ -32,6 +32,8 @@ export interface Usuario {
   nombre: string
   usuario: string
   rol: Rol
+  /** El rol armado por la agencia que tiene asignado, si tiene alguno (ver shared/permisos.ts). */
+  rolPersonalizadoId?: string | null
   sucursalId: number
   sucursalNombre: string
   activo: boolean
@@ -65,6 +67,7 @@ export interface DatosNuevoUsuario {
   usuario: string
   clave: string
   rol: Rol
+  rolPersonalizadoId?: string | null
   sucursalId: number
 }
 
@@ -72,6 +75,7 @@ export interface DatosEdicionUsuario {
   nombre: string
   usuario: string
   rol: Rol
+  rolPersonalizadoId?: string | null
   sucursalId: number
 }
 
@@ -346,7 +350,14 @@ export interface MatrizDePermisos {
 /** Lo que le toca al usuario con la sesión abierta: es lo que consulta el renderer para mostrar u ocultar. */
 export interface MisPermisos {
   rol: Rol
+  /** Cómo se llama su rol: el de la agencia si tiene uno personalizado, o el integrado. */
+  rolNombre: string
+  /** Ya incluye las autorizaciones puntuales vigentes. */
   areas: PermisosDeUnRol
+  /** Puede pedir acceso a lo que su rol no le da (ver shared/autorizaciones.ts). */
+  puedeSolicitar: boolean
+  /** Puede decidir los pedidos de los demás. */
+  puedeResolver: boolean
   /**
    * Si puede ver los números agregados de la agencia (el bruto cobrado en el mes, la comisión
    * estimada, el porcentaje de cada compañía). Va aparte de `areas` porque no dice a qué módulo

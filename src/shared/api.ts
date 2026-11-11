@@ -36,6 +36,12 @@ export interface ApiDm {
     guardar: Remota<'permisos:guardar'>
     alCambiar: Suscripcion<'permisos:cambiaron'>
   }
+  autorizaciones: {
+    estado: Remota<'autorizaciones:estado'>
+    pedir: Remota<'autorizaciones:pedir'>
+    resolver: Remota<'autorizaciones:resolver'>
+    marcarVistas: Remota<'autorizaciones:marcarVistas'>
+  }
   eliminacion: {
     vistaPrevia: Remota<'eliminacion:vistaPrevia'>
     borrar: Remota<'eliminacion:borrar'>

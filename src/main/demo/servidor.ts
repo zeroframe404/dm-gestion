@@ -117,6 +117,7 @@ function documentoDeUsuarios(hoy: Date): DocumentoUsuarios {
       actualizadoEn: ahora,
     })),
     permisos: permisosPorDefecto(),
+    autorizaciones: [],
   }
 }
 

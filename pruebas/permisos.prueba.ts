@@ -10,7 +10,9 @@ import { ingresar } from '../src/main/servicios/auth'
 import * as base from '../src/main/servicios/baseDeUsuarios'
 import { cambiarClave } from '../src/main/servicios/auth'
 import { ErrorDeNegocio, SinConexion } from '../src/main/servicios/errores'
+import { estadoDeAutorizaciones, pedirAutorizacion, resolverAutorizacion } from '../src/main/servicios/autorizaciones'
 import {
+  asignarRolDeUsuario,
   conectarAvisoDePermisos,
   exigirEdicion,
   exigirVista,
@@ -27,6 +29,7 @@ import { AlmacenEnMemoria } from '../src/main/usuarios/almacen'
 import { AlmacenDeCredencial, cifradorDePrueba } from '../src/main/usuarios/credencial'
 import { escribirDocumento, leerDocumento } from '../src/main/usuarios/documento'
 import { CanalEnVivo, usarCanal } from '../src/main/vivo/canal'
+import { nivelConcedido, vencimientoDe, type SolicitudDeAutorizacion } from '../src/shared/autorizaciones'
 import { normalizarMatriz, permisosPorDefecto, type MatrizPermisos } from '../src/shared/permisos'
 import type { SesionUsuario } from '../src/shared/tipos'
 
@@ -189,8 +192,8 @@ test('sin base compartida los permisos se guardan en esta computadora y valen en
   }>
   assert.equal(historial.length, 1)
   assert.equal(historial[0]!.campo, 'Permisos de EMPLEADO')
-  assert.match(historial[0]!.valor_nuevo, /Cobranzas: Ver y editar → Sólo ver/)
-  assert.match(historial[0]!.valor_nuevo, /Marketing: Ver y editar → Sin acceso/)
+  assert.match(historial[0]!.valor_nuevo, /Cobranzas: Permitido → Solo lectura/)
+  assert.match(historial[0]!.valor_nuevo, /Marketing: Permitido → Sin permiso/)
 })
 
 test('exigirVista y exigirEdicion frenan lo que no corresponde y explican por qué', async () => {
@@ -446,4 +449,252 @@ test('los permisos configurados sin base compartida suben con los usuarios al in
 
   assert.ok(almacen.texto)
   assert.equal(leerDocumento(almacen.texto).permisos.EMPLEADO.leads, 'ver')
+})
+
+// ---------------------------------------------------------------------------
+// Roles propios de la agencia
+// ---------------------------------------------------------------------------
+
+/** La matriz con un rol «Caja» (parte de Usuario) que sólo trabaja Cobranzas y mira Clientes. */
+function conRolCaja(): MatrizPermisos {
+  const matriz = permisosPorDefecto()
+  const permisos = { ...matriz.EMPLEADO }
+  for (const area of Object.keys(permisos) as Array<keyof typeof permisos>) permisos[area] = 'ninguno'
+  permisos.cobranzas = 'editar'
+  permisos.clientes = 'ver'
+  matriz.personalizados.push({ id: 'caja', nombre: 'Caja', base: 'EMPLEADO', permisos })
+  matriz.opciones.caja = { puedeSolicitar: true, puedeResolver: false }
+  return matriz
+}
+
+test('un rol propio rige para quien lo tiene asignado y los demás no cambian', async () => {
+  baseLocal()
+  await guardarPermisos(conRolCaja(), DANIEL)
+  await asignarRolDeUsuario(DANIEL, 'maria', 'caja')
+
+  assert.equal(puedeEditar(MARIA, 'cobranzas'), true)
+  assert.equal(puedeVer(MARIA, 'clientes'), true)
+  assert.equal(puedeEditar(MARIA, 'clientes'), false)
+  assert.equal(puedeVer(MARIA, 'siniestros'), false)
+  const mios = misPermisos(MARIA)
+  assert.equal(mios.rolNombre, 'Caja')
+  assert.equal(mios.rol, 'EMPLEADO', 'el rol de base sigue siendo el del usuario: de ahí salen los controles que no son de la tabla')
+  assert.equal(mios.puedeSolicitar, true)
+  assert.equal(mios.puedeResolver, false)
+
+  // Otro usuario con el mismo rol integrado no se entera.
+  const OTRA: SesionUsuario = { ...MARIA, id: 9, usuario: 'otra', nombre: 'Otra Persona' }
+  assert.equal(puedeEditar(OTRA, 'siniestros'), true)
+  assert.equal(misPermisos(OTRA).rolNombre, 'Usuario')
+  // Quien no tiene rol propio ve su rol integrado, y el superadministrador siempre todo.
+  assert.equal(misPermisos(DANIEL).areas.siniestros, 'editar')
+})
+
+test('no se puede borrar un rol que tiene gente, ni repetir ni reusar nombres', async () => {
+  baseLocal()
+  await guardarPermisos(conRolCaja(), DANIEL)
+  await asignarRolDeUsuario(DANIEL, 'maria', 'caja')
+
+  const sinElRol = permisosPorDefecto()
+  await rechaza(guardarPermisos(sinElRol, DANIEL), /lo tienen maria/)
+  assert.equal(matrizVigente().personalizados.length, 1, 'no se borró')
+
+  const repetido = conRolCaja()
+  repetido.personalizados.push({ ...repetido.personalizados[0]!, id: 'caja2', nombre: 'caja' })
+  await rechaza(guardarPermisos(repetido, DANIEL), /dos roles/)
+  const reservado = conRolCaja()
+  reservado.personalizados[0]!.nombre = 'Administrador'
+  await rechaza(guardarPermisos(reservado, DANIEL), /ya existe/)
+
+  // Sacándole el rol a la persona ya se puede borrar.
+  await asignarRolDeUsuario(DANIEL, 'maria', null)
+  assert.equal(misPermisos(MARIA).rolNombre, 'Usuario')
+  await guardarPermisos(sinElRol, DANIEL)
+  assert.equal(matrizVigente().personalizados.length, 0)
+})
+
+test('guardar permisos desde una pantalla vieja no pisa las asignaciones ni cambia la base de un rol', async () => {
+  baseLocal()
+  await guardarPermisos(conRolCaja(), DANIEL)
+  await asignarRolDeUsuario(DANIEL, 'maria', 'caja')
+
+  const vieja = conRolCaja() // sin asignaciones, como la pantalla que se abrió antes de asignar
+  vieja.personalizados[0]!.base = 'ADMIN'
+  vieja.personalizados[0]!.permisos.cobranzas = 'ver'
+  await guardarPermisos(vieja, DANIEL)
+
+  assert.equal(matrizVigente().asignaciones.maria, 'caja')
+  assert.equal(matrizVigente().personalizados[0]!.base, 'EMPLEADO')
+  assert.equal(puedeEditar(MARIA, 'cobranzas'), false)
+})
+
+test('la asignación acompaña al usuario si le cambian el nombre de usuario', async () => {
+  baseLocal()
+  await guardarPermisos(conRolCaja(), DANIEL)
+  await asignarRolDeUsuario(DANIEL, 'maria', 'caja')
+  await asignarRolDeUsuario(DANIEL, 'maria.perez', 'caja', 'maria')
+  assert.deepEqual(matrizVigente().asignaciones, { 'maria.perez': 'caja' })
+})
+
+test('los roles propios y las asignaciones viajan en usuarios.json y los lee otra computadora', async () => {
+  const almacen = await computadoraPrincipal()
+  await guardarPermisos(conRolCaja(), actor())
+  await asignarRolDeUsuario(actor(), 'maria', 'caja')
+
+  const remoto = leerDocumento(almacen.texto!)
+  assert.equal(remoto.permisos.personalizados[0]!.nombre, 'Caja')
+  assert.equal(remoto.permisos.asignaciones.maria, 'caja')
+
+  computadora(almacen)
+  await ingresar({ usuario: 'daniel', clave: 'Clave-Nueva-1' })
+  assert.equal(puedeEditar(MARIA, 'cobranzas'), true)
+  assert.equal(puedeVer(MARIA, 'siniestros'), false)
+})
+
+test('un usuarios.json sin roles propios ni autorizaciones se lee igual', () => {
+  const matriz = normalizarMatriz({ ADMIN: {}, EMPLEADO: { cartera: 'ver' } })
+  assert.deepEqual(matriz.personalizados, [])
+  assert.deepEqual(matriz.asignaciones, {})
+  assert.equal(matriz.opciones.ADMIN!.puedeResolver, true)
+  assert.equal(matriz.opciones.EMPLEADO!.puedeSolicitar, false)
+  // Una asignación a un rol que no existe se descarta.
+  assert.deepEqual(normalizarMatriz({ asignaciones: { maria: 'fantasma' } }).asignaciones, {})
+})
+
+// ---------------------------------------------------------------------------
+// Autorizaciones puntuales
+// ---------------------------------------------------------------------------
+
+/** El Usuario no ve Marketing y puede pedir; el Administrador resuelve (valor por defecto). */
+async function conPedidosHabilitados(): Promise<void> {
+  const matriz = permisosPorDefecto()
+  matriz.EMPLEADO.marketing = 'ninguno'
+  matriz.EMPLEADO.cobranzas = 'ver'
+  matriz.opciones.EMPLEADO = { puedeSolicitar: true, puedeResolver: false }
+  await guardarPermisos(matriz, DANIEL)
+}
+
+test('quien puede solicitar pide un módulo, se le concede y el acceso se suma a su rol', async () => {
+  baseLocal()
+  await conPedidosHabilitados()
+  assert.equal(puedeVer(MARIA, 'marketing'), false)
+
+  const pedido = await pedirAutorizacion(MARIA, { area: 'marketing', nivel: 'ver', motivo: 'Necesito mirar los segmentos' })
+  assert.equal(pedido.mias.length, 1)
+  assert.equal(pedido.mias[0]!.estado, 'pendiente')
+
+  // Ana (administrador) lo ve en sus pendientes y contesta con un mensaje.
+  const deAna = await estadoDeAutorizaciones(ANA, false)
+  assert.equal(deAna.puedeResolver, true)
+  assert.equal(deAna.pendientes.length, 1)
+  assert.equal(deAna.pendientes[0]!.motivo, 'Necesito mirar los segmentos')
+  await resolverAutorizacion(ANA, { id: deAna.pendientes[0]!.id, decision: 'ver', mensaje: 'Sólo hasta que termines el informe', duracion: 'hoy' })
+
+  // María ya puede mirar Marketing, pero no tocarlo, y la respuesta con el mensaje le llega.
+  assert.equal(puedeVer(MARIA, 'marketing'), true)
+  assert.equal(puedeEditar(MARIA, 'marketing'), false)
+  assert.equal(misPermisos(MARIA).areas.marketing, 'ver')
+  const deMaria = await estadoDeAutorizaciones(MARIA, false)
+  assert.equal(deMaria.mias[0]!.estado, 'concedida')
+  assert.equal(deMaria.mias[0]!.mensaje, 'Sólo hasta que termines el informe')
+  assert.equal(deMaria.mias[0]!.resueltaPor, 'Ana Ruiz')
+  assert.equal(deMaria.pendientes.length, 0, 'no ve los pedidos de los demás')
+
+  // Después pide poder escribir, y ahora sí lectura y escritura.
+  await pedirAutorizacion(MARIA, { area: 'marketing', nivel: 'editar', motivo: '' })
+  const otra = (await estadoDeAutorizaciones(DANIEL, false)).pendientes[0]!
+  await resolverAutorizacion(DANIEL, { id: otra.id, decision: 'editar', mensaje: '', duracion: 'hora' })
+  assert.equal(puedeEditar(MARIA, 'marketing'), true)
+})
+
+test('una autorización denegada no abre nada y deja el mensaje', async () => {
+  baseLocal()
+  await conPedidosHabilitados()
+  await pedirAutorizacion(MARIA, { area: 'marketing', nivel: 'editar', motivo: '' })
+  const pendiente = (await estadoDeAutorizaciones(ANA, false)).pendientes[0]!
+  await resolverAutorizacion(ANA, { id: pendiente.id, decision: 'ninguno', mensaje: 'Eso lo ve sólo Daniel', duracion: 'hoy' })
+
+  assert.equal(puedeVer(MARIA, 'marketing'), false)
+  const mias = (await estadoDeAutorizaciones(MARIA, false)).mias
+  assert.equal(mias[0]!.estado, 'denegada')
+  assert.equal(mias[0]!.mensaje, 'Eso lo ve sólo Daniel')
+  // Ya no está pendiente: no se puede resolver de nuevo.
+  await rechaza(resolverAutorizacion(ANA, { id: pendiente.id, decision: 'ver', mensaje: '', duracion: 'hoy' }), /ya lo resolvió/)
+})
+
+test('las reglas de quién pide, quién resuelve y hasta dónde', async () => {
+  baseLocal()
+  await conPedidosHabilitados()
+  // Ana no tiene tildado «puede solicitar».
+  await rechaza(pedirAutorizacion(ANA, { area: 'marketing', nivel: 'ver', motivo: '' }), /no puede pedir/)
+  // María no puede resolver.
+  await pedirAutorizacion(MARIA, { area: 'marketing', nivel: 'ver', motivo: '' })
+  const pendiente = (await estadoDeAutorizaciones(ANA, false)).pendientes[0]!
+  await rechaza(resolverAutorizacion(MARIA, { id: pendiente.id, decision: 'ver', mensaje: '', duracion: 'hoy' }), /no puede resolver/)
+  // Un pedido por módulo a la vez, y no se pide lo que ya se tiene.
+  await rechaza(pedirAutorizacion(MARIA, { area: 'marketing', nivel: 'editar', motivo: '' }), /pedido pendiente/)
+  await rechaza(pedirAutorizacion(MARIA, { area: 'cartera', nivel: 'editar', motivo: '' }), /no hace falta pedirlo/)
+  await rechaza(pedirAutorizacion(MARIA, { area: 'inventado', nivel: 'ver', motivo: '' }), /Elegí a qué módulo/)
+
+  // Un rol que resuelve no puede dar más de lo que él mismo tiene en el módulo.
+  const matriz = matrizVigente()
+  matriz.ADMIN.marketing = 'ninguno'
+  await guardarPermisos(matriz, DANIEL)
+  await rechaza(resolverAutorizacion(ANA, { id: pendiente.id, decision: 'ver', mensaje: '', duracion: 'hoy' }), /vos mismo no lo tenés/)
+  // Pero el superadministrador sí, y no se puede resolver el propio pedido.
+  await resolverAutorizacion(DANIEL, { id: pendiente.id, decision: 'ver', mensaje: '', duracion: 'hoy' })
+  assert.equal(puedeVer(MARIA, 'marketing'), true)
+})
+
+test('una autorización sólo sube el nivel: no le saca a nadie lo que ya tenía', async () => {
+  baseLocal()
+  await conPedidosHabilitados()
+  await pedirAutorizacion(MARIA, { area: 'cobranzas', nivel: 'editar', motivo: '' })
+  const pendiente = (await estadoDeAutorizaciones(ANA, false)).pendientes[0]!
+  // Concede «solo lectura» sobre un módulo que ya tenía en «solo lectura»: nada cambia.
+  await resolverAutorizacion(ANA, { id: pendiente.id, decision: 'ver', mensaje: '', duracion: 'hoy' })
+  assert.equal(puedeVer(MARIA, 'cobranzas'), true)
+  assert.equal(puedeEditar(MARIA, 'cobranzas'), false)
+  assert.equal(puedeEditar(MARIA, 'cartera'), true, 'lo demás sigue como estaba')
+})
+
+test('las concesiones vencen y la duración se calcula bien', () => {
+  const solicitud: SolicitudDeAutorizacion = {
+    id: 'a', usuario: 'maria', nombre: 'María', area: 'marketing', nivelPedido: 'editar', motivo: '', creadaEn: '2026-01-01T10:00:00.000Z',
+    estado: 'concedida', nivelOtorgado: 'editar', resueltaPor: 'Ana', resueltaEn: '2026-01-01T10:05:00.000Z', mensaje: '',
+    venceEn: '2026-01-01T11:00:00.000Z', vista: false,
+  }
+  const antes = Date.parse('2026-01-01T10:30:00.000Z')
+  const despues = Date.parse('2026-01-01T11:00:01.000Z')
+  assert.equal(nivelConcedido([solicitud], 'MARIA', 'marketing', antes), 'editar')
+  assert.equal(nivelConcedido([solicitud], 'maria', 'marketing', despues), 'ninguno')
+  assert.equal(nivelConcedido([solicitud], 'maria', 'cartera', antes), 'ninguno')
+  assert.equal(nivelConcedido([solicitud], 'otra', 'marketing', antes), 'ninguno')
+  const ahora = new Date('2026-03-10T09:15:00')
+  assert.equal(Date.parse(vencimientoDe('cuatroHoras', ahora)) - ahora.getTime(), 4 * 3_600_000)
+  const fin = new Date(vencimientoDe('hoy', ahora))
+  assert.equal(fin.getDate(), 10)
+  assert.equal(fin.getHours(), 23)
+})
+
+test('con base compartida los pedidos viajan en usuarios.json y otra computadora los ve', async () => {
+  const almacen = await computadoraPrincipal()
+  const matriz = permisosPorDefecto()
+  matriz.EMPLEADO.marketing = 'ninguno'
+  matriz.opciones.EMPLEADO = { puedeSolicitar: true, puedeResolver: false }
+  await guardarPermisos(matriz, actor())
+
+  await pedirAutorizacion({ ...MARIA, id: actor().id }, { area: 'marketing', nivel: 'ver', motivo: 'Para el informe' })
+  const remoto = leerDocumento(almacen.texto!)
+  assert.equal(remoto.autorizaciones.length, 1)
+  assert.equal(remoto.autorizaciones[0]!.usuario, 'maria')
+  assert.equal(remoto.usuarios.length, 1, 'no toca la lista de usuarios')
+
+  // Daniel lo resuelve desde otra computadora y María lo ve al volver a leer.
+  computadora(almacen)
+  await ingresar({ usuario: 'daniel', clave: 'Clave-Nueva-1' })
+  const pendiente = (await estadoDeAutorizaciones(actor(), false)).pendientes[0]!
+  await resolverAutorizacion(actor(), { id: pendiente.id, decision: 'editar', mensaje: 'Dale', duracion: 'semana' })
+  assert.equal(leerDocumento(almacen.texto!).autorizaciones[0]!.estado, 'concedida')
+  assert.equal(puedeEditar(MARIA, 'marketing'), true)
 })

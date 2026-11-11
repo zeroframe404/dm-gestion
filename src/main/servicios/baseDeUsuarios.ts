@@ -17,6 +17,7 @@
 //                                        subiría la semilla daniel/cambiar123 y pisaría a los de verdad).
 //   - con almacén y documento          → se valida contra el servidor; si no se llega, con la credencial guardada.
 import os from 'node:os'
+import type { SolicitudDeAutorizacion } from '../../shared/autorizaciones'
 import type { MatrizPermisos } from '../../shared/permisos'
 import type { EstadoDeAcceso, EstadoDeUsuarios, ModoDeAcceso, Rol, SesionUsuario, Usuario } from '../../shared/tipos'
 import { db } from '../db/base'
@@ -32,6 +33,8 @@ import {
   documentoVacio,
   editarUsuario as editarUsuarioEnDocumento,
   escribirDocumento,
+  asignarRolPersonalizado as asignarRolEnDocumento,
+  guardarAutorizaciones as guardarAutorizacionesEnDocumento,
   guardarPermisos as guardarPermisosEnDocumento,
   leerDocumento,
   tieneSuperAdminActivo,
@@ -868,6 +871,42 @@ export async function guardarPermisos(actor: SesionUsuario, permisos: MatrizPerm
     aplicar: (doc) => guardarPermisosEnDocumento(doc, permisos),
   })
   return documento.permisos
+}
+
+/**
+ * Le pone (o le saca) un rol personalizado a un usuario en `usuarios.json`. `anterior` es el nombre
+ * de usuario de antes, por si la misma edición lo cambió.
+ */
+export async function asignarRolPersonalizado(actor: SesionUsuario, usuario: string, rolId: string | null, anterior?: string): Promise<MatrizPermisos> {
+  exigirEnLinea()
+  const documento = await mutarRemoto({
+    accion: `rol de ${usuario}`,
+    actor,
+    exigir: 'super-admin',
+    aplicar: (doc) => asignarRolEnDocumento(doc, usuario, rolId, anterior),
+  })
+  return documento.permisos
+}
+
+/**
+ * Cambia los pedidos de autorización puntual. Lo puede pedir cualquier usuario activo (el pedido lo
+ * hace uno mismo), así que no exige superadministrador: de quién puede resolver se encarga
+ * `servicios/autorizaciones.ts` ANTES de llamar acá, y la función `cambiar` se vuelve a aplicar sobre
+ * el documento recién leído si otra computadora escribió en el medio.
+ */
+export async function mutarAutorizaciones(
+  actor: SesionUsuario,
+  accion: string,
+  cambiar: (actuales: SolicitudDeAutorizacion[]) => SolicitudDeAutorizacion[],
+): Promise<SolicitudDeAutorizacion[]> {
+  exigirEnLinea()
+  const documento = await mutarRemoto({
+    accion,
+    actor,
+    exigir: 'activo',
+    aplicar: (doc) => guardarAutorizacionesEnDocumento(doc, cambiar(doc.autorizaciones)),
+  })
+  return documento.autorizaciones
 }
 
 // ---------------------------------------------------------------------------

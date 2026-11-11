@@ -400,13 +400,17 @@ import {
   iniciarImportacion,
   vistaPreviaDeHoja,
 } from './servicios/importacion'
+import { estadoDeAutorizaciones, marcarRespuestasVistas, pedirAutorizacion, resolverAutorizacion } from './servicios/autorizaciones'
 import {
+  asignarRolDeUsuario,
   conectarAvisoDePermisos,
+  conRolPersonalizado,
   exigirEdicion,
   exigirVista,
   guardarPermisos,
   matrizDePermisos,
   misPermisos,
+  prepararDatosDeUsuario,
   puedeEditar,
   puedeVer as puedeVerElArea,
 } from './servicios/permisos'
@@ -596,19 +600,27 @@ export function registrarIpc(): void {
   // Usuarios: sólo SUPER_ADMIN
   manejar('usuarios:listar', () => {
     exigirRol('SUPER_ADMIN')
-    return exito(listarUsuarios())
+    return exito(conRolPersonalizado(listarUsuarios()))
   })
   // Todo lo que toca la base de usuarios va contra GitHub y vale para las cinco computadoras: sin
   // canal no se escribe (14.0). Listar sí, que es mirar.
   manejar('usuarios:crear', async (datos) => {
     const actor = exigirRol('SUPER_ADMIN')
     canal().exigirConexion()
-    return exito(await crearUsuario(datos, actor))
+    const { datos: limpios, rolId } = prepararDatosDeUsuario(datos)
+    const creado = await crearUsuario(limpios, actor)
+    // El rol armado por la agencia se guarda aparte del usuario (ver shared/permisos.ts).
+    if (rolId) await asignarRolDeUsuario(actor, creado.usuario, rolId)
+    return exito(conRolPersonalizado([creado])[0]!)
   })
   manejar('usuarios:editar', async (id, datos) => {
     const actor = exigirRol('SUPER_ADMIN')
     canal().exigirConexion()
-    return exito(await editarUsuario(id, datos, actor))
+    const { datos: limpios, rolId } = prepararDatosDeUsuario(datos)
+    const anterior = listarUsuarios().find((u) => u.id === id)?.usuario
+    const editado = await editarUsuario(id, limpios, actor)
+    await asignarRolDeUsuario(actor, editado.usuario, rolId, anterior)
+    return exito(conRolPersonalizado([editado])[0]!)
   })
   manejar('usuarios:cambiarActivo', async (id, activo) => {
     const actor = exigirRol('SUPER_ADMIN')
@@ -639,6 +651,19 @@ export function registrarIpc(): void {
     canal().exigirConexion()
     return exito(await guardarPermisos(permisos, actor))
   })
+  manejar('autorizaciones:estado', async (actualizar) => exito(await estadoDeAutorizaciones(exigirSesion(), actualizar === true)))
+  // Pedir, resolver y marcar como visto escriben en usuarios.json: sin canal en vivo no se escribe (14.0).
+  manejar('autorizaciones:pedir', async (datos) => {
+    const actor = exigirSesion()
+    canal().exigirConexion()
+    return exito(await pedirAutorizacion(actor, datos))
+  })
+  manejar('autorizaciones:resolver', async (datos) => {
+    const actor = exigirSesion()
+    canal().exigirConexion()
+    return exito(await resolverAutorizacion(actor, datos))
+  })
+  manejar('autorizaciones:marcarVistas', async () => exito(await marcarRespuestasVistas(exigirSesion())))
   conectarAvisoDePermisos(() => {
     const actual = sesion()
     if (actual) emitirATodas('permisos:cambiaron', misPermisos(actual))

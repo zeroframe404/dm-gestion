@@ -42,7 +42,7 @@ export const AYUDA_MENSAJES: Record<string, ContenidoDeAyuda> = {
         parrafos: [
           'Cada persona ve solamente las conversaciones en las que está. El superadministrador tiene además, en Administración → Registro de mensajes, el registro de todos los mensajes de la agencia, con buscador por persona, por fecha y por texto.',
           'Borrar un mensaje lo saca de la conversación de todos, y en su lugar queda «Se eliminó este mensaje». El texto original sigue en el registro del superadministrador: si borrar borrara de verdad, el registro no serviría para nada.',
-          'El módulo se puede limitar por rol desde Administración → Permisos. Con «Sólo ver», una persona lee lo que le mandan y no puede contestar.',
+          'El módulo se puede limitar por rol desde Administración → Permisos. Con «Solo lectura», una persona lee lo que le mandan y no puede contestar.',
         ],
       },
     ],
