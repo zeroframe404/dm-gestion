@@ -119,6 +119,14 @@ jobs:
           }
           Write-Host "Publicando $tag"
 
+      # El token del puente con el servidor no está en el código: es un secreto del repositorio (ver
+      # scripts/secretos-de-fabrica.mjs). Se comprueba ACÁ, antes de los cinco minutos de pruebas, y no al
+      # final: sin él no hay nada que publicar.
+      - name: Comprobar los secretos de fábrica
+        run: node scripts/verificar-fabrica.mjs --antes
+        env:
+          DMG_FABRICA_VPS_TOKEN: ${{ secrets.DMG_VPS_TOKEN }}
+
       # El banco de pruebas antes que nada: una versión que se instala sola en las PCs de la agencia no
       # puede salir sin pasar por acá. `npm run dist` corre después el typecheck y la compilación.
       - name: Correr el banco de pruebas
@@ -126,6 +134,15 @@ jobs:
 
       - name: Armar el instalador
         run: npm run dist
+        env:
+          DMG_FABRICA_VPS_TOKEN: ${{ secrets.DMG_VPS_TOKEN }}
+
+      # Antes de empujar la versión: que el programa compilado lleve el token. Si no lo lleva, la versión
+      # no se quema.
+      - name: Comprobar que el instalador lleva los secretos de fábrica
+        run: node scripts/verificar-fabrica.mjs
+        env:
+          DMG_FABRICA_VPS_TOKEN: ${{ secrets.DMG_VPS_TOKEN }}
 
       # Recién acá, con las pruebas pasadas y el instalador armado, la versión nueva llega a master.
       - name: Empujar la versión
@@ -139,6 +156,7 @@ jobs:
         run: node scripts/publicar.mjs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DMG_FABRICA_VPS_TOKEN: ${{ secrets.DMG_VPS_TOKEN }}
 
       # Una copia de más, para poder bajar el instalador desde la corrida aunque el Release se haya
       # borrado. Es SECUNDARIA: lo que actualiza las computadoras de la agencia es el Release, que a
