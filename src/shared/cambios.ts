@@ -30,6 +30,14 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
+    version: '18.1.3',
+    fecha: '2026-11-12',
+    cambios: [
+      { tipo: 'modificado', texto: 'Seguridad: al ingresar con internet, el usuario y la contraseña ahora los comprueba el servidor de la agencia, y cada persona queda identificada ante él. Para ingresar no cambia nada: mismo usuario y misma contraseña, y sin internet se sigue entrando como siempre.' },
+      { tipo: 'modificado', texto: 'Seguridad: si a alguien lo desactivan o le cambian la contraseña desde otra computadora, su sesión se cierra en menos de un minuto (antes podía tardar hasta quince).' },
+    ],
+  },
+  {
     version: '18.1.2',
     fecha: '2026-11-12',
     cambios: [

@@ -2129,7 +2129,42 @@ del puente no vence.
   cambió la cuenta de Windows): hace falta un ingreso con internet, nada más.
 - **Probar la conexión** sin cerrar sesión: Acerca de → «Probar conexión».
 
+### Cuenta por persona contra el servidor (18.1.3)
+
+Hasta la 18.1.2 el servidor no sabía quién estaba sentado en cada computadora: todas le hablaban con el
+mismo token y el programa le decía «soy Ana, ADMIN». Desde la 18.1.3, **al ingresar con internet el
+servidor comprueba el usuario y la contraseña** (`POST /api/dmg/sesion`) y devuelve un token que es de
+esa persona. Mientras la sesión está abierta, todo lo que sale hacia el servidor —la grilla, la
+mensajería, los perfiles, el canal en vivo, Galeno, «Reportar error»— lleva ese token y no el compartido.
+
+- **Dónde vive**: `src/main/vps/sesionDelServidor.ts` guarda el token **en memoria** (nunca en disco) y
+  es a quien le preguntan todos con qué llave hablar (`tokenParaElServidor`). Lo abre y lo cierra
+  `AlmacenVps` (`usuarios/vps.ts`: `ingresar`, `salir`); la orquestación está en
+  `servicios/baseDeUsuarios.ts`.
+- **El «no» del servidor es definitivo**: si rechaza la contraseña no se prueba después con la credencial
+  guardada, y si la contraseña tipeada era la de esa credencial, la credencial se borra (quedó vieja).
+- **Sin internet no cambia nada**: entra el último usuario que ingresó con conexión, con `credencial.bin`.
+  Su contraseña queda en memoria hasta que vuelva la conexión, ahí se le pide la sesión al servidor y se
+  descarta. Si en el medio le cambiaron la contraseña o lo desactivaron, en ese momento queda afuera.
+- **Si el servidor cierra la sesión** (lo desactivaron, le cambiaron la contraseña, venció a los 30
+  días), el canal en vivo se entera en el próximo latido y la sesión se cierra acá con el motivo.
+- **Con un servidor anterior** (o la demo, cuyo servidor interno no tiene sesiones) `POST /sesion`
+  contesta 404 y el ingreso sigue exactamente como en la 18.1.2.
+
+Con sesión, el servidor impone el actor de cada pedido, entrega de la lista de usuarios sólo el hash
+propio (los demás llegan tapados y se devuelven tapados: el servidor conserva los suyos) y sólo le deja
+cambiar la lista al superadministrador; cada uno puede cambiar su contraseña y pedir autorizaciones.
+
+**Lo que falta para cerrar el agujero**: el servidor sigue aceptando el token compartido para todo, porque
+la versión normal todavía ingresa así. Se cierra con `DMG_EXIGIR_SESION=1` en el `.env` del VPS, y eso
+recién se puede prender cuando **todas** las computadoras tengan una versión con sesiones (ver
+`DEPLOY.md` del repositorio del servidor). El simulador (`scripts/vps-simulado.mjs`) lo imita con
+`new VpsSimulado({ sesiones: true })` y `exigirSesion`; las pruebas están en
+`pruebas/usuarios-sesion.prueba.ts`.
+
 ### Qué NO protege esto (decisión de arquitectura, leer antes de confiar en los roles)
+
+**Esto vale mientras el servidor no exija sesión** (`DMG_EXIGIR_SESION` vacía; ver la sección de arriba):
 
 El token del puente viaja dentro del instalador, igual que `UPDATE_TOKEN`, y cualquiera que tenga el
 programa puede extraerlo y reescribir el documento desde afuera (agregarse como SUPER_ADMIN, cambiar
@@ -2143,6 +2178,11 @@ se mantiene: el token del puente no sirve para nada más que el puente, cada esc
 quién/dónde/versión, las contraseñas sólo existen como bcrypt, el documento se guarda cifrado en el
 servidor, y la sesión sin internet se arma desde la credencial cifrada y no desde la tabla local (que
 cualquiera podría editar con un cliente SQLite).
+
+Con el servidor exigiendo sesión, el token del instalador sólo sirve para pedir ingresar: reescribir la
+lista de usuarios, bajar los hashes ajenos o declararse otro usuario pide la contraseña de alguien. Lo
+que sigue sin proteger el servidor es **qué módulo ve cada rol**: la grilla no sabe de módulos, así que
+un usuario activo con un programa modificado puede leer y escribir la cartera entera.
 
 ### En desarrollo y en las pruebas
 

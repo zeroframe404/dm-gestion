@@ -2,7 +2,8 @@
 // con la misma semántica de grilla que el servidor real: pestañas ordenadas, filas numeradas
 // base 1, celdas de texto, y la migración inicial en tres fases. Lo usan las pruebas y el humo,
 // igual que github-simulado.mjs simula la base de usuarios.
-import { createHash, randomUUID } from 'node:crypto'
+import { compareSync } from 'bcryptjs'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 
@@ -90,6 +91,80 @@ function copiaProfunda(pestana) {
   return { ...pestana, filas }
 }
 
+// --- La cuenta por persona (18.2): lo mismo que `usuarios.reglas.ts` y `dmg.sesion.ts` del servidor ---
+
+const PREFIJO_DE_SESION = 'dmgs_'
+/** Lo que viaja en lugar del hash de OTRO usuario. Igual que en el servidor: tiene que serlo, el programa lo devuelve tal cual. */
+export const HASH_OCULTO = `$2a$10$${'oculto.por.el.servidor'.padEnd(53, '.')}`
+const MENSAJE_SESION_REQUERIDA = 'Este servidor pide ingresar con usuario y contraseña: hay que actualizar DM Gestión en esta computadora.'
+
+/** Lo que el token compartido sigue pudiendo con `exigirSesion`. */
+function esDeLaAntesala(metodo, ruta) {
+  const pedido = `${metodo} ${ruta.replace(/^\/api\/dmg/, '')}`
+  if (['POST /sesion', 'GET /estado', 'GET /usuarios/estado', 'POST /usuarios', 'POST /horario/solicitudes'].includes(pedido)) return true
+  return /^GET \/horario\/solicitudes\/[^/]+$/.test(pedido)
+}
+
+function usuariosDe(texto) {
+  try {
+    const documento = JSON.parse(texto)
+    return Array.isArray(documento?.usuarios) ? documento.usuarios : []
+  } catch {
+    return []
+  }
+}
+
+function fichaDe(usuario) {
+  return {
+    id: usuario.id,
+    clave: String(usuario.usuario).trim().toLowerCase(),
+    usuario: usuario.usuario,
+    nombre: usuario.nombre,
+    rol: usuario.rol,
+    sucursal: usuario.sucursal,
+    debeCambiarClave: usuario.debeCambiarClave === true,
+  }
+}
+
+function ocultarHashesAjenos(texto, usuarioId) {
+  const documento = JSON.parse(texto)
+  for (const usuario of documento.usuarios) if (usuario.id !== usuarioId) usuario.claveHash = HASH_OCULTO
+  return `${JSON.stringify(documento, null, 2)}\n`
+}
+
+/** El superadministrador escribe lo que manda (con los hashes tapados completados); el resto, su clave y los pedidos. */
+function resolverEscritura(guardado, enviado, quien) {
+  const antes = JSON.parse(guardado)
+  let despues
+  try {
+    despues = JSON.parse(enviado)
+  } catch {
+    return { error: 'Lo que se quiso guardar no es una base de usuarios.' }
+  }
+  if (!Array.isArray(despues?.usuarios)) return { error: 'Lo que se quiso guardar no es una base de usuarios.' }
+  const hashDeAntes = new Map(antes.usuarios.map((usuario) => [usuario.id, usuario.claveHash]))
+  if (quien.rol === 'SUPER_ADMIN') {
+    for (const usuario of despues.usuarios) {
+      if (usuario.claveHash !== HASH_OCULTO) continue
+      if (!hashDeAntes.get(usuario.id)) return { error: 'Hay un usuario nuevo sin contraseña: no se puede guardar así.' }
+      usuario.claveHash = hashDeAntes.get(usuario.id)
+    }
+    const propio = despues.usuarios.find((usuario) => usuario.id === quien.id)?.claveHash
+    return { texto: `${JSON.stringify(despues, null, 2)}\n`, cambioSuClave: propio && propio !== hashDeAntes.get(quien.id) ? propio : null }
+  }
+  const propioAntes = antes.usuarios.find((usuario) => usuario.id === quien.id)
+  const propioDespues = despues.usuarios.find((usuario) => usuario.id === quien.id)
+  let cambioSuClave = null
+  if (propioAntes && propioDespues && propioDespues.claveHash && propioDespues.claveHash !== HASH_OCULTO && propioDespues.claveHash !== propioAntes.claveHash) {
+    propioAntes.claveHash = propioDespues.claveHash
+    propioAntes.debeCambiarClave = propioDespues.debeCambiarClave === true
+    propioAntes.actualizadoEn = propioDespues.actualizadoEn ?? propioAntes.actualizadoEn
+    cambioSuClave = propioDespues.claveHash
+  }
+  if (Array.isArray(despues.autorizaciones)) antes.autorizaciones = despues.autorizaciones
+  return { texto: `${JSON.stringify(antes, null, 2)}\n`, cambioSuClave }
+}
+
 export class VpsSimulado {
   constructor(opciones = {}) {
     this.token = opciones.token ?? TOKEN_POR_DEFECTO
@@ -161,6 +236,19 @@ export class VpsSimulado {
     this.ajustes = new Map()
     /** La base de usuarios de la agencia: el documento entero y su versión (el candado optimista). */
     this.usuarios = null
+    /**
+     * La cuenta por persona (18.2). Apagada —como arranca— el simulador contesta 404 a
+     * `/api/dmg/sesion`, igual que un servidor anterior a las sesiones: es lo que ven la demo y las
+     * pruebas de siempre, y el programa ingresa por el camino viejo. Con `sesiones: true` hace lo del
+     * servidor real: comprueba usuario y contraseña, da un token por persona, tapa los hashes ajenos
+     * y sólo deja escribir la lista según el rol. `exigirSesion` es su `DMG_EXIGIR_SESION`.
+     */
+    this.conSesiones = opciones.sesiones === true
+    this.exigirSesion = false
+    /** token → { usuarioId, claveHash } (el hash con el que se abrió: si cambia, la sesión no vale). */
+    this.sesiones = new Map()
+    /** La sesión del pedido HTTP que se está atendiendo, o null si vino con el token compartido. */
+    this.sesionDelPedido = null
 
     // --- El canal en vivo (14.0) -----------------------------------------------------------------
     //
@@ -484,17 +572,32 @@ export class VpsSimulado {
     if (mensaje.t === 'hola') {
       // El token viaja en el saludo y nunca en la URL, igual que en el servidor real: la URL queda
       // escrita en los registros del nginx de la agencia.
-      if (mensaje.token !== this.token) {
+      // Las dos llaves del servidor real: la sesión de una persona o el token compartido.
+      const conSesion = this.conSesiones && String(mensaje.token ?? '').startsWith(PREFIJO_DE_SESION)
+      const sesion = conSesion ? this.sesionVigente(mensaje.token) : null
+      if (conSesion && !sesion) {
+        return this.rechazarLaConexion(conexion, 'token', 'Tu sesión venció o se cerró. Volvé a ingresar.')
+      }
+      if (!conSesion && mensaje.token !== this.token) {
         return this.rechazarLaConexion(conexion, 'token', 'Token del puente del programa inválido.')
+      }
+      if (!conSesion && this.conSesiones && this.exigirSesion) {
+        return this.rechazarLaConexion(conexion, 'token', MENSAJE_SESION_REQUERIDA)
       }
       const clave = String(mensaje.actor?.clave ?? '').trim().toLowerCase()
       if (!clave) return this.rechazarLaConexion(conexion, 'actor', 'Falta quién se conecta.')
-      conexion.actor = {
-        clave,
-        nombre: String(mensaje.actor?.nombre ?? clave),
-        rol: String(mensaje.actor?.rol ?? 'EMPLEADO'),
-        sucursal: String(mensaje.actor?.sucursal ?? ''),
+      if (sesion && clave !== sesion.usuario.usuario.trim().toLowerCase()) {
+        return this.rechazarLaConexion(conexion, 'actor', 'No podés conectarte en nombre de otro usuario.')
       }
+      // Con sesión, quién es lo dice la sesión y no el saludo.
+      conexion.actor = sesion
+        ? { clave, nombre: sesion.usuario.nombre, rol: sesion.usuario.rol, sucursal: sesion.usuario.sucursal }
+        : {
+            clave,
+            nombre: String(mensaje.actor?.nombre ?? clave),
+            rol: String(mensaje.actor?.rol ?? 'EMPLEADO'),
+            sucursal: String(mensaje.actor?.sucursal ?? ''),
+          }
       conexion.color = this.asegurarPerfil(clave).color
       this.conexiones.set(conexion.id, conexion)
       this.mandarPorElCanal(conexion, {
@@ -524,6 +627,44 @@ export class VpsSimulado {
       return this.atenderLlamada(conexion, mensaje.evento ?? {})
     }
     return this.rechazarLaConexion(conexion, 'protocolo', `Frame desconocido: ${mensaje.t}.`)
+  }
+
+  // --- La cuenta por persona (18.2) --------------------------------------------------------------
+
+  /** La sesión de ese token con su usuario de ahora, o null si no vale (cerrada, desactivado, otra contraseña). */
+  sesionVigente(token) {
+    const sesion = this.sesiones.get(token)
+    if (!sesion || !this.usuarios) return null
+    const usuario = usuariosDe(this.usuarios.texto).find((candidato) => candidato.id === sesion.usuarioId)
+    if (!usuario || usuario.activo !== true || usuario.claveHash !== sesion.claveHash) return null
+    return { token, usuario }
+  }
+
+  atenderSesion(metodo, json, recibido, responder) {
+    if (metodo === 'DELETE') {
+      this.sesiones.delete(recibido)
+      return responder(200, { ok: true })
+    }
+    if (metodo === 'GET') {
+      return responder(200, { usuario: this.sesionDelPedido ? fichaDe(this.sesionDelPedido.usuario) : null })
+    }
+    if (metodo !== 'POST') return responder(404, { error: `Ruta desconocida: ${metodo} /api/dmg/sesion` })
+    this.llamadas.ingresos = (this.llamadas.ingresos ?? 0) + 1
+    if (!this.usuarios) {
+      return responder(409, { error: 'La base de usuarios de esta agencia todavía no se cargó.', codigo: 'sin_usuarios' })
+    }
+    const login = String(json?.usuario ?? '').trim().toLowerCase()
+    const clave = typeof json?.clave === 'string' ? json.clave : ''
+    const usuario = usuariosDe(this.usuarios.texto).find((candidato) => String(candidato.usuario).trim().toLowerCase() === login)
+    if (!usuario || !clave || !compareSync(clave, usuario.claveHash)) {
+      return responder(401, { error: 'Usuario o contraseña incorrectos.', codigo: 'credenciales' })
+    }
+    if (usuario.activo !== true) {
+      return responder(403, { error: 'Tu usuario está desactivado. Consultá con un administrador.', codigo: 'desactivado' })
+    }
+    const token = `${PREFIJO_DE_SESION}${randomBytes(32).toString('base64url')}`
+    this.sesiones.set(token, { usuarioId: usuario.id, claveHash: usuario.claveHash, equipo: String(json?.equipo ?? ''), app: String(json?.app ?? '') })
+    return responder(200, { token, venceEn: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), usuario: fichaDe(usuario) })
   }
 
   /** Le dice por qué y cierra, con el mismo código que el hub: 4401 lo que es de quién sos, 4400 la forma. */
@@ -863,9 +1004,19 @@ export class VpsSimulado {
         if (falla) return responder(falla.estado, { error: falla.mensaje })
 
         const autorizacion = pedido.headers.authorization ?? ''
-        if (autorizacion !== `Bearer ${this.token}`) {
+        const recibido = autorizacion.startsWith('Bearer ') ? autorizacion.slice(7) : ''
+        this.sesionDelPedido = null
+        if (this.conSesiones && recibido.startsWith(PREFIJO_DE_SESION)) {
+          this.sesionDelPedido = this.sesionVigente(recibido)
+          if (!this.sesionDelPedido) {
+            return responder(401, { error: 'Tu sesión venció o se cerró. Volvé a ingresar.', codigo: 'sesion_vencida' })
+          }
+        } else if (autorizacion !== `Bearer ${this.token}`) {
           return responder(401, { error: 'Token del puente del programa inválido.' })
+        } else if (this.conSesiones && this.exigirSesion && !esDeLaAntesala(pedido.method, ruta)) {
+          return responder(401, { error: MENSAJE_SESION_REQUERIDA, codigo: 'sesion_requerida' })
         }
+        if (this.conSesiones && ruta === '/api/dmg/sesion') return this.atenderSesion(pedido.method, json, recibido, responder)
 
         try {
           if (ruta.startsWith('/api/dmg/adjuntos')) return this.atenderAdjuntos(pedido, respuesta, ruta, crudo, responder)
@@ -2059,13 +2210,28 @@ export class VpsSimulado {
           actualizadoEn: this.usuarios.actualizadoEn,
           actualizadoPor: this.usuarios.actualizadoPor,
         }
-        return responder(200, { documento: ruta.endsWith('/estado') ? ficha : { ...ficha, texto: this.usuarios.texto } })
+        // Con sesión viaja sólo el hash propio; el de los demás, tapado (como el servidor real).
+        const texto = this.sesionDelPedido ? ocultarHashesAjenos(this.usuarios.texto, this.sesionDelPedido.usuario.id) : this.usuarios.texto
+        return responder(200, { documento: ruta.endsWith('/estado') ? ficha : { ...ficha, texto } })
       }
       if (metodo === 'POST' && ruta === '/api/dmg/usuarios') {
-        const texto = typeof json?.texto === 'string' ? json.texto : ''
+        let texto = typeof json?.texto === 'string' ? json.texto : ''
         if (!texto.trim()) return responder(400, { error: 'La base de usuarios que se quiso guardar viene vacía.' })
         const previo = typeof json?.shaPrevio === 'string' && json.shaPrevio !== '' ? json.shaPrevio : null
         const versionActual = this.usuarios ? String(this.usuarios.version) : null
+        // Con `exigirSesion`, el token compartido sólo puede CREAR la lista (la agencia recién dada de alta).
+        if (this.conSesiones && this.exigirSesion && !this.sesionDelPedido && this.usuarios) {
+          return responder(401, { error: MENSAJE_SESION_REQUERIDA, codigo: 'sesion_requerida' })
+        }
+        // Con sesión se guarda sólo lo que esa persona puede cambiar.
+        if (this.sesionDelPedido && this.usuarios && previo === versionActual) {
+          const quien = this.sesionDelPedido.usuario
+          const resuelto = resolverEscritura(this.usuarios.texto, texto, quien)
+          if (resuelto.error) return responder(400, { error: resuelto.error })
+          texto = resuelto.texto
+          // Quien cambia su propia contraseña conserva la sesión con la que lo hizo.
+          if (resuelto.cambioSuClave) this.sesiones.get(this.sesionDelPedido.token).claveHash = resuelto.cambioSuClave
+        }
         if (previo !== versionActual) {
           return responder(409, {
             error: 'La base de usuarios cambió mientras se guardaba: hay que releerla y volver a aplicar el cambio.',

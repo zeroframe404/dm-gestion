@@ -19,6 +19,7 @@ import { credencialesDelPuente } from '../servicios/sincronizacion'
 // mensaje que baja el cartero y en el frame `{t:'reaccion'}`— y tiene que significar lo mismo en los dos.
 import type { ReaccionRemota } from '../vivo/protocolo'
 import { encabezadosDelEquipo } from '../vps/equipo'
+import { tokenParaElServidor } from '../vps/sesionDelServidor'
 
 /** Un pedido normal: si el servidor tarda más que esto, algo está mal. */
 const TIEMPO_MAXIMO_MS = 30_000
@@ -164,7 +165,7 @@ export class PuenteDeMensajes {
     const bruta = await fetch(this.urlBase + ruta, {
       method: metodo,
       headers: {
-        authorization: `Bearer ${this.token}`,
+        authorization: `Bearer ${tokenParaElServidor(this.urlBase, this.token)}`,
         ...encabezadosDelEquipo(),
         ...(opciones.cuerpo === undefined ? {} : { 'content-type': 'application/json' }),
       },

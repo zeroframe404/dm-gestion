@@ -28,6 +28,7 @@ import { carpetaDatos } from '../rutas'
 import { credencialesVps } from './config'
 import { ErrorDeNegocio } from './errores'
 import { encabezadosDelEquipo } from '../vps/equipo'
+import { tokenParaElServidor } from '../vps/sesionDelServidor'
 
 /** Cuántas capturas entran en un reporte. El servidor corta en las mismas cuatro. */
 export const MAXIMO_IMAGENES = 4
@@ -163,7 +164,7 @@ export async function enviarReporteDeError(reporte: ReporteDeError, contexto: { 
   try {
     respuesta = await fetch(`${urlBase.replace(/\/+$/, '')}/api/dmg/incidencias`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, ...encabezadosDelEquipo(), 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${tokenParaElServidor(urlBase, token)}`, ...encabezadosDelEquipo(), 'content-type': 'application/json' },
       body: JSON.stringify({
         titulo,
         tipo,

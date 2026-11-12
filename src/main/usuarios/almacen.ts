@@ -19,7 +19,23 @@ export interface AlmacenRemoto {
   escribir(texto: string, shaPrevio: string | null, mensaje: string): Promise<string>
   /** Fecha (AAAA-MM-DD) en que vence la credencial con la que se accede, si el servicio la informa. */
   vencimientoDelToken(): string | null
+  /**
+   * La cuenta por persona (18.2): le pide al servidor que compruebe el usuario y la contraseña y abra
+   * una sesión de esa persona. Sólo lo tienen los almacenes cuyo servidor sabe hacerlo; GitHub no.
+   */
+  ingresar?(usuario: string, clave: string, datos: { equipo: string; app: string }): Promise<RespuestaDeIngreso>
+  /** Cierra la sesión abierta con `ingresar`, si hay una. Nunca lanza. */
+  salir?(): Promise<void>
 }
+
+/** Lo que contesta el servidor cuando se le pide ingresar con usuario y contraseña. */
+export type RespuestaDeIngreso =
+  /** Ingresó: de acá en más los pedidos al servidor llevan el token de esa persona. */
+  | { tipo: 'sesion' }
+  /** El servidor no ofrece sesiones (una versión anterior, o todavía sin usuarios): el ingreso sigue como antes. */
+  | { tipo: 'sin-soporte' }
+  /** El servidor dijo que no, y es definitivo: no se prueba con la credencial guardada. */
+  | { tipo: 'rechazo'; codigo: 'credenciales' | 'desactivado' | 'demasiados-intentos'; mensaje: string }
 
 /** Otra computadora escribió el archivo entre nuestra lectura y nuestra escritura: hay que releer. */
 export class ErrorDeConflicto extends Error {
@@ -39,6 +55,22 @@ export class ErrorDelAlmacen extends Error {
   ) {
     super(mensaje)
     this.name = 'ErrorDelAlmacen'
+  }
+}
+
+/** La sesión con la que se le habló al servidor ya no vale: la cerraron, venció, o cambió la contraseña. */
+export class SesionVencida extends ErrorDelAlmacen {
+  constructor(mensaje: string) {
+    super(mensaje, 401)
+    this.name = 'SesionVencida'
+  }
+}
+
+/** El servidor ya no acepta el token compartido para esto: hay que ingresar con usuario y contraseña. */
+export class SesionRequerida extends ErrorDelAlmacen {
+  constructor(mensaje: string) {
+    super(mensaje, 401)
+    this.name = 'SesionRequerida'
   }
 }
 
