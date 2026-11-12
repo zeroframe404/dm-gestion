@@ -17,7 +17,17 @@
 // propósito: pedirle a alguien que apriete un botón de migración es pedirle que se acuerde de hacerlo
 // antes de que alguien más intente ingresar.
 import { esFallaDeRed } from '../servicios/red'
-import { EquipoNoAutorizado, ErrorDeConflicto, ErrorDelAlmacen, type AlmacenRemoto, type LecturaRemota } from './almacen'
+import {
+  EquipoNoAutorizado,
+  ErrorDeConflicto,
+  ErrorDelAlmacen,
+  SesionRequerida,
+  SesionVencida,
+  type AlmacenRemoto,
+  type LecturaRemota,
+  type RespuestaDeIngreso,
+} from './almacen'
+import { abrirSesionDelServidor, olvidarSesionDelServidor, tokenParaElServidor } from '../vps/sesionDelServidor'
 import { encabezadosDelEquipo } from '../vps/equipo'
 import { esRechazoDeEquipo } from '../../shared/autorizacionIp'
 
@@ -52,6 +62,14 @@ function mensajeDelServidor(json: unknown, porDefecto: string): string {
   return porDefecto
 }
 
+function codigoDelServidor(json: unknown): string | null {
+  const codigo = json && typeof json === 'object' ? (json as { codigo?: unknown }).codigo : null
+  return typeof codigo === 'string' ? codigo : null
+}
+
+/** Cuánto se espera al servidor para avisarle que se cerró la sesión: es de cortesía, no puede demorar la salida. */
+const TIEMPO_MAXIMO_SALIDA_MS = 4_000
+
 export class AlmacenVps implements AlmacenRemoto {
   readonly descripcion: string
   private readonly urlBase: string
@@ -83,11 +101,21 @@ export class AlmacenVps implements AlmacenRemoto {
     return null
   }
 
-  private async pedir(metodo: 'GET' | 'POST', ruta: string, cuerpo: unknown, tiempoMs: number): Promise<RespuestaDelServidor> {
+  /**
+   * `token`: con qué llave va este pedido. Sin decir nada, la de la sesión abierta contra este servidor
+   * si la hay y, si no, la compartida. Ingresar va siempre con la compartida.
+   */
+  private async pedir(
+    metodo: 'GET' | 'POST' | 'DELETE',
+    ruta: string,
+    cuerpo: unknown,
+    tiempoMs: number,
+    token = tokenParaElServidor(this.urlBase, this.token),
+  ): Promise<RespuestaDelServidor> {
     const bruta = await fetch(this.urlBase + ruta, {
       method: metodo,
       headers: {
-        authorization: `Bearer ${this.token}`,
+        authorization: `Bearer ${token}`,
         ...encabezadosDelEquipo(),
         ...(cuerpo === undefined ? {} : { 'content-type': 'application/json' }),
       },
@@ -114,6 +142,9 @@ export class AlmacenVps implements AlmacenRemoto {
   /** Traduce lo que responde el servidor a los errores que el servicio de usuarios sabe manejar. */
   private errorDe(respuesta: RespuestaDelServidor, accion: string): ErrorDelAlmacen {
     const detalle = mensajeDelServidor(respuesta.json, `error ${respuesta.status}`)
+    const codigo = codigoDelServidor(respuesta.json)
+    if (respuesta.status === 401 && codigo === 'sesion_vencida') return new SesionVencida(detalle)
+    if (respuesta.status === 401 && codigo === 'sesion_requerida') return new SesionRequerida(detalle)
     if (respuesta.status === 401) {
       return new ErrorDelAlmacen(
         'El servidor del VPS rechazó el token de DM Gestión al pedir la base de usuarios. El token del programa y el DMG_SYNC_TOKEN del servidor tienen que ser el mismo: actualizá la aplicación o corregí el .env del VPS.',
@@ -132,9 +163,60 @@ export class AlmacenVps implements AlmacenRemoto {
     return new ErrorDelAlmacen(`El servidor del VPS devolvió ${respuesta.status} al ${accion}: ${detalle}`, respuesta.status)
   }
 
+  /**
+   * Le pide al servidor que compruebe el usuario y la contraseña (18.2). Si dice que sí, la sesión queda
+   * abierta en `vps/sesionDelServidor.ts` y todo lo que sale hacia este servidor pasa a llevar su token.
+   *
+   * Lanza lo mismo que `leer()` si no se llega al servidor o contesta mal: quien llama decide qué hacer
+   * sin conexión. Lo que devuelve son las tres respuestas que el servidor da cuando SÍ contesta.
+   */
+  async ingresar(usuario: string, clave: string, datos: { equipo: string; app: string }): Promise<RespuestaDeIngreso> {
+    const respuesta = await this.pedir('POST', '/api/dmg/sesion', { usuario, clave, ...datos }, this.tiempoLecturaMs, this.token)
+    const codigo = codigoDelServidor(respuesta.json)
+    // Un servidor anterior a las sesiones no conoce la ruta; uno que todavía no tiene usuarios no tiene
+    // con qué comparar. En los dos casos el ingreso sigue por el camino de siempre.
+    if (respuesta.status === 404 || (respuesta.status === 409 && codigo === 'sin_usuarios')) return { tipo: 'sin-soporte' }
+    const detalle = mensajeDelServidor(respuesta.json, `error ${respuesta.status}`)
+    if (respuesta.status === 401 && codigo === 'credenciales') return { tipo: 'rechazo', codigo: 'credenciales', mensaje: detalle }
+    if (respuesta.status === 403 && codigo === 'desactivado') return { tipo: 'rechazo', codigo: 'desactivado', mensaje: detalle }
+    if (respuesta.status === 429 && codigo === 'demasiados_intentos') return { tipo: 'rechazo', codigo: 'demasiados-intentos', mensaje: detalle }
+    if (respuesta.status < 200 || respuesta.status >= 300) throw this.errorDe(respuesta, 'ingresar')
+    const token = (respuesta.json as { token?: unknown } | null)?.token
+    if (typeof token !== 'string' || !token.startsWith('dmgs_')) {
+      throw new ErrorDelAlmacen('El servidor del VPS aceptó el ingreso pero no devolvió la sesión.', respuesta.status)
+    }
+    abrirSesionDelServidor(this.urlBase, token)
+    return { tipo: 'sesion' }
+  }
+
+  /** Olvida la sesión y le avisa al servidor, sin esperar más de la cuenta ni fallar si no contesta. */
+  async salir(): Promise<void> {
+    const token = olvidarSesionDelServidor()
+    if (!token) return
+    try {
+      await this.pedir('DELETE', '/api/dmg/sesion', undefined, TIEMPO_MAXIMO_SALIDA_MS, token)
+    } catch {
+      // Sin internet la sesión queda abierta del lado del servidor hasta que venza sola. El token ya
+      // no está en esta computadora, que es lo que importa.
+    }
+  }
+
+  /** Si el servidor ya tiene una lista de usuarios, sin bajarla (alcanza el token compartido). */
+  private async hayUsuarios(): Promise<boolean> {
+    const respuesta = await this.pedir('GET', '/api/dmg/usuarios/estado', undefined, this.tiempoLecturaMs, this.token)
+    if (respuesta.status < 200 || respuesta.status >= 300) throw this.errorDe(respuesta, 'consultar la base de usuarios')
+    return Boolean((respuesta.json as { documento?: unknown } | null)?.documento)
+  }
+
   async leer(): Promise<LecturaRemota | null> {
     const respuesta = await this.pedir('GET', '/api/dmg/usuarios', undefined, this.tiempoLecturaMs)
-    if (respuesta.status < 200 || respuesta.status >= 300) throw this.errorDe(respuesta, 'leer la base de usuarios')
+    if (respuesta.status < 200 || respuesta.status >= 300) {
+      const error = this.errorDe(respuesta, 'leer la base de usuarios')
+      // El servidor pide sesión para leer la lista (DMG_EXIGIR_SESION) y todavía no ingresó nadie. Si
+      // además no tiene ninguna lista, es una agencia recién dada de alta: «no hay archivo», como siempre.
+      if (error instanceof SesionRequerida && !(await this.hayUsuarios())) return null
+      throw error
+    }
     const documento = (respuesta.json as { documento?: { texto?: unknown; sha?: unknown } | null } | null)?.documento
     if (documento && typeof documento.texto === 'string' && typeof documento.sha === 'string') {
       return { texto: documento.texto, sha: documento.sha }

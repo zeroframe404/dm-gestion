@@ -21,7 +21,15 @@ import type { SolicitudDeAutorizacion } from '../../shared/autorizaciones'
 import type { MatrizPermisos } from '../../shared/permisos'
 import type { EstadoDeAcceso, EstadoDeUsuarios, ModoDeAcceso, Rol, SesionUsuario, Usuario } from '../../shared/tipos'
 import { db } from '../db/base'
-import { EquipoNoAutorizado, ErrorDeConflicto, ErrorDelAlmacen, type AlmacenRemoto } from '../usuarios/almacen'
+import {
+  EquipoNoAutorizado,
+  ErrorDeConflicto,
+  ErrorDelAlmacen,
+  SesionRequerida,
+  SesionVencida,
+  type AlmacenRemoto,
+  type LecturaRemota,
+} from '../usuarios/almacen'
 import { estaVencida, type AlmacenDeCredencial } from '../usuarios/credencial'
 import {
   agregarExistentes,
@@ -49,6 +57,7 @@ import { ErrorDeNegocio } from './errores'
 import { esFallaDeRed } from './red'
 import { establecerSesion, permitirIngreso, sesion } from './sesion'
 import { obtenerSucursal } from './sucursales'
+import { alRechazarseLaSesion, haySesionDelServidor, olvidarSesionDelServidor } from '../vps/sesionDelServidor'
 
 // ---------------------------------------------------------------------------
 // Configuración y estado
@@ -92,6 +101,8 @@ type Lectura =
   | { tipo: 'error-remoto'; error: string }
   /** Autorizaciones de IP: el servidor no atiende a esta computadora. No se entra ni con la credencial. */
   | { tipo: 'no-autorizado'; error: string }
+  /** El servidor tiene la lista pero ya no la entrega con el token compartido: hay que ingresar (18.2). */
+  | { tipo: 'pide-sesion' }
 
 const CLAVE_MODO = 'usuarios_modo'
 const CLAVE_ULTIMA_LECTURA = 'usuarios_ultima_lectura'
@@ -119,6 +130,17 @@ let lecturaEnCurso: Promise<Lectura> | null = null
 let sinInternetHasta = 0
 let temporizador: NodeJS.Timeout | null = null
 let proximaRevalidacion = 0
+
+// La cuenta por persona contra el servidor (18.2, ver `vps/sesionDelServidor.ts`).
+//
+// `claveEnEspera`: quien ingresa SIN internet lo hace con la credencial guardada y no tiene cómo pedirle
+// una sesión al servidor. Su contraseña queda acá, en memoria, hasta que vuelva la conexión y se pueda
+// pedir; ahí se borra. Nunca se escribe en disco, y con internet no se guarda ni un instante.
+let claveEnEspera: string | null = null
+/** El servidor rechazó la sesión abierta: en cuanto se sepa por qué, hay que cerrar la de acá. */
+let elServidorCerroLaSesion = false
+
+const MENSAJE_SESION_CERRADA_POR_EL_SERVIDOR = 'Tu sesión se cerró desde el servidor (venció, o cambió algo de tu usuario). Volvé a ingresar.'
 
 let estado: EstadoDeAcceso = estadoInicial()
 
@@ -152,6 +174,18 @@ export function configurarBaseDeUsuarios(config: ConfiguracionBaseDeUsuarios): v
   ultimoDocumento = null
   lecturaEnCurso = null
   sinInternetHasta = 0
+  claveEnEspera = null
+  elServidorCerroLaSesion = false
+  olvidarSesionDelServidor()
+  // El canal en vivo o una sincronización se enteran antes que nadie de que el servidor rechazó la
+  // sesión: avisan, y acá se comprueba en el momento en vez de esperar al temporizador.
+  alRechazarseLaSesion(
+    almacen
+      ? () => {
+          void comprobarAcceso().catch((error) => console.error('[usuarios] No se pudo comprobar la sesión rechazada:', error))
+        }
+      : null,
+  )
   // Se está configurando el acceso de cero (arranque del programa, o una prueba con otra base):
   // lo que se recuerde de la copia local de permisos era de la base anterior.
   olvidarCopiaEnMemoria()
@@ -262,7 +296,18 @@ async function leerRemoto(): Promise<Lectura> {
   lecturaEnCurso = (async (): Promise<Lectura> => {
     const comprobadoEn = ahoraIso()
     try {
-      const lectura = await fuente.leer()
+      let lectura: LecturaRemota | null
+      try {
+        lectura = await fuente.leer()
+      } catch (error) {
+        if (!(error instanceof SesionVencida)) throw error
+        // El servidor ya no reconoce la sesión con la que se le habló. Se la olvida y se vuelve a leer
+        // con el token compartido: si todavía lo acepta, el documento dice el motivo de verdad (lo
+        // desactivaron, le cambiaron la contraseña) y `revalidarSesion` cierra con ese mensaje.
+        olvidarSesionDelServidor()
+        elServidorCerroLaSesion = true
+        lectura = await fuente.leer()
+      }
       if (!lectura) {
         anotarLecturaBuena(comprobadoEn)
         cambiarEstado({ ultimaComprobacion: comprobadoEn, ultimaLecturaBuena: comprobadoEn, ultimoError: null, cantidad: 0 })
@@ -277,6 +322,11 @@ async function leerRemoto(): Promise<Lectura> {
       cambiarEstado({ ultimaComprobacion: comprobadoEn, ultimaLecturaBuena: comprobadoEn, ultimoError: null, cantidad: documento.usuarios.length })
       return { tipo: 'documento', documento, sha: lectura.sha }
     } catch (error) {
+      if (error instanceof SesionRequerida) {
+        // No es una falla: el servidor está, tiene la lista, y la entrega recién a quien ingresó.
+        cambiarEstado({ ultimaComprobacion: comprobadoEn, ultimoError: null })
+        return { tipo: 'pide-sesion' }
+      }
       if (error instanceof EquipoNoAutorizado) {
         console.error('[usuarios] El servidor no atiende a esta computadora (Autorizaciones de IP):', error.message)
         cambiarEstado({ ultimaComprobacion: comprobadoEn, ultimoError: error.message })
@@ -332,11 +382,19 @@ function reflejar(documento: DocumentoUsuarios): boolean {
 export async function comprobarAcceso(): Promise<EstadoDeAcceso> {
   if (!almacen) return estadoDeAcceso()
   sinInternetHasta = 0
+  await pedirLaSesionQueFalta()
   const lectura = await leerRemoto()
   if (lectura.tipo === 'documento') {
     const reflejado = reflejar(lectura.documento)
     revalidarSesion(lectura.documento)
     cambiarEstado({ modo: reflejado ? 'en-linea' : 'error-remoto' })
+  } else if (lectura.tipo === 'pide-sesion') {
+    cambiarEstado({ modo: 'en-linea' })
+    // El servidor empezó a pedir sesión con esta computadora ya adentro por el camino anterior, y no
+    // hay con qué pedírsela (la contraseña no se guarda): hay que volver a ingresar.
+    if (!elServidorCerroLaSesion && sesion() && identidad && identidad.remotoId !== null && !haySesionDelServidor() && !claveEnEspera) {
+      cerrarSesionAvisando('El servidor de la agencia ahora pide que cada persona ingrese con su usuario. Volvé a ingresar.')
+    }
   } else if (lectura.tipo === 'sin-archivo') {
     cambiarEstado({ modo: modoPersistido() === 'github' ? 'error-remoto' : 'sin-inicializar', ultimoError: modoPersistido() === 'github' ? mensajeDeDocumentoQueYaNoEsta() : null })
   } else if (lectura.tipo === 'no-autorizado') {
@@ -346,7 +404,60 @@ export async function comprobarAcceso(): Promise<EstadoDeAcceso> {
   } else {
     cambiarEstado({ modo: lectura.tipo })
   }
+  cortarSiElServidorCerroLaSesion()
   return estadoDeAcceso()
+}
+
+/** Cierra la sesión de acá sin tocar la credencial guardada: la contraseña sigue siendo buena. */
+function cerrarSesionAvisando(motivo: string): void {
+  cerrarSesion()
+  emisor?.sesionCerrada(motivo)
+}
+
+/**
+ * Si el servidor rechazó la sesión y nadie cerró todavía la de acá con un motivo mejor (`revalidarSesion`
+ * lo hace cuando el documento muestra que lo desactivaron o le cambiaron la contraseña), se cierra con
+ * el motivo general. No se sigue trabajando con el token compartido como si nada: quien estaba
+ * identificado ante el servidor no pasa a ser anónimo sin enterarse.
+ */
+function cortarSiElServidorCerroLaSesion(): boolean {
+  if (!elServidorCerroLaSesion) return false
+  elServidorCerroLaSesion = false
+  if (!sesion()) return false
+  cerrarSesionAvisando(MENSAJE_SESION_CERRADA_POR_EL_SERVIDOR)
+  return true
+}
+
+/**
+ * Quien ingresó sin internet todavía no tiene sesión en el servidor. Cuando la conexión vuelve se la
+ * pide con la contraseña que quedó en espera, y ahí el servidor dice lo que la credencial guardada no
+ * podía saber: si en el medio lo desactivaron o le cambiaron la contraseña.
+ */
+async function pedirLaSesionQueFalta(): Promise<void> {
+  const actual = sesion()
+  if (!actual || !almacen?.ingresar || !claveEnEspera || haySesionDelServidor()) return
+  let respuesta
+  try {
+    respuesta = await almacen.ingresar(actual.usuario, claveEnEspera, { equipo: nombreDeEquipo, app: version })
+  } catch {
+    // Sigue sin llegar al servidor: se vuelve a probar en la próxima revalidación.
+    return
+  }
+  // La persona pudo haber salido mientras el servidor contestaba: esa sesión ya no es de nadie.
+  if (sesion()?.usuario !== actual.usuario) {
+    if (respuesta.tipo === 'sesion') void almacen.salir?.()
+    return
+  }
+  if (respuesta.tipo === 'sesion' || respuesta.tipo === 'sin-soporte') {
+    claveEnEspera = null
+    return
+  }
+  if (respuesta.codigo === 'demasiados-intentos') return
+  cerrarSesionDesdeAfuera(
+    respuesta.codigo === 'desactivado'
+      ? 'Tu usuario fue desactivado desde otra computadora. Si te parece un error, consultá con un administrador.'
+      : 'La contraseña de tu usuario cambió desde otra computadora. Volvé a iniciar sesión con la contraseña nueva.',
+  )
 }
 
 /** Con el documento recién leído: confirma o cierra la sesión abierta. */
@@ -444,6 +555,63 @@ function sesionDesdeRemoto(remoto: UsuarioRemoto, fila: FilaUsuario): SesionUsua
  */
 export async function ingresar(usuario: string, clave: string): Promise<SesionUsuario> {
   if (!almacen) throw new Error('ingresar() de la base compartida se llamó sin almacén.')
+  const fuente = almacen
+  claveEnEspera = null
+  elServidorCerroLaSesion = false
+  // Si quedó abierta la sesión de un ingreso anterior, no es la de quien está ingresando ahora.
+  void fuente.salir?.()
+
+  const conSesion = await pedirSesionAlIngresar(usuario, clave)
+  try {
+    const nueva = await ingresarContraLaBase(usuario, clave)
+    // Ingresó sin llegar al servidor (con la credencial guardada): la sesión se pide cuando vuelva.
+    if (!conSesion && fuente.ingresar && identidad && identidad.modo !== 'en-linea') claveEnEspera = clave
+    return nueva
+  } catch (error) {
+    // El servidor abrió la sesión pero el ingreso no terminó (fuera de horario, el espejo local falló):
+    // no queda una sesión abierta a nombre de alguien que no entró.
+    if (conSesion) void fuente.salir?.()
+    throw error
+  }
+}
+
+/**
+ * La cuenta por persona (18.2): antes que nada, se le pide al servidor que compruebe el usuario y la
+ * contraseña. Devuelve true si abrió una sesión.
+ *
+ * Si el servidor contesta que no, es definitivo y se corta acá: no se prueba después con la credencial
+ * guardada, que podría tener la contraseña de antes. Si no contesta (sin internet) o todavía no ofrece
+ * sesiones, devuelve false y el ingreso sigue por el camino de siempre, que sabe explicar cada caso.
+ */
+async function pedirSesionAlIngresar(usuario: string, clave: string): Promise<boolean> {
+  if (!almacen?.ingresar) return false
+  // Recién se comprobó que no hay internet: no se espera otra vez el mismo corte.
+  if (Date.now() < sinInternetHasta) return false
+  let respuesta
+  try {
+    respuesta = await almacen.ingresar(usuario, clave, { equipo: nombreDeEquipo, app: version })
+  } catch {
+    return false
+  }
+  if (respuesta.tipo === 'sesion') return true
+  if (respuesta.tipo === 'sin-soporte') return false
+  if (respuesta.codigo === 'demasiados-intentos') throw new ErrorDeNegocio(respuesta.mensaje)
+  if (respuesta.codigo === 'desactivado') {
+    borrarCredencialDe(usuario)
+    throw new ErrorDeNegocio('Tu usuario está desactivado. Consultá con un administrador.')
+  }
+  // La contraseña tipeada no es la del servidor. Si es la de la credencial guardada, esa credencial quedó
+  // vieja (la cambiaron desde otra computadora) y no puede seguir sirviendo para entrar sin internet.
+  const guardada = credenciales?.leer() ?? null
+  if (guardada && igualSinMayusculas(guardada.usuario, usuario) && (await verificarClave(clave, guardada.claveHash))) {
+    borrarCredencialDe(usuario)
+  }
+  throw new ErrorDeNegocio('Usuario o contraseña incorrectos.')
+}
+
+/** El ingreso de siempre: leer el documento, comparar, reflejar; o la credencial guardada sin internet. */
+async function ingresarContraLaBase(usuario: string, clave: string): Promise<SesionUsuario> {
+  if (!almacen) throw new Error('ingresar() de la base compartida se llamó sin almacén.')
   const lectura = await leerRemoto()
 
   if (lectura.tipo === 'documento') {
@@ -488,6 +656,11 @@ export async function ingresar(usuario: string, clave: string): Promise<SesionUs
   if (lectura.tipo === 'no-autorizado') {
     cambiarEstado({ modo: 'error-remoto' })
     throw new ErrorDeNegocio(lectura.error)
+  }
+  // El servidor está y pide sesión, pero no se pudo abrir (se cortó justo al pedirla): no es «sin
+  // internet», así que tampoco se entra con la credencial guardada.
+  if (lectura.tipo === 'pide-sesion') {
+    throw new ErrorDeNegocio('No se pudo abrir tu sesión en el servidor de la agencia. Probá de nuevo en un momento.')
   }
 
   // GitHub no está disponible (sin internet, o respondió con error): la credencial guardada.
@@ -554,6 +727,9 @@ export function anotarIngresoLocal(): void {
 export function cerrarSesion(): void {
   establecerSesion(null)
   identidad = null
+  claveEnEspera = null
+  // Le avisa al servidor sin esperarlo: salir no puede depender de que haya internet.
+  void almacen?.salir?.()
   detenerRevalidacion()
   cambiarEstado({ sesionSinConfirmar: false })
 }
@@ -585,6 +761,11 @@ export async function prepararIngreso(): Promise<'compartida' | 'local'> {
   // es la que lo rechaza con el motivo. Por la tabla local (una instalación nueva) se entraría sin decir nada.
   if (lectura.tipo === 'no-autorizado') {
     cambiarEstado({ modo: 'error-remoto' })
+    return 'compartida'
+  }
+  // El servidor tiene la lista de usuarios y la entrega recién a quien ingresó: va por la base compartida.
+  if (lectura.tipo === 'pide-sesion') {
+    cambiarEstado({ modo: 'en-linea' })
     return 'compartida'
   }
   cambiarEstado({ modo: lectura.tipo === 'sin-archivo' ? 'sin-inicializar' : lectura.tipo })
@@ -683,6 +864,7 @@ async function mutarRemoto(mutacion: Mutacion): Promise<DocumentoUsuarios> {
     if (lectura.tipo === 'error-remoto') throw new ErrorDeNegocio(`No se pudo acceder a la base de usuarios: ${lectura.error}`)
     if (lectura.tipo === 'no-autorizado') throw new ErrorDeNegocio(lectura.error)
     if (lectura.tipo === 'sin-archivo') throw new ErrorDeNegocio(mensajeDeDocumentoQueYaNoEsta())
+    if (cortarSiElServidorCerroLaSesion() || lectura.tipo === 'pide-sesion') throw new ErrorDeNegocio(MENSAJE_SESION_CERRADA_POR_EL_SERVIDOR)
 
     const actorRemoto = buscarPorId(lectura.documento, actorRemotoId)
     if (!actorRemoto || !actorRemoto.activo) {
@@ -949,6 +1131,9 @@ export async function subirLocales(actor: SesionUsuario): Promise<EstadoDeUsuari
   const lectura = await leerRemoto()
   if (lectura.tipo === 'sin-internet') throw new ErrorDeNegocio(MENSAJE_SIN_INTERNET_PARA_ADMINISTRAR)
   if (lectura.tipo === 'error-remoto') throw new ErrorDeNegocio(`No se pudo acceder a la base de usuarios: ${lectura.error}`)
+  if (lectura.tipo === 'pide-sesion') {
+    throw new ErrorDeNegocio('La base compartida ya fue inicializada desde otra computadora. Cerrá sesión y volvé a ingresar con tu usuario de la base compartida.')
+  }
   if (lectura.tipo === 'documento') {
     reflejar(lectura.documento)
     cambiarEstado({ modo: 'en-linea' })

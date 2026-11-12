@@ -46,6 +46,7 @@ import { ErrorDeNegocio } from '../servicios/errores'
 import { adoptarVersionPropia } from '../sincronizacion/versiones'
 import { encabezadosDelEquipo } from './equipo'
 import { esRechazoDeEquipo, type EstadoDeAutorizacionesIp } from '../../shared/autorizacionIp'
+import { avisarQueLaSesionSeRechazo, tokenParaElServidor } from './sesionDelServidor'
 
 /** Tiempo máximo por pedido; sin esto una conexión colgada bloquea la importación. */
 const TIEMPO_MAXIMO_MS = 90_000
@@ -438,7 +439,7 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
         const bruta = await fetch(this.urlBase + ruta, {
           method: metodo,
           headers: {
-            authorization: `Bearer ${this.token}`,
+            authorization: `Bearer ${tokenParaElServidor(this.urlBase, this.token)}`,
             ...encabezadosDelEquipo(),
             ...(cuerpo === undefined ? {} : { 'content-type': 'application/json' }),
           },
@@ -490,6 +491,14 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
 
   private traducirError(respuesta: RespuestaHttp, descripcion: string): Error {
     const detalle = mensajeDelServidor(respuesta.json, `error ${respuesta.status}`)
+    // La cuenta por persona (18.2): no es el token del programa lo que está mal, es la sesión de quien
+    // ingresó (venció, lo desactivaron, le cambiaron la contraseña) o que el servidor ya pide una. El
+    // servidor lo dice con su texto; y si la que se cayó es la sesión, se avisa para que se cierre acá.
+    const codigo = respuesta.json && typeof respuesta.json === 'object' ? (respuesta.json as { codigo?: unknown }).codigo : null
+    if (respuesta.status === 401 && (codigo === 'sesion_vencida' || codigo === 'sesion_requerida')) {
+      if (codigo === 'sesion_vencida') avisarQueLaSesionSeRechazo()
+      return new ErrorDelServidorVps(detalle, 401, detalle)
+    }
     if (respuesta.status === 401) {
       return new ErrorDelServidorVps(
         'El servidor del VPS rechazó el token de DM Gestión. El token del programa y el DMG_SYNC_TOKEN del servidor tienen que ser el mismo: actualizá la aplicación o corregí el .env del VPS.',
@@ -525,7 +534,7 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
     const bruta = await fetch(this.urlBase + ruta, {
       method: metodo,
       headers: {
-        authorization: `Bearer ${this.token}`,
+        authorization: `Bearer ${tokenParaElServidor(this.urlBase, this.token)}`,
         ...encabezadosDelEquipo(),
         ...(opciones.cuerpo ? { 'content-type': 'application/octet-stream' } : {}),
         ...(opciones.encabezados ?? {}),
