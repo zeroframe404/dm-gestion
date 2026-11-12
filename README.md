@@ -182,10 +182,11 @@ Cómo funciona, en corto:
   (`src/main/vps/fuenteVps.ts`) implementa la misma interfaz `FuenteHoja` de siempre: el motor de
   sincronización, la cola, los conflictos y el importador corren tal cual, sólo cambió el transporte.
   (Lo que sí cambió, y en la 14.0: sin internet se **mira** pero no se escribe, ver «Canal en vivo».)
-- **La URL y el token van embebidos** (`src/main/servicios/config.ts`, mismo criterio que
-  `UPDATE_TOKEN`): las PCs se actualizan y quedan conectadas sin configurar nada. El token tiene que
-  coincidir con el `DMG_SYNC_TOKEN` del `.env` del VPS, y desde la v12.4 es también el que abre la base
-  de usuarios: es una sola puerta para todo lo compartido.
+- **La URL y el token van adentro del instalador**: las PCs se actualizan y quedan conectadas sin
+  configurar nada. La URL está en `src/main/servicios/config.ts`; **el token no está en el código**
+  (este repositorio es público): se pone al armar el instalador, desde un secreto de GitHub Actions
+  (ver «Secretos de fábrica»). Tiene que coincidir con el `DMG_SYNC_TOKEN` del `.env` del VPS, y desde
+  la v12.4 es también el que abre la base de usuarios: es una sola puerta para todo lo compartido.
 - **Primero se actualizan TODAS las computadoras a la v12, después se migra.** Una PC que siga en
   1.0.x escribe en Google sin ningún aviso, y lo que cargue después de la migración no llega al VPS
   (habría que repetirlo a mano en una PC al día). El ciclo de actualización automática es de hasta
@@ -2016,11 +2017,12 @@ commitea: `scripts/dist-demo.mjs` la arma (próximo parche + `-demo.<n>`) y la p
 
 ### Lo que NO lleva el instalador
 
-El código fuente tiene escritos el token del puente y la dirección del VPS de la agencia, la del control remoto y el
-token de GitHub de la semilla de usuarios. La demo no los usa, pero estando en el código viajarían adentro del .exe.
-`npm run dist:demo` compila el proceso principal con `DM_GESTION_DEMO=1`, que los reemplaza
-(`scripts/secretos-de-la-agencia.mjs`, plugin de `vite.main.config.mts`), y **revisa el resultado**: si alguno de
-esos valores sigue en el paquete, no arma el instalador. Si se agrega otro secreto al código, hay que sumarlo ahí.
+El código fuente tiene escritas la dirección del VPS de la agencia, la del control remoto y las de vuelta de Meta y
+TikTok. La demo no las usa, pero estando en el código viajarían adentro del .exe. `npm run dist:demo` compila el proceso
+principal con `DM_GESTION_DEMO=1`, que las reemplaza (`scripts/secretos-de-la-agencia.mjs`, plugin de
+`vite.main.config.mts`), y **revisa el resultado**: si alguno de esos valores sigue en el paquete, no arma el instalador.
+El token del puente ya no está en el código (ver «Secretos de fábrica»): la demo se compila sin ponerlo, y la revisión
+comprueba igual que no haya quedado.
 
 ### Cómo se publica
 
@@ -2052,10 +2054,11 @@ computadora que abre el programa después de actualizar encuentra el VPS sin doc
 manda el VPS y GitHub no se vuelve a tocar. Es automático a propósito: pedirle a alguien que apriete un
 botón de migración es pedirle que se acuerde de hacerlo **antes** de que otro intente ingresar.
 
-Cuando la agencia ya esté migrada (Acerca de → «Base de usuarios» dice «Compartida · VPS
-dmartinezseguros.com»), se vacía `TOKEN_DATOS` en `src/main/usuarios/github.ts`, se revoca el token en
-GitHub y se publica con `--sin-base-de-usuarios`. El repositorio `dm-gestion-datos` queda como copia
-histórica.
+**Desde la 18.1.3 `TOKEN_DATOS` va vacío**: la mudanza terminó en la v12.4 y el token estuvo escrito en
+este repositorio, que es público. Hay que revocarlo en GitHub (Settings → Developer settings → Personal
+access tokens) si todavía figura: vaciarlo en el código no lo saca del historial. El repositorio
+`dm-gestion-datos` queda como copia histórica, y `AlmacenGitHub` sólo se usa en desarrollo y en las
+pruebas, contra el simulador.
 
 **El `sha` ahora es una versión.** Lo único que cambia para el servicio de usuarios: en GitHub era el
 hash del blob y acá es el número de versión que devuelve el servidor. Sigue siendo opaco y sigue
@@ -2108,14 +2111,36 @@ En una instalación desde cero:
 
 ### Rotar el token
 
-El token del puente es uno solo y ya existía: se cambia en `VPS_TOKEN` (`src/main/servicios/config.ts`)
-y en el `DMG_SYNC_TOKEN` del `.env` del servidor, y tienen que cambiar los dos a la vez. **Antes de
+El token del puente es uno solo: el secreto `DMG_VPS_TOKEN` de GitHub Actions (lo que lleva el
+instalador) y el `DMG_SYNC_TOKEN` del `.env` del servidor. Para cambiarlo sin dejar a nadie afuera el
+servidor acepta por un tiempo el nuevo y el anterior (`DMG_SYNC_TOKEN_ANTERIOR`); los cinco pasos, en
+orden, están en `DEPLOY.md` del repositorio del servidor, «Rotar el token del puente». **Antes de
 rotarlo hay que fijar `DMG_AJUSTES_CLAVE`** con el valor viejo, o el documento de usuarios y los ajustes
 compartidos quedan cifrados con una llave que ya no se deriva de nada.
 
-El token de GitHub (`TOKEN_DATOS`) ya no se rota: cuando la agencia terminó de migrar se vacía y se
-revoca. Mientras tanto sólo lo usa la mudanza, y el programa no avisa más de su vencimiento porque el
-del puente no vence.
+### Secretos de fábrica (18.1.3)
+
+**En el código no se escribe ningún secreto.** Este repositorio es público, y hasta la 18.1.2 tuvo
+escritos el token del puente con el VPS (con él se lee y se escribe la cartera entera) y un token de
+GitHub. Quedaron en el historial: sacarlos del código no los borra de ahí, así que **hay que rotarlos**.
+
+- `VPS_TOKEN` (`src/main/servicios/config.ts`) está vacía en el código. Su valor es el secreto
+  **`DMG_VPS_TOKEN`** del repositorio (Settings → Secrets and variables → Actions). Los workflows que
+  arman un instalador de la agencia (`Publicar`, `Publicar beta`) se lo pasan a la compilación como
+  `DMG_FABRICA_VPS_TOKEN`, y `scripts/secretos-de-fabrica.mjs` (plugin de `vite.main.config.mts`) lo
+  pone en su lugar al compilar el proceso principal.
+- `scripts/verificar-fabrica.mjs` corta la publicación si el secreto falta (antes de las pruebas) o si el
+  programa compilado no lo lleva (antes de empujar la versión): un instalador sin token deja a todas las
+  computadoras sin poder ingresar, y se instala solo.
+- Para armar un instalador a mano: `DMG_FABRICA_VPS_TOKEN=<el token> npm run dist`. Sin la variable,
+  `npm run dist` arma uno que no habla con el servidor (sirve para probar la instalación, no para usar).
+- En desarrollo y en las pruebas la constante queda vacía: ahí nunca se habla con el servidor de verdad.
+- `pruebas/secretos.prueba.ts` falla si alguien vuelve a escribir un token en el código.
+
+Lo que esto **no** resuelve: el token sigue viajando adentro del .exe, y el .exe se publica en un Release
+de este repositorio. Quien quiera lo saca de ahí. Lo que hace que valga poco es el servidor: con
+`DMG_EXIGIR_SESION=1` ese token sólo sirve para pedir ingresar, y para eso hace falta la contraseña de
+alguien (ver «Cuenta por persona contra el servidor»).
 
 ### Recuperación de emergencia
 

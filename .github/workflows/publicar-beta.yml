@@ -62,11 +62,25 @@ jobs:
 
       # El mismo banco de pruebas que la estable: una beta que se instala sola en la PC del dueño tampoco
       # tiene por qué salir rota.
+      # El token del puente con el servidor no está en el código: es un secreto del repositorio (ver
+      # scripts/secretos-de-fabrica.mjs). Sin él la beta no podría ingresar ni sincronizar.
+      - name: Comprobar los secretos de fábrica
+        run: node scripts/verificar-fabrica.mjs --antes
+        env:
+          DMG_FABRICA_VPS_TOKEN: ${{ secrets.DMG_VPS_TOKEN }}
+
       - name: Correr el banco de pruebas
         run: npm run prueba
 
       - name: Armar el instalador de la beta
         run: npm run dist:beta
+        env:
+          DMG_FABRICA_VPS_TOKEN: ${{ secrets.DMG_VPS_TOKEN }}
+
+      - name: Comprobar que el instalador lleva los secretos de fábrica
+        run: node scripts/verificar-fabrica.mjs
+        env:
+          DMG_FABRICA_VPS_TOKEN: ${{ secrets.DMG_VPS_TOKEN }}
 
       - name: Publicar en el Release beta-canal
         run: node scripts/publicar-beta.mjs

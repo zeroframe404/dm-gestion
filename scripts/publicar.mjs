@@ -13,27 +13,20 @@ const { version } = JSON.parse(readFileSync(path.join(raiz, 'package.json'), 'ut
 const tag = `v${version}`
 const REPO = 'zeroframe404/dm-gestion'
 
-// Desde la v12.4 la base de usuarios vive en el VPS y el token de GitHub quedó como SEMILLA de la
-// mudanza: lo usa la primera computadora que abre el programa después de actualizar, para copiar el
-// usuarios.json del repositorio al servidor. Mientras la agencia no haya migrado, publicar sin él
-// dejaría el VPS vacío y a nadie pudiendo ingresar. Cuando ya esté migrada se vacía TOKEN_DATOS, se
-// revoca el token y se publica con --sin-base-de-usuarios (que a esa altura ya no saca nada).
-const fuenteGithub = readFileSync(path.join(raiz, 'src/main/usuarios/github.ts'), 'utf8')
-const tokenVacio = /export const TOKEN_DATOS = ''/.test(fuenteGithub)
-if (tokenVacio && !process.argv.includes('--sin-base-de-usuarios')) {
-  console.error('[publicar] TOKEN_DATOS está vacío en src/main/usuarios/github.ts: si la agencia todavía no migró la base al VPS, esta versión la dejaría sin usuarios.')
-  console.error('[publicar] Pegá el fine-grained PAT (ver README, «Base de usuarios compartida») o, si la mudanza al VPS ya está hecha, publicá con --sin-base-de-usuarios.')
-  process.exit(1)
-}
-
-// Lo mismo con el puente del VPS (v12): una versión sin token deja a todas las PCs sin poder
-// sincronizar la cartera contra la base del servidor.
-const fuenteVpsConfig = readFileSync(path.join(raiz, 'src/main/servicios/config.ts'), 'utf8')
-const vpsSinToken = /const VPS_TOKEN = ''/.test(fuenteVpsConfig) || /const VPS_URL_BASE = ''/.test(fuenteVpsConfig)
-if (vpsSinToken && !process.argv.includes('--sin-base-vps')) {
-  console.error('[publicar] VPS_TOKEN o VPS_URL_BASE están vacíos en src/main/servicios/config.ts: la cartera no podría sincronizar con el VPS.')
-  console.error('[publicar] Completalos (ver README, «La base en el VPS») o publicá con --sin-base-vps.')
-  process.exit(1)
+// El instalador tiene que llevar adentro el token del puente con el servidor, que no está escrito en el
+// código: sale de los secretos de GitHub Actions (ver scripts/secretos-de-fabrica.mjs). Una versión sin
+// él deja a todas las computadoras sin poder ingresar ni sincronizar, y se instala sola.
+//
+// (Hasta la 18.1.2 acá se miraba que `TOKEN_DATOS` y `VPS_TOKEN` estuvieran escritos en el código. Ya no
+// se escriben: el de GitHub era la semilla de una mudanza que terminó en la v12.4, y el del puente pasó
+// a ser un secreto.)
+if (!process.argv.includes('--sin-base-vps')) {
+  try {
+    execFileSync(process.execPath, [path.join(raiz, 'scripts/verificar-fabrica.mjs')], { cwd: raiz, stdio: 'inherit' })
+  } catch {
+    console.error('[publicar] No se publica. Para publicar a propósito una versión sin servidor: --sin-base-vps.')
+    process.exit(1)
+  }
 }
 
 const archivos = [

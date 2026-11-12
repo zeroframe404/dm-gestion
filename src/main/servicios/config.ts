@@ -190,14 +190,15 @@ export function urlDeVueltaDeMeta(): string {
   return esDemo() ? URL_DE_VUELTA_DE_LA_DEMO : URL_DE_REDIRECCION_DE_META
 }
 
-// La base del GENERAL DE CLIENTES vive en el VPS de la agencia desde la v12. La URL y el token van
-// embebidos y config.json puede pisarlos para pruebas o si algún día cambia el dominio.
+// La base del GENERAL DE CLIENTES vive en el VPS de la agencia desde la v12. La dirección va escrita
+// acá y `config.json` puede pisarla (para pruebas, o para la agencia que tenga su propio servidor).
 //
-// OJO: ese criterio ("total el repositorio es privado") ya no vale — el repositorio es PÚBLICO, así
-// que este token, como TOKEN_DATOS, está a la vista de cualquiera. Hay que rotarlos y sacarlos del
-// código (leerlos de config.json, que no se publica). El del updater ya se sacó: no hacía falta.
+// EL TOKEN NO SE ESCRIBE ACÁ. Este repositorio es público: hasta la 18.1.2 el token estaba en esta
+// línea, a la vista de cualquiera. `VPS_TOKEN` queda vacía en el código y su valor se pone al armar el
+// instalador, desde los secretos de GitHub Actions (ver scripts/secretos-de-fabrica.mjs). En desarrollo
+// y en las pruebas queda vacía, que es lo correcto: ahí nunca se habla con el servidor de verdad.
 const VPS_URL_BASE = 'https://dmartinezseguros.com'
-const VPS_TOKEN = '8b8e041002f5125c317b463b551e6fd90fd6fad0ec827cac09e824d17ed3a5cb'
+const VPS_TOKEN = ''
 
 // La consola con la que se atienden las computadoras de las sucursales sin ir hasta el local. Vive en
 // el mismo VPS, detrás de su subdominio. Va embebida por el mismo criterio que la URL del VPS, y
