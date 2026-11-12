@@ -30,12 +30,18 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
-    version: '18.1.1',
-    fecha: '2026-11-11',
+    version: '18.1.2',
+    fecha: '2026-11-12',
     cambios: [
       { tipo: 'agregado', texto: 'Permisos: ahora se pueden crear roles propios además de Administrador y Usuario (por ejemplo «Caja» o «Siniestros»). Se elige el rol en una lista, se le pone nombre y se define módulo por módulo: «Permitido» (lectura y escritura), «Solo lectura» o «Sin permiso» (el módulo no se muestra). El rol se asigna a cada persona en Administración → Usuarios.' },
       { tipo: 'agregado', texto: 'Autorizaciones puntuales: cada rol puede tener tildado «Puede solicitar autorizaciones puntuales». Esa persona ve en la barra superior una llave para pedir acceso a un módulo que no tiene (sólo lectura, o lectura y escritura) y explicar para qué. Quien puede resolver (el superadministrador o un rol con «Puede resolver») autoriza, deja solo lectura o deniega, elige cuánto dura el acceso y puede escribir un mensaje, que le llega a quien pidió en su campana.' },
       { tipo: 'modificado', texto: 'Permisos: los niveles ahora se llaman «Permitido», «Solo lectura» y «Sin permiso». La barra superior muestra el nombre del rol de cada persona.' },
+    ],
+  },
+  {
+    version: '18.1.1',
+    fecha: '2026-11-11',
+    cambios: [
       { tipo: 'modificado', texto: 'Asistente con IA: si se le pregunta algo que no tiene que ver con el programa, contesta «No puedo responder eso porque no tiene que ver con el software.» y no lo responde.' },
       { tipo: 'modificado', texto: 'Asistente con IA: si se le pide algo que va contra las reglas de uso de Claude, contesta «Esa pregunta viola los términos y condiciones de Claude.»' },
       { tipo: 'agregado', texto: 'Reportar error y Sugerir mejora: al apretar «Enviar», la IA lee el reporte y las capturas y agrega al pedido qué puede estar pasando y qué conviene revisar, para que se resuelva más rápido. Tarda unos segundos más; si la IA no está disponible, el reporte sale igual.' },
