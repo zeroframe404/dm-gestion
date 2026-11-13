@@ -598,6 +598,11 @@ const api: ApiDm = {
     guardar: (marca) => invocar('marca:guardar', marca),
     restaurar: () => invocar('marca:restaurar'),
   },
+  catalogos: {
+    obtener: () => invocar('catalogos:obtener'),
+    guardar: (catalogos) => invocar('catalogos:guardar', catalogos),
+    restaurar: () => invocar('catalogos:restaurar'),
+  },
 }
 
 contextBridge.exposeInMainWorld('dm', api)

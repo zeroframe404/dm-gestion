@@ -27,6 +27,7 @@ import { registrarIpc } from './ipc'
 import { arrancarCartero, apurarAlCartero, pararCartero } from './mensajeria/cartero'
 import { carpetaDatos, configurarCarpetaDatos, limpiarDatosDeLaDemo, rutaBaseDeDatos } from './rutas'
 import { adoptarAjustesAlArrancar } from './servicios/ajustesCompartidos'
+import { cargarCatalogosAlArrancar } from './servicios/catalogos'
 import { bajarCatalogoAlArrancar } from './servicios/catalogoVehiculos'
 import { configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
 import { credencialesVps } from './servicios/config'
@@ -438,6 +439,8 @@ function milisegundosDesdeElInicio(): number {
 }
 
 function arrancarElPrograma(): void {
+  // Las sucursales y ramas guardadas, ANTES de abrir la base: la siembra de sucursales lee la lista vigente.
+  cargarCatalogosAlArrancar()
   try {
     abrirBaseDeDatos(rutaBaseDeDatos())
   } catch (error) {

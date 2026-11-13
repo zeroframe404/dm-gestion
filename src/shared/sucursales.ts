@@ -1,51 +1,49 @@
-// Las cuatro sucursales de la agencia. Vive en shared, como el semáforo y las pólizas, porque la lista
+import { claveDeCatalogo, SUCURSALES_DE_FABRICA, type SucursalConfigurada } from './catalogos'
+
+// Las sucursales de la agencia. Vive en shared, como el semáforo y las pólizas, porque la lista
 // tiene que ser LA MISMA para el proceso principal, el importador y las pantallas: si cada lado arma su
 // propia lista, un filtro ofrece cuatro opciones y otro cinco, y la diferencia se ve como filas que
 // desaparecen sin explicación.
 //
-// La lista es cerrada a propósito. Antes el catálogo se sembraba con tres nombres y cualquier texto que
+// La lista es cerrada a propósito, pero configurable (Administración → Sucursales y ramas, ver `catalogos.ts`).
+// Lo que sigue describe por qué es cerrada. Antes el catálogo se sembraba con tres nombres y cualquier texto que
 // llegara de la hoja de Google o del usuarios.json de GitHub podía crear una sucursal más; así aparecían
 // «AVELLANEDA» y «Dock Sud» como dos locales distintos cuando son el mismo mostrador.
 
-/** Las únicas sucursales que existen, en el orden en que se ofrecen. */
-export const SUCURSALES = ['Dock Sud', 'Lanús', 'Sarandí', 'Daniel'] as const
+/**
+ * Las únicas sucursales que existen, en el orden en que se ofrecen. Es la lista VIGENTE: arranca con las de
+ * fábrica y `configurarSucursales` la reemplaza EN EL LUGAR (mismo arreglo), así que quien la importó sigue
+ * viendo la lista actual sin enterarse. Se lee siempre en el momento de usarla, nunca se copia a una constante.
+ */
+const VIGENTES: string[] = SUCURSALES_DE_FABRICA.map((s) => s.nombre)
+export const SUCURSALES: readonly string[] = VIGENTES
 
-export type NombreDeSucursal = (typeof SUCURSALES)[number]
+export type NombreDeSucursal = string
+
+/** Forma para comparar (ver `claveDeCatalogo`): «dock sud», «DOCKSUD» y «Dock-Sud» dan la misma clave. */
+export const claveDeSucursal = claveDeCatalogo
+
+const POR_CLAVE = new Map<string, string>()
 
 /**
- * Forma para comparar: mayúsculas, sin tildes, sin puntuación ni espacios. «dock sud», «DOCKSUD» y
- * «Dock-Sud» dan la misma clave. Se compara acá y nunca en el SQL: `UPPER()` y `COLLATE NOCASE` de
- * SQLite sólo tocan el ASCII, así que `UPPER('Lanús')` devuelve `'LANúS'` y no empata con el «LANUS»
- * que escribe la planilla.
+ * Cambia las sucursales vigentes. Los sinónimos (el nombre anterior de una sucursal renombrada, «Avellaneda»
+ * para Dock Sud) se suman a la tabla de claves, así las filas con el nombre viejo se siguen leyendo bien.
  */
-export function claveDeSucursal(valor: unknown): string {
-  if (valor === null || valor === undefined) return ''
-  return String(valor)
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^A-Z0-9]+/g, '')
+export function configurarSucursales(lista: readonly SucursalConfigurada[]): void {
+  VIGENTES.splice(0, VIGENTES.length, ...lista.map((s) => s.nombre))
+  POR_CLAVE.clear()
+  for (const s of lista) for (const alias of s.sinonimos) POR_CLAVE.set(claveDeSucursal(alias), s.nombre)
+  // Los nombres propios al final: si un sinónimo choca con un nombre (no debería, `normalizarCatalogos` lo evita) gana el nombre.
+  for (const s of lista) POR_CLAVE.set(claveDeSucursal(s.nombre), s.nombre)
 }
 
-/**
- * Las otras formas de escribir la misma sucursal. La única que no se deduce de la clave es Avellaneda:
- * el mostrador de Dock Sud está en Avellaneda y la agencia lo nombra de las dos maneras, así que la
- * planilla y los usuarios viejos traen cualquiera de las dos.
- */
-const SINONIMOS: Record<string, NombreDeSucursal> = {
-  AVELLANEDA: 'Dock Sud',
-}
-
-const POR_CLAVE = new Map<string, NombreDeSucursal>([
-  ...SUCURSALES.map((nombre) => [claveDeSucursal(nombre), nombre] as const),
-  ...Object.entries(SINONIMOS).map(([alias, nombre]) => [claveDeSucursal(alias), nombre] as const),
-])
+configurarSucursales(SUCURSALES_DE_FABRICA)
 
 /**
  * La sucursal de la agencia que ese texto nombra, escrita como la escribe el catálogo, o null si el
- * texto no es ninguna de las cuatro. «AVELLANEDA» y «DOCK SUD» devuelven las dos «Dock Sud».
+ * texto no es ninguna de las vigentes. «AVELLANEDA» y «DOCK SUD» devuelven las dos «Dock Sud».
  */
-export function sucursalCanonica(texto: unknown): NombreDeSucursal | null {
+export function sucursalCanonica(texto: unknown): string | null {
   const clave = claveDeSucursal(texto)
   if (!clave) return null
   return POR_CLAVE.get(clave) ?? null
@@ -90,7 +88,8 @@ export function normalizarNombreDeSucursal(texto: string): string {
   return sucursalCanonica(texto) ?? texto
 }
 
-/** «Dock Sud, Lanús, Sarandí o Daniel», para los mensajes que enumeran el catálogo. */
+/** «Dock Sud, Lanús, Sarandí o Daniel» (las vigentes), para los mensajes que enumeran el catálogo. */
 export function sucursalesEnTexto(): string {
+  if (SUCURSALES.length <= 1) return SUCURSALES.join('')
   return `${SUCURSALES.slice(0, -1).join(', ')} o ${SUCURSALES[SUCURSALES.length - 1]}`
 }

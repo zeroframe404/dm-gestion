@@ -31,6 +31,7 @@ import { Sincronizacion } from './Sincronizacion'
 import { SincronizarTodo } from './SincronizarTodo'
 import { Usuarios } from './Usuarios'
 import { Ciberseguridad } from './Ciberseguridad'
+import { Catalogos } from './Catalogos'
 import { Marca } from './Marca'
 
 type IdSeccion =
@@ -40,6 +41,7 @@ type IdSeccion =
   | 'ciberseguridad'
   | 'registromensajes'
   | 'marca'
+  | 'catalogos'
   | 'companias'
   | 'impresora'
   | 'sincronizar'
@@ -71,6 +73,7 @@ export function Administracion() {
       lista.push({ id: 'permisos', nombre: 'Permisos', icono: 'candado', ayuda: 'administracion.permisos' })
       // Lo que cuida el acceso al programa (hoy, el control de horarios): sólo del superadministrador.
       lista.push({ id: 'marca', nombre: 'Marca', icono: 'escudo', ayuda: 'administracion.marca' })
+      lista.push({ id: 'catalogos', nombre: 'Sucursales y ramas', icono: 'clientes', ayuda: 'administracion.catalogos' })
       lista.push({ id: 'ciberseguridad', nombre: 'Ciberseguridad', icono: 'escudo', ayuda: 'administracion.ciberseguridad' })
       // El registro del chat interno: todo lo que se dijo, incluidas las conversaciones en las que el
       // superadministrador no está y los mensajes que alguien borró.
@@ -137,6 +140,7 @@ export function Administracion() {
         {seccion === 'usuarios' && <Usuarios />}
         {seccion === 'permisos' && <Permisos />}
         {seccion === 'marca' && <Marca />}
+        {seccion === 'catalogos' && <Catalogos />}
         {seccion === 'ciberseguridad' && <Ciberseguridad />}
         {seccion === 'registromensajes' && <RegistroDeMensajes />}
         {seccion === 'companias' && <Companias />}

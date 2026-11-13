@@ -2,6 +2,8 @@
 // por ejecución: el canal sale del instalador y no cambia mientras el programa está abierto.
 import { useEffect, useState } from 'react'
 import type { Canal } from '../shared/canal'
+import { type Catalogos } from '../shared/catalogos'
+import { aplicarCatalogos } from '../shared/catalogosVigentes'
 import { variablesDeColor, type Marca } from '../shared/marca'
 import { alCambiarMarca, anotarCanal, anotarMarca, canalSinEsperar, marcaActual, marcaVisible, nombreDeLaAgencia } from './agencia'
 
@@ -30,6 +32,21 @@ export async function cargarMarca(): Promise<void> {
     if (resultado.ok) aplicarMarca(resultado.datos)
   } catch {
     /* queda la de fábrica */
+  }
+}
+
+/** Deja las sucursales y las ramas de esta ventana como dice el proceso principal (las listas de `shared` son por ventana). */
+export function aplicarCatalogosEnPantalla(catalogos: Catalogos): void {
+  aplicarCatalogos(catalogos)
+}
+
+/** Le pregunta las sucursales y ramas al proceso principal y las aplica. Si no contesta, quedan las de fábrica. */
+export async function cargarCatalogos(): Promise<void> {
+  try {
+    const resultado = await window.dm.catalogos.obtener()
+    if (resultado.ok) aplicarCatalogosEnPantalla(resultado.datos)
+  } catch {
+    /* quedan las de fábrica */
   }
 }
 
