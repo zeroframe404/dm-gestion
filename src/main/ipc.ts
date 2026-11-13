@@ -393,6 +393,7 @@ import { ErrorDeNegocio, FueraDeHorario, SinConexion } from './servicios/errores
 import { estadoDelMesh } from './servicios/mesh'
 import { elegirImagenesDelReporte, enviarReporteDeError, imagenDelPortapapeles } from './servicios/soporte'
 import { estadoDeLaBaseVps, migrarAlVps } from './servicios/migracionVps'
+import { elegirArchivo as elegirArchivoDeAlta, ensayarAlta, estadoDelAlta, olvidarLibro, publicarAlta, sugerirColumnasDeHoja } from './servicios/altaDesdeExcel'
 import {
   abrirCarpetaInformes,
   cancelarImportacion,
@@ -754,6 +755,38 @@ export function registrarIpc(): void {
     exigirRol('SUPER_ADMIN')
     exigirEdicion('administracion')
     return exito(await migrarAlVps())
+  })
+
+  // Alta desde Excel: sólo el superadministrador (carga la base entera de la agencia).
+  manejar('altaExcel:estado', async () => {
+    exigirRol('SUPER_ADMIN')
+    exigirVista('administracion')
+    return exito(await estadoDelAlta())
+  })
+  manejar('altaExcel:elegirArchivo', async () => {
+    exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await elegirArchivoDeAlta(ventanaActual()))
+  })
+  manejar('altaExcel:sugerirColumnas', (token, indice, tipo, filaEncabezados) => {
+    exigirRol('SUPER_ADMIN')
+    exigirVista('administracion')
+    return exito(sugerirColumnasDeHoja(token, indice, tipo, filaEncabezados))
+  })
+  manejar('altaExcel:ensayar', async (asignacion) => {
+    exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await ensayarAlta(asignacion))
+  })
+  manejar('altaExcel:publicar', async (asignacion) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await publicarAlta(asignacion, actor))
+  })
+  manejar('altaExcel:olvidar', () => {
+    exigirRol('SUPER_ADMIN')
+    olvidarLibro()
+    return exito(null)
   })
 
   // Importación desde Google Sheets: SUPER_ADMIN y ADMIN

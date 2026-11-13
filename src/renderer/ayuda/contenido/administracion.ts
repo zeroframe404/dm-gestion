@@ -484,6 +484,40 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.altaExcel': {
+    clave: 'administracion.altaExcel',
+    titulo: 'Administración → Alta desde Excel',
+    resumen: 'Para una agencia que empieza: sube su propio Excel o CSV, elige qué es cada hoja y cada columna, ensaya y lo carga en la base vacía.',
+    secciones: [
+      {
+        titulo: 'Para qué sirve',
+        parrafos: [
+          'Cuando una agencia empieza a usar el programa, su cartera está en su propio Excel, con sus propios nombres de hojas y de columnas. Esta pantalla lo lee y lo carga en la base de la agencia, que tiene que estar vacía (recién instalada). Se hace una sola vez, desde una sola computadora, y la hace el superadministrador. Después, todo se edita desde el programa como siempre.',
+          'Sirven los archivos .xlsx de Excel y los .csv. Un Excel viejo (.xls) o protegido con contraseña hay que abrirlo en Excel y guardarlo como «Libro de Excel (.xlsx)».',
+        ],
+      },
+      {
+        titulo: 'Los pasos',
+        parrafos: [
+          'Hojas: para cada hoja del archivo se elige qué tiene —la cartera (clientes, pólizas y vehículos), bajas, siniestros, pagos o riesgos varios— o «No importar». También en qué fila están los títulos, si la hoja tiene algo arriba. Las hojas del mismo tipo se juntan en una sola (por ejemplo, una cartera por sucursal).',
+          'Columnas: para cada columna se elige a qué dato del programa corresponde. Lo que el programa reconoce solo ya viene elegido. Dos columnas en el mismo dato se juntan (APELLIDO y NOMBRE forman el nombre). Con «Valores fijos» se completa un dato que el Excel no trae, como la sucursal si la agencia tiene una sola. Arriba se ve qué falta: el nombre o el DNI es obligatorio para la cartera; lo demás es recomendado.',
+          'Revisar y cargar: el programa hace un ensayo en memoria, sin tocar el servidor ni la computadora, y muestra cómo quedaría cada pestaña y el mismo informe que va a salir de verdad. Si una sucursal del Excel no está en la lista, se elige con cuál se carga. Con todo bien, «Cargar en la base» lo sube y lo importa; las demás computadoras lo bajan solas.',
+        ],
+      },
+      {
+        titulo: 'Cuándo no se puede',
+        parrafos: [
+          'Si la base de la agencia ya tiene datos, se puede ensayar pero no cargar: el alta es sólo para empezar. Tampoco se carga desde la versión beta conectada a la base real ni desde la demostración.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Ensayo',
+        explicacion: 'Una importación de prueba, hecha en memoria, que muestra lo que va a pasar sin cargar nada.',
+      },
+    ],
+  },
   'administracion.sincronizacion': {
     clave: 'administracion.sincronizacion',
     titulo: 'Administración → Sincronización',

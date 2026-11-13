@@ -50,7 +50,7 @@ function crc32(datos: Buffer): number {
   return (c ^ -1) >>> 0
 }
 
-interface EntradaZip {
+export interface EntradaZip {
   nombre: string
   datos: Buffer
 }
@@ -64,7 +64,7 @@ function fechaDos(fecha: Date): { dia: number; hora: number } {
   }
 }
 
-function armarZip(entradas: EntradaZip[], fecha: Date): Buffer {
+export function armarZip(entradas: EntradaZip[], fecha: Date): Buffer {
   const { dia, hora } = fechaDos(fecha)
   const partes: Buffer[] = []
   const central: Buffer[] = []

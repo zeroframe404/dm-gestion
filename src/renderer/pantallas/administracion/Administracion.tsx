@@ -21,6 +21,7 @@ import { Companias } from './Companias'
 import { ConexionGoogle } from './ConexionGoogle'
 import { ControlRemoto } from './ControlRemoto'
 import { ImportarGoogle } from './ImportarGoogle'
+import { AltaDesdeExcel } from './AltaDesdeExcel'
 import { Impresora } from './Impresora'
 import { Permisos } from './Permisos'
 import { RedesSociales } from './RedesSociales'
@@ -51,6 +52,7 @@ type IdSeccion =
   | 'basededatos'
   | 'google'
   | 'importar'
+  | 'altaExcel'
   | 'sincronizacion'
   | 'redessociales'
   | 'vehiculos'
@@ -79,6 +81,8 @@ export function Administracion() {
       lista.push({ id: 'ciberseguridad', nombre: 'Ciberseguridad', icono: 'escudo', ayuda: 'administracion.ciberseguridad' })
       // La licencia de la agencia: vencimiento, computadoras en uso y renovación (no existe en la demo).
       if (!esDemo) lista.push({ id: 'licencia', nombre: 'Licencia', icono: 'candado', ayuda: 'administracion.licencia' })
+      // Una agencia nueva carga su propio Excel en la base vacía (una sola vez). En la demo la base ya viene cargada.
+      if (!esDemo) lista.push({ id: 'altaExcel', nombre: 'Alta desde Excel', icono: 'subir', ayuda: 'administracion.altaExcel' })
       // El registro del chat interno: todo lo que se dijo, incluidas las conversaciones en las que el
       // superadministrador no está y los mensajes que alguien borró.
       lista.push({ id: 'registromensajes', nombre: 'Registro de mensajes', icono: 'mensaje', ayuda: 'administracion.registromensajes' })
@@ -155,6 +159,7 @@ export function Administracion() {
         {seccion === 'almacenamiento' && <AlmacenamientoEnNube />}
         {seccion === 'google' && <ConexionGoogle />}
         {seccion === 'importar' && <ImportarGoogle />}
+        {seccion === 'altaExcel' && <AltaDesdeExcel />}
         {seccion === 'sincronizacion' && <Sincronizacion />}
         {seccion === 'redessociales' && <RedesSociales />}
         {seccion === 'vehiculos' && <CatalogoVehiculos />}

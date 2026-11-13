@@ -595,6 +595,14 @@ export interface ApiDm {
     pegarImagen: Remota<'soporte:pegarImagen'>
     reportar: Remota<'soporte:reportar'>
   }
+  altaExcel: {
+    estado: Remota<'altaExcel:estado'>
+    elegirArchivo: Remota<'altaExcel:elegirArchivo'>
+    sugerirColumnas: Remota<'altaExcel:sugerirColumnas'>
+    ensayar: Remota<'altaExcel:ensayar'>
+    publicar: Remota<'altaExcel:publicar'>
+    olvidar: Remota<'altaExcel:olvidar'>
+  }
   importacion: {
     vistaPrevia: Remota<'importacion:vistaPrevia'>
     iniciar: Remota<'importacion:iniciar'>

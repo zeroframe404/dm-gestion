@@ -308,6 +308,12 @@ import type {
   ReporteDeGaleno,
   ReporteGaleno,
   SubModeloGaleno,
+  AsignacionDeAlta,
+  EnsayoDeAlta,
+  EstadoDeAltaExcel,
+  LibroDeAlta,
+  ResumenDeAltaExcel,
+  TipoDeHojaDeAlta,
 } from './tipos'
 // El foco y la presencia son del protocolo del canal, que es la copia exacta de lo que declara el
 // servidor (14.0). Se toman de ahí y no se vuelven a escribir acá: sólo el tipo, así que la flecha se
@@ -384,6 +390,16 @@ export interface Canales {
   // La base del GENERAL DE CLIENTES en el VPS (v12): estado y migración inicial.
   'vps:estado': () => Resultado<EstadoMigracionVps>
   'vps:migrar': () => Resultado<ResumenMigracionVps>
+
+  // Alta desde Excel: una agencia nueva sube su propio Excel a su base vacía (sólo superadministrador).
+  'altaExcel:estado': () => Resultado<EstadoDeAltaExcel>
+  /** Abre el diálogo para elegir el archivo y lo lee. null si se canceló. */
+  'altaExcel:elegirArchivo': () => Resultado<LibroDeAlta | null>
+  /** Lo que el programa reconoce solo en una hoja con ese tipo y esa fila de encabezados. */
+  'altaExcel:sugerirColumnas': (token: string, indice: number, tipo: TipoDeHojaDeAlta, filaEncabezados: number) => Resultado<Array<string | null>>
+  'altaExcel:ensayar': (asignacion: AsignacionDeAlta) => Resultado<EnsayoDeAlta>
+  'altaExcel:publicar': (asignacion: AsignacionDeAlta) => Resultado<ResumenDeAltaExcel>
+  'altaExcel:olvidar': () => Resultado<null>
 
   'importacion:vistaPrevia': () => Resultado<VistaPreviaHoja>
   'importacion:iniciar': () => Resultado<{ importacionId: number }>

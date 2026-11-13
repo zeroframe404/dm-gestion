@@ -80,6 +80,14 @@ const api: ApiDm = {
     estado: () => invocar('vps:estado'),
     migrar: () => invocar('vps:migrar'),
   },
+  altaExcel: {
+    estado: () => invocar('altaExcel:estado'),
+    elegirArchivo: () => invocar('altaExcel:elegirArchivo'),
+    sugerirColumnas: (token, indice, tipo, filaEncabezados) => invocar('altaExcel:sugerirColumnas', token, indice, tipo, filaEncabezados),
+    ensayar: (asignacion) => invocar('altaExcel:ensayar', asignacion),
+    publicar: (asignacion) => invocar('altaExcel:publicar', asignacion),
+    olvidar: () => invocar('altaExcel:olvidar'),
+  },
   importacion: {
     vistaPrevia: () => invocar('importacion:vistaPrevia'),
     iniciar: () => invocar('importacion:iniciar'),
