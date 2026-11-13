@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '18.1.3',
     fecha: '2026-11-12',
     cambios: [
+      { tipo: 'agregado', texto: 'Administración → Marca (sólo superadministrador): se puede cambiar el nombre del programa, el nombre de la agencia que firma los mensajes, presupuestos y reportes, el color principal y el logo. El cambio llega a las otras computadoras al abrir el programa.' },
       { tipo: 'modificado', texto: 'Seguridad: al ingresar con internet, el usuario y la contraseña ahora los comprueba el servidor de la agencia, y cada persona queda identificada ante él. Para ingresar no cambia nada: mismo usuario y misma contraseña, y sin internet se sigue entrando como siempre.' },
       { tipo: 'modificado', texto: 'Seguridad: si a alguien lo desactivan o le cambian la contraseña desde otra computadora, su sesión se cierra en menos de un minuto (antes podía tardar hasta quince).' },
     ],

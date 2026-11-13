@@ -414,6 +414,7 @@ import {
   puedeEditar,
   puedeVer as puedeVerElArea,
 } from './servicios/permisos'
+import { guardarMarca, marcaVigente, restaurarMarca } from './servicios/marca'
 import { exigirRol, exigirSesion, sesion } from './servicios/sesion'
 import { listarSucursales } from './servicios/sucursales'
 import { estadoDeActualizacionesPorSucursal } from './servicios/estadoDeActualizaciones'
@@ -2637,5 +2638,21 @@ export function registrarIpc(): void {
     borrarClaveDelAsistente()
     await borrarAsistenteDelVps().catch((error) => console.error('[asistente] No se pudo borrar la clave del VPS:', error))
     return exito(estadoDelAsistente(actor))
+  })
+
+  // La marca: leerla no pide sesión (el ingreso ya se dibuja con ella); cambiarla es del superadministrador.
+  // Si el servidor no está, queda guardada en esta computadora y no se devuelve un error rojo.
+  manejar('marca:obtener', () => exito(marcaVigente()))
+  manejar('marca:guardar', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    const marca = guardarMarca(datos)
+    await publicarSinRomper('marca', actor.nombre)
+    return exito(marca)
+  })
+  manejar('marca:restaurar', async () => {
+    const actor = exigirRol('SUPER_ADMIN')
+    const marca = restaurarMarca()
+    await publicarSinRomper('marca', actor.nombre)
+    return exito(marca)
   })
 }

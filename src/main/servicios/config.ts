@@ -17,6 +17,7 @@ import {
 import { esDemo } from '../canal'
 import { credencialesDeLaDemo } from '../demo/servidor'
 import { rutaConfig } from '../rutas'
+import { normalizarMarca, type Marca } from '../../shared/marca'
 import { EJEMPLO_URL_DEL_VPS, TOKEN_DE_LA_DEMO } from '../../shared/demo'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
@@ -151,6 +152,8 @@ interface Config {
   mercantil?: ConfigMercantil
   equidad?: ConfigEquidad
   asistente?: ConfigAsistente
+  /** La marca configurable (ver `shared/marca.ts`). Cruda: se limpia con `normalizarMarca` al leerla. */
+  marca?: unknown
 }
 
 /**
@@ -926,4 +929,28 @@ export function adoptarAsistente(valor: unknown): boolean {
   if (!claveApi) return false
   guardarClaveDelAsistente(claveApi)
   return true
+}
+
+// ---------------------------------------------------------------------------
+// La marca configurable (nombre, agencia, color y logo)
+// ---------------------------------------------------------------------------
+
+/** La marca guardada en esta computadora; la de fábrica si nunca se tocó. */
+export function marcaGuardada(): Marca {
+  return normalizarMarca(leerConfig().marca)
+}
+
+/** Si alguien la tocó alguna vez en esta computadora (o la adoptó del servidor). */
+export function hayMarcaGuardada(): boolean {
+  return leerConfig().marca !== undefined
+}
+
+/**
+ * Guarda la marca ya limpia. Aunque sea la de fábrica se deja anotada: «restaurar» tiene que viajar al
+ * servidor como una marca más, o las otras computadoras volverían a bajar la vieja.
+ */
+export function guardarMarcaEnConfig(marca: Marca): void {
+  const config = leerConfig()
+  config.marca = marca
+  escribirConfig(config)
 }

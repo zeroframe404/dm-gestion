@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { EstadoActualizacion, EstadoDeAcceso, InfoApp } from '../../../shared/tipos'
 import { HISTORIAL_DE_CAMBIOS } from '../../../shared/cambios'
-import { MARCA_DEMO, NOMBRE_ESTABLE } from '../../../shared/canal'
+import { MARCA_DEMO } from '../../../shared/canal'
 import { LogoDeLaMarca } from '../../componentes/LogoDeLaMarca'
 import { ListaDeCambios } from '../../componentes/ListaDeCambios'
 import { Icono } from '../../componentes/Icono'
@@ -11,7 +11,8 @@ import { BotonManual } from '../../componentes/BotonManual'
 import { Boton, Cargando, Dialogo, Tarjeta, haceCuanto } from '../../componentes/ui'
 import { avisoDeVencimiento, useAcceso } from '../../contexto/Acceso'
 import { useUsuarioActual } from '../../contexto/Sesion'
-import { useEsDemo, useNombreDeLaAgencia } from '../../canal'
+import { useEsDemo, useMarca, useNombreDeLaAgencia } from '../../canal'
+import { LogoPropio } from '../../componentes/LogoPropio'
 
 function textoDeSituacion(estado: EstadoActualizacion, canal: InfoApp['canal'] | undefined): string {
   switch (estado.situacion) {
@@ -59,6 +60,7 @@ function textoDeAcceso(acceso: EstadoDeAcceso, esSuperAdmin: boolean): string {
 export function AcercaDe() {
   const usuario = useUsuarioActual()
   const esDemo = useEsDemo()
+  const marca = useMarca()
   const nombreDeLaAgencia = useNombreDeLaAgencia()
   const [info, setInfo] = useState<InfoApp | null>(null)
   const [actualizacion, setActualizacion] = useState<EstadoActualizacion | null>(null)
@@ -102,13 +104,20 @@ export function AcercaDe() {
               {esDemo ? (
                 <LogoDeLaMarca tamano={64} className="shrink-0 drop-shadow-md" />
               ) : (
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-marino-950 text-cielo-200 shadow-marca">
-                  <Icono nombre="escudo" tamano={30} />
-                </div>
+                <LogoPropio
+                  logo={marca.logo}
+                  tamano={64}
+                  className="shrink-0 drop-shadow-md"
+                  hijos={
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-marino-950 text-cielo-200 shadow-marca">
+                      <Icono nombre="escudo" tamano={30} />
+                    </div>
+                  }
+                />
               )}
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-700">{nombreDeLaAgencia}</p>
-                <h2 className="font-display text-3xl font-extrabold tracking-tight text-slate-900">{esDemo ? MARCA_DEMO : NOMBRE_ESTABLE}</h2>
+                <h2 className="font-display text-3xl font-extrabold tracking-tight text-slate-900">{esDemo ? MARCA_DEMO : marca.nombre}</h2>
                 <p className="mt-0.5 text-sm font-medium text-slate-600">Versión {info.version}</p>
               </div>
               {/* El manual también acá: es donde se lo busca cuando ya se sabe que existe. */}
@@ -179,7 +188,7 @@ export function AcercaDe() {
               {vencimiento && <dd className="mt-2 text-xs font-semibold text-amber-700">{vencimiento}</dd>}
             </div>
 
-            <p className="mt-8 text-xs text-slate-500">© {new Date().getFullYear()} {esDemo ? `${MARCA_DEMO}. Versión de demostración con datos ficticios.` : 'Seguros Daniel Martínez. Software de uso interno.'}</p>
+            <p className="mt-8 text-xs text-slate-500">© {new Date().getFullYear()} {esDemo ? `${MARCA_DEMO}. Versión de demostración con datos ficticios.` : `${marca.agencia}. Software de uso interno.`}</p>
           </>
         ) : (
           <Cargando />

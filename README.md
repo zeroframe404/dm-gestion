@@ -2240,8 +2240,15 @@ arrancar.
 | App de Meta y **la dirección de vuelta** | Administración → Redes sociales | Superadministrador |
 | Catálogo de compañías y la plantilla del aviso | Administración → Compañías | Administrador o superadministrador |
 | Encabezado del ticket (dirección y teléfono) | Administración → Impresora | Cualquier rol, **el de su sucursal** |
+| Marca: nombre del programa, nombre de la agencia (firma), color y logo (clave `marca`) | Administración → Marca | Superadministrador |
 | Usuario y clave del portal de Galeno | API Aseguradoras → Galeno (novedades) | Superadministrador |
 | Cuenta de la API REST de Galeno (WS-Seguros: cotizar, emitir, consultas) | API Aseguradoras → Galeno | ADMIN o superadministrador |
+
+> **La marca** (`src/shared/marca.ts`, `src/main/servicios/marca.ts`) se guarda en el `config.json`. El color se
+> reparte en la escala `--color-marino-*` que lee todo el CSS; el nombre firma plantillas, presupuesto y reportes.
+> La demo no la usa (Cobertia es fija). **No** cambia el `appId` ni el nombre del instalador: eso sale del build.
+> Si el servidor del VPS no tiene `marca` en su lista blanca de ajustes, la marca queda sólo en esa PC
+> (se avisa por el error de `publicarSinRomper`, y el programa sigue); la versión normal ignora el ajuste.
 
 Las dos de Galeno son las únicas de la lista que **no se guardan en esta computadora**: van derecho al
 servidor y ninguna PC las adopta. La razón es la misma en las dos, aunque distinta al resto: Galeno

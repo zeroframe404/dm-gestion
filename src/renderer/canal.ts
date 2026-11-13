@@ -2,9 +2,46 @@
 // por ejecución: el canal sale del instalador y no cambia mientras el programa está abierto.
 import { useEffect, useState } from 'react'
 import type { Canal } from '../shared/canal'
-import { anotarCanal, canalSinEsperar, nombreDeLaAgencia } from './agencia'
+import { variablesDeColor, type Marca } from '../shared/marca'
+import { alCambiarMarca, anotarCanal, anotarMarca, canalSinEsperar, marcaActual, marcaVisible, nombreDeLaAgencia } from './agencia'
 
-export { canalSinEsperar, nombreDeLaAgencia }
+export { canalSinEsperar, marcaVisible, nombreDeLaAgencia }
+
+/**
+ * Anota la marca y la pinta: el color se escribe en el `<html>` (el CSS lee `--color-marino-*`) y cambia el
+ * título de la ventana. Sin color elegido se quitan las variables y vuelve el azul de `estilos.css`.
+ */
+export function aplicarMarca(marca: Marca): void {
+  anotarMarca(marca)
+  const raiz = document.documentElement
+  const variables = marca.color ? variablesDeColor(marca.color) : {}
+  for (const paso of [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950]) {
+    const nombre = `--color-marino-${paso}`
+    if (variables[nombre]) raiz.style.setProperty(nombre, variables[nombre])
+    else raiz.style.removeProperty(nombre)
+  }
+  if (canalSinEsperar() !== 'demo') document.title = marca.nombre
+}
+
+/** Le pregunta la marca al proceso principal y la aplica. Si no contesta, queda la de fábrica. */
+export async function cargarMarca(): Promise<void> {
+  try {
+    const resultado = await window.dm.marca.obtener()
+    if (resultado.ok) aplicarMarca(resultado.datos)
+  } catch {
+    /* queda la de fábrica */
+  }
+}
+
+/** La marca configurada; se actualiza sola cuando se guarda otra. */
+export function useMarca(): Marca {
+  const [marca, setMarca] = useState<Marca>(marcaActual())
+  useEffect(() => {
+    setMarca(marcaActual())
+    return alCambiarMarca(() => setMarca(marcaActual()))
+  }, [])
+  return marca
+}
 
 let consultaDeCanal: Promise<Canal> | null = null
 
@@ -39,5 +76,6 @@ export function useEsDemo(): boolean {
 
 /** El nombre de la agencia que se muestra arriba del de DM Gestión: la demo no es de ninguna. */
 export function useNombreDeLaAgencia(): string {
+  useMarca()
   return nombreDeLaAgencia(useCanal())
 }

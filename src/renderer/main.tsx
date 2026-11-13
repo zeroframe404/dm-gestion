@@ -2,8 +2,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
-import { NOMBRE_DEMO, NOMBRE_ESTABLE } from '../shared/canal'
-import { canalDelPrograma, canalSinEsperar } from './canal'
+import { NOMBRE_DEMO } from '../shared/canal'
+import { canalDelPrograma, canalSinEsperar, cargarMarca, marcaVisible } from './canal'
 import { ProveedorSesion } from './contexto/Sesion'
 import { precargarSonidos } from './sonidos'
 import { iniciarTema } from './tema'
@@ -32,11 +32,11 @@ if (!raiz) throw new Error('No se encontró el elemento raíz (#raiz).')
 // segundos se dibuja igual: más vale un nombre equivocado un instante que una pantalla en blanco.
 const MAXIMO_PARA_ESPERAR_EL_CANAL = 2000
 
-void Promise.race([canalDelPrograma(), new Promise((listo) => setTimeout(listo, MAXIMO_PARA_ESPERAR_EL_CANAL))]).finally(() => {
+void Promise.race([canalDelPrograma().then(cargarMarca), new Promise((listo) => setTimeout(listo, MAXIMO_PARA_ESPERAR_EL_CANAL))]).finally(() => {
   // El título de la ventana: `index.html` dice el nombre de la estable porque no sabe el canal. La estable y la beta
   // siguen diciendo «DM Gestión», como siempre; la demo, su propia marca. Si el canal no llegó a
   // contestar, `canalSinEsperar()` da `estable` y queda el de siempre.
-  document.title = canalSinEsperar() === 'demo' ? NOMBRE_DEMO : NOMBRE_ESTABLE
+  document.title = canalSinEsperar() === 'demo' ? NOMBRE_DEMO : marcaVisible()
   createRoot(raiz).render(
     <StrictMode>
       <ProveedorSesion>

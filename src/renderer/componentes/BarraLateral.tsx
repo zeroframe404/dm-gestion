@@ -22,8 +22,9 @@ import {
 } from '../modulos'
 import { barraLateralColapsada, guardarBarraLateralColapsada } from '../preferencias'
 import { Icono } from './Icono'
-import { marcaDelPrograma } from '../../shared/canal'
-import { useCanal, useNombreDeLaAgencia } from '../canal'
+import { MARCA_DEMO } from '../../shared/canal'
+import { useCanal, useMarca, useNombreDeLaAgencia } from '../canal'
+import { LogoPropio } from './LogoPropio'
 import { InsigniaBeta } from './InsigniaBeta'
 import { LogoDeLaMarca } from './LogoDeLaMarca'
 import { cx } from './ui'
@@ -42,6 +43,7 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
   const nombreDeLaAgencia = useNombreDeLaAgencia()
   // La demo se presenta con su propia marca (logo y nombre); la agencia sigue con el escudo y «DM Gestión».
   const canal = useCanal()
+  const marca = useMarca()
   const esDemo = canal === 'demo'
   const [colapsada, setColapsada] = useState(barraLateralColapsada)
   // API Aseguradoras no es un área de permisos (no está en `puedeVer`/`AREAS`): son credenciales de un
@@ -76,16 +78,23 @@ export function BarraLateral({ moduloActivo, alElegir }: PropsBarraLateral) {
         {esDemo ? (
           <LogoDeLaMarca tamano={36} className="shrink-0" />
         ) : (
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-cielo-200 ring-1 ring-white/15">
-            <Icono nombre="escudo" tamano={18} />
-          </div>
+          <LogoPropio
+            logo={marca.logo}
+            tamano={36}
+            className="shrink-0 rounded-xl"
+            hijos={
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-cielo-200 ring-1 ring-white/15">
+                <Icono nombre="escudo" tamano={18} />
+              </div>
+            }
+          />
         )}
         {!colapsada && (
           <div className="min-w-0">
             {/* Menos tracking que un rótulo normal: con más, el nombre no entra en el ancho de la barra. */}
             <p className="truncate text-[10px] font-bold uppercase tracking-[0.06em] text-cielo-200">{nombreDeLaAgencia}</p>
             <p className="font-display text-xl font-bold tracking-tight text-white">
-              {marcaDelPrograma(canal)} <InsigniaBeta className="ml-1 align-middle" />
+              {esDemo ? MARCA_DEMO : marca.nombre} <InsigniaBeta className="ml-1 align-middle" />
             </p>
           </div>
         )}
