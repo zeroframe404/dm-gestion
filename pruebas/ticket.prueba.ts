@@ -469,3 +469,20 @@ test('la página del ticket es más alta que el ticket más largo: no se parte e
   assert.ok(ALTO_DEL_TICKET_MM > 140)
   assert.ok(ALTO_DEL_RESUMEN_MM >= ALTO_DEL_TICKET_MM)
 })
+
+test('ESC/POS: el ticket sale como órdenes de la impresora, con acentos en CP858 y corte al final', async () => {
+  const { ticketEscPos } = await import('../src/main/servicios/ticket')
+  const { codificarTexto, partirEnRenglones } = await import('../src/main/servicios/escpos')
+  assert.deepEqual(codificarTexto('Compañía Póliza ¿Sí?'), [0x43, 0x6f, 0x6d, 0x70, 0x61, 0xa4, 0xa1, 0x61, 0x20, 0x50, 0xa2, 0x6c, 0x69, 0x7a, 0x61, 0x20, 0xa8, 0x53, 0xa1, 0x3f])
+  assert.ok(partirEnRenglones('uno dos tres cuatro cinco seis siete', 12).every((r) => r.length <= 12))
+  const bytes = ticketEscPos(
+    {
+      numero: 'N° 000123', direccion: 'Calle 1', telefono: '1234', fecha: '1/1/2026', hora: '10:00', importe: '$100', periodo: 'ABRIL',
+      titular: 'PÉREZ, JOSÉ', domicilio: 'X', compania: 'C', patente: 'AA000AA', poliza: '1', cobertura: 'RC', proximoVencimiento: '10/05/2026',
+    },
+    80,
+  )
+  assert.deepEqual([...bytes.subarray(0, 5)], [0x1b, 0x40, 0x1b, 0x74, 19])
+  assert.deepEqual([...bytes.subarray(-7)], [0x1b, 0x64, 3, 0x1d, 0x56, 66, 0])
+  assert.ok(bytes.includes(0xa2)) // la «ó» de PRÓXIMO no se pierde
+})
