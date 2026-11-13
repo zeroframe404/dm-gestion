@@ -30,6 +30,14 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
+    version: '18.1.3',
+    fecha: '2026-11-13',
+    cambios: [
+      { tipo: 'modificado', texto: 'Ticketeadora: el comprobante ahora se manda en el formato propio de la impresora (ESC/POS), con su letra interna, en vez de dibujarlo como una página por el driver de Windows. Así se terminan las letras con huecos, los textos corridos o cortados y los problemas de tipografía. El contenido y el orden del ticket son los mismos.' },
+      { tipo: 'modificado', texto: 'Administración → Impresora: con ticketeadora ya no se elige la tipografía (la pone la impresora) y «Intensidad» pasa a poner el ticket en negrita. El ajuste horizontal y la tipografía siguen valiendo para la impresora común A4.' },
+    ],
+  },
+  {
     version: '18.1.2',
     fecha: '2026-11-12',
     cambios: [

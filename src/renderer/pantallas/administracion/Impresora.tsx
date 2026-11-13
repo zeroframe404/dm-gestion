@@ -245,38 +245,26 @@ export function Impresora() {
             className="max-w-40"
           />
 
-          {tipo === 'termica' && (
-            <Campo
-              etiqueta="Ajuste horizontal del texto (mm)"
-              type="number"
-              min={-15}
-              max={15}
-              step={0.5}
-              value={ajusteMm}
-              onChange={(evento) => setAjusteMm(evento.target.value)}
-              ayuda="Si el ticket sale corrido hacia la derecha o se cortan los nombres, probá con un número negativo (−2, −3…); si sale pegado al borde izquierdo, uno positivo. Imprimí una prueba después de cada cambio."
-              className="max-w-40"
-            />
-          )}
-
           <div className="flex flex-col gap-3">
-            <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
-              Tipografía del ticket
-              <select
-                value={fuente}
-                onChange={(evento) => setFuente(evento.target.value as FuenteDelTicket)}
-                className="max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900"
-              >
-                {FUENTES_DEL_TICKET.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.nombre}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs font-normal text-slate-500">
-                Si las letras chicas salen con huecos o desparejas, probá Lucida Console: tiene el trazo más grueso.
-              </span>
-            </label>
+            {tipo === 'comun' && (
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
+                Tipografía del ticket
+                <select
+                  value={fuente}
+                  onChange={(evento) => setFuente(evento.target.value as FuenteDelTicket)}
+                  className="max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900"
+                >
+                  {FUENTES_DEL_TICKET.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.nombre}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs font-normal text-slate-500">
+                  Si las letras chicas salen con huecos o desparejas, probá Lucida Console: tiene el trazo más grueso.
+                </span>
+              </label>
+            )}
             <div>
               <span className="mb-1.5 block text-sm font-medium text-slate-700">Intensidad del texto</span>
               <div className="flex flex-wrap gap-2">
@@ -295,8 +283,10 @@ export function Impresora() {
                 ))}
               </div>
               <p className="mt-1.5 text-xs text-slate-500">
-                Engrosa el trazo de las letras para que se vea más oscuro sin tocar el driver. Subila de a un nivel e imprimí una prueba; si se empasta, bajala.
-                La densidad y la velocidad propias de la impresora se cambian en las Preferencias de impresión de Windows: el programa no las puede tocar.
+                {tipo === 'termica'
+                  ? 'La ticketeadora imprime con su propia letra: el programa le manda el texto y ella elige la tipografía. Cualquier nivel distinto de «Normal» pone todo el ticket en negrita, para que se vea más oscuro.'
+                  : 'Engrosa el trazo de las letras para que se vea más oscuro sin tocar el driver. Subila de a un nivel e imprimí una prueba; si se empasta, bajala.'}
+                {' '}La densidad y la velocidad propias de la impresora se cambian en las Preferencias de impresión de Windows: el programa no las puede tocar.
               </p>
             </div>
           </div>

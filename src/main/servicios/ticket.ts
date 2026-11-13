@@ -43,6 +43,8 @@ import {
   ultimoErrorDeImpresion,
 } from './preferencias'
 import { guardarNumeroDeTicket } from './pagos'
+import { TicketEscPos } from './escpos'
+import { enviarCrudoAImpresora } from './impresionCruda'
 import { listarSucursales } from './sucursales'
 import { ErrorDeNegocio } from './errores'
 import { enteroPositivo } from './validacion'
@@ -622,6 +624,115 @@ async function imprimirHtml(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Impresión directa en ESC/POS (ticketeadoras térmicas)
+// ---------------------------------------------------------------------------
+
+function renglon(etiqueta: string, valor: string): string {
+  return valor ? `${etiqueta}: ${valor}` : ''
+}
+
+/**
+ * El comprobante en ESC/POS: el mismo contenido y orden que `htmlDelTicket`, pero como texto y órdenes
+ * de la impresora, que dibuja con su propia tipografía. La «intensidad» de Administración → Impresora
+ * se traduce en negrita para todo el ticket.
+ */
+export function ticketEscPos(datos: DatosDeTicket, anchoMm: number, intensidad = 0): Buffer {
+  const agencia = datosDeLaAgencia()
+  const t = new TicketEscPos(anchoMm, intensidad > 0)
+  if (datos.direccion) t.texto(datos.direccion, { negrita: true })
+  t.texto(datos.telefono ? `${agencia.provincia} - Tel: ${datos.telefono}` : agencia.provincia)
+  t.texto(agencia.cuit)
+  t.texto(agencia.inicioDeActividades)
+  t.texto(datos.numero, { alineacion: 'centro', negrita: true })
+  t.separador()
+  t.texto(`FECHA: ${datos.fecha}   HORA: ${datos.hora}`)
+  t.separador()
+  for (const [etiqueta, valor] of [
+    ['Importe', datos.importe],
+    ['Periodo', datos.periodo],
+    ['Titular', datos.titular],
+    ['Domicilio', datos.domicilio],
+    ['Compañía', datos.compania],
+    ['Patente', datos.patente],
+    ['Póliza', datos.poliza],
+    ['Cobertura', datos.cobertura],
+  ] as const) {
+    const texto = renglon(etiqueta, valor)
+    if (texto) t.texto(texto)
+  }
+  t.texto(agencia.seccionYRamo)
+  if (datos.proximoVencimiento) {
+    t.espacio(1)
+    t.texto(`PRÓXIMO VENCIMIENTO ${datos.proximoVencimiento}`, { alineacion: 'centro', negrita: true })
+  }
+  t.espacio(1)
+  t.texto(agencia.leyenda, { chica: true })
+  t.texto(agencia.cuidado, { alineacion: 'centro', negrita: true, chica: true })
+  return t.cortar().aBytes()
+}
+
+/** El resumen de pagos de un cliente en ESC/POS. Mismo contenido que `htmlDelResumenDePagos`. */
+export function resumenEscPos(
+  cliente: { nombre: string | null; documento: string | null; telefono: string | null },
+  pagos: PagoParaResumen[],
+  hayMas: boolean,
+  anchoMm: number,
+  intensidad = 0,
+): Buffer {
+  const t = new TicketEscPos(anchoMm, intensidad > 0)
+  t.texto('RESUMEN DE PAGOS', { alineacion: 'centro', negrita: true })
+  t.separador()
+  const ahora = new Date().toISOString()
+  for (const texto of [
+    renglon('Cliente', (cliente.nombre ?? '').trim()),
+    renglon('DNI/CUIT', (cliente.documento ?? '').trim()),
+    renglon('Teléfono', (cliente.telefono ?? '').trim()),
+    renglon('Impreso', `${comoFechaCorta(ahora.slice(0, 10))} ${horaDeRegistro(ahora)}`),
+  ]) {
+    if (texto) t.texto(texto)
+  }
+  for (const p of pagos) {
+    t.separador()
+    const dia = (p.fecha_iso ?? '').trim() || p.creado_en.slice(0, 10)
+    const importe = (p.importe ?? '').trim() ? `$ ${(p.importe ?? '').trim().replace(/^\$\s*/, '')}` : ''
+    for (const texto of [
+      renglon('Fecha', comoFechaCorta(dia)),
+      renglon('Importe', importe),
+      renglon('Medio', (p.medio ?? '').trim()),
+      renglon('Periodo', comoPeriodo(p.periodo, p.periodo_texto)),
+      renglon('Compañía', (p.compania ?? '').trim()),
+      renglon('Póliza', (p.numero_poliza ?? '').trim()),
+      renglon('Patente', (p.patente ?? '').trim()),
+      renglon('Sucursal', (p.sucursal ?? '').trim()),
+      renglon('Cobró', (p.usuario_nombre ?? '').trim()),
+      renglon('Ticket', (p.numero_ticket ?? '').trim()),
+      (p.estado_cobro ?? 'PAGO') !== 'PAGO' ? renglon('Estado', String(p.estado_cobro).toLowerCase()) : '',
+      renglon('Obs', (p.observaciones ?? '').trim()),
+    ]) {
+      if (texto) t.texto(texto)
+    }
+  }
+  if (hayMas) {
+    t.separador()
+    t.texto(`Se muestran los ${PAGOS_POR_RESUMEN} pagos más recientes.`)
+  }
+  t.espacio(1)
+  t.texto('Resumen informativo: no es un comprobante de pago.', { chica: true })
+  return t.cortar().aBytes()
+}
+
+/**
+ * Manda los bytes ESC/POS a la ticketeadora, de a un trabajo por copia y con pausa entre uno y otro
+ * (misma razón que en `imprimirHtml`: la guillotina corta al terminar cada trabajo).
+ */
+async function imprimirCrudo(datos: Buffer, deviceName: string, copias: number): Promise<void> {
+  for (let copia = 1; copia <= copias; copia++) {
+    if (copia > 1) await esperar(PAUSA_ENTRE_TICKETS_MS)
+    await enviarCrudoAImpresora(deviceName, datos)
+  }
+}
+
 /**
  * Imprime el ticket si hay una impresora configurada y activa. Nunca lanza: el cobro ya está hecho y
  * un problema de impresora no puede volverse un error del pago. El motivo queda guardado.
@@ -634,7 +745,8 @@ export async function imprimirTicketSiCorresponde(datos: DatosDeTicket, copias?:
   if (!config.habilitada || !config.impresora) return false
   const cantidad = comoCantidadDeCopias(copias, config.copias)
   try {
-    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo, config.ajusteMm, estiloDe(config)), config.impresora, config.anchoMm, cantidad, config.tipo)
+    if (config.tipo === 'termica') await imprimirCrudo(ticketEscPos(datos, config.anchoMm, config.intensidad), config.impresora, cantidad)
+    else await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo, config.ajusteMm, estiloDe(config)), config.impresora, config.anchoMm, cantidad, config.tipo)
     anotarErrorDeImpresion(null)
     return true
   } catch (error) {
@@ -889,9 +1001,11 @@ export async function imprimirResumenDePagos(clienteId: number): Promise<boolean
     .all({ cliente: id }) as PagoParaResumen[]
   if (pagos.length === 0) throw new ErrorDeNegocio('Este cliente todavía no tiene pagos registrados para imprimir.')
 
-  const html = htmlDelResumenDePagos(cliente, pagos.slice(0, PAGOS_POR_RESUMEN), pagos.length > PAGOS_POR_RESUMEN, config.anchoMm, config.tipo, config.ajusteMm, estiloDe(config))
+  const visibles = pagos.slice(0, PAGOS_POR_RESUMEN)
+  const hayMas = pagos.length > PAGOS_POR_RESUMEN
   try {
-    await imprimirHtml(html, config.impresora, config.anchoMm, 1, config.tipo, ALTO_DEL_RESUMEN_MM)
+    if (config.tipo === 'termica') await imprimirCrudo(resumenEscPos(cliente, visibles, hayMas, config.anchoMm, config.intensidad), config.impresora, 1)
+    else await imprimirHtml(htmlDelResumenDePagos(cliente, visibles, hayMas, config.anchoMm, config.tipo, config.ajusteMm, estiloDe(config)), config.impresora, config.anchoMm, 1, config.tipo, ALTO_DEL_RESUMEN_MM)
     anotarErrorDeImpresion(null)
     return true
   } catch (error) {
@@ -983,7 +1097,8 @@ export async function imprimirTicketDePrueba(sucursal: string): Promise<void> {
     proximoVencimiento: comoFechaLarga(fechaDeVencimiento(periodoSiguiente(hoy.slice(0, 7)), ahora.getDate()) ?? ''),
   }
   try {
-    await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo, config.ajusteMm, estiloDe(config)), config.impresora, config.anchoMm, 1, config.tipo)
+    if (config.tipo === 'termica') await imprimirCrudo(ticketEscPos(datos, config.anchoMm, config.intensidad), config.impresora, 1)
+    else await imprimirHtml(htmlDelTicket(datos, config.anchoMm, config.tipo, config.ajusteMm, estiloDe(config)), config.impresora, config.anchoMm, 1, config.tipo)
     anotarErrorDeImpresion(null)
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : String(error)
