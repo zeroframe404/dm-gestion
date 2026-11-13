@@ -8,6 +8,7 @@ import { NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO } from '../../shared/demo'
 import { FIRMA_DE_LOS_MENSAJES } from '../../shared/tipos'
 import { esDemo } from '../canal'
 import { db, type BaseDeDatos } from '../db/base'
+import { marcaGuardada } from '../servicios/config'
 
 export { NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO }
 
@@ -16,7 +17,7 @@ export { NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO }
  * afuera de Electron (el banco de pruebas) el canal es siempre el estable.
  */
 export function nombreDeLaAgencia(demo: boolean = esDemo()): string {
-  return demo ? NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO : FIRMA_DE_LOS_MENSAJES
+  return demo ? NOMBRE_DE_LA_AGENCIA_DE_LA_DEMO : marcaGuardada().agencia
 }
 
 /**
@@ -28,14 +29,23 @@ export function nombreDeLaAgencia(demo: boolean = esDemo()): string {
  * Devuelve cuántas plantillas cambió.
  */
 export function refirmarPlantillas(base: BaseDeDatos, firma: string): number {
-  if (firma === FIRMA_DE_LOS_MENSAJES) return 0
+  return cambiarFirmaDePlantillas(base, FIRMA_DE_LOS_MENSAJES, firma)
+}
+
+/**
+ * Lo mismo para cualquier firma anterior: cuando la agencia cambia su nombre en Administración → Marca,
+ * las plantillas que todavía llevan la firma vieja pasan a la nueva. Las que alguien escribió con otras
+ * palabras no se tocan.
+ */
+export function cambiarFirmaDePlantillas(base: BaseDeDatos, vieja: string, nueva: string): number {
+  if (vieja === nueva) return 0
   const cambio = base
     .prepare(
       `UPDATE plantillas_mensaje
           SET texto = REPLACE(texto, ?, ?), actualizado_en = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
         WHERE INSTR(texto, ?) > 0`,
     )
-    .run(`${FIRMA_DE_LOS_MENSAJES}.`, `${firma}.`, `${FIRMA_DE_LOS_MENSAJES}.`)
+    .run(`${vieja}.`, `${nueva}.`, `${vieja}.`)
   return cambio.changes
 }
 

@@ -593,6 +593,11 @@ const api: ApiDm = {
     guardarClave: (claveApi) => invocar('asistente:guardarClave', claveApi),
     borrarClave: () => invocar('asistente:borrarClave'),
   },
+  marca: {
+    obtener: () => invocar('marca:obtener'),
+    guardar: (marca) => invocar('marca:guardar', marca),
+    restaurar: () => invocar('marca:restaurar'),
+  },
 }
 
 contextBridge.exposeInMainWorld('dm', api)

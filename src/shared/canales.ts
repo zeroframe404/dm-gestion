@@ -37,6 +37,7 @@ import type {
 } from './miLink'
 import type { DatosDePedido, DatosDeResolucion, EstadoDeAutorizaciones } from './autorizaciones'
 import type { MatrizPermisos } from './permisos'
+import type { Marca } from './marca'
 import type { EstadoDelAsistente, PreguntaAlAsistente, RespuestaDelAsistente } from './asistente'
 import type {
   EstadoDeApisDeAsegurados,
@@ -1189,6 +1190,12 @@ export interface Canales {
   /** Sólo el superadministrador: carga la clave de Anthropic y la manda al VPS para las demás computadoras. */
   'asistente:guardarClave': (claveApi: string) => Resultado<EstadoDelAsistente>
   'asistente:borrarClave': () => Resultado<EstadoDelAsistente>
+
+  // La marca configurable (Administración → Marca). Leerla no pide sesión: la pantalla de ingreso ya la usa.
+  'marca:obtener': () => Resultado<Marca>
+  /** Sólo el superadministrador. Se guarda acá y se manda al VPS para las demás computadoras. */
+  'marca:guardar': (marca: Marca) => Resultado<Marca>
+  'marca:restaurar': () => Resultado<Marca>
 }
 
 /** Avisos main → renderer (push, sin respuesta). */

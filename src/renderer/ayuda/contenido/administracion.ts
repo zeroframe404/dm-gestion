@@ -270,6 +270,24 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.marca': {
+    clave: 'administracion.marca',
+    titulo: 'Administración → Marca',
+    resumen: 'El nombre del programa, el nombre de la agencia, el color principal y el logo. Sólo la ve el superadministrador.',
+    secciones: [
+      {
+        titulo: 'Qué se puede cambiar',
+        parrafos: [
+          'El nombre del programa aparece en la barra lateral, en la pantalla de ingreso, en «Acerca de» y en el título de la ventana. El nombre de la agencia firma los mensajes de WhatsApp, los presupuestos y el pie de los reportes. El color principal repinta el programa entero, y el logo reemplaza al escudo.',
+          'Al guardar, el cambio se aplica enseguida en esta computadora y viaja al servidor: las demás lo toman la próxima vez que abren el programa. «Volver a la marca de siempre» deja el nombre, el color y el escudo originales.',
+        ],
+      },
+      {
+        titulo: 'Lo que no cambia',
+        parrafos: ['El nombre del instalador y del acceso directo de Windows salen de cómo se arma el programa, no de esta pantalla.'],
+      },
+    ],
+  },
   'administracion.impresora': {
     clave: 'administracion.impresora',
     titulo: 'Administración → Impresora',

@@ -25,6 +25,7 @@
 //   companias      días de cobertura, comisión, renovación y plantilla         administrador o superadmin
 //   ticket         dirección y teléfono del encabezado de cada sucursal        cualquiera, la de SU sucursal
 //   iaAnthropic    la clave de Anthropic del asistente con IA                  superadministrador
+//   marca          nombre, agencia, color y logo del programa                  superadministrador
 //   referencias    las listas del módulo Compañías (ver referenciasCompartidas.ts)
 //
 // La cuenta de Galeno (`galenoApi`) también vive en el servidor, pero NO está en esta lista: Galeno sólo
@@ -47,6 +48,7 @@ import type { EstadoDeAjusteCompartido, EstadoDeGoogleEnLaAgencia } from '../../
 import { db } from '../db/base'
 import { ahoraIso } from '../importacion/normalizar'
 import { adoptarCompanias, valorCompartidoDeCompanias } from './companias'
+import { adoptarMarca, valorCompartidoDeLaMarca } from './marca'
 import {
   adoptarAsistente,
   adoptarAtm,
@@ -141,8 +143,15 @@ const ASISTENTE: AjusteCompartido = {
   adoptar: adoptarAsistente,
 }
 
+const MARCA: AjusteCompartido = {
+  clave: 'marca',
+  nombre: 'la marca (nombre, color y logo)',
+  valorLocal: valorCompartidoDeLaMarca,
+  adoptar: adoptarMarca,
+}
+
 /** Los que se adoptan solos al arrancar, en el orden en que se piden. */
-const TODOS = [GOOGLE, META, ATM, MERCANTIL, EQUIDAD, COMPANIAS, TICKET, ASISTENTE]
+const TODOS = [GOOGLE, META, ATM, MERCANTIL, EQUIDAD, COMPANIAS, TICKET, ASISTENTE, MARCA]
 
 /** Lo que se devuelve cuando ni siquiera hay puente: en desarrollo, o sin VPS configurado. */
 const SIN_SERVIDOR: EstadoDeAjusteCompartido = {
@@ -449,7 +458,7 @@ function identidadDeSucursal(nombre: string): string {
  * motivo vuelve igual, para la pantalla que quiera mostrarlo.
  */
 export async function publicarSinRomper(
-  cual: 'companias' | 'google' | 'meta' | 'atmApi' | 'mercantilApi' | 'equidadApi' | 'iaAnthropic',
+  cual: 'companias' | 'google' | 'meta' | 'atmApi' | 'mercantilApi' | 'equidadApi' | 'iaAnthropic' | 'marca',
   quien: string | null,
 ): Promise<EstadoDeAjusteCompartido> {
   const ajuste = {
@@ -460,6 +469,7 @@ export async function publicarSinRomper(
     mercantilApi: MERCANTIL,
     equidadApi: EQUIDAD,
     iaAnthropic: ASISTENTE,
+    marca: MARCA,
   }[cual]
   try {
     return await publicar(ajuste, quien)

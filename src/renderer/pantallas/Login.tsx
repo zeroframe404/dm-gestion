@@ -4,7 +4,8 @@ import { useState, type FormEvent } from 'react'
 import { MARCA_DEMO } from '../../shared/canal'
 import { CLAVE_DE_LA_DEMO, USUARIOS_DE_LA_DEMO } from '../../shared/demo'
 import { NOMBRE_ROL, type EstadoDeAcceso } from '../../shared/tipos'
-import { useEsDemo } from '../canal'
+import { useEsDemo, useMarca } from '../canal'
+import { LogoPropio } from '../componentes/LogoPropio'
 import { Icono } from '../componentes/Icono'
 import { InsigniaBeta } from '../componentes/InsigniaBeta'
 import { PedidoDeExcepcionAlIngresar } from '../componentes/PedidoDeExcepcionAlIngresar'
@@ -17,6 +18,7 @@ export function Login() {
   const { ingresar, motivoCierre, fueraDeHorario } = useSesion()
   const { acceso, comprobando } = useAcceso(true)
   const esDemo = useEsDemo()
+  const marca = useMarca()
   const [usuario, setUsuario] = useState('')
   const [clave, setClave] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -58,15 +60,22 @@ export function Login() {
           {esDemo ? (
             <LogoDeLaMarca tamano={56} className="mx-auto drop-shadow-lg" />
           ) : (
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
-              <Icono nombre="escudo" tamano={28} className="text-cielo-200" />
-            </div>
+            <LogoPropio
+              logo={marca.logo}
+              tamano={56}
+              className="mx-auto drop-shadow-lg"
+              hijos={
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20">
+                  <Icono nombre="escudo" tamano={28} className="text-cielo-200" />
+                </div>
+              }
+            />
           )}
           <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.14em] text-cielo-200">
-            {esDemo ? 'Versión de demostración' : 'Seguros Daniel Martínez'}
+            {esDemo ? 'Versión de demostración' : marca.agencia}
           </p>
           <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight">
-            {esDemo ? MARCA_DEMO : 'DM Gestión'} <InsigniaBeta className="ml-1 align-middle" />
+            {esDemo ? MARCA_DEMO : marca.nombre} <InsigniaBeta className="ml-1 align-middle" />
           </h1>
         </div>
 

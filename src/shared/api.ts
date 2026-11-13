@@ -622,4 +622,9 @@ export interface ApiDm {
     guardarClave: Remota<'asistente:guardarClave'>
     borrarClave: Remota<'asistente:borrarClave'>
   }
+  marca: {
+    obtener: Remota<'marca:obtener'>
+    guardar: Remota<'marca:guardar'>
+    restaurar: Remota<'marca:restaurar'>
+  }
 }
