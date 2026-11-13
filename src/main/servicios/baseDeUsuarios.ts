@@ -452,7 +452,8 @@ async function pedirLaSesionQueFalta(): Promise<void> {
     claveEnEspera = null
     return
   }
-  if (respuesta.codigo === 'demasiados-intentos') return
+  // La licencia y los puestos no dicen nada de la contraseña: de eso se ocupa servicios/licencia.ts.
+  if (respuesta.codigo === 'demasiados-intentos' || respuesta.codigo === 'licencia' || respuesta.codigo === 'sin-puestos') return
   cerrarSesionDesdeAfuera(
     respuesta.codigo === 'desactivado'
       ? 'Tu usuario fue desactivado desde otra computadora. Si te parece un error, consultá con un administrador.'
@@ -596,6 +597,12 @@ async function pedirSesionAlIngresar(usuario: string, clave: string): Promise<bo
   if (respuesta.tipo === 'sesion') return true
   if (respuesta.tipo === 'sin-soporte') return false
   if (respuesta.codigo === 'demasiados-intentos') throw new ErrorDeNegocio(respuesta.mensaje)
+  // La contraseña estaba bien, pero la licencia de la agencia no deja ingresar o no hay puesto libre. Es
+  // definitivo para este intento: no se entra con la credencial guardada como si no hubiera servidor.
+  if (respuesta.codigo === 'licencia' || respuesta.codigo === 'sin-puestos') {
+    avisarRechazoPorLicencia?.()
+    throw new ErrorDeNegocio(respuesta.mensaje)
+  }
   if (respuesta.codigo === 'desactivado') {
     borrarCredencialDe(usuario)
     throw new ErrorDeNegocio('Tu usuario está desactivado. Consultá con un administrador.')
@@ -739,6 +746,20 @@ export function cerrarSesion(): void {
  * diferencia de `cerrarSesionDesdeAfuera`, NO borra la credencial guardada: la contraseña sigue siendo
  * buena, lo que cambió es la hora.
  */
+/** Quién se entera de que el servidor rechazó un ingreso por la licencia (servicios/licencia.ts). Lo registra index.ts. */
+let avisarRechazoPorLicencia: (() => void) | null = null
+
+export function alRechazarPorLicencia(avisar: (() => void) | null): void {
+  avisarRechazoPorLicencia = avisar
+}
+
+/** La licencia dejó de permitir ingresar con la sesión abierta: se cierra, con el motivo. */
+export function cerrarSesionPorLicencia(motivo: string): void {
+  if (!sesion()) return
+  cerrarSesion()
+  emisor?.sesionCerrada(motivo)
+}
+
 export function cerrarSesionPorHorario(motivo: string): void {
   cerrarSesion()
   emisor?.sesionCerrada(motivo)

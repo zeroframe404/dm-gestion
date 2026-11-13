@@ -28,7 +28,7 @@ import {
   type RespuestaDeIngreso,
 } from './almacen'
 import { abrirSesionDelServidor, olvidarSesionDelServidor, tokenParaElServidor } from '../vps/sesionDelServidor'
-import { encabezadosDelEquipo } from '../vps/equipo'
+import { encabezadosDelEquipo, idDelEquipo } from '../vps/equipo'
 import { esRechazoDeEquipo } from '../../shared/autorizacionIp'
 
 /** Un ingreso no puede quedarse colgado: pasado este tiempo se considera que no hay internet. */
@@ -171,7 +171,7 @@ export class AlmacenVps implements AlmacenRemoto {
    * sin conexión. Lo que devuelve son las tres respuestas que el servidor da cuando SÍ contesta.
    */
   async ingresar(usuario: string, clave: string, datos: { equipo: string; app: string }): Promise<RespuestaDeIngreso> {
-    const respuesta = await this.pedir('POST', '/api/dmg/sesion', { usuario, clave, ...datos }, this.tiempoLecturaMs, this.token)
+    const respuesta = await this.pedir('POST', '/api/dmg/sesion', { usuario, clave, ...datos, equipoId: idDelEquipo() }, this.tiempoLecturaMs, this.token)
     const codigo = codigoDelServidor(respuesta.json)
     // Un servidor anterior a las sesiones no conoce la ruta; uno que todavía no tiene usuarios no tiene
     // con qué comparar. En los dos casos el ingreso sigue por el camino de siempre.
@@ -180,6 +180,9 @@ export class AlmacenVps implements AlmacenRemoto {
     if (respuesta.status === 401 && codigo === 'credenciales') return { tipo: 'rechazo', codigo: 'credenciales', mensaje: detalle }
     if (respuesta.status === 403 && codigo === 'desactivado') return { tipo: 'rechazo', codigo: 'desactivado', mensaje: detalle }
     if (respuesta.status === 429 && codigo === 'demasiados_intentos') return { tipo: 'rechazo', codigo: 'demasiados-intentos', mensaje: detalle }
+    // La licencia de la agencia (venció, no hay) o no queda un puesto libre: el servidor dice cuál.
+    if (respuesta.status === 403 && codigo === 'licencia_vencida') return { tipo: 'rechazo', codigo: 'licencia', mensaje: detalle }
+    if (respuesta.status === 403 && codigo === 'sin_puestos') return { tipo: 'rechazo', codigo: 'sin-puestos', mensaje: detalle }
     if (respuesta.status < 200 || respuesta.status >= 300) throw this.errorDe(respuesta, 'ingresar')
     const token = (respuesta.json as { token?: unknown } | null)?.token
     if (typeof token !== 'string' || !token.startsWith('dmgs_')) {

@@ -472,6 +472,13 @@ const api: ApiDm = {
     planes: (tipoVehiculo) => invocar('multicotizador:planes', tipoVehiculo),
     emisiones: (filtros) => invocar('multicotizador:emisiones', filtros),
   },
+  licencia: {
+    estado: () => invocar('licencia:estado'),
+    instalar: (licencia) => invocar('licencia:instalar', licencia),
+    puestos: () => invocar('licencia:puestos'),
+    liberar: (clave) => invocar('licencia:liberar', clave),
+    alCambiar: (escuchar) => suscribir('licencia:cambio', escuchar),
+  },
   horario: {
     estado: () => invocar('horario:estado'),
     guardar: (config) => invocar('horario:guardar', config),

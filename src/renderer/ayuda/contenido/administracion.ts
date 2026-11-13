@@ -76,6 +76,27 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.licencia': {
+    clave: 'administracion.licencia',
+    titulo: 'Administración → Licencia',
+    resumen: 'La licencia de DM Gestión de la agencia: hasta cuándo vale, en cuántas computadoras se puede usar a la vez y cuáles las están usando. Sólo la ve un superadministrador.',
+    secciones: [
+      {
+        titulo: 'Vencimiento',
+        parrafos: [
+          'Desde 15 días antes del vencimiento, los administradores ven un cartel amarillo arriba de todo. Cuando vence, hay unos días de gracia en los que el programa sigue funcionando con un cartel rojo para todos. Pasada la gracia nadie puede ingresar: la pantalla de ingreso muestra el aviso y el lugar para pegar la licencia nueva.',
+          'Para renovar, pedí la licencia nueva a quien te vendió el programa y pegala en «Renovar la licencia» (o en la pantalla de ingreso, si ya venció). Queda instalada para todas las computadoras de la agencia.',
+        ],
+      },
+      {
+        titulo: 'Computadoras en uso',
+        parrafos: [
+          'Cada computadora con una sesión abierta ocupa un puesto. Si están todos ocupados, otra computadora no puede ingresar hasta que alguien cierre la sesión. La versión normal y la beta en la misma computadora ocupan un solo puesto.',
+          '«Liberar» cierra las sesiones de esa computadora y deja el puesto libre. Una sesión que no se usa en 7 días deja de ocupar lugar sola. El superadministrador puede ingresar aunque estén todos ocupados, para poder liberar uno.',
+        ],
+      },
+    ],
+  },
   'administracion.ciberseguridad': {
     clave: 'administracion.ciberseguridad',
     titulo: 'Administración → Ciberseguridad',

@@ -35,7 +35,7 @@ export type RespuestaDeIngreso =
   /** El servidor no ofrece sesiones (una versión anterior, o todavía sin usuarios): el ingreso sigue como antes. */
   | { tipo: 'sin-soporte' }
   /** El servidor dijo que no, y es definitivo: no se prueba con la credencial guardada. */
-  | { tipo: 'rechazo'; codigo: 'credenciales' | 'desactivado' | 'demasiados-intentos'; mensaje: string }
+  | { tipo: 'rechazo'; codigo: 'credenciales' | 'desactivado' | 'demasiados-intentos' | 'licencia' | 'sin-puestos'; mensaje: string }
 
 /** Otra computadora escribió el archivo entre nuestra lectura y nuestra escritura: hay que releer. */
 export class ErrorDeConflicto extends Error {

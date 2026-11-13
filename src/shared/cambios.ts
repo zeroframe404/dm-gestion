@@ -33,6 +33,8 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '18.1.3',
     fecha: '2026-11-13',
     cambios: [
+      { tipo: 'agregado', texto: 'Administración → Licencia (sólo superadministrador): muestra hasta cuándo vale la licencia del programa, en cuántas computadoras se puede usar a la vez y cuáles la están usando, con «Liberar» para dejar libre el lugar de una computadora. Ahí mismo se pega la licencia nueva al renovar. En nuestra agencia no cambia nada: no tiene límite ni vencimiento.' },
+      { tipo: 'agregado', texto: 'Licencia: desde 15 días antes del vencimiento, los administradores ven un cartel de aviso; vencida, hay unos días de gracia con un cartel para todos, y después la pantalla de ingreso pide la licencia nueva.' },
       { tipo: 'agregado', texto: 'Administración → Sucursales y ramas (sólo superadministrador): ahora se pueden agregar sucursales y ramas de vehículo, cambiarles el nombre, ordenarlas y sacarlas de la lista. Si se cambia un nombre, lo ya cargado con el anterior se sigue leyendo bien. El cambio llega a las otras computadoras al abrir el programa.' },
       { tipo: 'agregado', texto: 'Administración → Marca (sólo superadministrador): se puede cambiar el nombre del programa, el nombre de la agencia que firma los mensajes, presupuestos y reportes, el color principal y el logo. El cambio llega a las otras computadoras al abrir el programa.' },
       { tipo: 'modificado', texto: 'Seguridad: al ingresar con internet, el usuario y la contraseña ahora los comprueba el servidor de la agencia, y cada persona queda identificada ante él. Para ingresar no cambia nada: mismo usuario y misma contraseña, y sin internet se sigue entrando como siempre.' },

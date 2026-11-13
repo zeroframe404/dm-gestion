@@ -352,6 +352,7 @@ import {
   registroDeExcepciones,
   resolverPedido,
 } from './servicios/horarioLaboral'
+import { estadoDeLaLicencia, instalarLicencia, liberarPuestoDeLaLicencia, puestosDeLaLicencia } from './servicios/licencia'
 import { autorizarIp, cambiarControlDeIp, desautorizarIp, leerAutorizacionesIp } from './servicios/autorizacionesIp'
 import {
   borrarMetaDelVps,
@@ -2326,6 +2327,13 @@ export function registrarIpc(): void {
   manejar('horario:pedirEnSesion', async (motivo) => exito(await pedirExcepcionEnSesion(exigirSesion(), motivo)))
   manejar('horario:pedirAlIngresar', async (motivo) => exito(await pedirExcepcionAlIngresar(motivo)))
   manejar('horario:estadoDelPedidoAlIngresar', async () => exito(await estadoDelPedidoAlIngresar()))
+
+  // La licencia de la agencia. El estado y pegar una nueva, sin sesión (la pantalla de bloqueo); los
+  // puestos, del superadministrador (el servicio y el servidor lo vuelven a controlar).
+  manejar('licencia:estado', async () => exito(await estadoDeLaLicencia()))
+  manejar('licencia:instalar', async (licencia) => exito(await instalarLicencia(licencia)))
+  manejar('licencia:puestos', async () => exito(await puestosDeLaLicencia()))
+  manejar('licencia:liberar', async (clave) => exito(await liberarPuestoDeLaLicencia(clave)))
 
   // Autorizaciones de IP: sólo el superadministrador (el servicio y el servidor lo vuelven a controlar).
   manejar('ips:estado', async () => exito(await leerAutorizacionesIp(exigirSesion())))

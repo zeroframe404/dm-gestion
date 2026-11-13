@@ -33,12 +33,14 @@ import { Usuarios } from './Usuarios'
 import { Ciberseguridad } from './Ciberseguridad'
 import { Catalogos } from './Catalogos'
 import { Marca } from './Marca'
+import { Licencia } from './Licencia'
 
 type IdSeccion =
   | 'servidor'
   | 'usuarios'
   | 'permisos'
   | 'ciberseguridad'
+  | 'licencia'
   | 'registromensajes'
   | 'marca'
   | 'catalogos'
@@ -75,6 +77,8 @@ export function Administracion() {
       lista.push({ id: 'marca', nombre: 'Marca', icono: 'escudo', ayuda: 'administracion.marca' })
       lista.push({ id: 'catalogos', nombre: 'Sucursales y ramas', icono: 'clientes', ayuda: 'administracion.catalogos' })
       lista.push({ id: 'ciberseguridad', nombre: 'Ciberseguridad', icono: 'escudo', ayuda: 'administracion.ciberseguridad' })
+      // La licencia de la agencia: vencimiento, computadoras en uso y renovación (no existe en la demo).
+      if (!esDemo) lista.push({ id: 'licencia', nombre: 'Licencia', icono: 'candado', ayuda: 'administracion.licencia' })
       // El registro del chat interno: todo lo que se dijo, incluidas las conversaciones en las que el
       // superadministrador no está y los mensajes que alguien borró.
       lista.push({ id: 'registromensajes', nombre: 'Registro de mensajes', icono: 'mensaje', ayuda: 'administracion.registromensajes' })
@@ -142,6 +146,7 @@ export function Administracion() {
         {seccion === 'marca' && <Marca />}
         {seccion === 'catalogos' && <Catalogos />}
         {seccion === 'ciberseguridad' && <Ciberseguridad />}
+        {seccion === 'licencia' && <Licencia />}
         {seccion === 'registromensajes' && <RegistroDeMensajes />}
         {seccion === 'companias' && <Companias />}
         {seccion === 'impresora' && <Impresora />}
