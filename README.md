@@ -221,6 +221,30 @@ Las secciones que siguen («Importar desde Google», «Sincronización con Googl
 que sigue existiendo tal cual, pero desde la v12 la fuente es la base del VPS: la pantalla de
 importación se llama ahora **Reimportar la base** y el ciclo de subida/bajada habla con el servidor.
 
+## Alta desde Excel (agencia nueva)
+
+**Administración → Alta desde Excel** (SUPER_ADMIN) es para una agencia que arranca con su servidor
+recién instalado y la **base vacía**: sube su propio .xlsx o .csv y lo carga de una vez.
+
+- **El importador no cambia.** El Excel ajeno se *traduce* al formato de siempre y entra por el mismo
+  camino que la migración desde Google (`publicarEnBaseVacia` en `servicios/migracionVps.ts`): una
+  pestaña mensual con el mes actual de título (la cartera), `BAJAS <mes>`, `SINIESTROS`, `IMPUTADOS`
+  y `RIESGOS VARIOS`, con encabezados que el importador reconoce (`encabezadoParaAgregar`).
+  Después del alta, esa base es igual a la de cualquier agencia y la sincronización corre tal cual.
+- **Lector propio, sin librerías** (`importacion/lectorDeLibro.ts`): .xlsx (textos compartidos, fechas
+  por estilo, hojas ocultas, sistema 1904) y .csv (`;`, `,` o tab, UTF-8 o Latin-1). Usa el lector de
+  .zip de `servicios/zip.ts`. El .xls viejo se rechaza con un mensaje para guardarlo como .xlsx.
+- **El asistente** (`importacion/altaDesdeExcel.ts`, puro): qué es cada hoja, la fila de encabezados,
+  qué campo es cada columna (dos columnas en el mismo campo se juntan), valores fijos para lo que no
+  viene y corrección de sucursales fuera del catálogo. Lo que el importador ya reconoce solo viene
+  propuesto.
+- **Ensayo**: importa las pestañas armadas en una SQLite en memoria contra una `FuenteEnMemoria`, y
+  muestra el mismo informe que la reimportación, sin tocar el servidor ni la base local.
+- **Publicar** sólo con la base sin inicializar (el servidor lo vuelve a comprobar), nunca desde la
+  demo ni desde la beta contra la base real (`proteccionBeta.ts`).
+- Pruebas: `pruebas/lector-de-libro.prueba.ts` y `pruebas/alta-desde-excel.prueba.ts` (de punta a
+  punta contra `scripts/vps-simulado.mjs`).
+
 ## Importar desde Google
 
 **Administración → Importar desde Google** lee completa la hoja configurada en «Conexión con Google».

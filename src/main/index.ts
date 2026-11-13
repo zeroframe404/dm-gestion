@@ -29,7 +29,7 @@ import { carpetaDatos, configurarCarpetaDatos, limpiarDatosDeLaDemo, rutaBaseDeD
 import { adoptarAjustesAlArrancar } from './servicios/ajustesCompartidos'
 import { cargarCatalogosAlArrancar } from './servicios/catalogos'
 import { bajarCatalogoAlArrancar } from './servicios/catalogoVehiculos'
-import { configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
+import { alRechazarPorLicencia, configurarBaseDeUsuarios } from './servicios/baseDeUsuarios'
 import { credencialesVps } from './servicios/config'
 import { hayImportacionEnCurso, marcarImportacionesInterrumpidas } from './servicios/importacion'
 import { alSubirUnAdjunto } from './servicios/adjuntos'
@@ -38,6 +38,7 @@ import { detenerSincronizacion, usarSituacionDelCanal } from './servicios/sincro
 import { canal } from './vivo/canal'
 import { alCambiarLaSesion, alVerificarElIngreso } from './servicios/sesion'
 import { alCambiarLaSesionDeHorario, verificarIngreso } from './servicios/horarioLaboral'
+import { arrancarRelojDeLicencia, releerLicencia, verificarIngresoPorLicencia } from './servicios/licencia'
 import { detenerActualizaciones, iniciarActualizaciones } from './servicios/updater'
 import { anotarEvento } from './sincronizacion/cola'
 import { AlmacenDeCredencial } from './usuarios/credencial'
@@ -312,7 +313,13 @@ function engancharElCanal(): void {
   }
   usarSituacionDelCanal(() => canal().estado().situacion)
   // El horario laboral: no deja abrir sesión fuera de turno y, abierta, cuenta el tiempo hasta el cierre.
-  alVerificarElIngreso(verificarIngreso)
+  // La licencia de la agencia (sin conexión, lo último que se supo) y después el horario laboral.
+  alVerificarElIngreso(async (candidata) => {
+    await verificarIngresoPorLicencia(candidata)
+    await verificarIngreso(candidata)
+  })
+  alRechazarPorLicencia(releerLicencia)
+  arrancarRelojDeLicencia()
   alCambiarLaSesion((quien) => {
     alCambiarLaSesionDeHorario(quien)
     if (quien) {

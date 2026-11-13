@@ -80,6 +80,14 @@ const api: ApiDm = {
     estado: () => invocar('vps:estado'),
     migrar: () => invocar('vps:migrar'),
   },
+  altaExcel: {
+    estado: () => invocar('altaExcel:estado'),
+    elegirArchivo: () => invocar('altaExcel:elegirArchivo'),
+    sugerirColumnas: (token, indice, tipo, filaEncabezados) => invocar('altaExcel:sugerirColumnas', token, indice, tipo, filaEncabezados),
+    ensayar: (asignacion) => invocar('altaExcel:ensayar', asignacion),
+    publicar: (asignacion) => invocar('altaExcel:publicar', asignacion),
+    olvidar: () => invocar('altaExcel:olvidar'),
+  },
   importacion: {
     vistaPrevia: () => invocar('importacion:vistaPrevia'),
     iniciar: () => invocar('importacion:iniciar'),
@@ -471,6 +479,13 @@ const api: ApiDm = {
     cotizaciones: (filtros) => invocar('multicotizador:cotizaciones', filtros),
     planes: (tipoVehiculo) => invocar('multicotizador:planes', tipoVehiculo),
     emisiones: (filtros) => invocar('multicotizador:emisiones', filtros),
+  },
+  licencia: {
+    estado: () => invocar('licencia:estado'),
+    instalar: (licencia) => invocar('licencia:instalar', licencia),
+    puestos: () => invocar('licencia:puestos'),
+    liberar: (clave) => invocar('licencia:liberar', clave),
+    alCambiar: (escuchar) => suscribir('licencia:cambio', escuchar),
   },
   horario: {
     estado: () => invocar('horario:estado'),

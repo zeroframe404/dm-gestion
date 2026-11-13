@@ -151,6 +151,114 @@ export interface ResumenMigracionVps {
   filas: number
 }
 
+// --- Alta desde Excel (una agencia nueva sube su propio Excel a su base vacía) ---------------------
+
+/** Qué hay en una hoja del Excel que se sube. Cada uno se vuelve una pestaña de la base. */
+export type TipoDeHojaDeAlta = 'CARTERA' | 'BAJAS' | 'SINIESTROS' | 'PAGOS' | 'RIESGOS_VARIOS'
+
+export const TIPOS_DE_HOJA_DE_ALTA: readonly TipoDeHojaDeAlta[] = ['CARTERA', 'BAJAS', 'SINIESTROS', 'PAGOS', 'RIESGOS_VARIOS']
+
+export const ETIQUETA_DE_HOJA_DE_ALTA: Record<TipoDeHojaDeAlta, string> = {
+  CARTERA: 'Cartera (clientes, pólizas y vehículos)',
+  BAJAS: 'Bajas',
+  SINIESTROS: 'Siniestros',
+  PAGOS: 'Pagos / cobranzas',
+  RIESGOS_VARIOS: 'Riesgos varios',
+}
+
+/** Un campo del programa al que se puede asignar una columna. */
+export interface CampoDeAlta {
+  campo: string
+  etiqueta: string
+}
+
+/** Lo que hace falta para que una hoja de ese tipo sirva; `campos` con más de uno es «alguno de estos». */
+export interface RequisitoDeAlta {
+  campos: string[]
+  texto: string
+  /** true: sin esto la hoja no entra bien (no se puede publicar). false: sólo un aviso. */
+  obligatorio: boolean
+}
+
+/** Una hoja del Excel tal como la ve la pantalla: sólo las primeras filas, el resto queda en el programa. */
+export interface HojaDeAltaVista {
+  indice: number
+  nombre: string
+  oculta: boolean
+  totalFilas: number
+  totalColumnas: number
+  /** Las primeras filas (hasta 40), para elegir la fila de encabezados y ver ejemplos. */
+  muestra: string[][]
+}
+
+/** Cómo se lee una hoja: qué es, dónde están sus encabezados y qué campo es cada columna. */
+export interface AsignacionDeHoja {
+  indice: number
+  /** null = no se importa. */
+  tipo: TipoDeHojaDeAlta | null
+  /** Fila de encabezados, base 0 (la 1 de Excel es la 0). */
+  filaEncabezados: number
+  /** Campo de cada columna (por índice), o null si la columna no se importa. */
+  columnas: Array<string | null>
+  /** Valor para todas las filas que no lo traen (por ejemplo, la sucursal o la compañía). */
+  fijos: Record<string, string>
+}
+
+export interface AsignacionDeAlta {
+  token: string
+  hojas: AsignacionDeHoja[]
+  /** Valor de sucursal del Excel → sucursal del catálogo con la que se carga. */
+  sucursales: Record<string, string>
+}
+
+export interface LibroDeAlta {
+  token: string
+  archivo: string
+  hojas: HojaDeAltaVista[]
+  /** Lo que el programa propone (lo que pudo reconocer solo). */
+  sugerencia: AsignacionDeAlta
+  campos: Record<TipoDeHojaDeAlta, CampoDeAlta[]>
+  requisitos: Record<TipoDeHojaDeAlta, RequisitoDeAlta[]>
+}
+
+/** Una pestaña tal como quedaría en la base. */
+export interface PestanaDeAlta {
+  titulo: string
+  tipo: TipoDeHojaDeAlta
+  encabezados: string[]
+  filas: number
+  /** Las primeras filas ya armadas, para mostrar. */
+  muestra: string[][]
+}
+
+export interface EnsayoDeAlta {
+  pestanas: PestanaDeAlta[]
+  /** Lo que se dejó afuera al armar las pestañas (campos sin columna posible, hojas vacías). */
+  avisos: string[]
+  /** Faltantes obligatorios: mientras haya alguno no se puede publicar. */
+  faltantes: string[]
+  /** El informe de la importación de prueba, hecha en memoria: es lo que va a pasar de verdad. */
+  informe: InformeImportacion
+  /** Valores de sucursal que no son del catálogo (antes de corregirlos), con cuántas filas los usan. */
+  sucursalesDesconocidas: Array<{ valor: string; filas: number }>
+  catalogoDeSucursales: string[]
+}
+
+export interface EstadoDeAltaExcel {
+  urlBase: string
+  base: EstadoBaseVps | null
+  /** Por qué no se pudo consultar la base. */
+  error: string | null
+  /** null si se puede publicar; si no, por qué no (base ya cargada, demo, beta contra producción…). */
+  motivoParaNoPublicar: string | null
+}
+
+export interface ResumenDeAltaExcel {
+  pestanas: number
+  filas: number
+  informe: InformeImportacion
+}
+
 // ---------------------------------------------------------------------------
 // Galeno Seguros — 15.4
 // ---------------------------------------------------------------------------

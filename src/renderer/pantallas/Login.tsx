@@ -9,6 +9,8 @@ import { LogoPropio } from '../componentes/LogoPropio'
 import { Icono } from '../componentes/Icono'
 import { InsigniaBeta } from '../componentes/InsigniaBeta'
 import { PedidoDeExcepcionAlIngresar } from '../componentes/PedidoDeExcepcionAlIngresar'
+import { BloqueoPorLicencia } from '../componentes/BloqueoPorLicencia'
+import { useLicencia } from '../contexto/Licencia'
 import { LogoDeLaMarca } from '../componentes/LogoDeLaMarca'
 import { Alerta, Boton, Campo, CampoClave, cx } from '../componentes/ui'
 import { useAcceso } from '../contexto/Acceso'
@@ -23,6 +25,8 @@ export function Login() {
   const [clave, setClave] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
+  const licencia = useLicencia()
+  const bloqueada = licencia.estado !== null && !licencia.estado.permiteIngresar
 
   async function alEnviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault()
@@ -52,7 +56,9 @@ export function Login() {
         // Sin items-center: si el contenido es más alto que la ventana (la lista de usuarios de la demo),
         // un flex centrado lo recorta por arriba. `m-auto` en el hijo centra igual y deja hacer scroll.
         'flex h-full overflow-y-auto p-6',
-        esDemo ? 'bg-[linear-gradient(135deg,#053d36_0%,#0b5c50_45%,#0f766e_100%)]' : 'bg-[linear-gradient(135deg,#12315d_0%,#163b6e_45%,#17437f_100%)]',
+        esDemo
+          ? 'bg-[linear-gradient(135deg,#053d36_0%,#0b5c50_45%,#0f766e_100%)]'
+          : 'bg-[linear-gradient(135deg,#12315d_0%,#163b6e_45%,#17437f_100%)]',
       )}
     >
       <div className="m-auto w-full max-w-[420px]">
@@ -79,46 +85,59 @@ export function Login() {
           </h1>
         </div>
 
-        <form onSubmit={alEnviar} noValidate className="rounded-2xl bg-white p-8 shadow-media">
-          <h2 className="font-display text-xl font-bold tracking-tight text-slate-900">Iniciar sesión</h2>
-          <p className="mt-1 text-sm text-slate-600">Ingresá con tu usuario y tu contraseña.</p>
+        {bloqueada && licencia.estado ? (
+          <BloqueoPorLicencia
+            estado={licencia.estado}
+            alInstalar={(nuevo) => {
+              licencia.usar(nuevo)
+              setError(null)
+            }}
+            alReintentar={licencia.releer}
+          />
+        ) : (
+          <form onSubmit={alEnviar} noValidate className="rounded-2xl bg-white p-8 shadow-media">
+            <h2 className="font-display text-xl font-bold tracking-tight text-slate-900">Iniciar sesión</h2>
+            <p className="mt-1 text-sm text-slate-600">Ingresá con tu usuario y tu contraseña.</p>
 
-          <div className="mt-6 flex flex-col gap-4">
-            {motivoCierre && <Alerta tono="aviso">{motivoCierre}</Alerta>}
-            <Campo
-              etiqueta="Usuario"
-              name="usuario"
-              value={usuario}
-              onChange={(evento) => setUsuario(evento.target.value)}
-              autoComplete="username"
-              autoCapitalize="none"
-              spellCheck={false}
-              autoFocus
-            />
-            <CampoClave
-              etiqueta="Contraseña"
-              name="clave"
-              value={clave}
-              onChange={(evento) => setClave(evento.target.value)}
-              autoComplete="current-password"
-            />
-            {error && <Alerta tono="error">{error}</Alerta>}
-            {error && fueraDeHorario && <PedidoDeExcepcionAlIngresar />}
-            <Boton type="submit" variante="primario" cargando={enviando} className="mt-2 w-full">
-              {esperaRed ? 'Conectando con la base de usuarios…' : 'Ingresar'}
-            </Boton>
-          </div>
-        </form>
+            <div className="mt-6 flex flex-col gap-4">
+              {motivoCierre && <Alerta tono="aviso">{motivoCierre}</Alerta>}
+              <Campo
+                etiqueta="Usuario"
+                name="usuario"
+                value={usuario}
+                onChange={(evento) => setUsuario(evento.target.value)}
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                autoFocus
+              />
+              <CampoClave
+                etiqueta="Contraseña"
+                name="clave"
+                value={clave}
+                onChange={(evento) => setClave(evento.target.value)}
+                autoComplete="current-password"
+              />
+              {error && <Alerta tono="error">{error}</Alerta>}
+              {error && fueraDeHorario && <PedidoDeExcepcionAlIngresar />}
+              <Boton type="submit" variante="primario" cargando={enviando} className="mt-2 w-full">
+                {esperaRed ? 'Conectando con la base de usuarios…' : 'Ingresar'}
+              </Boton>
+            </div>
+          </form>
+        )}
 
         {esDemo && (
           <div className="mt-4 rounded-2xl bg-white/10 p-4 text-white ring-1 ring-white/20">
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-cielo-200">Acceso de prueba</p>
             <p className="mt-1 text-sm text-white">
-              Usuario <span className="font-mono font-semibold">test</span> · contraseña <span className="font-mono font-semibold">{CLAVE_DE_LA_DEMO}</span>
+              Usuario <span className="font-mono font-semibold">test</span> · contraseña{' '}
+              <span className="font-mono font-semibold">{CLAVE_DE_LA_DEMO}</span>
             </p>
             <p className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-cielo-200">O entrar como…</p>
             <p className="mt-1 text-xs text-white/70">
-              Cada usuario ve el programa según su rol. La contraseña de todos es <span className="font-mono font-semibold text-white">{CLAVE_DE_LA_DEMO}</span>.
+              Cada usuario ve el programa según su rol. La contraseña de todos es{' '}
+              <span className="font-mono font-semibold text-white">{CLAVE_DE_LA_DEMO}</span>.
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {USUARIOS_DE_LA_DEMO.map((demo) => (
@@ -163,19 +182,27 @@ function lineaDe(acceso: EstadoDeAcceso | null, comprobando: boolean): Linea {
     return acceso.sinTokenEnProduccion
       ? {
           punto: 'rojo',
-          texto: 'Esta versión del programa no tiene configurada la base de usuarios compartida: los usuarios se guardan sólo en esta computadora. Avisale a quien arma el programa.',
+          texto:
+            'Esta versión del programa no tiene configurada la base de usuarios compartida: los usuarios se guardan sólo en esta computadora. Avisale a quien arma el programa.',
         }
-      : { punto: 'gris', texto: 'Los datos se guardan únicamente en esta computadora.' }
+      : {
+          punto: 'gris',
+          texto: 'Los datos se guardan únicamente en esta computadora.',
+        }
   }
   const guardado = acceso.usuarioGuardado
   switch (acceso.modo) {
     case 'sin-inicializar':
       return {
         punto: 'ambar',
-        texto: 'La base de usuarios compartida todavía no se inicializó: se ingresa con los usuarios de esta computadora. Un superadministrador tiene que subirlos desde Administración → Usuarios.',
+        texto:
+          'La base de usuarios compartida todavía no se inicializó: se ingresa con los usuarios de esta computadora. Un superadministrador tiene que subirlos desde Administración → Usuarios.',
       }
     case 'en-linea':
-      return { punto: 'verde', texto: 'En línea. Podés ingresar con cualquier usuario.' }
+      return {
+        punto: 'verde',
+        texto: 'En línea. Podés ingresar con cualquier usuario.',
+      }
     case 'sin-internet':
       return guardado
         ? {
@@ -192,7 +219,10 @@ function lineaDe(acceso: EstadoDeAcceso | null, comprobando: boolean): Linea {
         texto: `Hay internet, pero el programa no pudo acceder a la base de usuarios. Avisale al administrador.${guardado ? ` Mientras tanto, en esta computadora sólo puede ingresar «${guardado}».` : ''}`,
       }
     default:
-      return { punto: 'gris', texto: 'Los datos se guardan únicamente en esta computadora.' }
+      return {
+        punto: 'gris',
+        texto: 'Los datos se guardan únicamente en esta computadora.',
+      }
   }
 }
 

@@ -515,6 +515,14 @@ export interface ApiDm {
     alResponderUnPedido: Suscripcion<'horario:respuesta'>
     alLlegarPedidos: Suscripcion<'horario:pedidos'>
   }
+  /** La licencia de la agencia. Ver canales.ts. */
+  licencia: {
+    estado: Remota<'licencia:estado'>
+    instalar: Remota<'licencia:instalar'>
+    puestos: Remota<'licencia:puestos'>
+    liberar: Remota<'licencia:liberar'>
+    alCambiar: Suscripcion<'licencia:cambio'>
+  }
   /** Autorizaciones de IP (Ciberseguridad). Ver canales.ts. */
   ips: {
     estado: Remota<'ips:estado'>
@@ -586,6 +594,14 @@ export interface ApiDm {
     elegirImagenes: Remota<'soporte:elegirImagenes'>
     pegarImagen: Remota<'soporte:pegarImagen'>
     reportar: Remota<'soporte:reportar'>
+  }
+  altaExcel: {
+    estado: Remota<'altaExcel:estado'>
+    elegirArchivo: Remota<'altaExcel:elegirArchivo'>
+    sugerirColumnas: Remota<'altaExcel:sugerirColumnas'>
+    ensayar: Remota<'altaExcel:ensayar'>
+    publicar: Remota<'altaExcel:publicar'>
+    olvidar: Remota<'altaExcel:olvidar'>
   }
   importacion: {
     vistaPrevia: Remota<'importacion:vistaPrevia'>
