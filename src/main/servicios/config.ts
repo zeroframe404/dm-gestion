@@ -17,6 +17,7 @@ import {
 import { esDemo } from '../canal'
 import { credencialesDeLaDemo } from '../demo/servidor'
 import { rutaConfig } from '../rutas'
+import { type Catalogos, normalizarCatalogos } from '../../shared/catalogos'
 import { normalizarMarca, type Marca } from '../../shared/marca'
 import { EJEMPLO_URL_DEL_VPS, TOKEN_DE_LA_DEMO } from '../../shared/demo'
 import { ErrorDeNegocio } from './errores'
@@ -154,6 +155,8 @@ interface Config {
   asistente?: ConfigAsistente
   /** La marca configurable (ver `shared/marca.ts`). Cruda: se limpia con `normalizarMarca` al leerla. */
   marca?: unknown
+  /** Las sucursales y ramas configurables (ver `shared/catalogos.ts`). Crudo: se limpia con `normalizarCatalogos` al leerlo. */
+  catalogos?: unknown
 }
 
 /**
@@ -952,5 +955,26 @@ export function hayMarcaGuardada(): boolean {
 export function guardarMarcaEnConfig(marca: Marca): void {
   const config = leerConfig()
   config.marca = marca
+  escribirConfig(config)
+}
+
+// ---------------------------------------------------------------------------
+// Las sucursales y las ramas configurables
+// ---------------------------------------------------------------------------
+
+/** Los catálogos guardados en esta computadora; los de fábrica si nunca se tocaron. */
+export function catalogosGuardados(): Catalogos {
+  return normalizarCatalogos(leerConfig().catalogos)
+}
+
+/** Si alguien los tocó alguna vez en esta computadora (o los adoptó del servidor). */
+export function hayCatalogosGuardados(): boolean {
+  return leerConfig().catalogos !== undefined
+}
+
+/** Guarda los catálogos ya limpios. Aunque sean los de fábrica se dejan anotados, por lo mismo que la marca. */
+export function guardarCatalogosEnConfig(catalogos: Catalogos): void {
+  const config = leerConfig()
+  config.catalogos = catalogos
   escribirConfig(config)
 }

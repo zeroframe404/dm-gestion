@@ -37,6 +37,7 @@ import type {
 } from './miLink'
 import type { DatosDePedido, DatosDeResolucion, EstadoDeAutorizaciones } from './autorizaciones'
 import type { MatrizPermisos } from './permisos'
+import type { Catalogos } from './catalogos'
 import type { Marca } from './marca'
 import type { EstadoDelAsistente, PreguntaAlAsistente, RespuestaDelAsistente } from './asistente'
 import type {
@@ -1196,6 +1197,13 @@ export interface Canales {
   /** Sólo el superadministrador. Se guarda acá y se manda al VPS para las demás computadoras. */
   'marca:guardar': (marca: Marca) => Resultado<Marca>
   'marca:restaurar': () => Resultado<Marca>
+
+  // Las sucursales y las ramas configurables (Administración → Sucursales y ramas). Leerlas no pide sesión: la
+  // pantalla las necesita antes de dibujar cualquier filtro.
+  'catalogos:obtener': () => Resultado<Catalogos>
+  /** Sólo el superadministrador. Se guardan acá y se mandan al VPS para las demás computadoras. */
+  'catalogos:guardar': (catalogos: Catalogos) => Resultado<Catalogos>
+  'catalogos:restaurar': () => Resultado<Catalogos>
 }
 
 /** Avisos main → renderer (push, sin respuesta). */

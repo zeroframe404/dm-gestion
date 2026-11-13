@@ -414,6 +414,7 @@ import {
   puedeEditar,
   puedeVer as puedeVerElArea,
 } from './servicios/permisos'
+import { catalogosVigentes, guardarCatalogos, restaurarCatalogos } from './servicios/catalogos'
 import { guardarMarca, marcaVigente, restaurarMarca } from './servicios/marca'
 import { exigirRol, exigirSesion, sesion } from './servicios/sesion'
 import { listarSucursales } from './servicios/sucursales'
@@ -2648,6 +2649,20 @@ export function registrarIpc(): void {
     const marca = guardarMarca(datos)
     await publicarSinRomper('marca', actor.nombre)
     return exito(marca)
+  })
+  // Las sucursales y las ramas: leerlas no pide sesión; cambiarlas es del superadministrador y se manda al VPS.
+  manejar('catalogos:obtener', () => exito(catalogosVigentes()))
+  manejar('catalogos:guardar', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    const catalogos = guardarCatalogos(datos)
+    await publicarSinRomper('catalogos', actor.nombre)
+    return exito(catalogos)
+  })
+  manejar('catalogos:restaurar', async () => {
+    const actor = exigirRol('SUPER_ADMIN')
+    const catalogos = restaurarCatalogos()
+    await publicarSinRomper('catalogos', actor.nombre)
+    return exito(catalogos)
   })
   manejar('marca:restaurar', async () => {
     const actor = exigirRol('SUPER_ADMIN')

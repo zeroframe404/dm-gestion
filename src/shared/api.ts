@@ -627,4 +627,9 @@ export interface ApiDm {
     guardar: Remota<'marca:guardar'>
     restaurar: Remota<'marca:restaurar'>
   }
+  catalogos: {
+    obtener: Remota<'catalogos:obtener'>
+    guardar: Remota<'catalogos:guardar'>
+    restaurar: Remota<'catalogos:restaurar'>
+  }
 }

@@ -2241,6 +2241,7 @@ arrancar.
 | Catálogo de compañías y la plantilla del aviso | Administración → Compañías | Administrador o superadministrador |
 | Encabezado del ticket (dirección y teléfono) | Administración → Impresora | Cualquier rol, **el de su sucursal** |
 | Marca: nombre del programa, nombre de la agencia (firma), color y logo (clave `marca`) | Administración → Marca | Superadministrador |
+| Sucursales y ramas de vehículo: nombres, sinónimos y orden (clave `catalogos`) | Administración → Sucursales y ramas | Superadministrador |
 | Usuario y clave del portal de Galeno | API Aseguradoras → Galeno (novedades) | Superadministrador |
 | Cuenta de la API REST de Galeno (WS-Seguros: cotizar, emitir, consultas) | API Aseguradoras → Galeno | ADMIN o superadministrador |
 
@@ -2249,6 +2250,16 @@ arrancar.
 > La demo no la usa (Cobertia es fija). **No** cambia el `appId` ni el nombre del instalador: eso sale del build.
 > Si el servidor del VPS no tiene `marca` en su lista blanca de ajustes, la marca queda sólo en esa PC
 > (se avisa por el error de `publicarSinRomper`, y el programa sigue); la versión normal ignora el ajuste.
+>
+> **Las sucursales y las ramas** (`src/shared/catalogos.ts`, `catalogosVigentes.ts`, `src/main/servicios/catalogos.ts`)
+> eran dos listas fijas (cuatro y siete); ahora esas son lo «de fábrica» y se editan desde Administración →
+> Sucursales y ramas. `SUCURSALES` y `RAMAS` siguen existiendo pero son la lista **vigente** (se reemplaza en el
+> lugar al cargar el `config.json` —antes de abrir la base— o al adoptar el ajuste `catalogos`): siempre se leen en
+> el momento de usarlas, nunca se copian a una constante. **Renombrar no reescribe datos**: el nombre anterior pasa
+> a ser sinónimo del nuevo y todo se compara por `sucursalCanonica` / `ramaCanonica`; `ajustarCatalogoDeSucursales`
+> une la fila vieja de la tabla `sucursales` con la nueva. Sacar una entrada de la lista no borra nada (queda
+> «fuera del catálogo»). Igual que la marca: el VPS necesita `catalogos` en su lista blanca de ajustes, la demo no lo
+> usa y la versión normal lo ignora (sigue con las listas de fábrica).
 
 Las dos de Galeno son las únicas de la lista que **no se guardan en esta computadora**: van derecho al
 servidor y ninguna PC las adopta. La razón es la misma en las dos, aunque distinta al resto: Galeno

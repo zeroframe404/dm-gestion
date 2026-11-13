@@ -270,6 +270,27 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.catalogos': {
+    clave: 'administracion.catalogos',
+    titulo: 'Administración → Sucursales y ramas',
+    resumen: 'Las sucursales de la agencia y las ramas de vehículo que ofrecen los filtros y las altas. Sólo la ve el superadministrador.',
+    secciones: [
+      {
+        titulo: 'Qué se puede cambiar',
+        parrafos: [
+          'Se pueden agregar sucursales y ramas, cambiarles el nombre, ordenarlas y sacarlas de la lista. El orden de acá es el orden de todos los desplegables.',
+          'Si cambiás el nombre de una sucursal, el anterior se sigue reconociendo: los clientes, pólizas y cobros que ya decían el nombre viejo quedan bajo el nuevo, sin tocar nada. En «También se escribe» van las otras formas con que la planilla o los usuarios viejos nombran la misma sucursal o rama, separadas por coma.',
+          'En las ramas, «Se comporta» elige con qué grupo se afina la categoría del catálogo de vehículos: una rama «como un auto» puede quedar como pick up o camión según el modelo, y una «como una moto», como scooter.',
+        ],
+      },
+      {
+        titulo: 'Lo que no hace',
+        parrafos: [
+          'Sacar una sucursal o una rama de la lista no borra nada de lo cargado: esas filas siguen en los listados, aparte, como «fuera del catálogo». Al guardar, el cambio se aplica enseguida y viaja al servidor; las otras computadoras lo toman al abrir el programa. Las que tienen la versión normal siguen con las listas de siempre.',
+        ],
+      },
+    ],
+  },
   'administracion.marca': {
     clave: 'administracion.marca',
     titulo: 'Administración → Marca',
