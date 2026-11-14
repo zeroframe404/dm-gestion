@@ -1880,7 +1880,7 @@ el commit y el tag `vX.Y.Z` de la versión nueva.
 
 ### Cómo se actualizan las PCs
 
-Al abrir el programa y cada 4 horas, si hay una versión nueva la descarga en segundo plano
+Al abrir el programa y cada 15 minutos, si hay una versión nueva la ofrece con un cartel
 (`electron-updater`, configurado en `src/main/servicios/updater.ts`) y muestra una barra fina
 arriba de todo: «Hay una versión nueva (X.Y.Z). Se instalará al cerrar el programa», con un botón
 **Reiniciar ahora** para no esperar. Si la descarga falla (sin internet, por ejemplo), no aparece
@@ -1888,17 +1888,55 @@ ningún aviso molesto: se reintenta solo en el próximo chequeo. **Administraci�
 muestra la versión actual, el canal y un botón **Buscar actualizaciones** para chequear sin
 esperar el ciclo automático.
 
-El chequeo usa un token de **sólo lectura** embebido en el código (`UPDATE_TOKEN`, en
-`src/main/servicios/updater.ts`), separado del `GH_TOKEN` de publicar: así, aunque alguien lo
-extraiga de un ejecutable instalado, no puede usarlo para escribir en el repositorio. Para
-generarlo:
+**De dónde se bajan (18.1.3).** Primero del **servidor de la agencia**
+(`https://dmartinezseguros.com/api/dmg-actualizaciones/<estable|beta>/`) y, si no contesta o todavía
+no tiene nada, en el acto **de GitHub**, como siempre (la estable, del último Release; la beta, del
+Release fijo `beta-canal`). El orden está en `src/main/servicios/origenesDeActualizacion.ts`; cada
+chequeo vuelve a probar primero el servidor, y la descarga sale del origen que contestó. Acerca de dice
+de cuál vino («desde el servidor de la agencia» / «desde GitHub, de respaldo»).
 
-1. Entrá a [github.com/settings/tokens?type=beta](https://github.com/settings/tokens?type=beta)
-   (fine-grained personal access token) con la cuenta dueña del repositorio.
-2. **Repository access** → **Only select repositories** → `zeroframe404/dm-gestion`.
-3. **Permissions** → **Repository permissions** → `Contents: Read-only` (es lo único que hace
-   falta para leer Releases y descargar sus archivos). No le des ningún otro permiso.
-4. Generá el token y reemplazá `UPDATE_TOKEN` en `src/main/servicios/updater.ts`.
+- **Quién sube al servidor**: `scripts/publicar.mjs` y `scripts/publicar-beta.mjs`, después de
+  publicar en GitHub, con `scripts/subir-al-vps.mjs`: instalador, blockmap y por último el `.yml`
+  (el servidor rechaza un `.yml` cuyo instalador no esté o no coincida). Usa el secreto
+  **`DMG_PUBLICADOR_TOKEN`** de GitHub Actions, que tiene que ser igual al del `.env` del VPS. **No**
+  es el token del puente: ese viaja dentro de cada instalador y con él cualquiera podría subir una
+  «actualización».
+- **Si falla la subida** (o falta el secreto), la publicación no se cae: queda el aviso en el resumen
+  de la corrida y las PCs siguen bajando de GitHub, que se publica siempre.
+- **Puesta en marcha (una vez)**: generar el token, cargarlo en el `.env` del VPS y en los secretos
+  del repositorio, y desplegar el servidor (repo `Seguros_Daniel_Martinez`, `DEPLOY.md`,
+  «Actualizaciones de DM Gestion»).
+- No hay ningún token de lectura: el repositorio es público y el servidor sirve las actualizaciones
+  sin credenciales. (Hasta la v15.3.2 había un `UPDATE_TOKEN` embebido; cuando venció, ninguna PC vio
+  versiones nuevas. Por eso no se vuelve a embeber ninguno.)
+
+### Firma del instalador
+
+Sin firma de código, Windows muestra **SmartScreen** («Windows protegió su PC») al instalar. Todo está
+listo para firmar (`scripts/firma.mjs`, que usan `npm run dist` y `npm run dist:beta`): apenas se
+cargan los secretos en GitHub (Settings → Secrets and variables → Actions), el instalador sale firmado
+sin tocar nada más. Mientras no estén, sale sin firmar como siempre y el resumen de la corrida lo avisa.
+
+Dos maneras, se usa la que tenga sus secretos completos:
+
+1. **Certificado OV/EV en archivo `.pfx`** (o exportable): `WIN_CSC_LINK` (el `.pfx` en base64) y
+   `WIN_CSC_KEY_PASSWORD`. Ojo: desde 2023 los certificados nuevos vienen en token o en la nube, no en
+   `.pfx`; esta vía sirve si el proveedor permite exportarlo.
+2. **Azure Trusted Signing** (Artifact Signing, unos 10 USD por mes): `AZURE_TENANT_ID`,
+   `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (una app registrada con el rol «Trusted Signing
+   Certificate Profile Signer») y `AZURE_SIGN_ENDPOINT` (p. ej. `https://eus.codesigning.azure.net`),
+   `AZURE_SIGN_ACCOUNT`, `AZURE_SIGN_PROFILE`, `AZURE_SIGN_PUBLISHER` (el nombre exacto del editor del
+   certificado). Antes de pagar, confirmar que Azure valida empresas de Argentina.
+
+Qué cambia y qué cuidar:
+
+- Con un certificado nuevo SmartScreen puede seguir avisando un tiempo, hasta que el certificado junta
+  «reputación» (descargas). Después desaparece.
+- **Una vez firmado, no hay vuelta atrás fácil**: electron-builder anota el editor en el
+  `app-update.yml` y el actualizador **exige** que las versiones siguientes vengan firmadas por ese mismo
+  editor. Si el certificado vence sin renovar o cambia el nombre del titular, las PCs dejan de aceptar
+  actualizaciones hasta reinstalarlas a mano. Renovar antes de que venza y con el mismo nombre.
+- Las versiones ya instaladas (sin firmar) aceptan la primera firmada sin problema.
 
 En desarrollo (`npm run dev`) las actualizaciones quedan desactivadas: no hay instalador del que
 bajar nada, y Acerca de lo dice.

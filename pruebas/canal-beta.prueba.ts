@@ -5,6 +5,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { esVersionBeta, nombreDelPrograma } from '../src/shared/canal'
 import { versionDeBeta } from '../scripts/version-beta.mjs'
+import { firmaSegunEntorno } from '../scripts/firma.mjs'
+import {
+  origenesDeActualizacion,
+  URL_DE_ACTUALIZACIONES_BETA,
+  URL_DEL_SERVIDOR_DE_ACTUALIZACIONES,
+} from '../src/main/servicios/origenesDeActualizacion'
 
 test('esVersionBeta distingue la beta de la estable por el sufijo', () => {
   assert.equal(esVersionBeta('17.7.3-beta.12'), true)
@@ -38,4 +44,38 @@ test('el número de corrida viaja como número, no como texto', () => {
   assert.match(versionDeBeta('17.7.2', 9), /-beta\.9$/)
   assert.match(versionDeBeta('17.7.2', 10), /-beta\.10$/)
   assert.match(versionDeBeta('17.7.2', '007'), /-beta\.7$/, 'los ceros a la izquierda se normalizan')
+})
+
+test('las actualizaciones se buscan primero en el servidor y después en GitHub', () => {
+  const estable = origenesDeActualizacion('estable')
+  assert.deepEqual(estable.map((o) => o.origen), ['servidor', 'github'])
+  assert.deepEqual(estable[0].feed, { provider: 'generic', url: `${URL_DEL_SERVIDOR_DE_ACTUALIZACIONES}/estable` })
+  assert.equal(estable[0].canal, null, 'la estable lee latest.yml: sin canal (asignarlo prende allowDowngrade)')
+  assert.equal(estable[1].feed.provider, 'github')
+
+  const beta = origenesDeActualizacion('beta')
+  assert.deepEqual(beta.map((o) => o.origen), ['servidor', 'github'])
+  assert.deepEqual(beta[0].feed, { provider: 'generic', url: `${URL_DEL_SERVIDOR_DE_ACTUALIZACIONES}/beta`, channel: 'beta' })
+  assert.deepEqual(beta[1].feed, { provider: 'generic', url: URL_DE_ACTUALIZACIONES_BETA, channel: 'beta' })
+  assert.ok(beta.every((o) => o.canal === 'beta'))
+})
+
+test('la firma del instalador se elige por los secretos que haya', () => {
+  const sinNada = firmaSegunEntorno({})
+  assert.equal(sinNada.modo, 'ninguna')
+  assert.deepEqual(sinNada.argumentos, [])
+  assert.match(sinNada.aviso ?? '', /SIN FIRMAR/)
+
+  assert.equal(firmaSegunEntorno({ WIN_CSC_LINK: 'MIIK...', WIN_CSC_KEY_PASSWORD: 'x' }).modo, 'pfx')
+  assert.throws(() => firmaSegunEntorno({ WIN_CSC_LINK: 'MIIK...' }), /contraseña/)
+
+  const azure = firmaSegunEntorno({
+    AZURE_TENANT_ID: 't', AZURE_CLIENT_ID: 'c', AZURE_CLIENT_SECRET: 's',
+    AZURE_SIGN_ENDPOINT: 'https://eus.codesigning.azure.net', AZURE_SIGN_ACCOUNT: 'cuenta', AZURE_SIGN_PROFILE: 'perfil', AZURE_SIGN_PUBLISHER: 'Seguros Daniel Martínez',
+  })
+  assert.equal(azure.modo, 'azure')
+  assert.ok(azure.argumentos.includes('-c.win.azureSignOptions.publisherName=Seguros Daniel Martínez'))
+  assert.ok(azure.argumentos.includes('-c.win.azureSignOptions.codeSigningAccountName=cuenta'))
+  assert.throws(() => firmaSegunEntorno({ AZURE_TENANT_ID: 't' }), /a medias/)
+  assert.equal(firmaSegunEntorno({ AZURE_TENANT_ID: '  ' }).modo, 'ninguna', 'un secreto vacío no cuenta')
 })
