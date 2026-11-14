@@ -1,4 +1,5 @@
-// Actualizaciones automáticas: chequea los Releases de GitHub al abrir la app y cada 15
+// Actualizaciones automáticas: chequea el servidor de la agencia (y, si no contesta, los Releases de
+// GitHub; ver origenesDeActualizacion.ts) al abrir la app y cada 15
 // minutos (sólo pregunta si hay una versión nueva, no la baja) y avisa al renderer (mismo patrón
 // `emitir` que sincronizacion.ts e importacion.ts) para que aparezca el cartel «Actualización
 // disponible encontrada». Recién baja el instalador cuando alguien aprieta «Actualizar ahora»: antes
@@ -6,10 +7,11 @@
 import { app } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { EstadoActualizacion } from '../../shared/tipos'
-import { canalActual, URL_DE_ACTUALIZACIONES_BETA } from '../canal'
+import { canalActual } from '../canal'
 import { ahoraIso } from '../importacion/normalizar'
 import { reportarRechazo, reportarVersionPropia } from './estadoDeActualizaciones'
 import { emitirATodas as emitir } from './avisos'
+import { origenesDeActualizacion, type OpcionDeActualizacion } from './origenesDeActualizacion'
 
 const QUINCE_MINUTOS_MS = 15 * 60 * 1000
 
@@ -34,6 +36,13 @@ let estado: EstadoActualizacion = {
 }
 
 let temporizador: NodeJS.Timeout | null = null
+
+/** De dónde se busca, en orden (ver origenesDeActualizacion.ts), y cuál se está usando ahora. */
+let origenes: OpcionDeActualizacion[] = []
+let indiceDeOrigen = 0
+
+/** `true` mientras hay un chequeo en curso: un error ahí pasa al siguiente origen en vez de mostrarse. */
+let chequeando = false
 
 /**
  * Se pone en `true` sólo cuando alguien apretó «Actualizar ahora»: ahí sí conviene instalar solo en
@@ -66,36 +75,23 @@ export function iniciarActualizaciones(): void {
   // La demo no se actualiza sola: se reparte como un instalador suelto y no tiene canal de novedades.
   if (canalActual() === 'demo') return
 
-  if (canalActual() === 'beta') {
-    // La beta NO mira los Releases de versiones: lee un Release fijo («beta-canal», marcado como
-    // prerelease) que cada publicación de la rama `beta` reemplaza. Dos razones:
-    //  - La estable usa «el último Release que no sea prerelease», así que jamás ve esta beta.
-    //  - La beta no depende de cuál sea el Release más nuevo del repositorio: con el proveedor `github`,
-    //    en cuanto se publicara una estable por encima de la última beta, buscaría `beta.yml` en ese
-    //    Release, no lo encontraría y se quedaría sin actualizar.
-    autoUpdater.setFeedURL({ provider: 'generic', url: URL_DE_ACTUALIZACIONES_BETA, channel: 'beta' })
-    autoUpdater.channel = 'beta'
-    // Asignar el canal prende `allowDowngrade`; acá no tiene que bajar nunca a una beta más vieja.
-    autoUpdater.allowDowngrade = false
-    cambiarEstado({ canal: 'beta' })
-  } else {
-    // El repositorio es PÚBLICO, así que los Releases se leen sin credenciales: no va ningún token acá.
-    //
-    // Hasta la v15.3.2 iba `private: true` con un token de lectura embebido. Cuando ese token se venció
-    // (los fine-grained personal access token de GitHub duran como mucho un año), GitHub empezó a
-    // contestar «401 Bad credentials» a TODAS las computadoras de la agencia y el programa dejó de ver
-    // las versiones nuevas: un token que caduca es una bomba de tiempo, y además viajaba dentro del
-    // instalador, a la vista de cualquiera que lo abriera. Sin token no vence nada.
-    //
-    // Si algún día el repositorio vuelve a ser privado, esto deja de funcionar y hay que publicar los
-    // Releases en un repositorio público aparte (p. ej. `dm-gestion-releases`) en vez de volver a
-    // embeber un token.
-    autoUpdater.setFeedURL({
-      provider: 'github',
-      owner: 'zeroframe404',
-      repo: 'dm-gestion',
-    })
-  }
+  // La beta NO mira los Releases de versiones de GitHub: lee un Release fijo («beta-canal», marcado como
+  // prerelease) que cada publicación de la rama `beta` reemplaza, y en el servidor su propia carpeta
+  // (`/beta`). Dos razones:
+  //  - La estable usa «el último Release que no sea prerelease», así que jamás ve esta beta.
+  //  - La beta no depende de cuál sea el Release más nuevo del repositorio: con el proveedor `github`,
+  //    en cuanto se publicara una estable por encima de la última beta, buscaría `beta.yml` en ese
+  //    Release, no lo encontraría y se quedaría sin actualizar.
+  //
+  // La estable, en GitHub, lee el repositorio PÚBLICO sin credenciales: no va ningún token. Hasta la
+  // v15.3.2 iba `private: true` con un token de lectura embebido; cuando venció, GitHub contestó «401 Bad
+  // credentials» a TODAS las computadoras y el programa dejó de ver versiones nuevas. Sin token no vence
+  // nada. Si el repositorio vuelve a ser privado, el servidor de la agencia sigue andando; el respaldo de
+  // GitHub habría que llevarlo a un repositorio público aparte en vez de volver a embeber un token.
+  const canal = canalActual() === 'beta' ? 'beta' : 'estable'
+  origenes = origenesDeActualizacion(canal)
+  usarOrigen(0)
+  if (canal === 'beta') cambiarEstado({ canal: 'beta' })
   // El chequeo automático ya no descarga solo: sólo pregunta si hay algo nuevo (liviano, una consulta
   // al servidor de GitHub) y es el cartel el que decide si se baja, cuando alguien aprieta «Actualizar
   // ahora». `autoInstallOnAppQuit` sigue en `true` por si alguien cierra el programa con la descarga
@@ -104,9 +100,16 @@ export function iniciarActualizaciones(): void {
   autoUpdater.autoInstallOnAppQuit = true
 
   autoUpdater.on('checking-for-update', () => cambiarEstado({ situacion: 'buscando', ultimoChequeo: ahoraIso() }))
-  autoUpdater.on('update-not-available', () => cambiarEstado({ situacion: 'al-dia', version: null, porcentaje: null }))
-  // Todavía no se baja nada acá: `disponible` es lo que dispara el cartel con sus dos botones.
-  autoUpdater.on('update-available', (info) => cambiarEstado({ situacion: 'disponible', version: info.version, porcentaje: null }))
+  autoUpdater.on('update-not-available', () => {
+    chequeando = false
+    cambiarEstado({ situacion: 'al-dia', version: null, porcentaje: null })
+  })
+  // Todavía no se baja nada acá: `disponible` es lo que dispara el cartel con sus dos botones. La descarga
+  // sale del mismo origen que contestó el chequeo.
+  autoUpdater.on('update-available', (info) => {
+    chequeando = false
+    cambiarEstado({ situacion: 'disponible', version: info.version, porcentaje: null })
+  })
   autoUpdater.on('download-progress', (progreso) => cambiarEstado({ situacion: 'descargando', porcentaje: Math.round(progreso.percent) }))
   autoUpdater.on('update-downloaded', (info) => {
     cambiarEstado({ situacion: 'lista', version: info.version, porcentaje: 100 })
@@ -116,7 +119,15 @@ export function iniciarActualizaciones(): void {
   // Sin internet u otro error: no se muestra ningún diálogo, sólo queda registrado y se reintenta
   // solo en el próximo chequeo (al abrir de nuevo o a los 15 minutos).
   autoUpdater.on('error', (error) => {
-    console.error('[actualizaciones] Error buscando actualizaciones:', error)
+    console.error(`[actualizaciones] Error buscando actualizaciones (${origenes[indiceDeOrigen]?.origen ?? '?'}):`, error)
+    // Falló el CHEQUEO contra el servidor de la agencia: se prueba en el acto con el siguiente (GitHub),
+    // sin mostrar ningún error. Uno de descarga no cambia de origen: se muestra y se reintenta después.
+    if (chequeando && indiceDeOrigen + 1 < origenes.length) {
+      usarOrigen(indiceDeOrigen + 1)
+      chequear()
+      return
+    }
+    chequeando = false
     instalarSolaAlTerminar = false
     cambiarEstado({ situacion: 'error', ultimoError: mensajeCorto(error) })
   })
@@ -141,9 +152,32 @@ export function buscarActualizaciones(): void {
   }
   if (!app.isPackaged) return
   reportarVersionPropia()
+  if (origenes.length === 0) return
+  // Cada chequeo vuelve a probar primero el servidor de la agencia. Salvo con una descarga en curso o ya
+  // lista: cambiar de origen en el medio la dejaría sin de dónde terminar de bajar.
+  if (estado.situacion !== 'descargando' && estado.situacion !== 'lista') usarOrigen(0)
+  chequear()
+}
+
+function chequear(): void {
+  chequeando = true
   autoUpdater.checkForUpdates().catch((error: unknown) => {
     console.error('[actualizaciones] No se pudo chequear:', error)
   })
+}
+
+/** Apunta electron-updater al origen `indice` de la lista (0 = el servidor de la agencia). */
+function usarOrigen(indice: number): void {
+  const opcion: OpcionDeActualizacion | undefined = origenes[indice]
+  if (!opcion) return
+  indiceDeOrigen = indice
+  autoUpdater.setFeedURL(opcion.feed)
+  if (opcion.canal) {
+    autoUpdater.channel = opcion.canal
+    // Asignar el canal prende `allowDowngrade`; acá no tiene que bajar nunca a una beta más vieja.
+    autoUpdater.allowDowngrade = false
+  }
+  cambiarEstado({ origen: opcion.origen })
 }
 
 /** El «Actualizar ahora» del cartel: recién acá se baja el instalador. */

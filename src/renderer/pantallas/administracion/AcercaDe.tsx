@@ -151,6 +151,11 @@ export function AcercaDe() {
                 <span className="text-sm text-slate-800">
                   Canal <span className="font-semibold">{info?.canal === 'demo' ? 'demo' : (actualizacion?.canal ?? 'estable')}</span> —{' '}
                   {actualizacion ? textoDeSituacion(actualizacion, info?.canal) : 'Cargando…'}
+                  {actualizacion?.origen && actualizacion.situacion !== 'deshabilitada' && (
+                    <span className="ml-1 text-xs text-slate-500">
+                      ({actualizacion.origen === 'servidor' ? 'desde el servidor de la agencia' : 'desde GitHub, de respaldo'})
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-2">
                   <Boton icono="reloj" tamano="sm" onClick={() => setVerHistoricos(true)}>

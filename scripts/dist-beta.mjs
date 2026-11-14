@@ -15,6 +15,7 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { argumentosDeFirma } from './firma.mjs'
 
 const raiz = path.resolve(import.meta.dirname, '..')
 const { version } = JSON.parse(readFileSync(path.join(raiz, 'package.json'), 'utf8'))
@@ -35,6 +36,8 @@ const args = [
   '-c.artifactName=DM-Gestion-Beta-Setup-${version}.${ext}',
   '-c.nsis.shortcutName=DM Gestión (Beta)',
   '-c.publish.channel=beta',
+  // Firmado, si hay certificado cargado (ver scripts/firma.mjs).
+  ...argumentosDeFirma(),
 ]
 
 console.log(`[dist-beta] Armando el instalador de la beta ${version}`)

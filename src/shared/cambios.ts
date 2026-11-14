@@ -42,6 +42,8 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
       { tipo: 'modificado', texto: 'Seguridad: si a alguien lo desactivan o le cambian la contraseña desde otra computadora, su sesión se cierra en menos de un minuto (antes podía tardar hasta quince).' },
       { tipo: 'modificado', texto: 'Ticketeadora: el comprobante ahora se manda en el formato propio de la impresora (ESC/POS), con su letra interna, en vez de dibujarlo como una página por el driver de Windows. Así se terminan las letras con huecos, los textos corridos o cortados y los problemas de tipografía. El contenido y el orden del ticket son los mismos.' },
       { tipo: 'modificado', texto: 'Administración → Impresora: con ticketeadora ya no se elige la tipografía (la pone la impresora) y «Intensidad» pasa a poner el ticket en negrita. El ajuste horizontal y la tipografía siguen valiendo para la impresora común A4.' },
+      { tipo: 'modificado', texto: 'Actualizaciones: ahora se bajan del servidor de la agencia. Si el servidor no responde, se siguen bajando de GitHub como siempre. En Administración → Acerca de dice de dónde vino la última.' },
+      { tipo: 'modificado', texto: 'El instalador quedó preparado para salir firmado (así Windows deja de mostrar el aviso «Windows protegió su PC» al instalar). Empieza a firmarse cuando la agencia tenga su certificado.' },
     ],
   },
   {

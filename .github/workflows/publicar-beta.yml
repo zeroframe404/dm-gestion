@@ -76,6 +76,17 @@ jobs:
         run: npm run dist:beta
         env:
           DMG_FABRICA_VPS_TOKEN: ${{ secrets.DMG_VPS_TOKEN }}
+          # Firma del instalador (opcional, ver scripts/firma.mjs y el README, «Firma del instalador»). Sin
+          # estos secretos sale sin firmar, como siempre, con el aviso en el resumen.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ secrets.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ secrets.AZURE_SIGN_PROFILE }}
+          AZURE_SIGN_PUBLISHER: ${{ secrets.AZURE_SIGN_PUBLISHER }}
 
       - name: Comprobar que el instalador lleva los secretos de fábrica
         run: node scripts/verificar-fabrica.mjs
@@ -86,6 +97,9 @@ jobs:
         run: node scripts/publicar-beta.mjs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Para subir la versión también al servidor de la agencia (scripts/subir-al-vps.mjs). Sin él, sale
+          # sólo por GitHub, con el aviso en el resumen.
+          DMG_PUBLICADOR_TOKEN: ${{ secrets.DMG_PUBLICADOR_TOKEN }}
 
       - name: Resumen
         shell: bash

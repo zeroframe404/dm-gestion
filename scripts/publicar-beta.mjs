@@ -13,6 +13,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { subirAlVps } from './subir-al-vps.mjs'
 
 const raiz = path.resolve(import.meta.dirname, '..')
 const { version } = JSON.parse(readFileSync(path.join(raiz, 'package.json'), 'utf8'))
@@ -89,3 +90,7 @@ for (const asset of assets) {
 }
 
 console.log(`[publicar-beta] Listo: https://github.com/${REPO}/releases/tag/${TAG} (${version})`)
+
+// Y al servidor de la agencia (carpeta `beta`, aparte de la estable), de donde la beta busca primero. Si
+// no se puede, avisa y sigue: el Release «beta-canal» ya la tiene.
+await subirAlVps({ canal: 'beta', instalador: rutaInstalador, blockmap: rutaBlockmap, yml: rutaYml })
