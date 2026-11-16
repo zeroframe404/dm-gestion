@@ -533,13 +533,14 @@ const COMPANIAS: Compania[] = [
       tipo === 'MOTO'
         ? [
             { codigo: 'RCM', nombre: 'Responsabilidad civil (RCM)', nivel: 'RC', adicionales: [] },
-            { codigo: 'RCM|B1-80 MOTO', nombre: 'B1-80 Moto', nivel: 'BASICO', adicionales: ['Cobertura de vida'] },
-            { codigo: 'RCM|B-80 MOTO', nombre: 'B-80 Moto', nivel: 'BASICO', adicionales: ['Cobertura de vida'] },
+            { codigo: 'RCM|B1-80 MOTO', nombre: 'B1-80 Moto Robo e Incendio Total', nivel: 'BASICO', adicionales: ['Cobertura de vida'] },
+            { codigo: 'RCM|B-80 MOTO', nombre: 'B-80 Moto Pérdida Total', nivel: 'BASICO', adicionales: ['Cobertura de vida'] },
+            { codigo: 'RCM|C-80 MOTO', nombre: 'C-80 Moto Terceros Completo', nivel: 'COMPLETO', adicionales: ['Cobertura de vida'] },
           ]
         : [
             { codigo: 'RCA', nombre: 'Responsabilidad civil (RCA)', nivel: 'RC', adicionales: ['Auxilio mecánico'] },
-            { codigo: 'RCA|B1-80', nombre: 'B1-80', nivel: 'BASICO', adicionales: ['Auxilio mecánico', 'Países limítrofes'] },
-            { codigo: 'RCA|C2-80', nombre: 'C2-80', nivel: 'COMPLETO', adicionales: ['Auxilio mecánico', 'Países limítrofes'] },
+            { codigo: 'RCA|B1-80', nombre: 'B1-80 Robo e Incendio Total', nivel: 'BASICO', adicionales: ['Auxilio mecánico', 'Países limítrofes'] },
+            { codigo: 'RCA|C2-80', nombre: 'C2-80 Terceros Completo', nivel: 'COMPLETO', adicionales: ['Auxilio mecánico', 'Países limítrofes'] },
             { codigo: 'RCA|S', nombre: 'Tercero Completo Full', nivel: 'PREMIUM', adicionales: ['Granizo', 'Auxilio mecánico', 'Países limítrofes'] },
             { codigo: 'RCA|T34', nombre: 'T34 Todo riesgo franq. {franquicia}', nivel: 'TODO_RIESGO', franquicia: 2, adicionales: ['Granizo', 'Auxilio mecánico', 'Países limítrofes'] },
             { codigo: 'RCA|T31', nombre: 'T31 Todo riesgo franq. {franquicia}', nivel: 'TODO_RIESGO', franquicia: 5, adicionales: ['Granizo', 'Auxilio mecánico', 'Países limítrofes'] },
