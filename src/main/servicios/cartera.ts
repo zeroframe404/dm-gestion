@@ -1194,7 +1194,8 @@ export const INSERT_BAJA = `
 
 export function darDeBaja(filaId: string, datos: DatosDeBaja, actor: SesionUsuario): null {
   const fila = buscarFila(texto(filaId, 'La fila', 1, 64))
-  exigirMesAbierto(fila.periodo, actor)
+  // A propósito NO se llama `exigirMesAbierto`: igual que cobrar, dar de baja al deudor que pasó de mes
+  // (la póliza ya vencida en una planilla anterior) tiene que poder hacerlo cualquier usuario con Cartera.
   const motivo = datos.motivo
   if (!MOTIVOS_DE_BAJA.includes(motivo as MotivoDeBaja)) throw new ErrorDeNegocio('Elegí un motivo de baja de la lista.')
   const nota = limpiar(datos.nota)
