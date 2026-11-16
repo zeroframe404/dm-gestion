@@ -97,7 +97,7 @@ test('la planilla abre en el mes más nuevo con todas sus filas', async () => {
   cerrarBaseDeDatos()
 })
 
-test('los meses anteriores se ven completos pero un empleado no los puede tocar; un administrador sí', async () => {
+test('los meses anteriores se ven completos; un empleado sólo puede cobrar y dar de baja, un administrador además corrige', async () => {
   const db = await carteraDePrueba()
   insertarUsuario(db, MARIA)
   const enero = planillaDelMes('2026-01')
@@ -107,7 +107,11 @@ test('los meses anteriores se ven completos pero un empleado no los puede tocar;
 
   const fila = enero.filas[0]!
   assert.throws(() => editarCelda(fila.filaId, 'cuota', '$ 1', MARIA), /mes anterior/)
-  assert.throws(() => darDeBaja(fila.filaId, { motivo: 'VENDIO', nota: '' }, MARIA), /mes anterior/)
+
+  // Dar de baja al deudor que pasó de mes tampoco se traba: igual que cobrar, lo puede hacer un EMPLEADO.
+  const otra = enero.filas[1]!
+  darDeBaja(otra.filaId, { motivo: 'VENDIO', nota: '' }, MARIA)
+  assert.equal(planillaDelMes('2026-01').filas.some((f) => f.filaId === otra.filaId), false)
 
   // Cobrar una cuota vencida es distinto de editar la planilla vieja: un EMPLEADO sí puede registrar
   // ese pago, porque es lo que la agencia necesita todos los días (un cliente que debe meses atrás).
