@@ -30,6 +30,13 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
+    version: '18.1.4',
+    fecha: '2026-11-16',
+    cambios: [
+      { tipo: 'modificado', texto: 'Cartera: ahora se puede dar de baja una póliza aunque figure en la planilla de un mes anterior (por ejemplo un deudor que pasó de mes), igual que ya se podía cobrar. Antes sólo lo podía hacer un administrador.' },
+    ],
+  },
+  {
     version: '18.1.3',
     fecha: '2026-11-13',
     cambios: [
