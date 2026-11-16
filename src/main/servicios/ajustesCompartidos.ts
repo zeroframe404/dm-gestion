@@ -22,6 +22,8 @@
 //                  clave de suscripción, productor y ambiente)
 //   equidadApi     cuenta de la API GLM de La Equidad (URL base, usuario de     administrador o superadmin
 //                  aplicación, usuario de servicio, productor, rama y empresa)
+//   rusApi         cuenta de la API v2 de Río Uruguay Seguros (usuario,        administrador o superadmin
+//                  contraseña, API-Key, productor, solicitante y ambiente)
 //   companias      días de cobertura, comisión, renovación y plantilla         administrador o superadmin
 //   ticket         dirección y teléfono del encabezado de cada sucursal        cualquiera, la de SU sucursal
 //   iaAnthropic    la clave de Anthropic del asistente con IA                  superadministrador
@@ -31,7 +33,7 @@
 //
 // La cuenta de Galeno (`galenoApi`) también vive en el servidor, pero NO está en esta lista: Galeno sólo
 // acepta pedidos desde la IP del VPS, así que ninguna computadora se la guarda (ver servicios/galeno.ts).
-// Las de ATM, Mercantil y Equidad sí se adoptan en cada una, porque no tienen esa restricción y cada PC les habla directo.
+// Las de ATM, Mercantil, Equidad y RUS sí se adoptan en cada una, porque no tienen esa restricción y cada PC les habla directo.
 //
 // El recorte por rol NO se hace acá: se hace en ipc.ts, que es donde se sabe quién llamó. Este archivo
 // sólo sabe llevar y traer.
@@ -55,12 +57,14 @@ import {
   adoptarAsistente,
   adoptarAtm,
   adoptarEquidad,
+  adoptarRus,
   adoptarGoogle,
   adoptarMercantil,
   adoptarMeta,
   valorCompartidoDeAtm,
   valorCompartidoDelAsistente,
   valorCompartidoDeEquidad,
+  valorCompartidoDeRus,
   valorCompartidoDeGoogle,
   valorCompartidoDeMercantil,
   valorCompartidoDeMeta,
@@ -124,6 +128,13 @@ const EQUIDAD: AjusteCompartido = {
   adoptar: adoptarEquidad,
 }
 
+const RUS: AjusteCompartido = {
+  clave: 'rusApi',
+  nombre: 'la cuenta de RUS',
+  valorLocal: valorCompartidoDeRus,
+  adoptar: adoptarRus,
+}
+
 const COMPANIAS: AjusteCompartido = {
   clave: 'companias',
   nombre: 'el catálogo de compañías',
@@ -160,7 +171,7 @@ const CATALOGOS: AjusteCompartido = {
 }
 
 /** Los que se adoptan solos al arrancar, en el orden en que se piden. */
-const TODOS = [GOOGLE, META, ATM, MERCANTIL, EQUIDAD, COMPANIAS, TICKET, ASISTENTE, MARCA, CATALOGOS]
+const TODOS = [GOOGLE, META, ATM, MERCANTIL, EQUIDAD, RUS, COMPANIAS, TICKET, ASISTENTE, MARCA, CATALOGOS]
 
 /** Lo que se devuelve cuando ni siquiera hay puente: en desarrollo, o sin VPS configurado. */
 const SIN_SERVIDOR: EstadoDeAjusteCompartido = {
@@ -377,6 +388,10 @@ export const estadoCompartidoDeEquidad = (): Promise<EstadoDeAjusteCompartido> =
 export const borrarEquidadDelVps = (): Promise<void> => borrarDelVps(EQUIDAD)
 /** Lo mismo para API Aseguradoras → Equidad. */
 export const traerEquidadDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(EQUIDAD, { pisarLoLocal: true })
+export const estadoCompartidoDeRus = (): Promise<EstadoDeAjusteCompartido> => estadoDe(RUS)
+export const borrarRusDelVps = (): Promise<void> => borrarDelVps(RUS)
+/** Lo mismo para API Aseguradoras → RUS. */
+export const traerRusDelVps = (): Promise<ResultadoDeAdopcion> => adoptarDelVps(RUS, { pisarLoLocal: true })
 
 export const borrarAsistenteDelVps = (): Promise<void> => borrarDelVps(ASISTENTE)
 /** El botón «Traer del servidor» del asistente: lo apretó alguien, así que sí pisa lo local. */
@@ -467,7 +482,7 @@ function identidadDeSucursal(nombre: string): string {
  * motivo vuelve igual, para la pantalla que quiera mostrarlo.
  */
 export async function publicarSinRomper(
-  cual: 'companias' | 'google' | 'meta' | 'atmApi' | 'mercantilApi' | 'equidadApi' | 'iaAnthropic' | 'marca' | 'catalogos',
+  cual: 'companias' | 'google' | 'meta' | 'atmApi' | 'mercantilApi' | 'equidadApi' | 'rusApi' | 'iaAnthropic' | 'marca' | 'catalogos',
   quien: string | null,
 ): Promise<EstadoDeAjusteCompartido> {
   const ajuste = {
@@ -477,6 +492,7 @@ export async function publicarSinRomper(
     atmApi: ATM,
     mercantilApi: MERCANTIL,
     equidadApi: EQUIDAD,
+    rusApi: RUS,
     iaAnthropic: ASISTENTE,
     marca: MARCA,
     catalogos: CATALOGOS,

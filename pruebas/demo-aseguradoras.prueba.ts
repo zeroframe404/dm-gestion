@@ -21,6 +21,7 @@ import { atm } from '../src/main/multicotizador/atm'
 import { equidad } from '../src/main/multicotizador/equidad'
 import { galeno } from '../src/main/multicotizador/galeno'
 import { mercantil } from '../src/main/multicotizador/mercantil'
+import { rus } from '../src/main/multicotizador/rus'
 import { usarAseguradorasDePrueba } from '../src/main/multicotizador/registro'
 import { cotizarEnAseguradora } from '../src/main/servicios/multicotizador'
 
@@ -77,7 +78,7 @@ function premios(coberturas: Array<{ codigo: string; premio: number }>): Record<
 }
 
 test('demo: sólo las compañías que el programa integra de verdad, con sus ids, nombres y tipos, y todas disponibles', () => {
-  const reales = [galeno, atm, mercantil, equidad]
+  const reales = [galeno, atm, mercantil, equidad, rus]
   for (const real of reales) {
     const demo = ASEGURADORAS_DE_LA_DEMO.find((a) => a.id === real.id)
     assert.ok(demo, real.id)

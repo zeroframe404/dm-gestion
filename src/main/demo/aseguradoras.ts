@@ -2,7 +2,7 @@
 // producción». Cumplen el mismo contrato que los adaptadores de verdad (ver multicotizador/aseguradora.ts)
 // y con los mismos ids, nombres y tipos de vehículo —así lo propio de cada compañía en la pantalla, como
 // emitir con Galeno o con ATM, sigue andando—, pero ninguna sale a internet: el precio se calcula acá.
-// Son sólo las que el programa integra de verdad (Galeno, ATM, Mercantil Andina y La Equidad): mostrarle
+// Son sólo las que el programa integra de verdad (Galeno, ATM, Mercantil Andina, La Equidad y Río Uruguay): mostrarle
 // a otra agencia una compañía que cotiza en la demo y no existe en API Aseguradoras sería venderle algo
 // que el programa no tiene.
 //
@@ -512,6 +512,40 @@ const COMPANIAS: Compania[] = [
     ],
     formasDePago: FORMAS_DE_PAGO,
     usos: USOS,
+    equiposDeRastreo: RASTREO,
+  },
+  {
+    id: 'RUS',
+    nombre: 'Río Uruguay',
+    tipos: ['AUTO', 'MOTO'],
+    emite: null,
+    factor: 0.95,
+    demora: [600, 1400],
+    modos: [MODOS.TRIMESTRAL, MODOS.SEMESTRAL, MODOS.ANUAL],
+    clausulas: ['20', '30', '40'],
+    recargoAdministrativo: 10,
+    vigenciaMeses: 6,
+    prefijoSolicitud: '6',
+    prefijoPoliza: '44',
+    tituloVersion: 'Versión en RUS',
+    planes: (tipo) => [{ codigo: tipo === 'MOTO' ? '20' : '4', texto: tipo === 'MOTO' ? 'Motovehículos' : 'Automotores', factor: 1, comision: 0.2 }],
+    coberturas: (tipo) =>
+      tipo === 'MOTO'
+        ? [
+            { codigo: 'RCM', nombre: 'Responsabilidad civil (RCM)', nivel: 'RC', adicionales: [] },
+            { codigo: 'RCM|B1-80 MOTO', nombre: 'B1-80 Moto', nivel: 'BASICO', adicionales: ['Cobertura de vida'] },
+            { codigo: 'RCM|B-80 MOTO', nombre: 'B-80 Moto', nivel: 'BASICO', adicionales: ['Cobertura de vida'] },
+          ]
+        : [
+            { codigo: 'RCA', nombre: 'Responsabilidad civil (RCA)', nivel: 'RC', adicionales: ['Auxilio mecánico'] },
+            { codigo: 'RCA|B1-80', nombre: 'B1-80', nivel: 'BASICO', adicionales: ['Auxilio mecánico', 'Países limítrofes'] },
+            { codigo: 'RCA|C2-80', nombre: 'C2-80', nivel: 'COMPLETO', adicionales: ['Auxilio mecánico', 'Países limítrofes'] },
+            { codigo: 'RCA|S', nombre: 'Tercero Completo Full', nivel: 'PREMIUM', adicionales: ['Granizo', 'Auxilio mecánico', 'Países limítrofes'] },
+            { codigo: 'RCA|T34', nombre: 'T34 Todo riesgo franq. {franquicia}', nivel: 'TODO_RIESGO', franquicia: 2, adicionales: ['Granizo', 'Auxilio mecánico', 'Países limítrofes'] },
+            { codigo: 'RCA|T31', nombre: 'T31 Todo riesgo franq. {franquicia}', nivel: 'TODO_RIESGO', franquicia: 5, adicionales: ['Granizo', 'Auxilio mecánico', 'Países limítrofes'] },
+          ],
+    formasDePago: FORMAS_DE_PAGO,
+    usos: USOS.slice(0, 4),
     equiposDeRastreo: RASTREO,
   },
 ]

@@ -477,6 +477,13 @@ export interface ApiDm {
     traerDelServidor: Remota<'equidad:traerDelServidor'>
     probar: Remota<'equidad:probar'>
   }
+  rus: {
+    estado: Remota<'rus:estado'>
+    guardarCredenciales: Remota<'rus:guardarCredenciales'>
+    borrarCredenciales: Remota<'rus:borrarCredenciales'>
+    traerDelServidor: Remota<'rus:traerDelServidor'>
+    probar: Remota<'rus:probar'>
+  }
   multicotizador: {
     aseguradoras: Remota<'multicotizador:aseguradoras'>
     localidades: Remota<'multicotizador:localidades'>
