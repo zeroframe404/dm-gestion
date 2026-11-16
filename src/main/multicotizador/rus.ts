@@ -209,13 +209,32 @@ export function modelosCandidatos(solicitud: SolicitudResuelta, modelos: OpcionR
   return porNombre.length > 0 ? porNombre : masParecidos(textoParaBuscar(solicitud))
 }
 
-/** La equivalencia se guarda con el tipo de unidad adelante («2:94727»): así se vuelve a buscar donde estaba. */
-export function codigoDeEquivalencia(tipoUnidad: string, version: string): string {
-  return `${tipoUnidad}:${version}`
+/**
+ * La equivalencia se guarda con el tipo de unidad y el modelo adelante («2:4100:70001»): así se vuelve a
+ * buscar donde estaba, aunque ese modelo no esté entre los que más se parecen por el nombre.
+ */
+export function codigoDeEquivalencia(tipoUnidad: string, modelo: string, version: string): string {
+  return `${tipoUnidad}:${modelo}:${version}`
 }
-function leerEquivalencia(codigo: string | undefined): { tipoUnidad: string; version: string } | null {
-  const partes = /^(\d+):(\d+)$/.exec(codigo ?? '')
-  return partes ? { tipoUnidad: partes[1]!, version: partes[2]! } : null
+/** Lee también la forma anterior, sin el modelo («2:70001»). */
+export function leerEquivalencia(codigo: string | undefined): { tipoUnidad: string; modelo: string | null; version: string } | null {
+  const conModelo = /^(\d+):(\d+):(\d+)$/.exec(codigo ?? '')
+  if (conModelo) return { tipoUnidad: conModelo[1]!, modelo: conModelo[2]!, version: conModelo[3]! }
+  const sinModelo = /^(\d+):(\d+)$/.exec(codigo ?? '')
+  return sinModelo ? { tipoUnidad: sinModelo[1]!, modelo: null, version: sinModelo[2]! } : null
+}
+
+/**
+ * true si RUS rechazó EL VEHÍCULO (su modelo o versión), y no otro dato del pedido. Sus errores de
+ * validación traen la ruta del campo («#/vehiculos/0/cpLocalidadGuarda: expected type…»): esa ruta se saca
+ * antes de mirar, porque «vehiculos» aparece en cualquier campo del vehículo, sea el código postal o el uso.
+ */
+export function rechazaElVehiculo(motivos: string[]): boolean {
+  return motivos.some((motivo) => {
+    if (/#\/vehiculos\/\d+\/modeloVehiculo\b/i.test(motivo)) return true
+    const texto = normalizarTexto(motivo.replace(/#\/[^\s:]*/g, ' '))
+    return /\bMODELO\b|\bMODELOVEHICULO\b|\bVERSION\b|\bNO SE ENCONTRO EL VEHICULO\b|\bVEHICULO INEXISTENTE\b/.test(texto)
+  })
 }
 
 /** Lo que conviene revisar según lo que dijo RUS al rechazar. */
@@ -248,7 +267,13 @@ interface BusquedaEnTipo {
   versiones: Version[]
 }
 
-async function buscarEnTipo(cliente: ClienteRus, solicitud: SolicitudResuelta, tipoUnidad: string, elegidos: Record<string, string>): Promise<BusquedaEnTipo> {
+async function buscarEnTipo(
+  cliente: ClienteRus,
+  solicitud: SolicitudResuelta,
+  tipoUnidad: string,
+  elegidos: Record<string, string>,
+  modeloRecordado: string | null,
+): Promise<BusquedaEnTipo> {
   const v = solicitud.vehiculo
   const anio = v.anio
   const marcas = await enMemoria(`marcas:${tipoUnidad}`, () => marcasRus(cliente, tipoUnidad))
@@ -260,6 +285,10 @@ async function buscarEnTipo(cliente: ClienteRus, solicitud: SolicitudResuelta, t
   // Sin modelo elegido a mano, se miran los tres que más se parecen: el catálogo suele partir un modelo en
   // varios y la versión buscada puede estar en cualquiera.
   const candidatos = modeloElegido ? modelos.filter((m) => m.codigo === modeloElegido) : modelosCandidatos(solicitud, modelos)
+  // El modelo de la equivalencia recordada se mira siempre, aunque por el nombre no esté entre los parecidos:
+  // si no, una versión elegida a mano en un modelo de nombre distinto no se volvería a encontrar.
+  const recordado = !modeloElegido && modeloRecordado ? modelos.find((m) => m.codigo === modeloRecordado) : undefined
+  if (recordado && !candidatos.includes(recordado)) candidatos.push(recordado)
   const versiones: Version[] = []
   for (const modelo of candidatos) {
     const lista = await enMemoria(`versiones:${tipoUnidad}:${marca.codigo}:${anio}:${modelo.codigo}`, () => versionesRus(cliente, marca.codigo, anio, tipoUnidad, modelo.codigo)).catch(
@@ -293,7 +322,7 @@ async function vehiculoEnRus(cliente: ClienteRus, solicitud: SolicitudResuelta, 
   const aProbar = tipoElegido ? [tipoElegido] : recordada && valido(recordada.tipoUnidad, tipos) ? [recordada.tipoUnidad] : tipos.map((t) => t.codigo)
   for (const tipoUnidad of aProbar) {
     // Lo elegido a mano (marca, modelo) se aplica en cada tipo si existe ahí: los ids de marca de RUS son los mismos en todos.
-    const enEste = await buscarEnTipo(cliente, solicitud, tipoUnidad, elegidos)
+    const enEste = await buscarEnTipo(cliente, solicitud, tipoUnidad, elegidos, recordada && recordada.tipoUnidad === tipoUnidad ? recordada.modelo : null)
     if (!busqueda) busqueda = enEste
     if (enEste.versiones.length > 0) {
       busqueda = enEste
@@ -382,8 +411,11 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   const { facturacion, cuotas: cuotasPedidas, clausulaAjuste } = solicitud.condiciones
 
   // 1. Lo comercial, a la vista: vigencia, cuotas y ajuste automático. Arrancan en lo que dice el formulario.
+  // El token primero: si la cuenta no sirve (la API-Key, el usuario), eso sí corta la cotización entera.
+  await cliente.token()
+  // Las vigencias, en cambio, no: si su servicio no contesta, se cotiza con la del ejemplo de RUS y se avisa.
   let vigencias = await enMemoria(`vigencias:${ramo}`, () => vigenciasRus(cliente, ramo)).catch((error: unknown) => {
-    if (error instanceof ErrorDeRus && (error.esDeRed || error.status === 401 || error.status === 403)) throw error
+    if (error instanceof ErrorDeRus && error.esDeRed) throw error
     return [] as VigenciaRus[]
   })
   if (vigencias.length === 0) {
@@ -523,8 +555,8 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   if (!cotizacion.ok) {
     const motivos = cotizacion.mensajes.length > 0 ? cotizacion.mensajes : ['no devolvió coberturas']
     const consejo = motivos.map(consejoParaElRechazo).find(Boolean)
-    const porElVehiculo = /MODELO|VEHICULO|VERSION/.test(normalizarTexto(motivos.join(' ')))
-    if (porElVehiculo) olvidarEquivalencia(ID_RUS, v.codigoCatalogo, codigoDeEquivalencia(elegido.tipoUnidad, version.codigo))
+    const porElVehiculo = rechazaElVehiculo(cotizacion.mensajes)
+    if (porElVehiculo && elegido.modelo) olvidarEquivalencia(ID_RUS, v.codigoCatalogo, codigoDeEquivalencia(elegido.tipoUnidad, elegido.modelo.codigo, version.codigo))
     return {
       estado: 'ERROR',
       mensaje: `RUS no cotizó: ${motivos.join(' · ')}.${consejo ? ` ${consejo}` : ''}`,
@@ -540,7 +572,7 @@ async function cotizar(solicitud: SolicitudResuelta, elegidos: Record<string, st
   // La tabla de equivalencias: lo elegido a mano, o lo elegido sin dudas, queda para este vehículo del
   // catálogo ahora que RUS lo cotizó.
   const descripcion = `${elegido.marca?.descripcion ?? ''} ${version.descripcion}`.trim()
-  const equivalencia = codigoDeEquivalencia(elegido.tipoUnidad, version.codigo)
+  const equivalencia = codigoDeEquivalencia(elegido.tipoUnidad, elegido.modelo?.codigo ?? '0', version.codigo)
   if (elegidos.version === version.codigo) guardarEquivalencia(ID_RUS, v.codigoCatalogo, equivalencia, 'MANUAL', descripcion)
   else if (!elegido.guardada) guardarEquivalencia(ID_RUS, v.codigoCatalogo, equivalencia, 'AUTOMATICA', descripcion)
 
@@ -595,6 +627,8 @@ function cuentaDe(credenciales: CredencialesRus): CuentaRus {
 export const rus: CotizadorDeAseguradora = {
   id: ID_RUS,
   nombre: NOMBRE,
+  // La agencia la escribe de las tres formas: «RIO URUGUAY», «RUS» y «R.U.S.».
+  aliasesEnLaBase: ['RUS', 'R U S'],
   tipos: ['AUTO', 'MOTO'],
   emite: false,
   noDisponible: () => (cuentaActual() ? null : 'Falta cargar la cuenta de RUS en API Aseguradoras → RUS.'),

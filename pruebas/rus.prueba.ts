@@ -9,16 +9,20 @@
 // se eligió con la forma del ejemplo de RUS, y que ni la contraseña ni la API-Key se filtren.
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { leerOpciones, listaDe, sinEnvoltorio } from '../src/main/aseguradoras/rus/catalogos'
+import { leerOpciones, listaDe, sinEnvoltorio, vigenciasRus } from '../src/main/aseguradoras/rus/catalogos'
 import { crearClienteRus, ENCABEZADO_API_KEY, ErrorDeRus, erroresDeRus, leerToken, olvidarTokensDeRus, RUTA_TOKEN } from '../src/main/aseguradoras/rus/cliente'
 import { armarPedidoDeCotizacion, categoriaRus, leerCoberturas, leerRespuestaDeCotizacion, sinHtml, sumarMeses } from '../src/main/aseguradoras/rus/cotizacion'
 import type { SolicitudResuelta } from '../src/main/multicotizador/aseguradora'
+import { abrirBaseDeDatos, cerrarBaseDeDatos } from '../src/main/db/base'
+import { equivalenciaGuardada, guardarEquivalencia } from '../src/main/multicotizador/equivalenciasGuardadas'
 import {
   consejoParaElRechazo,
   cuotasDeLaVigencia,
   cuotasPorDefecto,
   ID_RUS,
+  leerEquivalencia,
   olvidarListasDeRus,
+  rechazaElVehiculo,
   rus,
   usarCuentaDeRusDePrueba,
   vigenciaPorDefecto,
@@ -176,6 +180,37 @@ test('RUS: las listas se leen sueltas o envueltas en `object`, y un error del ca
   assert.deepEqual(leerOpciones({ listMarcaVehiculo: [{ id: 5, descripcion: 'AUDI' }, { descripcion: 'sin id' }] }, 'listMarcaVehiculo', 'las marcas'), [{ codigo: '5', descripcion: 'AUDI' }])
   assert.throws(() => leerOpciones({ errores: { listError: [{ atributo: 'vehiculo', descripcion: 'No se encontro el vehiculo' }] } }, 'listUso', 'las versiones'), /No se encontro el vehiculo/)
   assert.throws(() => leerOpciones({ raro: 1, otro: 'x' }, 'listUso', 'las versiones'), /formato inesperado/)
+})
+
+test('RUS: los servicios comunes se piden bajo el entorno y, si ahí no existen, en la raíz como los escribe su documentación', async (t) => {
+  const pedidos = fetchFalso(t, (pedido) => {
+    if (pedido.ruta === RUTA_TOKEN) return json(TOKEN)
+    if (pedido.url.startsWith(`${BASE}/comunes/`)) return json({ message: 'Missing Authentication Token' }, 403)
+    if (pedido.url.startsWith('https://api.rus.com.ar/comunes/vigencias')) return json({ object: { listVigencia: [{ id: 2, descripcion: 'ANUAL', cantidadMeses: 12 }] } })
+    return json({ message: 'Not Found' }, 404)
+  })
+  const vigencias = await vigenciasRus(crearClienteRus(CUENTA), '4')
+  assert.deepEqual(vigencias.map((v) => [v.codigo, v.meses]), [['2', 12]])
+  const raiz = pedidos.find((p) => p.url.startsWith('https://api.rus.com.ar/comunes/'))!
+  assert.equal(raiz.url, 'https://api.rus.com.ar/comunes/vigencias?ramo=4')
+  assert.equal(raiz.headers[ENCABEZADO_API_KEY], API_KEY, 'también con la API-Key')
+  assert.match(raiz.headers.authorization ?? '', /^Bearer /)
+})
+
+test('RUS: sólo un rechazo del modelo o la versión cuenta como rechazo del vehículo, no la ruta de otro campo', () => {
+  assert.equal(rechazaElVehiculo(['#/vehiculos/0/cpLocalidadGuarda: expected type: Integer, found: String']), false)
+  assert.equal(rechazaElVehiculo(['#/vehiculos/0: required key [uso] not found']), false)
+  assert.equal(rechazaElVehiculo(['Fecha de inicio de vigencia no valida']), false)
+  assert.equal(rechazaElVehiculo(['#/vehiculos/0/modeloVehiculo: expected type: Integer, found: String']), true)
+  assert.equal(rechazaElVehiculo(['vehiculo: No se encontro el vehiculo']), true)
+  assert.equal(rechazaElVehiculo(['El modelo no está habilitado para el uso']), true)
+})
+
+test('RUS: la equivalencia guardada se lee con el modelo, y también en su forma anterior', () => {
+  assert.deepEqual(leerEquivalencia('2:4100:70001'), { tipoUnidad: '2', modelo: '4100', version: '70001' })
+  assert.deepEqual(leerEquivalencia('1:88229'), { tipoUnidad: '1', modelo: null, version: '88229' })
+  assert.equal(leerEquivalencia('cualquier cosa'), null)
+  assert.equal(leerEquivalencia(undefined), null)
 })
 
 // --- La cotización ----------------------------------------------------------------------------------
@@ -493,6 +528,33 @@ test('RUS: con dos versiones igual de parecidas pregunta en vez de adivinar, y l
   assert.equal((api.cotizaciones[0]!.vehiculos as Array<{ modeloVehiculo: number }>)[0]!.modeloVehiculo, 94727)
 })
 
+test('RUS: la versión elegida a mano en un modelo de nombre distinto se vuelve a encontrar, y un error del código postal no la borra', async (t) => {
+  abrirBaseDeDatos(':memory:')
+  t.after(() => cerrarBaseDeDatos())
+  // «ONIX» no se parece a «Cruze»: por el nombre no está entre los candidatos, pero la persona eligió ahí.
+  guardarEquivalencia(ID_RUS, 'AUTO:777', '1:5591:91000', 'MANUAL', 'CHEVROLET ONIX 1.2')
+  let rechazar = false
+  const api = apiFalsa(t, () =>
+    rechazar
+      ? json({ errors: [{ message: '#/vehiculos/0/cpLocalidadGuarda', code: 'ERROR_DE_VALIDACION', description: '#/vehiculos/0/cpLocalidadGuarda: expected type: Integer, found: String' }], status: 400 }, 400)
+      : json({ cotizaciones: COTIZACIONES }),
+  )
+  const fetchDeLaApi = globalThis.fetch
+  globalThis.fetch = (async (url: string | URL | Request, opciones?: RequestInit) =>
+    /idGrupoModelo=5591/.test(String(url)) ? json({ listUso: [{ id: 91000, descripcion: 'ONIX 1.2 LT' }] }) : fetchDeLaApi(url, opciones)) as typeof fetch
+
+  const resultado = await rus.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  assert.equal((api.cotizaciones[0]!.vehiculos as Array<{ modeloVehiculo: number }>)[0]!.modeloVehiculo, 91000, 'la recordada, no la que más se parece')
+
+  rechazar = true
+  const rechazo = await rus.cotizar(solicitud(), {})
+  assert.equal(rechazo.estado, 'ERROR')
+  assert.equal(rechazo.revisar, undefined, 'no apunta a la versión')
+  assert.match(rechazo.mensaje ?? '', /código postal/)
+  assert.deepEqual(equivalenciaGuardada(ID_RUS, 'AUTO:777'), { codigo: '1:5591:91000', origen: 'MANUAL' }, 'la elegida a mano sigue')
+})
+
 test('RUS: un rechazo vuelve como error en la tarjeta, con el motivo y qué revisar', async (t) => {
   apiFalsa(t, () => json({ errors: [{ message: 'WebService.cotizacion.fechaInicioNoValida', code: 'ERROR_INTERNO_DEL_SERVIDOR', description: 'Fecha de inicio de vigencia no valida' }], status: 400 }, 400))
   const resultado = await rus.cotizar(solicitud(), {})
@@ -500,6 +562,17 @@ test('RUS: un rechazo vuelve como error en la tarjeta, con el motivo y qué revi
   assert.match(resultado.mensaje ?? '', /^RUS no cotizó: Fecha de inicio de vigencia no valida\. Probá con otra vigencia/)
   assert.equal((resultado.detalleTecnico as { status: number }).status, 400)
   assert.ok(resultado.ajustes.length > 0, 'los ajustes quedan para cambiar algo y volver a probar')
+})
+
+test('RUS: una vigencia rechazada (403) no corta la cotización: se cotiza con la del ejemplo y se avisa', async (t) => {
+  const api = apiFalsa(t)
+  const fetchDeLaApi = globalThis.fetch
+  globalThis.fetch = (async (url: string | URL | Request, opciones?: RequestInit) =>
+    /\/comunes\/vigencias/.test(String(url)) ? json({ message: 'Forbidden' }, 403) : fetchDeLaApi(url, opciones)) as typeof fetch
+  const resultado = await rus.cotizar(solicitud(), {})
+  assert.equal(resultado.estado, 'OK', resultado.mensaje ?? '')
+  assert.ok(resultado.avisos.some((a) => /no devolvió sus vigencias/.test(a)))
+  assert.equal(api.cotizaciones[0]!.vigenciaPolizaId, 1)
 })
 
 test('RUS: sin vigencias de RUS se cotiza con la de su ejemplo y se avisa', async (t) => {
