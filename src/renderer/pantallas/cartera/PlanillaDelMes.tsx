@@ -573,7 +573,8 @@ export function PlanillaDelMes() {
               disabled={soloLectura || fila.polizaId === null}
               onClick={() => setRechazoDe(fila)}
             />
-            <BotonAccion titulo="Dar de baja" icono="cerrar" disabled={soloLectura} peligro onClick={() => setBajaDe(fila)} />
+            {/* Como el cobro: se puede dar de baja a un deudor que quedó en un mes anterior. */}
+            <BotonAccion titulo="Dar de baja" icono="cerrar" disabled={!puedeEditarCartera} peligro onClick={() => setBajaDe(fila)} />
           </div>
         ),
       },
@@ -643,7 +644,7 @@ export function PlanillaDelMes() {
         {soloLectura && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
             <Icono nombre="candado" tamano={13} />
-            {puedeEditarCartera ? 'Mes cerrado · sólo se pueden registrar pagos' : 'Tenés Cartera en sólo lectura'}
+            {puedeEditarCartera ? 'Mes cerrado · sólo se pueden registrar pagos y bajas' : 'Tenés Cartera en sólo lectura'}
           </span>
         )}
 
