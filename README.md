@@ -1423,7 +1423,7 @@ Un vehículo y las compañías que se cotizaron para él.
 
 ### Multicotizador
 
-Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno, ATM, Mercantil Andina y Equidad), comparados por
+Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno, ATM, Mercantil Andina, Equidad y Río Uruguay), comparados por
 lo que cubre cada cobertura. Tiene su propio permiso (área `multicotizador`).
 
 - **Una solicitud común**: vehículo del catálogo de la agencia, uso, 0 km, GNC, rastreo, suma
@@ -1561,6 +1561,54 @@ mientras tanto la cotización queda en Equidad con el número de solicitud que t
   `EQUIDAD_PRUEBA_PASSWORD`), `-- --produccion` (con `EQUIDAD_PROD_*`), `EQUIDAD_SERVICIO_USUARIO` /
   `EQUIDAD_SERVICIO_PASSWORD` (el Basic), `EQUIDAD_PRODUCTOR` / `_RAMA` / `_EMPRESA` y `EQUIDAD_MARCA` /
   `_MODELO` / `_VERSION` / `_ANIO` / `_CP` / `_LOCALIDAD` para elegir qué cotizar. No es parte de `npm run prueba`.
+
+#### Río Uruguay Seguros (RUS)
+
+Quinta compañía del multicotizador (`src/main/multicotizador/rus.ts`; el cliente en
+`src/main/aseguradoras/rus/`). **Cotiza autos y motos y no emite** (`emite: false`): la API tiene
+propuestas, emisión, documentos de póliza, inspección previa, cobranzas y siniestros, y quedan para fases
+siguientes. La documentación es la de Postman que manda RUS («API-RUS V2 #APIPASSubscriber»,
+`documenter.getpostman.com/view/17080944/2s9YBxaGsm`; alquiler entre particulares y accidentes
+personales son otras dos colecciones, que no se usan).
+
+- **Su API**: dos entornos con la misma forma, sandbox (`https://api.rus.com.ar/sandbox`) y producción
+  (`https://api.rus.com.ar/v2`). **Todo pedido lleva la API-Key** que da el equipo de integraciones
+  (`integraciones@riouruguay.com.ar`) en el encabezado `x-api-key`; el token sale de `POST login/token`
+  con `{ username, password }` del PAS y viaja como `Bearer` (dura una hora; vencido, 403 «explicit deny»
+  y el cliente pide otro y reintenta una vez). Como máximo 5 pedidos a la vez y 20 por segundo. Sin
+  restricción de IP: cada PC le habla directo.
+- **La cuenta** (ambiente, usuario y contraseña del PAS, API-Key, código de productor —obligatorio: va en
+  cada cotización como `codigoProductor`— y productor solicitante opcional) se carga en **API
+  Aseguradoras → RUS**, queda en el `config.json` de cada PC y viaja a las demás como el ajuste compartido
+  `rusApi` (se adopta al arrancar, como `mercantilApi`; **el VPS tiene que tener `rusApi` en su lista
+  blanca**, `server/src/modules/dmg/ajustes.service.ts` de `Seguros_Daniel_Martinez`). La contraseña y la
+  API-Key vacías conservan las guardadas. «Probar conexión» pide el token, lee las vigencias de autos
+  (`comunes/vigencias?ramo=4`) y cuenta las marcas (`vehiculo/marcas?TipoUnidad=1`).
+- **Cotizar** es `POST cotizaciones/automotores` (ramo 4, interés `VEHICULO`) o `cotizaciones/motos`
+  (ramo 20, `MOTOVEHICULO`) con la forma del ejemplo de la documentación (`armarPedidoDeCotizacion` en
+  `cotizacion.ts`): productor y solicitante, condición fiscal (CF, RI, RMT, EX…), vigencia desde/hasta con
+  su `vigenciaPolizaId` (de `comunes/vigencias`; sin respuesta, la del ejemplo: id 1, seis meses), cuotas
+  (1 a una por mes de vigencia), ajuste automático (20, 30 o 40) y el vehículo: año, GNC, código postal de
+  guarda, `modeloVehiculo` y el uso **por su nombre** (`vehiculo/usos`). A la vista quedan la vigencia,
+  las cuotas y el ajuste automático; detrás, la condición fiscal, el uso, la RC en países limítrofes y el
+  vehículo.
+- **El vehículo**: `modeloVehiculo` es el `id` de la versión en su catálogo: tipo de unidad → marca
+  (`vehiculo/marcas`) → modelos del año (`vehiculo/modelos`) → versiones (`vehiculo/versiones`, que vuelve
+  en `listUso`, sic). Se busca por nombre como en Mercantil; ante la duda se pregunta. **Las pick-ups son
+  otro tipo de unidad** (2 y 3, «PICK-UP A/B»): si el modelo no aparece entre los autos (1) se busca ahí;
+  las motos van como 8 (más de 50 cc) o 7. Lo elegido queda en `equivalencias_vehiculos` (aseguradora
+  `RUS`, código `tipoDeUnidad:modelo`).
+- **La respuesta** trae `cotizaciones`, una fila por combinación de RC (`codigoRC`) y casco
+  (`codigoCasco`, vacío = sólo RC) con `premio`, `prima`, `valorCuota`, `franquicia` y `sumaAsegurada`.
+  La categoría sale del código de casco (sin casco RC; B pérdida total; C parciales; S «Tercero Completo
+  Full»; T todo riesgo con franquicia). Un rechazo es un 400 con `errors: [{ description }]`, que la
+  tarjeta muestra con qué revisar; un 401/403 es la cuenta y tira.
+- **Humo en vivo**: `npm run humo:rus` (sandbox, con `RUS_SANDBOX_USUARIO` / `RUS_SANDBOX_PASSWORD` /
+  `RUS_SANDBOX_APIKEY` y `RUS_PRODUCTOR`), `-- --produccion` (con `RUS_PROD_*`), `RUS_SOLICITANTE`,
+  `RUS_TIPO=MOTO` y `RUS_MARCA` / `_MODELO` / `_VERSION` / `_ANIO` / `_CP` para elegir qué cotizar. Lo
+  que la documentación no deja claro y hay que confirmar ahí: si las marcas van por `?TipoUnidad=` (como
+  dice la ruta) o por `/marcas/{tipo}` (como su ejemplo), y si los servicios comunes cuelgan del entorno
+  (`/v2/comunes/…`). No es parte de `npm run prueba`.
 
 ### Mi link
 

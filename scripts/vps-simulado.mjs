@@ -13,7 +13,7 @@ import { WebSocketServer } from 'ws'
  * necesita para la columna «Versión del programa» de Usuarios: OJO, el servidor real todavía no la tiene
  * en su lista (ajustes.service.ts del repositorio del VPS).
  */
-const CLAVES_DE_AJUSTE = new Set(['vehiculos', 'referencias', 'google', 'meta', 'ticket', 'companias', 'galeno', 'galenoApi', 'atmApi', 'mercantilApi', 'equidadApi', 'actualizaciones_sucursales'])
+const CLAVES_DE_AJUSTE = new Set(['vehiculos', 'referencias', 'google', 'meta', 'ticket', 'companias', 'galeno', 'galenoApi', 'atmApi', 'mercantilApi', 'equidadApi', 'rusApi', 'actualizaciones_sucursales'])
 
 const TOKEN_POR_DEFECTO = 'prueba'
 

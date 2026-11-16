@@ -5845,6 +5845,68 @@ export interface PruebaDeEquidad {
   marcas: number
 }
 
+// ---------------------------------------------------------------------------
+// Río Uruguay Seguros (RUS) — su API REST v2: token, vehículos y cotización de autos y motos
+//
+// Como ATM, Mercantil y Equidad, RUS no exige que los pedidos salgan de una IP dada de alta: cada
+// computadora le habla directo con la cuenta que se carga una vez en API Aseguradoras → RUS y viaja a
+// las demás como el ajuste compartido `rusApi`. Cotiza autos y motos desde el multicotizador; no emite
+// (la API sí tiene propuestas y emisión, y queda para una fase siguiente).
+//
+// La cuenta son TRES cosas (ver la documentación de Postman de RUS, «API-RUS V2»): la API-Key que da
+// el equipo de integraciones de RUS (integraciones@riouruguay.com.ar), que viaja en el encabezado
+// `x-api-key` de TODO pedido; y el usuario y la contraseña del PAS (u organizador) con que se pide el
+// token. Además, el código de productor con que se cotiza, que RUS pide en cada cotización.
+// ---------------------------------------------------------------------------
+
+export const AMBIENTES_RUS = ['produccion', 'sandbox'] as const
+export type AmbienteRus = (typeof AMBIENTES_RUS)[number]
+
+export const NOMBRE_AMBIENTE_RUS: Record<AmbienteRus, string> = {
+  produccion: 'Producción (api.rus.com.ar/v2)',
+  sandbox: 'Sandbox / pruebas (api.rus.com.ar/sandbox)',
+}
+
+/** Lo que se carga en API Aseguradoras → RUS. La contraseña y la API-Key vacías conservan las que ya estaban. */
+export interface DatosDeRus {
+  ambiente: AmbienteRus
+  /** El usuario del PAS para la API (suele ser el CUIT o el código seguido de «ws»). */
+  usuario: string
+  clave: string
+  /** La API-Key que da RUS para ese ambiente (viaja como `x-api-key`). */
+  apiKey: string
+  /** El código de productor (PAS) que emitiría la propuesta. RUS lo pide en cada cotización. */
+  productor: string
+  /** El código del productor solicitante. Vacío = el mismo productor. */
+  solicitante: string
+}
+
+/** Cómo está la cuenta de RUS en esta computadora. Nunca trae la contraseña ni la API-Key. */
+export interface EstadoDeRus {
+  configurada: boolean
+  ambiente: AmbienteRus
+  usuario: string
+  /** Los últimos cuatro caracteres de la API-Key cargada, para reconocerla. Vacío si no hay. */
+  finDeApiKey: string
+  productor: string
+  solicitante: string
+  actualizadoEn: string | null
+  /** Cómo está la cuenta en el servidor (el ajuste compartido `rusApi`), o null si no se pudo saber. */
+  compartido: EstadoDeAjusteCompartido | null
+}
+
+/** El resultado de «Probar conexión»: el token, las vigencias de autos y el catálogo de vehículos. */
+export interface PruebaDeRus {
+  ok: boolean
+  detalle: string
+  /** Hasta cuándo vale el token que se consiguió (ISO), o null si RUS no lo dijo. */
+  tokenVenceEn: string | null
+  /** Las vigencias que RUS ofrece para autos («SEMESTRAL», «ANUAL»…), vacío si no se pudieron leer. */
+  vigencias: string[]
+  /** Cuántas marcas de autos devolvió su catálogo (0 si no se pudo). */
+  marcas: number
+}
+
 export type CategoriaDeArchivo = 'imagenes' | 'pdf' | 'excel' | 'word' | 'otros'
 
 /** Espacio que ocupan los adjuntos en la nube, por tipo de archivo. */

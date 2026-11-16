@@ -291,6 +291,10 @@ import type {
   DatosDeEquidad,
   EstadoDeEquidad,
   PruebaDeEquidad,
+  // Río Uruguay Seguros.
+  DatosDeRus,
+  EstadoDeRus,
+  PruebaDeRus,
   // Galeno Seguros: cotización, emisión, consultas, cuenta corriente y ART.
   CodigoPostalGaleno,
   CotizacionGaleno,
@@ -1025,6 +1029,16 @@ export interface Canales {
   'equidad:traerDelServidor': () => Resultado<EstadoDeEquidad>
   /** Se autentica, lee los productores del usuario, los tipos de póliza de la rama y cuenta las marcas. */
   'equidad:probar': () => Resultado<PruebaDeEquidad>
+
+  // Río Uruguay Seguros: la cuenta de su API v2 (compartida como `rusApi`). Cotizar se cotiza desde el
+  // multicotizador; el detalle vive en main/aseguradoras/rus/*.
+  'rus:estado': () => Resultado<EstadoDeRus>
+  'rus:guardarCredenciales': (datos: DatosDeRus) => Resultado<EstadoDeRus>
+  'rus:borrarCredenciales': () => Resultado<EstadoDeRus>
+  /** Adopta ya la cuenta guardada en el servidor, aunque esta computadora tenga otra. */
+  'rus:traerDelServidor': () => Resultado<EstadoDeRus>
+  /** Pide un token, lee las vigencias de autos y cuenta las marcas del catálogo. */
+  'rus:probar': () => Resultado<PruebaDeRus>
 
   // Multicotizador: la misma solicitud, en todas las compañías con API. La pantalla pide UNA compañía
   // por llamado —todas a la vez— para ir llenando cada tarjeta apenas contesta su compañía.

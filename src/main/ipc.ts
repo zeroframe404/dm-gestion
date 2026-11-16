@@ -324,6 +324,7 @@ import {
 } from './servicios/atm'
 import { borrarCuentaMercantil, estadoMercantil, guardarCuentaMercantil, probarMercantil, traerMercantilDelServidor } from './servicios/mercantil'
 import { borrarCuentaEquidad, estadoEquidad, guardarCuentaEquidad, probarEquidad, traerEquidadDelServidor } from './servicios/equidad'
+import { borrarCuentaRus, estadoRus, guardarCuentaRus, probarRus, traerRusDelServidor } from './servicios/rus'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora, localidadesDelMulticotizador } from './servicios/multicotizador'
 import { cotizacionesDelMulticotizador, emisionesDelMulticotizador, planesDelMulticotizador } from './servicios/listadosDelMulticotizador'
 import {
@@ -2308,6 +2309,36 @@ export function registrarIpc(): void {
   manejar('equidad:probar', async () => {
     exigirVista('administracion')
     return exito(await probarEquidad())
+  })
+
+  // --- Río Uruguay Seguros -------------------------------------------------------
+  //
+  // La cuenta de su API v2, con el mismo criterio que las de ATM, Mercantil y Equidad: la ve quien ve
+  // Administración y la cargan, borran o traen del servidor sólo un administrador o el
+  // superadministrador, porque viaja a todas las computadoras (ajuste compartido `rusApi`).
+  // Cotizar va por el multicotizador.
+  manejar('rus:estado', async () => {
+    exigirVista('administracion')
+    return exito(await estadoRus())
+  })
+  manejar('rus:guardarCredenciales', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await guardarCuentaRus(datos, actor.nombre))
+  })
+  manejar('rus:borrarCredenciales', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await borrarCuentaRus())
+  })
+  manejar('rus:traerDelServidor', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await traerRusDelServidor())
+  })
+  manejar('rus:probar', async () => {
+    exigirVista('administracion')
+    return exito(await probarRus())
   })
 
   // --- Multicotizador ---------------------------------------------------------

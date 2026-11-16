@@ -41,6 +41,7 @@
     "humo:atm": "node scripts/humo-atm.mjs",
     "humo:mercantil": "node scripts/humo-mercantil.mjs",
     "humo:equidad": "node scripts/humo-equidad.mjs",
+    "humo:rus": "node scripts/humo-rus.mjs",
     "clave-hash": "node scripts/clave-hash.mjs"
   },
   "dependencies": {

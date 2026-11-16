@@ -33,6 +33,8 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '18.1.3',
     fecha: '2026-11-13',
     cambios: [
+      { tipo: 'agregado', texto: 'Multicotizador: ahora también cotiza autos y motos en Río Uruguay Seguros (RUS), junto con las demás compañías. Se puede cambiar la vigencia, las cuotas, el ajuste automático y la versión del vehículo desde su tarjeta. La póliza se sigue emitiendo desde la web de RUS.' },
+      { tipo: 'agregado', texto: 'API Aseguradoras → RUS: donde un administrador carga una sola vez la cuenta de la API de Río Uruguay (la API-Key, el usuario y la contraseña del productor y su código), con «Probar conexión». Llega sola a las demás computadoras.' },
       { tipo: 'agregado', texto: 'Administración → Alta desde Excel (sólo superadministrador): una agencia que empieza puede subir su propio Excel o CSV, elegir qué es cada hoja (cartera, bajas, siniestros, pagos o riesgos varios, cada una opcional) y qué dato es cada columna, ver un ensayo de cómo quedaría y cargarlo en su base vacía. En nuestra agencia no cambia nada.' },
       { tipo: 'agregado', texto: 'Administración → Licencia (sólo superadministrador): muestra hasta cuándo vale la licencia del programa, en cuántas computadoras se puede usar a la vez y cuáles la están usando, con «Liberar» para dejar libre el lugar de una computadora. Ahí mismo se pega la licencia nueva al renovar. En nuestra agencia no cambia nada: no tiene límite ni vencimiento.' },
       { tipo: 'agregado', texto: 'Licencia: desde 15 días antes del vencimiento, los administradores ven un cartel de aviso; vencida, hay unos días de gracia con un cartel para todos, y después la pantalla de ingreso pide la licencia nueva.' },
