@@ -7,6 +7,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { subirAlVps } from './subir-al-vps.mjs'
 
 const raiz = path.resolve(import.meta.dirname, '..')
 const { version } = JSON.parse(readFileSync(path.join(raiz, 'package.json'), 'utf8'))
@@ -85,3 +86,8 @@ if (yaExiste) {
 }
 
 console.log(`[publicar] Listo: https://github.com/${REPO}/releases/tag/${tag}`)
+
+// Y además al servidor de la agencia, de donde las computadoras la buscan primero (punto 8). Si no se
+// puede, avisa y sigue: GitHub ya la tiene y es el respaldo.
+const [instaladorEstable, blockmapEstable, ymlEstable] = archivos
+await subirAlVps({ canal: 'estable', instalador: instaladorEstable, blockmap: blockmapEstable, yml: ymlEstable })

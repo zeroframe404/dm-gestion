@@ -136,6 +136,17 @@ jobs:
         run: npm run dist
         env:
           DMG_FABRICA_VPS_TOKEN: ${{ secrets.DMG_VPS_TOKEN }}
+          # Firma del instalador (opcional, ver scripts/firma.mjs y el README, «Firma del instalador»). Sin
+          # estos secretos sale sin firmar, como siempre, con el aviso en el resumen.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ secrets.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ secrets.AZURE_SIGN_PROFILE }}
+          AZURE_SIGN_PUBLISHER: ${{ secrets.AZURE_SIGN_PUBLISHER }}
 
       # Antes de empujar la versión: que el programa compilado lleve el token. Si no lo lleva, la versión
       # no se quema.
@@ -157,6 +168,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DMG_FABRICA_VPS_TOKEN: ${{ secrets.DMG_VPS_TOKEN }}
+          # Para subir la versión también al servidor de la agencia (scripts/subir-al-vps.mjs). Sin él, sale
+          # sólo por GitHub, con el aviso en el resumen.
+          DMG_PUBLICADOR_TOKEN: ${{ secrets.DMG_PUBLICADOR_TOKEN }}
 
       # Una copia de más, para poder bajar el instalador desde la corrida aunque el Release se haya
       # borrado. Es SECUNDARIA: lo que actualiza las computadoras de la agencia es el Release, que a

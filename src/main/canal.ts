@@ -7,9 +7,6 @@
 import { app } from 'electron'
 import { esVersionBeta, esVersionDemo, nombreDelPrograma, type Canal } from '../shared/canal'
 
-/** Repositorio y Release fijo de donde la beta se actualiza (ver `.github/workflows/publicar-beta.yml`). */
-export const URL_DE_ACTUALIZACIONES_BETA = 'https://github.com/zeroframe404/dm-gestion/releases/download/beta-canal'
-
 export function canalActual(): Canal {
   // Afuera de Electron (el banco de pruebas corre en Node pelado) no hay `app`: ahí no hay canal que valga.
   const electron = app as typeof app | undefined

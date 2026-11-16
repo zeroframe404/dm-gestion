@@ -522,6 +522,8 @@ export interface EstadoActualizacion {
   canal: string
   ultimoChequeo: string | null
   ultimoError: string | null
+  /** De dónde se buscó la última vez: el servidor de la agencia o, de respaldo, GitHub. */
+  origen?: 'servidor' | 'github'
 }
 
 /**
