@@ -76,15 +76,15 @@ function mensajeDe(error: unknown): string {
 
 /**
  * A qué compañía con API pertenece el nombre que tiene la base («LA EQUIDAD», «MERCANTIL ANDINA S.A.»,
- * «ATM SEGUROS»): la primera palabra del nombre de la compañía, como palabra entera. Devuelve su
- * posición en `registradas`, o -1 si es una compañía sin API.
+ * «ATM SEGUROS»): la primera palabra del nombre de la compañía, o uno de sus alias en la base («RUS»),
+ * como palabra entera. Devuelve su posición en `registradas`, o -1 si es una compañía sin API.
  */
-export function aseguradoraDeLaBase(compania: string | null, registradas: readonly Pick<CotizadorDeAseguradora, 'nombre'>[]): number {
+export function aseguradoraDeLaBase(compania: string | null, registradas: readonly Pick<CotizadorDeAseguradora, 'nombre' | 'aliasesEnLaBase'>[]): number {
   const texto = ` ${normalizarTexto(compania ?? '')} `
   if (!texto.trim()) return -1
   return registradas.findIndex((aseguradora) => {
-    const palabra = normalizarTexto(aseguradora.nombre).split(' ')[0]
-    return Boolean(palabra) && texto.includes(` ${palabra} `)
+    const palabras = [normalizarTexto(aseguradora.nombre).split(' ')[0] ?? '', ...(aseguradora.aliasesEnLaBase ?? []).map(normalizarTexto)]
+    return palabras.some((palabra) => Boolean(palabra) && texto.includes(` ${palabra} `))
   })
 }
 

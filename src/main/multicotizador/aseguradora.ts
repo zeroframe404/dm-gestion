@@ -39,6 +39,11 @@ export interface CotizadorDeAseguradora {
   tipos: readonly TipoDeVehiculo[]
   /** true si una cobertura cotizada se puede emitir desde la aplicación. */
   emite: boolean
+  /**
+   * Otras formas en que la base del VPS escribe a la compañía, además de la primera palabra de `nombre`
+   * («RUS» para Río Uruguay). Las usan los listados del Multicotizador para no partirla en dos.
+   */
+  aliasesEnLaBase?: readonly string[]
   /** Null si está lista para cotizar; si no, por qué no. No sale a internet: tiene que ser instantáneo. */
   noDisponible(): string | null
   /** Las localidades que la compañía conoce para ese código postal (sus nombres). Opcional. */

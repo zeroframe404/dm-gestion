@@ -1597,7 +1597,11 @@ personales son otras dos colecciones, que no se usan).
   en `listUso`, sic). Se busca por nombre como en Mercantil; ante la duda se pregunta. **Las pick-ups son
   otro tipo de unidad** (2 y 3, «PICK-UP A/B»): si el modelo no aparece entre los autos (1) se busca ahí;
   las motos van como 8 (más de 50 cc) o 7. Lo elegido queda en `equivalencias_vehiculos` (aseguradora
-  `RUS`, código `tipoDeUnidad:modelo`).
+  `RUS`, código `tipoDeUnidad:modelo:versión`; el modelo recordado se consulta siempre, aunque por el
+  nombre no esté entre los parecidos). Sólo un rechazo del modelo o la versión borra la equivalencia: los
+  errores de validación traen la ruta del campo (`#/vehiculos/0/cpLocalidadGuarda…`) y no cuentan. En los
+  listados, la base escribe la compañía «RIO URUGUAY», «RUS» o «R.U.S.»: el adaptador declara
+  `aliasesEnLaBase` para que las tres sean la misma.
 - **La respuesta** trae `cotizaciones`, una fila por combinación de RC (`codigoRC`) y casco
   (`codigoCasco`, vacío = sólo RC) con `premio`, `prima`, `valorCuota`, `franquicia` y `sumaAsegurada`.
   La categoría sale del código de casco (sin casco RC; B pérdida total; C parciales; S «Tercero Completo
@@ -1607,8 +1611,10 @@ personales son otras dos colecciones, que no se usan).
   `RUS_SANDBOX_APIKEY` y `RUS_PRODUCTOR`), `-- --produccion` (con `RUS_PROD_*`), `RUS_SOLICITANTE`,
   `RUS_TIPO=MOTO` y `RUS_MARCA` / `_MODELO` / `_VERSION` / `_ANIO` / `_CP` para elegir qué cotizar. Lo
   que la documentación no deja claro y hay que confirmar ahí: si las marcas van por `?TipoUnidad=` (como
-  dice la ruta) o por `/marcas/{tipo}` (como su ejemplo), y si los servicios comunes cuelgan del entorno
-  (`/v2/comunes/…`). No es parte de `npm run prueba`.
+  dice la ruta) o por `/marcas/{tipo}` (como su ejemplo), y dónde cuelgan los servicios comunes: la
+  documentación los escribe en la raíz (`api.rus.com.ar/comunes/…`), así que `getComun` los pide bajo el
+  entorno y, si ahí contesta 403/404, en la raíz. Si las vigencias no contestan igual se cotiza, con la del
+  ejemplo de RUS y un aviso; lo que corta la cotización es el token. No es parte de `npm run prueba`.
 
 ### Mi link
 

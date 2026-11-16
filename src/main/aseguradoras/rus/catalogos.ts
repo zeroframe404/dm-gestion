@@ -112,8 +112,26 @@ export async function usosRus(cliente: ClienteRus, tipoUnidad: string): Promise<
   return leerOpciones(await cliente.get<unknown>('vehiculo/usos', { idTipoUnidad: tipoUnidad }), 'listUso', 'los usos')
 }
 
+/**
+ * Un servicio «común». La documentación de RUS escribe todos con la URL entera y SIN el entorno
+ * (`https://api.rus.com.ar/comunes/vigencias`), mientras el resto cuelga de `/v2` o `/sandbox`. No se pudo
+ * confirmar cuál vale sin una cuenta: se prueba primero bajo el entorno y, si RUS dice que esa ruta no
+ * existe o no está autorizada (403/404, lo que contesta su gateway a una ruta desconocida), en la raíz.
+ */
+export async function getComun<T>(cliente: ClienteRus, ruta: string, parametros: Record<string, string>): Promise<T> {
+  try {
+    return await cliente.get<T>(`comunes/${ruta}`, parametros)
+  } catch (error) {
+    if (!(error instanceof ErrorDeRus) || (error.status !== 403 && error.status !== 404)) throw error
+    const raiz = `${new URL(cliente.base).origin}/comunes/${ruta}`
+    return cliente.get<T>(raiz, parametros).catch(() => {
+      throw error
+    })
+  }
+}
+
 export async function vigenciasRus(cliente: ClienteRus, ramo: string): Promise<VigenciaRus[]> {
-  const respuesta = await cliente.get<unknown>('comunes/vigencias', { ramo })
+  const respuesta = await getComun<unknown>(cliente, 'vigencias', { ramo })
   return leerFilas(respuesta, 'listVigencia', 'las vigencias').map((f) => ({
     codigo: f.codigo,
     descripcion: f.descripcion,

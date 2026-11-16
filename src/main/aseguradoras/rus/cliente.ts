@@ -160,9 +160,11 @@ export interface RespuestaDeRus {
 
 export interface ClienteRus {
   readonly cuenta: CuentaRus
+  /** La URL del entorno, sin la barra final (`https://api.rus.com.ar/v2`). */
+  readonly base: string
   /** El token vigente, pidiendo uno nuevo si no hay o venció. */
   token(): Promise<TokenDeRus>
-  /** GET a `/<ruta>` con esos parámetros; devuelve el JSON (o tira con el motivo). */
+  /** GET a `/<ruta>` del entorno (o a una URL entera, si empieza con https://) con esos parámetros; devuelve el JSON (o tira con el motivo). */
   get<T>(ruta: string, parametros?: Record<string, string>): Promise<T>
   /** POST con JSON a `/<ruta>`; devuelve lo que contestó RUS, aunque sea un 400. Tira sólo si no hay token o red. */
   enviar(ruta: string, cuerpo: unknown, que: string): Promise<RespuestaDeRus>
@@ -262,7 +264,7 @@ export function crearClienteRus(cuenta: CuentaRus, opciones: OpcionesDeCliente =
   /** Un pedido con token. Si RUS dice que el token no sirve (venció antes de lo esperado), se pide otro y se reintenta una vez. */
   async function conToken(ruta: string, armar: (t: string) => RequestInit, que: string): Promise<{ status: number; texto: string }> {
     const primero = await token()
-    const url = `${base}/${ruta}`
+    const url = /^https:\/\//.test(ruta) ? ruta : `${base}/${ruta}`
     let respuesta = await pedir(url, armar(primero.token), que)
     if (esTokenRechazado(respuesta.status, respuesta.texto)) {
       tokens.delete(clave)
@@ -274,6 +276,7 @@ export function crearClienteRus(cuenta: CuentaRus, opciones: OpcionesDeCliente =
 
   return {
     cuenta,
+    base,
     token,
     async get<T>(ruta: string, parametros: Record<string, string> = {}): Promise<T> {
       const consulta = new URLSearchParams(parametros).toString()
