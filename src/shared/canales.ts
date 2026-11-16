@@ -37,6 +37,9 @@ import type {
 } from './miLink'
 import type { DatosDePedido, DatosDeResolucion, EstadoDeAutorizaciones } from './autorizaciones'
 import type { MatrizPermisos } from './permisos'
+import type { Catalogos } from './catalogos'
+import type { Marca } from './marca'
+import type { EstadoDeLicencia, PuestoOcupado } from './licencia'
 import type { EstadoDelAsistente, PreguntaAlAsistente, RespuestaDelAsistente } from './asistente'
 import type {
   EstadoDeApisDeAsegurados,
@@ -288,6 +291,10 @@ import type {
   DatosDeEquidad,
   EstadoDeEquidad,
   PruebaDeEquidad,
+  // Río Uruguay Seguros.
+  DatosDeRus,
+  EstadoDeRus,
+  PruebaDeRus,
   // Galeno Seguros: cotización, emisión, consultas, cuenta corriente y ART.
   CodigoPostalGaleno,
   CotizacionGaleno,
@@ -305,6 +312,12 @@ import type {
   ReporteDeGaleno,
   ReporteGaleno,
   SubModeloGaleno,
+  AsignacionDeAlta,
+  EnsayoDeAlta,
+  EstadoDeAltaExcel,
+  LibroDeAlta,
+  ResumenDeAltaExcel,
+  TipoDeHojaDeAlta,
 } from './tipos'
 // El foco y la presencia son del protocolo del canal, que es la copia exacta de lo que declara el
 // servidor (14.0). Se toman de ahí y no se vuelven a escribir acá: sólo el tipo, así que la flecha se
@@ -381,6 +394,16 @@ export interface Canales {
   // La base del GENERAL DE CLIENTES en el VPS (v12): estado y migración inicial.
   'vps:estado': () => Resultado<EstadoMigracionVps>
   'vps:migrar': () => Resultado<ResumenMigracionVps>
+
+  // Alta desde Excel: una agencia nueva sube su propio Excel a su base vacía (sólo superadministrador).
+  'altaExcel:estado': () => Resultado<EstadoDeAltaExcel>
+  /** Abre el diálogo para elegir el archivo y lo lee. null si se canceló. */
+  'altaExcel:elegirArchivo': () => Resultado<LibroDeAlta | null>
+  /** Lo que el programa reconoce solo en una hoja con ese tipo y esa fila de encabezados. */
+  'altaExcel:sugerirColumnas': (token: string, indice: number, tipo: TipoDeHojaDeAlta, filaEncabezados: number) => Resultado<Array<string | null>>
+  'altaExcel:ensayar': (asignacion: AsignacionDeAlta) => Resultado<EnsayoDeAlta>
+  'altaExcel:publicar': (asignacion: AsignacionDeAlta) => Resultado<ResumenDeAltaExcel>
+  'altaExcel:olvidar': () => Resultado<null>
 
   'importacion:vistaPrevia': () => Resultado<VistaPreviaHoja>
   'importacion:iniciar': () => Resultado<{ importacionId: number }>
@@ -1007,6 +1030,16 @@ export interface Canales {
   /** Se autentica, lee los productores del usuario, los tipos de póliza de la rama y cuenta las marcas. */
   'equidad:probar': () => Resultado<PruebaDeEquidad>
 
+  // Río Uruguay Seguros: la cuenta de su API v2 (compartida como `rusApi`). Cotizar se cotiza desde el
+  // multicotizador; el detalle vive en main/aseguradoras/rus/*.
+  'rus:estado': () => Resultado<EstadoDeRus>
+  'rus:guardarCredenciales': (datos: DatosDeRus) => Resultado<EstadoDeRus>
+  'rus:borrarCredenciales': () => Resultado<EstadoDeRus>
+  /** Adopta ya la cuenta guardada en el servidor, aunque esta computadora tenga otra. */
+  'rus:traerDelServidor': () => Resultado<EstadoDeRus>
+  /** Pide un token, lee las vigencias de autos y cuenta las marcas del catálogo. */
+  'rus:probar': () => Resultado<PruebaDeRus>
+
   // Multicotizador: la misma solicitud, en todas las compañías con API. La pantalla pide UNA compañía
   // por llamado —todas a la vez— para ir llenando cada tarjeta apenas contesta su compañía.
   'multicotizador:aseguradoras': () => Resultado<AseguradoraDelMulticotizador[]>
@@ -1062,6 +1095,17 @@ export interface Canales {
   'horario:pedirAlIngresar': (motivo: string) => Resultado<SolicitudDeHorario>
   /** Cómo viene el pedido hecho al ingresar (null si no se hizo ninguno). Sin sesión. */
   'horario:estadoDelPedidoAlIngresar': () => Resultado<SolicitudDeHorario | null>
+
+  // La licencia de la agencia (ver servicios/licencia.ts). El estado y pegar una licencia nueva van sin
+  // sesión: es lo que muestra la pantalla de bloqueo. Los puestos son del superadministrador.
+  /** El estado de la licencia (del servidor, o lo último que se supo sin conexión). */
+  'licencia:estado': () => Resultado<EstadoDeLicencia>
+  /** Instala una licencia nueva (el servidor comprueba la firma). */
+  'licencia:instalar': (licencia: string) => Resultado<EstadoDeLicencia>
+  /** Las computadoras con sesión abierta. Sólo SUPER_ADMIN. */
+  'licencia:puestos': () => Resultado<PuestoOcupado[]>
+  /** Libera un puesto: cierra las sesiones de esa computadora. Sólo SUPER_ADMIN. */
+  'licencia:liberar': (clave: string) => Resultado<EstadoDeLicencia>
 
   // Autorizaciones de IP: qué computadoras puede atender el VPS (ver servicios/autorizacionesIp.ts). Todo es
   // del SUPER_ADMIN; el servidor lo vuelve a controlar.
@@ -1189,6 +1233,19 @@ export interface Canales {
   /** Sólo el superadministrador: carga la clave de Anthropic y la manda al VPS para las demás computadoras. */
   'asistente:guardarClave': (claveApi: string) => Resultado<EstadoDelAsistente>
   'asistente:borrarClave': () => Resultado<EstadoDelAsistente>
+
+  // La marca configurable (Administración → Marca). Leerla no pide sesión: la pantalla de ingreso ya la usa.
+  'marca:obtener': () => Resultado<Marca>
+  /** Sólo el superadministrador. Se guarda acá y se manda al VPS para las demás computadoras. */
+  'marca:guardar': (marca: Marca) => Resultado<Marca>
+  'marca:restaurar': () => Resultado<Marca>
+
+  // Las sucursales y las ramas configurables (Administración → Sucursales y ramas). Leerlas no pide sesión: la
+  // pantalla las necesita antes de dibujar cualquier filtro.
+  'catalogos:obtener': () => Resultado<Catalogos>
+  /** Sólo el superadministrador. Se guardan acá y se mandan al VPS para las demás computadoras. */
+  'catalogos:guardar': (catalogos: Catalogos) => Resultado<Catalogos>
+  'catalogos:restaurar': () => Resultado<Catalogos>
 }
 
 /** Avisos main → renderer (push, sin respuesta). */
@@ -1230,6 +1287,8 @@ export interface Eventos {
   'mensajes:zumbido': { autor: string }
   /** Al turno le quedan 30 minutos (o 5): la pantalla muestra el aviso amarillo. La ventana ya se sacudió. */
   'horario:aviso': AvisoDeFinDeTurno
+  /** Cambió el estado de la licencia (se acerca el vencimiento, se renovó, venció). */
+  'licencia:cambio': EstadoDeLicencia
   /** El superadministrador contestó el pedido de excepción que hizo esta persona trabajando. */
   'horario:respuesta': RespuestaDeExcepcion
   /** Llegaron pedidos de excepción nuevos (sólo al superadministrador): la lista de los pendientes. */

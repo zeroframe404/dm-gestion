@@ -54,6 +54,7 @@ import {
   type FotoDeLaGrilla,
 } from './protocolo'
 import { ipsLocalesDelEquipo } from '../vps/equipo'
+import { avisarQueLaSesionSeRechazo, tokenParaElServidor } from '../vps/sesionDelServidor'
 
 /** El `readyState` de un socket abierto. Es 1 en todas las implementaciones (WebSocket.OPEN). */
 const ABIERTO = 1
@@ -302,7 +303,9 @@ export class CanalEnVivo {
 
     this.socket = socket
     this.ultimoErrorDelSocket = null
-    socket.onopen = () => this.saludar(credenciales.token)
+    // Con la sesión de quien ingresó, si la hay (ver `vps/sesionDelServidor.ts`): el servidor toma de
+    // ahí quién es, y no de lo que diga el saludo.
+    socket.onopen = () => this.saludar(tokenParaElServidor(credenciales.urlBase, credenciales.token))
     socket.onmessage = (evento) => this.recibir(evento.data)
     // El `error` no cierra nada por sí solo: siempre viene un `close` atrás. Se guarda nada más para
     // poder distinguir «se cayó internet» —que no es una falla que valga la pena anotar— de un
@@ -469,6 +472,10 @@ export class CanalEnVivo {
       anotarEvento('conexion', `El canal en vivo fue rechazado (${mensaje.codigo}): ${mensaje.mensaje}`, {
         conError: true,
       })
+      // Si lo rechazado es la sesión de quien ingresó (lo desactivaron, le cambiaron la contraseña), el
+      // canal se entera en el próximo latido del servidor: mucho antes que la revalidación de cada
+      // quince minutos. Avisa, y la base de usuarios cierra la sesión con su motivo.
+      if (mensaje.codigo === 'token') avisarQueLaSesionSeRechazo()
       return
     }
 

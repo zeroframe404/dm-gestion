@@ -17,6 +17,7 @@
 // Por eso todo lo que no sea un 2xx con el cuerpo esperado devuelve `null`: quien llama no tiene que
 // poner un `try/catch` para algo que se resuelve solo.
 import { encabezadosDelEquipo } from '../vps/equipo'
+import { tokenParaElServidor } from '../vps/sesionDelServidor'
 
 /** Un pedido normal: si el servidor tarda más que esto, algo está mal. No es un long-poll. */
 const TIEMPO_MAXIMO_MS = 15_000
@@ -62,7 +63,7 @@ export async function traerMetricaDelServidor(
   try {
     bruta = await fetch(`${urlBase}/api/dmg/metricas/${encodeURIComponent(clave)}`, {
       method: 'GET',
-      headers: { authorization: `Bearer ${credenciales.token}`, ...encabezadosDelEquipo() },
+      headers: { authorization: `Bearer ${tokenParaElServidor(credenciales.urlBase, credenciales.token)}`, ...encabezadosDelEquipo() },
       signal: corte,
     })
   } catch {

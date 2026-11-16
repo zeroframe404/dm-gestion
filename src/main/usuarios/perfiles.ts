@@ -25,6 +25,7 @@ import { ErrorDeNegocio } from '../servicios/errores'
 import { credencialesDelPuente } from '../servicios/sincronizacion'
 import type { Perfil } from '../vivo/protocolo'
 import { encabezadosDelEquipo } from '../vps/equipo'
+import { tokenParaElServidor } from '../vps/sesionDelServidor'
 
 /**
  * El tope de la foto, contado sobre el texto de la data URL. Es el mismo del servidor: una foto de 256
@@ -182,7 +183,7 @@ async function pedirAlServidor(ruta: string, actor: SesionUsuario, datos: DatosD
 
   const bruta = await fetch(credenciales.urlBase.replace(/\/+$/, '') + ruta, {
     method: 'PUT',
-    headers: { authorization: `Bearer ${credenciales.token}`, ...encabezadosDelEquipo(), 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${tokenParaElServidor(credenciales.urlBase, credenciales.token)}`, ...encabezadosDelEquipo(), 'content-type': 'application/json' },
     body: JSON.stringify({
       actor: { clave: claveDeUsuario(actor.usuario), nombre: actor.nombre, rol: actor.rol },
       ...cuerpo,

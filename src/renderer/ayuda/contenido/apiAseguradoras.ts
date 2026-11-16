@@ -231,4 +231,45 @@ export const AYUDA_API_ASEGURADORAS: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'apiAseguradoras.rus': {
+    clave: 'apiAseguradoras.rus',
+    titulo: 'API Aseguradoras → RUS',
+    resumen: 'La cuenta de la API de Río Uruguay Seguros (API-Key, usuario y contraseña del productor y su código): con ella, el Multicotizador cotiza autos y motos en RUS.',
+    secciones: [
+      {
+        titulo: 'Qué se puede hacer con esto',
+        parrafos: [
+          'Con la cuenta cargada, el Multicotizador cotiza autos y motos en Río Uruguay al mismo tiempo que en las demás compañías, y sus coberturas entran al comparativo y al presupuesto como las de cualquiera. Por ahora la póliza se emite desde la web de RUS.',
+          'En la tarjeta de RUS se pueden cambiar la vigencia (trimestral, semestral, anual…), las cuotas, el ajuste automático, la condición fiscal, el uso y la versión del vehículo en su catálogo. Las pick-ups RUS las tiene aparte de los autos: si el modelo no aparece, se busca solo entre las pick-ups, y también se puede elegir a mano el «Tipo de unidad».',
+        ],
+      },
+      {
+        titulo: 'La cuenta vive en cada computadora',
+        parrafos: [
+          'Como ATM, Mercantil y Equidad, RUS no pide que los pedidos salgan de una IP dada de alta, así que cada computadora le habla directo, sin pasar por el servidor. Por eso la cuenta sí se guarda en esta computadora.',
+          'Se carga una sola vez: al guardar viaja cifrada al servidor y el resto de las computadoras la adopta al abrir el programa. El renglón de abajo de la cuenta dice si esta computadora tiene lo mismo que el servidor; si no, «Traer del servidor» la toma ya.',
+          'La carga un administrador. «Sacarla» la borra de esta computadora y del servidor: sin cuenta, RUS deja de cotizar.',
+        ],
+      },
+      {
+        titulo: 'Los datos que pide, y de dónde salen',
+        parrafos: ['Los da el equipo de integraciones de RUS (integraciones@riouruguay.com.ar), que suele proponer una reunión inicial para ver qué se quiere hacer.'],
+        lista: [
+          'Ambiente: sandbox para probar, producción para cotizar de verdad. RUS da una API-Key distinta para cada uno.',
+          'API-Key: la llave de la integración. Va en cada pedido; sin ella RUS rechaza todo, incluso el ingreso.',
+          'Usuario y contraseña: los del productor (u organizador) para la API, que RUS da aparte de los de su web.',
+          'Código de productor: el del productor que emitiría la póliza. RUS lo pide en cada cotización.',
+          'Código de productor solicitante (opcional): sólo si cotiza un organizador por cuenta de otro productor. Vacío, es el mismo.',
+          'La contraseña y la API-Key nunca vuelven a la pantalla: con la cuenta ya cargada, dejar los campos vacíos conserva las que están.',
+        ],
+      },
+      {
+        titulo: 'Probar conexión',
+        parrafos: [
+          'Prueba la cuenta YA guardada en esta computadora, no lo que está escrito en los campos: primero se guarda y después se prueba. Pide el ingreso (prueba la API-Key, el usuario y la contraseña), lee las vigencias de autos y cuenta las marcas del catálogo de vehículos.',
+          'Si RUS contesta «Forbidden», la API-Key no es la de ese ambiente. Si no acepta el usuario o la contraseña, son los del productor para la API, no los de la web.',
+        ],
+      },
+    ],
+  },
 }

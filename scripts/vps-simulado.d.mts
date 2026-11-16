@@ -6,8 +6,16 @@ export interface PestanaSimulada {
   columnasOcultas?: number[]
 }
 
+/** Lo que viaja en lugar del hash de otro usuario cuando se lee la lista con una sesión. */
+export const HASH_OCULTO: string
+
 export class VpsSimulado {
-  constructor(opciones?: { token?: string; pestanas?: PestanaSimulada[] })
+  /** `sesiones: true` prende la cuenta por persona (18.2); sin eso `/api/dmg/sesion` contesta 404, como un servidor anterior. */
+  constructor(opciones?: { token?: string; pestanas?: PestanaSimulada[]; sesiones?: boolean })
+  /** El `DMG_EXIGIR_SESION` del servidor: el token compartido queda sólo para ingresar. */
+  exigirSesion: boolean
+  /** Las sesiones abiertas, por token. */
+  sesiones: Map<string, { usuarioId: number; claveHash: string; equipo: string; app: string }>
   token: string
   inicializada: boolean
   url: string

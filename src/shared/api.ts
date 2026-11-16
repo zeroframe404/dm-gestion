@@ -477,6 +477,13 @@ export interface ApiDm {
     traerDelServidor: Remota<'equidad:traerDelServidor'>
     probar: Remota<'equidad:probar'>
   }
+  rus: {
+    estado: Remota<'rus:estado'>
+    guardarCredenciales: Remota<'rus:guardarCredenciales'>
+    borrarCredenciales: Remota<'rus:borrarCredenciales'>
+    traerDelServidor: Remota<'rus:traerDelServidor'>
+    probar: Remota<'rus:probar'>
+  }
   multicotizador: {
     aseguradoras: Remota<'multicotizador:aseguradoras'>
     localidades: Remota<'multicotizador:localidades'>
@@ -514,6 +521,14 @@ export interface ApiDm {
     alAvisarFinDeTurno: Suscripcion<'horario:aviso'>
     alResponderUnPedido: Suscripcion<'horario:respuesta'>
     alLlegarPedidos: Suscripcion<'horario:pedidos'>
+  }
+  /** La licencia de la agencia. Ver canales.ts. */
+  licencia: {
+    estado: Remota<'licencia:estado'>
+    instalar: Remota<'licencia:instalar'>
+    puestos: Remota<'licencia:puestos'>
+    liberar: Remota<'licencia:liberar'>
+    alCambiar: Suscripcion<'licencia:cambio'>
   }
   /** Autorizaciones de IP (Ciberseguridad). Ver canales.ts. */
   ips: {
@@ -587,6 +602,14 @@ export interface ApiDm {
     pegarImagen: Remota<'soporte:pegarImagen'>
     reportar: Remota<'soporte:reportar'>
   }
+  altaExcel: {
+    estado: Remota<'altaExcel:estado'>
+    elegirArchivo: Remota<'altaExcel:elegirArchivo'>
+    sugerirColumnas: Remota<'altaExcel:sugerirColumnas'>
+    ensayar: Remota<'altaExcel:ensayar'>
+    publicar: Remota<'altaExcel:publicar'>
+    olvidar: Remota<'altaExcel:olvidar'>
+  }
   importacion: {
     vistaPrevia: Remota<'importacion:vistaPrevia'>
     iniciar: Remota<'importacion:iniciar'>
@@ -621,5 +644,15 @@ export interface ApiDm {
     preguntar: Remota<'asistente:preguntar'>
     guardarClave: Remota<'asistente:guardarClave'>
     borrarClave: Remota<'asistente:borrarClave'>
+  }
+  marca: {
+    obtener: Remota<'marca:obtener'>
+    guardar: Remota<'marca:guardar'>
+    restaurar: Remota<'marca:restaurar'>
+  }
+  catalogos: {
+    obtener: Remota<'catalogos:obtener'>
+    guardar: Remota<'catalogos:guardar'>
+    restaurar: Remota<'catalogos:restaurar'>
   }
 }

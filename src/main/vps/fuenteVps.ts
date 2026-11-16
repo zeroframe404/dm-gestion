@@ -46,6 +46,8 @@ import { ErrorDeNegocio } from '../servicios/errores'
 import { adoptarVersionPropia } from '../sincronizacion/versiones'
 import { encabezadosDelEquipo } from './equipo'
 import { esRechazoDeEquipo, type EstadoDeAutorizacionesIp } from '../../shared/autorizacionIp'
+import { avisarQueLaSesionSeRechazo, tokenParaElServidor } from './sesionDelServidor'
+import { normalizarEstadoDeLicencia, type EstadoDeLicencia, type PuestoOcupado } from '../../shared/licencia'
 
 /** Tiempo máximo por pedido; sin esto una conexión colgada bloquea la importación. */
 const TIEMPO_MAXIMO_MS = 90_000
@@ -438,7 +440,7 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
         const bruta = await fetch(this.urlBase + ruta, {
           method: metodo,
           headers: {
-            authorization: `Bearer ${this.token}`,
+            authorization: `Bearer ${tokenParaElServidor(this.urlBase, this.token)}`,
             ...encabezadosDelEquipo(),
             ...(cuerpo === undefined ? {} : { 'content-type': 'application/json' }),
           },
@@ -490,6 +492,14 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
 
   private traducirError(respuesta: RespuestaHttp, descripcion: string): Error {
     const detalle = mensajeDelServidor(respuesta.json, `error ${respuesta.status}`)
+    // La cuenta por persona (18.2): no es el token del programa lo que está mal, es la sesión de quien
+    // ingresó (venció, lo desactivaron, le cambiaron la contraseña) o que el servidor ya pide una. El
+    // servidor lo dice con su texto; y si la que se cayó es la sesión, se avisa para que se cierre acá.
+    const codigo = respuesta.json && typeof respuesta.json === 'object' ? (respuesta.json as { codigo?: unknown }).codigo : null
+    if (respuesta.status === 401 && (codigo === 'sesion_vencida' || codigo === 'sesion_requerida')) {
+      if (codigo === 'sesion_vencida') avisarQueLaSesionSeRechazo()
+      return new ErrorDelServidorVps(detalle, 401, detalle)
+    }
     if (respuesta.status === 401) {
       return new ErrorDelServidorVps(
         'El servidor del VPS rechazó el token de DM Gestión. El token del programa y el DMG_SYNC_TOKEN del servidor tienen que ser el mismo: actualizá la aplicación o corregí el .env del VPS.',
@@ -501,6 +511,9 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
     // Autorizaciones de IP: el servidor no atiende a esta computadora. El mensaje del servidor ya dice qué
     // hacer (y con qué IP la vio), así que va tal cual, sin el «rechazó la operación (…)».
     if (respuesta.status === 403 && esRechazoDeEquipo(respuesta.json)) return new ErrorDelServidorVps(detalle, 403, detalle)
+    // La licencia de la agencia venció (o no hay): el texto del servidor dice cuál es el problema.
+    if (respuesta.status === 403 && codigo === 'licencia_vencida') return new ErrorDelServidorVps(detalle, 403, detalle)
+    if (respuesta.status === 400 && codigo === 'licencia_rechazada') return new ErrorDelServidorVps(detalle, 400, detalle)
     if (respuesta.status === 409) return new ErrorDelServidorVps(detalle, 409, detalle)
     if (respuesta.status >= 400 && respuesta.status < 500) {
       return new ErrorDelServidorVps(`El servidor del VPS rechazó la operación (${descripcion}): ${detalle}`, respuesta.status, detalle)
@@ -525,7 +538,7 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
     const bruta = await fetch(this.urlBase + ruta, {
       method: metodo,
       headers: {
-        authorization: `Bearer ${this.token}`,
+        authorization: `Bearer ${tokenParaElServidor(this.urlBase, this.token)}`,
         ...encabezadosDelEquipo(),
         ...(opciones.cuerpo ? { 'content-type': 'application/octet-stream' } : {}),
         ...(opciones.encabezados ?? {}),
@@ -1409,6 +1422,40 @@ export class FuenteVps implements FuenteHoja, AlmacenDeAdjuntos {
       { reintentarSinRespuesta: false },
     )) as { solicitud: SolicitudDeHorario }
     return datos.solicitud
+  }
+
+  // --- Licencia de la agencia -------------------------------------------------
+  //
+  // `GET /api/dmg/licencia` y `PUT` pasan aun con la licencia vencida (es lo que muestra la pantalla de
+  // bloqueo). Un servidor anterior a las licencias no conoce la ruta: ahí no se controla nada (null).
+
+  async licenciaEstado(): Promise<EstadoDeLicencia | null> {
+    let datos: unknown
+    try {
+      datos = await this.pedir('leer la licencia', 'GET', '/api/dmg/licencia', undefined, { reintentarSinRespuesta: false })
+    } catch (error) {
+      if (error instanceof ErrorDelServidorVps && error.status === 404) return null
+      throw error
+    }
+    return normalizarEstadoDeLicencia(datos)
+  }
+
+  async licenciaInstalar(licencia: string): Promise<EstadoDeLicencia | null> {
+    const datos = await this.pedir('instalar la licencia', 'PUT', '/api/dmg/licencia', { licencia }, { reintentarSinRespuesta: false })
+    return normalizarEstadoDeLicencia(datos)
+  }
+
+  async licenciaPuestos(): Promise<PuestoOcupado[]> {
+    const datos = (await this.pedir('leer los puestos de la licencia', 'GET', '/api/dmg/licencia/puestos', undefined, {
+      reintentarSinRespuesta: false,
+    })) as { puestos?: PuestoOcupado[] } | null
+    return Array.isArray(datos?.puestos) ? datos.puestos : []
+  }
+
+  async licenciaLiberar(clave: string): Promise<void> {
+    await this.pedir('liberar un puesto', 'DELETE', `/api/dmg/licencia/puestos/${encodeURIComponent(clave)}`, undefined, {
+      reintentarSinRespuesta: false,
+    })
   }
 
   // --- Autorizaciones de IP ----------------------------------------------------

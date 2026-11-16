@@ -36,8 +36,13 @@ export const ARCHIVO_DATOS = 'usuarios.json'
  *
  * En desarrollo los tokens NO se usan: la app arranca en modo local salvo que se defina la variable
  * de entorno DM_GESTION_TOKEN_DATOS (ver index.ts). Los scripts de humo usan un simulador.
+ *
+ * DESDE LA 18.1.3 VAN VACÍOS. La mudanza al VPS se hizo en la v12.4 y la semilla ya no hace falta; y
+ * este repositorio es público, así que el token que estuvo escrito acá quedó a la vista. Hay que
+ * revocarlo en GitHub (Settings → Developer settings → Personal access tokens): sacarlo de esta línea
+ * no lo saca del historial. No se vuelve a escribir un token en el código.
  */
-export const TOKEN_DATOS = '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'
+export const TOKEN_DATOS = ''
 export const TOKEN_DATOS_ANTERIOR = ''
 
 export const URL_API_GITHUB = 'https://api.github.com'

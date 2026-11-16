@@ -903,6 +903,10 @@ test('multicotizador: el nombre de la base se reconoce como la compañía con AP
   assert.equal(aseguradoraDeLaBase('ATMOSFERA SEGUROS', registradas), -1)
   assert.equal(aseguradoraDeLaBase('Federación Patronal', registradas), -1)
   assert.equal(aseguradoraDeLaBase(null, registradas), -1)
+  // Río Uruguay: la base la escribe «RIO URUGUAY», «RUS» o «R.U.S.», y las tres son la misma compañía.
+  const conRus = [...registradas, { nombre: 'Río Uruguay', aliasesEnLaBase: ['RUS', 'R U S'] }]
+  for (const escrita of ['RIO URUGUAY', 'Río Uruguay Seguros', 'RUS', 'R.U.S.']) assert.equal(aseguradoraDeLaBase(escrita, conRus), 4, escrita)
+  assert.equal(aseguradoraDeLaBase('RUSTICA SEGUROS', conRus), -1, 'palabra entera')
 })
 
 test('multicotizador: los filtros de un listado se validan', () => {

@@ -4,8 +4,7 @@
 import { useState } from 'react'
 import type { ContenidoDeAyuda } from '../ayuda/tipos'
 import { CONTENIDO_AYUDA } from '../ayuda/contenido'
-import { marcaDelPrograma } from '../../shared/canal'
-import { canalSinEsperar, nombreDeLaAgencia } from '../canal'
+import { canalSinEsperar, marcaVisible, nombreDeLaAgencia } from '../canal'
 import { Icono } from './Icono'
 import { Boton, cx, Dialogo } from './ui'
 
@@ -198,12 +197,12 @@ function htmlDeAyuda(contenido: ContenidoDeAyuda): string {
   footer { margin-top: 8mm; padding-top: 3mm; border-top: 1px solid #d7deea; font-size: 8.5pt; color: #7c88a0; }
 </style></head><body>
   <header>
-    <p class="marca">${escapar(nombreDeLaAgencia())} · ${escapar(marcaDelPrograma(canalSinEsperar()))} · Ayuda</p>
+    <p class="marca">${escapar(nombreDeLaAgencia())} · ${escapar(marcaVisible(canalSinEsperar()))} · Ayuda</p>
     <h1>${escapar(contenido.titulo)}</h1>
     <p class="resumen">${escapar(contenido.resumen)}</p>
   </header>
   ${secciones}
   ${conceptos}
-  <footer>Generado desde ${escapar(marcaDelPrograma(canalSinEsperar()))} para leer o imprimir fuera del programa.</footer>
+  <footer>Generado desde ${escapar(marcaVisible(canalSinEsperar()))} para leer o imprimir fuera del programa.</footer>
 </body></html>`
 }

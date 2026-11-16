@@ -326,7 +326,7 @@ function IconoDeEstado({ estado }: { estado: EstadoPestanaImportada }) {
   return <Icono nombre="cargando" tamano={16} className="animate-spin text-marino-600" />
 }
 
-function Progreso({ progreso }: { progreso: ProgresoImportacion }) {
+export function Progreso({ progreso }: { progreso: ProgresoImportacion }) {
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -364,9 +364,13 @@ function Progreso({ progreso }: { progreso: ProgresoImportacion }) {
 // ---------------------------------------------------------------------------
 interface PropsResultado {
   informe: InformeImportacion
-  guardando: boolean
-  alDescargar: (importacionId: number) => void
-  alAbrirCarpeta: () => void
+  guardando?: boolean
+  /** Sin estos dos (el ensayo del Alta desde Excel, que no deja archivo) no se muestran los botones. */
+  alDescargar?: (importacionId: number) => void
+  alAbrirCarpeta?: () => void
+  /** Para el ensayo: otro título y otra descripción. */
+  titulo?: string
+  descripcion?: string
 }
 
 function Cifra({ etiqueta, valor, detalle }: { etiqueta: string; valor: number; detalle?: string }) {
@@ -379,7 +383,7 @@ function Cifra({ etiqueta, valor, detalle }: { etiqueta: string; valor: number; 
   )
 }
 
-function ResultadoImportacion({ informe, guardando, alDescargar, alAbrirCarpeta }: PropsResultado) {
+export function ResultadoImportacion({ informe, guardando = false, alDescargar, alAbrirCarpeta, titulo, descripcion }: PropsResultado) {
   const t = informe.totales
   const tipos = Object.entries(informe.problemasPorTipo).sort((a, b) => b[1] - a[1])
   const sucursales = Object.entries(informe.sucursalesDesconocidas).sort((a, b) => b[1] - a[1])
@@ -387,8 +391,9 @@ function ResultadoImportacion({ informe, guardando, alDescargar, alAbrirCarpeta 
 
   return (
     <Tarjeta
-      titulo="Informe de importación"
+      titulo={titulo ?? 'Informe de importación'}
       descripcion={
+        descripcion ?? (
         <>
           Importación Nº {informe.id} · base «{informe.hojaTitulo || '-'}» · {formatearFecha(informe.iniciadaEn)} → {formatearFecha(informe.terminadaEn)}
           {informe.pestanaMasNueva && (
@@ -398,16 +403,21 @@ function ResultadoImportacion({ informe, guardando, alDescargar, alAbrirCarpeta 
             </>
           )}
         </>
+        )
       }
       acciones={
         <>
           <Etiqueta tono={TONO_ESTADO[informe.estado]}>{NOMBRE_ESTADO[informe.estado]}</Etiqueta>
-          <Boton icono="carpeta" onClick={alAbrirCarpeta}>
-            Abrir carpeta
-          </Boton>
-          <Boton variante="primario" icono="descargar" onClick={() => alDescargar(informe.id)} cargando={guardando}>
-            Descargar informe
-          </Boton>
+          {alAbrirCarpeta && (
+            <Boton icono="carpeta" onClick={alAbrirCarpeta}>
+              Abrir carpeta
+            </Boton>
+          )}
+          {alDescargar && (
+            <Boton variante="primario" icono="descargar" onClick={() => alDescargar(informe.id)} cargando={guardando}>
+              Descargar informe
+            </Boton>
+          )}
         </>
       }
     >

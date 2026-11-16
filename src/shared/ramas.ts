@@ -12,106 +12,55 @@
 // OJO con la diferencia entre RAMA y CATEGORIA: la categoría (`CATEGORIAS_DE_VEHICULO` en tipos.ts)
 // la decide el catálogo de vehículos y tiene quince valores de carrocería (SEDAN, HATCHBACK, SUV…);
 // la rama es cómo vende la agencia, y son estas siete. Una es de la base, la otra es del mostrador.
+//
+// La lista es configurable (Administración → Sucursales y ramas, ver `catalogos.ts`): lo de abajo describe la de
+// fábrica, pero el código siempre lee la vigente.
 
+import { claveDeCatalogo, RAMAS_DE_FABRICA, type FamiliaDeRama, type RamaConfigurada } from './catalogos'
 import { esVehiculo } from './riesgos'
 import type { CategoriaDeVehiculo } from './tipos'
 
-/** Las únicas ramas que existen, en el orden en que se ofrecen. */
-export const RAMAS = ['AUTO', 'MOTO', 'PICK UP', 'CAMION', 'SCOOTER', 'MOTO ELÉCTRICA', 'TRAILER'] as const
-
-export type Rama = (typeof RAMAS)[number]
-
-/** Cómo se lee cada rama en pantalla. El valor guardado sigue siendo el de arriba, en mayúsculas. */
-export const NOMBRE_RAMA: Record<Rama, string> = {
-  AUTO: 'Auto',
-  MOTO: 'Moto',
-  'PICK UP': 'Pick up',
-  CAMION: 'Camión',
-  SCOOTER: 'Scooter',
-  'MOTO ELÉCTRICA': 'Moto eléctrica',
-  TRAILER: 'Trailer',
-}
-
 /**
- * Forma para comparar: mayúsculas, sin tildes, sin puntuación ni espacios. «pick up», «PICK-UP» y
- * «PickUp» dan la misma clave, y «MOTO ELECTRICA» empata con «MOTO ELÉCTRICA» aunque a la planilla se
- * le haya escapado la tilde. Se compara acá y nunca en el SQL, por lo mismo que las sucursales:
- * `UPPER()` y `COLLATE NOCASE` de SQLite sólo tocan el ASCII, así que `UPPER('ELÉCTRICA')` devuelve
- * `'ELéCTRICA'` y no empata con el «ELECTRICA» de la hoja.
+ * Las únicas ramas que existen, en el orden en que se ofrecen. Es la lista VIGENTE: arranca con las de fábrica y
+ * `configurarRamas` la reemplaza EN EL LUGAR (mismo arreglo / mismo objeto), así que quien la importó sigue
+ * viendo la lista actual. Se lee siempre en el momento de usarla, nunca se copia a una constante.
  */
-export function claveDeRama(valor: unknown): string {
-  if (valor === null || valor === undefined) return ''
-  return String(valor)
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^A-Z0-9]+/g, '')
+const VIGENTES: string[] = []
+export const RAMAS: readonly string[] = VIGENTES
+
+export type Rama = string
+
+/** Cómo se lee cada rama en pantalla. El valor guardado sigue siendo el de la lista, en mayúsculas. */
+export const NOMBRE_RAMA: Record<string, string> = {}
+
+/** Forma para comparar (ver `claveDeCatalogo`): «pick up», «PICK-UP» y «PickUp» dan la misma clave. */
+export const claveDeRama = claveDeCatalogo
+
+const FAMILIA: Record<string, FamiliaDeRama> = {}
+const POR_CLAVE = new Map<string, string>()
+
+/** Cambia las ramas vigentes. Los sinónimos de cada una (lo que escribe la hoja) se suman a la tabla de claves. */
+export function configurarRamas(lista: readonly RamaConfigurada[]): void {
+  VIGENTES.splice(0, VIGENTES.length, ...lista.map((r) => r.valor))
+  for (const clave of Object.keys(NOMBRE_RAMA)) delete NOMBRE_RAMA[clave]
+  for (const clave of Object.keys(FAMILIA)) delete FAMILIA[clave]
+  POR_CLAVE.clear()
+  for (const r of lista) {
+    NOMBRE_RAMA[r.valor] = r.nombre
+    FAMILIA[r.valor] = r.familia
+    for (const alias of r.sinonimos) POR_CLAVE.set(claveDeRama(alias), r.valor)
+  }
+  // Los valores propios al final: si un sinónimo choca con un valor (no debería) gana el valor.
+  for (const r of lista) POR_CLAVE.set(claveDeRama(r.valor), r.valor)
 }
 
-/**
- * Las otras maneras de escribir la misma rama. Salen de lo que realmente trae la hoja de Google y de
- * las palabras que ya usa `src/main/vehiculos/mapeo.ts` para deducir la categoría del catálogo.
- *
- * Las de carrocería (SEDAN, HATCHBACK, SUV…) caen todas en AUTO a propósito: para el catálogo son
- * quince cosas distintas, para el mostrador son un auto. Lo que NO está acá —FURGON, MICRO,
- * CUATRICICLO, BICICLETA, HOGAR— queda afuera del catálogo por elección: inventarles una rama que la
- * agencia no vende es peor que dejarlas listadas aparte, que es lo que hace `ramasParaElegir`.
- */
-const SINONIMOS: Record<string, Rama> = {
-  // Auto
-  AUTOMOVIL: 'AUTO',
-  AUTOMOVILES: 'AUTO',
-  AUTOS: 'AUTO',
-  COCHE: 'AUTO',
-  SEDAN: 'AUTO',
-  HATCHBACK: 'AUTO',
-  COUPE: 'AUTO',
-  CABRIOLET: 'AUTO',
-  RURAL: 'AUTO',
-  MONOVOLUMEN: 'AUTO',
-  SUV: 'AUTO',
-  // Moto
-  MOTOS: 'MOTO',
-  MOTOCICLETA: 'MOTO',
-  MOTOCICLETAS: 'MOTO',
-  MOTOVEHICULO: 'MOTO',
-  // Pick up. «Camioneta» es pick up en la calle argentina y así lo resuelve mapeo.ts desde la Fase 10.
-  CAMIONETA: 'PICK UP',
-  CAMIONETAS: 'PICK UP',
-  PICKUPS: 'PICK UP',
-  'DOBLE CABINA': 'PICK UP',
-  // Camión
-  CAMIONES: 'CAMION',
-  CHASIS: 'CAMION',
-  TRACTOR: 'CAMION',
-  VOLCADOR: 'CAMION',
-  // Scooter
-  SCOOTERS: 'SCOOTER',
-  CICLOMOTOR: 'SCOOTER',
-  // Moto eléctrica
-  'MOTO ELECTRICA': 'MOTO ELÉCTRICA',
-  'MOTOS ELECTRICAS': 'MOTO ELÉCTRICA',
-  'MOTO E': 'MOTO ELÉCTRICA',
-  // «ELECTRICA» a secas NO está, y es a propósito: un auto eléctrico escrito así terminaría siendo
-  // una moto eléctrica. La palabra sola no dice de qué vehículo se habla.
-  // Trailer
-  TRAILERS: 'TRAILER',
-  TRAILA: 'TRAILER',
-  ACOPLADO: 'TRAILER',
-  REMOLQUE: 'TRAILER',
-  'CASA RODANTE': 'TRAILER',
-}
-
-const POR_CLAVE = new Map<string, Rama>([
-  ...RAMAS.map((nombre) => [claveDeRama(nombre), nombre] as const),
-  ...Object.entries(SINONIMOS).map(([alias, nombre]) => [claveDeRama(alias), nombre] as const),
-])
+configurarRamas(RAMAS_DE_FABRICA)
 
 /**
  * La rama que nombra ese texto, escrita como la escribe el catálogo, o null si el texto no es ninguna
  * de las siete. «PICKUP», «Pick-Up» y «CAMIONETA» devuelven las tres «PICK UP».
  */
-export function ramaCanonica(texto: unknown): Rama | null {
+export function ramaCanonica(texto: unknown): string | null {
   const clave = claveDeRama(texto)
   if (!clave) return null
   return POR_CLAVE.get(clave) ?? null
@@ -124,27 +73,20 @@ export function ramaCanonica(texto: unknown): Rama | null {
  * Sólo se usa para AFINAR: ver `ramaDeVehiculo`.
  */
 function ramaDeCategoria(categoria: CategoriaDeVehiculo | string | null | undefined): Rama | null {
-  switch (claveDeRama(categoria)) {
-    case 'PICKUP':
-      return 'PICK UP'
-    case 'CAMION':
-      return 'CAMION'
-    case 'SCOOTER':
-      return 'SCOOTER'
-    default:
-      return null
-  }
-}
-
-/** Las ramas que son un auto o derivan de uno, y las que son una moto. Se usan para afinar sin cruzarse. */
-const FAMILIA: Record<Rama, 'auto' | 'moto' | 'otro'> = {
-  AUTO: 'auto',
-  'PICK UP': 'auto',
-  CAMION: 'auto',
-  MOTO: 'moto',
-  SCOOTER: 'moto',
-  'MOTO ELÉCTRICA': 'moto',
-  TRAILER: 'otro',
+  const deLaCategoria = (() => {
+    switch (claveDeRama(categoria)) {
+      case 'PICKUP':
+        return 'PICK UP'
+      case 'CAMION':
+        return 'CAMION'
+      case 'SCOOTER':
+        return 'SCOOTER'
+      default:
+        return null
+    }
+  })()
+  // Si la agencia sacó esa rama de la lista, no se afina hacia una rama que ya no existe.
+  return deLaCategoria && VIGENTES.includes(deLaCategoria) ? deLaCategoria : null
 }
 
 /**
@@ -213,7 +155,8 @@ export function ramasParaElegir(deLaBase: Iterable<string | null | undefined>): 
   return [...RAMAS, ...sueltas.sort((a, b) => a.localeCompare(b, 'es'))]
 }
 
-/** «AUTO, MOTO, PICK UP, CAMION, SCOOTER, MOTO ELÉCTRICA o TRAILER», para los mensajes que enumeran el catálogo. */
+/** «AUTO, MOTO, PICK UP, CAMION, SCOOTER, MOTO ELÉCTRICA o TRAILER» (las vigentes), para los mensajes que enumeran el catálogo. */
 export function ramasEnTexto(): string {
+  if (RAMAS.length <= 1) return RAMAS.join('')
   return `${RAMAS.slice(0, -1).join(', ')} o ${RAMAS[RAMAS.length - 1]}`
 }

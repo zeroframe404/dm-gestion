@@ -909,3 +909,9 @@ export function encabezadoParaAgregar(campo: Campo, tipo: TipoPestana, existente
   }
   return null
 }
+
+/** Los campos que tienen sentido en una pestaña de ese tipo, en el orden de siempre (para el Alta desde Excel). */
+export function camposDelTipo(tipo: TipoPestana): Campo[] {
+  const permitidos = CAMPOS_POR_TIPO[tipo]
+  return permitidos === 'todos' ? (Object.keys(SINONIMOS) as Campo[]) : [...permitidos]
+}

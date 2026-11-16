@@ -324,6 +324,7 @@ import {
 } from './servicios/atm'
 import { borrarCuentaMercantil, estadoMercantil, guardarCuentaMercantil, probarMercantil, traerMercantilDelServidor } from './servicios/mercantil'
 import { borrarCuentaEquidad, estadoEquidad, guardarCuentaEquidad, probarEquidad, traerEquidadDelServidor } from './servicios/equidad'
+import { borrarCuentaRus, estadoRus, guardarCuentaRus, probarRus, traerRusDelServidor } from './servicios/rus'
 import { aseguradorasDelMulticotizador, cotizarEnAseguradora, localidadesDelMulticotizador } from './servicios/multicotizador'
 import { cotizacionesDelMulticotizador, emisionesDelMulticotizador, planesDelMulticotizador } from './servicios/listadosDelMulticotizador'
 import {
@@ -352,6 +353,7 @@ import {
   registroDeExcepciones,
   resolverPedido,
 } from './servicios/horarioLaboral'
+import { estadoDeLaLicencia, instalarLicencia, liberarPuestoDeLaLicencia, puestosDeLaLicencia } from './servicios/licencia'
 import { autorizarIp, cambiarControlDeIp, desautorizarIp, leerAutorizacionesIp } from './servicios/autorizacionesIp'
 import {
   borrarMetaDelVps,
@@ -392,6 +394,7 @@ import { ErrorDeNegocio, FueraDeHorario, SinConexion } from './servicios/errores
 import { estadoDelMesh } from './servicios/mesh'
 import { elegirImagenesDelReporte, enviarReporteDeError, imagenDelPortapapeles } from './servicios/soporte'
 import { estadoDeLaBaseVps, migrarAlVps } from './servicios/migracionVps'
+import { elegirArchivo as elegirArchivoDeAlta, ensayarAlta, estadoDelAlta, olvidarLibro, publicarAlta, sugerirColumnasDeHoja } from './servicios/altaDesdeExcel'
 import {
   abrirCarpetaInformes,
   cancelarImportacion,
@@ -414,6 +417,8 @@ import {
   puedeEditar,
   puedeVer as puedeVerElArea,
 } from './servicios/permisos'
+import { catalogosVigentes, guardarCatalogos, restaurarCatalogos } from './servicios/catalogos'
+import { guardarMarca, marcaVigente, restaurarMarca } from './servicios/marca'
 import { exigirRol, exigirSesion, sesion } from './servicios/sesion'
 import { listarSucursales } from './servicios/sucursales'
 import { estadoDeActualizacionesPorSucursal } from './servicios/estadoDeActualizaciones'
@@ -751,6 +756,38 @@ export function registrarIpc(): void {
     exigirRol('SUPER_ADMIN')
     exigirEdicion('administracion')
     return exito(await migrarAlVps())
+  })
+
+  // Alta desde Excel: sólo el superadministrador (carga la base entera de la agencia).
+  manejar('altaExcel:estado', async () => {
+    exigirRol('SUPER_ADMIN')
+    exigirVista('administracion')
+    return exito(await estadoDelAlta())
+  })
+  manejar('altaExcel:elegirArchivo', async () => {
+    exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await elegirArchivoDeAlta(ventanaActual()))
+  })
+  manejar('altaExcel:sugerirColumnas', (token, indice, tipo, filaEncabezados) => {
+    exigirRol('SUPER_ADMIN')
+    exigirVista('administracion')
+    return exito(sugerirColumnasDeHoja(token, indice, tipo, filaEncabezados))
+  })
+  manejar('altaExcel:ensayar', async (asignacion) => {
+    exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await ensayarAlta(asignacion))
+  })
+  manejar('altaExcel:publicar', async (asignacion) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    exigirEdicion('administracion')
+    return exito(await publicarAlta(asignacion, actor))
+  })
+  manejar('altaExcel:olvidar', () => {
+    exigirRol('SUPER_ADMIN')
+    olvidarLibro()
+    return exito(null)
   })
 
   // Importación desde Google Sheets: SUPER_ADMIN y ADMIN
@@ -2274,6 +2311,36 @@ export function registrarIpc(): void {
     return exito(await probarEquidad())
   })
 
+  // --- Río Uruguay Seguros -------------------------------------------------------
+  //
+  // La cuenta de su API v2, con el mismo criterio que las de ATM, Mercantil y Equidad: la ve quien ve
+  // Administración y la cargan, borran o traen del servidor sólo un administrador o el
+  // superadministrador, porque viaja a todas las computadoras (ajuste compartido `rusApi`).
+  // Cotizar va por el multicotizador.
+  manejar('rus:estado', async () => {
+    exigirVista('administracion')
+    return exito(await estadoRus())
+  })
+  manejar('rus:guardarCredenciales', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await guardarCuentaRus(datos, actor.nombre))
+  })
+  manejar('rus:borrarCredenciales', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await borrarCuentaRus())
+  })
+  manejar('rus:traerDelServidor', async () => {
+    exigirRol('SUPER_ADMIN', 'ADMIN')
+    exigirEdicion('administracion')
+    return exito(await traerRusDelServidor())
+  })
+  manejar('rus:probar', async () => {
+    exigirVista('administracion')
+    return exito(await probarRus())
+  })
+
   // --- Multicotizador ---------------------------------------------------------
   //
   // Cotizar en todas las compañías es mirar precios: alcanza con ver el Multicotizador. Lo que de verdad
@@ -2324,6 +2391,13 @@ export function registrarIpc(): void {
   manejar('horario:pedirEnSesion', async (motivo) => exito(await pedirExcepcionEnSesion(exigirSesion(), motivo)))
   manejar('horario:pedirAlIngresar', async (motivo) => exito(await pedirExcepcionAlIngresar(motivo)))
   manejar('horario:estadoDelPedidoAlIngresar', async () => exito(await estadoDelPedidoAlIngresar()))
+
+  // La licencia de la agencia. El estado y pegar una nueva, sin sesión (la pantalla de bloqueo); los
+  // puestos, del superadministrador (el servicio y el servidor lo vuelven a controlar).
+  manejar('licencia:estado', async () => exito(await estadoDeLaLicencia()))
+  manejar('licencia:instalar', async (licencia) => exito(await instalarLicencia(licencia)))
+  manejar('licencia:puestos', async () => exito(await puestosDeLaLicencia()))
+  manejar('licencia:liberar', async (clave) => exito(await liberarPuestoDeLaLicencia(clave)))
 
   // Autorizaciones de IP: sólo el superadministrador (el servicio y el servidor lo vuelven a controlar).
   manejar('ips:estado', async () => exito(await leerAutorizacionesIp(exigirSesion())))
@@ -2637,5 +2711,35 @@ export function registrarIpc(): void {
     borrarClaveDelAsistente()
     await borrarAsistenteDelVps().catch((error) => console.error('[asistente] No se pudo borrar la clave del VPS:', error))
     return exito(estadoDelAsistente(actor))
+  })
+
+  // La marca: leerla no pide sesión (el ingreso ya se dibuja con ella); cambiarla es del superadministrador.
+  // Si el servidor no está, queda guardada en esta computadora y no se devuelve un error rojo.
+  manejar('marca:obtener', () => exito(marcaVigente()))
+  manejar('marca:guardar', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    const marca = guardarMarca(datos)
+    await publicarSinRomper('marca', actor.nombre)
+    return exito(marca)
+  })
+  // Las sucursales y las ramas: leerlas no pide sesión; cambiarlas es del superadministrador y se manda al VPS.
+  manejar('catalogos:obtener', () => exito(catalogosVigentes()))
+  manejar('catalogos:guardar', async (datos) => {
+    const actor = exigirRol('SUPER_ADMIN')
+    const catalogos = guardarCatalogos(datos)
+    await publicarSinRomper('catalogos', actor.nombre)
+    return exito(catalogos)
+  })
+  manejar('catalogos:restaurar', async () => {
+    const actor = exigirRol('SUPER_ADMIN')
+    const catalogos = restaurarCatalogos()
+    await publicarSinRomper('catalogos', actor.nombre)
+    return exito(catalogos)
+  })
+  manejar('marca:restaurar', async () => {
+    const actor = exigirRol('SUPER_ADMIN')
+    const marca = restaurarMarca()
+    await publicarSinRomper('marca', actor.nombre)
+    return exito(marca)
   })
 }

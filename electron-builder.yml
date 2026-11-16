@@ -17,6 +17,10 @@ directories:
 #
 # Sin `private: true`: el repositorio es público y los Releases se leen sin credenciales, así que el
 # latest.yml no lleva ningún token y el updater tampoco necesita uno (ver src/main/servicios/updater.ts).
+#
+# Desde la 18.1.3 las PCs buscan primero en el servidor de la agencia y GitHub queda de respaldo: el
+# updater fija su propio origen (src/main/servicios/origenesDeActualizacion.ts) y scripts/subir-al-vps.mjs
+# sube los mismos archivos al VPS. La firma de código se agrega sola si hay secretos (scripts/firma.mjs).
 publish:
   provider: github
   owner: zeroframe404

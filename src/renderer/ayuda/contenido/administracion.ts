@@ -76,6 +76,27 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.licencia': {
+    clave: 'administracion.licencia',
+    titulo: 'Administración → Licencia',
+    resumen: 'La licencia de DM Gestión de la agencia: hasta cuándo vale, en cuántas computadoras se puede usar a la vez y cuáles las están usando. Sólo la ve un superadministrador.',
+    secciones: [
+      {
+        titulo: 'Vencimiento',
+        parrafos: [
+          'Desde 15 días antes del vencimiento, los administradores ven un cartel amarillo arriba de todo. Cuando vence, hay unos días de gracia en los que el programa sigue funcionando con un cartel rojo para todos. Pasada la gracia nadie puede ingresar: la pantalla de ingreso muestra el aviso y el lugar para pegar la licencia nueva.',
+          'Para renovar, pedí la licencia nueva a quien te vendió el programa y pegala en «Renovar la licencia» (o en la pantalla de ingreso, si ya venció). Queda instalada para todas las computadoras de la agencia.',
+        ],
+      },
+      {
+        titulo: 'Computadoras en uso',
+        parrafos: [
+          'Cada computadora con una sesión abierta ocupa un puesto. Si están todos ocupados, otra computadora no puede ingresar hasta que alguien cierre la sesión. La versión normal y la beta en la misma computadora ocupan un solo puesto.',
+          '«Liberar» cierra las sesiones de esa computadora y deja el puesto libre. Una sesión que no se usa en 7 días deja de ocupar lugar sola. El superadministrador puede ingresar aunque estén todos ocupados, para poder liberar uno.',
+        ],
+      },
+    ],
+  },
   'administracion.ciberseguridad': {
     clave: 'administracion.ciberseguridad',
     titulo: 'Administración → Ciberseguridad',
@@ -270,6 +291,45 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       },
     ],
   },
+  'administracion.catalogos': {
+    clave: 'administracion.catalogos',
+    titulo: 'Administración → Sucursales y ramas',
+    resumen: 'Las sucursales de la agencia y las ramas de vehículo que ofrecen los filtros y las altas. Sólo la ve el superadministrador.',
+    secciones: [
+      {
+        titulo: 'Qué se puede cambiar',
+        parrafos: [
+          'Se pueden agregar sucursales y ramas, cambiarles el nombre, ordenarlas y sacarlas de la lista. El orden de acá es el orden de todos los desplegables.',
+          'Si cambiás el nombre de una sucursal, el anterior se sigue reconociendo: los clientes, pólizas y cobros que ya decían el nombre viejo quedan bajo el nuevo, sin tocar nada. En «También se escribe» van las otras formas con que la planilla o los usuarios viejos nombran la misma sucursal o rama, separadas por coma.',
+          'En las ramas, «Se comporta» elige con qué grupo se afina la categoría del catálogo de vehículos: una rama «como un auto» puede quedar como pick up o camión según el modelo, y una «como una moto», como scooter.',
+        ],
+      },
+      {
+        titulo: 'Lo que no hace',
+        parrafos: [
+          'Sacar una sucursal o una rama de la lista no borra nada de lo cargado: esas filas siguen en los listados, aparte, como «fuera del catálogo». Al guardar, el cambio se aplica enseguida y viaja al servidor; las otras computadoras lo toman al abrir el programa. Las que tienen la versión normal siguen con las listas de siempre.',
+        ],
+      },
+    ],
+  },
+  'administracion.marca': {
+    clave: 'administracion.marca',
+    titulo: 'Administración → Marca',
+    resumen: 'El nombre del programa, el nombre de la agencia, el color principal y el logo. Sólo la ve el superadministrador.',
+    secciones: [
+      {
+        titulo: 'Qué se puede cambiar',
+        parrafos: [
+          'El nombre del programa aparece en la barra lateral, en la pantalla de ingreso, en «Acerca de» y en el título de la ventana. El nombre de la agencia firma los mensajes de WhatsApp, los presupuestos y el pie de los reportes. El color principal repinta el programa entero, y el logo reemplaza al escudo.',
+          'Al guardar, el cambio se aplica enseguida en esta computadora y viaja al servidor: las demás lo toman la próxima vez que abren el programa. «Volver a la marca de siempre» deja el nombre, el color y el escudo originales.',
+        ],
+      },
+      {
+        titulo: 'Lo que no cambia',
+        parrafos: ['El nombre del instalador y del acceso directo de Windows salen de cómo se arma el programa, no de esta pantalla.'],
+      },
+    ],
+  },
   'administracion.impresora': {
     clave: 'administracion.impresora',
     titulo: 'Administración → Impresora',
@@ -421,6 +481,40 @@ export const AYUDA_ADMINISTRACION: Record<string, ContenidoDeAyuda> = {
       {
         termino: 'Datos raros',
         explicacion: 'Filas con algo que no se pudo interpretar del todo (una fecha rara, un dato faltante). Quedan anotadas en el informe, pero no frenan la importación.',
+      },
+    ],
+  },
+  'administracion.altaExcel': {
+    clave: 'administracion.altaExcel',
+    titulo: 'Administración → Alta desde Excel',
+    resumen: 'Para una agencia que empieza: sube su propio Excel o CSV, elige qué es cada hoja y cada columna, ensaya y lo carga en la base vacía.',
+    secciones: [
+      {
+        titulo: 'Para qué sirve',
+        parrafos: [
+          'Cuando una agencia empieza a usar el programa, su cartera está en su propio Excel, con sus propios nombres de hojas y de columnas. Esta pantalla lo lee y lo carga en la base de la agencia, que tiene que estar vacía (recién instalada). Se hace una sola vez, desde una sola computadora, y la hace el superadministrador. Después, todo se edita desde el programa como siempre.',
+          'Sirven los archivos .xlsx de Excel y los .csv. Un Excel viejo (.xls) o protegido con contraseña hay que abrirlo en Excel y guardarlo como «Libro de Excel (.xlsx)».',
+        ],
+      },
+      {
+        titulo: 'Los pasos',
+        parrafos: [
+          'Hojas: para cada hoja del archivo se elige qué tiene —la cartera (clientes, pólizas y vehículos), bajas, siniestros, pagos o riesgos varios— o «No importar». También en qué fila están los títulos, si la hoja tiene algo arriba. Las hojas del mismo tipo se juntan en una sola (por ejemplo, una cartera por sucursal).',
+          'Columnas: para cada columna se elige a qué dato del programa corresponde. Lo que el programa reconoce solo ya viene elegido. Dos columnas en el mismo dato se juntan (APELLIDO y NOMBRE forman el nombre). Con «Valores fijos» se completa un dato que el Excel no trae, como la sucursal si la agencia tiene una sola. Arriba se ve qué falta: el nombre o el DNI es obligatorio para la cartera; lo demás es recomendado.',
+          'Revisar y cargar: el programa hace un ensayo en memoria, sin tocar el servidor ni la computadora, y muestra cómo quedaría cada pestaña y el mismo informe que va a salir de verdad. Si una sucursal del Excel no está en la lista, se elige con cuál se carga. Con todo bien, «Cargar en la base» lo sube y lo importa; las demás computadoras lo bajan solas.',
+        ],
+      },
+      {
+        titulo: 'Cuándo no se puede',
+        parrafos: [
+          'Si la base de la agencia ya tiene datos, se puede ensayar pero no cargar: el alta es sólo para empezar. Tampoco se carga desde la versión beta conectada a la base real ni desde la demostración.',
+        ],
+      },
+    ],
+    conceptos: [
+      {
+        termino: 'Ensayo',
+        explicacion: 'Una importación de prueba, hecha en memoria, que muestra lo que va a pasar sin cargar nada.',
       },
     ],
   },

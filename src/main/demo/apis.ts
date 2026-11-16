@@ -14,6 +14,7 @@ import type {
   EstadoDeGaleno,
   EstadoDeGalenoNovedades,
   EstadoDeMercantil,
+  EstadoDeRus,
   EstadoDeTablasAtm,
   EstadoDelMesh,
   OpcionesDeEmisionAtm,
@@ -22,6 +23,7 @@ import type {
   PruebaDeGaleno,
   PruebaDeGalenoNovedades,
   PruebaDeMercantil,
+  PruebaDeRus,
   ReporteCreado,
   ResumenDePasadaDeGaleno,
 } from '../../shared/tipos'
@@ -270,6 +272,31 @@ export async function pruebaDeEquidadDemo(): Promise<PruebaDeEquidad> {
     productores: [{ codigo: '1043', nombre: 'AGENCIA DE DEMOSTRACIÓN' }],
     tiposDePoliza,
     marcas: 58,
+  }
+}
+
+export function estadoDeRusDemo(): EstadoDeRus {
+  return {
+    configurada: true,
+    ambiente: 'produccion',
+    usuario: '20123456789ws',
+    finDeApiKey: '9c1e',
+    productor: '8967',
+    solicitante: '',
+    actualizadoEn: haceUnRato(60 * 24 * 12),
+    compartido: compartidoDeLaDemo(),
+  }
+}
+
+export async function pruebaDeRusDemo(): Promise<PruebaDeRus> {
+  await esperarComoLaApi(700, 1500)
+  const vigencias = ['TRIMESTRAL', 'SEMESTRAL', 'ANUAL']
+  return {
+    ok: true,
+    detalle: `RUS (producción) aceptó el usuario 20123456789ws y la API-Key. Vigencias de autos: ${vigencias.join(', ').toLowerCase()}. Catálogo de vehículos: 60 marcas de autos. Se cotiza con el productor 8967. ${AVISO}`,
+    tokenVenceEn: enUnaHora(),
+    vigencias,
+    marcas: 60,
   }
 }
 

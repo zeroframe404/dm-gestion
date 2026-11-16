@@ -4,6 +4,7 @@ import { AvisoActualizacion } from './componentes/AvisoActualizacion'
 import { AvisoDePisado } from './componentes/AvisoDePisado'
 import { BannerDemo } from './componentes/BannerDemo'
 import { BannerSinConexion } from './componentes/BannerSinConexion'
+import { AvisoDeLicencia } from './componentes/AvisoDeLicencia'
 import { CartelActualizacionDisponible } from './componentes/CartelActualizacionDisponible'
 import { CartelCambiosRecientes } from './componentes/CartelCambiosRecientes'
 import { AvisoDeTareaHecha } from './componentes/AvisoDeTareaHecha'
@@ -312,6 +313,7 @@ function Marco({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Arriba del aviso de actualización: que no se pueda guardar nada no puede quedar segundo. */}
         <BannerSinConexion />
+        <AvisoDeLicencia />
         {/* La franja de la demo (sólo en la versión de demostración), con el atajo a «Servidor (VPS)». */}
         <BannerDemo
           alConectar={() => {

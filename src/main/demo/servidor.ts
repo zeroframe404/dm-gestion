@@ -158,6 +158,7 @@ function sembrarAjustes(simulador: VpsSimulado, hoy: Date): void {
       rama: '4',
       empresa: '1',
     },
+    rusApi: { ambiente: 'sandbox', usuario: 'demo.productor', clave: 'demo-clave', apiKey: 'demo-api-key-0000', productor: '12345', solicitante: '' },
     galenoApi: { usuario: 'demo.productor', clave: 'demo-clave', productor: '12345' },
     companias: ajusteDeCompanias(),
     ticket: ajusteDelTicket(),

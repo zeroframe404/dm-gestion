@@ -86,3 +86,12 @@ export function rutaBaseDeDatos(): string {
 export function rutaConfig(): string {
   return path.join(carpetaDatos(), 'config.json')
 }
+
+/**
+ * El archivo con el id estable de esta computadora (licencia: cada PC ocupa un puesto). Está en
+ * %APPDATA% y no en la carpeta de datos, para que la versión normal y la beta de la misma PC tengan el
+ * mismo id y ocupen UN puesto, no dos.
+ */
+export function rutaIdDelEquipo(): string {
+  return path.join(app.getPath('appData'), 'dm-gestion-equipo.json')
+}

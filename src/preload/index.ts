@@ -80,6 +80,14 @@ const api: ApiDm = {
     estado: () => invocar('vps:estado'),
     migrar: () => invocar('vps:migrar'),
   },
+  altaExcel: {
+    estado: () => invocar('altaExcel:estado'),
+    elegirArchivo: () => invocar('altaExcel:elegirArchivo'),
+    sugerirColumnas: (token, indice, tipo, filaEncabezados) => invocar('altaExcel:sugerirColumnas', token, indice, tipo, filaEncabezados),
+    ensayar: (asignacion) => invocar('altaExcel:ensayar', asignacion),
+    publicar: (asignacion) => invocar('altaExcel:publicar', asignacion),
+    olvidar: () => invocar('altaExcel:olvidar'),
+  },
   importacion: {
     vistaPrevia: () => invocar('importacion:vistaPrevia'),
     iniciar: () => invocar('importacion:iniciar'),
@@ -464,6 +472,13 @@ const api: ApiDm = {
     traerDelServidor: () => invocar('equidad:traerDelServidor'),
     probar: () => invocar('equidad:probar'),
   },
+  rus: {
+    estado: () => invocar('rus:estado'),
+    guardarCredenciales: (datos) => invocar('rus:guardarCredenciales', datos),
+    borrarCredenciales: () => invocar('rus:borrarCredenciales'),
+    traerDelServidor: () => invocar('rus:traerDelServidor'),
+    probar: () => invocar('rus:probar'),
+  },
   multicotizador: {
     aseguradoras: () => invocar('multicotizador:aseguradoras'),
     localidades: (tipoVehiculo, codigoPostal) => invocar('multicotizador:localidades', tipoVehiculo, codigoPostal),
@@ -471,6 +486,13 @@ const api: ApiDm = {
     cotizaciones: (filtros) => invocar('multicotizador:cotizaciones', filtros),
     planes: (tipoVehiculo) => invocar('multicotizador:planes', tipoVehiculo),
     emisiones: (filtros) => invocar('multicotizador:emisiones', filtros),
+  },
+  licencia: {
+    estado: () => invocar('licencia:estado'),
+    instalar: (licencia) => invocar('licencia:instalar', licencia),
+    puestos: () => invocar('licencia:puestos'),
+    liberar: (clave) => invocar('licencia:liberar', clave),
+    alCambiar: (escuchar) => suscribir('licencia:cambio', escuchar),
   },
   horario: {
     estado: () => invocar('horario:estado'),
@@ -592,6 +614,16 @@ const api: ApiDm = {
     preguntar: (pregunta) => invocar('asistente:preguntar', pregunta),
     guardarClave: (claveApi) => invocar('asistente:guardarClave', claveApi),
     borrarClave: () => invocar('asistente:borrarClave'),
+  },
+  marca: {
+    obtener: () => invocar('marca:obtener'),
+    guardar: (marca) => invocar('marca:guardar', marca),
+    restaurar: () => invocar('marca:restaurar'),
+  },
+  catalogos: {
+    obtener: () => invocar('catalogos:obtener'),
+    guardar: (catalogos) => invocar('catalogos:guardar', catalogos),
+    restaurar: () => invocar('catalogos:restaurar'),
   },
 }
 

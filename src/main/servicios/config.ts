@@ -6,17 +6,21 @@ import {
   AMBIENTES_ATM,
   AMBIENTES_EQUIDAD,
   AMBIENTES_MERCANTIL,
+  AMBIENTES_RUS,
   EMPRESA_EQUIDAD_POR_DEFECTO,
   RAMA_AUTOMOTOR_EQUIDAD_POR_DEFECTO,
   type AmbienteAtm,
   type AmbienteEquidad,
   type AmbienteMercantil,
+  type AmbienteRus,
   type EstadoConexionGoogle,
   type EstadoDeMeta,
 } from '../../shared/tipos'
 import { esDemo } from '../canal'
 import { credencialesDeLaDemo } from '../demo/servidor'
 import { rutaConfig } from '../rutas'
+import { type Catalogos, normalizarCatalogos } from '../../shared/catalogos'
+import { normalizarMarca, type Marca } from '../../shared/marca'
 import { EJEMPLO_URL_DEL_VPS, TOKEN_DE_LA_DEMO } from '../../shared/demo'
 import { ErrorDeNegocio } from './errores'
 import { objeto, texto } from './validacion'
@@ -132,6 +136,23 @@ interface ConfigEquidad {
 }
 
 /**
+ * La cuenta de la API v2 de Río Uruguay Seguros. Como las de ATM, Mercantil y Equidad, vive en cada
+ * computadora (RUS tampoco restringe por IP) y viaja a las demás como el ajuste compartido `rusApi`. Son
+ * tres secretos que hacen falta juntos —el usuario y la contraseña del PAS y la API-Key que da RUS (ver
+ * la nota en shared/tipos.ts)— más el código de productor, que RUS pide en cada cotización.
+ */
+interface ConfigRus {
+  ambiente: AmbienteRus
+  usuario: string
+  clave: string
+  apiKey: string
+  productor: string
+  /** El productor solicitante; vacío = el mismo productor. */
+  solicitante: string
+  actualizadoEn: string
+}
+
+/**
  * La clave de Anthropic del asistente con IA. La carga el superadministrador una vez y viaja al resto de
  * las computadoras como el ajuste compartido `iaAnthropic` (cifrado en el VPS), igual que la app de Meta.
  * No sale nunca del proceso principal: la pantalla sólo ve si está y sus últimos 4 caracteres.
@@ -150,7 +171,12 @@ interface Config {
   atm?: ConfigAtm
   mercantil?: ConfigMercantil
   equidad?: ConfigEquidad
+  rus?: ConfigRus
   asistente?: ConfigAsistente
+  /** La marca configurable (ver `shared/marca.ts`). Cruda: se limpia con `normalizarMarca` al leerla. */
+  marca?: unknown
+  /** Las sucursales y ramas configurables (ver `shared/catalogos.ts`). Crudo: se limpia con `normalizarCatalogos` al leerlo. */
+  catalogos?: unknown
 }
 
 /**
@@ -190,14 +216,15 @@ export function urlDeVueltaDeMeta(): string {
   return esDemo() ? URL_DE_VUELTA_DE_LA_DEMO : URL_DE_REDIRECCION_DE_META
 }
 
-// La base del GENERAL DE CLIENTES vive en el VPS de la agencia desde la v12. La URL y el token van
-// embebidos y config.json puede pisarlos para pruebas o si algún día cambia el dominio.
+// La base del GENERAL DE CLIENTES vive en el VPS de la agencia desde la v12. La dirección va escrita
+// acá y `config.json` puede pisarla (para pruebas, o para la agencia que tenga su propio servidor).
 //
-// OJO: ese criterio ("total el repositorio es privado") ya no vale — el repositorio es PÚBLICO, así
-// que este token, como TOKEN_DATOS, está a la vista de cualquiera. Hay que rotarlos y sacarlos del
-// código (leerlos de config.json, que no se publica). El del updater ya se sacó: no hacía falta.
+// EL TOKEN NO SE ESCRIBE ACÁ. Este repositorio es público: hasta la 18.1.2 el token estaba en esta
+// línea, a la vista de cualquiera. `VPS_TOKEN` queda vacía en el código y su valor se pone al armar el
+// instalador, desde los secretos de GitHub Actions (ver scripts/secretos-de-fabrica.mjs). En desarrollo
+// y en las pruebas queda vacía, que es lo correcto: ahí nunca se habla con el servidor de verdad.
 const VPS_URL_BASE = 'https://dmartinezseguros.com'
-const VPS_TOKEN = '8b8e041002f5125c317b463b551e6fd90fd6fad0ec827cac09e824d17ed3a5cb'
+const VPS_TOKEN = ''
 
 // La consola con la que se atienden las computadoras de las sucursales sin ir hasta el local. Vive en
 // el mismo VPS, detrás de su subdominio. Va embebida por el mismo criterio que la URL del VPS, y
@@ -884,6 +911,126 @@ export function adoptarEquidad(valor: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Río Uruguay Seguros: la cuenta de su API v2 (ver la nota de `ConfigRus`).
+// ---------------------------------------------------------------------------
+
+export interface CredencialesRus {
+  ambiente: AmbienteRus
+  usuario: string
+  clave: string
+  apiKey: string
+  productor: string
+  /** El productor solicitante; vacío = el mismo productor. */
+  solicitante: string
+}
+
+function ambienteRus(valor: unknown): AmbienteRus {
+  return typeof valor === 'string' && (AMBIENTES_RUS as readonly string[]).includes(valor) ? (valor as AmbienteRus) : 'produccion'
+}
+
+/** Lo que se puede mostrar de la cuenta de RUS: todo menos la contraseña y la API-Key (de ésta, el final). */
+export function cuentaRusVisible(): {
+  configurada: boolean
+  ambiente: AmbienteRus
+  usuario: string
+  finDeApiKey: string
+  productor: string
+  solicitante: string
+  actualizadoEn: string | null
+} {
+  const r = leerConfig().rus
+  return {
+    configurada: Boolean(r?.usuario && r.clave && r.apiKey && r.productor),
+    ambiente: ambienteRus(r?.ambiente),
+    usuario: r?.usuario ?? '',
+    finDeApiKey: r?.apiKey ? r.apiKey.slice(-4) : '',
+    productor: r?.productor ?? '',
+    solicitante: r?.solicitante ?? '',
+    actualizadoEn: r?.actualizadoEn ?? null,
+  }
+}
+
+/** La cuenta completa, sólo para el proceso principal. Null si no está cargada entera. */
+export function credencialesRus(): CredencialesRus | null {
+  const r = leerConfig().rus
+  if (!r?.usuario || !r.clave || !r.apiKey || !r.productor) return null
+  return { ambiente: ambienteRus(r.ambiente), usuario: r.usuario, clave: r.clave, apiKey: r.apiKey, productor: r.productor, solicitante: r.solicitante ?? '' }
+}
+
+/** Lo mismo que hacen `guardarRus` y `adoptarRus`: si no, la huella del ajuste compartido no cerraría nunca. */
+function normalizarRus(ambiente: unknown, usuario: string, clave: string, apiKey: string, productor: string, solicitante: string): Omit<ConfigRus, 'actualizadoEn'> {
+  return {
+    ambiente: ambienteRus(ambiente),
+    usuario: usuario.trim(),
+    clave: clave.trim(),
+    apiKey: apiKey.trim(),
+    productor: productor.replace(/\s/g, ''),
+    solicitante: solicitante.replace(/\s/g, ''),
+  }
+}
+
+export function guardarRus(datos: unknown): void {
+  const d = objeto(datos, 'Los datos de la cuenta de RUS')
+  const usuario = texto(d.usuario, 'El usuario de RUS', 1, 120)
+  const config = leerConfig()
+  const mismoUsuario = Boolean(config.rus?.usuario) && config.rus?.usuario === usuario.trim()
+  // Con la contraseña vacía se conserva la que ya estaba: así se cambia el productor sin volver a escribirla.
+  const claveEscrita = typeof d.clave === 'string' ? d.clave.trim() : ''
+  if (!claveEscrita && config.rus?.usuario && !mismoUsuario) {
+    throw new ErrorDeNegocio('Cambiaste el usuario de RUS: escribí también su contraseña.')
+  }
+  const clave = claveEscrita || config.rus?.clave || ''
+  if (!clave) throw new ErrorDeNegocio('Falta la contraseña de la cuenta de RUS.')
+  // La API-Key es de la integración, no del usuario: se conserva aunque cambie el usuario.
+  const apiKeyEscrita = typeof d.apiKey === 'string' ? d.apiKey.trim() : ''
+  const apiKey = apiKeyEscrita || config.rus?.apiKey || ''
+  if (!apiKey) throw new ErrorDeNegocio('Falta la API-Key que da RUS (el equipo de integraciones la manda para cada ambiente).')
+  if (/\s/.test(apiKey) || apiKey.length > 200) throw new ErrorDeNegocio('La API-Key de RUS no es válida: es una tira de letras y números, sin espacios.')
+  const productor = typeof d.productor === 'string' ? d.productor.replace(/\s/g, '') : ''
+  if (!/^\d{1,10}$/.test(productor)) throw new ErrorDeNegocio('Falta el código de productor de RUS: es numérico (hasta 10 números) y RUS lo pide en cada cotización.')
+  const solicitante = typeof d.solicitante === 'string' ? d.solicitante.replace(/\s/g, '') : ''
+  if (solicitante && !/^\d{1,10}$/.test(solicitante)) {
+    throw new ErrorDeNegocio('El código de productor solicitante de RUS es numérico (hasta 10 números). Dejalo vacío para usar el mismo productor.')
+  }
+  if (typeof d.ambiente !== 'string' || !(AMBIENTES_RUS as readonly string[]).includes(d.ambiente)) {
+    throw new ErrorDeNegocio('Elegí el ambiente de RUS: producción o sandbox.')
+  }
+  escribirConfig({
+    ...config,
+    rus: { ...normalizarRus(d.ambiente, usuario, clave, apiKey, productor, solicitante), actualizadoEn: new Date().toISOString() },
+  })
+}
+
+/** Saca la cuenta de RUS de esta computadora. */
+export function borrarRus(): void {
+  const config = leerConfig()
+  delete config.rus
+  escribirConfig(config)
+}
+
+/**
+ * Lo que viaja de la cuenta de RUS: siempre las seis claves, en este orden y como texto (el solicitante
+ * vacío va vacío, no se omite), por la huella. Sin la cuenta entera no hay nada que compartir.
+ */
+export function valorCompartidoDeRus(): CredencialesRus | null {
+  const r = credencialesRus()
+  if (!r) return null
+  return { ambiente: r.ambiente, usuario: r.usuario, clave: r.clave, apiKey: r.apiKey, productor: r.productor, solicitante: r.solicitante }
+}
+
+export function adoptarRus(valor: unknown): boolean {
+  if (!valor || typeof valor !== 'object') return false
+  const v = valor as Record<string, unknown>
+  const textoDe = (campo: unknown) => (typeof campo === 'string' ? campo : '')
+  const r = normalizarRus(v.ambiente, textoDe(v.usuario), textoDe(v.clave), textoDe(v.apiKey), textoDe(v.productor), textoDe(v.solicitante))
+  if (!r.usuario || !r.clave || !r.apiKey || !/^\d{1,10}$/.test(r.productor)) return false
+  const config = leerConfig()
+  config.rus = { ...r, actualizadoEn: new Date().toISOString() }
+  escribirConfig(config)
+  return true
+}
+
+// ---------------------------------------------------------------------------
 // El asistente con IA (Anthropic)
 // ---------------------------------------------------------------------------
 
@@ -925,4 +1072,49 @@ export function adoptarAsistente(valor: unknown): boolean {
   if (!claveApi) return false
   guardarClaveDelAsistente(claveApi)
   return true
+}
+
+// ---------------------------------------------------------------------------
+// La marca configurable (nombre, agencia, color y logo)
+// ---------------------------------------------------------------------------
+
+/** La marca guardada en esta computadora; la de fábrica si nunca se tocó. */
+export function marcaGuardada(): Marca {
+  return normalizarMarca(leerConfig().marca)
+}
+
+/** Si alguien la tocó alguna vez en esta computadora (o la adoptó del servidor). */
+export function hayMarcaGuardada(): boolean {
+  return leerConfig().marca !== undefined
+}
+
+/**
+ * Guarda la marca ya limpia. Aunque sea la de fábrica se deja anotada: «restaurar» tiene que viajar al
+ * servidor como una marca más, o las otras computadoras volverían a bajar la vieja.
+ */
+export function guardarMarcaEnConfig(marca: Marca): void {
+  const config = leerConfig()
+  config.marca = marca
+  escribirConfig(config)
+}
+
+// ---------------------------------------------------------------------------
+// Las sucursales y las ramas configurables
+// ---------------------------------------------------------------------------
+
+/** Los catálogos guardados en esta computadora; los de fábrica si nunca se tocaron. */
+export function catalogosGuardados(): Catalogos {
+  return normalizarCatalogos(leerConfig().catalogos)
+}
+
+/** Si alguien los tocó alguna vez en esta computadora (o los adoptó del servidor). */
+export function hayCatalogosGuardados(): boolean {
+  return leerConfig().catalogos !== undefined
+}
+
+/** Guarda los catálogos ya limpios. Aunque sean los de fábrica se dejan anotados, por lo mismo que la marca. */
+export function guardarCatalogosEnConfig(catalogos: Catalogos): void {
+  const config = leerConfig()
+  config.catalogos = catalogos
+  escribirConfig(config)
 }

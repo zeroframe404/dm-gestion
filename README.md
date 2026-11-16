@@ -182,10 +182,11 @@ Cómo funciona, en corto:
   (`src/main/vps/fuenteVps.ts`) implementa la misma interfaz `FuenteHoja` de siempre: el motor de
   sincronización, la cola, los conflictos y el importador corren tal cual, sólo cambió el transporte.
   (Lo que sí cambió, y en la 14.0: sin internet se **mira** pero no se escribe, ver «Canal en vivo».)
-- **La URL y el token van embebidos** (`src/main/servicios/config.ts`, mismo criterio que
-  `UPDATE_TOKEN`): las PCs se actualizan y quedan conectadas sin configurar nada. El token tiene que
-  coincidir con el `DMG_SYNC_TOKEN` del `.env` del VPS, y desde la v12.4 es también el que abre la base
-  de usuarios: es una sola puerta para todo lo compartido.
+- **La URL y el token van adentro del instalador**: las PCs se actualizan y quedan conectadas sin
+  configurar nada. La URL está en `src/main/servicios/config.ts`; **el token no está en el código**
+  (este repositorio es público): se pone al armar el instalador, desde un secreto de GitHub Actions
+  (ver «Secretos de fábrica»). Tiene que coincidir con el `DMG_SYNC_TOKEN` del `.env` del VPS, y desde
+  la v12.4 es también el que abre la base de usuarios: es una sola puerta para todo lo compartido.
 - **Primero se actualizan TODAS las computadoras a la v12, después se migra.** Una PC que siga en
   1.0.x escribe en Google sin ningún aviso, y lo que cargue después de la migración no llega al VPS
   (habría que repetirlo a mano en una PC al día). El ciclo de actualización automática es de hasta
@@ -219,6 +220,30 @@ Cómo funciona, en corto:
 Las secciones que siguen («Importar desde Google», «Sincronización con Google») describen mecánica
 que sigue existiendo tal cual, pero desde la v12 la fuente es la base del VPS: la pantalla de
 importación se llama ahora **Reimportar la base** y el ciclo de subida/bajada habla con el servidor.
+
+## Alta desde Excel (agencia nueva)
+
+**Administración → Alta desde Excel** (SUPER_ADMIN) es para una agencia que arranca con su servidor
+recién instalado y la **base vacía**: sube su propio .xlsx o .csv y lo carga de una vez.
+
+- **El importador no cambia.** El Excel ajeno se *traduce* al formato de siempre y entra por el mismo
+  camino que la migración desde Google (`publicarEnBaseVacia` en `servicios/migracionVps.ts`): una
+  pestaña mensual con el mes actual de título (la cartera), `BAJAS <mes>`, `SINIESTROS`, `IMPUTADOS`
+  y `RIESGOS VARIOS`, con encabezados que el importador reconoce (`encabezadoParaAgregar`).
+  Después del alta, esa base es igual a la de cualquier agencia y la sincronización corre tal cual.
+- **Lector propio, sin librerías** (`importacion/lectorDeLibro.ts`): .xlsx (textos compartidos, fechas
+  por estilo, hojas ocultas, sistema 1904) y .csv (`;`, `,` o tab, UTF-8 o Latin-1). Usa el lector de
+  .zip de `servicios/zip.ts`. El .xls viejo se rechaza con un mensaje para guardarlo como .xlsx.
+- **El asistente** (`importacion/altaDesdeExcel.ts`, puro): qué es cada hoja, la fila de encabezados,
+  qué campo es cada columna (dos columnas en el mismo campo se juntan), valores fijos para lo que no
+  viene y corrección de sucursales fuera del catálogo. Lo que el importador ya reconoce solo viene
+  propuesto.
+- **Ensayo**: importa las pestañas armadas en una SQLite en memoria contra una `FuenteEnMemoria`, y
+  muestra el mismo informe que la reimportación, sin tocar el servidor ni la base local.
+- **Publicar** sólo con la base sin inicializar (el servidor lo vuelve a comprobar), nunca desde la
+  demo ni desde la beta contra la base real (`proteccionBeta.ts`).
+- Pruebas: `pruebas/lector-de-libro.prueba.ts` y `pruebas/alta-desde-excel.prueba.ts` (de punta a
+  punta contra `scripts/vps-simulado.mjs`).
 
 ## Importar desde Google
 
@@ -1398,7 +1423,7 @@ Un vehículo y las compañías que se cotizaron para él.
 
 ### Multicotizador
 
-Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno, ATM, Mercantil Andina y Equidad), comparados por
+Un auto o una moto cotizados en **todas las compañías con API a la vez** (hoy, Galeno, ATM, Mercantil Andina, Equidad y Río Uruguay), comparados por
 lo que cubre cada cobertura. Tiene su propio permiso (área `multicotizador`).
 
 - **Una solicitud común**: vehículo del catálogo de la agencia, uso, 0 km, GNC, rastreo, suma
@@ -1536,6 +1561,60 @@ mientras tanto la cotización queda en Equidad con el número de solicitud que t
   `EQUIDAD_PRUEBA_PASSWORD`), `-- --produccion` (con `EQUIDAD_PROD_*`), `EQUIDAD_SERVICIO_USUARIO` /
   `EQUIDAD_SERVICIO_PASSWORD` (el Basic), `EQUIDAD_PRODUCTOR` / `_RAMA` / `_EMPRESA` y `EQUIDAD_MARCA` /
   `_MODELO` / `_VERSION` / `_ANIO` / `_CP` / `_LOCALIDAD` para elegir qué cotizar. No es parte de `npm run prueba`.
+
+#### Río Uruguay Seguros (RUS)
+
+Quinta compañía del multicotizador (`src/main/multicotizador/rus.ts`; el cliente en
+`src/main/aseguradoras/rus/`). **Cotiza autos y motos y no emite** (`emite: false`): la API tiene
+propuestas, emisión, documentos de póliza, inspección previa, cobranzas y siniestros, y quedan para fases
+siguientes. La documentación es la de Postman que manda RUS («API-RUS V2 #APIPASSubscriber»,
+`documenter.getpostman.com/view/17080944/2s9YBxaGsm`; alquiler entre particulares y accidentes
+personales son otras dos colecciones, que no se usan).
+
+- **Su API**: dos entornos con la misma forma, sandbox (`https://api.rus.com.ar/sandbox`) y producción
+  (`https://api.rus.com.ar/v2`). **Todo pedido lleva la API-Key** que da el equipo de integraciones
+  (`integraciones@riouruguay.com.ar`) en el encabezado `x-api-key`; el token sale de `POST login/token`
+  con `{ username, password }` del PAS y viaja como `Bearer` (dura una hora; vencido, 403 «explicit deny»
+  y el cliente pide otro y reintenta una vez). Como máximo 5 pedidos a la vez y 20 por segundo. Sin
+  restricción de IP: cada PC le habla directo.
+- **La cuenta** (ambiente, usuario y contraseña del PAS, API-Key, código de productor —obligatorio: va en
+  cada cotización como `codigoProductor`— y productor solicitante opcional) se carga en **API
+  Aseguradoras → RUS**, queda en el `config.json` de cada PC y viaja a las demás como el ajuste compartido
+  `rusApi` (se adopta al arrancar, como `mercantilApi`; **el VPS tiene que tener `rusApi` en su lista
+  blanca**, `server/src/modules/dmg/ajustes.service.ts` de `Seguros_Daniel_Martinez`). La contraseña y la
+  API-Key vacías conservan las guardadas. «Probar conexión» pide el token, lee las vigencias de autos
+  (`comunes/vigencias?ramo=4`) y cuenta las marcas (`vehiculo/marcas?TipoUnidad=1`).
+- **Cotizar** es `POST cotizaciones/automotores` (ramo 4, interés `VEHICULO`) o `cotizaciones/motos`
+  (ramo 20, `MOTOVEHICULO`) con la forma del ejemplo de la documentación (`armarPedidoDeCotizacion` en
+  `cotizacion.ts`): productor y solicitante, condición fiscal (CF, RI, RMT, EX…), vigencia desde/hasta con
+  su `vigenciaPolizaId` (de `comunes/vigencias`; sin respuesta, la del ejemplo: id 1, seis meses), cuotas
+  (1 a una por mes de vigencia), ajuste automático (20, 30 o 40) y el vehículo: año, GNC, código postal de
+  guarda, `modeloVehiculo` y el uso **por su nombre** (`vehiculo/usos`). A la vista quedan la vigencia,
+  las cuotas y el ajuste automático; detrás, la condición fiscal, el uso, la RC en países limítrofes y el
+  vehículo.
+- **El vehículo**: `modeloVehiculo` es el `id` de la versión en su catálogo: tipo de unidad → marca
+  (`vehiculo/marcas`) → modelos del año (`vehiculo/modelos`) → versiones (`vehiculo/versiones`, que vuelve
+  en `listUso`, sic). Se busca por nombre como en Mercantil; ante la duda se pregunta. **Las pick-ups son
+  otro tipo de unidad** (2 y 3, «PICK-UP A/B»): si el modelo no aparece entre los autos (1) se busca ahí;
+  las motos van como 8 (más de 50 cc) o 7. Lo elegido queda en `equivalencias_vehiculos` (aseguradora
+  `RUS`, código `tipoDeUnidad:modelo:versión`; el modelo recordado se consulta siempre, aunque por el
+  nombre no esté entre los parecidos). Sólo un rechazo del modelo o la versión borra la equivalencia: los
+  errores de validación traen la ruta del campo (`#/vehiculos/0/cpLocalidadGuarda…`) y no cuentan. En los
+  listados, la base escribe la compañía «RIO URUGUAY», «RUS» o «R.U.S.»: el adaptador declara
+  `aliasesEnLaBase` para que las tres sean la misma.
+- **La respuesta** trae `cotizaciones`, una fila por combinación de RC (`codigoRC`) y casco
+  (`codigoCasco`, vacío = sólo RC) con `premio`, `prima`, `valorCuota`, `franquicia` y `sumaAsegurada`.
+  La categoría sale del código de casco (sin casco RC; B pérdida total; C parciales; S «Tercero Completo
+  Full»; T todo riesgo con franquicia). Un rechazo es un 400 con `errors: [{ description }]`, que la
+  tarjeta muestra con qué revisar; un 401/403 es la cuenta y tira.
+- **Humo en vivo**: `npm run humo:rus` (sandbox, con `RUS_SANDBOX_USUARIO` / `RUS_SANDBOX_PASSWORD` /
+  `RUS_SANDBOX_APIKEY` y `RUS_PRODUCTOR`), `-- --produccion` (con `RUS_PROD_*`), `RUS_SOLICITANTE`,
+  `RUS_TIPO=MOTO` y `RUS_MARCA` / `_MODELO` / `_VERSION` / `_ANIO` / `_CP` para elegir qué cotizar. Lo
+  que la documentación no deja claro y hay que confirmar ahí: si las marcas van por `?TipoUnidad=` (como
+  dice la ruta) o por `/marcas/{tipo}` (como su ejemplo), y dónde cuelgan los servicios comunes: la
+  documentación los escribe en la raíz (`api.rus.com.ar/comunes/…`), así que `getComun` los pide bajo el
+  entorno y, si ahí contesta 403/404, en la raíz. Si las vigencias no contestan igual se cotiza, con la del
+  ejemplo de RUS y un aviso; lo que corta la cotización es el token. No es parte de `npm run prueba`.
 
 ### Mi link
 
@@ -1855,7 +1934,7 @@ el commit y el tag `vX.Y.Z` de la versión nueva.
 
 ### Cómo se actualizan las PCs
 
-Al abrir el programa y cada 4 horas, si hay una versión nueva la descarga en segundo plano
+Al abrir el programa y cada 15 minutos, si hay una versión nueva la ofrece con un cartel
 (`electron-updater`, configurado en `src/main/servicios/updater.ts`) y muestra una barra fina
 arriba de todo: «Hay una versión nueva (X.Y.Z). Se instalará al cerrar el programa», con un botón
 **Reiniciar ahora** para no esperar. Si la descarga falla (sin internet, por ejemplo), no aparece
@@ -1863,17 +1942,55 @@ ningún aviso molesto: se reintenta solo en el próximo chequeo. **Administraci�
 muestra la versión actual, el canal y un botón **Buscar actualizaciones** para chequear sin
 esperar el ciclo automático.
 
-El chequeo usa un token de **sólo lectura** embebido en el código (`UPDATE_TOKEN`, en
-`src/main/servicios/updater.ts`), separado del `GH_TOKEN` de publicar: así, aunque alguien lo
-extraiga de un ejecutable instalado, no puede usarlo para escribir en el repositorio. Para
-generarlo:
+**De dónde se bajan (18.1.3).** Primero del **servidor de la agencia**
+(`https://dmartinezseguros.com/api/dmg-actualizaciones/<estable|beta>/`) y, si no contesta o todavía
+no tiene nada, en el acto **de GitHub**, como siempre (la estable, del último Release; la beta, del
+Release fijo `beta-canal`). El orden está en `src/main/servicios/origenesDeActualizacion.ts`; cada
+chequeo vuelve a probar primero el servidor, y la descarga sale del origen que contestó. Acerca de dice
+de cuál vino («desde el servidor de la agencia» / «desde GitHub, de respaldo»).
 
-1. Entrá a [github.com/settings/tokens?type=beta](https://github.com/settings/tokens?type=beta)
-   (fine-grained personal access token) con la cuenta dueña del repositorio.
-2. **Repository access** → **Only select repositories** → `zeroframe404/dm-gestion`.
-3. **Permissions** → **Repository permissions** → `Contents: Read-only` (es lo único que hace
-   falta para leer Releases y descargar sus archivos). No le des ningún otro permiso.
-4. Generá el token y reemplazá `UPDATE_TOKEN` en `src/main/servicios/updater.ts`.
+- **Quién sube al servidor**: `scripts/publicar.mjs` y `scripts/publicar-beta.mjs`, después de
+  publicar en GitHub, con `scripts/subir-al-vps.mjs`: instalador, blockmap y por último el `.yml`
+  (el servidor rechaza un `.yml` cuyo instalador no esté o no coincida). Usa el secreto
+  **`DMG_PUBLICADOR_TOKEN`** de GitHub Actions, que tiene que ser igual al del `.env` del VPS. **No**
+  es el token del puente: ese viaja dentro de cada instalador y con él cualquiera podría subir una
+  «actualización».
+- **Si falla la subida** (o falta el secreto), la publicación no se cae: queda el aviso en el resumen
+  de la corrida y las PCs siguen bajando de GitHub, que se publica siempre.
+- **Puesta en marcha (una vez)**: generar el token, cargarlo en el `.env` del VPS y en los secretos
+  del repositorio, y desplegar el servidor (repo `Seguros_Daniel_Martinez`, `DEPLOY.md`,
+  «Actualizaciones de DM Gestion»).
+- No hay ningún token de lectura: el repositorio es público y el servidor sirve las actualizaciones
+  sin credenciales. (Hasta la v15.3.2 había un `UPDATE_TOKEN` embebido; cuando venció, ninguna PC vio
+  versiones nuevas. Por eso no se vuelve a embeber ninguno.)
+
+### Firma del instalador
+
+Sin firma de código, Windows muestra **SmartScreen** («Windows protegió su PC») al instalar. Todo está
+listo para firmar (`scripts/firma.mjs`, que usan `npm run dist` y `npm run dist:beta`): apenas se
+cargan los secretos en GitHub (Settings → Secrets and variables → Actions), el instalador sale firmado
+sin tocar nada más. Mientras no estén, sale sin firmar como siempre y el resumen de la corrida lo avisa.
+
+Dos maneras, se usa la que tenga sus secretos completos:
+
+1. **Certificado OV/EV en archivo `.pfx`** (o exportable): `WIN_CSC_LINK` (el `.pfx` en base64) y
+   `WIN_CSC_KEY_PASSWORD`. Ojo: desde 2023 los certificados nuevos vienen en token o en la nube, no en
+   `.pfx`; esta vía sirve si el proveedor permite exportarlo.
+2. **Azure Trusted Signing** (Artifact Signing, unos 10 USD por mes): `AZURE_TENANT_ID`,
+   `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (una app registrada con el rol «Trusted Signing
+   Certificate Profile Signer») y `AZURE_SIGN_ENDPOINT` (p. ej. `https://eus.codesigning.azure.net`),
+   `AZURE_SIGN_ACCOUNT`, `AZURE_SIGN_PROFILE`, `AZURE_SIGN_PUBLISHER` (el nombre exacto del editor del
+   certificado). Antes de pagar, confirmar que Azure valida empresas de Argentina.
+
+Qué cambia y qué cuidar:
+
+- Con un certificado nuevo SmartScreen puede seguir avisando un tiempo, hasta que el certificado junta
+  «reputación» (descargas). Después desaparece.
+- **Una vez firmado, no hay vuelta atrás fácil**: electron-builder anota el editor en el
+  `app-update.yml` y el actualizador **exige** que las versiones siguientes vengan firmadas por ese mismo
+  editor. Si el certificado vence sin renovar o cambia el nombre del titular, las PCs dejan de aceptar
+  actualizaciones hasta reinstalarlas a mano. Renovar antes de que venza y con el mismo nombre.
+- Las versiones ya instaladas (sin firmar) aceptan la primera firmada sin problema.
 
 En desarrollo (`npm run dev`) las actualizaciones quedan desactivadas: no hay instalador del que
 bajar nada, y Acerca de lo dice.
@@ -2016,11 +2133,12 @@ commitea: `scripts/dist-demo.mjs` la arma (próximo parche + `-demo.<n>`) y la p
 
 ### Lo que NO lleva el instalador
 
-El código fuente tiene escritos el token del puente y la dirección del VPS de la agencia, la del control remoto y el
-token de GitHub de la semilla de usuarios. La demo no los usa, pero estando en el código viajarían adentro del .exe.
-`npm run dist:demo` compila el proceso principal con `DM_GESTION_DEMO=1`, que los reemplaza
-(`scripts/secretos-de-la-agencia.mjs`, plugin de `vite.main.config.mts`), y **revisa el resultado**: si alguno de
-esos valores sigue en el paquete, no arma el instalador. Si se agrega otro secreto al código, hay que sumarlo ahí.
+El código fuente tiene escritas la dirección del VPS de la agencia, la del control remoto y las de vuelta de Meta y
+TikTok. La demo no las usa, pero estando en el código viajarían adentro del .exe. `npm run dist:demo` compila el proceso
+principal con `DM_GESTION_DEMO=1`, que las reemplaza (`scripts/secretos-de-la-agencia.mjs`, plugin de
+`vite.main.config.mts`), y **revisa el resultado**: si alguno de esos valores sigue en el paquete, no arma el instalador.
+El token del puente ya no está en el código (ver «Secretos de fábrica»): la demo se compila sin ponerlo, y la revisión
+comprueba igual que no haya quedado.
 
 ### Cómo se publica
 
@@ -2052,10 +2170,11 @@ computadora que abre el programa después de actualizar encuentra el VPS sin doc
 manda el VPS y GitHub no se vuelve a tocar. Es automático a propósito: pedirle a alguien que apriete un
 botón de migración es pedirle que se acuerde de hacerlo **antes** de que otro intente ingresar.
 
-Cuando la agencia ya esté migrada (Acerca de → «Base de usuarios» dice «Compartida · VPS
-dmartinezseguros.com»), se vacía `TOKEN_DATOS` en `src/main/usuarios/github.ts`, se revoca el token en
-GitHub y se publica con `--sin-base-de-usuarios`. El repositorio `dm-gestion-datos` queda como copia
-histórica.
+**Desde la 18.1.3 `TOKEN_DATOS` va vacío**: la mudanza terminó en la v12.4 y el token estuvo escrito en
+este repositorio, que es público. Hay que revocarlo en GitHub (Settings → Developer settings → Personal
+access tokens) si todavía figura: vaciarlo en el código no lo saca del historial. El repositorio
+`dm-gestion-datos` queda como copia histórica, y `AlmacenGitHub` sólo se usa en desarrollo y en las
+pruebas, contra el simulador.
 
 **El `sha` ahora es una versión.** Lo único que cambia para el servicio de usuarios: en GitHub era el
 hash del blob y acá es el número de versión que devuelve el servidor. Sigue siendo opaco y sigue
@@ -2108,14 +2227,36 @@ En una instalación desde cero:
 
 ### Rotar el token
 
-El token del puente es uno solo y ya existía: se cambia en `VPS_TOKEN` (`src/main/servicios/config.ts`)
-y en el `DMG_SYNC_TOKEN` del `.env` del servidor, y tienen que cambiar los dos a la vez. **Antes de
+El token del puente es uno solo: el secreto `DMG_VPS_TOKEN` de GitHub Actions (lo que lleva el
+instalador) y el `DMG_SYNC_TOKEN` del `.env` del servidor. Para cambiarlo sin dejar a nadie afuera el
+servidor acepta por un tiempo el nuevo y el anterior (`DMG_SYNC_TOKEN_ANTERIOR`); los cinco pasos, en
+orden, están en `DEPLOY.md` del repositorio del servidor, «Rotar el token del puente». **Antes de
 rotarlo hay que fijar `DMG_AJUSTES_CLAVE`** con el valor viejo, o el documento de usuarios y los ajustes
 compartidos quedan cifrados con una llave que ya no se deriva de nada.
 
-El token de GitHub (`TOKEN_DATOS`) ya no se rota: cuando la agencia terminó de migrar se vacía y se
-revoca. Mientras tanto sólo lo usa la mudanza, y el programa no avisa más de su vencimiento porque el
-del puente no vence.
+### Secretos de fábrica (18.1.3)
+
+**En el código no se escribe ningún secreto.** Este repositorio es público, y hasta la 18.1.2 tuvo
+escritos el token del puente con el VPS (con él se lee y se escribe la cartera entera) y un token de
+GitHub. Quedaron en el historial: sacarlos del código no los borra de ahí, así que **hay que rotarlos**.
+
+- `VPS_TOKEN` (`src/main/servicios/config.ts`) está vacía en el código. Su valor es el secreto
+  **`DMG_VPS_TOKEN`** del repositorio (Settings → Secrets and variables → Actions). Los workflows que
+  arman un instalador de la agencia (`Publicar`, `Publicar beta`) se lo pasan a la compilación como
+  `DMG_FABRICA_VPS_TOKEN`, y `scripts/secretos-de-fabrica.mjs` (plugin de `vite.main.config.mts`) lo
+  pone en su lugar al compilar el proceso principal.
+- `scripts/verificar-fabrica.mjs` corta la publicación si el secreto falta (antes de las pruebas) o si el
+  programa compilado no lo lleva (antes de empujar la versión): un instalador sin token deja a todas las
+  computadoras sin poder ingresar, y se instala solo.
+- Para armar un instalador a mano: `DMG_FABRICA_VPS_TOKEN=<el token> npm run dist`. Sin la variable,
+  `npm run dist` arma uno que no habla con el servidor (sirve para probar la instalación, no para usar).
+- En desarrollo y en las pruebas la constante queda vacía: ahí nunca se habla con el servidor de verdad.
+- `pruebas/secretos.prueba.ts` falla si alguien vuelve a escribir un token en el código.
+
+Lo que esto **no** resuelve: el token sigue viajando adentro del .exe, y el .exe se publica en un Release
+de este repositorio. Quien quiera lo saca de ahí. Lo que hace que valga poco es el servidor: con
+`DMG_EXIGIR_SESION=1` ese token sólo sirve para pedir ingresar, y para eso hace falta la contraseña de
+alguien (ver «Cuenta por persona contra el servidor»).
 
 ### Recuperación de emergencia
 
@@ -2129,7 +2270,42 @@ del puente no vence.
   cambió la cuenta de Windows): hace falta un ingreso con internet, nada más.
 - **Probar la conexión** sin cerrar sesión: Acerca de → «Probar conexión».
 
+### Cuenta por persona contra el servidor (18.1.3)
+
+Hasta la 18.1.2 el servidor no sabía quién estaba sentado en cada computadora: todas le hablaban con el
+mismo token y el programa le decía «soy Ana, ADMIN». Desde la 18.1.3, **al ingresar con internet el
+servidor comprueba el usuario y la contraseña** (`POST /api/dmg/sesion`) y devuelve un token que es de
+esa persona. Mientras la sesión está abierta, todo lo que sale hacia el servidor —la grilla, la
+mensajería, los perfiles, el canal en vivo, Galeno, «Reportar error»— lleva ese token y no el compartido.
+
+- **Dónde vive**: `src/main/vps/sesionDelServidor.ts` guarda el token **en memoria** (nunca en disco) y
+  es a quien le preguntan todos con qué llave hablar (`tokenParaElServidor`). Lo abre y lo cierra
+  `AlmacenVps` (`usuarios/vps.ts`: `ingresar`, `salir`); la orquestación está en
+  `servicios/baseDeUsuarios.ts`.
+- **El «no» del servidor es definitivo**: si rechaza la contraseña no se prueba después con la credencial
+  guardada, y si la contraseña tipeada era la de esa credencial, la credencial se borra (quedó vieja).
+- **Sin internet no cambia nada**: entra el último usuario que ingresó con conexión, con `credencial.bin`.
+  Su contraseña queda en memoria hasta que vuelva la conexión, ahí se le pide la sesión al servidor y se
+  descarta. Si en el medio le cambiaron la contraseña o lo desactivaron, en ese momento queda afuera.
+- **Si el servidor cierra la sesión** (lo desactivaron, le cambiaron la contraseña, venció a los 30
+  días), el canal en vivo se entera en el próximo latido y la sesión se cierra acá con el motivo.
+- **Con un servidor anterior** (o la demo, cuyo servidor interno no tiene sesiones) `POST /sesion`
+  contesta 404 y el ingreso sigue exactamente como en la 18.1.2.
+
+Con sesión, el servidor impone el actor de cada pedido, entrega de la lista de usuarios sólo el hash
+propio (los demás llegan tapados y se devuelven tapados: el servidor conserva los suyos) y sólo le deja
+cambiar la lista al superadministrador; cada uno puede cambiar su contraseña y pedir autorizaciones.
+
+**Lo que falta para cerrar el agujero**: el servidor sigue aceptando el token compartido para todo, porque
+la versión normal todavía ingresa así. Se cierra con `DMG_EXIGIR_SESION=1` en el `.env` del VPS, y eso
+recién se puede prender cuando **todas** las computadoras tengan una versión con sesiones (ver
+`DEPLOY.md` del repositorio del servidor). El simulador (`scripts/vps-simulado.mjs`) lo imita con
+`new VpsSimulado({ sesiones: true })` y `exigirSesion`; las pruebas están en
+`pruebas/usuarios-sesion.prueba.ts`.
+
 ### Qué NO protege esto (decisión de arquitectura, leer antes de confiar en los roles)
+
+**Esto vale mientras el servidor no exija sesión** (`DMG_EXIGIR_SESION` vacía; ver la sección de arriba):
 
 El token del puente viaja dentro del instalador, igual que `UPDATE_TOKEN`, y cualquiera que tenga el
 programa puede extraerlo y reescribir el documento desde afuera (agregarse como SUPER_ADMIN, cambiar
@@ -2143,6 +2319,11 @@ se mantiene: el token del puente no sirve para nada más que el puente, cada esc
 quién/dónde/versión, las contraseñas sólo existen como bcrypt, el documento se guarda cifrado en el
 servidor, y la sesión sin internet se arma desde la credencial cifrada y no desde la tabla local (que
 cualquiera podría editar con un cliente SQLite).
+
+Con el servidor exigiendo sesión, el token del instalador sólo sirve para pedir ingresar: reescribir la
+lista de usuarios, bajar los hashes ajenos o declararse otro usuario pide la contraseña de alguien. Lo
+que sigue sin proteger el servidor es **qué módulo ve cada rol**: la grilla no sabe de módulos, así que
+un usuario activo con un programa modificado puede leer y escribir la cartera entera.
 
 ### En desarrollo y en las pruebas
 
@@ -2175,8 +2356,26 @@ arrancar.
 | App de Meta y **la dirección de vuelta** | Administración → Redes sociales | Superadministrador |
 | Catálogo de compañías y la plantilla del aviso | Administración → Compañías | Administrador o superadministrador |
 | Encabezado del ticket (dirección y teléfono) | Administración → Impresora | Cualquier rol, **el de su sucursal** |
+| Marca: nombre del programa, nombre de la agencia (firma), color y logo (clave `marca`) | Administración → Marca | Superadministrador |
+| Sucursales y ramas de vehículo: nombres, sinónimos y orden (clave `catalogos`) | Administración → Sucursales y ramas | Superadministrador |
 | Usuario y clave del portal de Galeno | API Aseguradoras → Galeno (novedades) | Superadministrador |
 | Cuenta de la API REST de Galeno (WS-Seguros: cotizar, emitir, consultas) | API Aseguradoras → Galeno | ADMIN o superadministrador |
+
+> **La marca** (`src/shared/marca.ts`, `src/main/servicios/marca.ts`) se guarda en el `config.json`. El color se
+> reparte en la escala `--color-marino-*` que lee todo el CSS; el nombre firma plantillas, presupuesto y reportes.
+> La demo no la usa (Cobertia es fija). **No** cambia el `appId` ni el nombre del instalador: eso sale del build.
+> Si el servidor del VPS no tiene `marca` en su lista blanca de ajustes, la marca queda sólo en esa PC
+> (se avisa por el error de `publicarSinRomper`, y el programa sigue); la versión normal ignora el ajuste.
+>
+> **Las sucursales y las ramas** (`src/shared/catalogos.ts`, `catalogosVigentes.ts`, `src/main/servicios/catalogos.ts`)
+> eran dos listas fijas (cuatro y siete); ahora esas son lo «de fábrica» y se editan desde Administración →
+> Sucursales y ramas. `SUCURSALES` y `RAMAS` siguen existiendo pero son la lista **vigente** (se reemplaza en el
+> lugar al cargar el `config.json` —antes de abrir la base— o al adoptar el ajuste `catalogos`): siempre se leen en
+> el momento de usarlas, nunca se copian a una constante. **Renombrar no reescribe datos**: el nombre anterior pasa
+> a ser sinónimo del nuevo y todo se compara por `sucursalCanonica` / `ramaCanonica`; `ajustarCatalogoDeSucursales`
+> une la fila vieja de la tabla `sucursales` con la nueva. Sacar una entrada de la lista no borra nada (queda
+> «fuera del catálogo»). Igual que la marca: el VPS necesita `catalogos` en su lista blanca de ajustes, la demo no lo
+> usa y la versión normal lo ignora (sigue con las listas de fábrica).
 
 Las dos de Galeno son las únicas de la lista que **no se guardan en esta computadora**: van derecho al
 servidor y ninguna PC las adopta. La razón es la misma en las dos, aunque distinta al resto: Galeno

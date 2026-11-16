@@ -50,6 +50,37 @@ export function reservarImportacionAutomatica(id: number): { estaCancelada: () =
   }
 }
 
+/**
+ * La misma reserva, para una corrida que arranca otro servicio y no el botón «Reimportar la base»: la
+ * importación que sigue a la migración desde Google o al Alta desde Excel. Hasta la 18.1.3 esas no
+ * reservaban nada, y apenas la base quedaba inicializada la sincronización veía filas sin _ID y
+ * lanzaba su importación automática EN PARALELO: cada una le escribía su propia columna _ID a la misma
+ * pestaña, y lo que salía de ahí eran renglones con dos _ID y pólizas inactivadas. Con la reserva, la
+ * automática se saltea (y la próxima bajada ya encuentra todo con su _ID).
+ */
+export function reservarImportacion(
+  id: number,
+  mensaje: string,
+): { estaCancelada: () => boolean; alProgresar: (progreso: ProgresoImportacion) => void; liberar: () => void } | null {
+  if (enCurso) return null
+  const reserva: ImportacionEnCurso = {
+    id,
+    cancelada: false,
+    automatica: false,
+    progreso: { importacionId: id, fase: 'preparando', porcentaje: 0, mensaje, pestanas: [] },
+  }
+  enCurso = reserva
+  return {
+    estaCancelada: () => reserva.cancelada,
+    alProgresar: (progreso) => {
+      reserva.progreso = progreso
+    },
+    liberar: () => {
+      if (enCurso === reserva) enCurso = null
+    },
+  }
+}
+
 export function carpetaInformes(): string {
   const carpeta = path.join(carpetaDatos(), 'informes')
   mkdirSync(carpeta, { recursive: true })

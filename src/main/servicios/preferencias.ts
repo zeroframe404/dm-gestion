@@ -320,13 +320,23 @@ export function telefonoDeSucursal(nombre: string | null | undefined): string {
   return telefonoInicial(nombre ?? '')
 }
 
+/**
+ * El valor de fábrica de una sucursal, aunque la agencia la haya renombrado o agregado: las tablas de arriba
+ * llevan los nombres de siempre, y `sucursalCanonica` los lleva al nombre vigente (el viejo es su sinónimo).
+ * Una sucursal agregada después no tiene valor de fábrica y arranca sin dirección ni teléfono.
+ */
+function deFabrica(tabla: Record<string, string>, canonica: string): string {
+  for (const [nombre, valor] of Object.entries(tabla)) if (sucursalCanonica(nombre) === canonica) return valor
+  return ''
+}
+
 /** La inicial de fábrica de una sucursal, para no perderla al listar las que nadie tocó. */
 export function direccionInicial(nombre: string): string {
   const sucursal = sucursalCanonica(nombre)
   if (!sucursal) return ''
   // La demo se le muestra a otras agencias: nada de las direcciones de los mostradores de verdad, sino
   // las inventadas que también publica su servidor simulado.
-  return esDemo() ? ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal].direccion : DIRECCIONES_INICIALES[sucursal]
+  return esDemo() ? (ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal]?.direccion ?? '') : deFabrica(DIRECCIONES_INICIALES, sucursal)
 }
 
 /**
@@ -337,7 +347,7 @@ export function telefonoInicial(nombre: string): string {
   const sucursal = sucursalCanonica(nombre)
   if (!sucursal) return ''
   // Lo mismo que la dirección: en la demo, un teléfono 5555 que no es de nadie.
-  return esDemo() ? ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal].telefono : TELEFONOS_INICIALES[sucursal]
+  return esDemo() ? (ENCABEZADOS_DE_TICKET_DE_LA_DEMO[sucursal]?.telefono ?? '') : deFabrica(TELEFONOS_INICIALES, sucursal)
 }
 
 /**

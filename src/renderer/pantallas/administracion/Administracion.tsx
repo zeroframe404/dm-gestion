@@ -21,6 +21,7 @@ import { Companias } from './Companias'
 import { ConexionGoogle } from './ConexionGoogle'
 import { ControlRemoto } from './ControlRemoto'
 import { ImportarGoogle } from './ImportarGoogle'
+import { AltaDesdeExcel } from './AltaDesdeExcel'
 import { Impresora } from './Impresora'
 import { Permisos } from './Permisos'
 import { RedesSociales } from './RedesSociales'
@@ -31,13 +32,19 @@ import { Sincronizacion } from './Sincronizacion'
 import { SincronizarTodo } from './SincronizarTodo'
 import { Usuarios } from './Usuarios'
 import { Ciberseguridad } from './Ciberseguridad'
+import { Catalogos } from './Catalogos'
+import { Marca } from './Marca'
+import { Licencia } from './Licencia'
 
 type IdSeccion =
   | 'servidor'
   | 'usuarios'
   | 'permisos'
   | 'ciberseguridad'
+  | 'licencia'
   | 'registromensajes'
+  | 'marca'
+  | 'catalogos'
   | 'companias'
   | 'impresora'
   | 'sincronizar'
@@ -45,6 +52,7 @@ type IdSeccion =
   | 'basededatos'
   | 'google'
   | 'importar'
+  | 'altaExcel'
   | 'sincronizacion'
   | 'redessociales'
   | 'vehiculos'
@@ -68,7 +76,13 @@ export function Administracion() {
       lista.push({ id: 'usuarios', nombre: 'Usuarios', icono: 'clientes', ayuda: 'administracion.usuarios' })
       lista.push({ id: 'permisos', nombre: 'Permisos', icono: 'candado', ayuda: 'administracion.permisos' })
       // Lo que cuida el acceso al programa (hoy, el control de horarios): sólo del superadministrador.
+      lista.push({ id: 'marca', nombre: 'Marca', icono: 'escudo', ayuda: 'administracion.marca' })
+      lista.push({ id: 'catalogos', nombre: 'Sucursales y ramas', icono: 'clientes', ayuda: 'administracion.catalogos' })
       lista.push({ id: 'ciberseguridad', nombre: 'Ciberseguridad', icono: 'escudo', ayuda: 'administracion.ciberseguridad' })
+      // La licencia de la agencia: vencimiento, computadoras en uso y renovación (no existe en la demo).
+      if (!esDemo) lista.push({ id: 'licencia', nombre: 'Licencia', icono: 'candado', ayuda: 'administracion.licencia' })
+      // Una agencia nueva carga su propio Excel en la base vacía (una sola vez). En la demo la base ya viene cargada.
+      if (!esDemo) lista.push({ id: 'altaExcel', nombre: 'Alta desde Excel', icono: 'subir', ayuda: 'administracion.altaExcel' })
       // El registro del chat interno: todo lo que se dijo, incluidas las conversaciones en las que el
       // superadministrador no está y los mensajes que alguien borró.
       lista.push({ id: 'registromensajes', nombre: 'Registro de mensajes', icono: 'mensaje', ayuda: 'administracion.registromensajes' })
@@ -133,7 +147,10 @@ export function Administracion() {
         {seccion === 'servidor' && <ServidorVps />}
         {seccion === 'usuarios' && <Usuarios />}
         {seccion === 'permisos' && <Permisos />}
+        {seccion === 'marca' && <Marca />}
+        {seccion === 'catalogos' && <Catalogos />}
         {seccion === 'ciberseguridad' && <Ciberseguridad />}
+        {seccion === 'licencia' && <Licencia />}
         {seccion === 'registromensajes' && <RegistroDeMensajes />}
         {seccion === 'companias' && <Companias />}
         {seccion === 'impresora' && <Impresora />}
@@ -142,6 +159,7 @@ export function Administracion() {
         {seccion === 'almacenamiento' && <AlmacenamientoEnNube />}
         {seccion === 'google' && <ConexionGoogle />}
         {seccion === 'importar' && <ImportarGoogle />}
+        {seccion === 'altaExcel' && <AltaDesdeExcel />}
         {seccion === 'sincronizacion' && <Sincronizacion />}
         {seccion === 'redessociales' && <RedesSociales />}
         {seccion === 'vehiculos' && <CatalogoVehiculos />}

@@ -2,6 +2,7 @@
 import { builtinModules, createRequire } from 'node:module'
 import path from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
+import { ponerSecretosDeFabrica } from './scripts/secretos-de-fabrica.mjs'
 import { quitarSecretos } from './scripts/secretos-de-la-agencia.mjs'
 
 const externos = [
@@ -31,6 +32,22 @@ function sinSecretosDeLaAgencia(): Plugin {
 }
 
 /**
+ * El instalador de la agencia (la estable y la beta) lleva el token del puente con el servidor, que NO
+ * está escrito en el código: sale de los secretos de GitHub Actions y se pone acá, al compilar (ver
+ * `scripts/secretos-de-fabrica.mjs`). Sin la variable —en desarrollo, en las pruebas— no toca nada.
+ */
+function conSecretosDeFabrica(): Plugin {
+  return {
+    name: 'dm-con-secretos-de-fabrica',
+    enforce: 'pre',
+    transform(codigo, id) {
+      const armado = ponerSecretosDeFabrica(id, codigo)
+      return armado === null ? null : { code: armado, map: null }
+    },
+  }
+}
+
+/**
  * `ws` (el servidor del canal en vivo del simulador que corre adentro de la demo, ver
  * `src/main/demo/servidor.ts`) exporta una versión «browser» que sólo tira error, y Vite la elige por
  * defecto. Se apunta a mano a la de Node.
@@ -40,7 +57,7 @@ const wsDeNode = path.join(path.dirname(createRequire(import.meta.url).resolve('
 export default defineConfig({
   publicDir: false,
   resolve: { alias: { ws: wsDeNode } },
-  plugins: armandoLaDemo ? [sinSecretosDeLaAgencia()] : [],
+  plugins: armandoLaDemo ? [sinSecretosDeLaAgencia()] : [conSecretosDeFabrica()],
   build: {
     outDir: 'dist/main',
     emptyOutDir: true,

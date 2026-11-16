@@ -16,6 +16,7 @@
 import { execFileSync } from 'node:child_process'
 import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import path from 'node:path'
+import { DE_FABRICA } from './secretos-de-fabrica.mjs'
 import { valoresSecretos } from './secretos-de-la-agencia.mjs'
 
 const raiz = path.resolve(import.meta.dirname, '..')
@@ -54,6 +55,12 @@ for (const config of ['vite.preload.config.mts', 'vite.main.config.mts', 'vite.c
 // Se recorre TODO dist/ (renderer y mapas de fuentes incluidos), no un par de archivos: lo que esté ahí
 // adentro puede terminar en el instalador.
 const secretos = valoresSecretos(leer)
+// Y tampoco los de fábrica (el token del puente), si este entorno los tiene cargados: la demo se compila
+// sin ponerlos, pero se revisa igual, que es para lo que está la revisión.
+for (const { constante, variable } of DE_FABRICA) {
+  const valor = (process.env[variable] ?? '').trim()
+  if (valor.length >= 8) secretos.push({ constante, valor })
+}
 function archivosDe(carpeta) {
   return readdirSync(path.join(raiz, carpeta)).flatMap((nombre) => {
     const relativo = `${carpeta}/${nombre}`

@@ -2,8 +2,8 @@
 // aseguradora. Hoy, Galeno —la cuenta de su API REST (cotizar, emitir, consultas) y la del portal de
 // productores (novedades)—, ATM —la cuenta de su web service y las tablas que publica por FTP, para
 // cotizar en el multicotizador—, Mercantil Andina —la cuenta de su API REST, también para el
-// multicotizador— y La Equidad —la cuenta de su API GLM, ídem—. Es donde va a ir cualquier otra que
-// se sume más adelante.
+// multicotizador—, La Equidad —la cuenta de su API GLM, ídem— y Río Uruguay (RUS) —la cuenta de su API
+// v2, ídem—. Es donde va a ir cualquier otra que se sume más adelante.
 //
 // No es un área de permisos configurable desde Administración → Permisos, mismo criterio que el
 // catálogo de vehículos o la conexión con Google: son credenciales de un tercero y una integración, no
@@ -19,8 +19,9 @@ import { Galeno } from './Galeno'
 import { GalenoNovedades } from './GalenoNovedades'
 import { Equidad } from './Equidad'
 import { Mercantil } from './Mercantil'
+import { Rus } from './Rus'
 
-type IdSeccion = 'galeno' | 'galenonovedades' | 'atm' | 'mercantil' | 'equidad'
+type IdSeccion = 'galeno' | 'galenonovedades' | 'atm' | 'mercantil' | 'equidad' | 'rus'
 
 const SECCIONES: ItemDePestana<IdSeccion>[] = [
   { id: 'galeno', nombre: 'Galeno', icono: 'escudo', ayuda: 'apiAseguradoras.galeno' },
@@ -37,6 +38,9 @@ const SECCIONES: ItemDePestana<IdSeccion>[] = [
   // Equidad tampoco: su API GLM se habla directo desde cada computadora con la cuenta que viaja como
   // ajuste compartido; el catálogo de vehículos también viene por la API.
   { id: 'equidad', nombre: 'Equidad', icono: 'escudo', ayuda: 'apiAseguradoras.equidad' },
+  // RUS tampoco: su API v2 se habla directo desde cada computadora con la cuenta que viaja como ajuste
+  // compartido; el catálogo de vehículos también viene por la API.
+  { id: 'rus', nombre: 'RUS', icono: 'escudo', ayuda: 'apiAseguradoras.rus' },
 ]
 
 export function ApiAseguradoras() {
@@ -75,6 +79,7 @@ export function ApiAseguradoras() {
         {seccion === 'atm' && <Atm />}
         {seccion === 'mercantil' && <Mercantil />}
         {seccion === 'equidad' && <Equidad />}
+        {seccion === 'rus' && <Rus />}
       </div>
     </div>
   )

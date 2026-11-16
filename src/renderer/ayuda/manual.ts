@@ -12,12 +12,12 @@
 // Este archivo es TypeScript puro: sin DOM, sin React y sin Electron. Lo importan tres lugares —la
 // pantalla, el banco de pruebas y el script de línea de comandos— y si se le mete un `document.` deja
 // de andar en dos de los tres.
-import { marcaDelPrograma, type Canal } from '../../shared/canal'
+import type { Canal } from '../../shared/canal'
 import { AREAS, DESCRIPCION_AREA, NOMBRE_NIVEL, permisosPorDefecto } from '../../shared/permisos'
 import { SUCURSALES } from '../../shared/sucursales'
 import { NOMBRE_ROL } from '../../shared/tipos'
 import { MODULOS, MODULO_ADMINISTRACION, MODULO_API_ASEGURADORAS, type Modulo } from '../modulos'
-import { canalSinEsperar, nombreDeLaAgencia } from '../agencia'
+import { canalSinEsperar, marcaVisible, nombreDeLaAgencia } from '../agencia'
 import { CONTENIDO_AYUDA } from './contenido'
 import type { ContenidoDeAyuda } from './tipos'
 
@@ -43,7 +43,7 @@ export interface DatosDelManual {
  * pide así para sacar el manual de la demo desde la línea de comandos (`npm run manual -- --demo`).
  */
 export function identidadDelManual(canal: Canal): { marca: string; agencia: string } {
-  return { marca: marcaDelPrograma(canal), agencia: nombreDeLaAgencia(canal) }
+  return { marca: marcaVisible(canal), agencia: nombreDeLaAgencia(canal) }
 }
 
 /**
@@ -276,7 +276,7 @@ export function htmlDelManual(datos: DatosDelManual): string {
   let numero = 0
   const paginas: string[] = []
   const agencia = datos.agencia ?? nombreDeLaAgencia()
-  const marca = datos.marca ?? marcaDelPrograma(canalSinEsperar())
+  const marca = datos.marca ?? marcaVisible(canalSinEsperar())
   const pagina = (n: number, de: number, titulo: string, contenido: string) => hoja(n, de, titulo, contenido, agencia, marca)
 
   // --- 1. Portada ----------------------------------------------------------
@@ -500,7 +500,7 @@ ${paginas.join('\n')}
  * por mail y pendrives, y no todos los programas se llevan bien con un nombre acentuado. La marca, si no
  * se dice, es la del canal (en la demo, «Cobertia - Manual …»).
  */
-export function nombreDelManual(version: string, marca: string = marcaDelPrograma(canalSinEsperar())): string {
+export function nombreDelManual(version: string, marca: string = marcaVisible(canalSinEsperar())): string {
   const sinTildes = marca.normalize('NFD').replace(/[̀-ͯ]/g, '')
   return `${sinTildes} - Manual ${version}.pdf`
 }
