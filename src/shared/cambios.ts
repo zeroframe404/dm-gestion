@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '18.1.5',
     fecha: '2026-11-26',
     cambios: [
+      { tipo: 'agregado', texto: 'Flotas: si cargás (en Pólizas o en la planilla del mes) un número de póliza que ya tiene otro vehículo del mismo cliente y la misma compañía, el cartel ahora te deja confirmar «Es una flota, cargar igual». Con otro cliente el número repetido sigue bloqueado. Al importar la hoja, las filas de una flota ya no se juntan en una sola póliza.' },
       { tipo: 'modificado', texto: 'Multicotizador: el comparativo ahora se ve con un bloque por compañía, sin mezclar. Cada tarjeta muestra la suma asegurada y, debajo, el monto de la cuota. Con «Ver por: Tipo de cobertura» se vuelve a la comparación de antes.' },
     ],
   },

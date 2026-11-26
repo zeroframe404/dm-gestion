@@ -25,6 +25,7 @@ import {
   type TipoDeRiesgo,
   type VehiculoDeCliente,
 } from '../../../shared/tipos'
+import { esAvisoDeFlota, FRASE_DE_FLOTA } from '../../../shared/flotas'
 import { NOMBRE_ESTADO_POLIZA } from '../../../shared/polizas'
 import { AVISAR_VTO_APAGADO, avisarVtoActivo } from '../../../shared/semaforo'
 import { describirRiesgo, esVehiculo, tipoDeRiesgo } from '../../../shared/riesgos'
@@ -155,6 +156,8 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
   const [bajaAbierta, setBajaAbierta] = useState(false)
   // La patente que otro cliente dio de baja: se pregunta antes de reusarla.
   const [patenteDeBaja, setPatenteDeBaja] = useState<PatenteDadaDeBaja | null>(null)
+  /** El mensaje de «ya hay otra póliza con ese número» cuando es del mismo cliente: se puede confirmar como flota. */
+  const [avisoDeFlota, setAvisoDeFlota] = useState<string | null>(null)
   const [rechazoAbierto, setRechazoAbierto] = useState(false)
 
   const idCompanias = useId()
@@ -379,7 +382,7 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
     if (!resultado.ok) setError(resultado.error)
   }
 
-  const guardar = async (confirmadoPatenteDeBaja = false) => {
+  const guardar = async (confirmadoPatenteDeBaja = false, confirmadoFlota = false) => {
     if (!cliente) {
       setError('Elegí primero el cliente al que le vas a cargar la póliza.')
       return
@@ -406,10 +409,12 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
       // año, el permiso del administrador no tiene que viajar igual.
       confirmadoPeseAlAviso: hayProblema && confirmado,
       confirmadoPatenteDeBaja,
+      confirmadoFlota,
     }
     const resultado = polizaId === null ? await window.dm.polizas.crear(datos) : await window.dm.polizas.editar(polizaId, datos)
     setGuardando(false)
     if (resultado.ok) alGuardar(resultado.datos)
+    else if (esAvisoDeFlota(resultado.error)) setAvisoDeFlota(resultado.error.slice(0, -FRASE_DE_FLOTA.length).trim())
     else setError(resultado.error)
   }
 
@@ -947,6 +952,34 @@ export function FormularioPoliza({ polizaId, clienteIdInicial, alCerrar, alGuard
               por <strong className="font-semibold">{patenteDeBaja.clienteAnterior}</strong>, ¿Desea continuar?
             </p>
           )}
+        </div>
+      </Dialogo>
+
+      <Dialogo
+        abierto={avisoDeFlota !== null}
+        titulo="Número de póliza repetido"
+        alCerrar={() => setAvisoDeFlota(null)}
+        ancho="sm"
+        pie={
+          <>
+            <Boton onClick={() => setAvisoDeFlota(null)}>Cancelar</Boton>
+            <Boton
+              variante="primario"
+              onClick={() => {
+                setAvisoDeFlota(null)
+                void guardar(false, true)
+              }}
+            >
+              Es una flota, cargar igual
+            </Boton>
+          </>
+        }
+      >
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+            <Icono nombre="alerta" tamano={30} />
+          </span>
+          <p className="text-sm text-slate-700">{avisoDeFlota} Si los vehículos son de una flota del mismo cliente, podés cargarla igual con el mismo número.</p>
         </div>
       </Dialogo>
 

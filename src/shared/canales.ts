@@ -414,7 +414,7 @@ export interface Canales {
   'importacion:abrirCarpetaInformes': () => Resultado<null>
 
   'cartera:planilla': (periodo: string | null) => Resultado<PlanillaDelMes>
-  'cartera:editarCelda': (filaId: string, campo: CampoEditable, valor: string) => Resultado<FilaCartera>
+  'cartera:editarCelda': (filaId: string, campo: CampoEditable, valor: string, confirmadoFlota?: boolean) => Resultado<FilaCartera>
   /** Marca la fila como avisada y devuelve la dirección de WhatsApp lista para abrir. */
   'cartera:prepararAviso': (filaId: string) => Resultado<AvisoPreparado>
   /** Deja la fila como ENVIADO (y en «Avisados hoy») sin abrir WhatsApp. */

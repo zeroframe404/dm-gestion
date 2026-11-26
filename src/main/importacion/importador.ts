@@ -534,6 +534,8 @@ function prepararSentencias(db: BaseDeDatos) {
         AND NOT EXISTS (SELECT 1 FROM bajas b WHERE b.poliza_id = p.id)
         AND NOT EXISTS (SELECT 1 FROM polizas s WHERE s.poliza_anterior_id = p.id)`),
 
+    polizaPorId: db.prepare('SELECT cliente_id, vehiculo_id FROM polizas WHERE id = ?'),
+
     inactivarPolizas: db.prepare(`UPDATE polizas SET activa = 0, actualizado_en = @ahora WHERE activa = 1 AND actualizado_en <> @ahora`),
 
     cuota: db.prepare(`
@@ -2420,6 +2422,24 @@ class TrabajoDeImportacion {
     return id
   }
 
+  /**
+   * La clave de flota ('POL:<cía>|<número>|<patente>') cuando la fila comparte número con otra póliza del
+   * mismo cliente y es de otro vehículo; si no, la clave de siempre. La decisión sale de lo que ya
+   * guardó esta fila (su _ID): una póliza que ya es de flota lo sigue siendo aunque cambie el orden de
+   * las filas en la hoja, y la que ya tiene la clave base la conserva.
+   */
+  private claveSiEsDeFlota(fila: Fila, claveBase: string, patenteNormalizada: string, clienteId: number, vehiculoId: number | null): string {
+    const claveDeFlota = `${claveBase}|${patenteNormalizada}`
+    const propia = this.sentencias.anclaPolizas.porFila.get(fila.id) as { id: number; clave: string } | undefined
+    if (propia?.clave === claveDeFlota) return claveDeFlota
+    if (propia?.clave === claveBase) return claveBase
+    const duena = this.polizasEnCorrida.get(claveBase) ?? (this.sentencias.anclaPolizas.porClave.get(claveBase) as { id: number } | undefined)?.id
+    if (duena === undefined || duena === propia?.id) return claveBase
+    const datos = this.sentencias.polizaPorId.get(duena) as { cliente_id: number | null; vehiculo_id: number | null } | undefined
+    const otroVehiculo = vehiculoId === null || datos?.vehiculo_id !== vehiculoId
+    return datos?.cliente_id === clienteId && otroVehiculo ? claveDeFlota : claveBase
+  }
+
   private guardarPoliza(p: PestanaTrabajo, fila: Fila, ident: Identidad, clienteId: number, vehiculoId: number | null, resumen: ResumenPestana): number {
     let clave: string
     if (ident.numeroValido) clave = `POL:${ident.companiaNormalizada}|${ident.numeroNormalizado}`
@@ -2429,6 +2449,9 @@ class TrabajoDeImportacion {
       clave = `FILA:${fila.id}`
       this.problema(p.titulo, fila.numero, fila.id, 'póliza sin identificador', 'sin número de póliza ni patente: si en otra planilla cambia de fila no se la va a reconocer')
     }
+    // Una flota: varios vehículos del mismo cliente con el MISMO número de póliza. Cada uno es su póliza,
+    // con la clave de siempre más la patente; sin esto la segunda fila se fusionaba con la primera.
+    if (ident.numeroValido && ident.patenteNormalizada) clave = this.claveSiEsDeFlota(fila, clave, ident.patenteNormalizada, clienteId, vehiculoId)
     const repetida = this.polizasEnCorrida.get(clave)
     if (repetida !== undefined) {
       // No se crea una segunda póliza activa: inflaría la cartera y el freno de seguridad. La fila queda
