@@ -986,6 +986,25 @@ export function localidadesConocidas(): string[] {
   return filas.map((fila) => fila.localidad)
 }
 
+/** La fila cruda del cliente que ya tiene ese documento (ya normalizado), o undefined. */
+function filaPorDocumentoNormalizado(documentoNormalizado: string): FilaClienteCruda | undefined {
+  return db()
+    .prepare(`SELECT ${COLUMNAS_DE_FILA} FROM clientes WHERE documento_normalizado = ? ORDER BY id LIMIT 1`)
+    .get(documentoNormalizado) as FilaClienteCruda | undefined
+}
+
+/**
+ * Consulta de SÓLO LECTURA: el cliente que ya tiene ese DNI/CUIT (con o sin puntos y guiones), o null.
+ * La usa el alta desde el PDF para avisar apenas se lee el documento, antes de pedir datos que no hacen
+ * falta. No decide nada: el que impide el duplicado, al guardar, sigue siendo `crearCliente`.
+ */
+export function clientePorDocumento(documento: string): FilaCliente | null {
+  const normalizado = normalizarDocumento(typeof documento === 'string' ? documento : '')
+  if (!normalizado) return null
+  const existente = filaPorDocumentoNormalizado(normalizado)
+  return existente ? armarFila(existente, agregados(existente.id)) : null
+}
+
 export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): ResultadoAltaCliente {
   const campos = validarDatos(datos)
   const documentoNormalizado = normalizarDocumento(campos.documento)
@@ -994,9 +1013,7 @@ export function crearCliente(datos: DatosDeCliente, actor: SesionUsuario): Resul
   // persona, así que en vez de crear el duplicado se devuelve el cliente que ya está y la pantalla
   // ofrece abrir su ficha. El documento vacío no se chequea: no hay nada con qué comparar.
   if (documentoNormalizado) {
-    const existente = db()
-      .prepare(`SELECT ${COLUMNAS_DE_FILA} FROM clientes WHERE documento_normalizado = ? ORDER BY id LIMIT 1`)
-      .get(documentoNormalizado) as FilaClienteCruda | undefined
+    const existente = filaPorDocumentoNormalizado(documentoNormalizado)
     if (existente) {
       const sucursal = limpiar(existente.sucursal_texto)
       return {
