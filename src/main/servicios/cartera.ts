@@ -46,7 +46,7 @@ import { diasCoberturaPorCompania, diasPorDefectoDe, sincronizarCompanias } from
 import { aplicarPlantilla, plantillaDeAviso, saludoDe } from './plantillas'
 import { ErrorDeNegocio } from './errores'
 import { registrarCambio } from './historial'
-import { claveDePoliza } from './identidad'
+import { claveLibreParaLaPoliza } from './identidad'
 import { encolar } from '../sincronizacion/cola'
 import { PESTANA_APP, registrarFilaDeLaApp } from './filas'
 import { guardarPago, normalizarModoDeAdelanto, normalizarResultado } from './pagos'
@@ -378,7 +378,7 @@ interface DestinoDeCampo {
   /** Columna de cuotas_mes que guarda la misma cosa y también hay que actualizar. */
   columnaEnLaCuota?: string
   /** Columnas derivadas que se recalculan al guardar (monto, fecha interpretada…). */
-  derivadas?: (valor: string, fila: FilaCruda) => Record<string, unknown>
+  derivadas?: (valor: string, fila: FilaCruda, confirmadoFlota: boolean) => Record<string, unknown>
   /** Si la fila no tiene el registro destino, se guarda en esta columna de cuotas_mes. */
   respaldoEnLaCuota?: string
   /**
@@ -473,18 +473,19 @@ function claveDisponibleParaMover(claveActual: string, claveNueva: string): bool
  * busca por número— y la clave. Sin esto el número quedaba corregido a la vista y la póliza seguía
  * sin encontrarse por el número nuevo hasta la próxima importación completa.
  */
-function derivadasDelNumeroDePoliza(valor: string, fila: FilaCruda): Record<string, unknown> {
-  return { numero_normalizado: normalizarNumeroPoliza(valor) || null, ...claveMovidaDeLaPoliza(fila, { numero: valor }) }
+function derivadasDelNumeroDePoliza(valor: string, fila: FilaCruda, confirmadoFlota: boolean): Record<string, unknown> {
+  return { numero_normalizado: normalizarNumeroPoliza(valor) || null, ...claveMovidaDeLaPoliza(fila, { numero: valor }, confirmadoFlota) }
 }
 
 /** La compañía también entra en la clave ('POL:<cía>|<número>'), así que cambiarla la mueve igual. */
-function derivadasDeLaCompania(valor: string, fila: FilaCruda): Record<string, unknown> {
-  return claveMovidaDeLaPoliza(fila, { compania: valor })
+function derivadasDeLaCompania(valor: string, fila: FilaCruda, confirmadoFlota: boolean): Record<string, unknown> {
+  return claveMovidaDeLaPoliza(fila, { compania: valor }, confirmadoFlota)
 }
 
 interface PolizaParaLaClave {
   clave: string
   fila_id: string | null
+  cliente_id: number
   compania: string | null
   numero: string | null
   documento: string | null
@@ -505,12 +506,12 @@ interface PolizaParaLaClave {
  * hoja, no algo para guardar callado. Tirar desde acá es seguro, como en el documento: las derivadas
  * se calculan antes del UPDATE, así que no queda nada a medias.
  */
-function claveMovidaDeLaPoliza(fila: FilaCruda, cambio: { compania?: string; numero?: string }): Record<string, unknown> {
+function claveMovidaDeLaPoliza(fila: FilaCruda, cambio: { compania?: string; numero?: string }, confirmadoFlota = false): Record<string, unknown> {
   const polizaId = fila.poliza_id
   if (polizaId === null) return {}
   const actual = db()
     .prepare(
-      `SELECT p.clave, p.fila_id, p.compania, p.numero, cl.documento, cl.nombre, v.patente
+      `SELECT p.clave, p.fila_id, p.cliente_id, p.compania, p.numero, cl.documento, cl.nombre, v.patente
          FROM polizas p
          LEFT JOIN clientes cl ON cl.id = p.cliente_id
          LEFT JOIN vehiculos v ON v.id = p.vehiculo_id
@@ -521,17 +522,19 @@ function claveMovidaDeLaPoliza(fila: FilaCruda, cambio: { compania?: string; num
 
   const compania = cambio.compania ?? limpiar(actual.compania)
   const numero = cambio.numero ?? limpiar(actual.numero)
-  const claveNueva = claveDePoliza(compania, numero, actual.documento, actual.nombre, actual.patente, actual.fila_id ?? `POL${polizaId}`)
+  const claveNueva = claveLibreParaLaPoliza({
+    claveActual: actual.clave,
+    polizaId,
+    clienteId: actual.cliente_id,
+    compania,
+    numero,
+    documento: actual.documento,
+    nombre: actual.nombre,
+    patente: actual.patente,
+    filaId: actual.fila_id ?? `POL${polizaId}`,
+    confirmadoFlota,
+  })
   if (claveNueva === actual.clave) return {}
-
-  const ocupada = db().prepare('SELECT 1 FROM polizas WHERE clave = ? AND id <> ?').get(claveNueva, polizaId)
-  if (ocupada) {
-    throw new ErrorDeNegocio(
-      claveNueva.startsWith('POL:')
-        ? `Ya hay otra póliza cargada con el número ${numero} en ${compania}.`
-        : 'Sin número, esta póliza queda con la misma identidad que otra del mismo cliente. Escribí el número que le corresponde.',
-    )
-  }
   return { clave: claveNueva }
 }
 
@@ -647,7 +650,7 @@ function idDelDestino(destino: DestinoDeCampo, fila: FilaCruda): number | null {
   return fila.poliza_id
 }
 
-export function editarCelda(filaId: string, campo: CampoEditable, valor: string, actor: SesionUsuario): FilaCartera {
+export function editarCelda(filaId: string, campo: CampoEditable, valor: string, actor: SesionUsuario, confirmadoFlota = false): FilaCartera {
   const destino = DESTINOS[campo]
   if (!destino) throw new ErrorDeNegocio('Ese campo no se puede editar desde la planilla.')
   const fila = buscarFila(texto(filaId, 'La fila', 1, 64))
@@ -671,7 +674,7 @@ export function editarCelda(filaId: string, campo: CampoEditable, valor: string,
     columna = destino.respaldoEnLaCuota
   }
 
-  const derivadas = tabla === destino.tabla ? (destino.derivadas?.(nuevo, fila) ?? {}) : {}
+  const derivadas = tabla === destino.tabla ? (destino.derivadas?.(nuevo, fila, confirmadoFlota) ?? {}) : {}
   const asignaciones = [`${columna} = @valor`, ...Object.keys(derivadas).map((c) => `${c} = @${c}`), 'actualizado_en = @ahora']
   db()
     .prepare(`UPDATE ${tabla} SET ${asignaciones.join(', ')} WHERE id = @id`)
