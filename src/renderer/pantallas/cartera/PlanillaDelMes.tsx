@@ -2,6 +2,7 @@
 // con el semáforo calculado solo y las tres acciones de un clic (avisar, registrar pago, dar de baja).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRefrescoEnVivo } from '../../contexto/DatosEnVivo'
+import { esAvisoDeFlota, FRASE_DE_FLOTA } from '../../../shared/flotas'
 import { diasEntre } from '../../../shared/polizas'
 import {
   avisarVtoActivo,
@@ -24,7 +25,7 @@ import { RangoDeFecha } from '../../componentes/RangoDeFecha'
 import { Icono } from '../../componentes/Icono'
 import { MarcaDePresencia, motivoDelBloqueo } from '../../componentes/Presencia'
 import { SelectorDeColumnas, useColumnasElegidas } from '../../componentes/SelectorDeColumnas'
-import { Alerta as Aviso, Boton, Cargando, cx } from '../../componentes/ui'
+import { Alerta as Aviso, Boton, Cargando, cx, Dialogo } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useBloqueoDe, useReportarFoco } from '../../contexto/Presencia'
 import { useUsuarioActual } from '../../contexto/Sesion'
@@ -414,12 +415,17 @@ export function PlanillaDelMes() {
 
   // --- Acciones -------------------------------------------------------------
 
+  /** Un número repetido del mismo cliente espera la confirmación de «es una flota» antes de guardarse. */
+  const [flotaPendiente, setFlotaPendiente] = useState<{ filaId: string; campo: CampoEditable; valor: string; mensaje: string } | null>(null)
+
   const guardarCelda = useCallback(
-    async (filaId: string, campo: CampoEditable, valor: string) => {
+    async (filaId: string, campo: CampoEditable, valor: string, confirmadoFlota = false) => {
       setEditando(null)
-      const resultado = await window.dm.cartera.editarCelda(filaId, campo, valor)
+      const resultado = await window.dm.cartera.editarCelda(filaId, campo, valor, confirmadoFlota)
       if (resultado.ok) reemplazar(resultado.datos)
-      else setError(resultado.error)
+      else if (esAvisoDeFlota(resultado.error)) {
+        setFlotaPendiente({ filaId, campo, valor, mensaje: resultado.error.slice(0, -FRASE_DE_FLOTA.length).trim() })
+      } else setError(resultado.error)
     },
     [reemplazar],
   )
@@ -861,6 +867,32 @@ export function PlanillaDelMes() {
           />
         )}
       </div>
+
+      <Dialogo
+        abierto={flotaPendiente !== null}
+        titulo="Número de póliza repetido"
+        alCerrar={() => setFlotaPendiente(null)}
+        ancho="sm"
+        pie={
+          <>
+            <Boton onClick={() => setFlotaPendiente(null)}>Cancelar</Boton>
+            <Boton
+              variante="primario"
+              onClick={() => {
+                const pendiente = flotaPendiente
+                setFlotaPendiente(null)
+                if (pendiente) void guardarCelda(pendiente.filaId, pendiente.campo, pendiente.valor, true)
+              }}
+            >
+              Es una flota, cargar igual
+            </Boton>
+          </>
+        }
+      >
+        <p className="py-2 text-center text-sm text-slate-700">
+          {flotaPendiente?.mensaje} Si los vehículos son de una flota del mismo cliente, podés cargarla igual con el mismo número.
+        </p>
+      </Dialogo>
 
       <DialogoPago
         fila={pagoDe}

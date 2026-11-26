@@ -434,6 +434,7 @@ function Cotizador({ tipo }: { tipo: TipoDeVehiculo }) {
         puedeEmitir={puedePresupuestar}
         alEmitir={setAEmitir}
         desactualizada={desactualizada}
+        sumaAsegurada={cotizada?.vehiculo.sumaAsegurada ?? null}
       />
 
       {elegidas.length > 0 && (

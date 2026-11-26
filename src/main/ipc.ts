@@ -830,7 +830,7 @@ export function registrarIpc(): void {
     const actor = exigirVista('cartera')
     return exito(planillaDelMes(periodo, actor))
   })
-  manejar('cartera:editarCelda', (filaId, campo, valor) => exito(editarCelda(filaId, campo, valor, exigirEdicion('cartera'))))
+  manejar('cartera:editarCelda', (filaId, campo, valor, confirmadoFlota) => exito(editarCelda(filaId, campo, valor, exigirEdicion('cartera'), confirmadoFlota === true)))
   manejar('cartera:prepararAviso', (filaId) => exito(prepararAviso(filaId, exigirEdicion('cartera'))))
   manejar('cartera:marcarAvisado', (filaId) => exito(marcarAvisado(filaId, exigirEdicion('cartera'))))
   // Se cobra desde la planilla, desde la ficha del cliente y desde la caja del día: alcanza con poder

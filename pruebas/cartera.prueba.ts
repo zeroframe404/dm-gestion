@@ -30,6 +30,7 @@ import { listarRiesgos } from '../src/main/servicios/riesgos'
 import { historialDeFila } from '../src/main/servicios/historial'
 import { deshacerEntradaDeHistorial } from '../src/main/servicios/deshacer'
 import { guardarPlantillaDeAviso, saludoDe } from '../src/main/servicios/plantillas'
+import { esAvisoDeFlota } from '../src/shared/flotas'
 import { calcularAlerta, periodoDeHoy, periodoSiguiente } from '../src/shared/semaforo'
 import type { FilaCartera, FiltrosClientes, SesionUsuario } from '../src/shared/tipos'
 import { CLIENTES, construirHojaDePrueba } from './hoja-de-prueba'
@@ -975,6 +976,32 @@ test('ponerle desde la planilla el número de otra póliza de la misma compañí
   const conPuntos = editarCelda(fila.filaId, 'numeroPoliza', '777.111', DANIEL)
   assert.equal(conPuntos.numeroPoliza, '777.111')
   assert.equal(unico<string>(db, 'SELECT clave FROM polizas WHERE id = ?', fila.polizaId), `POL:${CLIENTES.lopez.cia}|${CLIENTES.lopez.poliza}`)
+  cerrarBaseDeDatos()
+})
+
+test('el mismo número de póliza en otro vehículo del mismo cliente se carga igual si se confirma que es una flota', async () => {
+  const db = await carteraDePrueba()
+  const lopez = buscar(planillaDelMes(null).filas, CLIENTES.lopez.nombre)
+  const gonzalez = buscar(planillaDelMes(null).filas, CLIENTES.gonzalez.nombre)
+  assert.ok(lopez.polizaId && gonzalez.polizaId)
+  // Las dos pasan a ser del mismo cliente: es el caso de una flota (mismo número, otra patente).
+  db.prepare('UPDATE polizas SET cliente_id = (SELECT cliente_id FROM polizas WHERE id = ?) WHERE id = ?').run(lopez.polizaId, gonzalez.polizaId)
+
+  // Sin confirmar, el cartel pide confirmación (y no deja nada a medias).
+  assert.throws(
+    () => editarCelda(gonzalez.filaId, 'numeroPoliza', CLIENTES.lopez.poliza, DANIEL),
+    (e: Error) => /Ya hay otra póliza/.test(e.message) && esAvisoDeFlota(e.message),
+  )
+  assert.equal(unico<string>(db, 'SELECT numero FROM polizas WHERE id = ?', gonzalez.polizaId), CLIENTES.gonzalez.poliza)
+
+  // Confirmado, se guarda y la clave lleva la patente para no chocar con la de la otra.
+  editarCelda(gonzalez.filaId, 'numeroPoliza', CLIENTES.lopez.poliza, DANIEL, true)
+  const clave = unico<string>(db, 'SELECT clave FROM polizas WHERE id = ?', gonzalez.polizaId)
+  assert.match(clave, new RegExp(`^POL:${CLIENTES.gonzalez.cia}\\|${CLIENTES.lopez.poliza}\\|`))
+  assert.equal(unico<string>(db, 'SELECT clave FROM polizas WHERE id = ?', lopez.polizaId), `POL:${CLIENTES.lopez.cia}|${CLIENTES.lopez.poliza}`)
+
+  // Una vez de flota, tocar otra cosa de la póliza no vuelve a preguntar.
+  editarCelda(gonzalez.filaId, 'compania', CLIENTES.gonzalez.cia, DANIEL)
   cerrarBaseDeDatos()
 })
 

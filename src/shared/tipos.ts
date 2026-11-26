@@ -1824,6 +1824,8 @@ export interface DatosDePoliza {
   confirmadoPeseAlAviso: boolean
   /** true si se confirmó reusar una patente que otro cliente dio de baja. */
   confirmadoPatenteDeBaja?: boolean
+  /** true si se confirmó cargar el mismo número de póliza en otro vehículo del mismo cliente (flota). */
+  confirmadoFlota?: boolean
 }
 
 /** Una patente de otro cliente cuya póliza se dio de baja: se puede volver a asegurar, con aviso. */

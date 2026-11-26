@@ -59,7 +59,7 @@ import { sincronizarCompanias } from './companias'
 import { ErrorDeNegocio } from './errores'
 import { registrarFilaDeLaApp } from './filas'
 import { registrarCambio } from './historial'
-import { claveDePoliza } from './identidad'
+import { claveLibreParaLaPoliza } from './identidad'
 import { reglasVigentes } from './reglas'
 import { sucursalesParaElegir } from './sucursales'
 import { enteroPositivo, objeto, texto } from './validacion'
@@ -1035,7 +1035,19 @@ export function crearPoliza(datos: DatosDePoliza, actor: SesionUsuario): PolizaD
   // La póliza y su fila del mes comparten el _ID, igual que cuando vienen de la hoja: es una sola fila
   // de la planilla, y así la sincronización puede actualizar las dos mitades con un solo identificador.
   const filaId = generarId()
-  const clave = claveDePoliza(validados.compania, validados.numero, cliente.documento, cliente.nombre, vehiculo.patente, filaId)
+  const patenteNueva = vehiculo.patente
+  const clave = claveLibreParaLaPoliza({
+    claveActual: null,
+    polizaId: null,
+    clienteId: cliente.id,
+    compania: validados.compania,
+    numero: validados.numero,
+    documento: cliente.documento,
+    nombre: cliente.nombre,
+    patente: patenteNueva,
+    filaId,
+    confirmadoFlota: datos.confirmadoFlota === true,
+  })
   const repetida = db().prepare('SELECT id FROM polizas WHERE clave = ?').get(clave) as { id: number } | undefined
   if (repetida) {
     throw new ErrorDeNegocio(
@@ -1322,14 +1334,19 @@ export function editarPoliza(polizaId: number, datos: DatosDePoliza, actor: Sesi
 
   // Si cambió el número de póliza cambia su identidad: se renombra la clave para que el importador la
   // siga reconociendo. Si la clave nueva ya es de otra póliza, algo está mal cargado y hay que mirarlo.
-  const claveNueva = claveDePoliza(validados.compania, validados.numero, cliente.documento, cliente.nombre, vehiculo.patente, fila.fila_id ?? `POL${fila.id}`)
-  if (claveNueva !== fila.clave) {
-    const ocupada = db().prepare('SELECT id FROM polizas WHERE clave = ? AND id <> ?').get(claveNueva, fila.id) as { id: number } | undefined
-    if (ocupada) {
-      throw new ErrorDeNegocio(`Ya hay otra póliza cargada con el número ${validados.numero} en ${validados.compania}.`)
-    }
-    enPoliza.clave = claveNueva
-  }
+  const claveNueva = claveLibreParaLaPoliza({
+    claveActual: fila.clave,
+    polizaId: fila.id,
+    clienteId: cliente.id,
+    compania: validados.compania,
+    numero: validados.numero,
+    documento: cliente.documento,
+    nombre: cliente.nombre,
+    patente: vehiculo.patente,
+    filaId: fila.fila_id ?? `POL${fila.id}`,
+    confirmadoFlota: datos.confirmadoFlota === true,
+  })
+  if (claveNueva !== fila.clave) enPoliza.clave = claveNueva
 
   const ahora = ahoraIso()
   db().transaction(() => {
