@@ -136,6 +136,9 @@ export interface ApiDm {
     ficha: Remota<'clientes:ficha'>
     localidades: Remota<'clientes:localidades'>
     crear: Remota<'clientes:crear'>
+    porDocumento: Remota<'clientes:porDocumento'>
+    leerPoliza: Remota<'clientes:leerPoliza'>
+    altaDesdePoliza: Remota<'clientes:altaDesdePoliza'>
     editar: Remota<'clientes:editar'>
     agregarNota: Remota<'clientes:agregarNota'>
     crearTarea: Remota<'clientes:crearTarea'>
