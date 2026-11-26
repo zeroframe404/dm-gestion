@@ -51,7 +51,7 @@ export function CargaDesdePdf({ alLeer, yaLeido, deshabilitado = false }: Props)
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-marino-200 bg-marino-50/50 p-4">
+    <div className="flex flex-col gap-3 rounded-xl border border-dashed border-marino-200 bg-marino-50/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="font-display text-sm font-bold text-marino-800">Cargar desde la póliza (PDF)</p>
