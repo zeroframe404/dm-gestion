@@ -329,6 +329,19 @@ export function nombresParecidos(a: string, b: string): boolean {
 
 const vacio = (valor: string) => valor.trim() === ''
 
+/** Cómo se nombra cada dato que puede faltar. La pantalla usa las mismas para marcar el campo que corresponde. */
+export const FALTANTE = {
+  nombre: 'Nombre y apellido',
+  documento: 'DNI/CUIT',
+  telefono: 'Celular',
+  email: 'Email',
+  formaPago: 'Forma de pago',
+  compania: 'Compañía',
+  numero: 'Número de póliza (o de propuesta)',
+  cobertura: 'Cobertura',
+  patente: 'Patente (o marca y modelo)',
+} as const
+
 /**
  * Lo que todavía falta para poder crear (con etiquetas para mostrar). Con cliente existente no se piden
  * los datos del cliente: ya los tiene y la póliza nueva no los toca.
@@ -337,16 +350,16 @@ export function faltantesDelAlta(entrada: { clienteExistente: boolean; cliente: 
   const { clienteExistente, cliente, vehiculo, poliza } = entrada
   const faltan: string[] = []
   if (!clienteExistente) {
-    if (vacio(cliente.nombre)) faltan.push('Nombre y apellido')
-    if (vacio(cliente.documento)) faltan.push('DNI/CUIT')
-    if (vacio(cliente.telefono)) faltan.push('Celular')
-    if (vacio(cliente.email)) faltan.push('Email')
+    if (vacio(cliente.nombre)) faltan.push(FALTANTE.nombre)
+    if (vacio(cliente.documento)) faltan.push(FALTANTE.documento)
+    if (vacio(cliente.telefono)) faltan.push(FALTANTE.telefono)
+    if (vacio(cliente.email)) faltan.push(FALTANTE.email)
   }
-  if (vacio(poliza.formaPago)) faltan.push('Forma de pago')
-  if (vacio(poliza.compania)) faltan.push('Compañía')
-  if (vacio(poliza.numero) && vacio(poliza.propuesta)) faltan.push('Número de póliza (o de propuesta)')
-  if (vacio(poliza.cobertura)) faltan.push('Cobertura')
-  if (vacio(vehiculo.patente) && (vacio(vehiculo.marca) || vacio(vehiculo.modelo))) faltan.push('Patente (o marca y modelo)')
+  if (vacio(poliza.formaPago)) faltan.push(FALTANTE.formaPago)
+  if (vacio(poliza.compania)) faltan.push(FALTANTE.compania)
+  if (vacio(poliza.numero) && vacio(poliza.propuesta)) faltan.push(FALTANTE.numero)
+  if (vacio(poliza.cobertura)) faltan.push(FALTANTE.cobertura)
+  if (vacio(vehiculo.patente) && (vacio(vehiculo.marca) || vacio(vehiculo.modelo))) faltan.push(FALTANTE.patente)
   return faltan
 }
 

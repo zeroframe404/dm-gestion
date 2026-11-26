@@ -30,6 +30,13 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
+    version: '18.1.6',
+    fecha: '2026-11-26',
+    cambios: [
+      { tipo: 'agregado', texto: 'Clientes: en «Nuevo cliente» ahora podés subir el PDF de la póliza de un auto. La inteligencia artificial lo lee y completa solita el cliente (nombre, DNI y dirección), el auto (patente, marca, modelo, año, motor y chasis) y la póliza (compañía, número, cobertura y vigencia). Después te pide sólo lo que el PDF no trae: celular, email y forma de pago. Revisá los datos antes de crear: nada se guarda solo, y lo leído queda marcado como «Leído del PDF». Si el DNI ya es de un cliente cargado, te ofrece «Agregar esta póliza al cliente existente» sin tocar sus datos. El PDF queda adjunto en la póliza. Para usarlo el superadministrador tiene que haber cargado la clave de la IA, y el PDF se envía a Anthropic para leerlo. Cargar un cliente a mano sigue igual que siempre.' },
+    ],
+  },
+  {
     version: '18.1.5',
     fecha: '2026-11-26',
     cambios: [
