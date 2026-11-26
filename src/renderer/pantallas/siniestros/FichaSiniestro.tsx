@@ -24,6 +24,7 @@ import { Alerta, AreaTexto, Boton, Campo, Cargando, Dialogo, Selector, Tarjeta, 
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { CLASES_ESTADO } from './Siniestros'
+import { CroquisDelSiniestro } from './CroquisDelSiniestro'
 
 interface Props {
   siniestroId: number
@@ -53,6 +54,7 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
   const [observacion, setObservacion] = useState('')
   const [tareaAbierta, setTareaAbierta] = useState(false)
   const [adjuntarAbierto, setAdjuntarAbierto] = useState(false)
+  const [croquisAbierto, setCroquisAbierto] = useState(false)
 
   // Acá no hay botón de Guardar: los datos se corrigen con doble clic y se guardan al salir del
   // campo, así que lo que se reporta como «editando» es tener el cursor adentro. Ver `useCursorAdentro`.
@@ -308,9 +310,14 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
           titulo="Documentos"
           descripcion="Suben al servidor de la agencia y se ven desde cualquier computadora. Las fotos se achican solas antes de subir."
           acciones={
-            <Boton icono="clip" cargando={trabajando} disabled={!puedeEditar} onClick={() => setAdjuntarAbierto(true)}>
-              Adjuntar
-            </Boton>
+            <div className="flex gap-2">
+              <Boton icono="siniestros" disabled={!puedeEditar} onClick={() => setCroquisAbierto(true)}>
+                Croquis
+              </Boton>
+              <Boton icono="clip" cargando={trabajando} disabled={!puedeEditar} onClick={() => setAdjuntarAbierto(true)}>
+                Adjuntar
+              </Boton>
+            </div>
           }
         >
           {ficha.adjuntos.length === 0 ? (
@@ -413,6 +420,20 @@ export function FichaSiniestro({ siniestroId, alVolver }: Props) {
           alAdjuntar={(nueva) => {
             setFicha(nueva)
             setAdjuntarAbierto(false)
+          }}
+        />
+      )}
+
+      {croquisAbierto && (
+        <CroquisDelSiniestro
+          alCerrar={() => setCroquisAbierto(false)}
+          // El croquis confirmado queda como un documento más de la ficha (imagen PNG), por el circuito de siempre.
+          alConfirmar={async (archivo) => {
+            const resultado = await window.dm.siniestros.adjuntarArchivos(s.id, [archivo], CATEGORIA_DE_ADJUNTO_OTRAS, 'Croquis del siniestro')
+            if (!resultado.ok) return { ok: false, error: resultado.error }
+            setFicha(resultado.datos)
+            setCroquisAbierto(false)
+            return { ok: true }
           }}
         />
       )}
