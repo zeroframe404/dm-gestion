@@ -218,6 +218,7 @@ function Comparativo({
   veComision,
   puedeEmitir,
   alEmitir,
+  sumaAsegurada,
 }: {
   resultados: ResultadoDeAseguradora[]
   seleccionadas: Set<string>
@@ -225,88 +226,35 @@ function Comparativo({
   veComision: boolean
   puedeEmitir: boolean
   alEmitir: (cobertura: CoberturaCotizada) => void
+  /** La suma asegurada que se pidió al cotizar; null si se dejó la que diga cada compañía. */
+  sumaAsegurada: number | null
 }) {
+  const [vista, setVista] = useState<'COMPANIA' | 'COBERTURA'>('COMPANIA')
   const [filtro, setFiltro] = useState<CategoriaDeCobertura | 'TODAS'>('TODAS')
   const ordenadas = useMemo(() => coberturasOrdenadas(resultados), [resultados])
   const mejores = useMemo(() => mejoresPorCategoria(resultados), [resultados])
   const companias = new Set(resultados.filter((r) => r.coberturas.length > 0).map((r) => r.aseguradora)).size
 
+  const porCompania = useMemo(() => {
+    const grupos = new Map<string, { nombre: string; coberturas: CoberturaCotizada[] }>()
+    for (const cobertura of ordenadas) {
+      const grupo = grupos.get(cobertura.aseguradora) ?? { nombre: cobertura.nombreAseguradora, coberturas: [] }
+      grupo.coberturas.push(cobertura)
+      grupos.set(cobertura.aseguradora, grupo)
+    }
+    return [...grupos.entries()].map(([id, grupo]) => ({
+      id,
+      nombre: grupo.nombre,
+      // Dentro de cada compañía, de la más barata a la más cara; las sin precio al final.
+      coberturas: [...grupo.coberturas].sort((a, b) => (a.premio <= 0 ? 1 : 0) - (b.premio <= 0 ? 1 : 0) || a.premio - b.premio),
+    }))
+  }, [ordenadas])
   if (ordenadas.length === 0) return null
 
   const presentes = CATEGORIAS_DE_COBERTURA.filter((categoria) => ordenadas.some((c) => c.categoria === categoria))
   const visibles = filtro === 'TODAS' ? presentes : presentes.filter((categoria) => categoria === filtro)
 
-  return (
-    <Tarjeta
-      titulo="Comparativo"
-      descripcion={
-        companias > 1
-          ? `${ordenadas.length} coberturas de ${companias} compañías, agrupadas por lo que cubren y de la más barata (izquierda) a la más cara.`
-          : `${ordenadas.length} coberturas, agrupadas por lo que cubren y de la más barata (izquierda) a la más cara. Con más compañías cargadas, acá se comparan todas juntas.`
-      }
-      alRas
-    >
-      {/* Lo más barato de cada categoría, de un vistazo: es lo primero que pregunta el cliente. */}
-      <div className="grid gap-3 px-6 pb-4 sm:grid-cols-2 xl:grid-cols-5">
-        {presentes
-          .filter((categoria) => mejores.has(categoria))
-          .map((categoria) => {
-            const mejor = mejores.get(categoria)!
-            return (
-              <button
-                key={categoria}
-                type="button"
-                onClick={() => setFiltro((previo) => (previo === categoria ? 'TODAS' : categoria))}
-                className={cx(
-                  'rounded-lg border px-3 py-2 text-left transition-colors',
-                  filtro === categoria ? 'border-marino-500 bg-marino-50' : 'border-slate-200 hover:border-marino-300 hover:bg-marino-50',
-                )}
-                title={DETALLE_CATEGORIA_DE_COBERTURA[categoria]}
-              >
-                <span className="block text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">{NOMBRE_CATEGORIA_DE_COBERTURA[categoria]}</span>
-                <span className="block font-display text-lg font-extrabold tabular-nums text-slate-900">{enPesos(mejor.premio)}</span>
-                <span className="block truncate text-xs text-slate-600">
-                  {mejor.nombreAseguradora} · {mejor.nombre}
-                </span>
-              </button>
-            )
-          })}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-6 py-3">
-        {(['TODAS', ...presentes] as const).map((opcion) => {
-          const cuantas = opcion === 'TODAS' ? ordenadas.length : ordenadas.filter((c) => c.categoria === opcion).length
-          return (
-            <button
-              key={opcion}
-              type="button"
-              aria-pressed={filtro === opcion}
-              onClick={() => setFiltro(opcion)}
-              className={cx(
-                'rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
-                filtro === opcion ? 'border-marino-600 bg-marino-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-marino-300',
-              )}
-            >
-              {opcion === 'TODAS' ? 'Todas' : NOMBRE_CATEGORIA_DE_COBERTURA[opcion]} ({cuantas})
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Una sección por tipo de cobertura; dentro, las tarjetas de la más barata (izquierda) a la más cara, con scroll horizontal. */}
-      <div className="flex flex-col gap-4 border-t border-slate-100 bg-slate-50/60 p-4">
-        {visibles.map((categoria) => {
-          const deLaCategoria = ordenadas.filter((c) => c.categoria === categoria)
-          const mejor = mejores.get(categoria)
-          return (
-            <section key={categoria} className="rounded-xl border border-slate-200 bg-white p-4">
-              <h3 className="flex items-center gap-2 font-display text-sm font-bold text-slate-900" title={DETALLE_CATEGORIA_DE_COBERTURA[categoria]}>
-                <span className="h-2 w-2 rounded-full bg-slate-900" aria-hidden />
-                {NOMBRE_CATEGORIA_DE_COBERTURA[categoria]}
-                <span className="text-xs font-semibold text-slate-400">({deLaCategoria.length})</span>
-              </h3>
-              <div className="mt-3 flex gap-3 overflow-x-auto pb-3" role="list">
-                {deLaCategoria.map((cobertura) => {
+  const tarjetaDeCobertura = (cobertura: CoberturaCotizada, mejor: CoberturaCotizada | undefined, sinNombreDeCompania = false) => {
                   const clave = claveDeCobertura(cobertura)
                   const elegida = seleccionadas.has(clave)
                   const esLaMejor = mejor !== undefined && claveDeCobertura(mejor) === clave
@@ -329,6 +277,11 @@ function Comparativo({
                           </span>
                           {esLaMejor && <span className="shrink-0 rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">Más barata</span>}
                         </div>
+                        {sinNombreDeCompania && (
+                          <div className="mt-1 text-xs font-semibold text-slate-300">
+                            Suma asegurada: <span className="text-white">{sumaAsegurada ? enPesos(sumaAsegurada) : 'según la compañía'}</span>
+                          </div>
+                        )}
                         <div className="mt-1 font-display text-2xl font-extrabold tabular-nums">{conPrecio ? enPesos(importe) : 'Sin precio'}</div>
                         {conPrecio && (
                           <div className="text-xs font-semibold text-slate-300">
@@ -338,7 +291,7 @@ function Comparativo({
                       </div>
                       <div className="flex flex-1 flex-col gap-2 px-4 py-3">
                         <div className="border-b border-slate-100 pb-2">
-                          <div className="truncate text-sm font-bold text-slate-800">{cobertura.nombreAseguradora}</div>
+                          {!sinNombreDeCompania && <div className="truncate text-sm font-bold text-slate-800">{cobertura.nombreAseguradora}</div>}
                           <div className="text-xs text-slate-500">
                             {cobertura.codigo}
                             {typeof cobertura.bonificacionPorcentaje === 'number' && ` · Bonif. ${enPorcentaje(cobertura.bonificacionPorcentaje)}`}
@@ -376,7 +329,115 @@ function Comparativo({
                       </div>
                     </article>
                   )
-                })}
+  }
+
+  return (
+    <Tarjeta
+      titulo="Comparativo"
+      descripcion={
+        companias > 1
+          ? `${ordenadas.length} coberturas de ${companias} compañías, ${vista === 'COMPANIA' ? 'un bloque por compañía' : 'agrupadas por lo que cubren'} y de la más barata (izquierda) a la más cara.`
+          : `${ordenadas.length} coberturas, agrupadas por lo que cubren y de la más barata (izquierda) a la más cara. Con más compañías cargadas, acá se comparan todas juntas.`
+      }
+      alRas
+    >
+      {/* Lo más barato de cada categoría, de un vistazo: es lo primero que pregunta el cliente. */}
+      <div className="grid gap-3 px-6 pb-4 sm:grid-cols-2 xl:grid-cols-5">
+        {presentes
+          .filter((categoria) => mejores.has(categoria))
+          .map((categoria) => {
+            const mejor = mejores.get(categoria)!
+            return (
+              <button
+                key={categoria}
+                type="button"
+                onClick={() => setFiltro((previo) => (previo === categoria ? 'TODAS' : categoria))}
+                className={cx(
+                  'rounded-lg border px-3 py-2 text-left transition-colors',
+                  filtro === categoria ? 'border-marino-500 bg-marino-50' : 'border-slate-200 hover:border-marino-300 hover:bg-marino-50',
+                )}
+                title={DETALLE_CATEGORIA_DE_COBERTURA[categoria]}
+              >
+                <span className="block text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">{NOMBRE_CATEGORIA_DE_COBERTURA[categoria]}</span>
+                <span className="block font-display text-lg font-extrabold tabular-nums text-slate-900">{enPesos(mejor.premio)}</span>
+                <span className="block truncate text-xs text-slate-600">
+                  {mejor.nombreAseguradora} · {mejor.nombre}
+                </span>
+              </button>
+            )
+          })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-6 pt-3">
+        <span className="text-xs font-semibold text-slate-500">Ver por:</span>
+        {([['COMPANIA', 'Compañía'], ['COBERTURA', 'Tipo de cobertura']] as const).map(([valor, texto]) => (
+          <button
+            key={valor}
+            type="button"
+            aria-pressed={vista === valor}
+            onClick={() => setVista(valor)}
+            className={cx(
+              'rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
+              vista === valor ? 'border-marino-600 bg-marino-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-marino-300',
+            )}
+          >
+            {texto}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 px-6 py-3">
+        {(['TODAS', ...presentes] as const).map((opcion) => {
+          const cuantas = opcion === 'TODAS' ? ordenadas.length : ordenadas.filter((c) => c.categoria === opcion).length
+          return (
+            <button
+              key={opcion}
+              type="button"
+              aria-pressed={filtro === opcion}
+              onClick={() => setFiltro(opcion)}
+              className={cx(
+                'rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
+                filtro === opcion ? 'border-marino-600 bg-marino-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-marino-300',
+              )}
+            >
+              {opcion === 'TODAS' ? 'Todas' : NOMBRE_CATEGORIA_DE_COBERTURA[opcion]} ({cuantas})
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Una sección por tipo de cobertura; dentro, las tarjetas de la más barata (izquierda) a la más cara, con scroll horizontal. */}
+      <div className="flex flex-col gap-4 border-t border-slate-100 bg-slate-50/60 p-4">
+        {vista === 'COMPANIA' &&
+          porCompania.map((compania) => {
+            const coberturas = compania.coberturas.filter((c) => filtro === 'TODAS' || c.categoria === filtro)
+            if (coberturas.length === 0) return null
+            return (
+              <section key={compania.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                <h3 className="flex flex-wrap items-center gap-2 font-display text-sm font-bold text-slate-900">
+                  <span className="h-2 w-2 rounded-full bg-slate-900" aria-hidden />
+                  {compania.nombre}
+                  <span className="text-xs font-semibold text-slate-400">({coberturas.length})</span>
+                  <span className="text-xs font-semibold text-slate-500">· Suma asegurada: {sumaAsegurada ? enPesos(sumaAsegurada) : 'según la compañía'}</span>
+                </h3>
+                <div className="mt-3 flex gap-3 overflow-x-auto pb-3" role="list">
+                  {coberturas.map((cobertura) => tarjetaDeCobertura(cobertura, mejores.get(cobertura.categoria), true))}
+                </div>
+              </section>
+            )
+          })}
+        {vista === 'COBERTURA' && visibles.map((categoria) => {
+          const deLaCategoria = ordenadas.filter((c) => c.categoria === categoria)
+          const mejor = mejores.get(categoria)
+          return (
+            <section key={categoria} className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="flex items-center gap-2 font-display text-sm font-bold text-slate-900" title={DETALLE_CATEGORIA_DE_COBERTURA[categoria]}>
+                <span className="h-2 w-2 rounded-full bg-slate-900" aria-hidden />
+                {NOMBRE_CATEGORIA_DE_COBERTURA[categoria]}
+                <span className="text-xs font-semibold text-slate-400">({deLaCategoria.length})</span>
+              </h3>
+              <div className="mt-3 flex gap-3 overflow-x-auto pb-3" role="list">
+                {deLaCategoria.map((cobertura) => tarjetaDeCobertura(cobertura, mejor))}
               </div>
             </section>
           )
@@ -401,6 +462,8 @@ interface Props {
   puedeEmitir: boolean
   alEmitir: (cobertura: CoberturaCotizada) => void
   desactualizada: boolean
+  /** La suma asegurada que se pidió al cotizar; null si se dejó la de cada compañía. */
+  sumaAsegurada: number | null
 }
 
 export function ResultadosDeCotizacion({
@@ -414,6 +477,7 @@ export function ResultadosDeCotizacion({
   puedeEmitir,
   alEmitir,
   desactualizada,
+  sumaAsegurada,
 }: Props) {
   const conTarjeta = aseguradoras.filter((aseguradora) => tarjetas[aseguradora.id])
   const resultados = conTarjeta
@@ -444,6 +508,7 @@ export function ResultadosDeCotizacion({
         veComision={veComision}
         puedeEmitir={puedeEmitir}
         alEmitir={alEmitir}
+        sumaAsegurada={sumaAsegurada}
       />
     </div>
   )

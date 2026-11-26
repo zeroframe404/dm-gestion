@@ -30,6 +30,13 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
+    version: '18.1.5',
+    fecha: '2026-11-26',
+    cambios: [
+      { tipo: 'modificado', texto: 'Multicotizador: el comparativo ahora se ve con un bloque por compañía, sin mezclar. Cada tarjeta muestra la suma asegurada y, debajo, el monto de la cuota. Con «Ver por: Tipo de cobertura» se vuelve a la comparación de antes.' },
+    ],
+  },
+  {
     version: '18.1.4',
     fecha: '2026-11-16',
     cambios: [
