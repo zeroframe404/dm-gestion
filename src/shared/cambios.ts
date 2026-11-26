@@ -33,6 +33,7 @@ export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
     version: '18.1.5',
     fecha: '2026-11-26',
     cambios: [
+      { tipo: 'agregado', texto: 'Siniestros: nuevo «Croquis» en la ficha. Se arma el dibujo de cómo fue el choque (cruce en cruz, en T, rotonda, calle recta o en blanco), se suman autos, motos, bicis, camiones, colectivos y peatones, se arrastran y se giran, y se les pone nombre a las calles. Cuando el cliente confirma que está bien, queda guardado en la ficha como documento (imagen), y también se puede descargar para mandárselo.' },
       { tipo: 'agregado', texto: 'Flotas: si cargás (en Pólizas o en la planilla del mes) un número de póliza que ya tiene otro vehículo del mismo cliente y la misma compañía, el cartel ahora te deja confirmar «Es una flota, cargar igual». Con otro cliente el número repetido sigue bloqueado. Al importar la hoja, las filas de una flota ya no se juntan en una sola póliza.' },
       { tipo: 'modificado', texto: 'Multicotizador: el comparativo ahora se ve con un bloque por compañía, sin mezclar. Cada tarjeta muestra la suma asegurada y, debajo, el monto de la cuota. Con «Ver por: Tipo de cobertura» se vuelve a la comparación de antes.' },
     ],

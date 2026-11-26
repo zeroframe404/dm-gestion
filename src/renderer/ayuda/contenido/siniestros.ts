@@ -43,6 +43,13 @@ export const AYUDA_SINIESTROS: Record<string, ContenidoDeAyuda> = {
         ],
       },
       {
+        titulo: 'Croquis del siniestro',
+        parrafos: [
+          '«Croquis», al lado de «Adjuntar», abre un dibujo para armar cómo fue el choque. Se elige el tipo de calle (cruce en cruz, en T, rotonda, calle recta o en blanco), se suman autos, motos, bicis, camiones, colectivos y peatones, y se arrastran sobre el mapa. Cada vehículo lleva una letra (A, B, C…) y una flechita que marca para dónde mira; al tocarlo se puede girar, cambiarle el color o borrarlo. «+ Nombre de calle» agrega un cartel con el nombre que se escriba.',
+          'Sirve para cuando el cliente cuenta el choque en un audio o por teléfono: se va armando mientras habla y se le muestra para que confirme si fue así. «Confirmar y guardar en la ficha» lo deja como un documento más (una imagen, en «Otras documentaciones» con el detalle «Croquis del siniestro»); «Descargar imagen» lo baja para mandárselo al cliente por WhatsApp.',
+        ],
+      },
+      {
         titulo: 'Adjuntar documentos por categoría',
         parrafos: [
           '«Adjuntar» pregunta primero de qué documento se trata y después abre el explorador de archivos. Las categorías son las que pide la compañía para armar el legajo: Denuncia, Certificado de cobertura, Fotos del siniestro, Registro de conducir, DNI, Cédula verde, Denuncia policial, Constancia médica y Otras documentaciones. La categoría elegida vale para todos los archivos de esa tanda, así que las seis fotos del choque se eligen juntas y quedan las seis como «Fotos del siniestro».',
