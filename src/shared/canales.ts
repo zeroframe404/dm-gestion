@@ -1,6 +1,7 @@
 // Contrato tipado de los canales IPC: cada canal declara sus argumentos y su respuesta.
 // El proceso principal implementa exactamente estas firmas y la precarga las expone.
 import type { Flota } from './flotas'
+import type { DatosDeAltaDesdePoliza, PolizaLeida, ResultadoDeAltaDesdePoliza } from './lecturaDePoliza'
 import type { TipoEliminable, ResultadoDeEliminacion, VistaPreviaDeEliminacion } from './eliminacion'
 import type {
   AseguradoraDelMulticotizador,
@@ -585,6 +586,12 @@ export interface Canales {
   /** Las localidades ya cargadas, para sugerirlas al escribir una dirección. */
   'clientes:localidades': () => Resultado<string[]>
   'clientes:crear': (datos: DatosDeCliente) => Resultado<ResultadoAltaCliente>
+  /** Consulta de solo lectura: el cliente que ya tiene ese DNI/CUIT, o null. Para avisar antes de crear. */
+  'clientes:porDocumento': (documento: string) => Resultado<FilaCliente | null>
+  /** «Nuevo cliente» con el PDF de la póliza: la IA lo lee y devuelve lo que hay que revisar. No guarda nada. */
+  'clientes:leerPoliza': (archivo: { nombre: string; contenido: Uint8Array }) => Resultado<PolizaLeida>
+  /** Cliente + auto + póliza de una vez (o la póliza al cliente que ya existe). Todo o nada. */
+  'clientes:altaDesdePoliza': (datos: DatosDeAltaDesdePoliza) => Resultado<ResultadoDeAltaDesdePoliza>
   'clientes:editar': (clienteId: number, datos: DatosDeCliente) => Resultado<FichaCliente>
   'clientes:agregarNota': (clienteId: number, texto: string) => Resultado<NotaDeCliente[]>
   'clientes:crearTarea': (datos: DatosDeTarea) => Resultado<TareaDeCliente[]>
@@ -664,7 +671,7 @@ export interface Canales {
   /** Compañía + cobertura + año del vehículo contra la matriz de reglas. */
   'polizas:validarCobertura': (compania: string, cobertura: string, anioVehiculo: string) => Resultado<AvisoDeCobertura>
   /** Si la patente la dio de baja otro cliente: para avisar antes de reusarla. */
-  'polizas:patenteDadaDeBaja': (clienteId: number, patente: string) => Resultado<PatenteDadaDeBaja | null>
+  'polizas:patenteDadaDeBaja': (clienteId: number | null, patente: string) => Resultado<PatenteDadaDeBaja | null>
   'polizas:crear': (datos: DatosDePoliza) => Resultado<PolizaDeCliente>
   'polizas:editar': (polizaId: number, datos: DatosDePoliza) => Resultado<PolizaDeCliente>
   'polizas:darDeBaja': (polizaId: number, datos: DatosDeBaja) => Resultado<null>
