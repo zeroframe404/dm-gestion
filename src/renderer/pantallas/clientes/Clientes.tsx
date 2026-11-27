@@ -388,9 +388,9 @@ function ListadoDeClientes({
       <DialogoNuevoCliente
         abierto={dialogoAbierto}
         alCerrar={() => setDialogoAbierto(false)}
-        alCrear={(cliente) => {
+        alCrear={(cliente, avisoDelAlta) => {
           setDialogoAbierto(false)
-          setAviso(`${cliente.nombre} quedó dado de alta. Cargale la primera póliza desde su ficha.`)
+          setAviso(avisoDelAlta ?? `${cliente.nombre} quedó dado de alta. Cargale la primera póliza desde su ficha.`)
           void cargar(filtros)
           alAbrirCliente(cliente.id)
         }}

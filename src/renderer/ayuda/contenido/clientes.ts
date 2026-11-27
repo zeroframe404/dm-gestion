@@ -37,6 +37,15 @@ export const AYUDA_CLIENTES: Record<string, ContenidoDeAyuda> = {
           'El botón «Nuevo cliente» da de alta a una persona con sus datos básicos. Apenas se crea, la aplicación abre directamente su ficha para cargarle la primera póliza: un cliente sin ninguna póliza cargada todavía va a aparecer en el grupo «Sin pólizas» hasta que se la carguen.',
         ],
       },
+      {
+        titulo: 'Cargar un cliente desde el PDF de la póliza',
+        parrafos: [
+          'En «Nuevo cliente», el recuadro «Cargar desde la póliza (PDF)» permite subir el PDF de una póliza de auto. La inteligencia artificial lo lee y completa el formulario: del cliente el nombre y apellido, el DNI o CUIT y la dirección; del auto la patente, la marca, el modelo, el año, el motor y el chasis; de la póliza la compañía, el número, la cobertura y la vigencia. Lo que vino del PDF queda marcado como «Leído del PDF» y se puede corregir. Nada se guarda hasta que apretás «Crear cliente y póliza».',
+          'Después la aplicación pide sólo lo que el PDF no trae y es obligatorio: el celular, el email y la forma de pago. Arriba del formulario dice qué falta, y el botón de crear se habilita cuando está todo. Si el aviso de antigüedad de la cobertura aparece, se confirma igual que en el formulario de póliza (lo confirma un administrador). Al crear, el PDF queda adjunto en la póliza.',
+          'Si el DNI del PDF ya es de un cliente cargado, la aplicación lo muestra apenas lo lee y ofrece «Agregar esta póliza al cliente existente»: le crea el auto y la póliza en su ficha sin tocar ninguno de sus datos. Si el nombre del PDF no se parece al del cliente, avisa: puede ser un DNI mal leído. Con «No es esta persona: corregir el DNI» se vuelve al formulario.',
+          'Por ahora se leen pólizas de auto con un solo vehículo; con cualquier otra (hogar, moto, flotas) la aplicación avisa y se carga a mano, como siempre. Para usarlo hace falta que el superadministrador haya cargado la clave de la inteligencia artificial, y el PDF se envía a Anthropic para leerlo. Si la lectura falla (sin internet, PDF protegido, imagen ilegible), el formulario sigue disponible y no se pierde lo que ya estaba escrito.',
+        ],
+      },
     ],
     conceptos: [
       {

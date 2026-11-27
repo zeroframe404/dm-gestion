@@ -177,6 +177,7 @@ import {
   agregarNota,
   buscarClientes,
   cambiarEstadoDeTarea,
+  clientePorDocumento,
   crearCliente,
   crearTarea,
   editarCliente,
@@ -184,6 +185,8 @@ import {
   listarClientes,
   localidadesConocidas,
 } from './servicios/clientes'
+import { altaDesdePoliza } from './servicios/altaDesdePoliza'
+import { leerPolizaDePdf } from './servicios/lecturaDePoliza'
 import { archivoDeDeudores, buscarDeudores } from './servicios/deudores'
 import {
   catalogosDePoliza,
@@ -1217,6 +1220,24 @@ export function registrarIpc(): void {
   // de Clientes y nada más. Convertir un lead también da de alta un cliente, y por eso el canal
   // `leads:convertir` exige las dos puntas: si acá se aceptara `leads`, ese control no serviría.
   manejar('clientes:crear', (datos) => exito(crearCliente(datos, exigirEdicion('clientes'))))
+  // El alta desde el PDF de la póliza escribe en DOS áreas (el cliente y su póliza), igual que
+  // `leads:convertir`: hace falta poder editar las dos. OJO: `exigirEdicion('clientes', 'polizas')` NO
+  // sirve, porque con varias áreas alcanza con tener UNA; por eso son dos llamadas. Leer el PDF no
+  // escribe nada, pero gasta saldo de la IA y se ofrece sólo a quien después puede crear: pide lo mismo.
+  manejar('clientes:leerPoliza', async (archivo) => {
+    exigirEdicion('clientes')
+    exigirEdicion('polizas')
+    return exito(await leerPolizaDePdf(archivo))
+  })
+  // Sólo lectura: avisa que el DNI ya está cargado antes de pedir datos que no hacen falta.
+  manejar('clientes:porDocumento', (documento) => {
+    exigirVista('clientes', 'polizas', 'presupuestos')
+    return exito(clientePorDocumento(documento))
+  })
+  manejar('clientes:altaDesdePoliza', async (datos) => {
+    exigirEdicion('clientes')
+    return exito(await altaDesdePoliza(datos, exigirEdicion('polizas')))
+  })
   manejar('clientes:editar', (clienteId, datos) =>
     exito(editarCliente(enteroPositivo(clienteId, 'El cliente'), datos, exigirEdicion('clientes'))),
   )

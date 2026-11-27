@@ -745,9 +745,11 @@ function mensajeDePatenteDadaDeBaja(baja: PatenteDadaDeBaja): string {
 /**
  * Para el aviso del formulario antes de guardar: si la patente es de otro cliente que la dio de baja.
  * Null si la patente está libre, es de este cliente, o sigue asegurada por otro (eso lo frena el alta).
+ * Con `clienteId` null (un cliente que todavía no existe, en el alta desde el PDF) cualquier auto cargado
+ * es de otro.
  */
-export function patenteDadaDeBaja(clienteId: number, patente: string): PatenteDadaDeBaja | null {
-  const id = enteroPositivo(clienteId, 'El cliente')
+export function patenteDadaDeBaja(clienteId: number | null, patente: string): PatenteDadaDeBaja | null {
+  const id = clienteId === null ? null : enteroPositivo(clienteId, 'El cliente')
   const normalizada = normalizarPatente(texto(patente, 'La patente', 0, 20))
   if (!normalizada) return null
   const veh = db().prepare(`${SELECT_VEHICULO} WHERE clave = ?`).get(`PAT:${normalizada}`) as VehiculoGuardado | undefined
