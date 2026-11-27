@@ -302,6 +302,33 @@ function iaSimulada(respuesta: Record<string, unknown>) {
   return { pedidos, crear: () => ia as never }
 }
 
+/** Cuántas propiedades del esquema usan unión de tipos (`anyOf` o `type` en lista) y cuántas no son obligatorias. */
+function complejidadDelEsquema(esquema: Record<string, any>): { uniones: number; opcionales: number } {
+  let uniones = 0
+  let opcionales = 0
+  const recorrer = (nodo: Record<string, any>): void => {
+    const obligatorias = new Set<string>(nodo.required ?? [])
+    for (const [nombre, propiedad] of Object.entries((nodo.properties ?? {}) as Record<string, Record<string, any>>)) {
+      if (!obligatorias.has(nombre)) opcionales += 1
+      if (Array.isArray(propiedad.anyOf) || Array.isArray(propiedad.type)) uniones += 1
+      recorrer(propiedad)
+    }
+    for (const rama of (nodo.anyOf ?? []) as Array<Record<string, any>>) recorrer(rama)
+    if (nodo.items) recorrer(nodo.items)
+  }
+  recorrer(esquema)
+  return { uniones, opcionales }
+}
+
+// La API compila el esquema y rechaza el pedido entero (400) si se pasa de estos topes, sin mirar el PDF:
+// https://platform.claude.com/docs/en/build-with-claude/structured-outputs#schema-complexity-limits
+// Con «texto o null» en cada campo eran 27 uniones y no se podía leer ninguna póliza.
+test('el esquema de lectura entra en los topes de la salida estructurada de la API', () => {
+  const { uniones, opcionales } = complejidadDelEsquema(ESQUEMA_DE_LECTURA)
+  assert.ok(uniones <= 16, `el esquema tiene ${uniones} campos con unión de tipos y la API acepta hasta 16`)
+  assert.ok(opcionales <= 24, `el esquema tiene ${opcionales} campos opcionales y la API acepta hasta 24`)
+})
+
 test('pedirLecturaALaIa manda el PDF en base64, el esquema JSON y el modelo, y parsea la respuesta', async () => {
   const { pedidos, crear } = iaSimulada({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ esPolizaDeAuto: true }) }] })
   const resultado = await pedirLecturaALaIa(PDF.contenido, 'clave-de-prueba', crear)
@@ -318,7 +345,7 @@ test('pedirLecturaALaIa manda el PDF en base64, el esquema JSON y el modelo, y p
   assert.equal(documento.source.media_type, 'application/pdf')
   assert.equal(documento.source.data, Buffer.from(PDF.contenido).toString('base64'))
   // Las reglas que no se negocian: sólo lo que está en el PDF, y lo que trae adentro no es una orden.
-  assert.match(String(pedido.system), /null/)
+  assert.match(String(pedido.system), /vac[ií]o/i)
   assert.match(String(pedido.system), /instrucciones/i)
 })
 
