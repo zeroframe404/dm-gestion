@@ -5,20 +5,20 @@
 // muestra quién es y ofrece las dos únicas salidas sensatas: abrir esa ficha, o corregir lo cargado.
 // No hay tercera opción, y no la tiene que haber: el duplicado es el error que después cuesta días.
 //
-// «Cargar desde la póliza (PDF)»: además de lo manual, se puede subir el PDF de una póliza de auto; la IA
-// lo lee y completa el cliente, el auto y la póliza, y la pantalla pide sólo lo que el PDF no trae y es
+// «Cargar desde la póliza (PDF)»: además de lo manual, se puede subir el PDF de una póliza de auto o de moto;
+// la IA lo lee y completa el cliente, el vehículo y la póliza, y la pantalla pide sólo lo que el PDF no trae y es
 // obligatorio (celular, email, forma de pago…). Nada se guarda sin revisión. Con el DNI de un cliente que
 // ya existe, en vez de crear se ofrece AGREGARLE la póliza sin tocar sus datos. Lo manual queda igual.
 import { useEffect, useMemo, useState } from 'react'
 import { DIRECCION_VACIA, direccionTienePartes, type DireccionEstructurada } from '../../../shared/direccion'
 import { detectarDocumento } from '../../../shared/documento'
 import { FALTANTE, faltantesDelAlta, type PolizaDeAlta, type PolizaLeida, type VehiculoDeAlta } from '../../../shared/lecturaDePoliza'
-import type { AvisoDeCobertura, CatalogosDePoliza, DatosDeCliente, FichaCliente, FilaCliente, PatenteDadaDeBaja, Sucursal } from '../../../shared/tipos'
+import type { AvisoDeCobertura, CatalogosDePoliza, DatosDeCliente, FichaCliente, FilaCliente, PatenteDadaDeBaja, Sucursal, TipoDeVehiculo } from '../../../shared/tipos'
 import { Alerta, Boton, Campo, Dialogo } from '../../componentes/ui'
 import { usePuedeEditar } from '../../contexto/Permisos'
 import { useUsuarioActual } from '../../contexto/Sesion'
 import { BotonDeDireccion, CampoDeDocumento, CampoDeNacimiento, conDireccion, recortar, type CampoDeTexto } from './CamposDeCliente'
-import { CamposDePolizaLeida } from './CamposDePolizaLeida'
+import { CamposDePolizaLeida, type CampoDeTextoDelVehiculo } from './CamposDePolizaLeida'
 import { CargaDesdePdf, type PdfElegido } from './CargaDesdePdf'
 import { TarjetaDeClienteExistente } from './TarjetaDeClienteExistente'
 
@@ -37,7 +37,7 @@ const DATOS_VACIOS: DatosDeCliente = {
   direccionDetalle: DIRECCION_VACIA,
 }
 
-const VEHICULO_VACIO: VehiculoDeAlta = { patente: '', marca: '', modelo: '', anio: '', motor: '', chasis: '', uso: '', color: '' }
+const VEHICULO_VACIO: VehiculoDeAlta = { tipo: 'AUTO', patente: '', marca: '', modelo: '', anio: '', motor: '', chasis: '', uso: '', color: '' }
 const POLIZA_VACIA: PolizaDeAlta = { compania: '', numero: '', propuesta: '', cobertura: '', vigenciaDesde: '', vigenciaHasta: '', formaPago: '', cuota: '', observaciones: '' }
 
 /** Lo leído pisa lo que esté vacío o distinto; lo que el PDF no trajo no borra lo que ya se había tipeado. */
@@ -184,6 +184,9 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
 
   if (!abierto) return null
 
+  // Para decir «el auto» o «la moto» en los carteles, según lo que quedó elegido en «Tipo».
+  const esMoto = vehiculo.tipo === 'MOTO'
+
   const cambiarTexto = (campo: CampoDeTexto) => (valor: string) => {
     if (campo === 'documento') setCorrigiendo(false)
     setDatos((previos) => ({ ...previos, [campo]: valor }))
@@ -191,7 +194,9 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
 
   const cambiarDireccion = (direccionDetalle: DireccionEstructurada) => setDatos((previos) => conDireccion(previos, direccionDetalle))
 
-  const cambiarVehiculo = (campo: keyof VehiculoDeAlta, valor: string) => {
+  const cambiarTipo = (tipo: TipoDeVehiculo) => setVehiculo((previos) => ({ ...previos, tipo }))
+
+  const cambiarVehiculo = (campo: CampoDeTextoDelVehiculo, valor: string) => {
     setVehiculo((previos) => ({ ...previos, [campo]: valor }))
     if (campo === 'patente') {
       setPatenteDeBaja(null)
@@ -265,7 +270,7 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
     }
     if (resultado.datos.creado) {
       const { cliente, adjuntoGuardado } = resultado.datos
-      let aviso = idDelExistente !== null ? `Se le agregó el auto y la póliza a ${cliente.nombre}.` : `${cliente.nombre} quedó dado de alta con su auto y su póliza.`
+      let aviso = idDelExistente !== null ? `Se le agregó ${esMoto ? 'la moto' : 'el auto'} y la póliza a ${cliente.nombre}.` : `${cliente.nombre} quedó dado de alta con su ${esMoto ? 'moto' : 'auto'} y su póliza.`
       // El alta ya está hecha: si el adjunto falló no se la deshace, pero se avisa para que no pase inadvertido.
       if (pdf && !adjuntoGuardado) aviso += ' No se pudo adjuntar el PDF: subilo desde la póliza.'
       alCrear(cliente, aviso)
@@ -366,6 +371,7 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
       vehiculo={vehiculo}
       poliza={poliza}
       alCambiarVehiculo={cambiarVehiculo}
+      alCambiarTipo={cambiarTipo}
       alCambiarPoliza={cambiarPoliza}
       leidos={leidos}
       faltan={faltan}
@@ -408,7 +414,7 @@ export function DialogoNuevoCliente({ abierto, alCerrar, alCrear, alAbrirExisten
           // --- Con PDF y el DNI de un cliente que ya está: se le agrega la póliza, sus datos no se tocan ---
           <>
             <TarjetaDeClienteExistente cliente={existente} nombreDelPdf={lectura.cliente.nombre} />
-            <Alerta tono="info">Se le van a agregar el auto y la póliza a este cliente. Sus datos no se tocan.</Alerta>
+            <Alerta tono="info">Se le van a agregar {esMoto ? 'la moto' : 'el auto'} y la póliza a este cliente. Sus datos no se tocan.</Alerta>
             <button type="button" className="self-start text-sm font-medium text-marino-700 underline" onClick={() => setCorrigiendo(true)}>
               No es esta persona: corregir el DNI
             </button>

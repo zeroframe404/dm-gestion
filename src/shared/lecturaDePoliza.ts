@@ -13,10 +13,16 @@
 // 3. SE ESCRIBE COMO ESCRIBE LA AGENCIA. En la hoja los clientes son `APELLIDO NOMBRES` en mayúsculas, y
 //    la compañía, la marca y el modelo van en mayúsculas con el nombre del catálogo.
 import { DIRECCION_VACIA, textoDeDireccion, type DireccionEstructurada } from './direccion'
-import type { DatosDeCliente, FichaCliente, FilaCliente } from './tipos'
+import { TIPOS_DE_VEHICULO, type DatosDeCliente, type FichaCliente, type FilaCliente, type TipoDeVehiculo } from './tipos'
 
-/** El PDF más grande que se manda a leer. La API acepta hasta 32 MB por pedido y el base64 pesa un tercio más. */
-export const MAXIMO_DEL_PDF_EN_BYTES = 20 * 1024 * 1024
+/**
+ * El PDF más pesado que se manda a leer. La API acepta pedidos de hasta 128 MB y el PDF viaja en base64, que
+ * pesa un tercio más: 90 MB de PDF son 120 MB de pedido.
+ * https://platform.claude.com/docs/en/api/overview#request-size-limits
+ */
+export const MAXIMO_DEL_PDF_EN_BYTES = 90 * 1024 * 1024
+/** Desde acá un PDF es «pesado» (una póliza escaneada): subirlo lleva su rato, así que se avisa en pantalla y no se reintenta solo. */
+export const PDF_PESADO_EN_BYTES = 20 * 1024 * 1024
 const LARGO_MAXIMO_DE_UN_CAMPO = 200
 
 // ---------------------------------------------------------------------------
@@ -26,7 +32,8 @@ const LARGO_MAXIMO_DE_UN_CAMPO = 200
 type Texto = string | null
 
 export interface LecturaDePoliza {
-  esPolizaDeAuto: boolean
+  /** Qué asegura la póliza: un auto o una moto. `null` si es otra cosa (una casa, un camión, una persona): eso se carga a mano. */
+  tipoDeVehiculo: TipoDeVehiculo | null
   /** Cuántos vehículos trae el PDF. Con más de uno (flotas) se carga a mano. */
   cantidadDeVehiculos: number
   /** El nombre del tomador cuando es otra persona distinta del asegurado. */
@@ -60,9 +67,9 @@ function objetoDelEsquema(campos: readonly string[]): Record<string, unknown> {
 export const ESQUEMA_DE_LECTURA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
-  required: ['esPolizaDeAuto', 'cantidadDeVehiculos', 'tomadorDistinto', 'asegurado', 'domicilio', 'vehiculo', 'poliza'],
+  required: ['tipoDeVehiculo', 'cantidadDeVehiculos', 'tomadorDistinto', 'asegurado', 'domicilio', 'vehiculo', 'poliza'],
   properties: {
-    esPolizaDeAuto: { type: 'boolean' },
+    tipoDeVehiculo: { type: 'string', enum: [...TIPOS_DE_VEHICULO, 'OTRO'] },
     cantidadDeVehiculos: { type: 'integer' },
     tomadorDistinto: TEXTO,
     asegurado: objetoDelEsquema(CAMPOS_DEL_ASEGURADO),
@@ -83,6 +90,12 @@ function textoLimpio(valor: unknown): Texto {
   return limpio === '' ? null : limpio
 }
 
+/** `AUTO` o `MOTO`, sin fiarse de las mayúsculas (la salida estructurada no las garantiza). «OTRO», vacío o basura es `null`. */
+function tipoLeido(valor: unknown): TipoDeVehiculo | null {
+  const texto = typeof valor === 'string' ? valor.trim().toUpperCase() : ''
+  return TIPOS_DE_VEHICULO.find((tipo) => tipo === texto) ?? null
+}
+
 function grupo<C extends string>(bruto: unknown, campos: readonly C[]): Record<C, Texto> {
   const origen = comoObjeto(bruto) ?? {}
   return Object.fromEntries(campos.map((campo) => [campo, textoLimpio(origen[campo])])) as Record<C, Texto>
@@ -97,7 +110,7 @@ export function interpretarLectura(bruto: unknown): LecturaDePoliza | null {
   if (!origen) return null
   const cantidad = typeof origen.cantidadDeVehiculos === 'number' && Number.isFinite(origen.cantidadDeVehiculos) ? Math.trunc(origen.cantidadDeVehiculos) : 0
   return {
-    esPolizaDeAuto: origen.esPolizaDeAuto === true,
+    tipoDeVehiculo: tipoLeido(origen.tipoDeVehiculo),
     cantidadDeVehiculos: Math.max(0, cantidad),
     tomadorDistinto: textoLimpio(origen.tomadorDistinto),
     asegurado: grupo(origen.asegurado, CAMPOS_DEL_ASEGURADO),
@@ -201,6 +214,8 @@ function nombreDeLaAgencia(apellido: Texto, nombres: Texto): string {
 // ---------------------------------------------------------------------------
 
 export interface VehiculoDeAlta {
+  /** Auto o moto: lo dice el PDF y se puede corregir en pantalla. Es el `tipo` con el que se guarda el vehículo. */
+  tipo: TipoDeVehiculo
   patente: string
   marca: string
   modelo: string
@@ -264,6 +279,7 @@ export function polizaLeida(lectura: LecturaDePoliza, catalogos: CatalogosParaAj
     direccionDetalle: detalle,
   }
   const vehiculo: VehiculoDeAlta = {
+    tipo: lectura.tipoDeVehiculo ?? 'AUTO',
     patente: patenteLimpia(lectura.vehiculo.patente),
     marca: mayusculas(lectura.vehiculo.marca),
     modelo: mayusculas(lectura.vehiculo.modelo),
@@ -295,7 +311,8 @@ export function polizaLeida(lectura: LecturaDePoliza, catalogos: CatalogosParaAj
     }
   }
   anotar('cliente', { nombre: cliente.nombre, documento: cliente.documento, telefono: cliente.telefono, email: cliente.email, direccion: cliente.direccion, localidad: cliente.localidad })
-  anotar('vehiculo', vehiculo)
+  // El tipo sólo cuenta como leído si el PDF lo dijo (sin tipo, `AUTO` es apenas el valor de arranque).
+  anotar('vehiculo', { ...vehiculo, tipo: lectura.tipoDeVehiculo ?? '' })
   anotar('poliza', poliza)
 
   const avisos: string[] = []

@@ -58,7 +58,7 @@ function datosDeAlta(cambios: Partial<DatosDeAltaDesdePoliza> = {}): DatosDeAlta
       profesion: '',
       direccionDetalle: { ...DIRECCION_VACIA, calle: 'AV. HIPÓLITO YRIGOYEN', altura: '1234', localidad: 'LANÚS', provincia: 'BUENOS AIRES' },
     },
-    vehiculo: { patente: 'AA999ZZ', marca: 'FORD', modelo: 'FIESTA', anio: '2018', motor: 'HH123456', chasis: '9BFZZZ54ZJB123456', uso: '', color: '' },
+    vehiculo: { tipo: 'AUTO', patente: 'AA999ZZ', marca: 'FORD', modelo: 'FIESTA', anio: '2018', motor: 'HH123456', chasis: '9BFZZZ54ZJB123456', uso: '', color: '' },
     poliza: {
       compania: 'SANCOR',
       numero: '5550001',
@@ -152,6 +152,21 @@ test('crea el cliente, el auto y la póliza de una vez', async () => {
   assert.equal(autos[0]?.tipo, 'AUTO')
   assert.equal(autos[0]?.linea, null)
   assert.equal(autos[0]?.categoria, null)
+})
+
+test('una moto leída del PDF queda cargada como moto, no como auto', async () => {
+  await cartera()
+  const datos = datosDeAlta()
+  datos.vehiculo = { ...datos.vehiculo, tipo: 'MOTO', patente: 'A098XYZ', marca: 'HONDA', modelo: 'WAVE 110 S', anio: '2023', motor: 'JA39E7654321', chasis: '8CHJA3910PP000123' }
+  const resultado = await altaDesdePoliza(datos, DANIEL)
+  assert.equal(resultado.creado, true)
+  if (!resultado.creado) return
+
+  const motos = vehiculosDeCliente(resultado.cliente.id)
+  assert.equal(motos.length, 1)
+  assert.equal(motos[0]?.patente, 'A098XYZ')
+  assert.equal(motos[0]?.tipo, 'MOTO')
+  assert.equal(polizasDeCliente(resultado.cliente.id)[0]?.id, resultado.polizaId)
 })
 
 test('si la póliza falla no queda ningún cliente nuevo', async () => {

@@ -235,3 +235,19 @@ Si el DNI leído (o el tipeado) ya está cargado:
 - Topes de tamaño/páginas y modelo definitivo (ver arriba).
 - Qué hacer si el PDF trae más de un vehículo o no es de auto: avisar y dejar el formulario manual (no cargar a
   ciegas).
+
+## Cambios posteriores
+
+Lo de arriba es el diseño original; esto es lo que cambió después y hoy vale por encima de él.
+
+- **2026-11-27 · Lo que falta vuelve vacío, no `null`.** La salida estructurada de la API acepta hasta 16 campos
+  con unión de tipos por pedido y el esquema pedía «texto o null» en 27: rechazaba todos los pedidos. Cada campo
+  es texto simple y `interpretarLectura` pasa el vacío a `null`.
+- **2026-11-27 · También se leen motos.** «Pólizas que no son de auto» deja de incluir a las motos. La IA devuelve
+  `tipoDeVehiculo` (`AUTO`, `MOTO` u `OTRO`) en lugar de `esPolizaDeAuto`; el vehículo se guarda con ese `tipo`
+  (`MOTO`, sin categoría: en el listado por ramas es Moto hasta que alguien la afine) y entre lo leído hay un
+  selector «Tipo» para revisarlo. Camiones, acoplados y todo lo que no es un vehículo siguen a mano.
+- **2026-11-27 · PDF de hasta 90 MB.** El tope de 20 MB salía de un límite viejo de la API (32 MB por pedido). Hoy
+  acepta pedidos de 128 MB y el PDF viaja en base64 (un tercio más): 90 MB de PDF son 120 MB de pedido. El tiempo
+  tope crece con el peso (dos minutos más cuatro segundos por MB, hasta los cinco minutos: Node corta ahí todo
+  pedido sin respuesta), un PDF de más de 20 MB no se reintenta solo y la pantalla avisa que puede tardar.
