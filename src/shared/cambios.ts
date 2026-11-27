@@ -30,6 +30,13 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
+    version: '18.1.7',
+    fecha: '2026-11-27',
+    cambios: [
+      { tipo: 'corregido', texto: 'Clientes: al subir el PDF de una póliza en «Nuevo cliente» salía siempre «La IA no pudo leer este PDF», con cualquier archivo. No era el PDF ni la cantidad de hojas: el pedido que el programa le hacía a la IA estaba mal armado y lo rechazaba sin llegar a leerlo. Ya está arreglado y las pólizas se leen.' },
+    ],
+  },
+  {
     version: '18.1.6',
     fecha: '2026-11-26',
     cambios: [
