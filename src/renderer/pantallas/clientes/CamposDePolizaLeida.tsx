@@ -1,15 +1,19 @@
-// Los campos del auto y de la póliza que se completan con lo que leyó la IA, para revisar y corregir.
+// Los campos del vehículo (auto o moto) y de la póliza que se completan con lo que leyó la IA, para revisar
+// y corregir.
 //
 // Cada dato que vino del PDF lleva la marca «Leído del PDF»; los que el PDF no trajo y son obligatorios
 // se resaltan con «Falta este dato». Los avisos de siempre del formulario de póliza (antigüedad de la
 // cobertura, patente dada de baja por otro cliente) salen acá mismo, pegados a los campos que los producen.
 import { FALTANTE, type PolizaDeAlta, type VehiculoDeAlta } from '../../../shared/lecturaDePoliza'
-import type { AvisoDeCobertura, CatalogosDePoliza, PatenteDadaDeBaja } from '../../../shared/tipos'
-import { Alerta, Campo } from '../../componentes/ui'
+import { NOMBRE_TIPO_VEHICULO, TIPOS_DE_VEHICULO, type AvisoDeCobertura, type CatalogosDePoliza, type PatenteDadaDeBaja, type TipoDeVehiculo } from '../../../shared/tipos'
+import { Alerta, Campo, Selector } from '../../componentes/ui'
 
 const LISTA_COMPANIAS = 'lista-companias-alta-pdf'
 const LISTA_COBERTURAS = 'lista-coberturas-alta-pdf'
 const LISTA_FORMAS_DE_PAGO = 'lista-formas-de-pago-alta-pdf'
+
+/** Los datos del vehículo que son texto libre. El tipo (auto o moto) se elige de una lista y va aparte. */
+export type CampoDeTextoDelVehiculo = Exclude<keyof VehiculoDeAlta, 'tipo'>
 
 export interface ConfirmacionDeAviso {
   /** Quien puede confirmar el aviso (un administrador). Un empleado ve que lo tiene que confirmar otro. */
@@ -21,7 +25,8 @@ export interface ConfirmacionDeAviso {
 interface Props {
   vehiculo: VehiculoDeAlta
   poliza: PolizaDeAlta
-  alCambiarVehiculo: (campo: keyof VehiculoDeAlta, valor: string) => void
+  alCambiarVehiculo: (campo: CampoDeTextoDelVehiculo, valor: string) => void
+  alCambiarTipo: (tipo: TipoDeVehiculo) => void
   alCambiarPoliza: (campo: keyof PolizaDeAlta, valor: string) => void
   /** Claves de lo que vino del PDF: `vehiculo.chasis`, `poliza.vigenciaDesde`… */
   leidos: ReadonlySet<string>
@@ -52,6 +57,7 @@ export function CamposDePolizaLeida({
   vehiculo,
   poliza,
   alCambiarVehiculo,
+  alCambiarTipo,
   alCambiarPoliza,
   leidos,
   faltan,
@@ -66,9 +72,16 @@ export function CamposDePolizaLeida({
 
   return (
     <div className="flex flex-col gap-5">
-      <section className="flex flex-col gap-3" aria-label="Auto">
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Auto</h3>
+      <section className="flex flex-col gap-3" aria-label={NOMBRE_TIPO_VEHICULO[vehiculo.tipo]}>
+        <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{NOMBRE_TIPO_VEHICULO[vehiculo.tipo]}</h3>
         <div className="grid gap-4 sm:grid-cols-2">
+          <Selector
+            etiqueta="Tipo"
+            value={vehiculo.tipo}
+            onChange={(evento) => alCambiarTipo(evento.target.value as TipoDeVehiculo)}
+            opciones={TIPOS_DE_VEHICULO.map((tipo) => ({ valor: tipo, texto: NOMBRE_TIPO_VEHICULO[tipo] }))}
+            ayuda={marca('vehiculo.tipo')}
+          />
           <Campo
             etiqueta="Patente"
             value={vehiculo.patente}
@@ -90,7 +103,7 @@ export function CamposDePolizaLeida({
               Esta patente fue dada de baja{patenteDeBaja.fechaBaja ? ` el ${patenteDeBaja.fechaBaja}` : ''} por <strong className="font-semibold">{patenteDeBaja.clienteAnterior}</strong>. ¿Desea continuar?
             </Alerta>
             <CasillaDeConfirmacion confirmado={confirmacionDeLaPatente.confirmado} alConfirmar={confirmacionDeLaPatente.alConfirmar}>
-              <strong className="font-semibold">Es el mismo auto: continuar.</strong> Pasa a nombre de este cliente.
+              <strong className="font-semibold">{vehiculo.tipo === 'MOTO' ? 'Es la misma moto' : 'Es el mismo auto'}: continuar.</strong> Pasa a nombre de este cliente.
             </CasillaDeConfirmacion>
           </div>
         )}

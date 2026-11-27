@@ -1,4 +1,4 @@
-// El alta de «Nuevo cliente» con el PDF de la póliza: cliente + auto + póliza de una vez.
+// El alta de «Nuevo cliente» con el PDF de la póliza: cliente + vehículo (auto o moto) + póliza de una vez.
 //
 // Dos reglas:
 //
@@ -25,19 +25,20 @@ function textoDe(valor: unknown): string {
 }
 
 function datosDeLaPoliza(datos: DatosDeAltaDesdePoliza, clienteId: number): DatosDePoliza {
-  const vehiculo = objeto(datos.vehiculo, 'Los datos del auto')
+  const vehiculo = objeto(datos.vehiculo, 'Los datos del vehículo')
   const poliza = objeto(datos.poliza, 'Los datos de la póliza')
   return {
     clienteId,
     vehiculoId: null,
-    // Un auto como texto leído: sin versión, categoría ni código de catálogo, igual que los cargados a mano.
+    // Un vehículo como texto leído: sin versión, categoría ni código de catálogo, igual que los cargados a mano.
     vehiculoNuevo: {
       patente: textoDe(vehiculo.patente),
       marca: textoDe(vehiculo.marca),
       modelo: textoDe(vehiculo.modelo),
       linea: '',
       anio: textoDe(vehiculo.anio),
-      tipo: 'AUTO',
+      // Auto o moto, según lo que se revisó en pantalla. Cualquier otra cosa que llegue se guarda como auto.
+      tipo: vehiculo.tipo === 'MOTO' ? 'MOTO' : 'AUTO',
       categoria: '',
       catalogoCodigo: '',
       motor: textoDe(vehiculo.motor),

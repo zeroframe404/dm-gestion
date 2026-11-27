@@ -1,4 +1,4 @@
-// La lectura con IA del PDF de una póliza de auto, para «Nuevo cliente».
+// La lectura con IA del PDF de una póliza de auto o de moto, para «Nuevo cliente».
 //
 // Tres reglas:
 //
@@ -18,6 +18,7 @@ import {
   ESQUEMA_DE_LECTURA,
   interpretarLectura,
   MAXIMO_DEL_PDF_EN_BYTES,
+  PDF_PESADO_EN_BYTES,
   polizaLeida,
   type CatalogosParaAjustar,
   type PolizaLeida,
@@ -30,7 +31,7 @@ import { catalogosDePoliza } from './polizas'
 import { objeto } from './validacion'
 
 const INSTRUCCIONES = [
-  'Sos un lector de pólizas de seguro de automotor de Argentina. Recibís el PDF de una póliza y devolvés los datos en el formato pedido.',
+  'Sos un lector de pólizas de seguro de autos y motos de Argentina. Recibís el PDF de una póliza y devolvés los datos en el formato pedido.',
   '',
   'Reglas:',
   '- Devolvé SÓLO lo que está escrito en el PDF. Si un dato no figura o no se lee con certeza, dejá ese campo vacío (texto vacío, ""). Nunca lo inventes ni lo deduzcas, ni escribas «no figura», «s/d» o algo parecido.',
@@ -42,7 +43,7 @@ const INSTRUCCIONES = [
   '- patente en mayúsculas y sin espacios. motor y chasis tal cual figuran. anio es el año del modelo del vehículo (no el de la vigencia).',
   '- Las fechas de vigencia en formato dd/mm/aaaa. La vigencia es el período de la póliza, no la fecha de emisión.',
   '- compania es la aseguradora; cobertura es el nombre del plan o cobertura contratada, tal cual figura.',
-  '- esPolizaDeAuto es true sólo si asegura un vehículo automotor (auto, camioneta, pick-up). cantidadDeVehiculos es cuántos vehículos asegura el documento.',
+  '- tipoDeVehiculo: AUTO si la póliza asegura un auto, una camioneta, una pick-up o un utilitario; MOTO si asegura una moto, un ciclomotor o un scooter; OTRO para cualquier otra cosa (camión, acoplado, casa, comercio, personas). cantidadDeVehiculos es cuántos vehículos asegura el documento.',
 ].join('\n')
 
 const PEDIDO = 'Leé esta póliza y devolvé los datos en el formato pedido.'
@@ -54,8 +55,15 @@ function errorDeLaIa(error: unknown): ErrorDeNegocio {
   if (error instanceof Anthropic.RateLimitError) {
     return new ErrorDeNegocio('La IA está recibiendo muchas consultas. Probá de nuevo en un minuto.')
   }
+  // Va antes que el de conexión, del que es un caso: internet anda, lo que no alcanzó fue el tiempo.
+  if (error instanceof Anthropic.APIConnectionTimeoutError) {
+    return new ErrorDeNegocio('La IA tardó demasiado en leer el PDF. Si es pesado puede ser la conexión: probá de nuevo o cargá los datos a mano.')
+  }
   if (error instanceof Anthropic.APIConnectionError) {
     return new ErrorDeNegocio('No se pudo conectar con la IA. Revisá la conexión a internet.')
+  }
+  if (error instanceof Anthropic.ContentTooLargeError) {
+    return new ErrorDeNegocio('El PDF es demasiado pesado para la IA. Cargá los datos a mano.')
   }
   if (error instanceof Anthropic.BadRequestError) {
     console.error('[lectura de póliza] La API rechazó el pedido:', error.status, error.message)
@@ -68,7 +76,26 @@ function errorDeLaIa(error: unknown): ErrorDeNegocio {
 
 type CrearIa = (clave: string) => Pick<Anthropic, 'messages'>
 
-const crearIaDeVerdad: CrearIa = (clave) => new Anthropic({ apiKey: clave, maxRetries: 1, timeout: 120_000 })
+const crearIaDeVerdad: CrearIa = (clave) => new Anthropic({ apiKey: clave })
+
+const MB = 1024 * 1024
+
+/** Node corta por su cuenta todo pedido que a los cinco minutos todavía no recibió respuesta: esperar más no sirve. */
+const MAXIMO_QUE_ESPERA_NODE = 300_000
+
+/**
+ * Cuánto se espera a la IA: dos minutos para leer, más cuatro segundos por MB para que el PDF termine de
+ * subir (viaja en base64; es lo que tarda con unos 3 Mbps de subida). Sin eso, una póliza escaneada de
+ * 30 MB se corta antes de llegar. Nunca más de lo que espera Node.
+ */
+function tiempoTopeDeLaLectura(bytes: number): number {
+  return Math.min(120_000 + Math.ceil(bytes / MB) * 4_000, MAXIMO_QUE_ESPERA_NODE)
+}
+
+/** El PDF en base64, sin copiarlo antes: con uno de 90 MB la copia se nota. */
+function enBase64(pdf: Uint8Array): string {
+  return Buffer.from(pdf.buffer, pdf.byteOffset, pdf.byteLength).toString('base64')
+}
 
 /**
  * La única función que habla con la API: manda el PDF y devuelve el JSON que contestó la IA, sin interpretar.
@@ -77,21 +104,27 @@ const crearIaDeVerdad: CrearIa = (clave) => new Anthropic({ apiKey: clave, maxRe
 export async function pedirLecturaALaIa(pdf: Uint8Array, clave: string, crearIa: CrearIa = crearIaDeVerdad): Promise<unknown> {
   let respuesta
   try {
-    respuesta = await crearIa(clave).messages.create({
-      model: MODELO_DEL_ANALISIS_DE_REPORTES,
-      max_tokens: 4000,
-      output_config: { effort: 'medium', format: { type: 'json_schema', schema: ESQUEMA_DE_LECTURA } },
-      system: INSTRUCCIONES,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: Buffer.from(pdf).toString('base64') } },
-            { type: 'text', text: PEDIDO },
-          ],
-        },
-      ],
-    })
+    respuesta = await crearIa(clave).messages.create(
+      {
+        model: MODELO_DEL_ANALISIS_DE_REPORTES,
+        // Lo que la IA piensa antes de contestar cuenta en este mismo tope: con poco lugar, una póliza larga
+        // vuelve cortada por la mitad. Se paga lo que se usa, no el tope.
+        max_tokens: 16_000,
+        output_config: { effort: 'medium', format: { type: 'json_schema', schema: ESQUEMA_DE_LECTURA } },
+        system: INSTRUCCIONES,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: enBase64(pdf) } },
+              { type: 'text', text: PEDIDO },
+            ],
+          },
+        ],
+      },
+      // Un PDF pesado no se reintenta solo: sería volver a subirlo entero y hacer esperar el doble sin avisar.
+      { timeout: tiempoTopeDeLaLectura(pdf.length), maxRetries: pdf.length > PDF_PESADO_EN_BYTES ? 0 : 1 },
+    )
   } catch (error) {
     throw errorDeLaIa(error)
   }
@@ -125,7 +158,7 @@ const DEPENDENCIAS_DE_VERDAD: DependenciasDeLaLectura = {
   clientePorDocumento,
 }
 
-/** Lee el PDF de una póliza de auto y devuelve lo que hay que cargar en «Nuevo cliente», para revisar. */
+/** Lee el PDF de una póliza de auto o de moto y devuelve lo que hay que cargar en «Nuevo cliente», para revisar. */
 export async function leerPolizaDePdf(archivo: unknown, dependencias: Partial<DependenciasDeLaLectura> = {}): Promise<PolizaLeida> {
   const deps = { ...DEPENDENCIAS_DE_VERDAD, ...dependencias }
 
@@ -146,8 +179,8 @@ export async function leerPolizaDePdf(archivo: unknown, dependencias: Partial<De
 
   const lectura = interpretarLectura(await deps.pedir(contenido, clave))
   if (lectura === null) throw new ErrorDeNegocio('No se pudo entender la respuesta de la IA. Cargá los datos a mano.')
-  if (!lectura.esPolizaDeAuto) {
-    throw new ErrorDeNegocio('Este PDF no parece una póliza de auto. Por ahora sólo se leen pólizas de auto: cargala a mano.')
+  if (lectura.tipoDeVehiculo === null) {
+    throw new ErrorDeNegocio('Este PDF no parece una póliza de auto ni de moto. Por ahora sólo se leen esas: cargala a mano.')
   }
   if (lectura.cantidadDeVehiculos > 1) {
     throw new ErrorDeNegocio(`Este PDF trae ${lectura.cantidadDeVehiculos} vehículos. Por ahora sólo se lee un vehículo por póliza: cargala a mano.`)

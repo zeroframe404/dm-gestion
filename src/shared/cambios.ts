@@ -30,6 +30,14 @@ export const ETIQUETA_DE_TIPO: Record<TipoDeCambio, string> = {
 
 export const HISTORIAL_DE_CAMBIOS: VersionConCambios[] = [
   {
+    version: '18.1.8',
+    fecha: '2026-11-27',
+    cambios: [
+      { tipo: 'agregado', texto: 'Clientes: «Cargar desde la póliza (PDF)» ahora también lee pólizas de moto. Completa la moto igual que un auto (patente, marca, modelo, año, motor y chasis) y la guarda como moto. Entre lo leído aparece «Tipo» (Auto o Moto), para revisarlo y corregirlo si hiciera falta.' },
+      { tipo: 'modificado', texto: 'Clientes: el PDF de la póliza ahora puede pesar hasta 90 MB (antes, 20 MB), así entran las pólizas escaneadas. Con un PDF pesado la pantalla avisa que subirlo y leerlo puede tardar unos minutos.' },
+    ],
+  },
+  {
     version: '18.1.7',
     fecha: '2026-11-27',
     cambios: [
