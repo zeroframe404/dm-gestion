@@ -42,14 +42,17 @@ const CAMPOS_DEL_DOMICILIO = ['calle', 'altura', 'localidad', 'provincia', 'codi
 const CAMPOS_DEL_VEHICULO = ['patente', 'marca', 'modelo', 'anio', 'motor', 'chasis', 'uso', 'color'] as const
 const CAMPOS_DE_LA_POLIZA = ['compania', 'numero', 'propuesta', 'cobertura', 'vigenciaDesde', 'vigenciaHasta', 'formaPago', 'cuota'] as const
 
-const TEXTO_O_NULO = { anyOf: [{ type: 'string' }, { type: 'null' }] }
+// Un dato que el PDF no trae vuelve como texto vacío, y `textoLimpio` lo pasa a `null`. No se le pide
+// «texto o null» a la IA: la salida estructurada acepta hasta 16 campos con unión de tipos por pedido
+// (acá serían 27) y, pasado ese tope, la API rechaza el pedido entero sin mirar el PDF.
+const TEXTO = { type: 'string' }
 
 function objetoDelEsquema(campos: readonly string[]): Record<string, unknown> {
   return {
     type: 'object',
     additionalProperties: false,
     required: [...campos],
-    properties: Object.fromEntries(campos.map((campo) => [campo, TEXTO_O_NULO])),
+    properties: Object.fromEntries(campos.map((campo) => [campo, TEXTO])),
   }
 }
 
@@ -61,7 +64,7 @@ export const ESQUEMA_DE_LECTURA: Record<string, unknown> = {
   properties: {
     esPolizaDeAuto: { type: 'boolean' },
     cantidadDeVehiculos: { type: 'integer' },
-    tomadorDistinto: TEXTO_O_NULO,
+    tomadorDistinto: TEXTO,
     asegurado: objetoDelEsquema(CAMPOS_DEL_ASEGURADO),
     domicilio: objetoDelEsquema(CAMPOS_DEL_DOMICILIO),
     vehiculo: objetoDelEsquema(CAMPOS_DEL_VEHICULO),
